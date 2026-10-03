@@ -46,6 +46,25 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
             if preserved:
                 detail += f", preserving {preserved}"
             parts.append(_sentence(detail))
+            for label, values in (("Change", item.get("change")), ("Ignore", item.get("ignore"))):
+                text = "; ".join(_text(value) for value in values or [] if _text(value))
+                if text:
+                    parts.append(_sentence(f"For <image{index}>, {label.lower()} {text}"))
+            if _text(item.get("notes")):
+                parts.append(_sentence(f"Reference note for <image{index}>: {item['notes']}"))
+            for assignment in (item.get("assignments") or [])[1:]:
+                if not isinstance(assignment, dict):
+                    continue
+                assignment_target = str(assignment.get("applies_to") or "")
+                assignment_name = _text(elements.get(assignment_target, {}).get("display_name") or assignment_target or "the scene")
+                assignment_role = _text(assignment.get("prompt_role")).replace("_", " ") or role
+                parts.append(_sentence(f"For <image{index}>, use as {assignment_role} for {assignment_name}"))
+                for label, values in (("Preserve", assignment.get("preserve")), ("Change", assignment.get("change")), ("Ignore", assignment.get("ignore"))):
+                    text = "; ".join(_text(value) for value in values or [] if _text(value))
+                    if text:
+                        parts.append(_sentence(f"{label} for this <image{index}> assignment: {text}"))
+                if _text(assignment.get("notes")):
+                    parts.append(_sentence(f"Reference note for this <image{index}> assignment: {assignment['notes']}"))
     for value in (scene.get("story_beat"), environment.get("location"), environment.get("general_background_notes")):
         if _text(value):
             parts.append(_sentence(value))
@@ -59,6 +78,19 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
         parts.append(_sentence(f"From left to right: {order}"))
     if _text(composition.get("composition_notes")):
         parts.append(_sentence(composition["composition_notes"]))
+    for interaction in ir.get("interactions") or []:
+        if not isinstance(interaction, dict):
+            continue
+        subject = _text(elements.get(str(interaction.get("subject_element_id")), {}).get("display_name"))
+        target = _text(elements.get(str(interaction.get("target_element_id")), {}).get("display_name"))
+        relationship = _text(interaction.get("relationship") or interaction.get("type"))
+        if subject and target and relationship:
+            detail = f"{subject} {relationship} {target}"
+            if _text(interaction.get("note")):
+                detail += f", {_text(interaction['note'])}"
+            parts.append(_sentence(detail))
+    if _text(ir.get("custom_interactions")):
+        parts.append(_sentence(ir["custom_interactions"]))
     for item in ir.get("dialogue") or []:
         speaker = elements.get(str(item.get("speaker_element_id")), {}).get("display_name") or "A character"
         exact = str(item.get("text") or "")

@@ -528,6 +528,9 @@
             <input id="entity-library-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
             <div id="entity-library-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste an image to add to the library"><p>Or click here and paste an image</p></div>
             <label>Image name<input id="entity-library-new-label" placeholder="Required"></label>
+            <label>Generated image entity<select id="entity-library-generated-entity"><option value="">Choose entity</option></select></label>
+            <label>Reference role<select id="entity-library-generated-role"><option value="primary_subject">Primary subject</option><option value="depicted_subject">Depicted subject</option><option value="source">Source reference</option><option value="backdrop">Backdrop</option><option value="location">Location</option><option value="worn_costume">Worn costume</option><option value="held_prop">Held prop</option></select></label>
+            <label>Generation provenance<input id="entity-library-generated-provenance" placeholder="e.g. Qwen prompt or generation run"></label>
             <button id="entity-library-import" type="button" disabled>Add to library</button>
             <div id="entity-library-import-status" class="status-text" role="status"></div>
           </section>

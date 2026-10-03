@@ -60,7 +60,16 @@ window.SceneBatches = (() => {
       const target = definition.target_id, group = run.groups[target], ranking = run.rankings[target] || {};
       const section = node("section", null, "local-pipeline-view");
       section.append(node("h2", definition.label));
-      section.append(node("p", `${group.status.replaceAll("_", " ")}${group.stale_reason ? ` · ${group.stale_reason}` : ""}`));
+      const renderDone = group.candidates.length > 0 && group.candidates.every(item => ["COMPLETE", "FAILED", "STOPPED"].includes(item.status));
+      const groupStatus = renderDone && ranking.status === "FAILED" ? "Render complete · Rating failed" : group.status.replaceAll("_", " ");
+      section.append(node("p", `${groupStatus}${group.stale_reason ? ` · ${group.stale_reason}` : ""}`));
+      if (group.subject_count != null) {
+        section.append(node("p", `Required characters (${group.subject_count}): ${(group.subject_labels || []).join(", ") || "none"}`, "scene-batch-subject-summary"));
+      }
+      if ((group.reference_assignments || []).length) {
+        const assigned = group.reference_assignments.map(item => `${item.label || "Reference"} → ${item.applies_to || "scene"} (${String(item.role || "visual reference").replaceAll("_", " ")})`);
+        section.append(node("p", `Identity and reference assignments: ${assigned.join("; ")}`, "scene-batch-subject-summary"));
+      }
       if (definition.dependencies.length) section.append(node("p", `Requires selections: ${definition.dependencies.join(", ")}`, "muted"));
       const ready = run.ready_targets.includes(target), active = group.candidates.some(item => ["QUEUED", "RUNNING"].includes(item.status));
       const actions = node("div", null, "button-row compact");
@@ -92,12 +101,14 @@ window.SceneBatches = (() => {
         const ai = order.indexOf(a.candidate_id), bi = order.indexOf(b.candidate_id);
         return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
       });
+      const candidateLabels = new Map(group.candidates.map((candidate, index) => [candidate.candidate_id, `Candidate ${index + 1}`]));
       for (const candidate of candidates) {
         const selected = run.selected_views[target] === candidate.candidate_id;
         const card = node("article", null, `local-pipeline-candidate${selected ? " is-selected" : ""}`);
-        card.append(node("h3", `${candidate.candidate_id}${selected ? " · Selected" : ""}`));
+        card.append(node("h3", `${candidateLabels.get(candidate.candidate_id)}${selected ? " · Selected" : ""}`));
+        card.append(node("small", candidate.candidate_id, "muted"));
         if (candidate.status === "COMPLETE") {
-          const image = node("img"); image.src = route(target, `images/${encodeURIComponent(candidate.candidate_id)}`); image.alt = candidate.candidate_id; image.loading = "lazy";
+          const image = node("img"); image.src = route(target, `images/${encodeURIComponent(candidate.candidate_id)}`); image.alt = candidateLabels.get(candidate.candidate_id); image.loading = "lazy";
           const anchor = node("a", null, "local-pipeline-candidate-image"); anchor.href = image.src; anchor.target = "_blank"; anchor.append(image); card.append(anchor);
         }
         card.append(node("p", `${candidate.status}${candidate.error ? ` · ${candidate.error}` : ""}`));
@@ -150,7 +161,8 @@ window.SceneBatches = (() => {
           const archive = node("div", null, "scene-batch-candidates");
           for (const candidate of attempt.candidates) {
             const card = node("article", null, "local-pipeline-candidate");
-            card.append(node("p", `${candidate.candidate_id} · ${candidate.status}${candidate.candidate_id === attempt.selected_candidate_id ? " · Previously selected" : ""}`));
+          const archivedLabel = `Candidate ${attempt.candidates.indexOf(candidate) + 1}`;
+          card.append(node("p", `${archivedLabel} · ${candidate.candidate_id} · ${candidate.status}${candidate.candidate_id === attempt.selected_candidate_id ? " · Previously selected" : ""}`));
             if (candidate.status === "COMPLETE") {
               const image = node("img"); image.src = route(target, `images/${encodeURIComponent(candidate.candidate_id)}`, attempt.attempt_id); image.alt = candidate.candidate_id;
               const anchor = node("a", null, "local-pipeline-candidate-image"); anchor.href = image.src; anchor.target = "_blank"; anchor.append(image); card.append(anchor);
@@ -181,6 +193,8 @@ window.SceneBatches = (() => {
       const updated = await request(`${base()}/${expectedId}`);
       if (pending || expectedVersion !== version || expectedId !== run?.run_id) return;
       run = updated;
+      await list();
+      if (expectedVersion !== version || expectedId !== run?.run_id) return;
       if (!page.contains(document.activeElement) || !document.activeElement.matches("textarea,input,select")) render();
     } catch (error) { message.textContent = error.message; }
   }
@@ -194,7 +208,7 @@ window.SceneBatches = (() => {
       const preview = await request(`${base()}/preview`, {}); planHost.replaceChildren();
       if (expectedVersion !== version) return;
       for (const target of preview.targets) {
-        const label = node("label", target.label), input = node("input"); input.type = "number"; input.min = "1"; input.max = "16"; input.value = "4"; input.dataset.target = target.target_id;
+        const label = node("label", `${target.label} · ${target.kind === "element" ? "Element render" : "Background render"}`), input = node("input"); input.type = "number"; input.min = "1"; input.max = "16"; input.value = "4"; input.dataset.target = target.target_id;
         label.append(input); planHost.append(label);
       }
       const listing = await list();

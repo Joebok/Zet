@@ -787,6 +787,9 @@ const entityLibraryCount = document.querySelector("#entity-library-count");
 const entityLibraryResults = document.querySelector("#entity-library-results");
 const entityLibraryFile = document.querySelector("#entity-library-file");
 const entityLibraryNewLabel = document.querySelector("#entity-library-new-label");
+const entityLibraryGeneratedEntity = document.querySelector("#entity-library-generated-entity");
+const entityLibraryGeneratedRole = document.querySelector("#entity-library-generated-role");
+const entityLibraryGeneratedProvenance = document.querySelector("#entity-library-generated-provenance");
 const entityLibraryImport = document.querySelector("#entity-library-import");
 const entityLibraryImportStatus = document.querySelector("#entity-library-import-status");
 const entityLibraryPaste = document.querySelector("#entity-library-paste");
@@ -5922,16 +5925,35 @@ function builderSelectedElement() {
 }
 
 async function restartZetFromToolbar() {
+  const returnUrl = window.location.href;
   toolbarRestartZet.disabled = true;
   toolbarRestartZet.textContent = "…";
   toolbarRestartZet.title = "Restarting Zet…";
+  toolbarRestartZet.setAttribute("aria-label", "Restarting Zet; waiting for server readiness");
   try {
     await fetchJson("/api/processes/restart-zet", { method: "POST" });
-    window.setTimeout(() => window.location.reload(), 2200);
+    const deadline = Date.now() + 120000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 800));
+      try {
+        const response = await fetch("/api/health", { cache: "no-store" });
+        if (response.ok) {
+          const health = await response.json();
+          if (health.ready && health.catalog_reconciliation?.running) {
+            toolbarRestartZet.title = "Zet is available; catalog reconciliation is still running…";
+          } else if (health.ready) {
+            window.location.replace(returnUrl);
+            return;
+          }
+        }
+      } catch { /* The listener is still restarting. */ }
+    }
+    throw new Error("Zet has not reported ready yet. Retry the page after startup finishes.");
   } catch (error) {
     toolbarRestartZet.disabled = false;
     toolbarRestartZet.textContent = "♻";
     toolbarRestartZet.title = error.message;
+    toolbarRestartZet.setAttribute("aria-label", "Restart Zet");
   }
 }
 
@@ -6551,6 +6573,7 @@ function builderRenderElementEditor() {
         <label>Ignore (comma-separated)<input value="${escapeHtml((imageReference.ignore || []).join(", "))}" data-builder-reference-field="ignore" data-builder-reference-index="${index}"></label>
         <label>Notes<textarea data-builder-reference-field="notes" data-builder-reference-index="${index}">${escapeHtml(imageReference.notes || "")}</textarea></label>
         ${reference ? `<small>${escapeHtml(reference.semantic_category || reference.kind || "")} · ${escapeHtml(String(reference.description_status || "").replaceAll("_", " "))}</small>` : ""}
+        ${(element.resolved_source_sections?.reference_warnings || []).map((warning) => `<small class="action-message warning">${escapeHtml(warning)}</small>`).join("")}
         <span class="button-row compact"><button type="button" data-builder-action="reference-up" data-builder-reference-index="${index}"${index === 0 ? " disabled" : ""}>Up</button><button type="button" data-builder-action="reference-down" data-builder-reference-index="${index}"${index === element.reference_images.length - 1 ? " disabled" : ""}>Down</button><button type="button" data-builder-action="reference-remove" data-builder-reference-index="${index}">Remove</button></span>
       </div>
     </div>`;
@@ -7207,7 +7230,7 @@ async function applySceneBuilderInterview() {
 function builderRenderTargetControls() {
   const subscenes = state.sceneBuilder.subscenes || [];
   const background = subscenes.find((item) => item.id === "background");
-  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""} ${item.id === "main" ? "" : "subscene-target"}" aria-label="${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}"${builderSubsceneStyle(item)}>${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`;
+  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""} ${item.id === "main" ? "" : "subscene-target"}" aria-label="${escapeHtml(item.name)} · ${item.kind === "element" ? "element" : item.id === "main" ? "full scene" : "background"}${item.enabled === false ? " (off)" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}"${builderSubsceneStyle(item)}>${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)} <small>${item.id === "main" ? "Full Scene" : item.kind === "element" ? "Element" : "Background"}</small>${item.enabled === false ? " (off)" : ""}</button>`;
   const renderChildren = (parentId, seen = new Set()) => builderTargetChildren(parentId).map((item) => {
     if (seen.has(item.id)) return "";
     const nextSeen = new Set(seen);
@@ -7228,7 +7251,7 @@ function builderRenderTargetControls() {
       ? `<button type="button" data-builder-action="disable-subscene" data-render-target-id="${escapeHtml(activeSubscene.id)}">Turn off element sub-render</button>`
       : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(activeSubscene.anchor_element_id || "")}">Turn on element sub-render</button>`
     : "";
-  return `<div class="scene-builder-target-bar"><div class="button-row compact scene-builder-target-tree" role="tablist" aria-label="Render target">${tabs}</div>${breadcrumbs ? `<small class="scene-builder-target-breadcrumb">Full Scene › ${breadcrumbs}</small>` : ""}<div class="button-row compact"><button type="button" data-builder-action="add-subscene">Add Sub-Scene</button>${toggle}${elementToggle}</div></div>`;
+  return `<div class="scene-builder-target-bar"><div class="button-row compact scene-builder-target-tree" role="tablist" aria-label="Render target">${tabs}</div>${breadcrumbs ? `<small class="scene-builder-target-breadcrumb">Full Scene › ${breadcrumbs}</small>` : ""}<div class="button-row compact"><button type="button" data-builder-action="add-subscene">Add background sub-render</button>${toggle}${elementToggle}</div></div>`;
 }
 
 async function selectSceneBuilderTarget(targetId) {
@@ -7328,6 +7351,9 @@ function builderRenderSubsceneSettings() {
     const composition = targetSetup.composition || {};
     const targetEnvironment = targetSetup.environment || {};
     const anchor = (state.sceneBuilder.scene_elements || []).find((item) => item.id === subscene.anchor_element_id) || {};
+    const members = (state.sceneBuilder.scene_elements || []).filter((item) => item.subscene_id === subscene.id);
+    const placement = (state.sceneBuilder.placements || []).find((item) => item.scene_element_id === anchor.id) || {};
+    const parent = (state.sceneBuilder.subscenes || []).find((item) => item.id === anchor.subscene_id);
     const environmentField = (key, label) => {
       const policy = targetEnvironment[key] || { mode: "inherit", value: "" };
       return `<div class="full scene-builder-inheritance-field"><label>${escapeHtml(label)} mode<select data-builder-element-subscene-field="environment.${key}.mode"><option value="inherit"${policy.mode === "inherit" ? " selected" : ""}>Inherit from parent</option><option value="override"${policy.mode === "override" ? " selected" : ""}>Override</option><option value="omit"${policy.mode === "omit" ? " selected" : ""}>Omit</option></select></label><label>${escapeHtml(label)} value<input value="${escapeHtml(policy.value || "")}" data-builder-element-subscene-field="environment.${key}.value"${policy.mode === "override" ? "" : " disabled"}></label></div>`;
@@ -7335,6 +7361,8 @@ function builderRenderSubsceneSettings() {
     return `<div class="scene-builder-card">
       <h4>${escapeHtml(subscene.name)} element reference</h4>
       <p><strong>Target element:</strong> ${escapeHtml(anchor.display_name || anchor.id || subscene.anchor_element_id)}</p>
+      <p><strong>Members:</strong> ${escapeHtml(members.map((item) => item.display_name || item.id).join(", ") || "No elements assigned")}</p>
+      <p><strong>Inherited placement:</strong> ${escapeHtml([placement.position_within_cell, placement.depth, parent?.name || (anchor.subscene_id ? anchor.subscene_id : "Full Scene")].filter(Boolean).join(" · ") || "Set on the parent scene")}</p>
       <p>${escapeHtml(anchor.element_visual_override || anchor.fallback_visual_description || "The target element's description and references define the overall subject.")}</p>
       <div class="scene-builder-fields">
         <label class="full">Sub-scene name<input value="${escapeHtml(subscene.name || "")}" data-builder-subscene-name></label>
@@ -7352,8 +7380,10 @@ function builderRenderSubsceneSettings() {
       </div>
     </div>`;
   }
+  const members = (state.sceneBuilder.scene_elements || []).filter((item) => item.subscene_id === subscene.id);
   return `<div class="scene-builder-card">
     <h4>${escapeHtml(subscene.name)} prompt</h4>
+    <p><strong>Members:</strong> ${escapeHtml(members.map((item) => item.display_name || item.id).join(", ") || "No elements assigned")}</p>
     <p>Canvas, art style, location, lighting, mood, and atmosphere are inherited from Full Scene. Edit those universal values there; changing them invalidates this lock.</p>
     <dl><dt>Canvas</dt><dd>${escapeHtml(setup.canvas?.orientation || "landscape")} ${escapeHtml(setup.canvas?.aspect_ratio || "16:9")}</dd><dt>Location</dt><dd>${escapeHtml(environment.location || "—")}</dd><dt>Lighting</dt><dd>${escapeHtml(environment.lighting || "—")}</dd></dl>
     <div class="scene-builder-fields">
@@ -8469,6 +8499,9 @@ async function loadEntityLibraryInventory() {
   const sets = setsPayload.sets || [];
   const facets = facetsPayload.facets || [];
   entityLibraryMetadata = { entities, variants, sets, facets };
+  setSelectOptionsWithLabels(entityLibraryGeneratedEntity, [
+    { value: "", label: "General image import" }, ...entities.map((item) => ({ value: item.entity_id, label: `${item.name} · ${item.entity_type}` })),
+  ]);
   setSelectOptionsWithLabels(entityLibraryFilterEntity, [
     { value: "", label: "All entities" }, ...entities.map((item) => ({ value: item.entity_id, label: item.name })),
   ]);
@@ -12386,7 +12419,11 @@ function renderManifestTaskTable() {
     const row = document.createElement("tr");
     row.dataset.assetId = task.asset_id;
     row.classList.toggle("selected", task.asset_id === state.selectedManifestAssetId);
-    for (const value of [task.asset_id, task.pipeline, task.body_view, task.ai_proxy_status?.pending ? "AI Proxy pending" : "Ready"]) {
+    const proxyJob = task.ai_proxy_status?.jobs?.[0];
+    const proxyLabel = proxyJob
+      ? `${proxyJob.display_state || proxyJob.state}${proxyJob.trusted_worker_backend ? ` · ${proxyJob.trusted_worker_backend}` : ""}${proxyJob.diagnostic ? ` · ${proxyJob.diagnostic}` : ""}`
+      : "Ready";
+    for (const value of [task.asset_id, task.pipeline, task.body_view, proxyLabel]) {
       const cell = document.createElement("td");
       cell.textContent = value ?? "";
       row.append(cell);
@@ -13187,7 +13224,15 @@ entityLibraryImport.addEventListener("click", async () => {
   entityLibraryImport.disabled = true;
   entityLibraryImportStatus.textContent = "Adding image…";
   try {
-    const response = await fetch(`/api/entity-library/assets?label=${encodeURIComponent(label)}`, {
+    const generated = Boolean(entityLibraryGeneratedEntity.value);
+    const endpoint = generated ? "/api/entity-library/assets/generated" : "/api/entity-library/assets";
+    const query = new URLSearchParams({ label });
+    if (generated) {
+      query.set("entity_id", entityLibraryGeneratedEntity.value);
+      query.set("reference_role", entityLibraryGeneratedRole.value);
+      query.set("provenance", entityLibraryGeneratedProvenance.value.trim());
+    }
+    const response = await fetch(`${endpoint}?${query}`, {
       method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
     });
     const payload = await response.json();
@@ -13196,6 +13241,7 @@ entityLibraryImport.addEventListener("click", async () => {
     state.entityLibraryImportBlob = null;
     entityLibraryPaste.textContent = "Or click here and paste an image";
     entityLibraryNewLabel.value = "";
+    entityLibraryGeneratedProvenance.value = "";
     entityLibraryImportStatus.textContent = payload.message || "Image added.";
     await loadEntityLibraryInventory();
     if (payload.asset?.asset_id) await selectEntityLibraryAsset(payload.asset.asset_id);

@@ -48,6 +48,31 @@ def test_assets_entities_sets_facets_descriptors_and_logical_references(library)
     assert (root / "images" / asset["file_name"]).is_file()
 
 
+def test_generated_image_import_round_trip_and_duplicate_handling(library):
+    _, service = library
+    entity = service.create_entity({"name": "Generated Subject", "entity_type": "character"})
+    imported = service.import_generated_image(
+        "Generated portrait", "image/png", PNG, entity_id=entity["entity_id"],
+        reference_role="primary_subject", provenance="local imagegen run 12",
+    )
+    asset = imported["asset"]
+    assert imported["duplicate"] is False
+    assert asset["origin"] == "imagegen"
+    assert asset["entities"][0]["entity_id"] == entity["entity_id"]
+    assert asset["entities"][0]["role"] == "primary_subject"
+    assert asset["provenance"][0]["relation_type"] == "generated_from"
+    assert json.loads(asset["provenance"][0]["details_json"]) == {
+        "source": "local_image_generation", "details": "local imagegen run 12",
+    }
+    duplicate = service.import_generated_image(
+        "Generated portrait", "image/png", PNG, entity_id=entity["entity_id"],
+        reference_role="primary_subject", provenance="local imagegen run 12",
+    )
+    assert duplicate["duplicate"] is True
+    assert duplicate["asset"]["asset_id"] == asset["asset_id"]
+    assert len(service.list_assets(origin="imagegen")) == 1
+
+
 def test_locked_costume_image_has_searchable_classification_and_stable_reference(library):
     _, service = library
     asset = service.import_asset("Generated image", "image/png", PNG, origin="pipeline")
@@ -284,9 +309,30 @@ def test_entity_library_api_import_filter_and_detail(tmp_path):
         ), encoding="utf-8",
     )
     with TestClient(create_app(config_path)) as client:
+        health = client.get("/api/health")
+        assert health.status_code == 200 and health.json()["ready"] is True
         entity = client.post("/api/entity-library/entities", json={"name": "Morrow", "entity_type": "creature"})
         assert entity.status_code == 200, entity.text
         entity_id = entity.json()["entity"]["entity_id"]
+        generated = client.post(
+            "/api/entity-library/assets/generated",
+            params={"label": "Generated Morrow", "entity_id": entity_id,
+                    "reference_role": "primary_subject", "provenance": "imagegen run 12"},
+            content=PNG, headers={"content-type": "image/png"},
+        )
+        assert generated.status_code == 200, generated.text
+        generated_asset = generated.json()["asset"]
+        assert generated.json()["duplicate"] is False
+        assert generated_asset["entities"][0]["role"] == "primary_subject"
+        assert json.loads(generated_asset["provenance"][0]["details_json"])["details"] == "imagegen run 12"
+        duplicate = client.post(
+            "/api/entity-library/assets/generated",
+            params={"label": "Generated Morrow", "entity_id": entity_id,
+                    "reference_role": "primary_subject", "provenance": "imagegen run 12"},
+            content=PNG, headers={"content-type": "image/png"},
+        )
+        assert duplicate.status_code == 200 and duplicate.json()["duplicate"] is True
+        assert duplicate.json()["asset"]["asset_id"] == generated_asset["asset_id"]
         imported = client.post(
             "/api/entity-library/assets", params={"label": "Raven form"}, content=PNG,
             headers={"content-type": "image/png"},

@@ -111,6 +111,10 @@ class StoryServiceTests(unittest.TestCase):
             })
             self.assertEqual("An ornate academy archway.", sections["identity_preservation_core"])
             self.assertEqual("arch-image", sections["library_asset_id"])
+            self.assertEqual(
+                ["Optional legacy auxiliary fallback is unavailable: Auxiliary resource old-arch not found."],
+                sections["reference_warnings"],
+            )
 
             with self.assertRaises(AuxiliaryResourceRepositoryError):
                 service._element_source_sections({"resource_type": "Place", "aux_resource_id": "old-arch"})

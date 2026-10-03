@@ -262,7 +262,7 @@ class EntityLibraryService:
         item["usages"] = self.usage_for_asset(asset_id)
         return item
 
-    def import_asset(self, label: str, mime_type: str, data: bytes, *, notes: str = "", entity_ids: list[str] | None = None, set_ids: list[str] | None = None, origin: str = "import", origin_key: str | None = None) -> dict:
+    def import_asset(self, label: str, mime_type: str, data: bytes, *, notes: str = "", entity_ids: list[str] | None = None, set_ids: list[str] | None = None, origin: str = "import", origin_key: str | None = None, entity_role: str = "depicted_subject", provenance_details: dict | None = None) -> dict:
         label = self._require(label, "Image label")
         mime_type = str(mime_type or "").split(";")[0].strip().lower()
         if mime_type not in IMAGE_TYPES or not data:
@@ -285,11 +285,39 @@ class EntityLibraryService:
                     "INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (asset_id, label, checksum, path.name, mime_type, width, height, origin, origin_key, "approved", notes.strip(), stamp, stamp),
                 )
-                self._link_assets(connection, asset_id, entity_ids or [], set_ids or [])
+                self._link_assets(connection, asset_id, entity_ids or [], set_ids or [], entity_role=entity_role)
+                if provenance_details is not None:
+                    connection.execute(
+                        "INSERT INTO provenance(provenance_id,asset_id,relation_type,details_json,created_at) VALUES(?,?,?,?,?)",
+                        (str(uuid4()), asset_id, "generated_from", json.dumps(provenance_details), stamp),
+                    )
         except Exception:
             path.unlink(missing_ok=True)
             raise
         return self.get_asset(asset_id)
+
+    def import_generated_image(self, label: str, mime_type: str, data: bytes, *, entity_id: str, reference_role: str, provenance: str) -> dict:
+        """Import a generated image with its entity, reference role, and provenance atomically."""
+        entity_id = self._require(entity_id, "Entity")
+        reference_role = self._require(reference_role, "Reference role")
+        if reference_role not in ASSET_ROLES:
+            raise EntityLibraryServiceError(f"Invalid reference role: {reference_role}")
+        if not self.repository.fetchone("SELECT entity_id FROM entities WHERE entity_id=?", (entity_id,)):
+            raise EntityLibraryServiceError(f"Entity not found: {entity_id}")
+        mime_type = str(mime_type or "").split(";")[0].strip().lower()
+        if mime_type not in IMAGE_TYPES or not data:
+            raise EntityLibraryServiceError("Choose a non-empty PNG, JPEG, WEBP, or GIF image.")
+        checksum = hashlib.sha256(data).hexdigest()
+        origin_key = f"imagegen:{checksum}"
+        existing = self.repository.fetchone("SELECT asset_id FROM assets WHERE origin_key=?", (origin_key,))
+        if existing:
+            return {"asset": self.get_asset(existing["asset_id"]), "duplicate": True}
+        asset = self.import_asset(
+            label, mime_type, data, origin="imagegen", origin_key=origin_key,
+            entity_ids=[entity_id], entity_role=reference_role,
+            provenance_details={"source": "local_image_generation", "details": str(provenance or "").strip()},
+        )
+        return {"asset": asset, "duplicate": False}
 
     def register_locked_pipeline_image(self, source: Path, *, label: str, pipeline: str, character: str, phase: str, checksum: str,
                                        costume: str = "", view: str = "", reference_key: str = "") -> dict:
@@ -472,9 +500,9 @@ class EntityLibraryService:
         return asset
 
     @staticmethod
-    def _link_assets(connection, asset_id: str, entity_ids: list[str], set_ids: list[str]) -> None:
+    def _link_assets(connection, asset_id: str, entity_ids: list[str], set_ids: list[str], *, entity_role: str = "depicted_subject") -> None:
         for entity_id in entity_ids:
-            connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,role) VALUES(?,?,?)", (asset_id, entity_id, "depicted_subject"))
+            connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,role) VALUES(?,?,?)", (asset_id, entity_id, entity_role))
         for order, set_id in enumerate(set_ids):
             connection.execute("INSERT OR IGNORE INTO reference_set_assets(set_id,asset_id,role,sort_order) VALUES(?,?,?,?)", (set_id, asset_id, "member", order))
 

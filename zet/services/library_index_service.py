@@ -787,16 +787,35 @@ class LibraryIndexReconciler:
         self._stop = threading.Event()
         self._wait = wait or self._stop.wait
         self._thread: threading.Thread | None = None
+        self._status_lock = threading.Lock()
+        self._last_result: dict | None = None
+        self._last_error = ""
+        self._running = False
+
+    def status(self) -> dict:
+        with self._status_lock:
+            alive = self._thread is not None and self._thread.is_alive()
+            return {"running": self._running, "active": alive, "last_result": self._last_result,
+                    "last_error": self._last_error}
 
     def run_cycle(self) -> dict:
         return self.service.reconcile()
 
     def _run(self) -> None:
         while not self._stop.is_set():
+            with self._status_lock:
+                self._running = True
+                self._last_error = ""
             try:
-                self.run_cycle()
-            except Exception:
-                pass
+                result = self.run_cycle()
+                with self._status_lock:
+                    self._last_result = result
+            except Exception as exc:
+                with self._status_lock:
+                    self._last_error = str(exc)
+            finally:
+                with self._status_lock:
+                    self._running = False
             if self._wait(self.interval_seconds):
                 break
 

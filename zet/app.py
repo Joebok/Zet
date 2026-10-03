@@ -626,6 +626,9 @@ class ZetApp:
     def entity_library_import(self, label: str, mime_type: str, data: bytes, **metadata):
         return self._indexed_write(lambda: self.entity_library_service.import_asset(label, mime_type, data, **metadata))
 
+    def entity_library_import_generated_image(self, label: str, mime_type: str, data: bytes, **metadata):
+        return self._indexed_write(lambda: self.entity_library_service.import_generated_image(label, mime_type, data, **metadata))
+
     def entity_library_create_entity(self, data: dict):
         return self._indexed_write(lambda: self.entity_library_service.create_entity(data))
 

@@ -220,12 +220,14 @@ class StoryService:
                         str(primary.get("set_id") or asset.get("reference_set_id") or ""),
                     )
                     by_type = {item["descriptor_type"]: item["text"] for item in descriptors}
+                    fallback_warning = ""
                     try:
                         canonical = self._canonical_element_source_sections(element)
-                    except AuxiliaryResourceRepositoryError:
+                    except AuxiliaryResourceRepositoryError as exc:
                         # A selected library image remains usable after its legacy
                         # auxiliary resource has been migrated out of the old catalog.
                         canonical = {}
+                        fallback_warning = f"Optional legacy auxiliary fallback is unavailable: {exc}"
                     identity = "\n".join(
                         text for text in (by_type.get("prompt_identity", ""), by_type.get("prompt_object", ""), by_type.get("prompt_background", ""), by_type.get("human_description", "")) if text
                     ) or str(canonical.get("identity_preservation_core") or "")
@@ -237,6 +239,7 @@ class StoryService:
                         "costume_source": f"Library/assets/{asset['asset_id']}",
                         "library_asset_id": asset["asset_id"],
                         "library_checksum": asset["checksum"],
+                        "reference_warnings": [fallback_warning] if fallback_warning else [],
                     }
                 except Exception as exc:
                     raise StoryServiceError(str(exc)) from exc

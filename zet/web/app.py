@@ -196,7 +196,10 @@ def _asset_payload(zet_app: ZetApp, asset) -> dict[str, Any]:
     data["render_review_comment"] = render_comment
     data["has_render_review_comment"] = bool(render_comment)
     data["review_image_ready"] = _review_image_ready(zet_app, asset)
-    ai_proxy_status = {"pending": False, "count": 0, "jobs": []}
+    try:
+        ai_proxy_status = zet_app.ai_proxy_service.asset_job_status(asset.asset_id)
+    except Exception:
+        ai_proxy_status = {"pending": False, "count": 0, "jobs": []}
     data["ai_proxy_status"] = ai_proxy_status
     data["actor_display"] = f"{asset.actor} → AI PROXY" if ai_proxy_status["pending"] else asset.actor
     try:
@@ -935,9 +938,9 @@ def create_app(
     app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.universe_lock = threading.RLock()
     current_universe = ContextVar(f"zet_universe_{id(app)}", default=None)
-    # Publish the first complete snapshot before any request can observe a validated app.
+    # Start reconciliation in the background so it cannot hold HTTP startup hostage.
     if validate_catalog_on_create:
-        app.state.zet_app.library_index_service.reconcile()
+        app.state.zet_app.library_index_reconciler.start()
 
     if performance is not None:
         @app.middleware("http")
@@ -959,7 +962,6 @@ def create_app(
             existing = app.state.universe_apps.get(universe_id)
             if existing is None:
                 existing = ZetApp.from_config(app.state.config_path, universe_id=universe_id)
-                existing.library_index_service.reconcile()
                 existing.library_index_reconciler.start()
                 LocalCharacterOverviewService(existing, PROJECT_ROOT).recover()
                 LocalRunAllRemainingService(existing, PROJECT_ROOT).recover()
@@ -1053,6 +1055,11 @@ def create_app(
     app.include_router(create_local_character_asset_pipeline_router(lambda: _app(app.state.config_path), PROJECT_ROOT))
     app.include_router(create_local_scene_batch_router(lambda: _app(app.state.config_path)))
     app.include_router(create_ad_hoc_image_generation_router(lambda: app.state.image_generation_service))
+
+    @app.get("/api/health")
+    def health() -> dict[str, Any]:
+        """Report that the Zet HTTP application has completed startup and can serve requests."""
+        return {"ready": True, "catalog_reconciliation": app.state.zet_app.library_index_reconciler.status()}
 
     app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static"), name="zet_web_static")
     app.mount("/img", StaticFiles(directory=PROJECT_ROOT / "img"), name="zet_img")
@@ -2217,6 +2224,22 @@ def create_app(
                 set_ids=[value for value in set_ids.split(",") if value],
             )
             return {"asset": asset, "message": f"Added {label} to the image library."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/assets/generated")
+    async def entity_library_import_generated(
+        request: Request, label: str = Query(...), entity_id: str = Query(...),
+        reference_role: str = Query("primary_subject"), provenance: str = Query(""),
+    ) -> dict[str, Any]:
+        try:
+            result = _app(app.state.config_path).entity_library_import_generated_image(
+                label, request.headers.get("content-type", ""), await request.body(),
+                entity_id=entity_id, reference_role=reference_role, provenance=provenance,
+            )
+            asset = result["asset"]
+            message = "This generated image is already in the library." if result["duplicate"] else f"Added {label} to the image library with its entity and provenance."
+            return {**result, "message": message}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

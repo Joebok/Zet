@@ -228,6 +228,21 @@ class LocalSceneBatchService:
         group.update(attempt_id=generation, prompt_path=str(prompt_path), ir_path=str(output / "Scene_Render_IR.json"),
                      reference_images=compiled["references"], prompt_sha256=_hash(prompt_path),
                      ir_sha256=_hash(output / "Scene_Render_IR.json"),
+                     subject_count=len({
+                         str(item.get("id") or "") for item in compiled["ir"].get("elements", [])
+                         if item.get("element_type", "Character") in {"Character", "Monster"}
+                         and str(item.get("id") or "") in {str(place.get("scene_element_id") or "") for place in compiled["ir"].get("placements", [])}
+                     }),
+                     subject_labels=list(dict.fromkeys(
+                         str(item.get("display_name") or item.get("id") or "")
+                         for item in compiled["ir"].get("elements", [])
+                         if item.get("element_type", "Character") in {"Character", "Monster"}
+                         if str(item.get("id") or "") in {str(place.get("scene_element_id") or "") for place in compiled["ir"].get("placements", [])}
+                     )),
+                     reference_assignments=[{
+                         "label": item.get("label", ""), "role": item.get("prompt_role", ""),
+                         "applies_to": item.get("applies_to", ""),
+                     } for item in compiled["ir"].get("image_inputs", [])],
                      render_input_hash=compiled["render_input_hash"], source_selections=self._selected(state),
                      status="COMPILED", stale_reason="", candidates=[])
         # Shared improvement packages read current per-target compiler artifacts.
@@ -383,7 +398,10 @@ class LocalSceneBatchService:
                 entries, model = [{"candidate_id": candidates[0]["candidate_id"], "reason": "Only completed image."}], "single-survivor"
             else:
                 prompt = ("Rank every supplied scene candidate for prompt adherence, composition, visual continuity, "
-                          "reference preservation and image quality. References precede candidates. Human decisions are independent advice. "
+                          "reference preservation and image quality. Explicitly check the exact required character count and identity of each character; "
+                          "penalize duplicated or missing characters and unrequested background structures. Check each character's gaze direction and verify "
+                          "that every dialogue line appears exactly as written, with a visible panel and pointer aimed at its speaker. State these checks in each reason. "
+                          "References precede candidates. Human decisions are independent advice. "
                           f"Candidate IDs: {list(hashes)}\nExact submitted prompt:\n" + Path(group["prompt_path"]).read_text(encoding="utf-8"))
                 entries, model = rank_images_with_luna(
                     project_root=self.project_root, model=self.app.config.codex_default_model, prompt=prompt,

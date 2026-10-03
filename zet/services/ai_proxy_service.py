@@ -270,11 +270,25 @@ class AIProxyService:
                     continue
                 if state == "answer" and (path / "harvest_manifest.json").exists():
                     continue
+                result = self._read_json_if_exists(path / "proxy_result.json")
+                result_status = str(result.get("status") or "").upper()
+                display_state = "held" if result_status == "INVALID" else "queued" if state == "ask" else "starting backend" if state == "running" else "sampling" if result_status == "RUNNING" else state
+                worker_type = str(manifest.get("worker_type") or "")
+                trusted_backend = (
+                    "ollama" if worker_type == "ollama_generate"
+                    else str(getattr(self.path_service.config, "local_render_backend", "") or "")
+                    if worker_type == "local_image_render" else ""
+                )
                 jobs.append({
                     "ask_id": manifest.get("ask_id") or path.name,
                     "state": state,
+                    "display_state": display_state,
                     "task_type": manifest.get("task_type"),
                     "worker_type": manifest.get("worker_type"),
+                    "trusted_worker_backend": trusted_backend,
+                    "worker": result.get("worker") or "",
+                    "diagnostic": result.get("error_message") or result.get("validation_error") or "",
+                    "result_status": result_status,
                 })
         return {"pending": bool(jobs), "count": len(jobs), "jobs": jobs}
 
