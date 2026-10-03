@@ -59,6 +59,17 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
         parts.append(_sentence(f"From left to right: {order}"))
     if _text(composition.get("composition_notes")):
         parts.append(_sentence(composition["composition_notes"]))
+    for item in ir.get("dialogue") or []:
+        speaker = elements.get(str(item.get("speaker_element_id")), {}).get("display_name") or "A character"
+        exact = str(item.get("text") or "")
+        if exact:
+            parts.append(_sentence(f'Include a clearly visible speech panel for {speaker} reading exactly "{exact}"'))
+            if item.get("max_lines"):
+                parts.append(_sentence(f'The speech panel uses at most {item["max_lines"]} lines'))
+            if _text(item.get("pointer_target")):
+                parts.append(_sentence(f'The speech panel pointer aims at {item["pointer_target"]}'))
+            if _text(item.get("notes")):
+                parts.append(_sentence(item["notes"]))
     for placement in ir.get("placements") or []:
         element = elements.get(str(placement.get("scene_element_id")), {})
         name = _text(element.get("display_name"))
@@ -89,11 +100,6 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
         parts.append(" ".join(detail))
     for prop in ir.get("props") or []:
         parts.append(_sentence(prop.get("description") or prop.get("state")))
-    for item in ir.get("dialogue") or []:
-        speaker = elements.get(str(item.get("speaker_element_id")), {}).get("display_name") or "A character"
-        exact = str(item.get("text") or "")
-        if exact:
-            parts.append(_sentence(f'{speaker} has a speech panel reading exactly "{exact}"'))
     for label, value in (("Lighting", environment.get("lighting")), ("Atmosphere", environment.get("weather_or_atmosphere")),
                          ("Mood", environment.get("mood"))):
         if _text(value):

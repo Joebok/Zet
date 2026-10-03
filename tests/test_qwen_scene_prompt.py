@@ -23,6 +23,18 @@ class QwenScenePromptTests(unittest.TestCase):
         prompt = compile_qwen_scene_prompt(ir)
         self.assertIn("<image1> supplies the subject reference for Tsaeytte, preserving facial identity", prompt)
 
+    def test_dialogue_layout_fields_reach_the_render_prompt(self):
+        prompt = compile_qwen_scene_prompt({
+            "elements": [{"id": "elf", "display_name": "Tsaeytte"}],
+            "dialogue": [{"speaker_element_id": "elf", "text": "Potential is nothing without discipline",
+                          "max_lines": 2, "pointer_target": "speaker mouth",
+                          "notes": "Ivory rectangular box beside Tsaeytte, clear of the arch inscription"}],
+        })
+        self.assertIn('speech panel for Tsaeytte reading exactly "Potential is nothing without discipline"', prompt)
+        self.assertIn("at most 2 lines", prompt)
+        self.assertIn("pointer aims at speaker mouth", prompt)
+        self.assertIn("Ivory rectangular box beside Tsaeytte, clear of the arch inscription", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -48,6 +48,46 @@ def test_assets_entities_sets_facets_descriptors_and_logical_references(library)
     assert (root / "images" / asset["file_name"]).is_file()
 
 
+def test_locked_costume_image_has_searchable_classification_and_stable_reference(library):
+    _, service = library
+    asset = service.import_asset("Generated image", "image/png", PNG, origin="pipeline")
+
+    classified = service.classify_costume_image(asset["asset_id"], character="Tsaeytte", phase="Youth",
+                                                costume="Woodland_outfit", view="FRONT_LEFT_3_4")
+
+    assert classified["label"] == "Tsaeytte · Youth · Woodland outfit · Front Left 3 4"
+    assert classified["logical_reference"]["reference_key"] == "tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4"
+    results = service.search_picker(q="TSAEYTTE youth woodland outfit")
+    assert [item["asset_id"] for item in results] == [asset["asset_id"]]
+    assert any(item["role"] == "worn_costume" for item in classified["entities"])
+    assert {item["namespace"] for item in classified["facets"]} == {"pipeline", "view"}
+
+
+def test_costume_reference_backfill_converts_exact_legacy_scene_tag_once(library):
+    root, service = library
+    asset = service.import_asset("Generated image", "image/png", PNG, origin="pipeline")
+    store = root / "_state" / "LocalAssets" / "Tsaeytte" / "Youth" / "local_assets.json"
+    store.parent.mkdir(parents=True)
+    store.write_text(json.dumps({"assets": {"costume-dressing:woodland_outfit:FRONT": {
+        "pipeline": "Costume-Dressing", "qualifier": "Woodland_outfit", "view": "FRONT",
+        "locked": True, "stale": False, "entity_library_asset_id": asset["asset_id"],
+    }}}), encoding="utf-8")
+    scene = root / "Stories" / "FirstDay" / "Chapter-01.scene.json"
+    scene.parent.mkdir(parents=True)
+    original = {"scene_elements": [{"character": "Tsaeytte", "phase": "Youth", "costume": "Woodland outfit",
+                                    "reference_images": [{"tag": "{{ASSET:Tsaeytte:Youth:28:Costume | Front | Woodland outfit}}",
+                                                         "roles": ["visual reference"], "notes": "Keep the pose."}]}]}
+    scene.write_text(json.dumps(original), encoding="utf-8")
+
+    assert service.backfill_costume_references(dry_run=True)["scene_references"] == 1
+    report = service.backfill_costume_references(dry_run=False)
+    assert report["scene_references"] == 1
+    migrated = json.loads(scene.read_text(encoding="utf-8"))["scene_elements"][0]["reference_images"][0]
+    assert migrated == {"roles": ["visual reference"], "notes": "Keep the pose.",
+                        "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front"}
+    assert service.backfill_costume_references(dry_run=True)["scene_references"] == 0
+
+
 def test_usage_blocks_archival_and_image_replacement_updates_logical_reference(library):
     root, service = library
     asset = service.import_asset("Reference", "image/png", PNG)

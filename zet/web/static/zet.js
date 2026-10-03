@@ -6630,6 +6630,7 @@ function builderRenderElementWorkspace() {
         <details class="scene-builder-element-menu">
           <summary aria-label="Selected element actions" title="Selected element actions">•••</summary>
           <div class="scene-builder-menu-panel">
+            ${builderSubsceneForAnchor(element.id) ? "" : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(element.id)}">Use element sub-render</button>`}
             <button type="button" data-builder-action="duplicate-element">Duplicate</button>
             <button type="button" class="danger-action" data-builder-action="delete-element">Delete</button>
           </div>
@@ -8071,7 +8072,7 @@ function renderImagePickerTable(picker) {
       thumb.alt = item.label || "Reference image";
       const title = document.createElement("span");
       const entityNames = (item.entities || []).map((entity) => [entity.name, entity.variant_name].filter(Boolean).join(" · ")).join(", ");
-      title.textContent = `${entityNames || item.origin} · ${item.width || "?"}×${item.height || "?"}${item.descriptor_ready ? " · prompt ready" : " · prompt text missing"}`;
+      title.textContent = `${item.label || entityNames || item.origin} · ${item.width || "?"}×${item.height || "?"}${item.descriptor_ready ? " · prompt ready" : " · prompt text missing"}`;
       labelCell.append(thumb, title);
       const actionCell = document.createElement("td");
       if (item.logical_reference) {
@@ -8194,6 +8195,10 @@ async function loadEntityLibraryPickerFilters(element = null) {
     ...entities.map((item) => ({ value: item.entity_id, label: `${item.name} · ${item.entity_type}` })),
   ]);
   const entityQuery = String(element?.character || element?.display_name || "").trim().toLowerCase();
+  builderImagePickerEntity.value = "";
+  builderImagePickerVariant.value = "";
+  builderImagePickerSet.value = "";
+  builderImagePickerFacet.value = "";
   const matchingEntity = entities.find((item) => item.name.toLowerCase() === entityQuery);
   builderImagePickerEntity.value = matchingEntity?.entity_id || "";
   const variants = (variantPayload.variants || []).filter((item) => !builderImagePickerEntity.value || item.entity_id === builderImagePickerEntity.value);
@@ -8225,6 +8230,7 @@ function openBuilderImagePicker(referenceIndex = 0) {
   builderImagePickerSearch.value = element.resource_type === "Character"
     ? [element.character || element.display_name, element.phase, element.costume].filter(Boolean).join(" ")
     : element.display_name || "";
+  builderImagePickerMode.value = element.resource_type === "Character" && element.costume ? "logical" : "asset";
   state.builderImagePickerSearch = builderImagePickerSearch.value;
   builderImagePickerModal.showModal();
   builderImagePickerSearch.focus();
@@ -13792,7 +13798,14 @@ async function main() {
       updatePhaseSelect();
       saveStoredContext();
     }
-    if (!isLocalBatchRoute) await loadAssets();
+    if (!isLocalBatchRoute) {
+      try {
+        await loadAssets();
+      } catch (error) {
+        if (isRequestCancellation(error)) throw error;
+        assetStatus.textContent = error.message;
+      }
+    }
     if (!pageLoadIsCurrent(startupLoad)) return;
     await loadStories(state.selectedStorySlug);
     if (!pageLoadIsCurrent(startupLoad)) return;

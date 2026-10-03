@@ -1,0 +1,457 @@
+{
+  "schema_version": 4,
+  "file_kind": "scene",
+  "scene": {
+    "id": "chapter_01_standing_in_wonder",
+    "name": "Chapter 01 Standing in Wonder",
+    "slug": "Chapter-01-Standing-in-Wonder",
+    "story_settings_path": "Stories/FirstDay/FirstDay.story.json",
+    "associated_png_path": "Stories/FirstDay/Chapter-01-Standing-in-Wonder.png",
+    "story_beat": "Tsaeytte has paused to look up at the words inscribed on the arch leading to the Spire of Celestial Wisdom. "
+  },
+  "setup": {
+    "canvas": {
+      "orientation": "portrait",
+      "aspect_ratio": "2:3"
+    },
+    "composition": {
+      "focal_point": "Tsaeytte",
+      "left_to_right": [
+        "Schoolboys_440071c5",
+        "Tsaeytte"
+      ],
+      "composition_notes": "Tsaeytte is the primary focus in the right foreground, seen from behind at three-quarter angle holding books, head tilted up to read the inscription across the top of the arch. The arch inscription and her upward gaze must be visible. Beyond the arch, one small group of exactly three students is goofing around: Schoolboy 1, Schoolboy 2, and Kaeldor on their right. Keep the whole group visible."
+    },
+    "environment": {
+      "location": "The pathway in front of the arch.",
+      "lighting": "Morning sun",
+      "mood": "optimistic",
+      "weather_or_atmosphere": "clear",
+      "general_background_notes": "Beyond the archway, the Schoolboys subscene contains both schoolboys and Kaeldor as a single visible background group. Kaeldor appears once, within this group.",
+      "general_foreground_notes": ""
+    }
+  },
+  "scene_elements": [
+    {
+      "id": "Tsaeytte",
+      "display_name": "Tsaeytte",
+      "resource_type": "Character",
+      "element_type": "Character",
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "costume": "Woodland outfit",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+          "tag": "",
+          "asset_id": "",
+          "set_id": "",
+          "primary_prompt_source": true,
+          "label": "Tsaeytte \u00b7 Youth \u00b7 Woodland outfit \u00b7 Back Left 3 4"
+        }
+      ],
+      "element_visual_override": "Holding stack of books in both arms in front of her.",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": ""
+    },
+    {
+      "id": "Schoolboys_440071c5",
+      "display_name": "Schoolboys",
+      "resource_type": "Scene-Only",
+      "element_type": "Character",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [],
+      "element_visual_override": "Preserve all three distinct students and their playful interaction from the subscene reference. Schoolboy 1 gently shoves Schoolboy 2, who laughs; Kaeldor stands to their right, pointing and grinning. Render this group once in the background beyond the archway.",
+      "fallback_visual_description": "One group of exactly three elven academy students: red-haired Schoolboy 1, dark-haired Schoolboy 2, and Kaeldor.",
+      "notes": "",
+      "subscene_id": ""
+    },
+    {
+      "id": "Spire_Archway_a1489c35",
+      "display_name": "Spire - Archway",
+      "resource_type": "Place",
+      "element_type": "Backdrop",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "place",
+      "aux_resource_id": "spire-archway",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "set_id": "",
+          "primary_prompt_source": true,
+          "asset_id": "95d50224-d948-4d01-8653-665a88241bda",
+          "label": "Spire Archway",
+          "tag": "",
+          "reference_key": ""
+        }
+      ],
+      "element_visual_override": "Preserve the ornate academy archway and view of the Spire from the reference. The inscription across the upper arch reads \"POTENTIAL IS NOTHING WITHOUT DISCIPLINE\"; the inner arch reads \"THE SPIRE OF CELESTIAL WISDOM\". Keep the inscription visible above Tsaeytte.",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": ""
+    },
+    {
+      "id": "Kaeldor_e02a5624",
+      "display_name": "Kaeldor",
+      "resource_type": "Person",
+      "element_type": "Character",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "person",
+      "aux_resource_id": "kaeldor",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "set_id": "",
+          "primary_prompt_source": true,
+          "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "label": "Kaeldor",
+          "tag": "",
+          "reference_key": ""
+        }
+      ],
+      "element_visual_override": "Short light brown hair with shaved geometric sides, ivory open-collar shirt and burgundy waistcoat from his identity reference; grinning and pointing toward the schoolboys.",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": "Schoolboys_440071c5_subscene"
+    },
+    {
+      "id": "schoolboy_1",
+      "display_name": "Schoolboy 1",
+      "resource_type": "Person",
+      "element_type": "Character",
+      "subscene_id": "Schoolboys_440071c5_subscene",
+      "reference_images": [
+        {
+          "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "label": "Schoolboy 1",
+          "roles": [
+            "identity",
+            "costume"
+          ],
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "primary_prompt_source": true,
+          "tag": "",
+          "reference_key": "",
+          "set_id": "",
+          "notes": ""
+        }
+      ],
+      "fallback_visual_description": "Slim young elf with tousled copper-red hair and freckles, ivory shirt, burgundy waistcoat, charcoal trousers, brown boots.",
+      "element_visual_override": "Gently pushing Schoolboy 2 at the shoulder while smiling",
+      "notes": ""
+    },
+    {
+      "id": "schoolboy_2",
+      "display_name": "Schoolboy 2",
+      "resource_type": "Person",
+      "element_type": "Character",
+      "subscene_id": "Schoolboys_440071c5_subscene",
+      "reference_images": [
+        {
+          "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "label": "Schoolboy 2",
+          "roles": [
+            "identity",
+            "costume"
+          ],
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "primary_prompt_source": true,
+          "tag": "",
+          "reference_key": "",
+          "set_id": "",
+          "notes": ""
+        }
+      ],
+      "fallback_visual_description": "Young elf with olive skin, short dark hair, hazel eyes and a rounder face, ivory shirt, burgundy waistcoat, charcoal trousers, brown boots.",
+      "element_visual_override": "Leaning away from Schoolboy 1 with raised hands in mock protest and laughing",
+      "notes": ""
+    }
+  ],
+  "subscenes": [
+    {
+      "id": "sub_scene_1",
+      "name": "Sub-Scene 1",
+      "enabled": false,
+      "kind": "background",
+      "assembly_role": "backdrop",
+      "anchor_element_id": "",
+      "ui_color": "#DDEAF4",
+      "prompt_overrides": {
+        "focal_point": "",
+        "composition_notes": "",
+        "general_foreground_notes": "",
+        "general_background_notes": ""
+      }
+    },
+    {
+      "id": "Schoolboys_440071c5_subscene",
+      "name": "Schoolboys and Kaeldor",
+      "enabled": true,
+      "kind": "element",
+      "assembly_role": "element_reference",
+      "anchor_element_id": "Schoolboys_440071c5",
+      "ui_color": "#E4E0F3",
+      "prompt_overrides": {
+        "focal_point": "",
+        "composition_notes": "",
+        "general_foreground_notes": "",
+        "general_background_notes": ""
+      },
+      "setup": {
+        "canvas": {
+          "orientation": "landscape",
+          "aspect_ratio": "4:3"
+        },
+        "composition": {
+          "focal_point": "The playful interaction between Schoolboy 1, Schoolboy 2, and Kaeldor",
+          "left_to_right": [
+            "schoolboy_1",
+            "schoolboy_2",
+            "Kaeldor_e02a5624"
+          ],
+          "composition_notes": "Exactly three separate young elven males, all full body and clearly identifiable. Red-haired Schoolboy 1 at left gently shoves dark-haired Schoolboy 2 at center by the shoulder; Schoolboy 2 leans away, laughing, raising his hands in mock protest. Kaeldor at right grins and points at the two boys. Their hands and bodies remain distinct. No other people, no speech panels. A single captured moment of harmless horseplay, not a sequence of panels."
+        },
+        "environment": {
+          "location": "A simple stretch of the academy stone pathway, beyond the archway. No arch or buildings in this character-group reference.",
+          "lighting": {
+            "mode": "inherit",
+            "value": ""
+          },
+          "mood": {
+            "mode": "inherit",
+            "value": ""
+          },
+          "weather_or_atmosphere": {
+            "mode": "inherit",
+            "value": ""
+          },
+          "general_background_notes": "Simple unobtrusive light background. This three-person group will be placed small in the background of the full scene.",
+          "general_foreground_notes": ""
+        }
+      }
+    }
+  ],
+  "placements": [
+    {
+      "id": "placement_1784318266007",
+      "scene_element_id": "Tsaeytte",
+      "position_within_cell": "right",
+      "depth": "foreground",
+      "pose": {
+        "summary": "Standing in the right foreground, viewed from behind at three-quarter angle, head tilted upward to read the arch inscription, holding a stack of books in both arms",
+        "gaze_target_element_id": "Spire_Archway_a1489c35",
+        "expression": "curious"
+      },
+      "motion": {
+        "state": "stationary",
+        "direction_screen": "",
+        "cue": ""
+      },
+      "placement_notes": ""
+    },
+    {
+      "id": "placement_1784318527882",
+      "scene_element_id": "Schoolboys_440071c5",
+      "position_within_cell": "center",
+      "depth": "background",
+      "pose": {
+        "summary": "",
+        "gaze_target_element_id": "",
+        "expression": ""
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "",
+        "cue": "Entering the scene from the background, moving along the pathway."
+      },
+      "placement_notes": "Visible through the arch opening, clear of Tsaeytte and the dialogue box. Preserve exactly three students from the subscene; do not add a duplicate Kaeldor.",
+      "world_position": "Small three-person group beyond the arch, in the left-center background; Kaeldor is part of this group"
+    },
+    {
+      "id": "placement_1784319050025",
+      "scene_element_id": "Spire_Archway_a1489c35",
+      "position_within_cell": "",
+      "depth": "background",
+      "pose": {
+        "summary": "",
+        "gaze_target_element_id": "",
+        "expression": ""
+      },
+      "motion": {
+        "state": "stationary",
+        "direction_screen": "",
+        "cue": ""
+      },
+      "placement_notes": ""
+    },
+    {
+      "id": "placement_1784319458561",
+      "scene_element_id": "Kaeldor_e02a5624",
+      "position_within_cell": "right",
+      "depth": "midground",
+      "pose": {
+        "summary": "Standing at the right, one hand pointing toward the schoolboys",
+        "gaze_target_element_id": "schoolboy_2",
+        "expression": "grinning"
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "",
+        "cue": "Entering the scene from the background, moving along the pathway."
+      },
+      "placement_notes": "Kaeldor is approaching from the far side of the archway.",
+      "world_position": "To the right of both schoolboys in the group"
+    },
+    {
+      "id": "schoolboy_1_placement",
+      "scene_element_id": "schoolboy_1",
+      "position_within_cell": "left",
+      "depth": "midground",
+      "pose": {
+        "summary": "Extending one hand to Schoolboy 2's shoulder",
+        "gaze_target_element_id": "schoolboy_2",
+        "expression": "playfully amused"
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "right",
+        "cue": "Harmless schoolboy horseplay"
+      },
+      "placement_notes": ""
+    },
+    {
+      "id": "schoolboy_2_placement",
+      "scene_element_id": "schoolboy_2",
+      "position_within_cell": "center",
+      "depth": "midground",
+      "pose": {
+        "summary": "Leaning sideways with both hands raised in playful protest",
+        "gaze_target_element_id": "schoolboy_1",
+        "expression": "playfully amused"
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "right",
+        "cue": "Harmless schoolboy horseplay"
+      },
+      "placement_notes": ""
+    }
+  ],
+  "interactions": [
+    {
+      "id": "schoolboy_shove",
+      "subject_element_id": "schoolboy_1",
+      "relationship": "playfully shoves",
+      "target_element_id": "schoolboy_2",
+      "note": "One hand on the shoulder, harmless horseplay; Schoolboy 2 leans away laughing."
+    },
+    {
+      "id": "kaeldor_points",
+      "subject_element_id": "Kaeldor_e02a5624",
+      "relationship": "points at",
+      "target_element_id": "schoolboy_2",
+      "note": "Kaeldor grins at the boys' antics from their right."
+    }
+  ],
+  "custom_interactions": "",
+  "dialogue": [
+    {
+      "id": "dialogue_1784318436924",
+      "speaker_element_id": "Tsaeytte",
+      "text": "Potential is nothing without discipline",
+      "target_element_id": "",
+      "pointer_target": "speaker mouth",
+      "max_lines": 2,
+      "notes": "Compact rectangular ivory parchment dialogue box beside Tsaeytte, with a small pointer to her mouth, exactly two lines: Potential is nothing / without discipline. Do not cover the arch inscription or the background group."
+    }
+  ],
+  "final_image_prompt_overrides": {
+    "anatomical_requirements": "",
+    "avoid": "",
+    "high_risk_elements": "",
+    "final_verification": "Tsaeytte looks upward at the arch inscription while holding books; her dialogue box reads exactly Potential is nothing without discipline; both individual schoolboys and Kaeldor appear in the background goofing around."
+  },
+  "metadata": {
+    "created_at": "2026-07-17T12:57:34",
+    "updated_at": "2026-10-03T06:23:00",
+    "created_by": "Zet Scene Builder"
+  },
+  "depth_lanes": {
+    "foreground": [
+      "Tsaeytte"
+    ],
+    "midground": [
+      "Kaeldor_e02a5624",
+      "schoolboy_1",
+      "schoolboy_2"
+    ],
+    "background": [
+      "Schoolboys_440071c5",
+      "Spire_Archway_a1489c35"
+    ]
+  },
+  "_revision": 24,
+  "_validation_warnings": []
+}

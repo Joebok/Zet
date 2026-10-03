@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
 import shutil
 import struct
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -99,10 +99,12 @@ class EntityLibraryService:
             source_path = Path(str(getattr(item, "image_path", "")))
             if source_type == "local-pipeline" and source_path.is_file():
                 checksum = hashlib.sha256(source_path.read_bytes()).hexdigest()
-                active_origin_keys.add(
-                    f"local:{getattr(item, 'pipeline', '')}:{getattr(item, 'character', '')}:"
-                    f"{getattr(item, 'phase', '')}:{checksum}"
-                )
+                origin_key = (f"local:{getattr(item, 'pipeline', '')}:{getattr(item, 'character', '')}:"
+                              f"{getattr(item, 'phase', '')}:")
+                legacy_origin_key = origin_key + checksum
+                if str(getattr(item, "pipeline", "")).casefold() == "costume-dressing":
+                    origin_key += f"{str(getattr(item, 'costume', '')).casefold()}:{str(getattr(item, 'view', '')).upper()}:"
+                active_origin_keys.update((legacy_origin_key, origin_key + checksum))
         for item in items:
             if (
                 getattr(item, "source_type", "") != "pipeline"
@@ -289,15 +291,173 @@ class EntityLibraryService:
             raise
         return self.get_asset(asset_id)
 
-    def register_locked_pipeline_image(self, source: Path, *, label: str, pipeline: str, character: str, phase: str, checksum: str) -> dict:
+    def register_locked_pipeline_image(self, source: Path, *, label: str, pipeline: str, character: str, phase: str, checksum: str,
+                                       costume: str = "", view: str = "", reference_key: str = "") -> dict:
         """Publish one verified local candidate into permanent ID-addressed storage."""
         data = source.read_bytes()
         if hashlib.sha256(data).hexdigest() != checksum:
             raise EntityLibraryServiceError("The selected image changed before it could be locked.")
         import mimetypes
         mime_type = mimetypes.guess_type(source.name)[0] or "image/png"
-        key = f"local:{pipeline}:{character}:{phase}:{checksum}"
+        key = f"local:{pipeline}:{character}:{phase}:"
+        if str(pipeline).casefold() == "costume-dressing":
+            key += f"{str(costume).casefold()}:{str(view).upper()}:"
+        key += checksum
         asset = self.import_asset(label, mime_type, data, origin="pipeline", origin_key=key, notes="Locked local pipeline image")
+        if str(pipeline).casefold() == "costume-dressing" and costume and view:
+            return self.classify_costume_image(asset["asset_id"], character=character, phase=phase,
+                                                costume=costume, view=view, reference_key=reference_key)
+        return asset
+
+    @staticmethod
+    def logical_costume_reference_key(character: str, phase: str, costume: str, view: str) -> str:
+        def part(value: str) -> str:
+            return re.sub(r"[^a-z0-9]+", "-", str(value or "").casefold()).strip("-")
+        return ".".join((part(character), part(phase), "costume-dressing", part(costume), part(view)))
+
+    def classify_costume_image(self, asset_id: str, *, character: str, phase: str, costume: str, view: str,
+                               reference_key: str = "", preserve_active_reference: bool = False) -> dict:
+        """Classify a locked costume image and point its stable reference at it."""
+        costume = str(costume or "").replace("_", " ").strip()
+        view = str(view or "").replace("_", " ").strip()
+        label = " · ".join(value for value in (character, phase, costume, view.title()) if value)
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            asset = connection.execute("SELECT asset_id,label FROM assets WHERE asset_id=?", (asset_id,)).fetchone()
+            if not asset:
+                raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
+            names = ((character, "character", "primary_subject"), (costume, "costume", "worn_costume"))
+            variant_id = None
+            for name, entity_type, role in names:
+                if not name:
+                    continue
+                entity = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type=?", (name, entity_type)).fetchone()
+                entity_id = entity["entity_id"] if entity else str(uuid4())
+                if not entity:
+                    connection.execute("INSERT INTO entities VALUES(?,?,?,?,?,?,?)", (entity_id, name, entity_type, "", "active", stamp, stamp))
+                if entity_type == "character":
+                    variant = connection.execute("SELECT variant_id FROM variants WHERE entity_id=? AND lower(name)=lower(?) AND variant_type='life_stage'", (entity_id, phase)).fetchone()
+                    variant_id = variant["variant_id"] if variant else str(uuid4())
+                    if not variant:
+                        connection.execute("INSERT INTO variants VALUES(?,?,?,?,?,?,?)", (variant_id, entity_id, phase, "life_stage", "", stamp, stamp))
+                connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset_id, entity_id, variant_id if entity_type == "character" else None, role))
+            for namespace, value in (("pipeline", "costume-dressing"), ("view", view)):
+                if not value:
+                    continue
+                facet = connection.execute("SELECT facet_id FROM facets WHERE namespace=? AND lower(value)=lower(?)", (namespace, value)).fetchone()
+                facet_id = facet["facet_id"] if facet else str(uuid4())
+                if not facet:
+                    connection.execute("INSERT INTO facets VALUES(?,?,?,?)", (facet_id, namespace, value, 1))
+                connection.execute("INSERT OR IGNORE INTO asset_facets(asset_id,facet_id) VALUES(?,?)", (asset_id, facet_id))
+            if asset["label"] != label:
+                connection.execute("UPDATE assets SET label=?,updated_at=? WHERE asset_id=?", (label, stamp, asset_id))
+        key = reference_key or self.logical_costume_reference_key(character, phase, costume, view)
+        current_reference = self.repository.fetchone("SELECT label,asset_id,status FROM logical_references WHERE reference_key=?", (key,))
+        if not current_reference:
+            self.save_logical_reference({"reference_key": key, "label": label, "asset_id": asset_id})
+        elif not preserve_active_reference and (
+            current_reference["label"] != label
+            or current_reference["asset_id"] != asset_id
+            or current_reference["status"] != "active"
+        ):
+            self.save_logical_reference({"reference_key": key, "label": label, "asset_id": asset_id})
+        return self.get_asset(asset_id)
+
+    def backfill_costume_references(self, *, dry_run: bool = True) -> dict:
+        """Classify current costume locks and migrate scene tags that name an exact slot."""
+        root = Path(self.path_service.config.base_library_path)
+        slots: dict[tuple[str, str, str, str], dict] = {}
+        assets = scenes = 0
+        for store_path in (root / "_state" / "LocalAssets").glob("*/*/local_assets.json"):
+            character, phase = store_path.parent.parent.name, store_path.parent.name
+            try:
+                data = json.loads(store_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            for local_key, record in (data.get("assets") or {}).items():
+                if (str(record.get("pipeline") or "").casefold() != "costume-dressing"
+                        or not record.get("locked") or record.get("stale")):
+                    continue
+                costume, view = str(record.get("qualifier") or ""), str(record.get("view") or "")
+                asset_id = str(record.get("entity_library_asset_id") or "")
+                if not costume or not view or not asset_id:
+                    continue
+                slot = (character.casefold(), phase.casefold(), costume.replace("_", " ").casefold(), view.replace("_", " ").casefold())
+                key = str(record.get("reference_key") or self.logical_costume_reference_key(character, phase, costume, view))
+                slots[slot] = {"character": character, "phase": phase, "costume": costume, "view": view,
+                               "asset_id": asset_id, "reference_key": key, "store_path": store_path,
+                               "local_key": local_key, "record": record}
+                if not dry_run:
+                    self.classify_costume_image(asset_id, character=character, phase=phase, costume=costume,
+                                                view=view, reference_key=key, preserve_active_reference=True)
+                    if record.get("reference_key") != key:
+                        from zet.services.atomic_file_service import write_json_atomic
+                        record["reference_key"] = key
+                        write_json_atomic(store_path, data)
+                assets += 1
+
+        def target_for(tag: str, asset_id: str = "") -> dict | None:
+            if asset_id:
+                matches = [slot for slot in slots.values() if slot["asset_id"] == asset_id]
+                return matches[0] if len(matches) == 1 else None
+            raw = tag.strip().removeprefix("{{").removesuffix("}}")
+            parts = raw.split(":")
+            if len(parts) >= 4 and parts[0] == "LOCAL":
+                local_key = ":".join(parts[3:]).casefold()
+                return next((slot for slot in slots.values() if slot["local_key"].casefold() == local_key
+                             and slot["character"].casefold() == parts[1].casefold()
+                             and slot["phase"].casefold() == parts[2].casefold()), None)
+            if len(parts) == 5 and parts[0] == "ASSET":
+                character, phase = parts[1], parts[2]
+                descriptors = [part.strip() for part in parts[4].split("|")]
+                if len(descriptors) < 3 or "costume" not in descriptors[0].casefold():
+                    return None
+                view_token = re.sub(r"[^a-z0-9]+", "", descriptors[1].casefold())
+                matches = [slot for slot in slots.values()
+                           if slot["character"].casefold() == character.casefold()
+                           and slot["phase"].casefold() == phase.casefold()
+                           and slot["costume"].replace("_", " ").casefold() == descriptors[2].replace("_", " ").casefold()
+                           and re.sub(r"[^a-z0-9]+", "", slot["view"].casefold()) == view_token]
+                return matches[0] if len(matches) == 1 else None
+            return None
+
+        changed = []
+        for scene_path in (root / "Stories").glob("*/*.scene.json"):
+            try:
+                document = json.loads(scene_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            updated = copy.deepcopy(document)
+            count = 0
+            for element in updated.get("scene_elements", []):
+                for reference in element.get("reference_images", []):
+                    tag = str(reference.get("tag") or "")
+                    target = target_for(tag, str(reference.get("asset_id") or "")) if tag or reference.get("asset_id") else None
+                    if not target:
+                        continue
+                    if element.get("character") and str(element["character"]).casefold() != target["character"].casefold():
+                        continue
+                    if element.get("phase") and str(element["phase"]).casefold() != target["phase"].casefold():
+                        continue
+                    if element.get("costume") and str(element["costume"]).replace("_", " ").casefold() != target["costume"].replace("_", " ").casefold():
+                        continue
+                    reference.pop("tag", None)
+                    reference.pop("asset_id", None)
+                    reference["reference_key"] = target["reference_key"]
+                    count += 1
+            if count:
+                changed.append((scene_path, updated, count))
+                scenes += count
+        if not dry_run:
+            for path, document, _ in changed:
+                backup_dir = path.parent / "_backup"
+                backup_dir.mkdir(exist_ok=True)
+                stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                shutil.copy2(path, backup_dir / f"{path.stem}.{stamp}.json")
+                from zet.services.atomic_file_service import write_json_atomic
+                write_json_atomic(path, document)
+        return {"dry_run": dry_run, "costume_images": assets, "scene_references": scenes,
+                "scenes_changed": len(changed)}
         stamp = _now()
         with self.repository.transaction() as connection:
             entity = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='character'", (character,)).fetchone()
@@ -335,6 +495,8 @@ class EntityLibraryService:
                 connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (created["asset_id"], entity["entity_id"], entity["variant_id"], entity["role"]))
             for member in original["sets"]:
                 connection.execute("INSERT OR IGNORE INTO reference_set_assets(set_id,asset_id,role,sort_order) VALUES(?,?,?,?)", (member["set_id"], created["asset_id"], member["role"], member["sort_order"]))
+            connection.execute("INSERT OR IGNORE INTO asset_facets(asset_id,facet_id) SELECT ?,facet_id FROM asset_facets WHERE asset_id=?", (created["asset_id"], asset_id))
+            connection.execute("INSERT OR IGNORE INTO asset_tags(asset_id,tag) SELECT ?,tag FROM asset_tags WHERE asset_id=?", (created["asset_id"], asset_id))
         return self.get_asset(created["asset_id"])
 
     def set_asset_status(self, asset_id: str, status: str) -> dict:

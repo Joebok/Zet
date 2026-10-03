@@ -797,6 +797,39 @@ test("@desktop-smoke Scene Builder adds, reorders, and removes multiple referenc
   await expect(tags.nth(0)).toHaveValue("{{ASSET:first}}");
 });
 
+test("Scene Builder selects costume images through their current logical reference", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#scene-builder-open").click();
+  await expect(page.locator('[data-builder-field="scene.story_beat"]')).toBeVisible();
+  await page.evaluate(() => {
+    state.characters = ["Tsaeytte"];
+    state.phasesByCharacter = { Tsaeytte: ["Youth"] };
+    const element = {
+      id: "tsaeytte-test", display_name: "Tsaeytte", resource_type: "Character",
+      character: "Tsaeytte", phase: "Youth", costume: "Woodland outfit", reference_images: [],
+      fallback_visual_description: "Tsaeytte in a woodland outfit",
+    };
+    state.sceneBuilder.scene_elements = [element];
+    state.sceneBuilder.placements = [{ id: "tsaeytte-test-placement", scene_element_id: element.id, position_within_cell: "center", depth: "foreground", pose: {}, motion: { state: "stationary" } }];
+    state.selectedBuilderElementId = element.id;
+    renderSceneBuilder();
+  });
+  await page.getByRole("button", { name: "Add reference" }).click();
+  await page.route("**/api/entity-library/picker*", (route) => route.fulfill({ json: { assets: [{
+    asset_id: "test-image", file_name: "generated.png", label: "Tsaeytte · Youth · Woodland outfit · Front",
+    image_path: "/images/test.png", thumbnail_path: "/images/test.png", origin: "pipeline",
+    logical_reference: { reference_key: "tsaeytte.youth.costume-dressing.woodland-outfit.front" },
+    entities: [{ name: "Tsaeytte", variant_name: "Youth" }], width: 32, height: 32,
+  }] } }));
+  await page.locator('[data-builder-action="pick-image-tag"]').click();
+  await expect(page.locator("#builder-image-picker-mode")).toHaveValue("logical");
+  await expect(page.locator("#builder-image-picker-search")).toHaveValue("Tsaeytte Youth Woodland outfit");
+  await page.locator("#builder-image-picker-table tbody tr").first().click();
+  const selected = await page.evaluate(() => state.sceneBuilder.scene_elements[0].reference_images[0]);
+  expect(selected.reference_key).toBe("tsaeytte.youth.costume-dressing.woodland-outfit.front");
+  expect(selected.asset_id).toBeUndefined();
+});
+
 test("render console labels references in attachment order", async ({ page }) => {
   await openPage(page, "render-console");
   await page.evaluate(() => renderConsoleReferenceFiles([

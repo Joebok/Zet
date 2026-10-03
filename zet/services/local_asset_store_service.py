@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
+import tempfile
 from types import SimpleNamespace
 from typing import Any
 
@@ -25,7 +27,8 @@ class LocalAssetStoreService:
         self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
         self._entity_library = None
 
-    def _publish(self, image: Path, *, character: str, phase: str, pipeline: str, checksum: str) -> dict[str, Any]:
+    def _publish(self, image: Path, *, character: str, phase: str, pipeline: str, checksum: str,
+                 qualifier: str = "", view: str = "", reference_key: str = "") -> dict[str, Any]:
         if self._entity_library is None:
             from zet.repositories.entity_library_repository import EntityLibraryRepository
             from zet.services.entity_library_service import EntityLibraryService
@@ -36,6 +39,7 @@ class LocalAssetStoreService:
             self._entity_library = EntityLibraryService(paths, repository)
         return self._entity_library.register_locked_pipeline_image(
             image, label=image.stem, pipeline=pipeline, character=character, phase=phase, checksum=checksum,
+            costume=qualifier, view=view, reference_key=reference_key,
         )
 
     @staticmethod
@@ -241,12 +245,15 @@ class LocalAssetStoreService:
             if not source.is_file() or self._image_hash(source) != record.get("image_sha256"):
                 raise LocalAssetStoreError(f"Selected image for {key} is missing or has changed; review it again.")
             try:
-                published = self._publish(source, character=character, phase=phase, pipeline=pipeline, checksum=record["image_sha256"])
+                published = self._publish(source, character=character, phase=phase, pipeline=pipeline,
+                                          checksum=record["image_sha256"], qualifier=qualifier, view=view,
+                                          reference_key=str(record.get("reference_key") or ""))
             except Exception as exc:
                 raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
             locked_path = Path(published["image_path"])
             record.update({
                 "locked": True, "locked_image_path": str(locked_path), "entity_library_asset_id": published["asset_id"],
+                "reference_key": (published.get("logical_reference") or {}).get("reference_key", record.get("reference_key", "")),
                 "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 "lock_history": [*record.get("lock_history", []), {
                     "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -274,18 +281,27 @@ class LocalAssetStoreService:
                 staged.append((key, item, image, Path(), digest))
 
             published_assets = []
-            for key, item, image, _locked_path, digest in staged:
-                try:
-                    published = self._publish(image, character=character, phase=phase,
-                                              pipeline=str(item["pipeline"]), checksum=digest)
-                except Exception as exc:
-                    raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
-                locked_path = Path(published["image_path"])
-                if self._image_hash(locked_path) != digest:
-                    raise LocalAssetStoreError(f"Could not verify permanent image for {key}.")
-                published_assets.append((key, item, image, locked_path, digest, published["asset_id"]))
+            with tempfile.TemporaryDirectory() as staging_dir:
+                staged_images = []
+                for index, (key, item, image, _locked_path, digest) in enumerate(staged):
+                    staging_image = Path(staging_dir) / f"{index}{image.suffix}"
+                    shutil.copy2(image, staging_image)
+                    staged_images.append((key, item, image, staging_image, digest))
+                for key, item, image, staging_image, digest in staged_images:
+                    try:
+                        published = self._publish(staging_image, character=character, phase=phase,
+                                                  pipeline=str(item["pipeline"]), checksum=digest,
+                                                  qualifier=str(item.get("qualifier") or ""), view=str(item["view"]),
+                                                  reference_key=str(assets.get(key, {}).get("reference_key") or ""))
+                    except Exception as exc:
+                        raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
+                    locked_path = Path(published["image_path"])
+                    if self._image_hash(locked_path) != digest:
+                        raise LocalAssetStoreError(f"Could not verify permanent image for {key}.")
+                    reference_key = (published.get("logical_reference") or {}).get("reference_key", "")
+                    published_assets.append((key, item, image, locked_path, digest, published["asset_id"], reference_key))
             result = []
-            for key, item, image, locked_path, digest, catalog_asset_id in published_assets:
+            for key, item, image, locked_path, digest, catalog_asset_id, published_reference_key in published_assets:
                 current = assets.get(key, {})
                 record = {
                     **current, "pipeline": str(item["pipeline"]), "view": str(item["view"]).upper(),
@@ -295,6 +311,7 @@ class LocalAssetStoreService:
                     "image_path": str(image), "image_sha256": digest,
                     "dependencies": list(item.get("dependencies") or []), "selected": True, "stale": False,
                     "locked": True, "locked_image_path": str(locked_path), "entity_library_asset_id": catalog_asset_id,
+                    "reference_key": (published_reference_key or item.get("reference_key") or assets.get(key, {}).get("reference_key") or ""),
                     "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                     "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 }

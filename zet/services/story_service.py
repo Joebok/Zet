@@ -25,7 +25,7 @@ from zet.models.story import (
     StoryRenderTask,
 )
 from zet.repositories.asset_repository import AssetRepository
-from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
+from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository, AuxiliaryResourceRepositoryError
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
@@ -220,7 +220,12 @@ class StoryService:
                         str(primary.get("set_id") or asset.get("reference_set_id") or ""),
                     )
                     by_type = {item["descriptor_type"]: item["text"] for item in descriptors}
-                    canonical = self._canonical_element_source_sections(element)
+                    try:
+                        canonical = self._canonical_element_source_sections(element)
+                    except AuxiliaryResourceRepositoryError:
+                        # A selected library image remains usable after its legacy
+                        # auxiliary resource has been migrated out of the old catalog.
+                        canonical = {}
                     identity = "\n".join(
                         text for text in (by_type.get("prompt_identity", ""), by_type.get("prompt_object", ""), by_type.get("prompt_background", ""), by_type.get("human_description", "")) if text
                     ) or str(canonical.get("identity_preservation_core") or "")

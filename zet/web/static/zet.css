@@ -143,9 +143,8 @@ body {
 }
 
 .universe-context {
-  align-items: center;
-  display: flex;
-  gap: 6px;
+  display: grid;
+  gap: 3px;
   white-space: nowrap;
 }
 

@@ -38,7 +38,7 @@ class StoryReferenceService:
         if asset.get("status") != "approved":
             raise self.error_type(f"Image asset is not approved: {asset_id}")
         return {
-            "role": "story_reference", "label": asset["file_name"], "tag": f"{{{{LIB:ASSET:{asset_id}}}}}",
+            "role": "story_reference", "label": asset.get("label") or asset["file_name"], "tag": f"{{{{LIB:ASSET:{asset_id}}}}}",
             "path": asset["image_path"], "kind": "entity-library", "asset_id": asset_id,
             "checksum": asset["checksum"],
         }
@@ -49,7 +49,7 @@ class StoryReferenceService:
             raise self.error_type("The entity image library is unavailable.")
         asset = service.resolve_reference(reference_key)
         return {
-            "role": "story_reference", "label": asset["file_name"], "tag": f"{{{{LIB:REF:{reference_key}}}}}",
+            "role": "story_reference", "label": asset.get("label") or asset["file_name"], "tag": f"{{{{LIB:REF:{reference_key}}}}}",
             "path": asset["image_path"], "kind": "entity-library", "asset_id": asset["asset_id"],
             "reference_key": reference_key, "set_id": asset.get("reference_set_id") or "",
             "checksum": asset["checksum"],

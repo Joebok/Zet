@@ -184,8 +184,8 @@ def compile_scene_render_ir(
             "story_beat": scene_data.get("scene", {}).get("story_beat", ""),
         },
         "source": {
-            "scene_json_path": scene_data.get("scene", {}).get("source_path", ""),
-            "story_settings_path": scene_data.get("scene", {}).get("story_settings_path", ""),
+            "scene_json_path": scene_data.get("scene", {}).get("source_path") or None,
+            "story_settings_path": scene_data.get("scene", {}).get("story_settings_path") or None,
             "source_hashes": {},
         },
         "canvas": {

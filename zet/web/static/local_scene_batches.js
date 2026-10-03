@@ -34,6 +34,7 @@ window.SceneBatches = (() => {
     const expectedVersion = version, expectedId = run.run_id, endpoint = base();
     pending = true;
     message.textContent = `${action.replaceAll("-", " ")}…`;
+    render();
     try {
       const updated = await request(`${endpoint}/${expectedId}/actions/${action}`, payload);
       if (version !== expectedVersion || run?.run_id !== expectedId) return;
@@ -45,6 +46,9 @@ window.SceneBatches = (() => {
   function render() {
     const expanded = new Set(Array.from(host.querySelectorAll("details[open]")).map(item => item.dataset.target));
     host.replaceChildren();
+    document.querySelector("#scene-batch-new").disabled = pending || !context;
+    document.querySelector("#scene-batch-refresh").disabled = pending || !run;
+    history.disabled = pending;
     document.querySelector("#scene-batch-publish").disabled = pending || run?.status !== "READY_TO_PUBLISH";
     for (const selector of ["#scene-batch-start", "#scene-batch-stop", "#scene-batch-rename"]) document.querySelector(selector).disabled = pending || !run;
     document.querySelector("#scene-batch-recompile").disabled = pending || !run || Object.values(run.groups).some(group => group.candidates.some(item => ["QUEUED", "RUNNING"].includes(item.status)));
@@ -108,6 +112,7 @@ window.SceneBatches = (() => {
         const decision = node("select"); decision.setAttribute("aria-label", `${candidate.candidate_id} human review`);
         for (const value of ["undecided", "keep", "reject"]) { const option = node("option", value); option.value = value; decision.append(option); }
         decision.value = candidate.human_review?.decision || "undecided";
+        decision.disabled = pending;
         decision.addEventListener("change", () => void perform("review", {...payload, decision: decision.value}));
         controls.append(decision);
         if (["FAILED", "STOPPED"].includes(candidate.status)) button(controls, "Retry", "retry", payload, active);
@@ -124,6 +129,7 @@ window.SceneBatches = (() => {
       notes.addEventListener("input", () => observations.set(target, notes.value)); details.append(notes);
       const noteActions = node("div", null, "button-row compact");
       const save = node("button", "Save observations"); save.type = "button";
+      save.disabled = pending;
       save.addEventListener("click", async () => { await perform("save-observations", {target_id: target, observations: notes.value}); observations.delete(target); });
       noteActions.append(save); button(noteActions, "Analyze Images", "analyze-images", {target_id: target}, !group.candidates.some(item => item.status === "COMPLETE"));
       details.append(noteActions);
@@ -198,6 +204,7 @@ window.SceneBatches = (() => {
       const updated = id ? await request(`${base()}/${encodeURIComponent(id)}`) : null;
       if (expectedVersion !== version) return;
       run = updated; history.value = run?.run_id || "";
+      document.querySelector("#scene-batch-name").value = run?.batch_name || "";
       message.textContent = nextContext.retiredPage && !id ? "Render Console and Image Review are retired. This historical render has no scene batch. Create a new batch here." : "Select candidates between stages. Publishing keeps the existing scene image paths."; render();
       timer = setInterval(() => void refresh(), 3000);
     } catch (error) { message.textContent = error.message; }
@@ -208,7 +215,9 @@ window.SceneBatches = (() => {
     try {
       const updated = await request(`${base()}/${encodeURIComponent(history.value)}`);
       if (expectedVersion !== version) return;
-      observations.clear(); run = updated; render(); setRoute();
+      observations.clear(); run = updated;
+      document.querySelector("#scene-batch-name").value = run.batch_name || "";
+      render(); setRoute();
     } catch (error) { if (expectedVersion === version) message.textContent = error.message; }
   });
   function setRoute() {
@@ -217,6 +226,8 @@ window.SceneBatches = (() => {
   document.querySelector("#scene-batch-new").addEventListener("click", async () => {
     if (!context || pending) return;
     const expectedVersion = version; pending = true;
+    message.textContent = "Creating scene batch…";
+    render();
     try {
       const counts = Object.fromEntries(Array.from(planHost.querySelectorAll("input")).map(input => [input.dataset.target, Number(input.value)]));
       const updated = await request(base(), {counts, batch_name: document.querySelector("#scene-batch-name").value});

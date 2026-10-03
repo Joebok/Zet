@@ -35,10 +35,21 @@ test("scene batches keep authoring context, checkpoints, references, publication
     await input.fill("1");
   }
   await page.locator("#scene-batch-name").fill("Browser scene study");
+  let releaseCreation;
+  const creationReady = new Promise(resolve => { releaseCreation = resolve; });
+  await page.route("**/local-batches", async route => {
+    if (route.request().method() === "POST") await creationReady;
+    await route.continue();
+  });
   await page.locator("#scene-batch-new").click();
+  await expect(page.locator("#scene-batch-new")).toBeDisabled();
+  await expect(page.locator("#scene-batch-message")).toHaveText("Creating scene batch…");
+  releaseCreation();
   await expect(page.locator("#scene-batch-status")).toContainText("Browser scene study");
   const runId = new URL(page.url()).searchParams.get("batch");
   expect(runId).toMatch(/^[a-f0-9]{32}$/);
+  await page.reload();
+  await expect(page.locator("#scene-batch-name")).toHaveValue("Browser scene study");
   const fullScene = page.locator("#scene-batch-groups > section").filter({has: page.getByRole("heading", {name: "Full Scene", exact: true})});
   await expect(fullScene.getByRole("button", {name: "Render", exact: true})).toBeDisabled();
   for (const [target, label] of [["background", "Background"], ["traveler_view", "Traveler View"], ["main", "Full Scene"]]) {
@@ -60,6 +71,16 @@ test("scene batches keep authoring context, checkpoints, references, publication
     await expect(section.getByRole("button", {name: "Select", exact: true})).toBeEnabled();
     expect((await (await page.request.get(`${batches}/${runId}`)).json()).selected_views[target]).toBeUndefined();
     if (target === "main") {
+      let releaseReview;
+      const reviewReady = new Promise(resolve => { releaseReview = resolve; });
+      await page.route("**/actions/review", async route => { await reviewReady; await route.continue(); });
+      const review = section.getByRole("combobox", {name: `${candidate.candidate_id} human review`, exact: true});
+      await review.selectOption("keep");
+      await expect(review).toBeDisabled();
+      await expect(section.getByRole("button", {name: "Select", exact: true})).toBeDisabled();
+      releaseReview();
+      await expect(review).toBeEnabled();
+      await expect(review).toHaveValue("keep");
       await expect(section.locator(".local-pipeline-sources img")).toHaveCount(2);
       await expect(section.locator("figcaption").first()).toContainText("Image 1");
       await expect(section.locator("figcaption").nth(1)).toContainText("Image 2");

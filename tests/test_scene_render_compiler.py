@@ -28,6 +28,14 @@ class SceneRenderCompilerTests(unittest.TestCase):
     def _prompt(self, scene):
         return final_image_prompt_text(self._ir(scene))
 
+    def test_absent_source_paths_are_null_for_file_proxy_validation(self):
+        source = self._ir({"scene": {"source_path": ""}})["source"]
+        self.assertIsNone(source["scene_json_path"])
+        self.assertIsNone(source["story_settings_path"])
+        source = self._ir({"scene": {"source_path": "scene.json", "story_settings_path": "story.json"}})["source"]
+        self.assertEqual(source["scene_json_path"], "scene.json")
+        self.assertEqual(source["story_settings_path"], "story.json")
+
     def test_scene_analysis_prompt_preserves_scene_facts_and_filters_generation_text(self):
         ir = self._ir({"scene": {"story_beat": "A raven lands beside the traveler."}})
         generation = final_image_prompt_text(ir)

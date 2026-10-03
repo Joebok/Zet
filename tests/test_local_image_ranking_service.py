@@ -28,7 +28,7 @@ def test_shared_luna_runner_uses_one_schema_and_keeps_reference_images_ahead_of_
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     entries, model = rank_images_with_luna(
-        project_root=tmp_path, model="gpt-6-luna", prompt="Rank these images.",
+        project_root=tmp_path, model="gpt-6-luna", prompt="Rank Tsaeytte’s images — preserve dialogue.",
         candidate_ids=["F-001", "F-002"], image_paths=[first, second],
         reference_image_paths=[reference], executable="codex", runner=runner,
     )
@@ -36,7 +36,8 @@ def test_shared_luna_runner_uses_one_schema_and_keeps_reference_images_ahead_of_
     command, kwargs = calls[0]
     image_args = [command[index + 1] for index, value in enumerate(command[:-1]) if value == "--image"]
     assert image_args == [str(reference), str(first), str(second)]
-    assert kwargs["input"] == "Rank these images."
+    assert kwargs["input"] == "Rank Tsaeytte’s images — preserve dialogue."
+    assert kwargs["encoding"] == "utf-8"
     assert [item["candidate_id"] for item in entries] == ["F-002", "F-001"]
     assert model == "gpt-6-luna"
 

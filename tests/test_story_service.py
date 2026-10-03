@@ -90,6 +90,31 @@ class FakeTurnaroundRepository:
 
 class StoryServiceTests(unittest.TestCase):
 
+    def test_library_reference_survives_missing_legacy_auxiliary_resource(self):
+        from unittest.mock import Mock
+        from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepositoryError
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+            service.auxiliary_resource_repository.get_resource = Mock(
+                side_effect=AuxiliaryResourceRepositoryError("Auxiliary resource old-arch not found.")
+            )
+            service.story_reference_service.entity_library_service = SimpleNamespace(
+                get_asset=lambda requested_id: {"asset_id": requested_id, "checksum": "sha256:arch"},
+                effective_descriptors=lambda requested_id, set_id: [
+                    {"descriptor_type": "prompt_background", "text": "An ornate academy archway."}
+                ],
+            )
+            sections = service._element_source_sections({
+                "resource_type": "Place", "aux_resource_id": "old-arch",
+                "reference_images": [{"asset_id": "arch-image", "primary_prompt_source": True}],
+            })
+            self.assertEqual("An ornate academy archway.", sections["identity_preservation_core"])
+            self.assertEqual("arch-image", sections["library_asset_id"])
+
+            with self.assertRaises(AuxiliaryResourceRepositoryError):
+                service._element_source_sections({"resource_type": "Place", "aux_resource_id": "old-arch"})
+
     def test_entity_library_reference_supplies_prompt_descriptors(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service = self._service(Path(temp_dir))

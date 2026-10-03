@@ -662,6 +662,13 @@ class ZetApp:
     def entity_library_save_logical_reference(self, data: dict, reference_key: str = ""):
         return self._indexed_write(lambda: self.entity_library_service.save_logical_reference(data, reference_key))
 
+    def entity_library_backfill_costume_references(self, *, dry_run: bool = True):
+        result = self.entity_library_service.backfill_costume_references(dry_run=dry_run)
+        if not dry_run:
+            self.entity_library_service.refresh_usages(self.path_service.config.base_library_path)
+            self.refresh_library_index()
+        return result
+
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return sorted(self.asset_repository.list_assets(character, phase), key=asset_sort_key)
 
