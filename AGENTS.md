@@ -42,6 +42,10 @@
 - `architecture_reviewer`: when the user explicitly requests a deep review, cleanup assessment, architectural review, or refactoring plan, it may inspect broadly; identify dead or duplicate code; compare data models; and propose deletions, migrations, abstractions, or staged refactoring. This is analysis only unless implementation is explicitly authorized.
 - `refactoring_implementer`: may implement only a user-approved phase from a written review or plan. Keep the phase testable, run or add relevant tests, exclude unrelated cleanup, and stop after that phase. Approval never carries to later phases.
 
+## ComfyUI
+
+- Normally ComfyUI is only available via AI_Proxy. If needed to run directly, stop and ask to have ComfyUI Desktop started.
+
 ## Final response
 
 - State the result, validation performed, and any blocker or required next action. Omit filler, repeated rationale, and unrelated detail.

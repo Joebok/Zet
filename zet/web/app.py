@@ -31,7 +31,7 @@ from zet.services.manual_render_submission_service import ManualRenderSubmission
 from zet.services.performance_instrumentation import PerformanceInstrumentation
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
-from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
+from zet.services.qwen_scene_prompt import analyze_qwen_scene_prompt, compile_qwen_scene_prompt
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.pipeline_retirement import require_active_pipeline
@@ -443,13 +443,16 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
     default_profile = qwen_profile if ir_path.is_file() else configured_profile
     qwen_prompt = ""
     qwen_error = ""
+    qwen_warnings = []
     try:
         if not ir_path.is_file():
             raise FileNotFoundError("Scene render IR is missing. Recompile the scene in Scene Builder.")
         from zet.services.pipeline_compiler_support import with_universe_art_style
-        qwen_prompt = compile_qwen_scene_prompt(with_universe_art_style(
+        qwen_ir = with_universe_art_style(
             json.loads(ir_path.read_text(encoding="utf-8")), zet_app.config.base_library_path
-        ))
+        )
+        qwen_prompt = compile_qwen_scene_prompt(qwen_ir)
+        qwen_warnings = analyze_qwen_scene_prompt(qwen_ir)
     except (OSError, ValueError, KeyError) as exc:
         qwen_error = str(exc)
     qwen_enabled = bool(qwen_prompt) and not qwen_error
@@ -465,6 +468,7 @@ def _render_console_local_prompt_payload(zet_app: ZetApp, task) -> dict[str, Any
         "configured_local_backend": configured_backend,
         "qwen_prompt": qwen_prompt,
         "qwen_error": qwen_error,
+        "qwen_warnings": qwen_warnings,
         "condensed_prompt_text": local_prompt_path.read_text(encoding="utf-8") if local_prompt_path.exists() else "",
         "latest_local_test_render": str(latest_render) if latest_render else None,
         "local_api_call_exists": _render_console_local_api_call_path(workspace).exists(),

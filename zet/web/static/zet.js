@@ -494,6 +494,7 @@ const renderConsoleLocalApiText = document.querySelector("#render-console-local-
 const renderConsoleLocalApiCopy = document.querySelector("#render-console-local-api-copy");
 const renderConsoleClearLocalTest = document.querySelector("#render-console-clear-local-test");
 const renderConsoleLocalStatus = document.querySelector("#render-console-local-status");
+const renderConsoleQwenWarnings = document.querySelector("#render-console-qwen-warnings");
 const renderConsoleLocalTestRender = document.querySelector("#render-console-local-test-render");
 const renderConsolePasteZone = document.querySelector("#render-console-paste-zone");
 const renderConsoleFileInput = document.querySelector("#render-console-file-input");
@@ -1783,16 +1784,16 @@ const SCENE_BUILDER_HELP = {
   "placements[].position_within_cell": "Position inside the grid cell, or None to suppress placement output for this element.",
   "placements[].depth": "Depth layer: foreground, midground, background, or distant background.",
   "placements[].world_position": "Location within the scene, such as \"at the edge of the pit\" or \"inside the doorway.\"",
-  "placements[].pose.summary": "Concise pose summary.",
+  "placements[].pose.summary": "Describe the visible body pose or action in the finished frame; don't repeat screen position, gaze, expression, or story history.",
   "placements[].pose.gaze_target_element_id": "Element ID that this element is looking at.",
   "placements[].pose.expression": "Facial expression or visible emotional state.",
   "setup.composition.focal_point": "The person, action, or visual relationship viewers should notice first.",
   "setup.composition.left_to_right": "Order the important visible elements as the viewer should encounter them from the left side of the image to the right.",
-  "setup.composition.composition_notes": "Optional brief instruction about framing, overlap, spacing, or a major visual relationship not captured by placement fields.",
+  "setup.composition.composition_notes": "Use only for shared framing, spacing, overlap, or visual constraints not captured by subject and interaction fields.",
   "placements[].motion.state": "Whether this element is still or visibly moving in the scene.",
   "placements[].motion.direction_screen": "The direction the element is visibly moving within the finished image.",
   "placements[].motion.cue": "A short visual description showing movement, such as trailing hair, a lifted foot, flying fabric, falling debris, or a blurred limb.",
-  "placements[].placement_notes": "Prompt-visible instructions that supplement this element's position, pose, and action.",
+  "placements[].placement_notes": "Use only for a distinct visible staging constraint absent from position, pose, gaze, expression, and interaction fields. Describe the final frame, not how the subject arrived there.",
   "interactions[].subject_element_id": "Element initiating or owning the interaction.",
   "interactions[].action": "Action relationship, such as offers, attacks, protects, reaches toward, blocks, watches, or mutual eye contact.",
   "interactions[].target_element_id": "Element receiving or targeted by the interaction.",
@@ -11916,6 +11917,7 @@ function renderRenderConsoleDetail(detail) {
   renderConsoleClearLocalTest.disabled = !localPrompt.latest_local_test_render;
   renderRenderConsoleLocalTestRender(localPrompt.latest_local_test_render);
   renderConsoleReferenceFiles(detail.reference_files || []);
+  renderRenderConsoleQwenWarnings(localPrompt.qwen_warnings || []);
   updateRenderConsoleNavigation();
 }
 
@@ -11934,6 +11936,16 @@ function applyRenderConsoleLocalProfile() {
     ? localPrompt.qwen_error : supported ? "Local prompt: READY" : "Local prompt: DISABLED";
   renderConsoleLocalStatus.textContent = [message, localRenderState ? `Local render: ${localRenderState}` : ""]
     .filter(Boolean).join(" | ");
+}
+
+function renderRenderConsoleQwenWarnings(warnings) {
+  renderConsoleQwenWarnings.replaceChildren();
+  for (const warning of warnings || []) {
+    const item = document.createElement("li");
+    item.textContent = `${warning.field || "Scene Builder"}: ${warning.message || "Review this prompt instruction."}`;
+    renderConsoleQwenWarnings.append(item);
+  }
+  renderConsoleQwenWarnings.hidden = !renderConsoleQwenWarnings.childElementCount;
 }
 
 function renderRenderConsoleLocalTestRender(path) {

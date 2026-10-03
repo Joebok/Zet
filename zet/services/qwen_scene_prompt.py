@@ -6,6 +6,32 @@ import re
 from typing import Any
 
 
+_ARRIVAL_LANGUAGE = re.compile(
+    r"\b(?:approach(?:ing|es)?|enter(?:ing|s)?|arriv(?:e|es|ing)|"
+    r"come|comes|coming|walk(?:ing)? in|move(?:s|d|ing)? from|"
+    r"entering the scene|from the background)\b",
+    re.IGNORECASE,
+)
+_SPATIAL_WORDS = {
+    "left": {"left", "screen-left", "left side"},
+    "center": {"center", "centre", "middle", "screen-center"},
+    "right": {"right", "screen-right", "right side"},
+}
+_VISIBLE_TYPES = {"character", "monster"}
+_POSE_OR_ACTION = re.compile(
+    r"\b(?:push(?:es|ed|ing)?|shov(?:e|es|ed|ing)|point(?:s|ed|ing)?|grinn?(?:s|ed|ing)?|"
+    r"smil(?:e|es|ed|ing)|laugh(?:s|ed|ing)?|lean(?:s|ed|ing)?|stand(?:s|ing)?|sit(?:s|ting)?|"
+    r"walk(?:s|ed|ing)?|mov(?:e|es|ed|ing)|approach(?:es|ed|ing)?|enter(?:s|ed|ing) the scene)\b",
+    re.IGNORECASE,
+)
+_NONVISUAL_MOTION = re.compile(r"\b(?:horseplay|antics|harmless|moving along|entering the scene)\b", re.IGNORECASE)
+_APPEARANCE_WORD = re.compile(
+    r"\b(?:hair|skin|eyes?|face|ears?|shirt|coat|vest|waistcoat|dress|trousers|boots|belt|"
+    r"armor|jacket|cloak|pendant|crest|freckles|scar|jewelry|fabric|cloth|colored|coloured)\b",
+    re.IGNORECASE,
+)
+
+
 def _text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip(" .;,")
 
@@ -15,123 +41,414 @@ def _sentence(value: Any) -> str:
     return f"{content}." if content else ""
 
 
+def _items(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value or [] if isinstance(item, dict)]
+
+
+def _elements(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(item.get("id")): item for item in _items(ir.get("elements")) if item.get("id")}
+
+
+def _placements(ir: dict[str, Any], elements: dict[str, dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    visible = []
+    seen: set[str] = set()
+    for placement in _items(ir.get("placements")):
+        element_id = str(placement.get("scene_element_id") or "")
+        element = elements.get(element_id)
+        if not element or _text(placement.get("position_within_cell")).casefold() == "none":
+            continue
+        if element_id in seen:
+            continue
+        seen.add(element_id)
+        visible.append((element, placement))
+    return visible
+
+
+def _reference_lines(
+    image_inputs: list[dict[str, Any]], elements: dict[str, dict[str, Any]]
+) -> list[str]:
+    lines: list[str] = []
+    for index, item in enumerate(image_inputs, start=1):
+        tag = f"<image{index}>"
+        assignments = _items(item.get("assignments"))
+        if assignments:
+            roles = []
+            for assignment in assignments:
+                target_id = str(assignment.get("applies_to") or "")
+                name = _text(elements.get(target_id, {}).get("display_name") or target_id)
+                role = _text(assignment.get("prompt_role")).replace("_", " ")
+                phrase = " ".join(part for part in (role, f"for {name}" if name else "") if part)
+                preserved_assignment = list(dict.fromkeys(
+                    _text(value) for value in assignment.get("preserve") or [] if _text(value)
+                ))
+                if preserved_assignment:
+                    phrase += f", preserving {', '.join(preserved_assignment)}"
+                changed_assignment = list(dict.fromkeys(
+                    _text(value) for value in assignment.get("change") or [] if _text(value)
+                ))
+                if changed_assignment:
+                    phrase += f", changing only {', '.join(changed_assignment)}"
+                ignored_assignment = list(dict.fromkeys(
+                    _text(value) for value in assignment.get("ignore") or [] if _text(value)
+                ))
+                if ignored_assignment:
+                    phrase += f", ignoring {', '.join(ignored_assignment)}"
+                assignment_note = _text(assignment.get("notes"))
+                if assignment_note:
+                    phrase += f", note: {assignment_note}"
+                roles.append(phrase)
+            roles = list(dict.fromkeys(role for role in roles if role))
+        else:
+            target_id = str(item.get("applies_to") or "")
+            name = _text(elements.get(target_id, {}).get("display_name") or target_id or item.get("label"))
+            role = _text(item.get("role")).replace("_", " ") or "visual reference"
+            roles = [" ".join(part for part in (role, f"for {name}" if name else "") if part)]
+
+        detail = f"{tag} supplies {' and '.join(roles)}"
+        assigned_preserve = {
+            _text(value).casefold()
+            for assignment in assignments
+            for value in assignment.get("preserve") or []
+            if _text(value)
+        }
+        preserved = list(dict.fromkeys(
+            _text(value) for value in item.get("preserve") or []
+            if _text(value) and _text(value).casefold() not in assigned_preserve
+        ))
+        if preserved:
+            detail += f"; retain {', '.join(preserved)}"
+        changes = list(dict.fromkeys(_text(value) for value in item.get("change") or [] if _text(value)))
+        if changes:
+            detail += f"; change only {', '.join(changes)}"
+        ignored = list(dict.fromkeys(_text(value) for value in item.get("ignore") or [] if _text(value)))
+        if ignored:
+            detail += f"; disregard {', '.join(ignored)}"
+        note = _text(item.get("notes"))
+        if note:
+            detail += f"; reference note: {note}"
+        lines.append(_sentence(detail))
+    return lines
+
+
+def _interaction_map(ir: dict[str, Any], elements: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    by_subject: dict[str, list[str]] = {}
+    for interaction in _items(ir.get("interactions")):
+        subject_id = str(interaction.get("subject_element_id") or "")
+        target_id = str(interaction.get("target_element_id") or "")
+        relationship = _text(interaction.get("relationship") or interaction.get("type"))
+        subject_name = _text(elements.get(subject_id, {}).get("display_name"))
+        target_name = _text(elements.get(target_id, {}).get("display_name"))
+        if not subject_name or not target_name or not relationship:
+            continue
+        clause = f"{relationship} {target_name}"
+        note = _text(interaction.get("note"))
+        if note:
+            participant_names = (subject_name, target_name)
+            note_parts = [
+                part for part in _note_sentences(note)
+                if not any(name.casefold() in part.casefold() for name in participant_names)
+            ]
+            if note_parts:
+                clause += ", " + ", ".join(note_parts)
+        by_subject.setdefault(subject_id, []).append(clause)
+    return by_subject
+
+
+def _appearance_parts(value: Any, name: str = "") -> tuple[list[str], bool]:
+    clauses = [_text(part) for part in re.split(r"[.;]", str(value or "")) if _text(part)]
+    def is_action_only(part: str) -> bool:
+        candidate = part
+        if name:
+            candidate = re.sub(rf"^{re.escape(name)}\b[:,]?\s*", "", candidate, flags=re.IGNORECASE)
+        candidate = re.sub(r"^(?:(?:he|she|they|the subject)\s+)?(?:is\s+)?", "", candidate, flags=re.IGNORECASE)
+        return bool(_POSE_OR_ACTION.search(candidate) and not _APPEARANCE_WORD.search(candidate))
+
+    kept = [part for part in clauses if not is_action_only(part)]
+    return kept, len(kept) != len(clauses)
+
+
+def _subject_description(
+    element: dict[str, Any], placement: dict[str, Any], interactions: list[str], elements: dict[str, dict[str, Any]]
+) -> str:
+    name = _text(element.get("display_name")) or "The subject"
+    source = element.get("resolved_source_sections") or {}
+    source = source if isinstance(source, dict) else {}
+    identity = _text(
+        source.get("identity_anchors")
+        or source.get("identity_preservation_core")
+        or element.get("fallback_visual_description")
+    )
+    costume = _text(source.get("costume_anchors") or source.get("identity_preservation_costume"))
+    appearance_parts, _ = _appearance_parts(element.get("element_visual_override"), name)
+    pose = placement.get("pose") or {}
+    pose = pose if isinstance(pose, dict) else {}
+    position = _text(placement.get("position_within_cell"))
+    depth = _text(placement.get("depth"))
+    location = " ".join(part for part in (position, depth) if part)
+    world_position = _text(placement.get("world_position"))
+    position_key = position.casefold()
+    claimed_sides = {
+        side for side, words in _SPATIAL_WORDS.items()
+        if any(re.search(rf"\b{re.escape(word)}\b", world_position.casefold()) for word in words)
+    }
+    if position_key in _SPATIAL_WORDS and claimed_sides and position_key not in claimed_sides:
+        world_position = ""
+    placement_note = _text(placement.get("placement_notes"))
+    if placement_note and (
+        _ARRIVAL_LANGUAGE.search(placement_note)
+        or any(re.search(rf"\b{re.escape(word)}\b", placement_note.casefold())
+               for side, words in _SPATIAL_WORDS.items() if side != position_key for word in words)
+        or any(_text(item.get("display_name")).casefold() in placement_note.casefold()
+               for item in elements.values() if _text(item.get("display_name")))
+    ):
+        placement_note = ""
+    motion = placement.get("motion") or {}
+    motion = motion if isinstance(motion, dict) else {}
+
+    parts = [name]
+    if identity:
+        parts.append(identity)
+    if costume:
+        parts.append(costume)
+    parts.extend(appearance_parts)
+    if location:
+        parts.append(f"at {location}")
+    if world_position:
+        parts.append(world_position)
+    if placement_note:
+        parts.append(placement_note)
+    summary = _text(pose.get("summary"))
+    summary = re.sub(r"\bstanding at (?:the )?(?:left|center|centre|middle|right),?\s*", "", summary, flags=re.IGNORECASE)
+    summary_repeats_interaction = any(
+        re.search(r"\b" + re.escape(action) + r"\w*\b", summary, re.IGNORECASE)
+        and any(re.search(r"\b" + re.escape(action) + r"\w*\b", clause, re.IGNORECASE) for clause in interactions)
+        for action in ("point", "shove", "push", "hold", "carry", "embrace", "kiss", "attack", "offer", "hand", "shoulder")
+    )
+    if summary and not summary_repeats_interaction:
+        parts.append(summary)
+    parts.extend(interactions)
+    expression = _text(pose.get("expression"))
+    if expression:
+        parts.append(f"with a {expression} expression")
+    gaze_target = str(pose.get("gaze_target_element_id") or "")
+    if gaze_target:
+        parts.append(f"looking toward {_text(elements.get(gaze_target, {}).get('display_name') or gaze_target)}")
+    cue = _text(motion.get("cue")) if _text(motion.get("state")).casefold() == "moving" else ""
+    if _ARRIVAL_LANGUAGE.search(cue) or _NONVISUAL_MOTION.search(cue):
+        cue = ""
+    if cue:
+        parts.append(cue)
+    return _sentence(", ".join(part for part in parts if part))
+
+
+def _note_sentences(value: Any) -> list[str]:
+    return [
+        _text(sentence)
+        for sentence in re.split(r"(?<=[.!?])\s+|\s*;\s*", str(value or ""))
+        if _text(sentence)
+    ]
+
+
+def _is_redundant_scene_note(sentence: str, names: list[str]) -> bool:
+    folded = sentence.casefold()
+    if any(name and name.casefold() in folded for name in names):
+        return True
+    count_words = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)"
+    return bool(
+        re.search(r"\bfrom left to right\b|\bsingle captured moment\b", folded)
+        or re.search(rf"\bexactly {count_words}\b.*\b(?:people|characters|males|females|figures|students)\b", folded)
+    )
+
+
+def _is_parent_placement_note(sentence: str) -> bool:
+    folded = sentence.casefold()
+    return bool(re.search(r"\b(?:will be placed|to be placed|outer placement|full scene|final scene)\b", folded))
+
+
+def analyze_qwen_scene_prompt(ir: dict[str, Any]) -> list[dict[str, str]]:
+    """Return advisory, target-local warnings for authored text that can conflict."""
+    elements = _elements(ir)
+    placements = _placements(ir, elements)
+    warnings: list[dict[str, str]] = []
+    names = [_text(element.get("display_name")) for element, _ in placements]
+    names = [name for name in names if name]
+    placement_ids = [str(item.get("scene_element_id") or "") for item in _items(ir.get("placements"))]
+    duplicate_ids = {element_id for element_id in placement_ids if element_id and placement_ids.count(element_id) > 1}
+    for element_id in sorted(duplicate_ids):
+        label = _text(elements.get(element_id, {}).get("display_name") or element_id)
+        warnings.append({
+            "field": f"placements[{label}]",
+            "message": f"{label} has more than one placement; the Qwen prompt uses the first placement only.",
+        })
+
+    for element, placement in placements:
+        element_id = str(element.get("id") or "")
+        label = _text(element.get("display_name")) or element_id
+        _, has_action_override = _appearance_parts(element.get("element_visual_override"), _text(element.get("display_name")))
+        if has_action_override:
+            warnings.append({
+                "field": f"scene_elements[{label}].element_visual_override",
+                "message": f"{label}: pose or action text is represented by placement and interaction fields; the prompt keeps only non-action appearance clauses.",
+            })
+        location = _text(placement.get("position_within_cell")).casefold()
+        for field_name in ("world_position", "placement_notes"):
+            value = _text(placement.get(field_name))
+            if not value:
+                continue
+            if field_name == "placement_notes" and _ARRIVAL_LANGUAGE.search(value):
+                warnings.append({
+                    "field": f"placements[{label}].placement_notes",
+                    "message": f"{label}: describes arriving or moving between locations; Qwen prompt uses the final pose and omits this note.",
+                })
+                continue
+            claimed = {
+                side for side, words in _SPATIAL_WORDS.items()
+                if any(re.search(rf"\b{re.escape(word)}\b", value.casefold()) for word in words)
+            }
+            if location in _SPATIAL_WORDS and claimed and location not in claimed:
+                warnings.append({
+                    "field": f"placements[{label}].{field_name}",
+                    "message": f"{label}: this note gives a different screen position than the placement field; the structured position takes precedence.",
+                })
+            elif field_name == "placement_notes" and any(name.casefold() in value.casefold() for name in names):
+                warnings.append({
+                    "field": f"placements[{label}].placement_notes",
+                    "message": f"{label}: this note repeats a named subject; check that it adds a visual fact beyond the subject and interaction fields.",
+                })
+        motion = placement.get("motion") or {}
+        cue = _text(motion.get("cue")) if isinstance(motion, dict) else ""
+        if cue and (_ARRIVAL_LANGUAGE.search(cue) or _NONVISUAL_MOTION.search(cue)):
+            warnings.append({
+                "field": f"placements[{label}].motion.cue",
+                "message": f"{label}: this cue describes narrative action rather than visible motion; use a pose or movement trace in the captured frame.",
+            })
+
+    composition = ir.get("composition") or {}
+    if isinstance(composition, dict):
+        notes = _text(composition.get("composition_notes"))
+        if notes and any(_is_redundant_scene_note(item, names) for item in _note_sentences(notes)):
+            warnings.append({
+                "field": "composition.composition_notes",
+                "message": "Composition notes repeat a named subject or structured cast/position detail; keep only framing constraints or details absent from subject fields.",
+            })
+
+    environment = ir.get("environment") or {}
+    background_notes = _text(environment.get("general_background_notes")) if isinstance(environment, dict) else ""
+    if any(_is_parent_placement_note(note) for note in _note_sentences(background_notes)):
+        warnings.append({
+            "field": "setup.environment.general_background_notes",
+            "message": "This note describes placement in a parent scene; that staging belongs to the parent render target and is omitted here.",
+        })
+
+    for index, item in enumerate(_items(ir.get("image_inputs")), start=1):
+        assignments = _items(item.get("assignments"))
+        roles = [
+            _text(assignment.get("prompt_role") or assignment.get("role")).casefold().replace("_", " ")
+            for assignment in assignments
+        ] or [_text(item.get("role")).casefold().replace("_", " ")]
+        targets = [str(assignment.get("applies_to") or "") for assignment in assignments] or [str(item.get("applies_to") or "")]
+        if not any(targets) or any(not role or role in {"reference", "visual reference"} for role in roles):
+            warnings.append({
+                "field": f"image_inputs[{index}]",
+                "message": f"Image reference {index} has no clear subject assignment or visual role; identify what it contributes.",
+            })
+    return warnings
+
+
 def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
-    """Describe the finished scene while retaining the manual render's image slots."""
-    image_inputs = ir.get("image_inputs") or []
+    """Describe one captured frame while retaining the render's image slots."""
+    image_inputs = _items(ir.get("image_inputs"))
     if len(image_inputs) > 10:
         raise ValueError("Qwen Image 2.1 supports at most ten scene reference images.")
-    elements = {str(item.get("id")): item for item in ir.get("elements") or [] if isinstance(item, dict)}
+    elements = _elements(ir)
+    visible = _placements(ir, elements)
     canvas = ir.get("canvas") or {}
     scene = ir.get("scene") or {}
     composition = ir.get("composition") or {}
     environment = ir.get("environment") or {}
     style = ir.get("style") or {}
+    if isinstance(composition, dict) and isinstance(composition.get("left_to_right"), list):
+        order = {str(element_id): index for index, element_id in enumerate(composition["left_to_right"])}
+        visible.sort(key=lambda pair: order.get(str(pair[0].get("id") or ""), len(order)))
+    else:
+        screen_order = {"left": 0, "center": 1, "centre": 1, "right": 2}
+        visible.sort(key=lambda pair: screen_order.get(_text(pair[1].get("position_within_cell")).casefold(), 3))
     orientation = _text(canvas.get("orientation")) or "landscape"
     medium = _text(style.get("canonical_art_style") or style.get("art_style")) or "fantasy illustration"
-    subject_names = [
-        _text(elements.get(str(item.get("scene_element_id")), {}).get("display_name"))
-        for item in ir.get("placements") or []
-    ]
-    subject_names = list(dict.fromkeys(name for name in subject_names if name))
-    subject = ", ".join(subject_names) if subject_names else _text(scene.get("story_beat")) or "the setting"
-    parts = [f"Create a {orientation} scene depicting {subject}, in this visual style: {medium}."]
-    if image_inputs:
-        parts.append("Create a new scene using the supplied images as visual references; the composition and canvas come from this description.")
-        for index, item in enumerate(image_inputs, start=1):
-            target = str(item.get("applies_to") or "")
-            name = _text(elements.get(target, {}).get("display_name") or target or item.get("label")) or f"reference {index}"
-            role = _text(item.get("role")).replace("_", " ") or "visual reference"
-            preserved = "; ".join(_text(value) for value in item.get("preserve") or [] if _text(value))
-            detail = f"<image{index}> supplies the {role} for {name}"
-            if preserved:
-                detail += f", preserving {preserved}"
-            parts.append(_sentence(detail))
-            for label, values in (("Change", item.get("change")), ("Ignore", item.get("ignore"))):
-                text = "; ".join(_text(value) for value in values or [] if _text(value))
-                if text:
-                    parts.append(_sentence(f"For <image{index}>, {label.lower()} {text}"))
-            if _text(item.get("notes")):
-                parts.append(_sentence(f"Reference note for <image{index}>: {item['notes']}"))
-            for assignment in (item.get("assignments") or [])[1:]:
-                if not isinstance(assignment, dict):
-                    continue
-                assignment_target = str(assignment.get("applies_to") or "")
-                assignment_name = _text(elements.get(assignment_target, {}).get("display_name") or assignment_target or "the scene")
-                assignment_role = _text(assignment.get("prompt_role")).replace("_", " ") or role
-                parts.append(_sentence(f"For <image{index}>, use as {assignment_role} for {assignment_name}"))
-                for label, values in (("Preserve", assignment.get("preserve")), ("Change", assignment.get("change")), ("Ignore", assignment.get("ignore"))):
-                    text = "; ".join(_text(value) for value in values or [] if _text(value))
-                    if text:
-                        parts.append(_sentence(f"{label} for this <image{index}> assignment: {text}"))
-                if _text(assignment.get("notes")):
-                    parts.append(_sentence(f"Reference note for this <image{index}> assignment: {assignment['notes']}"))
-    for value in (scene.get("story_beat"), environment.get("location"), environment.get("general_background_notes")):
+
+    if visible:
+        visible_characters = [
+            element for element, _ in visible
+            if _text(element.get("element_type")).casefold() in _VISIBLE_TYPES
+        ]
+        count_text = ""
+        if len(visible_characters) == len(visible) and visible_characters \
+                and (ir.get("render_target") or {}).get("kind") in {"element_subscene", "subscene"}:
+            count_text = (
+                "Exactly one visible character appears once. " if len(visible_characters) == 1
+                else f"Exactly {len(visible_characters)} visible characters appear once each. "
+            )
+        opening = f"A single {orientation} image in the style of {medium}. {count_text}"
+    else:
+        opening = f"A single {orientation} image in the style of {medium}. {_sentence(scene.get('story_beat'))} "
+
+    parts = [opening.strip()]
+    parts.extend(_reference_lines(image_inputs, elements))
+    for value in (environment.get("location"), environment.get("general_background_notes")):
         if _text(value):
-            parts.append(_sentence(value))
-    if _text(composition.get("focal_point")):
-        parts.append(_sentence(f"The focal point is {_text(composition['focal_point'])}"))
-    if _text(composition.get("left_to_right")):
-        order = composition["left_to_right"]
-        if isinstance(order, list):
-            order = [elements.get(str(key), {}).get("display_name") or key for key in order]
-            order = ", then ".join(_text(value) for value in order)
-        parts.append(_sentence(f"From left to right: {order}"))
-    if _text(composition.get("composition_notes")):
-        parts.append(_sentence(composition["composition_notes"]))
-    for interaction in ir.get("interactions") or []:
-        if not isinstance(interaction, dict):
-            continue
-        subject = _text(elements.get(str(interaction.get("subject_element_id")), {}).get("display_name"))
-        target = _text(elements.get(str(interaction.get("target_element_id")), {}).get("display_name"))
-        relationship = _text(interaction.get("relationship") or interaction.get("type"))
-        if subject and target and relationship:
-            detail = f"{subject} {relationship} {target}"
-            if _text(interaction.get("note")):
-                detail += f", {_text(interaction['note'])}"
-            parts.append(_sentence(detail))
-    if _text(ir.get("custom_interactions")):
-        parts.append(_sentence(ir["custom_interactions"]))
-    for item in ir.get("dialogue") or []:
-        speaker = elements.get(str(item.get("speaker_element_id")), {}).get("display_name") or "A character"
+            for note in _note_sentences(value):
+                if not _is_parent_placement_note(note):
+                    parts.append(_sentence(note))
+
+    if isinstance(composition, dict):
+        focal_point = _text(composition.get("focal_point"))
+        if focal_point:
+            parts.append(_sentence(f"The main visual focus is {focal_point}"))
+        order = composition.get("left_to_right")
+        if order and not isinstance(order, list):
+            parts.append(_sentence(f"The composition reads {order}"))
+
+        names = [_text(element.get("display_name")) for element, _ in visible]
+        names = [name for name in names if name]
+        for note in _note_sentences(composition.get("composition_notes")):
+            if not _is_redundant_scene_note(note, names):
+                parts.append(_sentence(note))
+
+    interactions = _interaction_map(ir, elements)
+    rendered_subjects: set[str] = set()
+    for element, placement in visible:
+        element_id = str(element.get("id") or "")
+        rendered_subjects.add(element_id)
+        clauses = interactions.get(element_id, [])
+        description = _subject_description(element, placement, clauses, elements)
+        parts.append(description)
+    for element_id, clauses in interactions.items():
+        if element_id not in rendered_subjects:
+            name = _text(elements.get(element_id, {}).get("display_name"))
+            for clause in clauses:
+                parts.append(_sentence(f"{name} {clause}"))
+
+    custom = _text(ir.get("custom_interactions"))
+    if custom:
+        parts.append(_sentence(custom))
+    for item in _items(ir.get("dialogue")):
+        speaker_id = str(item.get("speaker_element_id") or "")
+        speaker = _text(elements.get(speaker_id, {}).get("display_name") or "A character")
         exact = str(item.get("text") or "")
         if exact:
-            parts.append(_sentence(f'Include a clearly visible speech panel for {speaker} reading exactly "{exact}"'))
+            detail = f'{speaker} has a clearly visible speech panel reading exactly "{exact}"'
             if item.get("max_lines"):
-                parts.append(_sentence(f'The speech panel uses at most {item["max_lines"]} lines'))
+                detail += f' in no more than {item["max_lines"]} lines'
             if _text(item.get("pointer_target")):
-                parts.append(_sentence(f'The speech panel pointer aims at {item["pointer_target"]}'))
+                detail += f" with its pointer aimed at {_text(item['pointer_target'])}"
             if _text(item.get("notes")):
-                parts.append(_sentence(item["notes"]))
-    for placement in ir.get("placements") or []:
-        element = elements.get(str(placement.get("scene_element_id")), {})
-        name = _text(element.get("display_name"))
-        if not name:
-            continue
-        source = element.get("resolved_source_sections") or {}
-        identity = _text(source.get("identity_anchors") or source.get("identity_preservation_core")
-                         or element.get("fallback_visual_description"))
-        costume = _text(source.get("costume_anchors") or source.get("identity_preservation_costume"))
-        appearance = _text(element.get("element_visual_override"))
-        pose = placement.get("pose") or {}
-        motion = placement.get("motion") or {}
-        location = " ".join(filter(None, (_text(placement.get("position_within_cell")), _text(placement.get("depth")))))
-        detail = [_sentence(f"{name} appears in the {location}" if location else name)]
-        detail.extend(_sentence(value) for value in (identity, costume, appearance, pose.get("summary"),
-                                                      placement.get("placement_notes")) if _text(value))
-        if _text(pose.get("expression")):
-            detail.append(_sentence(f"{name}'s expression is {_text(pose['expression'])}"))
-        gaze = elements.get(str(pose.get("gaze_target_element_id")), {}).get("display_name")
-        if gaze:
-            detail.append(_sentence(f"{name} looks toward {gaze}"))
-        if _text(motion.get("state")) == "moving":
-            direction = _text(motion.get("direction_screen"))
-            if direction:
-                detail.append(_sentence(f"{name} moves {direction}"))
-            if _text(motion.get("cue")):
-                detail.append(_sentence(motion["cue"]))
-        parts.append(" ".join(detail))
-    for prop in ir.get("props") or []:
-        parts.append(_sentence(prop.get("description") or prop.get("state")))
+                detail += f"; {_text(item['notes'])}"
+            parts.append(_sentence(detail))
+
+    for prop in _items(ir.get("props")):
+        description = prop.get("description") or prop.get("state")
+        if _text(description):
+            parts.append(_sentence(description))
     for label, value in (("Lighting", environment.get("lighting")), ("Atmosphere", environment.get("weather_or_atmosphere")),
                          ("Mood", environment.get("mood"))):
         if _text(value):
