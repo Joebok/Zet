@@ -269,7 +269,7 @@ class LocalSceneBatchService:
                                  "target_label": self.targets.target_label(_read(Path(run["root"]) / "snapshot.json")["scene"], target)})
         return rows
 
-    def _selected(self, state: dict) -> dict:
+    def _selected(self, state: dict, *, verify: bool = False) -> dict:
         selected = {}
         for target, candidate_id in state["selected_views"].items():
             group = state["groups"][target]
@@ -277,7 +277,11 @@ class LocalSceneBatchService:
             path = Path(candidate.get("image_path") or "")
             if candidate.get("status") != "COMPLETE" or not path.is_file():
                 continue
-            selected[target] = {"path": str(path), "sha256": _hash(path), "candidate_id": candidate_id}
+            expected_hash = str(candidate.get("sha256") or "")
+            digest = _hash(path) if verify or not expected_hash else expected_hash
+            if verify and expected_hash and digest != expected_hash:
+                raise ValueError("A selected scene render image was changed after review.")
+            selected[target] = {"path": str(path), "sha256": digest, "candidate_id": candidate_id}
         return selected
 
     def _compile(self, root: Path, state: dict, target: str) -> dict:
@@ -292,7 +296,7 @@ class LocalSceneBatchService:
         try:
             compiled = self.story.story_render_service.compile_batch_target(
                 snapshot["scene"], snapshot["settings"], snapshot["sections"], snapshot["references"], target,
-                self._selected(state))
+                self._selected(state, verify=True))
         except Exception as exc:
             raise ValueError(str(exc)) from exc
         group = state["groups"][target]
@@ -310,7 +314,7 @@ class LocalSceneBatchService:
                    "prompt_sha256": _hash(prompt_path),
                    "ir_sha256": _hash(output / "Scene_Render_IR.json"),
                    "render_input_hash": compiled["render_input_hash"],
-                   "source_selections": self._selected(state)}
+                   "source_selections": self._selected(state, verify=True)}
         group.setdefault("attempts", {})[generation] = attempt
         group.update(attempt_id=generation, prompt_path=str(prompt_path), ir_path=str(output / "Scene_Render_IR.json"),
                      reference_images=compiled["references"], prompt_sha256=_hash(prompt_path),
@@ -330,7 +334,7 @@ class LocalSceneBatchService:
                          "label": item.get("label", ""), "role": item.get("prompt_role", ""),
                          "applies_to": item.get("applies_to", ""),
                      } for item in compiled["ir"].get("image_inputs", [])],
-                     render_input_hash=compiled["render_input_hash"], source_selections=self._selected(state),
+                     render_input_hash=compiled["render_input_hash"], source_selections=self._selected(state, verify=True),
                      status="COMPILED", stale_reason="")
         # Shared improvement packages read current per-target compiler artifacts.
         directory = root / "prompts" / target
@@ -451,13 +455,19 @@ class LocalSceneBatchService:
                 shutil.rmtree(work_file.parent.parent, ignore_errors=True)
             candidate.pop("work_path", None)
 
-    def detail(self, story: str, scene: str, run_id: str) -> dict:
+    def detail(self, story: str, scene: str, run_id: str, *, refresh_previews: bool = False) -> dict:
         root = self.root(story, scene, run_id)
         with file_lock(root / "state.lock"):
             spec, state = _read(root / "spec.json"), _read(root / "state.json")
+            original_spec, original_state = copy.deepcopy(spec), copy.deepcopy(state)
             self._reconcile_targets(spec, state, self.preview(story, scene, {}))
-            self._refresh_reference_previews(root, spec, state)
             selected = self._selected(state)
+            preview_key = self._reference_preview_key(story, scene, state)
+            if refresh_previews or state.get("reference_preview_key") != preview_key:
+                if self._refresh_reference_previews(root, spec, state, selected):
+                    state["reference_preview_key"] = preview_key
+                else:
+                    state.pop("reference_preview_key", None)
             for target, candidate_id in list(state["selected_views"].items()):
                 if target not in selected:
                     state["selected_views"].pop(target, None)
@@ -477,8 +487,8 @@ class LocalSceneBatchService:
                             state["rankings"][target] = {"status": "RUNNING", "job_id": job_id}
                             _ACTIVE_REVIEWS.add(job_id)
                             _REVIEWS.submit(self._rate, story, scene, run_id, target, group.get("revision", 0), job_id)
-                        group["status"] = ("SELECTED" if target in self._selected(state) else "AWAITING_HUMAN_SELECTION")
-                        if state.get("publication", {}).get("status") == "COMPLETE" and target in self._selected(state):
+                        group["status"] = ("SELECTED" if target in selected else "AWAITING_HUMAN_SELECTION")
+                        if state.get("publication", {}).get("status") == "COMPLETE" and target in selected:
                             group["status"] = "PUBLISHED"
                 elif not active and any(item["status"] == "FAILED" for item in candidates):
                     group["status"] = "FAILED"
@@ -486,7 +496,7 @@ class LocalSceneBatchService:
                     group["status"] = "COMPILED" if group.get("prompt_path") else "PENDING"
             if state["stop_requested"]:
                 state["status"] = "STOPPED"
-            elif all(target in self._selected(state) for target in spec["views"]):
+            elif all(target in selected for target in spec["views"]):
                 state["status"] = "COMPLETE" if state.get("publication", {}).get("status") == "COMPLETE" else "READY_TO_PUBLISH"
             elif any(item["status"] in {"QUEUED", "RUNNING"} for group in state["groups"].values() for item in group["candidates"]):
                 state["status"] = "RUNNING"
@@ -496,9 +506,12 @@ class LocalSceneBatchService:
                 state["status"] = "AWAITING_HUMAN_SELECTION" if any(
                     candidate["status"] == "COMPLETE" for group in state["groups"].values()
                     for candidate in group["candidates"]) else "QUEUED"
-            state["updated_at"] = _now()
-            write_json_atomic(root / "state.json", state)
-            write_json_atomic(root / "spec.json", spec)
+            if state != original_state or spec != original_spec:
+                state["updated_at"] = _now()
+            if state != original_state:
+                write_json_atomic(root / "state.json", state)
+            if spec != original_spec:
+                write_json_atomic(root / "spec.json", spec)
             result = {**spec, **state, "root": str(root)}
             for group in result["groups"].values():
                 active_ids = set(group.get("active_slot_ids", {}).values())
@@ -509,7 +522,7 @@ class LocalSceneBatchService:
                                      "prompt_path": group.get("attempts", {}).get(item.get("attempt_id"), group).get("prompt_path", "")}
                                     for target, group in state["groups"].items() for item in group["candidates"]]
             result["ready_targets"] = [item["target_id"] for item in spec["targets"]
-                                       if set(item["dependencies"]) <= set(self._selected(state))
+                                       if set(item["dependencies"]) <= set(selected)
                                        and item["target_id"] not in state["selected_views"]]
             result["historical_targets"] = [
                 {"target_id": target, "label": group.get("label") or target, "kind": group.get("kind", ""),
@@ -519,12 +532,33 @@ class LocalSceneBatchService:
             ]
             return result
 
-    def _refresh_reference_previews(self, root: Path, spec: dict, state: dict) -> None:
+    def _reference_preview_key(self, story: str, scene: str, state: dict) -> str:
+        builder_path = self.story.scene_builder_json_path(story, scene)
+        try:
+            builder_stat = builder_path.stat()
+            builder_signature = (builder_stat.st_size, builder_stat.st_mtime_ns)
+        except OSError:
+            builder_signature = None
+        selected_signatures = []
+        for target, candidate_id in sorted(state.get("selected_views", {}).items()):
+            group = state.get("groups", {}).get(target, {})
+            candidate = next((item for item in group.get("candidates", [])
+                              if item.get("candidate_id") == candidate_id), {})
+            path = Path(candidate.get("image_path") or "")
+            try:
+                image_stat = path.stat()
+                image_signature = (image_stat.st_size, image_stat.st_mtime_ns)
+            except OSError:
+                image_signature = None
+            selected_signatures.append((target, candidate_id, image_signature))
+        return json.dumps((builder_signature, selected_signatures), separators=(",", ":"))
+
+    def _refresh_reference_previews(self, root: Path, spec: dict, state: dict, selected: dict) -> bool:
         """Expose the saved references that would feed each target's next render."""
+        complete = True
         document = self.story.load_scene_builder_data(spec["story_slug"], spec["scene_slug"])
         scene = copy.deepcopy(document.data)
         scene.setdefault("scene", {})["_story_slug"] = spec["story_slug"]
-        selected = self._selected(state)
         statuses = {target: {"locked_exists": True, "locked_current": True, "locked_image_path": value["path"]}
                     for target, value in selected.items()}
         for definition in spec["targets"]:
@@ -544,24 +578,60 @@ class LocalSceneBatchService:
                 preview_dir = root / "reference-previews" / target
                 preview_dir.mkdir(parents=True, exist_ok=True)
                 previews = []
+                previous_by_source = {
+                    str(item.get("source_path") or ""): item
+                    for item in state["groups"].get(target, {}).get("next_reference_images", [])
+                }
                 for index, reference in enumerate(bindings.values(), 1):
                     source = Path(str(reference.get("path") or ""))
                     if not source.is_file():
                         continue
-                    digest = _hash(source)
+                    source_stat = source.stat()
+                    source_key = str(source.resolve())
+                    previous_preview = previous_by_source.get(source_key)
+                    source_signature = (source_stat.st_size, source_stat.st_mtime_ns)
+                    if previous_preview and (
+                        previous_preview.get("source_size"), previous_preview.get("source_mtime_ns")
+                    ) == source_signature:
+                        digest = str(previous_preview.get("sha256") or "")
+                    else:
+                        digest = _hash(source)
                     destination = preview_dir / f"{index:03d}_{digest[:16]}{source.suffix or '.png'}"
-                    if not destination.is_file() or _hash(destination) != digest:
+                    destination_stat = destination.stat() if destination.is_file() else None
+                    previous_destination_matches = bool(
+                        previous_preview
+                        and previous_preview.get("path") == str(destination)
+                        and destination_stat
+                        and (previous_preview.get("preview_size"), previous_preview.get("preview_mtime_ns"))
+                        == (destination_stat.st_size, destination_stat.st_mtime_ns)
+                    )
+                    if not previous_destination_matches and (
+                        not destination_stat or _hash(destination) != digest
+                    ):
                         atomic_copy(source, destination)
-                    previews.append({**reference, "path": str(destination), "sha256": digest, "image_index": index})
+                        destination_stat = destination.stat()
+                    previews.append({
+                        **reference,
+                        "path": str(destination),
+                        "source_path": source_key,
+                        "sha256": digest,
+                        "source_size": source_stat.st_size,
+                        "source_mtime_ns": source_stat.st_mtime_ns,
+                        "preview_size": destination_stat.st_size if destination_stat else 0,
+                        "preview_mtime_ns": destination_stat.st_mtime_ns if destination_stat else 0,
+                        "image_index": index,
+                    })
                 keep = {Path(item["path"]).resolve() for item in previews}
                 for previous in preview_dir.iterdir():
                     if previous.is_file() and previous.resolve() not in keep:
                         previous.unlink(missing_ok=True)
                 state["groups"][target]["next_reference_images"] = previews
             except Exception:
+                complete = False
                 # Keep page loading available when a saved source is temporarily unavailable;
                 # submission validates and reports actual missing/unsupported inputs.
                 state["groups"][target]["next_reference_images"] = []
+        return complete
 
     def _rate(self, story, scene, run_id, target, revision, job_id):
         root = self.root(story, scene, run_id)
@@ -690,6 +760,9 @@ class LocalSceneBatchService:
                     image_path = Path(candidate.get("image_path") or "")
                     if candidate["status"] != "COMPLETE" or not image_path.is_file():
                         raise ValueError("Choose a completed image that is still available.")
+                    expected_hash = str(candidate.get("sha256") or "")
+                    if expected_hash and _hash(image_path) != expected_hash:
+                        raise ValueError("The completed image was changed after rendering.")
                     state["selected_views"][target] = candidate_id
             elif name == "clear":
                 candidate_id = str(payload.get("candidate_id") or "")
@@ -728,7 +801,9 @@ class LocalSceneBatchService:
                 raise ValueError("Unknown scene batch action.")
             write_json_atomic(root / "spec.json", spec)
             write_json_atomic(root / "state.json", state)
-        return self.detail(story, scene, run_id)
+        return self.detail(story, scene, run_id, refresh_previews=name in {
+            "start", "resume", "render", "retry", "rerender", "compile", "recompile",
+        })
 
     @staticmethod
     def _activate_attempt_slots(group: dict, target: str, slot_numbers: list[int], attempt_id: str,
@@ -795,7 +870,7 @@ class LocalSceneBatchService:
         group["status"] = "RUNNING"
 
     def _publish(self, root, spec, state):
-        all_selected = self._selected(state)
+        all_selected = self._selected(state, verify=True)
         selected = {target: all_selected[target] for target in spec["views"] if target in all_selected}
         if set(selected) != set(spec["views"]):
             raise ValueError("Select an available image for every active target before publishing.")

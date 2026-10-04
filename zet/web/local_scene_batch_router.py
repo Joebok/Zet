@@ -1,5 +1,5 @@
 """HTTP presentation for story-scoped local scene batches."""
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from starlette.background import BackgroundTask
 
@@ -30,8 +30,9 @@ def create_local_scene_batch_router(app_factory):
                              "linked_batch_id": service().linked_batch(story_slug, scene_slug, target_id, ask_id)})
 
     @router.get("/{run_id}")
-    def detail(story_slug: str, scene_slug: str, run_id: str):
-        return call(lambda: service().improvement(story_slug, scene_slug).detail(run_id))
+    def detail(story_slug: str, scene_slug: str, run_id: str, refresh_previews: bool = Query(False)):
+        return call(lambda: service().detail(story_slug, scene_slug, run_id,
+                                             refresh_previews=refresh_previews))
 
     @router.delete("/{run_id}")
     def delete(story_slug: str, scene_slug: str, run_id: str):

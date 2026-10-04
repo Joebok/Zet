@@ -193,38 +193,80 @@ class EntityLibraryService:
         include_archived = bool(filters.pop("include_archived", False))
         hide_obsolete = bool(filters.pop("hide_obsolete", False))
         rows = self.repository.fetchall("SELECT * FROM assets ORDER BY created_at DESC, asset_id")
+        if not rows:
+            return []
+        asset_ids = tuple(row["asset_id"] for row in rows)
+        placeholders = ",".join("?" for _ in asset_ids)
+        entities_by_asset: dict[str, list[dict]] = {}
+        for item in self.repository.fetchall(
+            f"SELECT ae.asset_id,e.entity_id,e.name,e.entity_type,ae.role,ae.variant_id,v.name AS variant_name "
+            f"FROM asset_entities ae JOIN entities e ON e.entity_id=ae.entity_id "
+            f"LEFT JOIN variants v ON v.variant_id=ae.variant_id WHERE ae.asset_id IN ({placeholders}) ORDER BY e.name",
+            asset_ids,
+        ):
+            entities_by_asset.setdefault(item["asset_id"], []).append(item)
+        sets_by_asset: dict[str, list[dict]] = {}
+        for item in self.repository.fetchall(
+            f"SELECT sa.asset_id,s.set_id,s.name,sa.role,sa.sort_order FROM reference_set_assets sa "
+            f"JOIN reference_sets s ON s.set_id=sa.set_id WHERE sa.asset_id IN ({placeholders}) "
+            f"ORDER BY sa.sort_order,s.name",
+            asset_ids,
+        ):
+            sets_by_asset.setdefault(item["asset_id"], []).append(item)
+        facets_by_asset: dict[str, list[dict]] = {}
+        for item in self.repository.fetchall(
+            f"SELECT af.asset_id,f.namespace,f.value FROM asset_facets af "
+            f"JOIN facets f ON f.facet_id=af.facet_id WHERE af.asset_id IN ({placeholders}) "
+            f"ORDER BY f.namespace,f.value",
+            asset_ids,
+        ):
+            facets_by_asset.setdefault(item["asset_id"], []).append(item)
+        tags_by_asset: dict[str, list[str]] = {}
+        for item in self.repository.fetchall(
+            f"SELECT asset_id,tag FROM asset_tags WHERE asset_id IN ({placeholders}) ORDER BY tag",
+            asset_ids,
+        ):
+            tags_by_asset.setdefault(item["asset_id"], []).append(item["tag"])
+        references_by_asset: dict[str, list[dict]] = {}
+        for item in self.repository.fetchall(
+            f"SELECT reference_key,label,set_id,status,asset_id FROM logical_references "
+            f"WHERE asset_id IN ({placeholders}) ORDER BY reference_key",
+            asset_ids,
+        ):
+            references_by_asset.setdefault(item["asset_id"], []).append({
+                key: item[key] for key in ("reference_key", "label", "set_id", "status")
+            })
+        descriptor_assets = {
+            item["asset_id"]
+            for item in self.repository.fetchall(
+                f"SELECT DISTINCT a.asset_id FROM assets a JOIN descriptors d ON d.enabled=1 "
+                f"AND d.descriptor_type IN ('prompt_identity','prompt_object','prompt_background','human_description') "
+                f"LEFT JOIN asset_entities ae ON ae.asset_id=a.asset_id "
+                f"LEFT JOIN reference_set_assets rsa ON rsa.asset_id=a.asset_id "
+                f"WHERE a.asset_id IN ({placeholders}) AND ((d.owner_type='asset' AND d.owner_id=a.asset_id) "
+                f"OR (d.owner_type='entity' AND d.owner_id=ae.entity_id) "
+                f"OR (d.owner_type='variant' AND d.owner_id=ae.variant_id) "
+                f"OR (d.owner_type='set' AND d.owner_id=rsa.set_id))",
+                asset_ids,
+            )
+        }
         output = []
+        query = str(filters.get("q") or "").casefold().split()
         for row in rows:
             asset_id = row["asset_id"]
             path = self._image_path(asset_id, row["file_name"])
             if not path.is_file():
                 continue
-            entities = self.repository.fetchall(
-                "SELECT e.entity_id,e.name,e.entity_type,ae.role,ae.variant_id,v.name AS variant_name FROM asset_entities ae JOIN entities e ON e.entity_id=ae.entity_id LEFT JOIN variants v ON v.variant_id=ae.variant_id WHERE ae.asset_id=? ORDER BY e.name",
-                (asset_id,),
-            )
-            sets = self.repository.fetchall(
-                "SELECT s.set_id,s.name,sa.role,sa.sort_order FROM reference_set_assets sa JOIN reference_sets s ON s.set_id=sa.set_id WHERE sa.asset_id=? ORDER BY sa.sort_order,s.name",
-                (asset_id,),
-            )
-            facets = self.repository.fetchall(
-                "SELECT f.namespace,f.value FROM asset_facets af JOIN facets f ON f.facet_id=af.facet_id WHERE af.asset_id=? ORDER BY f.namespace,f.value",
-                (asset_id,),
-            )
-            tags = [item["tag"] for item in self.repository.fetchall("SELECT tag FROM asset_tags WHERE asset_id=? ORDER BY tag", (asset_id,))]
-            logical_references = self.repository.fetchall(
-                "SELECT reference_key,label,set_id,status FROM logical_references WHERE asset_id=? ORDER BY reference_key",
-                (asset_id,),
-            )
+            entities = entities_by_asset.get(asset_id, [])
+            sets = sets_by_asset.get(asset_id, [])
+            facets = facets_by_asset.get(asset_id, [])
+            tags = tags_by_asset.get(asset_id, [])
+            logical_references = references_by_asset.get(asset_id, [])
             logical = next((reference for reference in logical_references if reference["status"] == "active"), None)
             if row["status"] != "approved":
                 logical = None
             item = {**row, "image_path": str(path), "thumbnail_path": str(path), "entities": entities, "sets": sets, "facets": facets, "tags": tags, "logical_reference": logical, "logical_references": logical_references}
-            descriptor_ready = self.repository.fetchone(
-                "SELECT 1 FROM descriptors d WHERE d.enabled=1 AND d.descriptor_type IN ('prompt_identity','prompt_object','prompt_background','human_description') AND ((d.owner_type='asset' AND d.owner_id=?) OR (d.owner_type='entity' AND d.owner_id IN (SELECT entity_id FROM asset_entities WHERE asset_id=?)) OR (d.owner_type='variant' AND d.owner_id IN (SELECT variant_id FROM asset_entities WHERE asset_id=?)) OR (d.owner_type='set' AND d.owner_id IN (SELECT set_id FROM reference_set_assets WHERE asset_id=?))) LIMIT 1",
-                (asset_id, asset_id, asset_id, asset_id),
-            )
-            item["descriptor_ready"] = bool(descriptor_ready)
+            item["descriptor_ready"] = asset_id in descriptor_assets
             if row["status"] == "archived" and filters.get("status") != "archived" and not include_archived:
                 continue
             if row["status"] == "obsolete" and filters.get("status") != "obsolete" and hide_obsolete:
@@ -245,7 +287,6 @@ class EntityLibraryService:
                 continue
             if filters.get("facet_value") and not any(value["value"] == filters["facet_value"] for value in facets):
                 continue
-            query = str(filters.get("q") or "").casefold().split()
             haystack = " ".join([row["label"], row["file_name"], row["origin"], row["notes"], logical["reference_key"] if logical else "", *[value["name"] for value in entities], *[value["variant_name"] or "" for value in entities], *[value["name"] for value in sets], *tags, *[f'{value["namespace"]}:{value["value"]}' for value in facets]]).casefold()
             if query and not all(term in haystack for term in query):
                 continue

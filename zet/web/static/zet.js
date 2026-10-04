@@ -168,6 +168,8 @@ const state = {
   navigationRequest: 0,
   transitionPromise: null,
 };
+
+let startupRecoveryTimer = null;
 const universeSelect = document.querySelector("#universe-select");
 const universeSettingsForm = document.querySelector("#universe-settings-form");
 const universeSettingsArtStyle = document.querySelector("#universe-settings-art-style");
@@ -624,6 +626,7 @@ const storyText = document.querySelector("#story-text");
 const storySettingsJson = document.querySelector("#story-settings-json");
 const storySettingsFields = document.querySelector("#story-settings-fields");
 const storyGitWarning = document.querySelector("#story-git-warning");
+const startupRecoveryStatus = document.querySelector("#startup-recovery-status");
 const storyGitStatus = document.querySelector("#story-git-status");
 const storyGitPull = document.querySelector("#story-git-pull");
 const storyGitCommit = document.querySelector("#story-git-commit");
@@ -2607,8 +2610,36 @@ function saveStoredAssetFilters() {
   window.localStorage.setItem(HIDE_BASE_IMAGES_STORAGE_KEY, state.assetFilters.hideBaseImages ? "true" : "false");
 }
 
+function updateStartupRecoveryStatus(recovery) {
+  const status = String(recovery?.status || "complete");
+  startupRecoveryStatus.dataset.status = status;
+  startupRecoveryStatus.textContent = status === "running"
+    ? (recovery.message || "Restoring saved image review jobs…")
+    : status === "error" ? `Image review recovery needs attention: ${recovery.message || "unknown error"}` : "";
+  startupRecoveryStatus.hidden = !["running", "error"].includes(status);
+  if (status === "running") {
+    if (!startupRecoveryTimer) {
+      startupRecoveryTimer = window.setTimeout(() => void pollStartupRecoveryStatus(), 5000);
+    }
+  } else if (startupRecoveryTimer) {
+    window.clearTimeout(startupRecoveryTimer);
+    startupRecoveryTimer = null;
+  }
+}
+
+async function pollStartupRecoveryStatus() {
+  startupRecoveryTimer = null;
+  try {
+    const health = await fetchJson("/api/health");
+    updateStartupRecoveryStatus(health.recovery);
+  } catch {
+    updateStartupRecoveryStatus({ status: "running", message: "Checking saved image review jobs…" });
+  }
+}
+
 async function loadContext() {
   const payload = await fetchJson("/api/context");
+  updateStartupRecoveryStatus(payload.recovery);
   const stored = loadStoredContext();
   state.characters = payload.characters || [];
   state.phasesByCharacter = payload.phases_by_character || {};
@@ -7630,9 +7661,7 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
   updateSceneBuilderNavigation();
   showSceneBuilderMessage("Loading Scene Builder...");
   try {
-    await loadSceneImageReferences();
-    if (!selectionMatches()) return;
-    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/builder`, {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/builder?include_references=false`, {
       signal: selection.controller.signal,
     });
     if (!selectionMatches()) return;
@@ -7653,25 +7682,37 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
     state.sceneBuilderRenderTargets = document.render_targets || [];
     state.sceneBuilderReadiness = document.readiness || null;
     state.sceneBuilderOptions = payload.options || {};
-    state.sceneBuilderReferences = payload.references || [];
+    state.sceneBuilderReferences = [];
     state.activeBuilderRenderTarget = preferredRenderTargetId === "main"
       || (state.sceneBuilder.subscenes || []).some((item) => item.id === preferredRenderTargetId)
       ? preferredRenderTargetId
       : "main";
-    await loadScenePromptAnalysis(state.activeBuilderRenderTarget, { signal: selection.controller.signal });
-    if (!selectionMatches()) return;
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.builderResponsiveSection = "elements";
     state.sceneBuilderOpen = true;
-    await builderLoadSelectedElementCostumes(builderSelectedElement(), { signal: selection.controller.signal });
-    if (!selectionMatches()) return;
     state.loadedBuilderContext = loadedBuilderContext;
     renderSceneBuilder();
     state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
     updateDirtyIndicators();
     updateSceneBuilderNavigation();
-    showSceneBuilderMessage(state.sceneBuilder._migrated_from_schema_version ? "This scene used an older Scene Builder schema and has been migrated to v2. Save to update the JSON file." : "Scene Builder loaded.", "success");
+    showSceneBuilderMessage("Scene Builder loaded. Loading image references and analysis…", "info");
+    void Promise.allSettled([
+      fetchJson("/api/scene-image-picker", { signal: selection.controller.signal }),
+      loadScenePromptAnalysis(state.activeBuilderRenderTarget, { signal: selection.controller.signal }),
+      builderLoadSelectedElementCostumes(builderSelectedElement(), { signal: selection.controller.signal }),
+    ]).then((results) => {
+      if (!selectionMatches()) return;
+      const [references] = results;
+      if (references.status === "fulfilled") state.sceneBuilderReferences = references.value.rows || [];
+      renderSceneBuilder();
+      const failed = results.some((result) => result.status === "rejected");
+      showSceneBuilderMessage(failed
+        ? "Scene Builder is ready; some secondary data could not be loaded."
+        : state.sceneBuilder._migrated_from_schema_version
+          ? "This scene used an older Scene Builder schema and has been migrated to v2. Save to update the JSON file."
+          : "Scene Builder loaded.", failed ? "info" : "success");
+    });
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   } finally {

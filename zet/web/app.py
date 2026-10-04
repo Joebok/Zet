@@ -928,8 +928,7 @@ def create_app(
         for zet_app in application.state.universe_apps.values():
             zet_app.image_catalog_service.repository.load()
             zet_app.library_index_reconciler.start()
-            LocalCharacterOverviewService(zet_app, PROJECT_ROOT).recover()
-            LocalRunAllRemainingService(zet_app, PROJECT_ROOT).recover()
+            _schedule_recovery(zet_app)
         try:
             yield
         finally:
@@ -944,10 +943,54 @@ def create_app(
     app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.image_prompt_generation_service = ImagePromptGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.universe_lock = threading.RLock()
+    app.state.recovery_lock = threading.Lock()
+    app.state.recovery_statuses = {}
+    app.state.recovery_threads = {}
     current_universe = ContextVar(f"zet_universe_{id(app)}", default=None)
     # Start reconciliation in the background so it cannot hold HTTP startup hostage.
     if validate_catalog_on_create:
         app.state.zet_app.library_index_reconciler.start()
+
+    def _schedule_recovery(zet_app: ZetApp) -> None:
+        universe_id = zet_app.universe_id
+        with app.state.recovery_lock:
+            existing = app.state.recovery_threads.get(universe_id)
+            if existing is not None and existing.is_alive():
+                return
+            app.state.recovery_statuses[universe_id] = {
+                "status": "running",
+                "message": "Restoring saved image review jobs…",
+            }
+
+            def recover() -> None:
+                try:
+                    LocalCharacterOverviewService(zet_app, PROJECT_ROOT).recover()
+                    LocalRunAllRemainingService(zet_app, PROJECT_ROOT).recover()
+                except Exception as exc:
+                    with app.state.recovery_lock:
+                        app.state.recovery_statuses[universe_id] = {
+                            "status": "error", "message": str(exc),
+                        }
+                else:
+                    with app.state.recovery_lock:
+                        app.state.recovery_statuses[universe_id] = {
+                            "status": "complete", "message": "",
+                        }
+
+            thread = threading.Thread(
+                target=recover,
+                name=f"zet-startup-recovery-{universe_id}",
+                daemon=True,
+            )
+            app.state.recovery_threads[universe_id] = thread
+            thread.start()
+
+    def _recovery_status(universe_id: str | None = None) -> dict[str, str]:
+        selected_id = universe_id or app.state.zet_app.universe_id
+        with app.state.recovery_lock:
+            return dict(app.state.recovery_statuses.get(
+                selected_id, {"status": "complete", "message": ""}
+            ))
 
     if performance is not None:
         @app.middleware("http")
@@ -970,8 +1013,7 @@ def create_app(
             if existing is None:
                 existing = ZetApp.from_config(app.state.config_path, universe_id=universe_id)
                 existing.library_index_reconciler.start()
-                LocalCharacterOverviewService(existing, PROJECT_ROOT).recover()
-                LocalRunAllRemainingService(existing, PROJECT_ROOT).recover()
+                _schedule_recovery(existing)
                 app.state.universe_apps[universe_id] = existing
             return existing
 
@@ -1066,7 +1108,11 @@ def create_app(
     @app.get("/api/health")
     def health() -> dict[str, Any]:
         """Report that the Zet HTTP application has completed startup and can serve requests."""
-        return {"ready": True, "catalog_reconciliation": app.state.zet_app.library_index_reconciler.status()}
+        return {
+            "ready": True,
+            "catalog_reconciliation": app.state.zet_app.library_index_reconciler.status(),
+            "recovery": _recovery_status(current_universe.get()),
+        }
 
     app.mount("/static", StaticFiles(directory=PACKAGE_ROOT / "static"), name="zet_web_static")
     app.mount("/img", StaticFiles(directory=PROJECT_ROOT / "img"), name="zet_img")
@@ -1310,6 +1356,7 @@ def create_app(
             "phases_by_character": phases_by_character,
             "onboarding_statuses": onboarding_statuses,
             "header_previews": header_previews,
+            "recovery": _recovery_status(current_universe.get()),
             "onboarding_options": _onboarding_options_payload(zet_app.character_onboarding_options()),
             "auxiliary_resource_categories": AUXILIARY_RESOURCE_CATEGORIES,
             "default_character": characters[0] if characters else None,
@@ -1702,14 +1749,15 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/stories/{story_slug}/scenes/{scene_slug}/builder")
-    def scene_builder_detail(story_slug: str, scene_slug: str) -> dict[str, Any]:
+    def scene_builder_detail(story_slug: str, scene_slug: str, include_references: bool = Query(True)) -> dict[str, Any]:
         """Load Scene Builder JSON for one story scene."""
         zet_app = _app(app.state.config_path)
         try:
             return {
                 "document": _scene_builder_document_payload(zet_app, zet_app.load_scene_builder(story_slug, scene_slug)),
                 "options": zet_app.scene_builder_options(),
-                "references": [_image_reference_payload(item) for item in zet_app.scene_image_reference_rows()],
+                "references": ([_image_reference_payload(item) for item in zet_app.scene_image_reference_rows()]
+                               if include_references else []),
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -4167,7 +4215,8 @@ def create_app(
     return app
 
 
-app = create_app(validate_catalog_on_create=False)
+if __name__ != "__main__":
+    app = create_app(validate_catalog_on_create=False)
 
 
 def build_parser() -> argparse.ArgumentParser:

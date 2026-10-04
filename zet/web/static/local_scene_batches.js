@@ -42,7 +42,7 @@ window.SceneBatches = (() => {
       run = updated;
       message.textContent = run.status.replaceAll("_", " "); render();
     } catch (error) { if (version === expectedVersion) message.textContent = error.message; }
-    finally { if (version === expectedVersion) { pending = false; render(); } }
+    finally { if (version === expectedVersion) { pending = false; render(); scheduleRefresh(); } }
   }
   function render() {
     const expanded = new Set(Array.from(host.querySelectorAll("details[open]")).map(item => item.dataset.target));
@@ -157,22 +157,43 @@ window.SceneBatches = (() => {
       section.append(cards); host.append(section);
     }
   }
-  async function refresh() {
-    if (!run || pending || !page.classList.contains("active") || document.hidden) return;
+  function hasActiveWork() {
+    if (!run) return false;
+    const active = new Set(["SUBMITTING", "QUEUED", "RUNNING"]);
+    return Object.values(run.groups || {}).some(group =>
+      (group.candidates || []).some(item => active.has(item.status))
+      || active.has(group.analysis?.status))
+      || Object.values(run.rankings || {}).some(item => item.status === "RUNNING");
+  }
+  function scheduleRefresh(delay = 5000) {
+    clearTimeout(timer);
+    timer = null;
+    if (hasActiveWork() && page.classList.contains("active") && !document.hidden) {
+      timer = setTimeout(() => void refresh(), delay);
+    }
+  }
+  async function refresh(forcePreviews = false) {
+    if (!run || pending || !page.classList.contains("active") || document.hidden) {
+      scheduleRefresh();
+      return;
+    }
     const expectedVersion = version, expectedId = run.run_id;
     try {
-      const updated = await request(`${base()}/${expectedId}`);
+      const updated = await request(`${base()}/${expectedId}${forcePreviews ? "?refresh_previews=true" : ""}`);
       if (pending || expectedVersion !== version || expectedId !== run?.run_id) return;
+      const changed = updated.updated_at !== run.updated_at;
       run = updated;
-      if (!page.contains(document.activeElement) || !document.activeElement.matches("textarea,input,select")) render();
+      if (changed && (!page.contains(document.activeElement) || !document.activeElement.matches("textarea,input,select"))) render();
     } catch (error) { message.textContent = error.message; }
+    scheduleRefresh();
   }
   async function open(nextContext) {
-    clearInterval(timer); const expectedVersion = ++version; pending = false;
+    clearTimeout(timer); timer = null; const expectedVersion = ++version; pending = false;
     if (!nextContext.story || !nextContext.scene) { message.textContent = "Select a story and scene first."; context = null; run = null; render(); return; }
     if (context?.story !== nextContext.story || context?.scene !== nextContext.scene) { run = null; observations.clear(); }
     context = nextContext;
     document.querySelector("#scene-batch-context").textContent = `${context.story} / ${context.scene}`;
+    message.textContent = "Loading saved scene render state…";
     try {
       const listed = await request(base());
       if (expectedVersion !== version) return;
@@ -181,12 +202,13 @@ window.SceneBatches = (() => {
       if (expectedVersion !== version) return;
       message.textContent = "Each target has eight active slots. New renders keep earlier images available for selection.";
       render();
-      timer = setInterval(() => void refresh(), 3000);
+      scheduleRefresh();
     } catch (error) { message.textContent = error.message; run = null; render(); }
   }
   document.querySelector("#scene-batch-start").addEventListener("click", () => void perform("start"));
   document.querySelector("#scene-batch-stop").addEventListener("click", () => void perform("stop"));
   document.querySelector("#scene-batch-publish").addEventListener("click", () => void perform("publish"));
-  document.querySelector("#scene-batch-refresh").addEventListener("click", () => void refresh());
+  document.querySelector("#scene-batch-refresh").addEventListener("click", () => void refresh(true));
+  document.addEventListener("visibilitychange", () => scheduleRefresh(0));
   return {open};
 })();

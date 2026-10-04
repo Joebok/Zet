@@ -133,6 +133,18 @@ body {
   padding: 4px 8px;
 }
 
+#startup-recovery-status {
+  color: #ffffff;
+  font-size: 12px;
+  margin-right: 12px;
+  max-width: 240px;
+  text-align: right;
+}
+
+#startup-recovery-status[data-status="error"] {
+  color: #ffd1d1;
+}
+
 .context-controls {
   align-items: center;
   align-self: stretch;
