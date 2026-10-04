@@ -278,6 +278,10 @@ class StoryService:
                     and sections.get("library_asset_id")
                     and not sections.get("identity_preservation_core")
                     and not str(element.get("fallback_visual_description") or "").strip()
+                    and not (
+                        element.get("element_type") in {"Backdrop", "Prop"}
+                        and str(element.get("element_visual_override") or "").strip()
+                    )
                 ):
                     raise StoryServiceError(
                         f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs prompt identity or object description text."

@@ -142,6 +142,30 @@ class StoryServiceTests(unittest.TestCase):
             self.assertEqual(asset_id, sections["library_asset_id"])
             self.assertEqual("sha256:test", sections["library_checksum"])
 
+    def test_non_character_visual_override_allows_library_image_without_descriptor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+            service.story_reference_service.entity_library_service = SimpleNamespace(
+                get_asset=lambda requested_id: {"asset_id": requested_id, "checksum": "sha256:arch"},
+                effective_descriptors=lambda requested_id, set_id: [],
+            )
+            element = {
+                "id": "arch", "display_name": "Archway", "resource_type": "Scene-Only",
+                "element_type": "Backdrop", "element_visual_override": "An ornate stone archway with bronze gates.",
+                "reference_images": [{"asset_id": "arch-image", "primary_prompt_source": True}],
+            }
+            scene = {"scene_elements": [element]}
+            service._resolve_scene_element_sources(scene)
+            self.assertEqual(scene["scene_elements"][0]["resolved_source_sections"]["library_asset_id"], "arch-image")
+
+            element["element_visual_override"] = ""
+            with self.assertRaisesRegex(StoryServiceError, "needs prompt identity or object description"):
+                service._resolve_scene_element_sources(scene)
+            element["element_type"] = "Character"
+            element["element_visual_override"] = "Walking through the archway."
+            with self.assertRaisesRegex(StoryServiceError, "needs prompt identity or object description"):
+                service._resolve_scene_element_sources(scene)
+
     def test_legacy_aux_and_new_image_tags_resolve_through_the_catalog(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
