@@ -722,6 +722,7 @@ const builderElementNewAuxCancel = document.querySelector("#builder-element-new-
 const builderElementNewAuxSave = document.querySelector("#builder-element-new-aux-save");
 const builderElementNewAuxStatus = document.querySelector("#builder-element-new-aux-status");
 const builderElementSceneSection = document.querySelector("#builder-element-scene-section");
+const builderElementSubsceneSection = document.querySelector("#builder-element-subscene-section");
 const builderElementSceneName = document.querySelector("#builder-element-scene-name");
 const builderElementCancel = document.querySelector("#builder-element-cancel");
 const builderElementAdd = document.querySelector("#builder-element-add");
@@ -6296,6 +6297,7 @@ function builderSyncControls() {
       const reference = (element.reference_images || [])[Number(control.dataset.builderReferenceIndex)];
       if (!reference) continue;
       const field = control.dataset.builderReferenceField;
+      if (field === "label" && control.readOnly) continue;
       if (field === "primary_prompt_source") {
         reference[field] = control.checked;
         if (control.checked) {
@@ -6424,7 +6426,7 @@ function builderAuxCategoryForResourceType(resourceType) {
 
 function builderElementTypeForResourceType(resourceType) {
   if (resourceType === "Place") return "Backdrop";
-  if (resourceType === "Object" || resourceType === "Scene-Only") return "Prop";
+  if (resourceType === "Object" || resourceType === "Scene-Only" || resourceType === "Subscene") return "Prop";
   return "Character";
 }
 
@@ -6433,6 +6435,7 @@ function builderUpdateElementModalSections() {
   builderElementCharacterSection.hidden = resourceType !== "Character";
   builderElementAuxSection.hidden = !builderAuxCategoryForResourceType(resourceType);
   builderElementSceneSection.hidden = resourceType !== "Scene-Only";
+  builderElementSubsceneSection.hidden = resourceType !== "Subscene";
 }
 
 async function builderLoadElementCostumes() {
@@ -6516,12 +6519,18 @@ async function createBuilderElementAuxResource() {
 }
 
 async function openBuilderElementDialog() {
-  setSelectOptionsWithLabels(builderElementResourceType, (state.sceneBuilderOptions.resource_type || []).map((item) => ({ value: item.value, label: item.label })));
+  setSelectOptionsWithLabels(builderElementResourceType, [
+    ...(state.sceneBuilderOptions.resource_type || []).map((item) => ({ value: item.value, label: item.label })),
+    { value: "Subscene", label: "Subscene" },
+  ]);
   builderElementResourceType.value = "Character";
-  setSelectOptions(builderElementCharacter, state.characters || []);
-  builderElementCharacter.value = state.character || state.characters[0] || "";
+  setSelectOptionsWithLabels(builderElementCharacter, [
+    { value: "", label: "(No linked character)" },
+    ...(state.characters || []).map((name) => ({ value: name, label: name })),
+  ]);
+  builderElementCharacter.value = "";
   setSelectOptions(builderElementPhase, state.phasesByCharacter[builderElementCharacter.value] || []);
-  builderElementPhase.value = state.phase || builderElementPhase.options[0]?.value || "";
+  builderElementPhase.value = "";
   builderElementSceneName.value = "";
   closeBuilderElementAuxForm();
   builderUpdateElementModalSections();
@@ -6531,29 +6540,28 @@ async function openBuilderElementDialog() {
   builderElementResourceType.focus();
 }
 
-function builderAddElementFromDialog() {
+async function builderAddElementFromDialog() {
   const index = (state.sceneBuilder.scene_elements || []).length + 1;
   const resourceType = builderElementResourceType.value || "Character";
+  const isSubscene = resourceType === "Subscene";
   const category = builderAuxCategoryForResourceType(resourceType);
   const resource = category ? (state.builderElementAuxResources[category] || []).find((item) => item.resource_id === builderElementAux.value) : null;
-  const displayName = resourceType === "Character"
-    ? builderElementCharacter.value
-    : resourceType === "Scene-Only"
-      ? builderElementSceneName.value.trim()
-      : resource?.label || "";
+  const displayName = builderElementSceneName.value.trim() || (resourceType === "Character" ? builderElementCharacter.value : resource?.label || "");
   if (!displayName) {
     showSceneBuilderMessage("Display name is required.", "error");
+    builderElementSceneName.focus();
+    builderElementSceneName.reportValidity();
     return;
   }
   const baseId = self.crypto?.randomUUID ? `${builderNormalizeId(displayName)}_${self.crypto.randomUUID().slice(0, 8)}` : `${builderNormalizeId(displayName)}_${Date.now()}`;
   const element = {
     id: index === 1 ? builderNormalizeId(displayName) : baseId,
     display_name: displayName,
-    resource_type: resourceType,
+    resource_type: isSubscene ? "Scene-Only" : resourceType,
     element_type: builderElementTypeForResourceType(resourceType),
     character: resourceType === "Character" ? builderElementCharacter.value : "",
-    phase: resourceType === "Character" ? builderElementPhase.value : "",
-    costume: resourceType === "Character" ? builderElementCostume.value : "",
+    phase: resourceType === "Character" && builderElementCharacter.value ? builderElementPhase.value : "",
+    costume: resourceType === "Character" && builderElementCharacter.value ? builderElementCostume.value : "",
     aux_category: category,
     reference_set_id: resource?.resource_id || "",
     reference_images: [],
@@ -6563,11 +6571,16 @@ function builderAddElementFromDialog() {
     subscene_id: state.activeBuilderRenderTarget === "main" ? "" : state.activeBuilderRenderTarget,
   };
   state.sceneBuilder.scene_elements.push(element);
-  state.sceneBuilder.placements.push(builderCreatePlacementForElement(element));
+  const placement = builderCreatePlacementForElement(element);
+  if (isSubscene) placement.position_within_cell = "center";
+  state.sceneBuilder.placements.push(placement);
   state.selectedBuilderElementId = element.id;
   state.selectedBuilderPlacementId = builderPlacementForElement(element.id)?.id || null;
   builderElementModal.close();
   renderSceneBuilder();
+  if (isSubscene) {
+    if (await saveSceneBuilder({ fullScene: true })) await enableSelectedElementSubscene(element.id);
+  }
 }
 
 function builderRemoveSelectedElement() {
@@ -6670,7 +6683,7 @@ function builderRenderElements() {
           <span class="eyebrow">Build the cast</span>
           <h4>Scene Elements</h4>
         </div>
-        <button type="button" class="primary-action" data-builder-action="add-element">Add Element</button>
+        ${activeSubscene ? "" : '<button type="button" class="primary-action" data-builder-action="add-element">Add Element</button>'}
       </div>
       ${activeSubscene ? `<label class="builder-context-toggle"><input type="checkbox" data-builder-action="toggle-context-elements"${state.showBuilderContextElements ? " checked" : ""}> Show other elements as context</label>` : ""}
       <div class="scene-builder-element-list">${rows || "<p>No elements have been added yet.</p>"}</div>
@@ -6691,6 +6704,7 @@ function builderRenderSubsceneElementsSummary() {
     <span class="eyebrow">Subscene contents</span>
     <h4>Elements rendered in ${escapeHtml(activeSubscene?.name || activeSubscene?.id || "this subscene")}</h4>
     <p>Element identity, placement, membership, and interactions are full-scene values. Edit them from Full Scene.</p>
+    <button type="button" data-builder-action="select-render-target" data-render-target-id="main">Edit elements in Full Scene</button>
     <ul class="scene-builder-subscene-element-summary">${rows || "<li>No elements are assigned to this subscene.</li>"}</ul>
   </div>`;
 }
@@ -6779,6 +6793,7 @@ function builderRenderPlacementEditor() {
 }
 
 function builderRenderElementWorkspace() {
+  if (builderActiveSubscene()) return builderRenderSubsceneElementsSummary();
   const element = builderSelectedElement();
   if (!element) {
     return `<div class="scene-builder-card scene-builder-element-workspace"><h4>Element workspace</h4>${builderRenderElementEditor()}</div>`;
@@ -6799,7 +6814,7 @@ function builderRenderElementWorkspace() {
         <details class="scene-builder-element-menu">
           <summary aria-label="Selected element actions" title="Selected element actions">•••</summary>
           <div class="scene-builder-menu-panel">
-            ${builderSubsceneForAnchor(element.id) ? "" : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(element.id)}">Use element sub-render</button>`}
+            ${builderSubsceneForAnchor(element.id) ? "" : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(element.id)}">Create subscene from this element</button>`}
             <button type="button" data-builder-action="duplicate-element">Duplicate</button>
             <button type="button" class="danger-action" data-builder-action="delete-element">Delete</button>
           </div>

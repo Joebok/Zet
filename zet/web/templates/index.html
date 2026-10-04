@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261003-scene-render-slots">
+  <link rel="stylesheet" href="/static/zet.css?v=20261004-scene-review">
 </head>
 <body>
   <header class="app-header">
@@ -1089,6 +1089,29 @@
       </div>
       <div id="scene-batch-groups"></div>
     </section>
+    <dialog id="scene-batch-review-dialog" class="scene-batch-review-dialog" aria-labelledby="scene-batch-review-title">
+      <div class="scene-batch-review-layout">
+        <figure class="scene-batch-review-image"><img id="scene-batch-review-image" alt=""></figure>
+        <aside class="scene-batch-review-info">
+          <div class="scene-batch-review-heading">
+            <h2 id="scene-batch-review-title">Review scene candidate</h2>
+            <button id="scene-batch-review-close" type="button">Close</button>
+          </div>
+          <div id="scene-batch-review-details"></div>
+          <div class="button-row compact scene-batch-review-actions">
+            <button id="scene-batch-review-select" type="button">Select</button>
+            <button id="scene-batch-review-retry" type="button">Retry</button>
+            <button id="scene-batch-review-clear" class="danger-action" type="button">Clear</button>
+          </div>
+          <div class="scene-batch-review-navigation">
+            <button id="scene-batch-review-prev" type="button">← Previous</button>
+            <span id="scene-batch-review-position"></span>
+            <button id="scene-batch-review-next" type="button">Next →</button>
+          </div>
+          <p id="scene-batch-review-message" role="status"></p>
+        </aside>
+      </div>
+    </dialog>
 
     <section id="zine-page" class="page">
       <div class="page-title-row">
@@ -1265,14 +1288,15 @@
             Resource Type
             <select id="builder-element-resource-type"></select>
           </label>
+          <label>Display Name<input id="builder-element-scene-name" type="text" required></label>
           <section id="builder-element-character-section">
             <h3>Character</h3>
-            <label>Character<select id="builder-element-character"></select></label>
+            <label>Existing character (optional)<select id="builder-element-character"></select></label>
             <label>Phase<select id="builder-element-phase"></select></label>
             <label>Costume<select id="builder-element-costume"></select></label>
           </section>
           <section id="builder-element-aux-section">
-            <h3>Reference Set</h3>
+            <h3>Reference Set (optional)</h3>
             <label>Set<select id="builder-element-aux"></select></label>
             <button id="builder-element-new-aux" type="button">New Reference Set</button>
             <div id="builder-element-new-aux-form" class="inline-create-form" hidden>
@@ -1285,8 +1309,10 @@
             </div>
           </section>
           <section id="builder-element-scene-section">
-            <h3>Scene-Only</h3>
-            <label>Display Name<input id="builder-element-scene-name" type="text"></label>
+            <p>Scene-only elements have no library reference. Add references or a visual description later if needed.</p>
+          </section>
+          <section id="builder-element-subscene-section" hidden>
+            <p>This creates a named group render target. Move elements into it using each element’s “Render in” field, then render the group before the full scene.</p>
           </section>
           <div class="button-row compact">
             <button id="builder-element-cancel" type="button">Cancel</button>
@@ -2257,7 +2283,7 @@ Add prompt language here.
 
   <script src="/static/zet.js?v=20261003-scene-render-slots"></script>
   <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
-  <script src="/static/local_scene_batches.js?v=20261003-scene-render-slots"></script>
+  <script src="/static/local_scene_batches.js?v=20261004-fill-slots"></script>
   <script src="/static/local_batch_status.js?v=20261002-pipeline-colors"></script>
 </body>
 </html>

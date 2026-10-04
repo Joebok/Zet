@@ -1,7 +1,6 @@
 """HTTP presentation for story-scoped local scene batches."""
 from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import FileResponse, PlainTextResponse
-from starlette.background import BackgroundTask
 
 
 def create_local_scene_batch_router(app_factory):
@@ -45,17 +44,13 @@ def create_local_scene_batch_router(app_factory):
             target = str(payload.get("target_id") or "main")
             if action in {"analyze-prompt", "second-opinion"}:
                 return batches.analyze_prompt(story_slug, scene_slug, run_id, target, action == "second-opinion")
-            improvement = batches.improvement(story_slug, scene_slug)
-            if action == "save-observations":
-                return improvement.save_observations(run_id, target, str(payload.get("observations") or ""))
-            if action == "analyze-images":
-                return improvement.start(run_id, target)
             return batches.action(story_slug, scene_slug, run_id, action, payload)
         return call(perform)
 
     @router.get("/{run_id}/targets/{target_id}/prompt", response_class=PlainTextResponse)
     def prompt(story_slug: str, scene_slug: str, run_id: str, target_id: str, attempt_id: str = ""):
-        return call(lambda: service().artifact(story_slug, scene_slug, run_id, target_id, "prompt", attempt_id=attempt_id).read_text(encoding="utf-8"))
+        return call(lambda: service().artifact(story_slug, scene_slug, run_id, target_id, "prompt", attempt_id=attempt_id).read_text(encoding="utf-8")
+                    if attempt_id else service().preview_prompt(story_slug, scene_slug, run_id, target_id))
 
     @router.get("/{run_id}/targets/{target_id}/analysis", response_class=PlainTextResponse)
     def analysis(story_slug: str, scene_slug: str, run_id: str, target_id: str, attempt_id: str = ""):
@@ -72,13 +67,5 @@ def create_local_scene_batch_router(app_factory):
     @router.get("/{run_id}/targets/{target_id}/next-references/{index}")
     def next_reference(story_slug: str, scene_slug: str, run_id: str, target_id: str, index: int):
         return call(lambda: FileResponse(service().artifact(story_slug, scene_slug, run_id, target_id, "next-reference", str(index))))
-
-    @router.get("/{run_id}/prompt-improvement-package")
-    def package(story_slug: str, scene_slug: str, run_id: str):
-        def download():
-            path = service().improvement(story_slug, scene_slug).create_package(run_id)
-            return FileResponse(path, media_type="application/zip", filename=f"Scene_{run_id}_Prompt_Review.zip",
-                                background=BackgroundTask(path.unlink, missing_ok=True))
-        return call(download)
 
     return router

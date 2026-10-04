@@ -30,10 +30,32 @@ class QwenScenePromptTests(unittest.TestCase):
                           "max_lines": 2, "pointer_target": "speaker mouth",
                           "notes": "Ivory rectangular box beside Tsaeytte, clear of the arch inscription"}],
         })
-        self.assertIn('Tsaeytte has a clearly visible speech panel reading exactly "Potential is nothing without discipline"', prompt)
+        self.assertIn('A clearly visible speech balloon shaped as a rounded-corner rectangle sits just above Tsaeytte', prompt)
+        self.assertIn('its border fits closely around the text with minimal padding; it contains only "Potential is nothing without discipline"', prompt)
         self.assertIn("no more than 2 lines", prompt)
-        self.assertIn("pointer aimed at speaker mouth", prompt)
+        self.assertIn("short tail ends at Tsaeytte's visible mouth", prompt)
         self.assertIn("Ivory rectangular box beside Tsaeytte, clear of the arch inscription", prompt)
+
+    def test_dialogue_follows_placed_speaker_and_avoids_other_character(self):
+        prompt = compile_qwen_scene_prompt({
+            "elements": [
+                {"id": "valindia", "display_name": "Valindia", "element_type": "Character",
+                 "resolved_source_sections": {"costume_anchors": "Black-and-gold jacket panels"}},
+                {"id": "tsaeytte", "display_name": "Tsaeytte", "element_type": "Character"},
+            ],
+            "placements": [
+                {"scene_element_id": "valindia", "position_within_cell": "left", "depth": "foreground"},
+                {"scene_element_id": "tsaeytte", "position_within_cell": "right", "depth": "foreground"},
+            ],
+            "dialogue": [{"speaker_element_id": "valindia", "text": "country girl",
+                          "max_lines": 1, "pointer_target": "speaker mouth"}],
+        })
+        balloon = 'A clearly visible speech balloon shaped as a rounded-corner rectangle sits just above Valindia at left foreground; its border fits closely around the text with minimal padding; it contains only "country girl" on one line'
+        self.assertIn(balloon, prompt)
+        self.assertLess(prompt.index("Valindia, Black-and-gold jacket panels"), prompt.index(balloon))
+        self.assertLess(prompt.index(balloon), prompt.index("Tsaeytte, at right foreground"))
+        self.assertIn("short tail ends at Valindia's visible mouth", prompt)
+        self.assertIn("balloon stays clear of faces and readable background text", prompt)
 
     def test_reference_change_ignore_notes_and_structured_interactions_reach_prompt(self):
         prompt = compile_qwen_scene_prompt({
@@ -56,6 +78,25 @@ class QwenScenePromptTests(unittest.TestCase):
         self.assertIn("burgundy waistcoat", prompt)
         self.assertIn("Red-haired boy gently pushes Dark-haired boy, at the shoulder", prompt)
         self.assertIn("Both boys remain fully visible", prompt)
+
+    def test_named_identity_and_assignment_ignore_are_not_repeated(self):
+        prompt = compile_qwen_scene_prompt({
+            "elements": [{"id": "red", "display_name": "Schoolboy 1", "element_type": "Character",
+                          "resolved_source_sections": {"identity_anchors": "Schoolboy 1: red hair and freckles"}},
+                         {"id": "dark", "display_name": "Schoolboy 2", "element_type": "Character",
+                          "resolved_source_sections": {"identity_anchors": "Schoolboy 2 is a young elf with dark hair"}}],
+            "placements": [{"scene_element_id": "red"}, {"scene_element_id": "dark"}],
+            "image_inputs": [{"role": "costume_reference", "applies_to": "dark",
+                              "ignore": ["source pose", "source framing"],
+                              "assignments": [{"applies_to": "dark", "prompt_role": "costume_reference",
+                                               "ignore": ["source pose"]}]}],
+        })
+        self.assertIn("Schoolboy 1: red hair and freckles", prompt)
+        self.assertIn("Schoolboy 2 is a young elf with dark hair", prompt)
+        self.assertNotIn("Schoolboy 1, Schoolboy 1", prompt)
+        self.assertNotIn("Schoolboy 2, Schoolboy 2", prompt)
+        self.assertEqual(1, prompt.count("source pose"))
+        self.assertEqual(1, prompt.count("source framing"))
 
     def test_element_subscene_lists_each_visible_character_once_and_omits_parent_placement(self):
         ir = {

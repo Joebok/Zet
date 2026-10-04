@@ -121,6 +121,13 @@ def _reference_lines(
         if changes:
             detail += f"; change only {', '.join(changes)}"
         ignored = list(dict.fromkeys(_text(value) for value in item.get("ignore") or [] if _text(value)))
+        assigned_ignore = {
+            _text(value).casefold()
+            for assignment in assignments
+            for value in assignment.get("ignore") or []
+            if _text(value)
+        }
+        ignored = [value for value in ignored if value.casefold() not in assigned_ignore]
         if ignored:
             detail += f"; disregard {', '.join(ignored)}"
         note = _text(item.get("notes"))
@@ -205,8 +212,9 @@ def _subject_description(
     motion = placement.get("motion") or {}
     motion = motion if isinstance(motion, dict) else {}
 
-    parts = [name]
-    if identity:
+    identity_names_subject = bool(re.match(rf"^{re.escape(name)}\b", identity, re.IGNORECASE))
+    parts = [identity] if identity_names_subject else [name]
+    if identity and not identity_names_subject:
         parts.append(identity)
     if costume:
         parts.append(costume)
@@ -263,6 +271,39 @@ def _is_redundant_scene_note(sentence: str, names: list[str]) -> bool:
 def _is_parent_placement_note(sentence: str) -> bool:
     folded = sentence.casefold()
     return bool(re.search(r"\b(?:will be placed|to be placed|outer placement|full scene|final scene)\b", folded))
+
+
+def _dialogue_description(
+    item: dict[str, Any], elements: dict[str, dict[str, Any]], placement: dict[str, Any] | None = None
+) -> str:
+    exact = str(item.get("text") or "")
+    if not exact:
+        return ""
+    speaker_id = str(item.get("speaker_element_id") or "")
+    speaker = _text(elements.get(speaker_id, {}).get("display_name") or "the speaker")
+    placement = placement or {}
+    location = " ".join(part for part in (
+        _text(placement.get("position_within_cell")), _text(placement.get("depth"))
+    ) if part)
+    detail = f'A clearly visible speech balloon shaped as a rounded-corner rectangle sits just above {speaker}'
+    if location:
+        detail += f" at {location}"
+    detail += f'; its border fits closely around the text with minimal padding; it contains only "{exact}"'
+    max_lines = item.get("max_lines")
+    if max_lines == 1:
+        detail += " on one line"
+    elif max_lines:
+        detail += f" in no more than {max_lines} lines"
+    pointer_target = _text(item.get("pointer_target"))
+    if pointer_target.casefold() == "speaker mouth":
+        detail += f"; its short tail ends at {speaker}'s visible mouth"
+    elif pointer_target:
+        detail += f"; its short tail points toward {pointer_target}"
+    detail += "; the balloon stays clear of faces and readable background text"
+    notes = _text(item.get("notes"))
+    if notes:
+        detail += f"; {notes}"
+    return _sentence(detail)
 
 
 def analyze_qwen_scene_prompt(ir: dict[str, Any]) -> list[dict[str, str]]:
@@ -415,6 +456,7 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
                 parts.append(_sentence(note))
 
     interactions = _interaction_map(ir, elements)
+    dialogue = _items(ir.get("dialogue"))
     rendered_subjects: set[str] = set()
     for element, placement in visible:
         element_id = str(element.get("id") or "")
@@ -422,6 +464,11 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
         clauses = interactions.get(element_id, [])
         description = _subject_description(element, placement, clauses, elements)
         parts.append(description)
+        for item in dialogue:
+            if str(item.get("speaker_element_id") or "") == element_id:
+                balloon = _dialogue_description(item, elements, placement)
+                if balloon:
+                    parts.append(balloon)
     for element_id, clauses in interactions.items():
         if element_id not in rendered_subjects:
             name = _text(elements.get(element_id, {}).get("display_name"))
@@ -431,19 +478,10 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
     custom = _text(ir.get("custom_interactions"))
     if custom:
         parts.append(_sentence(custom))
-    for item in _items(ir.get("dialogue")):
+    for item in dialogue:
         speaker_id = str(item.get("speaker_element_id") or "")
-        speaker = _text(elements.get(speaker_id, {}).get("display_name") or "A character")
-        exact = str(item.get("text") or "")
-        if exact:
-            detail = f'{speaker} has a clearly visible speech panel reading exactly "{exact}"'
-            if item.get("max_lines"):
-                detail += f' in no more than {item["max_lines"]} lines'
-            if _text(item.get("pointer_target")):
-                detail += f" with its pointer aimed at {_text(item['pointer_target'])}"
-            if _text(item.get("notes")):
-                detail += f"; {_text(item['notes'])}"
-            parts.append(_sentence(detail))
+        if speaker_id not in rendered_subjects:
+            parts.append(_dialogue_description(item, elements))
 
     for prop in _items(ir.get("props")):
         description = prop.get("description") or prop.get("state")

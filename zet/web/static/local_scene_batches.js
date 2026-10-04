@@ -3,8 +3,10 @@ window.SceneBatches = (() => {
   const page = document.querySelector("#scene-batches-page");
   const host = document.querySelector("#scene-batch-groups");
   const message = document.querySelector("#scene-batch-message");
+  const reviewDialog = document.querySelector("#scene-batch-review-dialog");
+  const reviewMessage = document.querySelector("#scene-batch-review-message");
   let context = null, run = null, pending = false, timer = null, version = 0;
-  const observations = new Map();
+  let reviewKey = null;
   const node = (tag, text, className = "") => {
     const element = document.createElement(tag);
     if (text != null) element.textContent = text;
@@ -30,22 +32,95 @@ window.SceneBatches = (() => {
     const control = node("button", label); control.type = "button"; control.disabled = pending || disabled;
     control.addEventListener("click", () => void perform(action, payload)); hostElement.append(control);
   }
+  const candidateKey = (target, candidateId) => `${target}\u0000${candidateId}`;
+  function reviewCandidates() {
+    if (!run) return [];
+    return (run.targets || []).flatMap(definition => {
+      const group = run.groups[definition.target_id];
+      const candidates = group?.active_candidates || [];
+      return candidates.filter(candidate => candidate.status === "COMPLETE" && candidate.image_path)
+        .map(candidate => ({candidate, target: definition.target_id, label: definition.label}));
+    });
+  }
+  function renderReview() {
+    if (!reviewDialog.open) return;
+    const candidates = reviewCandidates();
+    const index = candidates.findIndex(item => candidateKey(item.target, item.candidate.candidate_id) === reviewKey);
+    if (index < 0) { reviewDialog.close(); return; }
+    const {candidate, target, label} = candidates[index];
+    const selected = run.selected_views[target] === candidate.candidate_id;
+    const image = document.querySelector("#scene-batch-review-image");
+    image.src = route(target, `images/${encodeURIComponent(candidate.candidate_id)}`);
+    image.alt = `${label} slot ${candidate.slot} candidate`;
+    document.querySelector("#scene-batch-review-title").textContent = label;
+    const details = document.querySelector("#scene-batch-review-details");
+    details.replaceChildren();
+    details.append(node("p", `Slot ${candidate.slot || "—"} · ${selected ? "Selected" : candidate.status}`, "scene-batch-review-status"));
+    details.append(node("p", `Candidate: ${candidate.candidate_id}`));
+    if (candidate.seed != null) details.append(node("p", `Seed: ${candidate.seed}`));
+    if (candidate.elapsed_seconds != null) details.append(node("p", `Generation time: ${Math.round(candidate.elapsed_seconds)} seconds`));
+    if (candidate.error) details.append(node("p", candidate.error, "error-text"));
+    const ranking = run.rankings?.[target];
+    const position = (ranking?.ordered_candidate_ids || []).indexOf(candidate.candidate_id);
+    if (position >= 0) details.append(node("p", `Rank: ${position + 1}`));
+    const select = document.querySelector("#scene-batch-review-select");
+    select.textContent = selected ? "Unselect" : "Select";
+    select.disabled = pending;
+    document.querySelector("#scene-batch-review-retry").disabled = pending || !run.targets.some(item => item.target_id === target);
+    document.querySelector("#scene-batch-review-clear").disabled = pending;
+    document.querySelector("#scene-batch-review-prev").disabled = pending || index === 0;
+    document.querySelector("#scene-batch-review-next").disabled = pending || index === candidates.length - 1;
+    document.querySelector("#scene-batch-review-position").textContent = `${index + 1} of ${candidates.length}`;
+  }
+  function openReview(target, candidateId) {
+    reviewKey = candidateKey(target, candidateId);
+    reviewMessage.textContent = "";
+    if (!reviewDialog.open) reviewDialog.showModal();
+    renderReview();
+  }
+  function navigateReview(direction) {
+    const candidates = reviewCandidates();
+    const index = candidates.findIndex(item => candidateKey(item.target, item.candidate.candidate_id) === reviewKey);
+    const next = candidates[index + direction];
+    if (!next) return;
+    reviewKey = candidateKey(next.target, next.candidate.candidate_id);
+    reviewMessage.textContent = "";
+    renderReview();
+  }
+  function reviewAction(action) {
+    const item = reviewCandidates().find(entry => candidateKey(entry.target, entry.candidate.candidate_id) === reviewKey);
+    if (!item) return;
+    const selected = run.selected_views[item.target] === item.candidate.candidate_id;
+    void perform(action, {target_id: item.target, candidate_id: action === "select" && selected ? "" : item.candidate.candidate_id});
+  }
   async function perform(action, payload = {}) {
     if (pending || !run) return;
     const expectedVersion = version, expectedId = run.run_id;
     pending = true;
     message.textContent = `${action.replaceAll("-", " ")}…`;
+    if (reviewDialog.open) reviewMessage.textContent = message.textContent;
     render();
     try {
       const updated = await request(`${base()}/${expectedId}/actions/${action}`, payload);
       if (version !== expectedVersion || run?.run_id !== expectedId) return;
+      if (action === "clear" && reviewKey === candidateKey(payload.target_id, payload.candidate_id)) {
+        const candidates = reviewCandidates();
+        const index = candidates.findIndex(item => candidateKey(item.target, item.candidate.candidate_id) === reviewKey);
+        const next = candidates[index + 1] || candidates[index - 1];
+        reviewKey = next ? candidateKey(next.target, next.candidate.candidate_id) : null;
+      }
       run = updated;
+      if (!reviewKey && reviewDialog.open) reviewDialog.close();
       message.textContent = run.status.replaceAll("_", " "); render();
-    } catch (error) { if (version === expectedVersion) message.textContent = error.message; }
-    finally { if (version === expectedVersion) { pending = false; render(); scheduleRefresh(); } }
+      if (reviewDialog.open) reviewMessage.textContent = "";
+    } catch (error) {
+      if (version === expectedVersion) {
+        message.textContent = error.message;
+        if (reviewDialog.open) reviewMessage.textContent = error.message;
+      }
+    } finally { if (version === expectedVersion) { pending = false; render(); scheduleRefresh(); } }
   }
   function render() {
-    const expanded = new Set(Array.from(host.querySelectorAll("details[open]")).map(item => item.dataset.target));
     host.replaceChildren();
     const refresh = document.querySelector("#scene-batch-refresh");
     const start = document.querySelector("#scene-batch-start");
@@ -56,7 +131,7 @@ window.SceneBatches = (() => {
     stop.disabled = pending || !run || !Object.values(run.groups).some(group =>
       group.candidates.some(item => ["SUBMITTING", "QUEUED", "RUNNING"].includes(item.status)));
     publish.disabled = pending || run?.status !== "READY_TO_PUBLISH";
-    if (!run) return;
+    if (!run) { if (reviewDialog.open) reviewDialog.close(); return; }
     document.querySelector("#scene-batch-status").textContent = run.status.replaceAll("_", " ");
     for (const definition of run.targets) {
       const target = definition.target_id, group = run.groups[target];
@@ -75,9 +150,9 @@ window.SceneBatches = (() => {
       const active = group.active_candidates || group.candidates;
       const controls = node("div", null, "button-row compact");
       button(controls, "Render First 4", "render", {target_id: target}, !ready);
-      button(controls, "Render 8 New Images", "rerender", {target_id: target}, !ready);
+      button(controls, "Fill Slots", "fill", {target_id: target}, !ready || !active.some(slot => slot.status === "EMPTY"));
+      if (ready) link(controls, "Image prompt", route(target, "prompt"));
       if (group.prompt_path) {
-        link(controls, "Image prompt", route(target, "prompt"));
         button(controls, "Analyze Prompt", "analyze-prompt", {target_id: target}, ["QUEUED", "RUNNING"].includes(group.analysis?.status));
         button(controls, "Second Opinion", "second-opinion", {target_id: target}, group.analysis?.status !== "COMPLETE");
       }
@@ -103,9 +178,17 @@ window.SceneBatches = (() => {
         if (slot.status === "COMPLETE") {
           const image = node("img"); image.src = route(target, `images/${encodeURIComponent(slot.candidate_id)}`);
           image.alt = `${definition.label} slot ${slot.slot}`; image.loading = "lazy";
-          const anchor = node("a", null, "local-pipeline-candidate-image"); anchor.href = image.src; anchor.target = "_blank"; anchor.append(image); card.append(anchor);
+          const review = node("button", null, "local-pipeline-candidate-image scene-batch-review-trigger");
+          review.type = "button"; review.setAttribute("aria-label", `Review ${definition.label} slot ${slot.slot}`);
+          review.addEventListener("click", () => openReview(target, slot.candidate_id));
+          review.append(image); card.append(review);
         }
         const slotActions = node("div", null, "button-row compact"), payload = {target_id: target, candidate_id: slot.candidate_id};
+        if (slot.status === "COMPLETE") {
+          const reviewButton = node("button", "Review"); reviewButton.type = "button";
+          reviewButton.addEventListener("click", () => openReview(target, slot.candidate_id));
+          slotActions.append(reviewButton);
+        }
         button(slotActions, selected ? "Unselect" : "Select", "select",
           {...payload, candidate_id: selected ? "" : slot.candidate_id},
           slot.status !== "COMPLETE");
@@ -114,48 +197,10 @@ window.SceneBatches = (() => {
         card.append(slotActions); return card;
       };
       for (const slot of active) cards.append(renderCandidate(slot));
-      for (const slot of group.history_candidates || []) {
-        if (slot.status !== "COMPLETE") continue;
-        const details = node("details", null, "scene-batch-history");
-        details.append(node("summary", `Earlier render · slot ${slot.slot || "—"}`));
-        details.append(renderCandidate(slot)); cards.append(details);
-      }
       section.append(cards);
-      const details = node("details"); details.dataset.target = target;
-      details.open = expanded.has(target);
-      details.append(node("summary", "Observations"));
-      const notes = node("textarea"); notes.setAttribute("aria-label", `${definition.label} observations`);
-      notes.value = observations.has(target) ? observations.get(target) : run.view_reviews?.[target]?.observations || "";
-      notes.addEventListener("input", () => observations.set(target, notes.value)); details.append(notes);
-      const noteActions = node("div", null, "button-row compact");
-      const save = node("button", "Save observations"); save.type = "button"; save.disabled = pending;
-      save.addEventListener("click", async () => { await perform("save-observations", {target_id: target, observations: notes.value}); observations.delete(target); });
-      noteActions.append(save); button(noteActions, "Analyze Images", "analyze-images", {target_id: target}, !group.candidates.some(item => item.status === "COMPLETE"));
-      details.append(noteActions);
-      const ai = run.view_reviews?.[target]?.ai_observations || {};
-      details.append(node("p", `AI observations: ${ai.status || "PENDING"}${ai.error ? ` · ${ai.error}` : ""}\n${ai.text || ""}`, "scene-batch-observations"));
-      section.append(details); host.append(section);
+      host.append(section);
     }
-    for (const definition of run.historical_targets || []) {
-      const group = run.groups[definition.target_id];
-      const section = node("section", null, "local-pipeline-view scene-batch-history-target");
-      section.append(node("h2", `${definition.label} · inactive`));
-      const cards = node("div", null, "scene-batch-candidates");
-      for (const candidate of group.candidates || []) {
-        if (candidate.status !== "COMPLETE") continue;
-        const card = node("article", null, "local-pipeline-candidate");
-        card.append(node("h3", `Slot ${candidate.slot || "—"}`));
-        const image = node("img"); image.src = route(definition.target_id, `images/${encodeURIComponent(candidate.candidate_id)}`);
-        image.alt = `${definition.label} earlier image`; image.loading = "lazy";
-        const anchor = node("a", null, "local-pipeline-candidate-image"); anchor.href = image.src; anchor.target = "_blank"; anchor.append(image); card.append(anchor);
-        const actions = node("div", null, "button-row compact");
-        const selected = run.selected_views[definition.target_id] === candidate.candidate_id;
-        button(actions, selected ? "Unselect" : "Select", "select",
-          {target_id: definition.target_id, candidate_id: selected ? "" : candidate.candidate_id});
-        card.append(actions); cards.append(card);
-      }
-      section.append(cards); host.append(section);
-    }
+    renderReview();
   }
   function hasActiveWork() {
     if (!run) return false;
@@ -184,13 +229,17 @@ window.SceneBatches = (() => {
       const changed = updated.updated_at !== run.updated_at;
       run = updated;
       if (changed && (!page.contains(document.activeElement) || !document.activeElement.matches("textarea,input,select"))) render();
+      else if (changed) renderReview();
     } catch (error) { message.textContent = error.message; }
     scheduleRefresh();
   }
   async function open(nextContext) {
     clearTimeout(timer); timer = null; const expectedVersion = ++version; pending = false;
     if (!nextContext.story || !nextContext.scene) { message.textContent = "Select a story and scene first."; context = null; run = null; render(); return; }
-    if (context?.story !== nextContext.story || context?.scene !== nextContext.scene) { run = null; observations.clear(); }
+    if (context?.story !== nextContext.story || context?.scene !== nextContext.scene) {
+      run = null; reviewKey = null;
+      if (reviewDialog.open) reviewDialog.close();
+    }
     context = nextContext;
     document.querySelector("#scene-batch-context").textContent = `${context.story} / ${context.scene}`;
     message.textContent = "Loading saved scene render state…";
@@ -200,7 +249,7 @@ window.SceneBatches = (() => {
       const current = listed.batches?.[0];
       run = current ? await request(`${base()}/${current.run_id}`) : await request(base(), {});
       if (expectedVersion !== version) return;
-      message.textContent = "Each target has eight active slots. New renders keep earlier images available for selection.";
+      message.textContent = "Each target has eight slots. Clearing or retrying a slot replaces its image.";
       render();
       scheduleRefresh();
     } catch (error) { message.textContent = error.message; run = null; render(); }
@@ -209,6 +258,12 @@ window.SceneBatches = (() => {
   document.querySelector("#scene-batch-stop").addEventListener("click", () => void perform("stop"));
   document.querySelector("#scene-batch-publish").addEventListener("click", () => void perform("publish"));
   document.querySelector("#scene-batch-refresh").addEventListener("click", () => void refresh(true));
+  document.querySelector("#scene-batch-review-close").addEventListener("click", () => reviewDialog.close());
+  document.querySelector("#scene-batch-review-prev").addEventListener("click", () => navigateReview(-1));
+  document.querySelector("#scene-batch-review-next").addEventListener("click", () => navigateReview(1));
+  document.querySelector("#scene-batch-review-select").addEventListener("click", () => reviewAction("select"));
+  document.querySelector("#scene-batch-review-retry").addEventListener("click", () => reviewAction("retry"));
+  document.querySelector("#scene-batch-review-clear").addEventListener("click", () => reviewAction("clear"));
   document.addEventListener("visibilitychange", () => scheduleRefresh(0));
   return {open};
 })();

@@ -125,7 +125,7 @@ def test_dynamic_groups_and_disabled_targets(batches, count):
     assert "off" not in run["views"]
 
 
-def test_saved_target_changes_reconcile_and_keep_inactive_candidate_images(batches):
+def test_saved_target_changes_reconcile_without_showing_inactive_targets(batches):
     run = action(batches, create(batches), "start")
     run = finish_group(batches, run, "background")
     old_image = Path(run["groups"]["background"]["active_candidates"][0]["image_path"])
@@ -136,7 +136,7 @@ def test_saved_target_changes_reconcile_and_keep_inactive_candidate_images(batch
     reconciled = batches.detail("Story", "Scene", run["run_id"])
     assert reconciled["views"] == ["new_view", "main"]
     assert "background" not in [item["target_id"] for item in reconciled["targets"]]
-    assert any(item["target_id"] == "background" for item in reconciled["historical_targets"])
+    assert "historical_targets" not in reconciled
     assert old_image.is_file()
     selected = action(batches, reconciled, "select", target_id="background", candidate_id="background-001")
     assert selected["selected_views"]["background"] == "background-001"
@@ -178,6 +178,88 @@ def test_each_group_has_eight_slots_but_initial_render_queues_four(batches):
     assert all(slot["status"] == "EMPTY" for slot in slots[4:])
 
 
+def test_fill_slots_renders_only_empty_slots_and_preserves_images(batches):
+    run = action(batches, create(batches), "start")
+    run = finish_group(batches, run, "background")
+    run = action(batches, run, "select", target_id="background", candidate_id="background-002")
+    preserved = {item["slot"]: (item["candidate_id"], Path(item["image_path"]))
+                 for item in run["groups"]["background"]["active_candidates"][1:4]}
+    first = run["groups"]["background"]["active_candidates"][0]
+    run = action(batches, run, "clear", target_id="background", candidate_id=first["candidate_id"])
+
+    run = action(batches, run, "fill", target_id="background")
+    slots = run["groups"]["background"]["active_candidates"]
+    assert [item["slot"] for item in slots] == list(range(1, 9))
+    assert all(slots[index - 1]["status"] == "QUEUED" for index in (1, 5, 6, 7, 8))
+    assert all(slots[index - 1]["candidate_id"] == candidate_id and image.is_file()
+               for index, (candidate_id, image) in preserved.items())
+    assert run["selected_views"]["background"] == "background-002"
+    with pytest.raises(ValueError, match="no empty render slots"):
+        action(batches, run, "fill", target_id="background")
+
+
+def test_fill_slots_queues_all_eight_when_empty(batches):
+    run = action(batches, create(batches), "fill", target_id="background")
+    assert len(run["groups"]["background"]["active_candidates"]) == 8
+    assert all(item["status"] == "QUEUED" for item in run["groups"]["background"]["active_candidates"])
+
+
+def test_existing_batch_discards_earlier_slot_images_and_observations(batches):
+    run = create(batches)
+    root = Path(run["root"])
+    state_path = root / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    old_image = root / "slots" / "main" / "main-old.png"
+    old_image.parent.mkdir(parents=True, exist_ok=True)
+    old_image.write_bytes(png_bytes())
+    state["groups"]["main"]["candidates"].append({
+        "candidate_id": "main-old", "slot": 1, "status": "COMPLETE", "image_path": str(old_image),
+    })
+    state["selected_views"]["main"] = "main-old"
+    state["view_reviews"] = {"main": {"observations": "Old note"}}
+    write_json_atomic(state_path, state)
+
+    current = batches.detail("Story", "Scene", run["run_id"])
+    assert len(current["groups"]["main"]["candidates"]) == 8
+    assert "main-old" not in {item["candidate_id"] for item in current["groups"]["main"]["candidates"]}
+    assert not old_image.exists()
+    assert "main" not in current["selected_views"]
+    assert "view_reviews" not in current
+
+
+@pytest.mark.parametrize("name,count", [("render", 4), ("rerender", 8)])
+def test_new_render_withdraws_pending_asks_but_preserves_running_work(batches, name, count):
+    run = action(batches, create(batches), "start")
+    old = run["groups"]["background"]["active_candidates"][:4]
+    running = old[0]
+    (batches.proxy.ask_root() / running["ask_id"]).rename(batches.proxy.running_root() / running["ask_id"])
+    run = action(batches, run, name, target_id="background")
+
+    assert len(run["groups"]["background"]["candidates"]) == 8
+    assert running["candidate_id"] not in {item["candidate_id"] for item in run["groups"]["background"]["candidates"]}
+    assert (batches.proxy.running_root() / running["ask_id"]).is_dir()
+    for item in old[1:]:
+        assert item["candidate_id"] not in {candidate["candidate_id"] for candidate in run["groups"]["background"]["candidates"]}
+        assert not (batches.proxy.ask_root() / item["ask_id"]).exists()
+    active = run["groups"]["background"]["active_candidates"]
+    assert sum(item["status"] == "QUEUED" for item in active) == count
+    assert all((batches.proxy.ask_root() / item["ask_id"]).is_dir() for item in active if item["status"] == "QUEUED")
+
+
+def test_render_withdraws_pending_asks_from_another_scene_target(batches):
+    data = batches.story.load_scene_builder_data("Story", "Scene").data
+    data["subscenes"].append({"id": "other", "name": "Other", "kind": "background", "enabled": True})
+    batches.story.save_scene_builder_data("Story", "Scene", data)
+    run = action(batches, create(batches), "start")
+    run = action(batches, run, "rerender", target_id="background")
+    pending = [item["ask_id"] for item in run["groups"]["background"]["active_candidates"]]
+
+    run = action(batches, run, "render", target_id="other")
+    assert all(item["status"] == "STOPPED" for item in run["groups"]["background"]["active_candidates"])
+    assert all(not (batches.proxy.ask_root() / ask_id).exists() for ask_id in pending)
+    assert all(item["status"] == "QUEUED" for item in run["groups"]["other"]["active_candidates"][:4])
+
+
 def test_render_captures_scene_edits_without_a_recompile_action(batches):
     run = create(batches)
     data = batches.story.load_scene_builder_data("Story", "Scene").data
@@ -191,23 +273,24 @@ def test_render_captures_scene_edits_without_a_recompile_action(batches):
     assert all(item["status"] in {"SUBMITTING", "QUEUED"} for item in group["active_candidates"][:4])
 
 
-def test_retry_versions_filled_or_empty_slot_and_clear_removes_one_image(batches):
+def test_retry_replaces_filled_slot_and_clear_removes_image(batches):
     run = action(batches, create(batches), "start")
     run = finish_group(batches, run, "background")
     filled = run["groups"]["background"]["candidates"][0]
     image_path, old_seed = Path(filled["image_path"]), filled["seed"]
     run = action(batches, run, "retry", target_id="background", candidate_id=filled["candidate_id"])
-    assert image_path.exists()
+    assert not image_path.exists()
     assert run["groups"]["background"]["active_candidates"][0]["seed"] != old_seed
-    retry_index = len(run["groups"]["background"]["candidates"]) - 1
-    run = finish(batches, run, "background", index=retry_index, wait=False)
+    assert len(run["groups"]["background"]["candidates"]) == 8
+    assert filled["candidate_id"] not in {item["candidate_id"] for item in run["groups"]["background"]["candidates"]}
+    run = finish(batches, run, "background", index=0, wait=False)
     run = finish_group(batches, run, "background")
-    assert image_path.is_file()
-    candidate = run["groups"]["background"]["history_candidates"][0]
+    candidate = run["groups"]["background"]["active_candidates"][0]
     image_path = Path(candidate["image_path"])
     run = action(batches, run, "clear", target_id="background", candidate_id=candidate["candidate_id"])
     assert not image_path.exists()
-    assert next(item for item in run["groups"]["background"]["candidates"] if item["candidate_id"] == candidate["candidate_id"])["status"] == "CLEARED"
+    assert len(run["groups"]["background"]["candidates"]) == 8
+    assert candidate["candidate_id"] not in {item["candidate_id"] for item in run["groups"]["background"]["candidates"]}
 
 
 def test_late_answer_cannot_restore_a_cleared_slot(batches):
@@ -223,7 +306,8 @@ def test_late_answer_cannot_restore_a_cleared_slot(batches):
     (answer / "render.png").write_bytes(png_bytes())
     run = batches.detail("Story", "Scene", run["run_id"])
     cleared = run["groups"]["background"]["candidates"][0]
-    assert cleared["status"] == "CLEARED" and "image_path" not in cleared
+    assert cleared["status"] == "EMPTY" and "image_path" not in cleared
+    assert slot["candidate_id"] not in {item["candidate_id"] for item in run["groups"]["background"]["candidates"]}
 
 
 def test_clearing_selected_slot_preserves_dependent_images(batches):
@@ -318,7 +402,7 @@ def test_source_changes_do_not_block_publication_or_rewrite_existing_attempts(ba
     assert run["status"] == "COMPLETE"
 
 
-def test_stop_resume_and_rerender_keep_all_eight_slot_versions(batches):
+def test_stop_resume_and_rerender_keep_only_eight_current_slots(batches):
     run = action(batches, create(batches), "start")
     run = action(batches, run, "stop")
     assert run["status"] == "STOPPED"
@@ -329,13 +413,16 @@ def test_stop_resume_and_rerender_keep_all_eight_slot_versions(batches):
     run = action(batches, run, "start")
     run = action(batches, run, "stop")
     run = action(batches, run, "rerender", target_id="background")
-    assert len(run["groups"]["background"]["candidates"]) >= 12
-    assert all(item["status"] in {"QUEUED", "SUBMITTING"} for item in run["groups"]["background"]["active_candidates"])
+    assert len(run["groups"]["background"]["candidates"]) == 8
+    active = run["groups"]["background"]["active_candidates"]
+    assert all(item["status"] in {"QUEUED", "SUBMITTING"} for item in active), [
+        (item["status"], item.get("error")) for item in active
+    ]
     assert all(item["status"] in {"EMPTY", "STOPPED"} for item in run["groups"]["main"]["active_candidates"])
-    assert run["selected_views"]["background"] == candidate["candidate_id"]
+    assert "background" not in run["selected_views"]
 
 
-def test_batch_api_and_prompt_package(batches):
+def test_batch_api_without_observations(batches):
     app = FastAPI()
     app.include_router(create_local_scene_batch_router(lambda: batches.app))
     client = TestClient(app)
@@ -345,9 +432,37 @@ def test_batch_api_and_prompt_package(batches):
     run = response.json()
     assert client.post(f"{base}/{run['run_id']}/actions/compile", json={"target_id": "background"}).status_code == 200
     assert client.get(f"{base}/{run['run_id']}/targets/background/prompt").status_code == 200
-    assert client.get(f"{base}/{run['run_id']}/prompt-improvement-package").status_code == 200
-    assert client.post(f"{base}/{run['run_id']}/actions/save-observations", json={"target_id": "background", "observations": "Preserve the horizon"}).status_code == 200
+    assert client.get(f"{base}/{run['run_id']}/prompt-improvement-package").status_code == 404
+    assert client.post(f"{base}/{run['run_id']}/actions/save-observations", json={"target_id": "background", "observations": "Preserve the horizon"}).status_code == 400
     assert client.get(f"{base}/{'f'*32}").status_code == 400
+
+
+def test_prompt_link_compiles_current_scene_before_render_without_changing_attempts(batches):
+    app = FastAPI()
+    app.include_router(create_local_scene_batch_router(lambda: batches.app))
+    client = TestClient(app)
+    data = batches.story.load_scene_builder_data("Story", "Scene").data
+    data["subscenes"][0]["enabled"] = False
+    batches.story.save_scene_builder_data("Story", "Scene", data)
+    run = create(batches)
+    base = f"/api/stories/Story/scenes/Scene/local-batches/{run['run_id']}"
+    prompt_url = f"{base}/targets/main/prompt"
+
+    first = client.get(prompt_url)
+    assert first.status_code == 200, first.text
+    assert "A quiet forest clearing" in first.text
+    assert not run["groups"]["main"].get("attempt_id")
+
+    data = batches.story.load_scene_builder_data("Story", "Scene").data
+    data["setup"]["environment"]["general_background_notes"] = "A bright stone courtyard"
+    batches.story.save_scene_builder_data("Story", "Scene", data)
+    second = client.get(prompt_url)
+    assert second.status_code == 200, second.text
+    assert "A bright stone courtyard" in second.text
+    assert "A quiet forest clearing" not in second.text
+    current = batches.detail("Story", "Scene", run["run_id"])
+    assert not current["groups"]["main"].get("attempt_id")
+    assert all(item["status"] == "EMPTY" for item in current["groups"]["main"]["candidates"])
 
 
 @pytest.mark.parametrize("profile,backend", [("scene-preview-sd15", "stable_matrix"), ("comfyui-core-preview", "comfyui"), ("image-recipe-lab-qwen-image-edit-2511", "comfyui")])

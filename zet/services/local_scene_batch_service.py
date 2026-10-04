@@ -10,6 +10,7 @@ from pathlib import Path
 import random
 import re
 import shutil
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
@@ -153,8 +154,7 @@ class LocalSceneBatchService:
         write_json_atomic(root / "spec.json", spec)
         write_json_atomic(root / "state.json", {"status": "QUEUED", "stop_requested": False,
                           "groups": {item["target_id"]: self._empty_group(item["target_id"])
-                                     for item in plan["targets"]}, "selected_views": {}, "rankings": {},
-                          "view_reviews": {}, "prompt_improvement_migrated": True})
+                                     for item in plan["targets"]}, "selected_views": {}, "rankings": {}})
         return self.detail(story, scene, run_id)
 
     def list_runs(self, story: str, scene: str) -> list[dict]:
@@ -293,10 +293,12 @@ class LocalSceneBatchService:
         for reference in snapshot["references"]:
             if not Path(reference["path"]).is_file() or _hash(Path(reference["path"])) != reference["sha256"]:
                 raise ValueError("A current scene reference is missing or altered.")
+        selections = self._selected(state, verify=True)
+        selections.pop(target, None)
         try:
             compiled = self.story.story_render_service.compile_batch_target(
                 snapshot["scene"], snapshot["settings"], snapshot["sections"], snapshot["references"], target,
-                self._selected(state, verify=True))
+                selections)
         except Exception as exc:
             raise ValueError(str(exc)) from exc
         group = state["groups"][target]
@@ -314,7 +316,7 @@ class LocalSceneBatchService:
                    "prompt_sha256": _hash(prompt_path),
                    "ir_sha256": _hash(output / "Scene_Render_IR.json"),
                    "render_input_hash": compiled["render_input_hash"],
-                   "source_selections": self._selected(state, verify=True)}
+                   "source_selections": selections}
         group.setdefault("attempts", {})[generation] = attempt
         group.update(attempt_id=generation, prompt_path=str(prompt_path), ir_path=str(output / "Scene_Render_IR.json"),
                      reference_images=compiled["references"], prompt_sha256=_hash(prompt_path),
@@ -334,15 +336,29 @@ class LocalSceneBatchService:
                          "label": item.get("label", ""), "role": item.get("prompt_role", ""),
                          "applies_to": item.get("applies_to", ""),
                      } for item in compiled["ir"].get("image_inputs", [])],
-                     render_input_hash=compiled["render_input_hash"], source_selections=self._selected(state, verify=True),
+                     render_input_hash=compiled["render_input_hash"], source_selections=selections,
                      status="COMPILED", stale_reason="")
-        # Shared improvement packages read current per-target compiler artifacts.
-        directory = root / "prompts" / target
-        atomic_copy(prompt_path, directory / "Final_Image_Prompt.md")
-        write_json_atomic(directory / "dependency_manifest.json", {"resources": compiled["references"]})
-        write_json_atomic(directory / "Prompt_Source_Hashes.json", snapshot["compiler_sources"])
-        write_json_atomic(directory / "Prompt_Source_Map.json", {"fragments": [{"source_path": path} for path in snapshot["compiler_sources"]]})
         return group
+
+    def preview_prompt(self, story: str, scene: str, run_id: str, target: str) -> str:
+        """Compile the next prompt from saved scene inputs without changing a render attempt."""
+        root = self.root(story, scene, run_id)
+        with file_lock(root / "state.lock"):
+            spec, state = _read(root / "spec.json"), _read(root / "state.json")
+            plan = self.preview(story, scene, {})
+            definition = next((item for item in plan["targets"] if item["target_id"] == target), None)
+            if definition is None:
+                raise ValueError("This target is no longer enabled in the saved scene.")
+            selected = self._selected(state, verify=True)
+            if not set(definition["dependencies"]) <= set(selected):
+                raise ValueError("Select a completed image for each prerequisite target first.")
+            selected.pop(target, None)
+            with TemporaryDirectory(prefix="zet-scene-prompt-") as temporary:
+                snapshot = self._snapshot(spec["story_slug"], spec["scene_slug"], Path(temporary))
+                compiled = self.story.story_render_service.compile_batch_target(
+                    snapshot["scene"], snapshot["settings"], snapshot["sections"], snapshot["references"],
+                    target, selected)
+                return compiled["prompt"]
 
     def _refresh_snapshot_for_render(self, story: str, scene: str, root: Path, spec: dict) -> None:
         """Reconcile active targets with the saved scene before the next render."""
@@ -363,7 +379,7 @@ class LocalSceneBatchService:
                 "attempts": {}, "active": True}
 
     def _reconcile_targets(self, spec: dict, state: dict, plan: dict) -> None:
-        """Apply current target topology while retaining every prior candidate and attempt."""
+        """Apply current target topology and ensure each target has eight slots."""
         active = {item["target_id"] for item in plan["targets"]}
         for target, group in state.setdefault("groups", {}).items():
             group["active"] = target in active
@@ -408,6 +424,41 @@ class LocalSceneBatchService:
                 for task in self.proxy.task_paths("ask", "running", "answer"):
                     if task.name == item["ask_id"]:
                         supersede_task(Path(self.app.config.base_ai_queue_path), task, "Scene batch attempt superseded or stopped")
+
+    def _withdraw_pending_for_new_render(self, state: dict) -> None:
+        queued = {task.name: task for task in self.proxy.task_paths("ask")}
+        for group in state["groups"].values():
+            for item in group["candidates"]:
+                if item["status"] not in {"SUBMITTING", "QUEUED"}:
+                    continue
+                task = queued.get(item.get("ask_id"))
+                if task is None:
+                    continue
+                supersede_task(Path(self.app.config.base_ai_queue_path), task, "Scene batch render replaced by a new render request")
+                item["status"] = "STOPPED"
+                if item.get("work_path"):
+                    Path(item.pop("work_path")).unlink(missing_ok=True)
+
+    def _discard_replaced_candidates(self, root: Path, state: dict) -> None:
+        """Keep only the eight current slot records and remove replaced slot images."""
+        for target, group in state["groups"].items():
+            active_ids = set(group.get("active_slot_ids", {}).values())
+            replaced = [item for item in group["candidates"] if item["candidate_id"] not in active_ids]
+            for item in replaced:
+                self._withdraw({"candidates": [item]})
+                for key in ("image_path", "work_path"):
+                    path = Path(item.get(key) or "")
+                    if path.is_file() and path.resolve().is_relative_to(root.resolve()):
+                        path.unlink()
+                if state["selected_views"].get(target) == item["candidate_id"]:
+                    state["selected_views"].pop(target, None)
+            group["candidates"] = sorted(
+                (item for item in group["candidates"] if item["candidate_id"] in active_ids),
+                key=lambda item: item["slot"])
+            ranking = state["rankings"].get(target)
+            if replaced and ranking and any(candidate_id not in active_ids
+                                            for candidate_id in ranking.get("ordered_candidate_ids", [])):
+                state["rankings"].pop(target, None)
 
     def _harvest(self, group: dict) -> None:
         for candidate in group["candidates"]:
@@ -461,6 +512,9 @@ class LocalSceneBatchService:
             spec, state = _read(root / "spec.json"), _read(root / "state.json")
             original_spec, original_state = copy.deepcopy(spec), copy.deepcopy(state)
             self._reconcile_targets(spec, state, self.preview(story, scene, {}))
+            self._discard_replaced_candidates(root, state)
+            state.pop("view_reviews", None)
+            state.pop("prompt_improvement_migrated", None)
             selected = self._selected(state)
             preview_key = self._reference_preview_key(story, scene, state)
             if refresh_previews or state.get("reference_preview_key") != preview_key:
@@ -516,7 +570,6 @@ class LocalSceneBatchService:
             for group in result["groups"].values():
                 active_ids = set(group.get("active_slot_ids", {}).values())
                 group["active_candidates"] = [item for item in group["candidates"] if item["candidate_id"] in active_ids]
-                group["history_candidates"] = [item for item in group["candidates"] if item["candidate_id"] not in active_ids]
             result["candidates"] = [{**item, "view": target,
                                      "reference_images": group.get("attempts", {}).get(item.get("attempt_id"), group).get("reference_images", []),
                                      "prompt_path": group.get("attempts", {}).get(item.get("attempt_id"), group).get("prompt_path", "")}
@@ -524,12 +577,6 @@ class LocalSceneBatchService:
             result["ready_targets"] = [item["target_id"] for item in spec["targets"]
                                        if set(item["dependencies"]) <= set(selected)
                                        and item["target_id"] not in state["selected_views"]]
-            result["historical_targets"] = [
-                {"target_id": target, "label": group.get("label") or target, "kind": group.get("kind", ""),
-                 "dependencies": [], "active": False}
-                for target, group in state["groups"].items() if not group.get("active")
-                and any(item.get("status") == "COMPLETE" for item in group.get("candidates", []))
-            ]
             return result
 
     def _reference_preview_key(self, story: str, scene: str, state: dict) -> str:
@@ -690,7 +737,7 @@ class LocalSceneBatchService:
                             item["status"] = "STOPPED"
                             Path(item.get("work_path") or "").unlink(missing_ok=True) if item.get("work_path") else None
                             item.pop("work_path", None)
-            elif name in {"start", "resume", "render", "retry", "rerender", "compile", "recompile"}:
+            elif name in {"start", "resume", "render", "fill", "retry", "rerender", "compile", "recompile"}:
                 state["stop_requested"] = False
                 if name in {"start", "resume"}:
                     ready = [item["target_id"] for item in spec["targets"]
@@ -725,6 +772,10 @@ class LocalSceneBatchService:
                         slot_numbers = [requested_slot]
                     elif name == "rerender":
                         slot_numbers = list(range(1, SLOT_COUNT + 1))
+                    elif name == "fill":
+                        slot_numbers = [int(slot) for slot, candidate_id in group["active_slot_ids"].items()
+                                        if next((item for item in group["candidates"]
+                                                 if item["candidate_id"] == candidate_id), {}).get("status") == "EMPTY"]
                     elif name == "resume":
                         slot_numbers = [int(slot) for slot, candidate_id in group["active_slot_ids"].items()
                                         if next((item for item in group["candidates"]
@@ -733,15 +784,18 @@ class LocalSceneBatchService:
                     else:
                         slot_numbers = list(range(1, INITIAL_SLOT_COUNT + 1))
                     if not slot_numbers:
-                        raise ValueError("There are no unfinished render slots to resume.")
+                        raise ValueError("There are no empty render slots to fill." if name == "fill"
+                                         else "There are no unfinished render slots to resume.")
                     had_attempt = bool(group.get("attempt_id"))
                     group["revision"] = int(group.get("revision", 0)) + 1
                     self._compile(root, state, target)
+                    if name in {"render", "rerender"}:
+                        self._withdraw_pending_for_new_render(state)
                     attempt_id = group["attempt_id"]
                     candidate_ids = self._activate_attempt_slots(
                         group, target, slot_numbers, attempt_id, force_new=had_attempt or name in {"retry", "rerender"})
+                    self._discard_replaced_candidates(root, state)
                     state["rankings"].pop(target, None)
-                    state.setdefault("view_reviews", {}).pop(target, None)
                     self._queue(root, spec, state, target, candidate_ids=candidate_ids)
             elif name in {"select", "review", "move-rank"}:
                 candidate_id = str(payload.get("candidate_id") or "")
@@ -788,9 +842,9 @@ class LocalSceneBatchService:
                                    "human_review": {"decision": "undecided"}}
                     group["candidates"].append(replacement)
                     group["active_slot_ids"][str(replacement["slot"])] = replacement_id
+                self._discard_replaced_candidates(root, state)
                 group["revision"] = int(group.get("revision", 0)) + 1
                 state["rankings"].pop(target, None)
-                state.setdefault("view_reviews", {}).pop(target, None)
                 if state["selected_views"].get(target) == candidate_id:
                     state["selected_views"].pop(target, None)
             elif name == "reevaluate":
@@ -802,7 +856,7 @@ class LocalSceneBatchService:
             write_json_atomic(root / "spec.json", spec)
             write_json_atomic(root / "state.json", state)
         return self.detail(story, scene, run_id, refresh_previews=name in {
-            "start", "resume", "render", "retry", "rerender", "compile", "recompile",
+            "start", "resume", "render", "fill", "retry", "rerender", "compile", "recompile",
         })
 
     @staticmethod
@@ -1015,16 +1069,3 @@ class LocalSceneBatchService:
             write_json_atomic(folder / "harvest_manifest.json", {"consumer": "zet-scene-batches"})
         except Exception as exc:
             record.update(status="FAILED", error=str(exc))
-
-    def improvement(self, story, scene):
-        from zet.services.local_prompt_improvement_service import LocalPromptImprovementService
-        return LocalPromptImprovementService(SceneBatchAdapter(self, story, scene), "scene", self.project_root)
-
-
-class SceneBatchAdapter:
-    """Supply the existing observations/package workflow with dynamic scene views."""
-    def __init__(self, service, story, scene):
-        self.service, self.story, self.scene, self.app = service, story, scene, service.app
-
-    def detail(self, run_id):
-        return self.service.detail(self.story, self.scene, run_id)

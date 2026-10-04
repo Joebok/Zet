@@ -1206,7 +1206,7 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   expect(persistedData.scene.story_beat).toBe("Persisted story beat");
   expect(persistedData.subscenes.find((item) => item.id === "background").prompt_overrides.focal_point).toBe("Distant ruined tower");
 
-  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').click();
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').first().click();
   const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT");
   await page.getByRole("button", { name: "Save Full Scene", exact: true }).click();
   expect((await fullSceneSaved).ok()).toBe(true);
@@ -1220,7 +1220,7 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   await expect(focalPoint).toHaveValue("Distant ruined tower");
   expect(await page.evaluate(() => state.sceneBuilder.scene.story_beat)).toBe("Unsaved full-scene beat");
 
-  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').click();
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').first().click();
   await page.locator('[data-builder-field="scene.story_beat"]').fill("Save all before Scene Batches");
   await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
   const slotGroup = (targetId) => ({
@@ -1235,6 +1235,10 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
     ], groups: { background: slotGroup("background"), main: slotGroup("main") },
     selected_views: {}, rankings: {}, view_reviews: {}, ready_targets: ["background"],
   };
+  slotRun.groups.main.history_candidates = [
+    { candidate_id: "main-old-001", slot: 1, status: "COMPLETE", image_path: "old.png" },
+  ];
+  slotRun.view_reviews.main = { observations: "Old notes", ai_observations: { status: "COMPLETE", text: "Old analysis" } };
   await page.route(`**/api/stories/${storySlug}/scenes/${sceneSlug}/local-batches**`, async (route) => {
     if (route.request().method() === "GET" && !route.request().url().endsWith(slotRun.run_id)) {
       return route.fulfill({ json: { batches: [slotRun], linked_batch_id: slotRun.run_id } });
@@ -1250,6 +1254,8 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   await expect(page.locator("#scene-batches-page")).toHaveClass(/active/);
   await expect(page.locator("#scene-batches-page h1")).toHaveText("Scene Renders");
   await expect(page.locator(".scene-batch-candidates .local-pipeline-candidate")).toHaveCount(16);
+  await expect(page.locator("#scene-batches-page").getByText("Earlier render")).toHaveCount(0);
+  await expect(page.locator("#scene-batches-page").getByText("Observations")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(16);
   await expect(page.getByRole("button", { name: "Clear", exact: true })).toHaveCount(16);
   const savedBeforeNavigation = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);

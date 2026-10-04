@@ -902,13 +902,111 @@ main {
   overflow-wrap: anywhere;
 }
 
-#scene-batches-page textarea {
-  width: 100%;
-  min-height: 100px;
+.scene-batch-review-trigger {
+  cursor: zoom-in;
 }
 
-.scene-batch-observations {
-  white-space: pre-wrap;
+.scene-batch-review-dialog {
+  border: 0;
+  border-radius: 10px;
+  box-sizing: border-box;
+  height: 94vh;
+  max-height: 94vh;
+  max-width: 96vw;
+  overflow: hidden;
+  padding: 0;
+  width: 96vw;
+}
+
+.scene-batch-review-dialog::backdrop {
+  background: rgb(0 0 0 / 82%);
+}
+
+.scene-batch-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  height: 100%;
+}
+
+.scene-batch-review-image {
+  align-items: center;
+  background: #111;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  min-height: 0;
+  min-width: 0;
+  padding: 8px;
+}
+
+.scene-batch-review-image img {
+  height: 100%;
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.scene-batch-review-info {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+.scene-batch-review-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.scene-batch-review-heading h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+#scene-batch-review-details {
+  overflow-wrap: anywhere;
+}
+
+#scene-batch-review-details p {
+  margin: 5px 0;
+}
+
+.scene-batch-review-status {
+  font-weight: 700;
+}
+
+.scene-batch-review-actions {
+  flex-wrap: wrap;
+}
+
+.scene-batch-review-navigation {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.scene-batch-review-navigation button {
+  white-space: nowrap;
+}
+
+#scene-batch-review-message {
+  margin: 0;
+  min-height: 1em;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .scene-batch-review-dialog { height: 96vh; max-height: 96vh; }
+  .scene-batch-review-layout { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(220px, 35%); }
+  .scene-batch-review-info { padding: 10px; }
 }
 
 .local-pipeline-sources img {

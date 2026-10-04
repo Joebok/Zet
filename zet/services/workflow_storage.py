@@ -120,7 +120,7 @@ def supersede_task(queue_root: Path, task: Path, reason: str) -> None:
     """Fence late answers and remove obsolete queued asks."""
     write_json_atomic(task_state_path(queue_root, "Superseded", task.name), {"ask_id": task.name, "reason": reason})
     # Running work stays available, but an obsolete ask bundle is no longer queued.
-    if task.parent.name == "Ask" and task.is_dir():
+    if task.is_dir() and (task.parent.name == "Ask" or task.parent.parent.name == "Ask"):
         (queue_local_state_root(queue_root) / "Routes" / f"{task.name}.json").unlink(missing_ok=True)
         shutil.rmtree(task)
 
