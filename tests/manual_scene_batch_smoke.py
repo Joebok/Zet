@@ -59,22 +59,23 @@ AutoEnabled = false
                          {"id": "traveler_view", "name": "Traveler", "kind": "element", "anchor_element_id": "traveler", "enabled": True}]
     app.save_scene_builder("Smoke", "Clearing", data)
     service = app.local_scene_batch_service
-    run = service.create("Smoke", "Clearing", {"count": 1, "batch_name": "Real ComfyUI smoke"})
+    run = service.create("Smoke", "Clearing", {})
     for target in run["views"]:
         run = service.action("Smoke", "Clearing", run["run_id"], "start", {})
         group = run["groups"][target]
-        candidate = group["candidates"][0]
-        print(f"Rendering {target}", flush=True)
-        result = render_image(project_root=root, final_prompt_path=Path(group["prompt_path"]),
-                              job_output_dir=Path(candidate["image_path"]).parent, preset_name=SCENE_PROFILE,
-                              scene_render_ir_path=Path(group["ir_path"]), reference_files=group["reference_images"], seed=candidate["seed"])
-        ask = service.proxy.ask_root() / candidate["ask_id"]
-        manifest = json.loads((ask / "ask_manifest.json").read_text(encoding="utf-8"))
-        answer = service.proxy.answer_root() / candidate["ask_id"]
-        answer.mkdir(parents=True)
-        write_json_atomic(answer / "ask_manifest.json", manifest)
-        shutil.copy2(result.image_path, answer / manifest["expected_output"])
-        write_json_atomic(answer / "answer_manifest.json", {"ask_id": candidate["ask_id"], "status": "SUCCESS", "expected_output": manifest["expected_output"]})
+        for candidate in group["candidates"][:4]:
+            print(f"Rendering {target} {candidate['slot']}/4", flush=True)
+            result = render_image(project_root=root, final_prompt_path=Path(group["prompt_path"]),
+                                  job_output_dir=Path(candidate["work_path"]).parent, preset_name=SCENE_PROFILE,
+                                  scene_render_ir_path=Path(group["ir_path"]), reference_files=group["reference_images"], seed=candidate["seed"])
+            ask = service.proxy.ask_root() / candidate["ask_id"]
+            manifest = json.loads((ask / "ask_manifest.json").read_text(encoding="utf-8"))
+            answer = service.proxy.answer_root() / candidate["ask_id"]
+            answer.mkdir(parents=True)
+            write_json_atomic(answer / "ask_manifest.json", manifest)
+            shutil.copy2(result.image_path, answer / manifest["expected_output"])
+            write_json_atomic(answer / "answer_manifest.json", {"ask_id": candidate["ask_id"], "status": "SUCCESS", "expected_output": manifest["expected_output"]})
+            run = service.detail("Smoke", "Clearing", run["run_id"])
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             run = service.detail("Smoke", "Clearing", run["run_id"])

@@ -1223,6 +1223,24 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').click();
   await page.locator('[data-builder-field="scene.story_beat"]').fill("Save all before Scene Batches");
   await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
+  const slotGroup = (targetId) => ({
+    status: "PENDING", candidates: Array.from({ length: 8 }, (_, index) => ({
+      candidate_id: `${targetId}-${String(index + 1).padStart(3, "0")}`, slot: index + 1, status: "EMPTY",
+    })),
+  });
+  const slotRun = {
+    run_id: "a".repeat(32), status: "QUEUED", targets: [
+      { target_id: "background", label: "Background", kind: "background", dependencies: [] },
+      { target_id: "main", label: "Full Scene", kind: "main", dependencies: ["background"] },
+    ], groups: { background: slotGroup("background"), main: slotGroup("main") },
+    selected_views: {}, rankings: {}, view_reviews: {}, ready_targets: ["background"],
+  };
+  await page.route(`**/api/stories/${storySlug}/scenes/${sceneSlug}/local-batches**`, async (route) => {
+    if (route.request().method() === "GET" && !route.request().url().endsWith(slotRun.run_id)) {
+      return route.fulfill({ json: { batches: [slotRun], linked_batch_id: slotRun.run_id } });
+    }
+    return route.fulfill({ json: slotRun });
+  });
   await page.locator(".workflow-tab[data-page='scene-batches']").click();
   const navigationDialog = page.locator("#unsaved-changes-dialog");
   await expect(navigationDialog).toBeVisible();
@@ -1230,6 +1248,10 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   await navigationDialog.getByRole("button", { name: "Save" }).click();
   await navigationSave;
   await expect(page.locator("#scene-batches-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-batches-page h1")).toHaveText("Scene Renders");
+  await expect(page.locator(".scene-batch-candidates .local-pipeline-candidate")).toHaveCount(16);
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(16);
+  await expect(page.getByRole("button", { name: "Clear", exact: true })).toHaveCount(16);
   const savedBeforeNavigation = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
   expect((await savedBeforeNavigation.json()).document.data.scene.story_beat).toBe("Save all before Scene Batches");
 });

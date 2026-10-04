@@ -116,7 +116,6 @@ const state = {
   sceneBuilderReferences: [],
   sceneBuilderRenderTargets: [],
   activeBuilderRenderTarget: "main",
-  builderAllowStaleTarget: "",
   showBuilderContextElements: true,
   sceneBuilderOpen: false,
   sceneBuilderInterview: null,
@@ -2301,7 +2300,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
   ],
   story: [
     ["stories", "Overview"], ["scenes", "Scenes"], ["scene-builder", "Scene Builder"],
-    ["scene-batches", "Scene Batches"], ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
+    ["scene-batches", "Scene Renders"], ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
   ],
 };
 
@@ -6191,31 +6190,6 @@ function builderElementIsEditable(element) {
   return state.activeBuilderRenderTarget === "main" || element?.subscene_id === state.activeBuilderRenderTarget;
 }
 
-function builderMainRenderBlocker() {
-  if (state.activeBuilderRenderTarget !== "main") return "";
-  return builderTargetRenderBlocker("main");
-}
-
-function builderTargetRenderBlocker(targetId = state.activeBuilderRenderTarget || "main") {
-  const enabled = new Set(builderTargetChildren(targetId).filter((item) => item.enabled).map((item) => item.id));
-  const blocked = (state.sceneBuilderRenderTargets || []).find(
-    (item) => enabled.has(item.render_target_id) && !item.locked_exists,
-  );
-  return blocked ? `${blocked.render_target_label}: ${blocked.stale_reason || "A current locked image is required."}` : "";
-}
-
-function builderTargetStaleWarning(targetId = state.activeBuilderRenderTarget || "main") {
-  const enabled = new Set(builderTargetChildren(targetId).filter((item) => item.enabled).map((item) => item.id));
-  const stale = (state.sceneBuilderRenderTargets || []).find(
-    (item) => enabled.has(item.render_target_id) && item.locked_exists && !item.locked_current,
-  );
-  return stale ? `${stale.render_target_label}: ${stale.stale_reason || "The locked image may be out of date."}` : "";
-}
-
-function builderAllowsStaleDependencies(targetId = state.activeBuilderRenderTarget || "main") {
-  return state.builderAllowStaleTarget === targetId;
-}
-
 function builderElementOptions(selected = "") {
   const activeSubscene = builderActiveSubscene();
   const elements = (state.sceneBuilder?.scene_elements || []).filter(
@@ -6936,9 +6910,8 @@ function builderRenderMoreMenu() {
     ? "view-analysis"
     : "analyze-prompt";
   const activeSubscene = builderActiveSubscene();
-  const staleWarning = builderTargetStaleWarning();
   const renderDisabled = !sceneDocumentMatches();
-  const renderLabel = "Open/Create Scene Batch";
+  const renderLabel = "Open Scene Renders";
   const saveLabel = activeSubscene ? "Save Subscene" : "Save Full Scene";
   return `
     <details class="scene-builder-more">
@@ -6948,7 +6921,7 @@ function builderRenderMoreMenu() {
         ${activeSubscene ? '<button type="button" class="builder-responsive-action" data-builder-action="cancel-subscene">Cancel Subscene Edits</button>' : ""}
         <button type="button" class="builder-responsive-action primary-action" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
         <button type="button" data-builder-action="continue-from">Continue From…</button>
-        <button type="button" data-builder-action="open-page" data-builder-page="scene-batches">Prompt Analysis / Batches</button>
+        <button type="button" data-builder-action="open-page" data-builder-page="scene-batches">Scene Render Slots</button>
         <button type="button" data-builder-action="open-page" data-builder-page="scenes">Scene Management</button>
         <button type="button" data-builder-action="open-page" data-builder-page="local-batch-status">Local Assets</button>
         ${builderRenderTechnicalDetails()}
@@ -7426,32 +7399,14 @@ async function selectSceneBuilderTarget(targetId) {
 function builderRenderTargetStatus() {
   const subscene = builderActiveSubscene();
   const status = builderActiveTargetStatus();
-  const blocker = builderTargetRenderBlocker();
-  const staleWarning = builderTargetStaleWarning();
-  if (!subscene && !blocker && !staleWarning) return "";
-  if (blocker) {
-    return `<div class="action-message info"><strong>${escapeHtml(subscene?.name || "Full Scene")} render blocked.</strong> ${escapeHtml(blocker)} Render and accept that direct dependency first.</div>`;
-  }
-  if (staleWarning) {
-    const accepted = builderAllowsStaleDependencies();
-    return `<div class="action-message info"><strong>${escapeHtml(subscene?.name || "Full Scene")} dependency warning.</strong> ${escapeHtml(staleWarning)}
-      ${accepted
-        ? "The current locked image will be used for this render."
-        : `<button type="button" data-builder-action="allow-stale-dependencies">Use locked image anyway</button>`}
-    </div>`;
-  }
+  if (!subscene) return "";
   const image = status?.locked_exists && status.locked_image_path
     ? `<img class="scene-builder-target-thumbnail fullscreen-image-trigger" src="${fileUrl(status.locked_image_path)}" alt="${escapeHtml(subscene.name)} locked image">`
     : "";
-  const relock = status?.locked_exists && !status.locked_current
-    ? `<button type="button" data-builder-action="relock-current-image">Re-lock current image</button>`
-    : "";
   const tag = `{{SCENE_RENDER:${state.selectedStorySlug}:${state.selectedSceneSlug}:${subscene.id}}}`;
   return `<div class="scene-builder-card scene-builder-target-status">
-    ${image}<div><strong>${status?.locked_current ? "Locked and current" : status?.locked_exists ? "Locked but stale" : "No locked image"}</strong>
-    <p>${escapeHtml(status?.stale_reason || (subscene.kind === "element" ? "Accepted image is automatically linked to its parent element." : "Accepted image is automatically linked to the Full Scene."))}</p>
-    <p>Relevant edits invalidate the accepted ${subscene.kind === "element" ? "element reference" : "background"} and require it to be rendered and locked again.</p>
-    ${relock}
+    ${image}<div><strong>${status?.locked_exists ? "Previously rendered image" : "No previous image"}</strong>
+    <p>${subscene.kind === "element" ? "This target can be used as an image reference in its parent render." : "This target can be used in the Full Scene render."}</p>
     <code>${escapeHtml(tag)}</code></div>
   </div>`;
 }
@@ -7469,7 +7424,6 @@ async function relockCurrentSceneBuilderImage() {
     state.sceneBuilderRenderTargets = (state.sceneBuilderRenderTargets || []).map((item) =>
       item.render_target_id === review?.render_target_id ? review : item
     );
-    state.builderAllowStaleTarget = "";
     renderSceneBuilder();
     showSceneBuilderMessage(payload.message || "Current image re-locked.", "success");
   } catch (error) {
@@ -7546,11 +7500,9 @@ function renderSceneBuilder() {
   const scene = state.sceneBuilder.scene || {};
   const importedCandidate = state.sceneBuilder.source_provenance?.source_type === "scene_candidate_markdown";
   const activeSubscene = builderActiveSubscene();
-  const renderBlocker = builderTargetRenderBlocker();
-  const staleWarning = builderTargetStaleWarning();
   const contextReady = sceneDocumentMatches();
   const renderDisabled = !contextReady;
-  const renderLabel = "Open/Create Scene Batch";
+  const renderLabel = "Open Scene Renders";
   const activeTargetLabel = activeSubscene ? `Subscene: ${activeSubscene.name || activeSubscene.id}` : "Full Scene";
   state.sceneBuilderRendering = true;
   sceneBuilderPanel.innerHTML = `
@@ -7711,7 +7663,6 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.builderResponsiveSection = "elements";
-    state.builderAllowStaleTarget = "";
     state.sceneBuilderOpen = true;
     await builderLoadSelectedElementCostumes(builderSelectedElement(), { signal: selection.controller.signal });
     if (!selectionMatches()) return;
@@ -7935,7 +7886,7 @@ async function disableSceneSubscene(targetId) {
 }
 
 async function renderSceneBuilderScene() {
-  if (!requireSavedSceneBuilder("opening Scene Batches")) return;
+  if (!requireSavedSceneBuilder("opening Scene Renders")) return;
   await activatePage("scene-batches");
 }
 
@@ -8022,7 +7973,6 @@ sceneBuilderPanel.addEventListener("input", () => {
   if (!state.sceneBuilder || state.sceneBuilderRendering) {
     return;
   }
-  state.builderAllowStaleTarget = "";
   builderSyncControls();
   updateDirtyIndicators();
 });
@@ -8143,11 +8093,6 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     if (action === "save") saveSceneBuilder();
     if (action === "cancel-subscene") cancelSceneBuilderSubsceneEdits();
     if (action === "export") exportSceneBuilderMarkdown();
-    if (action === "allow-stale-dependencies") {
-      state.builderAllowStaleTarget = state.activeBuilderRenderTarget || "main";
-      renderSceneBuilder();
-    }
-    if (action === "relock-current-image") relockCurrentSceneBuilderImage();
     if (action === "render") renderSceneBuilderScene();
     if (action === "analyze-prompt") analyzeScenePrompt();
     if (action === "view-analysis") viewScenePromptAnalysis();

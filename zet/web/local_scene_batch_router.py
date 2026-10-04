@@ -68,6 +68,10 @@ def create_local_scene_batch_router(app_factory):
     def reference(story_slug: str, scene_slug: str, run_id: str, target_id: str, index: int, attempt_id: str = ""):
         return call(lambda: FileResponse(service().artifact(story_slug, scene_slug, run_id, target_id, "reference", str(index), attempt_id)))
 
+    @router.get("/{run_id}/targets/{target_id}/next-references/{index}")
+    def next_reference(story_slug: str, scene_slug: str, run_id: str, target_id: str, index: int):
+        return call(lambda: FileResponse(service().artifact(story_slug, scene_slug, run_id, target_id, "next-reference", str(index))))
+
     @router.get("/{run_id}/prompt-improvement-package")
     def package(story_slug: str, scene_slug: str, run_id: str):
         def download():

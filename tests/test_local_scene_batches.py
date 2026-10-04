@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 from pathlib import Path
 import time
@@ -13,6 +14,13 @@ from zet.app import ZetApp
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_render_policy import require_qwen_profile
 from zet.web.local_scene_batch_router import create_local_scene_batch_router
+import zet.services.local_scene_batch_service as scene_batch_module
+
+
+@pytest.fixture(autouse=True)
+def stable_scene_ranking(monkeypatch):
+    monkeypatch.setattr(scene_batch_module, "rank_images_with_luna",
+        lambda **kwargs: ([{"candidate_id": item, "reason": "Test ranking"} for item in kwargs["candidate_ids"]], "test"))
 
 
 @pytest.fixture
@@ -51,9 +59,26 @@ def finish(batches, run, target, *, failed=False, foreign=False, index=0, wait=T
     write_json_atomic(answer / "answer_manifest.json", {"ask_id": candidate["ask_id"], "status": "ERROR" if failed else "SUCCESS",
                       "expected_output": "render.png", "error_message": "Test render failure"})
     (answer / "render.png").write_bytes(png_bytes())
-    for _ in range(100):
+    run = batches.detail("Story", "Scene", run["run_id"])
+    if wait:
+        for _ in range(100):
+            slot = run["groups"][target]["candidates"][index]
+            active = any(item["status"] in {"SUBMITTING", "QUEUED", "RUNNING"}
+                         for item in run["groups"][target]["candidates"])
+            if slot["status"] in {"COMPLETE", "FAILED"} and not active:
+                break
+            time.sleep(.01)
+            run = batches.detail("Story", "Scene", run["run_id"])
+    return run
+
+
+def finish_group(batches, run, target, *, failed_index=None):
+    for index, slot in enumerate(run["groups"][target]["candidates"]):
+        if slot["status"] in {"SUBMITTING", "QUEUED", "RUNNING"}:
+            run = finish(batches, run, target, failed=index == failed_index, index=index, wait=False)
+    for _ in range(500):
         run = batches.detail("Story", "Scene", run["run_id"])
-        if not wait or failed or foreign or run["rankings"].get(target, {}).get("status") == "COMPLETE":
+        if run["rankings"].get(target, {}).get("status") in {"COMPLETE", "FAILED"}:
             return run
         time.sleep(.01)
     raise AssertionError("Rating did not finish")
@@ -62,18 +87,19 @@ def finish(batches, run, target, *, failed=False, foreign=False, index=0, wait=T
 def test_selection_checkpoints_and_canonical_publication(batches):
     run = create(batches)
     assert run["views"] == ["background", "main"]
-    with pytest.raises(ValueError, match="Select prerequisite"):
+    with pytest.raises(ValueError, match="prerequisite"):
         action(batches, run, "render", target_id="main")
     run = action(batches, run, "start")
-    assert not run["groups"]["main"]["candidates"]
-    run = finish(batches, run, "background")
+    assert len(run["groups"]["main"]["candidates"]) == 8
+    assert all(item["status"] == "EMPTY" for item in run["groups"]["main"]["candidates"])
+    run = finish_group(batches, run, "background")
     run = action(batches, run, "select", target_id="background", candidate_id="background-001")
     assert not batches.targets.review_paths("Story", "Scene", "background")["locked"].exists()
     run = action(batches, run, "start")
     main = run["groups"]["main"]
     assert main["reference_images"][0]["image_index"] == 1
     assert "<image1>" in Path(main["prompt_path"]).read_text(encoding="utf-8")
-    run = finish(batches, run, "main")
+    run = finish_group(batches, run, "main")
     run = action(batches, run, "select", target_id="main", candidate_id="main-001")
     assert run["status"] == "READY_TO_PUBLISH"
     run = action(batches, run, "stop")
@@ -99,47 +125,214 @@ def test_dynamic_groups_and_disabled_targets(batches, count):
     assert "off" not in run["views"]
 
 
+def test_saved_target_changes_reconcile_and_keep_inactive_candidate_images(batches):
+    run = action(batches, create(batches), "start")
+    run = finish_group(batches, run, "background")
+    old_image = Path(run["groups"]["background"]["active_candidates"][0]["image_path"])
+    data = batches.story.load_scene_builder_data("Story", "Scene").data
+    data["subscenes"][0]["enabled"] = False
+    data["subscenes"].append({"id": "new_view", "name": "New View", "kind": "background", "enabled": True})
+    batches.story.save_scene_builder_data("Story", "Scene", data)
+    reconciled = batches.detail("Story", "Scene", run["run_id"])
+    assert reconciled["views"] == ["new_view", "main"]
+    assert "background" not in [item["target_id"] for item in reconciled["targets"]]
+    assert any(item["target_id"] == "background" for item in reconciled["historical_targets"])
+    assert old_image.is_file()
+    selected = action(batches, reconciled, "select", target_id="background", candidate_id="background-001")
+    assert selected["selected_views"]["background"] == "background-001"
+
+
+def test_same_asset_id_with_replaced_bytes_is_captured_for_next_attempt(batches, monkeypatch, tmp_path):
+    reference = tmp_path / "spire.png"
+    reference.write_bytes(b"old archway bytes")
+    asset_id = "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a"
+    monkeypatch.setattr(batches.story.story_reference_service, "resolve_scene_references", lambda *_: [{
+        "asset_id": asset_id, "tag": f"{{{{LIB:ASSET:{asset_id}}}}}", "path": str(reference), "label": "Spire Archway",
+    }])
+    monkeypatch.setattr(batches.story.story_render_service, "compile_batch_target", lambda scene, settings, sections, refs, target, selected: {
+        "prompt": "Fresh reference prompt", "references": refs,
+        "ir": {"image_inputs": [{"tag": refs[0]["tag"], "image_index": 1}], "elements": [], "placements": []},
+        "render_input_hash": hashlib.sha256(Path(refs[0]["path"]).read_bytes()).hexdigest(),
+    })
+    run = create(batches)
+    reference.write_bytes(b"new archway bytes")
+    run = action(batches, run, "render", target_id="background")
+    group = run["groups"]["background"]
+    attempt = group["attempts"][group["attempt_id"]]
+    captured = Path(attempt["reference_images"][0]["path"])
+    assert attempt["reference_images"][0]["asset_id"] == asset_id
+    assert captured.read_bytes() == b"new archway bytes"
+    assert attempt["reference_images"][0]["sha256"] == hashlib.sha256(b"new archway bytes").hexdigest()
+    preview = Path(group["next_reference_images"][0]["path"])
+    assert preview.read_bytes() == b"new archway bytes"
+
+
+def test_each_group_has_eight_slots_but_initial_render_queues_four(batches):
+    run = create(batches)
+    for group in run["groups"].values():
+        assert [slot["slot"] for slot in group["candidates"]] == list(range(1, 9))
+        assert all(slot["status"] == "EMPTY" for slot in group["candidates"])
+    run = action(batches, run, "start")
+    slots = run["groups"]["background"]["candidates"]
+    assert all(slot["status"] in {"SUBMITTING", "QUEUED"} for slot in slots[:4])
+    assert all(slot["status"] == "EMPTY" for slot in slots[4:])
+
+
+def test_render_captures_scene_edits_without_a_recompile_action(batches):
+    run = create(batches)
+    data = batches.story.load_scene_builder_data("Story", "Scene").data
+    data["scene"]["story_beat"] = "The archway glows with a new blue light."
+    batches.story.save_scene_builder_data("Story", "Scene", data)
+    run = action(batches, run, "render", target_id="background")
+    group = run["groups"]["background"]
+    attempt = group["attempts"][group["attempt_id"]]
+    snapshot = json.loads(Path(attempt["snapshot_path"]).read_text(encoding="utf-8"))
+    assert snapshot["scene"]["scene"]["story_beat"] == "The archway glows with a new blue light."
+    assert all(item["status"] in {"SUBMITTING", "QUEUED"} for item in group["active_candidates"][:4])
+
+
+def test_retry_versions_filled_or_empty_slot_and_clear_removes_one_image(batches):
+    run = action(batches, create(batches), "start")
+    run = finish_group(batches, run, "background")
+    filled = run["groups"]["background"]["candidates"][0]
+    image_path, old_seed = Path(filled["image_path"]), filled["seed"]
+    run = action(batches, run, "retry", target_id="background", candidate_id=filled["candidate_id"])
+    assert image_path.exists()
+    assert run["groups"]["background"]["active_candidates"][0]["seed"] != old_seed
+    retry_index = len(run["groups"]["background"]["candidates"]) - 1
+    run = finish(batches, run, "background", index=retry_index, wait=False)
+    run = finish_group(batches, run, "background")
+    assert image_path.is_file()
+    candidate = run["groups"]["background"]["history_candidates"][0]
+    image_path = Path(candidate["image_path"])
+    run = action(batches, run, "clear", target_id="background", candidate_id=candidate["candidate_id"])
+    assert not image_path.exists()
+    assert next(item for item in run["groups"]["background"]["candidates"] if item["candidate_id"] == candidate["candidate_id"])["status"] == "CLEARED"
+
+
+def test_late_answer_cannot_restore_a_cleared_slot(batches):
+    run = action(batches, create(batches), "start")
+    slot = run["groups"]["background"]["candidates"][0]
+    ask = batches.proxy.ask_root() / slot["ask_id"]
+    answer = batches.proxy.answer_root() / slot["ask_id"]
+    manifest = json.loads((ask / "ask_manifest.json").read_text(encoding="utf-8"))
+    run = action(batches, run, "clear", target_id="background", candidate_id=slot["candidate_id"])
+    answer.mkdir(parents=True, exist_ok=True)
+    write_json_atomic(answer / "ask_manifest.json", manifest)
+    write_json_atomic(answer / "answer_manifest.json", {"ask_id": slot["ask_id"], "status": "SUCCESS", "expected_output": "render.png"})
+    (answer / "render.png").write_bytes(png_bytes())
+    run = batches.detail("Story", "Scene", run["run_id"])
+    cleared = run["groups"]["background"]["candidates"][0]
+    assert cleared["status"] == "CLEARED" and "image_path" not in cleared
+
+
+def test_clearing_selected_slot_preserves_dependent_images(batches):
+    run = complete_run(batches)
+    main_image = Path(run["groups"]["main"]["candidates"][0]["image_path"])
+    run = action(batches, run, "clear", target_id="background", candidate_id="background-001")
+    assert "background" not in run["selected_views"]
+    assert run["selected_views"]["main"] == "main-001"
+    assert main_image.exists()
+
+
+def test_rejecting_a_slot_keeps_the_image_selectable(batches):
+    run = action(batches, create(batches), "start")
+    run = finish_group(batches, run, "background")
+    image = Path(run["groups"]["background"]["candidates"][0]["image_path"])
+    run = action(batches, run, "review", target_id="background", candidate_id="background-001", decision="reject")
+    slot = run["groups"]["background"]["candidates"][0]
+    assert slot["status"] == "COMPLETE" and Path(slot["image_path"]).exists()
+    assert slot["human_review"]["decision"] == "reject" and image.exists()
+    run = action(batches, run, "select", target_id="background", candidate_id=slot["candidate_id"])
+    assert run["selected_views"]["background"] == slot["candidate_id"]
+
+
+def test_legacy_batches_convert_images_and_preserve_older_history(batches):
+    run = create(batches)
+    root = Path(run["root"])
+    backup_dir = batches.targets.review_paths("Story", "Scene", "background")["backups"]
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    (backup_dir / "old.png").write_bytes(png_bytes())
+    render_attempts = batches.targets.pipeline_path("Story", "Scene", "background") / "Render_Attempts"
+    render_attempts.mkdir(parents=True, exist_ok=True)
+    (render_attempts / "old.png").write_bytes(png_bytes())
+    legacy_image = root / "targets" / "background" / "legacy" / "background-001.png"
+    legacy_image.parent.mkdir(parents=True, exist_ok=True)
+    legacy_image.write_bytes(png_bytes())
+    spec_path, state_path = root / "spec.json", root / "state.json"
+    spec = json.loads(spec_path.read_text())
+    spec.pop("slot_count")
+    spec["schema_version"] = 1
+    spec["batch_name"] = "Old run"
+    state = json.loads(state_path.read_text())
+    for target, group in state["groups"].items():
+        if target == "background":
+            group["candidates"] = [{"candidate_id": "background-001", "seed": 3, "status": "COMPLETE",
+                "image_path": str(legacy_image), "sha256": hashlib.sha256(legacy_image.read_bytes()).hexdigest(),
+                "human_review": {"decision": "undecided"}}]
+        else:
+            group["candidates"] = []
+        group["attempts"] = []
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    older_id = "0" * 32
+    older = root.parent / older_id
+    older.mkdir()
+    old_spec = {**spec, "run_id": older_id, "created_at": "2000-01-01T00:00:00+00:00"}
+    (older / "spec.json").write_text(json.dumps(old_spec), encoding="utf-8")
+    (older / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+    listing = batches.list_runs("Story", "Scene")
+    converted = batches.detail("Story", "Scene", run["run_id"])
+    slots = converted["groups"]["background"]["candidates"]
+    assert len(listing) == 1 and listing[0]["slot_count"] == 8
+    assert slots[0]["status"] == "COMPLETE" and Path(slots[0]["image_path"]).is_file()
+    assert all(slot["status"] == "EMPTY" for slot in slots[1:])
+    assert older.exists()
+    assert (backup_dir / "old.png").is_file() and (render_attempts / "old.png").is_file()
+
+
 def test_failed_foreign_and_late_answers_are_isolated(batches):
     run = action(batches, create(batches), "start")
     run = finish(batches, run, "background", foreign=True)
     assert run["groups"]["background"]["candidates"][0]["status"] == "FAILED"
-    assert run["groups"]["background"]["candidates"][0]["render_attempts"][0]["status"] == "FAILED"
     old_ask = run["groups"]["background"]["candidates"][0]["ask_id"]
-    run = action(batches, run, "retry", target_id="background")
-    assert run["groups"]["background"]["candidates"][0]["ask_id"] != old_ask
-    run = finish(batches, run, "background")
-    assert run["groups"]["background"]["candidates"][0]["status"] == "COMPLETE"
-    attempts = run["groups"]["background"]["candidates"][0]["render_attempts"]
-    assert [entry["status"] for entry in attempts] == ["FAILED", "COMPLETE"]
+    run = action(batches, run, "retry", target_id="background", candidate_id="background-001")
+    assert run["groups"]["background"]["active_candidates"][0]["ask_id"] != old_ask
+    run = finish_group(batches, run, "background")
+    assert run["groups"]["background"]["active_candidates"][0]["status"] == "COMPLETE"
+    assert "render_attempts" not in run["groups"]["background"]["active_candidates"][0]
 
 
-def test_source_changes_block_publication_and_batches_keep_history(batches):
+def test_source_changes_do_not_block_publication_or_rewrite_existing_attempts(batches):
     run = complete_run(batches)
     root = Path(run["root"])
     original = json.loads((root / "snapshot.json").read_text())
     settings = batches.story._library_absolute_path(original["scene"]["scene"]["story_settings_path"])
     settings.write_text(settings.read_text() + "\n")
     second = create(batches)
-    assert run["run_id"] != second["run_id"]
-    assert len(batches.list_runs("Story", "Scene")) == 2
+    assert run["run_id"] == second["run_id"]
+    assert len(batches.list_runs("Story", "Scene")) == 1
     assert json.loads((root / "snapshot.json").read_text()) == original
-    with pytest.raises(ValueError, match="Source inputs changed"):
-        action(batches, run, "publish")
+    run = action(batches, run, "publish")
+    assert run["status"] == "COMPLETE"
 
 
-def test_stop_resume_and_rerender_keep_attempts(batches):
+def test_stop_resume_and_rerender_keep_all_eight_slot_versions(batches):
     run = action(batches, create(batches), "start")
     run = action(batches, run, "stop")
     assert run["status"] == "STOPPED"
     run = action(batches, run, "resume")
-    run = finish(batches, run, "background")
-    run = action(batches, run, "select", target_id="background", candidate_id="background-001")
+    run = finish_group(batches, run, "background")
+    candidate = run["groups"]["background"]["active_candidates"][0]
+    run = action(batches, run, "select", target_id="background", candidate_id=candidate["candidate_id"])
     run = action(batches, run, "start")
     run = action(batches, run, "stop")
     run = action(batches, run, "rerender", target_id="background")
-    assert run["groups"]["background"]["attempts"]
-    assert not run["groups"]["main"]["candidates"]
-    assert "background" not in run["selected_views"]
+    assert len(run["groups"]["background"]["candidates"]) >= 12
+    assert all(item["status"] in {"QUEUED", "SUBMITTING"} for item in run["groups"]["background"]["active_candidates"])
+    assert all(item["status"] in {"EMPTY", "STOPPED"} for item in run["groups"]["main"]["active_candidates"])
+    assert run["selected_views"]["background"] == candidate["candidate_id"]
 
 
 def test_batch_api_and_prompt_package(batches):
@@ -167,21 +360,21 @@ def complete_run(batches):
     run = create(batches)
     for target in run["views"]:
         run = action(batches, run, "start")
-        run = finish(batches, run, target)
+        run = finish_group(batches, run, target)
         run = action(batches, run, "select", target_id=target, candidate_id=f"{target}-001")
     return run
 
 
-def test_partial_publication_recovers_and_preserves_locked_backups(batches, monkeypatch):
+def test_partial_publication_recovers_without_creating_locked_backups(batches, monkeypatch):
     run = complete_run(batches)
     locked = batches.story.scene_image_path("Story", "Scene")
     locked.parent.mkdir(parents=True, exist_ok=True)
     locked.write_bytes(b"previous locked output")
     promote = batches.app.scene_image_review_service.promote
-    def fail_main(story, scene, target):
+    def fail_main(story, scene, target, **kwargs):
         if target == "main":
             raise RuntimeError("publication interrupted")
-        return promote(story, scene, target)
+        return promote(story, scene, target, **kwargs)
     monkeypatch.setattr(batches.app.scene_image_review_service, "promote", fail_main)
     with pytest.raises(RuntimeError, match="interrupted"):
         action(batches, run, "publish")
@@ -191,9 +384,8 @@ def test_partial_publication_recovers_and_preserves_locked_backups(batches, monk
     run = action(batches, run, "publish")
     assert run["status"] == "COMPLETE"
     backups = list(batches.targets.review_paths("Story", "Scene", "main")["backups"].glob("*.png"))
-    assert len(backups) == 1 and backups[0].read_bytes() == b"previous locked output"
+    assert len(backups) == 1
     action(batches, run, "publish")
-    assert len(list(backups[0].parent.glob("*.png"))) == 1
 
 
 def test_partial_candidates_retry_and_source_changes_only_invalidate_descendants(batches, monkeypatch):
@@ -207,21 +399,26 @@ def test_partial_candidates_retry_and_source_changes_only_invalidate_descendants
     run = finish(batches, run, "background", wait=False)
     first = run["groups"]["background"]["candidates"][0]["image_path"]
     run = finish(batches, run, "background", index=1, failed=True)
-    run = action(batches, run, "retry", target_id="background")
+    run = action(batches, run, "retry", target_id="background", candidate_id="background-002")
     assert run["groups"]["background"]["candidates"][0]["image_path"] == first
-    run = finish(batches, run, "background", index=1)
+    run = finish(batches, run, "background", index=1, wait=False)
+    for index in (2, 3):
+        run = finish(batches, run, "background", index=index, wait=False)
+    run = finish_group(batches, run, "background")
     assert run["selected_views"] == {}
     run = action(batches, run, "select", target_id="background", candidate_id="background-001")
     run = action(batches, run, "start")
-    run = finish(batches, run, "other")
+    run = finish_group(batches, run, "other")
     run = action(batches, run, "select", target_id="other", candidate_id="other-001")
     run = action(batches, run, "start")
-    run = finish(batches, run, "main")
-    old_attempt = run["groups"]["main"]["attempt_id"]
-    run = action(batches, run, "select", target_id="background", candidate_id="background-002")
+    run = finish_group(batches, run, "main")
+    old_main_image = Path(run["groups"]["main"]["candidates"][0]["image_path"])
+    newer = next(item for item in run["groups"]["background"]["candidates"]
+                 if item["status"] == "COMPLETE" and item["candidate_id"] != "background-001")
+    run = action(batches, run, "select", target_id="background", candidate_id=newer["candidate_id"])
     assert run["selected_views"]["other"] == "other-001"
-    assert not run["groups"]["main"]["candidates"] and "main" not in run["rankings"]
-    assert batches.artifact("Story", "Scene", run["run_id"], "main", "image", "main-001", old_attempt).is_file()
+    assert all(item["status"] == "COMPLETE" for item in run["groups"]["main"]["active_candidates"][:4])
+    assert "main" in run["rankings"] and old_main_image.exists()
 
 
 def test_submission_restart_recovers_existing_queue_job(batches):
@@ -270,8 +467,8 @@ def test_analysis_submission_restart_and_saved_prompt_validation(batches):
     assert restored["groups"]["background"]["analysis"]["status"] == "FAILED"
     prompt = Path(restored["groups"]["background"]["prompt_path"])
     prompt.write_text("An altered prompt", encoding="utf-8")
-    with pytest.raises(ValueError, match="Saved prompt"):
-        batches.analyze_prompt("Story", "Scene", run["run_id"], "background")
+    analyzed = batches.analyze_prompt("Story", "Scene", run["run_id"], "background")
+    assert analyzed["groups"]["background"]["attempt_id"] != restored["groups"]["background"]["attempt_id"]
 
 
 def test_reference_cap_is_preflight_without_dropping_inputs(batches):
@@ -288,7 +485,7 @@ def complete_run_until_main(batches):
     run = create(batches)
     for target in run["views"][:-1]:
         run = action(batches, run, "start")
-        run = finish(batches, run, target)
+        run = finish_group(batches, run, target)
         run = action(batches, run, "select", target_id=target, candidate_id=f"{target}-001")
     return run
 
@@ -335,18 +532,19 @@ def test_nested_scene_compilation_uses_batch_selected_references(batches):
     assert run["status"] == "COMPLETE"
 
 
-def test_recompile_refreshes_inputs_but_keeps_original_attempts(batches):
+def test_legacy_recompile_refreshes_prompt_and_preserves_images_and_selections(batches):
     run = complete_run(batches)
     old_prompt = Path(run["groups"]["main"]["prompt_path"])
-    old_text = old_prompt.read_text(encoding="utf-8")
     data = batches.story.load_scene_builder_data("Story", "Scene").data
     data["scene"]["story_beat"] = "A red kite flies overhead."
     batches.story.save_scene_builder_data("Story", "Scene", data)
     run = action(batches, run, "recompile")
-    assert not run["selected_views"]
-    assert run["groups"]["background"]["status"] == "COMPILED"
-    assert old_prompt.read_text(encoding="utf-8") == old_text
-    assert run["groups"]["main"]["attempts"][0]["prompt_path"] == str(old_prompt)
+    assert run["selected_views"]["background"] == "background-001"
+    assert run["selected_views"]["main"] == "main-001"
+    assert run["groups"]["background"].get("prompt_path")
+    assert old_prompt.exists()
+    assert any(item["status"] == "COMPLETE" for item in run["groups"]["background"]["active_candidates"])
+    assert run["groups"]["main"].get("prompt_path")
 
 
 def test_storytelling_pages_load_with_unassociated_approved_image(batches, monkeypatch):
@@ -373,6 +571,8 @@ def test_manual_smoke_harness_through_publication_and_zine(tmp_path, monkeypatch
     from contextlib import contextmanager
     from tests import manual_scene_batch_smoke as smoke
     from zet.services.local_render_types import LocalRenderResult
+    monkeypatch.setattr(scene_batch_module, "rank_images_with_luna",
+        lambda **kwargs: ([{"candidate_id": item, "reason": "Smoke ranking"} for item in kwargs["candidate_ids"]], "test"))
     root = tmp_path / "Smoke"
     root.mkdir()
     monkeypatch.setattr(smoke.tempfile, "mkdtemp", lambda **_: str(root))

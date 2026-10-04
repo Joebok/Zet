@@ -27,6 +27,8 @@ from zet.services.workflow_storage import atomic_copy, file_lock, supersede_task
 
 _REVIEWS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="scene-batch-review")
 _ACTIVE_REVIEWS: set[str] = set()
+SLOT_COUNT = 8
+INITIAL_SLOT_COUNT = 4
 
 
 def _read(path: Path) -> dict:
@@ -74,14 +76,9 @@ class LocalSceneBatchService:
         groups = [{"target_id": item["id"], "label": self.targets.target_label(data, item["id"]),
                    "kind": item["kind"]} for item in data.get("subscenes") or [] if item.get("enabled")]
         groups.append({"target_id": "main", "label": "Full Scene", "kind": "main"})
-        counts = payload.get("counts") or {}
-        if not isinstance(counts, dict):
-            raise ValueError("Candidate counts must be keyed by target ID.")
         for group in groups:
-            value = counts.get(group["target_id"], payload.get("count", 4))
-            if isinstance(value, bool) or not str(value).isdigit() or not 1 <= int(value) <= 16:
-                raise ValueError("Choose between 1 and 16 candidates per target.")
-            group["count"] = int(value)
+            group["count"] = SLOT_COUNT
+            group["initial_count"] = INITIAL_SLOT_COUNT
             group["dependencies"] = [item["id"] for item in self.targets.direct_dependencies(data, group["target_id"])]
         # Stable topological order, preferring ready backgrounds to unrelated elements.
         pending = sorted(groups, key=lambda item: (item["target_id"] == "main", item["kind"] == "element"))
@@ -93,7 +90,8 @@ class LocalSceneBatchService:
             ordered.append(ready)
             pending.remove(ready)
         return {"story_slug": document.story.slug, "scene_slug": document.scene.slug,
-                "targets": ordered, "candidate_count": sum(item["count"] for item in ordered)}
+                "targets": ordered, "slot_count": SLOT_COUNT,
+                "initial_render_count": INITIAL_SLOT_COUNT}
 
     def _snapshot(self, story: str, scene: str, root: Path) -> dict:
         root.mkdir(parents=True, exist_ok=True)
@@ -138,6 +136,9 @@ class LocalSceneBatchService:
         return snapshot
 
     def create(self, story: str, scene: str, payload: dict) -> dict:
+        existing = self.list_runs(story, scene)
+        if existing:
+            return self.detail(story, scene, existing[0]["run_id"])
         plan = self.preview(story, scene, payload)
         story, scene = plan["story_slug"], plan["scene_slug"]
         run_id = uuid4().hex
@@ -146,23 +147,79 @@ class LocalSceneBatchService:
         snapshot_root = root / "snapshots" / uuid4().hex
         self._snapshot(story, scene, snapshot_root)
         atomic_copy(snapshot_root / "snapshot.json", root / "snapshot.json")
-        spec = {"schema_version": 1, "kind": "scene", "run_id": run_id, "story_slug": story,
-                "scene_slug": scene, "batch_name": str(payload.get("batch_name") or "").strip(),
+        spec = {"schema_version": 3, "kind": "scene", "run_id": run_id, "story_slug": story,
+                "scene_slug": scene,
                 "created_at": _now(), "views": [item["target_id"] for item in plan["targets"]], **plan}
         write_json_atomic(root / "spec.json", spec)
         write_json_atomic(root / "state.json", {"status": "QUEUED", "stop_requested": False,
-                          "groups": {item["target_id"]: {"status": "PENDING", "candidates": [], "attempts": []}
+                          "groups": {item["target_id"]: self._empty_group(item["target_id"])
                                      for item in plan["targets"]}, "selected_views": {}, "rankings": {},
                           "view_reviews": {}, "prompt_improvement_migrated": True})
         return self.detail(story, scene, run_id)
 
     def list_runs(self, story: str, scene: str) -> list[dict]:
+        workspace = self.workspace(story, scene)
+        workspace.mkdir(parents=True, exist_ok=True)
+        specs = list(workspace.glob("*/spec.json"))
+        if not specs:
+            return []
+        # Reconcile the newest legacy batch in place while preserving older runs.
+        specs.sort(key=lambda path: _read(path).get("created_at", ""), reverse=True)
+        current = specs[0].parent
+        spec, state = _read(current / "spec.json"), _read(current / "state.json")
+        if int(spec.get("schema_version", 0) or 0) < 3:
+            self._upgrade_legacy(story, scene, current, specs[1:])
+        elif len(specs) > 1:
+            # Keep older batch artifacts available for image selection and recovery.
+            pass
         rows = []
-        for path in self.workspace(story, scene).glob("*/spec.json"):
+        for path in workspace.glob("*/spec.json"):
             spec = _read(path)
             state = _read(path.parent / "state.json")
             rows.append({**spec, "status": state["status"]})
-        return sorted(rows, key=lambda item: item["created_at"], reverse=True)
+        return sorted(rows, key=lambda item: item["created_at"], reverse=True)[:1]
+
+    def _upgrade_legacy(self, story: str, scene: str, root: Path, old_specs: list[Path]) -> None:
+        spec_path, state_path = root / "spec.json", root / "state.json"
+        with file_lock(root / "state.lock"):
+            spec, state = _read(spec_path), _read(state_path)
+            if spec.get("schema_version", 0) >= 3:
+                return
+            plan = self.preview(story, scene, {})
+            for target, group in state.setdefault("groups", {}).items():
+                attempts = group.get("attempts")
+                if not isinstance(attempts, dict):
+                    group["legacy_attempts"] = attempts or []
+                    group["attempts"] = {}
+                candidates = group.setdefault("candidates", [])
+                slots = {}
+                for ordinal, candidate in enumerate(candidates, 1):
+                    candidate.setdefault("slot", min(ordinal, SLOT_COUNT))
+                    candidate.setdefault("attempt_id", group.get("attempt_id", ""))
+                    slots[str(candidate["slot"])] = candidate["candidate_id"]
+                for ordinal in range(1, SLOT_COUNT + 1):
+                    key = str(ordinal)
+                    if key not in slots:
+                        candidate_id = f"{target}-{ordinal:03d}"
+                        if any(item.get("candidate_id") == candidate_id for item in candidates):
+                            candidate_id = f"{candidate_id}-{uuid4().hex[:8]}"
+                        candidate = {"candidate_id": candidate_id, "slot": ordinal,
+                                     "seed": random.SystemRandom().randrange(2**63), "status": "EMPTY",
+                                     "human_review": {"decision": "undecided"}}
+                        candidates.append(candidate)
+                        slots[key] = candidate_id
+                group["active_slot_ids"] = slots
+                group.setdefault("active", False)
+                if group.get("attempt_id") and group.get("prompt_path") and group.get("ir_path"):
+                    group["attempts"].setdefault(group["attempt_id"], {
+                        key: group.get(key) for key in ("attempt_id", "prompt_path", "prompt_sha256", "ir_path",
+                            "ir_sha256", "reference_images", "render_input_hash", "source_selections")
+                    })
+            self._reconcile_targets(spec, state, plan)
+            spec["schema_version"] = 3
+            write_json_atomic(state_path, state)
+            write_json_atomic(spec_path, spec)
+        # Prior candidate files, snapshots, prompts and older batches remain in place.
 
     def delete(self, story: str, scene: str, run_id: str) -> None:
         """Remove an inactive batch and its run-owned files."""
@@ -192,10 +249,8 @@ class LocalSceneBatchService:
             for batch in self.list_runs(story, scene):
                 state = _read(self.root(story, scene, batch["run_id"]) / "state.json")
                 for group in state["groups"].values():
-                    for attempt in [group, *group["attempts"]]:
-                        if any(job.get("ask_id") == ask_id for candidate in attempt["candidates"]
-                               for job in candidate.get("render_attempts", [])):
-                            return batch["run_id"]
+                    if any(candidate.get("ask_id") == ask_id for candidate in group["candidates"]):
+                        return batch["run_id"]
             return ""
         metadata = self.targets.review_paths(story, scene, target)["metadata"]
         run_id = _read(metadata).get("batch_id", "") if metadata.is_file() else ""
@@ -220,16 +275,20 @@ class LocalSceneBatchService:
             group = state["groups"][target]
             candidate = next((item for item in group["candidates"] if item["candidate_id"] == candidate_id), {})
             path = Path(candidate.get("image_path") or "")
-            if group.get("stale_reason") or not path.is_file() or candidate.get("sha256") != _hash(path):
+            if candidate.get("status") != "COMPLETE" or not path.is_file():
                 continue
             selected[target] = {"path": str(path), "sha256": _hash(path), "candidate_id": candidate_id}
         return selected
 
     def _compile(self, root: Path, state: dict, target: str) -> dict:
-        snapshot = _read(root / "snapshot.json")
+        """Compile a new immutable attempt from the currently saved scene inputs."""
+        spec = _read(root / "spec.json")
+        generation = uuid4().hex
+        snapshot_root = root / "snapshots" / generation
+        snapshot = self._snapshot(spec["story_slug"], spec["scene_slug"], snapshot_root)
         for reference in snapshot["references"]:
             if not Path(reference["path"]).is_file() or _hash(Path(reference["path"])) != reference["sha256"]:
-                raise ValueError("A frozen batch reference is missing or altered. Create a new batch.")
+                raise ValueError("A current scene reference is missing or altered.")
         try:
             compiled = self.story.story_render_service.compile_batch_target(
                 snapshot["scene"], snapshot["settings"], snapshot["sections"], snapshot["references"], target,
@@ -237,7 +296,6 @@ class LocalSceneBatchService:
         except Exception as exc:
             raise ValueError(str(exc)) from exc
         group = state["groups"][target]
-        generation = uuid4().hex
         output = root / "targets" / target / generation
         output.mkdir(parents=True, exist_ok=False)
         prompt_path = output / "Qwen_Image_2_1_Prompt.md"
@@ -245,6 +303,15 @@ class LocalSceneBatchService:
         write_json_atomic(output / "Scene_Render_IR.json", compiled["ir"])
         compiled["references"] = [{**item, "sha256": _hash(Path(item["path"]))} for item in compiled["references"]]
         write_json_atomic(output / "references.json", compiled["references"])
+        attempt = {"attempt_id": generation, "prompt_path": str(prompt_path),
+                   "ir_path": str(output / "Scene_Render_IR.json"),
+                   "snapshot_path": str(snapshot_root / "snapshot.json"),
+                   "reference_images": compiled["references"],
+                   "prompt_sha256": _hash(prompt_path),
+                   "ir_sha256": _hash(output / "Scene_Render_IR.json"),
+                   "render_input_hash": compiled["render_input_hash"],
+                   "source_selections": self._selected(state)}
+        group.setdefault("attempts", {})[generation] = attempt
         group.update(attempt_id=generation, prompt_path=str(prompt_path), ir_path=str(output / "Scene_Render_IR.json"),
                      reference_images=compiled["references"], prompt_sha256=_hash(prompt_path),
                      ir_sha256=_hash(output / "Scene_Render_IR.json"),
@@ -264,7 +331,7 @@ class LocalSceneBatchService:
                          "applies_to": item.get("applies_to", ""),
                      } for item in compiled["ir"].get("image_inputs", [])],
                      render_input_hash=compiled["render_input_hash"], source_selections=self._selected(state),
-                     status="COMPILED", stale_reason="", candidates=[])
+                     status="COMPILED", stale_reason="")
         # Shared improvement packages read current per-target compiler artifacts.
         directory = root / "prompts" / target
         atomic_copy(prompt_path, directory / "Final_Image_Prompt.md")
@@ -274,40 +341,62 @@ class LocalSceneBatchService:
         return group
 
     def _refresh_snapshot_for_render(self, story: str, scene: str, root: Path, spec: dict) -> None:
-        """Refresh scene and reference inputs before compiling a new render attempt."""
+        """Reconcile active targets with the saved scene before the next render."""
         plan = self.preview(story, scene, {})
-        current_targets = [(item["target_id"], item["dependencies"]) for item in plan["targets"]]
-        batch_targets = [(item["target_id"], item["dependencies"]) for item in spec["targets"]]
-        if current_targets != batch_targets:
-            raise ValueError("Target structure changed. Create a new batch for this scene.")
-        snapshot_root = root / "snapshots" / uuid4().hex
-        self._snapshot(story, scene, snapshot_root)
-        atomic_copy(snapshot_root / "snapshot.json", root / "snapshot.json")
+        _, state = _read(root / "spec.json"), _read(root / "state.json")
+        self._reconcile_targets(spec, state, plan)
+        write_json_atomic(root / "spec.json", spec)
+        write_json_atomic(root / "state.json", state)
 
-    def _archive(self, state: dict, target: str, reason: str) -> None:
-        group = state["groups"][target]
-        if group.get("attempt_id"):
-            archived = {key: copy.deepcopy(value) for key, value in group.items() if key != "attempts"}
-            archived.update(stale_reason=reason, ranking=copy.deepcopy(state["rankings"].get(target, {})),
-                            selected_candidate_id=state["selected_views"].get(target, ""),
-                            view_review=copy.deepcopy(state["view_reviews"].get(target, {})))
-            group.setdefault("attempts", []).append(archived)
-        group.update(candidates=[], status="PENDING", stale_reason=reason)
-        for key in ("attempt_id", "prompt_path", "ir_path", "reference_images", "source_selections", "analysis", "analysis_history"):
-            group.pop(key, None)
-        state["selected_views"].pop(target, None)
-        state["rankings"].pop(target, None)
-        state.setdefault("view_reviews", {}).pop(target, None)
+    @staticmethod
+    def _empty_group(target: str) -> dict:
+        candidates = [{"candidate_id": f"{target}-{ordinal:03d}", "slot": ordinal,
+                       "seed": random.SystemRandom().randrange(2**63), "status": "EMPTY",
+                       "human_review": {"decision": "undecided"}}
+                      for ordinal in range(1, SLOT_COUNT + 1)]
+        return {"status": "PENDING", "candidates": candidates, "revision": 0,
+                "active_slot_ids": {str(item["slot"]): item["candidate_id"] for item in candidates},
+                "attempts": {}, "active": True}
+
+    def _reconcile_targets(self, spec: dict, state: dict, plan: dict) -> None:
+        """Apply current target topology while retaining every prior candidate and attempt."""
+        active = {item["target_id"] for item in plan["targets"]}
+        for target, group in state.setdefault("groups", {}).items():
+            group["active"] = target in active
+            group.setdefault("attempts", {})
+            candidates = group.setdefault("candidates", [])
+            slots = group.setdefault("active_slot_ids", {})
+            for item in candidates:
+                slot = str(item.get("slot") or "")
+                if slot and slot not in slots:
+                    slots[slot] = item["candidate_id"]
+            for ordinal in range(1, SLOT_COUNT + 1):
+                key = str(ordinal)
+                if key not in slots:
+                    candidate_id = f"{target}-{ordinal:03d}"
+                    if any(item["candidate_id"] == candidate_id for item in candidates):
+                        candidate_id = f"{target}-{ordinal:03d}-{uuid4().hex[:8]}"
+                    candidate = {"candidate_id": candidate_id, "slot": ordinal,
+                                 "seed": random.SystemRandom().randrange(2**63), "status": "EMPTY",
+                                 "human_review": {"decision": "undecided"}}
+                    candidates.append(candidate)
+                    slots[key] = candidate_id
+        for definition in plan["targets"]:
+            target = definition["target_id"]
+            if target not in state["groups"]:
+                state["groups"][target] = self._empty_group(target)
+            group = state["groups"][target]
+            group["active"] = True
+            group["label"] = definition.get("label") or target
+            group["kind"] = definition.get("kind") or ""
+            group["dependencies"] = list(definition.get("dependencies") or [])
+            group.setdefault("attempts", {})
+        spec.update(targets=plan["targets"], views=[item["target_id"] for item in plan["targets"]],
+                    slot_count=SLOT_COUNT, initial_render_count=INITIAL_SLOT_COUNT)
 
     def _invalidate_dependents(self, spec: dict, state: dict, target: str) -> None:
-        affected = {target}
-        for item in spec["targets"]:
-            key = item["target_id"]
-            if key != target and affected.intersection(item["dependencies"]):
-                affected.add(key)
-                self._withdraw(state["groups"][key])
-                self._archive(state, key, f"The selected {target} image changed.")
-        state.pop("publication", None)
+        """Selections never erase candidates; dependent renders use selections at submission time."""
+        return None
 
     def _withdraw(self, group: dict) -> None:
         for item in group["candidates"]:
@@ -324,10 +413,8 @@ class LocalSceneBatchService:
                               if (path / "ask_manifest.json").is_file() and _read(path / "ask_manifest.json").get("source_ask_id") == candidate["source_ask_id"]), None)
                 if match:
                     candidate.update(status="QUEUED", ask_id=match.name)
-                    candidate["render_attempts"][-1]["ask_id"] = match.name
                 else:
                     candidate.update(status="FAILED", error="Submission was interrupted before queue publication. Retry this candidate.")
-                    self._record_render_attempt(candidate)
             if candidate["status"] not in {"QUEUED", "RUNNING"}:
                 continue
             ask_id = candidate["ask_id"]
@@ -335,7 +422,6 @@ class LocalSceneBatchService:
             if not (folder / "answer_manifest.json").is_file():
                 if (self.proxy.running_root() / ask_id).is_dir():
                     candidate["status"] = "RUNNING"
-                    self._record_render_attempt(candidate)
                 continue
             try:
                 ask, answer = _read(folder / "ask_manifest.json"), _read(folder / "answer_manifest.json")
@@ -351,35 +437,37 @@ class LocalSceneBatchService:
                     raise ValueError("Invalid render output filename.")
                 source = folder / name
                 validate_image(source.read_bytes())
-                atomic_copy(source, Path(candidate["image_path"]))
+                output = Path(candidate["work_path"])
+                atomic_copy(source, output)
+                atomic_copy(output, Path(candidate["image_path"]))
+                output.unlink(missing_ok=True)
                 candidate.update(status="COMPLETE", sha256=_hash(Path(candidate["image_path"])))
                 write_json_atomic(folder / "harvest_manifest.json", {"consumer": "zet-scene-batches", "harvested_at": _now()})
             except Exception as exc:
                 candidate.update(status="FAILED", error=str(exc))
-            self._record_render_attempt(candidate)
-
-    @staticmethod
-    def _record_render_attempt(candidate):
-        if candidate.get("render_attempts"):
-            candidate["render_attempts"][-1].update(
-                {key: candidate[key] for key in ("status", "error", "ask_id", "image_path", "sha256") if key in candidate},
-                updated_at=_now())
+            if candidate.get("work_path"):
+                work_file = Path(candidate["work_path"])
+                work_file.unlink(missing_ok=True)
+                shutil.rmtree(work_file.parent.parent, ignore_errors=True)
+            candidate.pop("work_path", None)
 
     def detail(self, story: str, scene: str, run_id: str) -> dict:
         root = self.root(story, scene, run_id)
         with file_lock(root / "state.lock"):
             spec, state = _read(root / "spec.json"), _read(root / "state.json")
+            self._reconcile_targets(spec, state, self.preview(story, scene, {}))
+            self._refresh_reference_previews(root, spec, state)
             selected = self._selected(state)
             for target, candidate_id in list(state["selected_views"].items()):
                 if target not in selected:
-                    state["selected_views"].pop(target)
-                    state["groups"][target]["stale_reason"] = "Selected image is missing or altered."
-                    self._invalidate_dependents(spec, state, target)
+                    state["selected_views"].pop(target, None)
             for target, group in state["groups"].items():
                 self._harvest(group)
                 self._harvest_analysis(group)
-                candidates = group["candidates"]
-                if candidates and all(item["status"] in {"COMPLETE", "FAILED", "STOPPED"} for item in candidates):
+                active_ids = set(group.get("active_slot_ids", {}).values())
+                candidates = [item for item in group["candidates"] if item["candidate_id"] in active_ids]
+                active = any(item["status"] in {"SUBMITTING", "QUEUED", "RUNNING"} for item in candidates)
+                if candidates and not active and any(item["status"] == "COMPLETE" for item in candidates):
                     if any(item["status"] == "COMPLETE" for item in candidates):
                         ranking = state["rankings"].get(target) or {}
                         if ranking.get("status") == "RUNNING" and ranking.get("job_id") not in _ACTIVE_REVIEWS:
@@ -388,56 +476,119 @@ class LocalSceneBatchService:
                             job_id = uuid4().hex
                             state["rankings"][target] = {"status": "RUNNING", "job_id": job_id}
                             _ACTIVE_REVIEWS.add(job_id)
-                            _REVIEWS.submit(self._rate, story, scene, run_id, target, group["attempt_id"], job_id)
+                            _REVIEWS.submit(self._rate, story, scene, run_id, target, group.get("revision", 0), job_id)
                         group["status"] = ("SELECTED" if target in self._selected(state) else "AWAITING_HUMAN_SELECTION")
                         if state.get("publication", {}).get("status") == "COMPLETE" and target in self._selected(state):
                             group["status"] = "PUBLISHED"
-                    else:
-                        group["status"] = "FAILED"
+                elif not active and any(item["status"] == "FAILED" for item in candidates):
+                    group["status"] = "FAILED"
+                elif not active and not any(item["status"] == "COMPLETE" for item in candidates):
+                    group["status"] = "COMPILED" if group.get("prompt_path") else "PENDING"
             if state["stop_requested"]:
                 state["status"] = "STOPPED"
-            elif len(self._selected(state)) == len(spec["targets"]):
+            elif all(target in self._selected(state) for target in spec["views"]):
                 state["status"] = "COMPLETE" if state.get("publication", {}).get("status") == "COMPLETE" else "READY_TO_PUBLISH"
             elif any(item["status"] in {"QUEUED", "RUNNING"} for group in state["groups"].values() for item in group["candidates"]):
                 state["status"] = "RUNNING"
             elif any(group["status"] == "FAILED" for group in state["groups"].values()):
                 state["status"] = "FAILED"
             else:
-                state["status"] = "AWAITING_HUMAN_SELECTION" if any(g["candidates"] for g in state["groups"].values()) else "QUEUED"
+                state["status"] = "AWAITING_HUMAN_SELECTION" if any(
+                    candidate["status"] == "COMPLETE" for group in state["groups"].values()
+                    for candidate in group["candidates"]) else "QUEUED"
             state["updated_at"] = _now()
             write_json_atomic(root / "state.json", state)
+            write_json_atomic(root / "spec.json", spec)
             result = {**spec, **state, "root": str(root)}
-            result["candidates"] = [{**item, "view": target, "reference_images": group.get("reference_images", []),
-                                     "prompt_path": group.get("prompt_path", "")}
+            for group in result["groups"].values():
+                active_ids = set(group.get("active_slot_ids", {}).values())
+                group["active_candidates"] = [item for item in group["candidates"] if item["candidate_id"] in active_ids]
+                group["history_candidates"] = [item for item in group["candidates"] if item["candidate_id"] not in active_ids]
+            result["candidates"] = [{**item, "view": target,
+                                     "reference_images": group.get("attempts", {}).get(item.get("attempt_id"), group).get("reference_images", []),
+                                     "prompt_path": group.get("attempts", {}).get(item.get("attempt_id"), group).get("prompt_path", "")}
                                     for target, group in state["groups"].items() for item in group["candidates"]]
             result["ready_targets"] = [item["target_id"] for item in spec["targets"]
                                        if set(item["dependencies"]) <= set(self._selected(state))
                                        and item["target_id"] not in state["selected_views"]]
+            result["historical_targets"] = [
+                {"target_id": target, "label": group.get("label") or target, "kind": group.get("kind", ""),
+                 "dependencies": [], "active": False}
+                for target, group in state["groups"].items() if not group.get("active")
+                and any(item.get("status") == "COMPLETE" for item in group.get("candidates", []))
+            ]
             return result
 
-    def _rate(self, story, scene, run_id, target, attempt, job_id):
+    def _refresh_reference_previews(self, root: Path, spec: dict, state: dict) -> None:
+        """Expose the saved references that would feed each target's next render."""
+        document = self.story.load_scene_builder_data(spec["story_slug"], spec["scene_slug"])
+        scene = copy.deepcopy(document.data)
+        scene.setdefault("scene", {})["_story_slug"] = spec["story_slug"]
+        selected = self._selected(state)
+        statuses = {target: {"locked_exists": True, "locked_current": True, "locked_image_path": value["path"]}
+                    for target, value in selected.items()}
+        for definition in spec["targets"]:
+            target = definition["target_id"]
+            try:
+                projected = (self.targets.project_main(scene, statuses) if target == "main"
+                             else self.targets.project_subscene(scene, target))
+                preview_source = re.sub(r"\{\{SCENE_RENDER:[^}]+\}\}", "", json.dumps(projected))
+                references = self.story.story_reference_service.resolve_scene_references("\n" + preview_source)
+                bindings = {item.get("tag"): item for item in references if item.get("tag")}
+                for dependency in definition.get("dependencies", []):
+                    source = selected.get(dependency)
+                    if source:
+                        tag = self.targets.image_tag(spec["story_slug"], spec["scene_slug"], dependency)
+                        bindings[tag] = {**source, "tag": tag, "label": self.targets.target_label(scene, dependency),
+                                         "kind": "scene-render"}
+                preview_dir = root / "reference-previews" / target
+                preview_dir.mkdir(parents=True, exist_ok=True)
+                previews = []
+                for index, reference in enumerate(bindings.values(), 1):
+                    source = Path(str(reference.get("path") or ""))
+                    if not source.is_file():
+                        continue
+                    digest = _hash(source)
+                    destination = preview_dir / f"{index:03d}_{digest[:16]}{source.suffix or '.png'}"
+                    if not destination.is_file() or _hash(destination) != digest:
+                        atomic_copy(source, destination)
+                    previews.append({**reference, "path": str(destination), "sha256": digest, "image_index": index})
+                keep = {Path(item["path"]).resolve() for item in previews}
+                for previous in preview_dir.iterdir():
+                    if previous.is_file() and previous.resolve() not in keep:
+                        previous.unlink(missing_ok=True)
+                state["groups"][target]["next_reference_images"] = previews
+            except Exception:
+                # Keep page loading available when a saved source is temporarily unavailable;
+                # submission validates and reports actual missing/unsupported inputs.
+                state["groups"][target]["next_reference_images"] = []
+
+    def _rate(self, story, scene, run_id, target, revision, job_id):
         root = self.root(story, scene, run_id)
         try:
             with file_lock(root / "state.lock"):
                 state = _read(root / "state.json")
                 group = state["groups"][target]
-                if group.get("attempt_id") != attempt:
+                if group.get("revision", 0) != revision:
                     raise ValueError("This rating attempt was superseded.")
-                candidates = [item for item in group["candidates"] if item["status"] == "COMPLETE"]
+                attempt_id = group.get("attempt_id")
+                candidates = [item for item in group["candidates"]
+                              if item["status"] == "COMPLETE" and item.get("attempt_id") == attempt_id]
             hashes = {item["candidate_id"]: _hash(Path(item["image_path"])) for item in candidates}
             if len(candidates) == 1:
                 entries, model = [{"candidate_id": candidates[0]["candidate_id"], "reason": "Only completed image."}], "single-survivor"
             else:
+                attempt = group.get("attempts", {}).get(attempt_id, group)
                 prompt = ("Rank every supplied scene candidate for prompt adherence, composition, visual continuity, "
                           "reference preservation and image quality. Explicitly check the exact required character count and identity of each character; "
                           "penalize duplicated or missing characters and unrequested background structures. Check each character's gaze direction and verify "
                           "that every dialogue line appears exactly as written, with a visible panel and pointer aimed at its speaker. State these checks in each reason. "
                           "References precede candidates. Human decisions are independent advice. "
-                          f"Candidate IDs: {list(hashes)}\nExact submitted prompt:\n" + Path(group["prompt_path"]).read_text(encoding="utf-8"))
+                          f"Candidate IDs: {list(hashes)}\nExact submitted prompt:\n" + Path(attempt["prompt_path"]).read_text(encoding="utf-8"))
                 entries, model = rank_images_with_luna(
                     project_root=self.project_root, model=self.app.config.codex_default_model, prompt=prompt,
                     candidate_ids=list(hashes), image_paths=[item["image_path"] for item in candidates],
-                    reference_image_paths=[item["path"] for item in group.get("reference_images", [])],
+                    reference_image_paths=[item["path"] for item in attempt.get("reference_images", [])],
                     executable=shutil.which("codex") or "codex")
             ranking = {"status": "COMPLETE", "entries": entries, "ordered_candidate_ids": [item["candidate_id"] for item in entries],
                        "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries], "input_hashes": hashes, "model": model}
@@ -445,7 +596,7 @@ class LocalSceneBatchService:
             ranking = {"status": "FAILED", "error": str(exc)}
         with file_lock(root / "state.lock"):
             state = _read(root / "state.json")
-            if state["groups"][target].get("attempt_id") == attempt and state["rankings"].get(target, {}).get("job_id") == job_id:
+            if state["groups"][target].get("revision", 0) == revision and state["rankings"].get(target, {}).get("job_id") == job_id:
                 state["rankings"][target] = ranking
                 write_json_atomic(root / "state.json", state)
         _ACTIVE_REVIEWS.discard(job_id)
@@ -455,164 +606,199 @@ class LocalSceneBatchService:
         self.detail(story, scene, run_id)
         with file_lock(root / "state.lock"):
             spec, state = _read(root / "spec.json"), _read(root / "state.json")
+            self._reconcile_targets(spec, state, self.preview(story, scene, {}))
             target = str(payload.get("target_id") or "main")
             if target not in state["groups"]:
                 raise ValueError("Unknown scene target.")
             group = state["groups"][target]
-            if name == "rename":
-                spec["batch_name"] = str(payload.get("batch_name") or "").strip()
-                write_json_atomic(root / "spec.json", spec)
-            elif name == "stop":
+            if name == "stop":
                 state["stop_requested"] = True
                 for value in state["groups"].values():
                     self._withdraw(value)
                     for item in value["candidates"]:
-                        if item["status"] in {"QUEUED", "RUNNING"}:
+                        if item["status"] in {"SUBMITTING", "QUEUED", "RUNNING"}:
                             item["status"] = "STOPPED"
-                            self._record_render_attempt(item)
+                            Path(item.get("work_path") or "").unlink(missing_ok=True) if item.get("work_path") else None
+                            item.pop("work_path", None)
             elif name in {"start", "resume", "render", "retry", "rerender", "compile", "recompile"}:
                 state["stop_requested"] = False
                 if name in {"start", "resume"}:
                     ready = [item["target_id"] for item in spec["targets"]
-                             if set(item["dependencies"]) <= set(self._selected(state)) and item["target_id"] not in state["selected_views"]]
+                             if set(item["dependencies"]) <= set(self._selected(state))
+                             and item["target_id"] not in state["selected_views"]]
                     if not ready:
-                        if len(self._selected(state)) == len(spec["views"]):
+                        if all(item["target_id"] in self._selected(state) for item in spec["targets"]):
+                            write_json_atomic(root / "spec.json", spec)
                             write_json_atomic(root / "state.json", state)
                             return self.detail(story, scene, run_id)
-                        raise ValueError("Select prerequisite candidates before continuing.")
+                        raise ValueError("Select a completed image for each prerequisite target first.")
                     target, group = ready[0], state["groups"][ready[0]]
-                if any(item["status"] in {"QUEUED", "RUNNING"} for item in group["candidates"]):
-                    raise ValueError("This target is already rendering. Stop it before rerendering.")
-                if name in {"start", "render"} and any(item["status"] == "COMPLETE" for item in group["candidates"]):
-                    raise ValueError("Select a rated candidate before continuing, or rerender this group.")
-                if name == "recompile":
-                    plan = self.preview(story, scene, {})
-                    if [(item["target_id"], item["dependencies"]) for item in plan["targets"]] != [(item["target_id"], item["dependencies"]) for item in spec["targets"]]:
-                        raise ValueError("Target structure changed. Create a new batch for this scene.")
-                    if any(item["status"] in {"QUEUED", "RUNNING"} for g in state["groups"].values() for item in g["candidates"]):
-                        raise ValueError("Stop this batch before refreshing its source inputs.")
-                    snapshot_root = root / "snapshots" / uuid4().hex
-                    self._snapshot(story, scene, snapshot_root)
-                    atomic_copy(snapshot_root / "snapshot.json", root / "snapshot.json")
-                    for key in spec["views"]:
-                        self._archive(state, key, "Scene inputs explicitly refreshed.")
-                    state.pop("publication", None)
-                    # Refresh resets selections; compile the first dependency-free target.
-                    target = spec["views"][0]
-                    group = state["groups"][target]
-                    write_json_atomic(root / "state.json", state)
-                elif name in {"start", "resume", "render", "rerender", "compile"}:
-                    # Each newly compiled prompt must use the current Scene Builder data,
-                    # story settings, prompt sections, and resolved reference images.
-                    self._refresh_snapshot_for_render(story, scene, root, spec)
-                if name in {"start", "resume", "render"} and group.get("attempt_id"):
-                    self._archive(state, target, "Render started from current scene inputs.")
-                    self._invalidate_dependents(spec, state, target)
-                if name == "rerender":
-                    self._withdraw(group)
-                    self._archive(state, target, "Target rerendered.")
-                    self._invalidate_dependents(spec, state, target)
-                if name == "compile" and group.get("attempt_id"):
-                    self._archive(state, target, "Prompt recompiled from saved batch inputs.")
-                    self._invalidate_dependents(spec, state, target)
-                if not group.get("attempt_id"):
+                definition = next((item for item in spec["targets"] if item["target_id"] == target), None)
+                if definition is None:
+                    raise ValueError("This target is no longer enabled in the saved scene.")
+                if not set(definition["dependencies"]) <= set(self._selected(state)):
+                    raise ValueError("Select a completed image for each prerequisite target first.")
+                if name in {"compile", "recompile"}:
+                    group["revision"] = int(group.get("revision", 0)) + 1
                     self._compile(root, state, target)
-                if name not in {"compile", "recompile"}:
-                    self._queue(root, spec, state, target, retry=name in {"retry", "resume"},
-                                candidate_id=str(payload.get("candidate_id") or "") if name == "retry" else "")
+                else:
+                    requested_slot = None
+                    if name == "retry":
+                        candidate_id = str(payload.get("candidate_id") or "")
+                        candidate = next((item for item in group["candidates"]
+                                          if item["candidate_id"] == candidate_id), None)
+                        if candidate is None:
+                            raise ValueError("Choose a candidate to retry.")
+                        if candidate["status"] in {"SUBMITTING", "QUEUED", "RUNNING"}:
+                            raise ValueError("This candidate is already rendering.")
+                        requested_slot = int(candidate.get("slot") or 1)
+                        slot_numbers = [requested_slot]
+                    elif name == "rerender":
+                        slot_numbers = list(range(1, SLOT_COUNT + 1))
+                    elif name == "resume":
+                        slot_numbers = [int(slot) for slot, candidate_id in group["active_slot_ids"].items()
+                                        if next((item for item in group["candidates"]
+                                                 if item["candidate_id"] == candidate_id), {}).get("status")
+                                        in {"EMPTY", "STOPPED", "FAILED"}]
+                    else:
+                        slot_numbers = list(range(1, INITIAL_SLOT_COUNT + 1))
+                    if not slot_numbers:
+                        raise ValueError("There are no unfinished render slots to resume.")
+                    had_attempt = bool(group.get("attempt_id"))
+                    group["revision"] = int(group.get("revision", 0)) + 1
+                    self._compile(root, state, target)
+                    attempt_id = group["attempt_id"]
+                    candidate_ids = self._activate_attempt_slots(
+                        group, target, slot_numbers, attempt_id, force_new=had_attempt or name in {"retry", "rerender"})
+                    state["rankings"].pop(target, None)
+                    state.setdefault("view_reviews", {}).pop(target, None)
+                    self._queue(root, spec, state, target, candidate_ids=candidate_ids)
             elif name in {"select", "review", "move-rank"}:
                 candidate_id = str(payload.get("candidate_id") or "")
                 candidate = next((item for item in group["candidates"] if item["candidate_id"] == candidate_id), None)
                 if name == "select" and not candidate_id:
                     state["selected_views"].pop(target, None)
-                    self._invalidate_dependents(spec, state, target)
                 elif not candidate:
                     raise ValueError("Choose a candidate from this target.")
                 elif name == "review":
-                    candidate["human_review"] = {"decision": normalize_human_decision(payload.get("decision"))}
-                    if candidate["human_review"]["decision"] == "reject" and state["selected_views"].get(target) == candidate_id:
-                        state["selected_views"].pop(target)
-                        self._invalidate_dependents(spec, state, target)
+                    decision = normalize_human_decision(payload.get("decision"))
+                    candidate["human_review"] = {"decision": decision}
                 elif name == "move-rank":
                     state["rankings"][target] = adjust_candidate_ranking(state["rankings"].get(target, {}), candidate_id,
                                                                         payload.get("direction"), timestamp=_now())
                 else:
-                    ranking = state["rankings"].get(target, {})
-                    if candidate["status"] != "COMPLETE" or not Path(candidate.get("image_path") or "").is_file() or ranking.get("status") != "COMPLETE" or ranking.get("input_hashes", {}).get(candidate_id) != _hash(Path(candidate["image_path"])):
-                        raise ValueError("Wait for a current rating before selecting this image.")
-                    if candidate.get("human_review", {}).get("decision") == "reject":
-                        raise ValueError("A rejected candidate cannot be selected.")
-                    if state["selected_views"].get(target) != candidate_id:
-                        self._invalidate_dependents(spec, state, target)
+                    image_path = Path(candidate.get("image_path") or "")
+                    if candidate["status"] != "COMPLETE" or not image_path.is_file():
+                        raise ValueError("Choose a completed image that is still available.")
                     state["selected_views"][target] = candidate_id
-                    group["stale_reason"] = ""
+            elif name == "clear":
+                candidate_id = str(payload.get("candidate_id") or "")
+                slot = next((item for item in group["candidates"] if item["candidate_id"] == candidate_id), None)
+                if slot is None:
+                    raise ValueError("Choose a slot to clear.")
+                self._withdraw({"candidates": [slot]})
+                old_path = Path(slot.get("image_path") or "")
+                if old_path.is_file():
+                    old_path.unlink()
+                work_path = Path(slot.get("work_path") or "")
+                if work_path.is_file():
+                    work_path.unlink()
+                if slot.get("work_path"):
+                    shutil.rmtree(work_path.parent.parent, ignore_errors=True)
+                slot.update(status="CLEARED", human_review={"decision": "undecided"})
+                for key in ("image_path", "sha256", "work_path", "ask_id", "source_ask_id", "error"):
+                    slot.pop(key, None)
+                if group["active_slot_ids"].get(str(slot.get("slot"))) == candidate_id:
+                    replacement_id = f"{target}-{int(slot.get('slot') or 1):03d}-{uuid4().hex[:8]}"
+                    replacement = {"candidate_id": replacement_id, "slot": int(slot.get("slot") or 1),
+                                   "seed": random.SystemRandom().randrange(2**63), "status": "EMPTY",
+                                   "human_review": {"decision": "undecided"}}
+                    group["candidates"].append(replacement)
+                    group["active_slot_ids"][str(replacement["slot"])] = replacement_id
+                group["revision"] = int(group.get("revision", 0)) + 1
+                state["rankings"].pop(target, None)
+                state.setdefault("view_reviews", {}).pop(target, None)
+                if state["selected_views"].get(target) == candidate_id:
+                    state["selected_views"].pop(target, None)
             elif name == "reevaluate":
                 state["rankings"].pop(target, None)
             elif name == "publish":
                 self._publish(root, spec, state)
             else:
                 raise ValueError("Unknown scene batch action.")
+            write_json_atomic(root / "spec.json", spec)
             write_json_atomic(root / "state.json", state)
         return self.detail(story, scene, run_id)
 
-    def _queue(self, root, spec, state, target, retry=False, candidate_id=""):
+    @staticmethod
+    def _activate_attempt_slots(group: dict, target: str, slot_numbers: list[int], attempt_id: str,
+                                *, force_new: bool) -> list[str]:
+        candidates = group["candidates"]
+        ids = []
+        for ordinal in slot_numbers:
+            key = str(ordinal)
+            current_id = group["active_slot_ids"].get(key)
+            current = next((item for item in candidates if item["candidate_id"] == current_id), None)
+            if force_new or current is None or current.get("status") != "EMPTY" or current.get("attempt_id"):
+                candidate_id = f"{target}-{ordinal:03d}-{attempt_id[:8]}"
+                suffix = 2
+                while any(item["candidate_id"] == candidate_id for item in candidates):
+                    candidate_id = f"{target}-{ordinal:03d}-{attempt_id[:8]}-{suffix}"
+                    suffix += 1
+                current = {"candidate_id": candidate_id, "slot": ordinal,
+                           "seed": random.SystemRandom().randrange(2**63), "status": "EMPTY",
+                           "human_review": {"decision": "undecided"}}
+                candidates.append(current)
+                group["active_slot_ids"][key] = candidate_id
+            current.update(attempt_id=attempt_id, status="EMPTY")
+            ids.append(current["candidate_id"])
+        return ids
+
+    def _queue(self, root, spec, state, target, *, candidate_ids, allow_retry=False):
         group = state["groups"][target]
         profile = require_qwen_profile(self.project_root, SCENE_PROFILE)
-        definition = next(item for item in spec["targets"] if item["target_id"] == target)
-        if candidate_id and not any(item["candidate_id"] == candidate_id and item["status"] in {"FAILED", "STOPPED"} for item in group["candidates"]):
-            raise ValueError("Choose a failed or stopped candidate to retry.")
-        self._validate_attempt_inputs(group)
-        if not group["candidates"]:
-            for ordinal in range(1, definition["count"] + 1):
-                group["candidates"].append({"candidate_id": f"{target}-{ordinal:03d}", "seed": random.SystemRandom().randrange(2**63),
-                                            "status": "PENDING", "human_review": {"decision": "undecided"}, "render_attempts": []})
+        attempt = group.get("attempts", {}).get(group.get("attempt_id"), group)
+        self._validate_attempt_inputs(attempt)
         state["rankings"].pop(target, None)
+        selected_ids = set(candidate_ids)
+        if not selected_ids:
+            raise ValueError("No render slots were selected.")
         for item in group["candidates"]:
-            if candidate_id and item["candidate_id"] != candidate_id:
+            if item["candidate_id"] not in selected_ids:
                 continue
-            if item["status"] == "COMPLETE" or (item["status"] in {"FAILED", "STOPPED"} and not retry):
+            if item["status"] == "COMPLETE" and not allow_retry:
                 continue
-            attempt = uuid4().hex
-            source_id = f"SceneBatch_{spec['run_id']}_{target}_{item['candidate_id']}_{attempt}"
-            output = Path(group["prompt_path"]).parent / item["candidate_id"] / attempt
-            item.update(status="SUBMITTING", source_ask_id=source_id, ask_id="", image_path=str(output / "candidate.png"), error="")
-            item["render_attempts"].append({"source_ask_id": source_id, "seed": item["seed"], "created_at": _now()})
-            self._record_render_attempt(item)
+            if item["status"] in {"QUEUED", "RUNNING", "SUBMITTING"}:
+                continue
+            item["seed"] = random.SystemRandom().randrange(2**63)
+            render_attempt_id = uuid4().hex
+            source_id = f"SceneSlot_{spec['run_id']}_{target}_{item['candidate_id']}_{render_attempt_id}"
+            slot_path = root / "slots" / target / f"{item['candidate_id']}.png"
+            output = root / "rendering" / target / item["candidate_id"] / render_attempt_id
+            output.mkdir(parents=True, exist_ok=True)
+            item.update(status="SUBMITTING", source_ask_id=source_id, ask_id="", image_path=str(slot_path),
+                        work_path=str(output / "candidate.png"), error="")
+            item["human_review"] = {"decision": "undecided"}
             write_json_atomic(root / "state.json", state)
             try:
                 ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
                     {"ask_id": source_id, "pipeline": "Local-Scene", "pipeline_stage": "SCENE_BATCH_RENDER"},
-                    Path(group["prompt_path"]), output, scene_render_ir_path=Path(group["ir_path"]),
+                    Path(attempt["prompt_path"]), output, scene_render_ir_path=Path(attempt["ir_path"]),
                     allow_parallel=True, seed=item["seed"], checkpoint=profile["diffusion_model"],
-                    render_preset=SCENE_PROFILE, image_generation="comfyui", reference_files=group["reference_images"],
+                    render_preset=SCENE_PROFILE, image_generation="comfyui", reference_files=attempt["reference_images"],
                     consumer="zet-scene-batches")
                 item.update(status="QUEUED", ask_id=ask_path.name, source_ask_id=source_id,
-                            image_path=str(output / "candidate.png"), error="")
-                item["render_attempts"][-1]["ask_id"] = ask_path.name
+                            image_path=str(slot_path), error="")
             except Exception as exc:
                 item.update(status="FAILED", error=str(exc))
-            self._record_render_attempt(item)
             write_json_atomic(root / "state.json", state)
         group["status"] = "RUNNING"
 
     def _publish(self, root, spec, state):
-        selected = self._selected(state)
+        all_selected = self._selected(state)
+        selected = {target: all_selected[target] for target in spec["views"] if target in all_selected}
         if set(selected) != set(spec["views"]):
-            raise ValueError("Select a current rated image for every target before publishing.")
-        if any(state["rankings"].get(target, {}).get("status") != "COMPLETE"
-               or state["rankings"][target].get("input_hashes", {}).get(value["candidate_id"]) != value["sha256"]
-               for target, value in selected.items()):
-            raise ValueError("Complete current ratings before publishing.")
-        for target in spec["views"]:
-            self._validate_attempt_inputs(state["groups"][target])
-        snapshot = _read(root / "snapshot.json")
-        changed = [path for path, digest in snapshot["sources"].items() if not Path(path).is_file() or _hash(Path(path)) != digest]
-        current_scene = copy.deepcopy(self.story.load_scene_builder_data(spec["story_slug"], spec["scene_slug"]).data)
-        current_sources = self.story._resolve_scene_element_sources(current_scene)
-        if hashlib.sha256(json.dumps(current_sources, sort_keys=True).encode("utf-8")).hexdigest() != snapshot["resolved_material_hash"]:
-            changed.append("Resolved element identity or source descriptions")
-        if changed:
-            raise ValueError("Source inputs changed. Create a new batch before publishing: " + ", ".join(changed))
+            raise ValueError("Select an available image for every active target before publishing.")
         publication = state.setdefault("publication", {"status": "PUBLISHING", "targets": {}})
         with file_lock(self.targets.pipeline_path(spec["story_slug"], spec["scene_slug"], "main") / "Scene_Review.lock"):
             for target in spec["views"]:
@@ -620,26 +806,31 @@ class LocalSceneBatchService:
                 selection = selected[target]
                 if publication["targets"].get(target) == selection["sha256"] and paths["locked"].is_file() and _hash(paths["locked"]) == selection["sha256"]:
                     continue
+                candidate = next(item for item in state["groups"][target]["candidates"]
+                                 if item["candidate_id"] == selection["candidate_id"])
+                attempt = state["groups"][target].get("attempts", {}).get(candidate.get("attempt_id"),
+                                                                              state["groups"][target])
                 atomic_copy(Path(selection["path"]), paths["candidate"])
                 write_json_atomic(paths["candidate"].with_suffix(".render.json"), {
                     "image_sha256": selection["sha256"], "batch_id": spec["run_id"], "candidate_id": selection["candidate_id"],
                     "story_slug": spec["story_slug"], "scene_slug": spec["scene_slug"], "render_target_id": target,
-                    "attempt_id": state["groups"][target]["attempt_id"],
-                    "batch_render_input_hash": state["groups"][target]["render_input_hash"],
-                    "prompt_sha256": state["groups"][target]["prompt_sha256"],
-                    "render_input_hash": state["groups"][target]["render_input_hash"]})
-                self.app.scene_image_review_service.promote(spec["story_slug"], spec["scene_slug"], target)
+                    "attempt_id": candidate.get("attempt_id") or attempt.get("attempt_id", ""),
+                    "batch_render_input_hash": attempt.get("render_input_hash", ""),
+                    "prompt_sha256": attempt.get("prompt_sha256", ""),
+                    "render_input_hash": attempt.get("render_input_hash", "")})
+                self.app.scene_image_review_service.promote(spec["story_slug"], spec["scene_slug"], target,
+                                                            preserve_previous=True)
                 publication["targets"][target] = selection["sha256"]
                 write_json_atomic(root / "state.json", state)
         publication.update(status="COMPLETE", published_at=_now())
         invalidate_summary_cache()
 
     @staticmethod
-    def _validate_attempt_inputs(group):
-        artifacts = [(group["prompt_path"], group["prompt_sha256"]), (group["ir_path"], group["ir_sha256"])]
-        artifacts.extend((reference["path"], reference["sha256"]) for reference in group["reference_images"])
+    def _validate_attempt_inputs(attempt):
+        artifacts = [(attempt["prompt_path"], attempt["prompt_sha256"]), (attempt["ir_path"], attempt["ir_sha256"])]
+        artifacts.extend((reference["path"], reference["sha256"]) for reference in attempt["reference_images"])
         if any(not Path(path).is_file() or _hash(Path(path)) != digest for path, digest in artifacts):
-            raise ValueError("Saved prompt, IR or reference images changed. Explicitly recompile before rendering or publishing.")
+            raise ValueError("The saved render-attempt inputs are missing or altered.")
 
     def artifact(self, story, scene, run_id, target, kind, index="", attempt_id="") -> Path:
         root = self.root(story, scene, run_id)
@@ -647,16 +838,22 @@ class LocalSceneBatchService:
         group = state["groups"].get(target)
         if group is None:
             raise ValueError("Unknown scene target.")
-        if attempt_id and attempt_id != group.get("attempt_id"):
-            group = next((item for item in group["attempts"] if item["attempt_id"] == attempt_id), None)
-            if group is None:
-                raise ValueError("Unknown scene attempt.")
+        attempts = group.get("attempts", {})
+        if attempt_id and attempt_id not in attempts and attempt_id != group.get("attempt_id"):
+            raise ValueError("Unknown scene render prompt.")
+        attempt = attempts.get(attempt_id, group) if attempt_id else group
         if kind == "prompt":
-            path = Path(group.get("prompt_path") or "")
+            path = Path(attempt.get("prompt_path") or "")
         elif kind == "reference":
-            if not 0 <= int(index) < len(group["reference_images"]):
+            references = attempt.get("reference_images", [])
+            if not 0 <= int(index) < len(references):
                 raise ValueError("Unknown reference image.")
-            path = Path(group["reference_images"][int(index)]["path"])
+            path = Path(references[int(index)]["path"])
+        elif kind == "next-reference":
+            references = group.get("next_reference_images", [])
+            if not 0 <= int(index) < len(references):
+                raise ValueError("Unknown current reference image.")
+            path = Path(references[int(index)]["path"])
         elif kind == "image":
             path = Path(next(item for item in group["candidates"] if item["candidate_id"] == index)["image_path"])
         elif kind == "analysis":
@@ -672,9 +869,10 @@ class LocalSceneBatchService:
         with file_lock(root / "state.lock"):
             state = _read(root / "state.json")
             group = state["groups"][target]
-            if not group.get("prompt_path"):
-                self._compile(root, state, target)
-            self._validate_attempt_inputs(group)
+            self._reconcile_targets(_read(root / "spec.json"), state, self.preview(story, scene, {}))
+            self._compile(root, state, target)
+            attempt = group.get("attempts", {}).get(group.get("attempt_id"), group)
+            self._validate_attempt_inputs(attempt)
             previous = group.get("analysis") or {}
             if previous.get("status") in {"QUEUED", "RUNNING"}:
                 raise ValueError("Prompt analysis is already running.")
@@ -682,23 +880,24 @@ class LocalSceneBatchService:
                 raise ValueError("Complete the primary analysis before requesting a second opinion.")
             ask_id = f"SceneBatchAnalysis_{run_id}_{target}_{uuid4().hex}"
             folder = self.proxy.file_proxy_client.create_staging(ask_id)
-            result = Path(group["prompt_path"]).parent / f"{ask_id}.md"
+            result = Path(attempt["prompt_path"]).parent / f"{ask_id}.md"
             manifest = {"version": AI_PROXY_PROTOCOL_VERSION, "ask_id": ask_id, "worker_type": "ollama_generate",
                         "ollama_model": ScenePromptAnalysisService._alternate_model(self.app.config.ai_prompt_analysis_model)
                         if second_opinion else self.app.config.ai_prompt_analysis_model,
                         "prompt_file": "OLLAMA_PROMPT.md", "expected_output": "Analysis.md", "task_type": "scene_batch_prompt_analysis",
-                        "consumer": "zet-scene-batches", "source_prompt_sha256": group["prompt_sha256"],
+                        "consumer": "zet-scene-batches", "source_prompt_sha256": attempt["prompt_sha256"],
                         "batch_id": run_id, "render_target_id": target, "attempt_id": group["attempt_id"], "auxiliary": True}
             instructions = (self.project_root / self.app.config.ai_prompt_analysis_instructions_file).read_text(encoding="utf-8")
-            prompt = Path(group["prompt_path"]).read_text(encoding="utf-8")
+            prompt = Path(attempt["prompt_path"]).read_text(encoding="utf-8")
             request = (instructions.replace("{{FINAL_IMAGE_PROMPT}}", prompt) if "{{FINAL_IMAGE_PROMPT}}" in instructions
                        else instructions + "\n\nExact submitted Qwen image prompt:\n" + prompt)
             if second_opinion:
                 request += "\n\nProvide an independent second opinion on this prior analysis:\n" + Path(previous["result_path"]).read_text(encoding="utf-8")
             (folder / "OLLAMA_PROMPT.md").write_text(request, encoding="utf-8")
             write_json_atomic(folder / "ask_manifest.json", manifest)
-            group.setdefault("analysis_history", []).extend([previous] if previous else [])
-            group["analysis"] = {"ask_id": ask_id, "prompt_sha256": group["prompt_sha256"], "attempt_id": group["attempt_id"],
+            if previous.get("result_path"):
+                Path(previous["result_path"]).unlink(missing_ok=True)
+            group["analysis"] = {"ask_id": ask_id, "prompt_sha256": attempt["prompt_sha256"], "attempt_id": group["attempt_id"],
                                  "batch_id": run_id, "render_target_id": target,
                                  "result_path": str(result), "status": "SUBMITTING", "second_opinion": second_opinion}
             write_json_atomic(root / "state.json", state)

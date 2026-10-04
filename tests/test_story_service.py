@@ -848,16 +848,16 @@ ink wash
             changed = service.load_scene_builder_data("Demo", "Opening").data
             next(item for item in changed["placements"] if item["scene_element_id"] == "hall")["world_position"] = "far wall"
             service.save_scene_builder_data("Demo", "Opening", changed)
-            with self.assertRaisesRegex(StoryServiceError, "out of date"):
-                service.stage_scene_render("Demo", "Opening")
+            updated_main = service.stage_scene_render("Demo", "Opening")
+            self.assertEqual("main", updated_main.render_target_id)
             stale_override_task = service.stage_scene_render(
                 "Demo", "Opening", allow_stale_dependencies=True
             )
             self.assertEqual("main", stale_override_task.render_target_id)
             refreshed_metadata = json.loads(target_paths["metadata"].read_text(encoding="utf-8"))
             refreshed_hash = service.story_render_service._compile("Demo", "Opening", "background")[-1]
-            self.assertEqual(refreshed_hash, refreshed_metadata["render_input_hash"])
-            self.assertTrue(
+            self.assertNotEqual(refreshed_hash, refreshed_metadata["render_input_hash"])
+            self.assertFalse(
                 service.scene_render_target_service.freshness(
                     "Demo", "Opening", "background", refreshed_hash
                 )["locked_current"]
@@ -1035,15 +1035,15 @@ ink wash
             changed = service.load_scene_builder_data("Demo", "Opening").data
             next(item for item in changed["scene_elements"] if item["id"] == "rescued_adult")["fallback_visual_description"] = "a rescued traveler wrapped in a torn cloak"
             service.save_scene_builder_data("Demo", "Opening", changed)
-            with self.assertRaisesRegex(StoryServiceError, "not current"):
-                service.stage_scene_render("Demo", "Opening")
+            updated_main = service.stage_scene_render("Demo", "Opening")
+            self.assertEqual("main", updated_main.render_target_id)
 
             leaf_task = service.stage_scene_render("Demo", "Opening", travelers_target_id)
             leaf_manifest = json.loads((Path(leaf_task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
             leaf_paths["locked"].write_bytes(b"travelers-v2")
             leaf_paths["metadata"].write_text(json.dumps({"render_input_hash": leaf_manifest["render_input_hash"]}), encoding="utf-8")
-            with self.assertRaisesRegex(StoryServiceError, "The party.*out of date"):
-                service.stage_scene_render("Demo", "Opening")
+            refreshed_party_parent = service.stage_scene_render("Demo", "Opening")
+            self.assertEqual("main", refreshed_party_parent.render_target_id)
 
     def test_element_subscene_graph_rejects_cycles_and_depth_four(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

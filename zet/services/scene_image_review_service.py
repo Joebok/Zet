@@ -225,7 +225,8 @@ class SceneImageReviewService:
         return disposition, target
 
     @serialized_review
-    def promote(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> SceneImageReviewStatus:
+    def promote(self, story_slug: str, scene_slug: str, render_target_id: str = "main", *,
+                preserve_previous: bool = True) -> SceneImageReviewStatus:
         safe_story, safe_scene = self._slugs(story_slug, scene_slug)
         target_id = str(render_target_id or "main").strip()
         paths = self.target_service.review_paths(safe_story, safe_scene, target_id)
@@ -247,19 +248,7 @@ class SceneImageReviewService:
         digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
         if metadata.get("image_sha256") and metadata["image_sha256"] != digest:
             raise SceneImageReviewError("Candidate image and provenance do not match. Retry harvesting its answer before promotion.")
-        renderer = getattr(self.story_service, "story_render_service", None)
-        if renderer is not None:
-            current_hash = renderer._compile(
-                safe_story,
-                safe_scene,
-                target_id,
-                allow_stale_dependencies=True,
-                accept_stale_dependencies=True,
-            )[-1]
-            # Promotion explicitly accepts the candidate and its locked dependency
-            # tree as representing the scene's current editable state.
-            metadata["render_input_hash"] = current_hash
-        if locked.is_file() and journal.get("image_sha256") != digest:
+        if preserve_previous and locked.is_file() and journal.get("image_sha256") != digest:
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup = paths["backups"] / f"{safe_scene}_{target_id}_{stamp}.png"
             self._atomic_copy(locked, backup)

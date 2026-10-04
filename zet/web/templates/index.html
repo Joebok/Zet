@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20260930-universes">
+  <link rel="stylesheet" href="/static/zet.css?v=20261003-scene-render-slots">
 </head>
 <body>
   <header class="app-header">
@@ -99,7 +99,7 @@
       <button class="tab workflow-tab" data-page="scenes">Scenes</button>
       <button class="tab workflow-tab" data-page="scene-candidates">Candidates</button>
       <button class="tab workflow-tab" data-page="scene-builder">Scene Builder</button>
-      <button class="tab workflow-tab" data-page="scene-batches">Scene Batches</button>
+      <button class="tab workflow-tab" data-page="scene-batches">Scene Renders</button>
       <button class="tab workflow-tab" data-page="zine">Zines</button>
       <div class="production-navigation" aria-label="Story production">
         <button class="tab production-tab" data-page="prompt-review">Prompt / Analysis <span class="production-count" data-production-count="prompt_available" hidden></span><span class="production-analysis-count" data-analysis-pending hidden></span></button>
@@ -1025,7 +1025,7 @@
                 <span id="scene-save-state" class="save-state" aria-live="polite"></span>
                 <button id="scene-toggle-image" class="navigation-action" type="button" disabled>Images</button>
                 <button id="scene-builder-open" class="navigation-action" type="button" disabled>Builder</button>
-                <button id="scene-stage-render" class="update-action" type="button" disabled>Scene Batches</button>
+                <button id="scene-stage-render" class="update-action" type="button" disabled>Scene Renders</button>
                 <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
                 <button id="scene-delete" class="danger-action" type="button" disabled>Delete Scene</button>
               </div>
@@ -1077,24 +1077,14 @@
     </section>
 
     <section id="scene-batches-page" class="page">
-      <div class="page-heading"><h1>Scene Batches</h1><span id="scene-batch-context"></span></div>
+      <div class="page-heading"><h1>Scene Renders</h1><span id="scene-batch-context"></span></div>
       <p id="scene-batch-message" role="status"></p>
-      <div class="settings-form">
-        <label>Batch history<select id="scene-batch-history"></select></label>
-        <button id="scene-batch-delete" class="danger-action" type="button" disabled>Delete batch</button>
-        <label>Batch name<input id="scene-batch-name" type="text"></label>
-        <button id="scene-batch-rename" type="button" disabled>Rename batch</button>
-        <details><summary>New batch candidate counts</summary><div id="scene-batch-plan" class="settings-form"></div></details>
-        <button id="scene-batch-new" type="button">New Batch</button>
-      </div>
       <p id="scene-batch-status" class="status-text"></p>
       <div class="button-row compact">
-        <button id="scene-batch-start" type="button" disabled>Continue / Resume</button>
+        <button id="scene-batch-start" type="button" disabled>Render Next Group</button>
         <button id="scene-batch-stop" type="button" disabled>Stop</button>
         <button id="scene-batch-refresh" type="button">Refresh</button>
-        <button id="scene-batch-recompile" type="button" disabled>Recompile from current scene (resets selections)</button>
         <button id="scene-batch-publish" type="button" disabled>Publish Scene</button>
-        <a id="scene-batch-package" hidden>Prompt Improvement Package</a>
       </div>
       <div id="scene-batch-groups"></div>
     </section>
@@ -2264,9 +2254,9 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20261003-scene-pipeline"></script>
+  <script src="/static/zet.js?v=20261003-scene-render-slots"></script>
   <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
-  <script src="/static/local_scene_batches.js?v=20261003-scene-batch-context"></script>
+  <script src="/static/local_scene_batches.js?v=20261003-scene-render-slots"></script>
   <script src="/static/local_batch_status.js?v=20261002-pipeline-colors"></script>
 </body>
 </html>

@@ -161,29 +161,14 @@ class StoryRenderService:
             statuses: dict[str, dict] = {}
             for definition in story.scene_render_target_service.direct_dependencies(normalized_scene, current_target_id):
                 subscene_id = str(definition.get("id") or "")
-                _, _, _, current_hash = compile_target(subscene_id)
-                freshness = story.scene_render_target_service.freshness(
-                    safe_story_slug, safe_scene_slug, subscene_id, current_hash
-                )
                 paths = story.scene_render_target_service.review_paths(safe_story_slug, safe_scene_slug, subscene_id)
-                statuses[subscene_id] = {**freshness, "locked_image_path": str(paths["locked"])}
-                if not freshness["locked_current"] and not (
-                    allow_stale_dependencies and freshness["locked_exists"]
-                ):
+                if not paths["locked"].is_file():
                     raise self.error_type(
                         f"Cannot render {story.scene_render_target_service.target_label(normalized_scene, current_target_id)}: "
-                        f"{definition.get('name') or subscene_id} is not current. "
-                        f"{freshness['stale_reason']} Render and lock that subscene first."
+                        f"No locked image exists for {definition.get('name') or subscene_id}. Render it first."
                     )
-                if (
-                    accept_stale_dependencies
-                    and freshness["locked_exists"]
-                    and not freshness["locked_current"]
-                ):
-                    story.scene_render_target_service.accept_locked_current(
-                        safe_story_slug, safe_scene_slug, subscene_id, current_hash
-                    )
-                    statuses[subscene_id].update(locked_current=True, stale_reason="")
+                statuses[subscene_id] = {"locked_exists": True, "locked_current": True,
+                                         "locked_image_path": str(paths["locked"])}
             projected = (
                 story.scene_render_target_service.project_main(normalized_scene, statuses)
                 if current_target_id == MAIN_RENDER_TARGET
