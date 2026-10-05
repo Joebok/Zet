@@ -192,8 +192,12 @@ const LOCAL_ASSET_PAGES = new Set([
   "local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing",
 ]);
 const PRODUCTION_PAGES = new Set(["prompt-review"]);
-state.imageGenerationRequestId = null;
-state.imageGenerationTerminal = false;
+const IMAGE_GENERATION_SLOT_COUNT = 8;
+let imageGenerationSlots = Array(IMAGE_GENERATION_SLOT_COUNT).fill(null);
+let imageGenerationSelectedSlot = -1;
+let imageGenerationJobIds = [];
+const imageGenerationJobs = new Map();
+let imageGenerationPending = false;
 
 const characterSelect = document.querySelector("#character-select");
 const imageGenerationForm = document.querySelector("#image-generation-form");
@@ -208,8 +212,8 @@ const imageGenerationPrompt = document.querySelector("#image-generation-prompt")
 const imageGenerationNegative = document.querySelector("#image-generation-negative");
 const imageGenerationWidth = document.querySelector("#image-generation-width");
 const imageGenerationHeight = document.querySelector("#image-generation-height");
-const imageGenerationCount = document.querySelector("#image-generation-count");
 const imageGenerationSubmit = document.querySelector("#image-generation-submit");
+const imageGenerationFill = document.querySelector("#image-generation-fill");
 const imageGenerationClear = document.querySelector("#image-generation-clear");
 const imageGenerationProgress = document.querySelector("#image-generation-progress");
 const imageGenerationMessage = document.querySelector("#image-generation-message");
@@ -222,11 +226,15 @@ const imageGenerationReviewPrompt = document.querySelector("#image-generation-re
 const imageGenerationReviewNegative = document.querySelector("#image-generation-review-negative");
 const imageGenerationReviewPrevious = document.querySelector("#image-generation-review-previous");
 const imageGenerationReviewNext = document.querySelector("#image-generation-review-next");
+const imageGenerationReviewClose = document.querySelector("#image-generation-review-close");
+const imageGenerationReviewSelect = document.querySelector("#image-generation-review-select");
+const imageGenerationReviewRetry = document.querySelector("#image-generation-review-retry");
+const imageGenerationReviewClear = document.querySelector("#image-generation-review-clear");
 const imageGenerationReviewImport = document.querySelector("#image-generation-review-import");
 const imageGenerationReviewUpdate = document.querySelector("#image-generation-review-update");
 const imageGenerationSource = document.querySelector("#image-generation-source");
 let imageGenerationMode = "txt2img";
-let imageGenerationReviewIndex = 0;
+let imageGenerationReviewIndex = -1;
 let entityLibraryImportGeneration = null;
 let imageGenerationReferenceUrl = "";
 let imageGenerationPastedFile = null;
@@ -840,6 +848,8 @@ const entityLibraryEditPrompt = document.querySelector("#entity-library-edit-pro
 const entityLibraryEditNegativePrompt = document.querySelector("#entity-library-edit-negative-prompt");
 const entityLibraryGeneratePrompt = document.querySelector("#entity-library-generate-prompt");
 const entityLibraryPromptStatus = document.querySelector("#entity-library-prompt-status");
+const entityLibraryGenerateIdentity = document.querySelector("#entity-library-generate-identity");
+const entityLibraryIdentityStatus = document.querySelector("#entity-library-identity-status");
 const entityLibraryModifyGenerated = document.querySelector("#entity-library-modify-generated");
 const entityLibraryModifyStatus = document.querySelector("#entity-library-modify-status");
 const entityLibraryEditNotes = document.querySelector("#entity-library-edit-notes");
@@ -1153,9 +1163,12 @@ function saveImageGenerationState() {
       negativePrompt: imageGenerationNegative.value,
       width: imageGenerationWidth.value,
       height: imageGenerationHeight.value,
-      count: imageGenerationCount.value,
       referenceName: imageGenerationPastedFile?.name || imageGenerationReference.files[0]?.name || "",
-      requestId: state.imageGenerationRequestId,
+      slots: imageGenerationSlots,
+      selectedSlot: imageGenerationSelectedSlot,
+      jobIds: imageGenerationJobIds,
+      sourceAssetId: imageGenerationSource.dataset.assetId || "",
+      sourceChecksum: imageGenerationSource.dataset.checksum || "",
     }));
   } catch (error) {
     showMessageElement(imageGenerationMessage, "Unable to save Image Generation state in this browser.", "warning");
@@ -1196,8 +1209,19 @@ async function restoreImageGenerationInputs() {
     imageGenerationNegative.value = saved.negativePrompt || "";
     if (saved.width) imageGenerationWidth.value = saved.width;
     if (saved.height) imageGenerationHeight.value = saved.height;
-    if (saved.count) imageGenerationCount.value = saved.count;
-    state.imageGenerationRequestId = saved.requestId || null;
+    if (Array.isArray(saved.slots) && saved.slots.length === IMAGE_GENERATION_SLOT_COUNT) {
+      imageGenerationSlots = saved.slots;
+      imageGenerationSelectedSlot = Number.isInteger(saved.selectedSlot) ? saved.selectedSlot : -1;
+      imageGenerationJobIds = Array.isArray(saved.jobIds) ? saved.jobIds : [];
+    } else if (saved.requestId) {
+      imageGenerationSlots = Array.from({length: IMAGE_GENERATION_SLOT_COUNT}, (_, index) =>
+        index < 4 ? {requestId: saved.requestId, index} : null);
+      imageGenerationJobIds = [saved.requestId];
+    }
+    imageGenerationSource.dataset.assetId = saved.sourceAssetId || "";
+    imageGenerationSource.dataset.checksum = saved.sourceChecksum || "";
+    imageGenerationSource.hidden = !saved.sourceAssetId;
+    if (saved.sourceAssetId) imageGenerationSource.textContent = "Updating an image from the Image Inventory";
     setImageGenerationMode(saved.mode === "img2img" ? "img2img" : "txt2img");
   }
   try {
@@ -1219,17 +1243,8 @@ async function restoreImageGenerationInputs() {
 }
 
 async function restoreImageGenerationJob() {
-  const requestId = state.imageGenerationRequestId;
-  if (!requestId) return;
-  try {
-    renderImageGenerationStatus(await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { bindToPage: false }));
-    if (!state.imageGenerationTerminal) setTimeout(() => pollImageGeneration(requestId), 500);
-  } catch (error) {
-    showMessageElement(imageGenerationMessage, `Saved Image Generation job could not be restored: ${error.message}`, "warning");
-    if (state.imageGenerationRequestId === requestId) {
-      setTimeout(() => restoreImageGenerationJob(), 4000);
-    }
-  }
+  renderImageGenerationStatus();
+  await Promise.all(imageGenerationJobIds.map((requestId) => pollImageGeneration(requestId)));
 }
 
 function readImageGenerationReference(file) {
@@ -1241,32 +1256,48 @@ function readImageGenerationReference(file) {
   });
 }
 
+function imageGenerationDimensionFromSource(value) {
+  const dimension = Number(value);
+  if (!Number.isFinite(dimension) || dimension <= 0) return null;
+  return Math.min(4096, Math.max(256, Math.round(dimension / 32) * 32));
+}
+
 async function modifyEntityLibraryImageWithGenerator() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
   try {
-    const response = await fetch(fileUrl(asset.image_path));
+    const response = await fetch(fileUrl(asset.image_path, asset.checksum));
     if (!response.ok) throw new Error("Unable to read the selected inventory image.");
     const blob = await response.blob();
     const data = await readImageGenerationReference(new File([blob], asset.file_name, { type: asset.mime_type }));
     await runGuardedTransition(async () => {
-      state.imageGenerationRequestId = null;
-      state.imageGenerationTerminal = false;
-      imageGenerationResultsGrid.replaceChildren();
-      imageGenerationReview.hidden = true;
-      imageGenerationReviewIndex = 0;
+      imageGenerationSlots = Array(IMAGE_GENERATION_SLOT_COUNT).fill(null);
+      imageGenerationSelectedSlot = -1;
+      imageGenerationJobIds = [];
+      imageGenerationJobs.clear();
+      imageGenerationReview.close();
+      renderImageGenerationStatus();
       imageGenerationSource.textContent = "Updating " + (asset.label || asset.file_name);
       imageGenerationSource.hidden = false;
       imageGenerationSource.dataset.assetId = asset.asset_id;
       imageGenerationSource.dataset.checksum = asset.checksum;
+      imageGenerationReference.value = "";
+      imageGenerationPastedFile = null;
+      if (imageGenerationReferenceUrl) URL.revokeObjectURL(imageGenerationReferenceUrl);
+      imageGenerationReferenceUrl = "";
       imageGenerationReferenceData = data;
       imageGenerationReferenceImage.src = data;
       imageGenerationReferenceImage.hidden = false;
       imageGenerationReferenceHint.textContent = asset.file_name;
       imageGenerationPrompt.value = asset.prompt || "";
       imageGenerationNegative.value = asset.negative_prompt || "";
+      const sourceWidth = imageGenerationDimensionFromSource(asset.width);
+      const sourceHeight = imageGenerationDimensionFromSource(asset.height);
+      if (sourceWidth) imageGenerationWidth.value = sourceWidth;
+      if (sourceHeight) imageGenerationHeight.value = sourceHeight;
       setImageGenerationMode("img2img");
       saveImageGenerationState();
+      await saveImageGenerationReference();
       await activatePage("image-generation", { skipAutosave: true });
     });
   } catch (error) {
@@ -1274,38 +1305,57 @@ async function modifyEntityLibraryImageWithGenerator() {
   }
 }
 
-function renderImageGenerationReview(payload) {
-  const images = payload.images || [];
-  imageGenerationReview.hidden = !images.length;
-  if (!images.length) return;
-  imageGenerationReviewIndex = Math.min(imageGenerationReviewIndex, images.length - 1);
-  const selected = images[imageGenerationReviewIndex];
-  imageGenerationReviewImage.src = selected.url;
-  imageGenerationReviewImage.alt = "Generated image " + (imageGenerationReviewIndex + 1);
-  imageGenerationReviewCount.textContent = (imageGenerationReviewIndex + 1) + " of " + images.length;
-  imageGenerationReviewPrompt.textContent = payload.prompt || "";
-  imageGenerationReviewNegative.textContent = payload.negative_prompt || "";
-  imageGenerationReviewPrevious.disabled = imageGenerationReviewIndex === 0;
-  imageGenerationReviewNext.disabled = imageGenerationReviewIndex >= images.length - 1;
-  const associated = Boolean(payload.source_asset_id);
-  imageGenerationReviewImport.hidden = associated;
-  imageGenerationReviewUpdate.hidden = !associated;
+function imageGenerationResult(slotIndex) {
+  const assignment = imageGenerationSlots[slotIndex];
+  const job = assignment && imageGenerationJobs.get(assignment.requestId);
+  const image = job?.images?.find((item) => item.index === assignment.index);
+  return image ? {assignment, job, image} : null;
+}
+
+function imageGenerationReviewableSlots() {
+  return imageGenerationSlots.map((_, index) => index).filter((index) => imageGenerationResult(index));
+}
+
+function renderImageGenerationReview() {
+  if (!imageGenerationReview.open) return;
+  const slots = imageGenerationReviewableSlots();
+  if (!slots.includes(imageGenerationReviewIndex)) { imageGenerationReview.close(); return; }
+  const {job, image} = imageGenerationResult(imageGenerationReviewIndex);
+  const position = slots.indexOf(imageGenerationReviewIndex);
+  imageGenerationReviewImage.src = image.url;
+  imageGenerationReviewImage.alt = `Generated image in slot ${imageGenerationReviewIndex + 1}`;
+  imageGenerationReviewCount.textContent = `Slot ${imageGenerationReviewIndex + 1} · ${position + 1} of ${slots.length}`;
+  imageGenerationReviewPrompt.textContent = job.prompt || "";
+  imageGenerationReviewNegative.textContent = job.negative_prompt || "";
+  imageGenerationReviewPrevious.disabled = position === 0;
+  imageGenerationReviewNext.disabled = position === slots.length - 1;
+  imageGenerationReviewSelect.textContent = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect" : "Select";
+  imageGenerationReviewRetry.disabled = imageGenerationPending || !imageGenerationTerminalStatuses.has(job.status);
+  imageGenerationReviewClear.disabled = imageGenerationReviewRetry.disabled;
+}
+
+function openImageGenerationReview(slotIndex) {
+  imageGenerationReviewIndex = slotIndex;
+  if (!imageGenerationReview.open) imageGenerationReview.showModal();
+  renderImageGenerationReview();
 }
 
 async function openImageGenerationImportDialog() {
-  if (!state.imageGenerationRequestId) return;
-  entityLibraryImportGeneration = { requestId: state.imageGenerationRequestId, index: imageGenerationReviewIndex };
+  const result = imageGenerationResult(imageGenerationSelectedSlot);
+  if (!result) return;
+  const {assignment, job, image} = result;
+  entityLibraryImportGeneration = { requestId: assignment.requestId, index: assignment.index };
   state.entityLibraryImportBlob = null;
   entityLibraryFile.value = "";
-  entityLibraryNewLabel.value = imageGenerationPrompt.value.trim().slice(0, 80) || "Generated image";
-  entityLibraryGeneratedProvenance.value = "Image Generation job " + state.imageGenerationRequestId + ", result " + (imageGenerationReviewIndex + 1);
+  entityLibraryNewLabel.value = (job.prompt || "").trim().slice(0, 80) || "Generated image";
+  entityLibraryGeneratedProvenance.value = "Image Generation job " + assignment.requestId + ", result " + (assignment.index + 1);
   entityLibraryGenerationPrompts.hidden = false;
-  entityLibraryImportPrompt.textContent = imageGenerationReviewPrompt.textContent;
-  entityLibraryImportNegativePrompt.textContent = imageGenerationReviewNegative.textContent;
+  entityLibraryImportPrompt.textContent = job.prompt || "";
+  entityLibraryImportNegativePrompt.textContent = job.negative_prompt || "";
   entityLibraryPaste.textContent = "Using selected Image Generation result";
   entityLibraryImportStatus.textContent = "";
   entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
-  entityLibraryImportPreview.src = imageGenerationReviewImage.src;
+  entityLibraryImportPreview.src = image.url;
   entityLibraryImportPreview.hidden = false;
   await activatePage("auxiliary-resources", { skipAutosave: true });
   entityLibraryImportDialog.showModal();
@@ -1337,87 +1387,137 @@ async function generateEntityImagePrompt() {
   }
 }
 
-function renderImageGenerationStatus(payload) {
-  state.imageGenerationTerminal = ["COMPLETE", "PARTIAL", "FAILED", "ERROR"].includes(payload.status);
-  imageGenerationSubmit.disabled = !state.imageGenerationTerminal && Boolean(state.imageGenerationRequestId);
-  imageGenerationClear.disabled = !state.imageGenerationRequestId || !state.imageGenerationTerminal;
-  imageGenerationProgress.textContent = `${payload.status.toLowerCase()} · ${payload.completed}/${payload.requested} images`
-    + (payload.failed ? ` · ${payload.failed} failed` : "");
-  if (payload.error) showMessageElement(imageGenerationMessage, payload.error, payload.completed ? "warning" : "error");
-  else showMessageElement(imageGenerationMessage, "", "info");
-  imageGenerationSource.hidden = !payload.source_asset_id;
-  imageGenerationSource.textContent = payload.source_asset_id ? "Updating an image from the Image Inventory" : "";
-  imageGenerationSource.dataset.assetId = payload.source_asset_id || "";
-  imageGenerationSource.dataset.checksum = payload.source_checksum || "";
-  if (imageGenerationResultsGrid.childElementCount !== (payload.images || []).length) {
-    imageGenerationResultsGrid.replaceChildren();
+async function generateEntityIdentity() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset) return;
+  const previousText = entityLibraryEditIdentity.value;
+  entityLibraryGenerateIdentity.disabled = true;
+  entityLibraryIdentityStatus.textContent = "Analyzing image with Luna…";
+  try {
+    const started = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}/generate-identity`, { method: "POST" });
+    let job = started;
+    while (job.status === "RUNNING") {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      job = await fetchJson(`/api/entity-library/prompt-generation/${encodeURIComponent(started.job_id)}`);
+    }
+    if (job.status !== "COMPLETE") throw new Error(job.error || "Identity generation failed.");
+    if (entityLibrarySelectedAsset?.asset_id !== asset.asset_id) return;
+    if (entityLibraryEditIdentity.value !== previousText) {
+      entityLibraryIdentityStatus.textContent = `The field changed during analysis. Luna's draft: ${job.draft.identity}`;
+      return;
+    }
+    entityLibraryEditIdentity.value = job.draft.identity;
+    entityLibraryIdentityStatus.textContent = "Identity draft added. Save image to keep it.";
+  } catch (error) {
+    if (entityLibrarySelectedAsset?.asset_id === asset.asset_id) entityLibraryIdentityStatus.textContent = error.message;
+  } finally {
+    if (entityLibrarySelectedAsset?.asset_id === asset.asset_id) entityLibraryGenerateIdentity.disabled = asset.status === "archived";
   }
-  for (const [position, result] of (payload.images || []).entries()) {
-    if (imageGenerationResultsGrid.children[position]) continue;
-    const figure = document.createElement("figure");
-    figure.className = "image-generation-result";
-    const preview = document.createElement("a");
-    preview.href = result.url;
-    preview.target = "_blank";
-    preview.rel = "noreferrer";
-    preview.setAttribute("aria-label", `Open generated image ${result.index + 1}`);
-    const image = document.createElement("img");
-    image.src = result.url;
-    image.alt = `Generated image ${result.index + 1}`;
-    image.loading = "lazy";
-    preview.append(image);
-    const download = document.createElement("a");
-    download.href = `${result.url}?download=true`;
-    download.download = `zet-image-${result.index + 1}`;
-    download.textContent = `Download ${result.index + 1}`;
-    figure.append(preview, download);
-    const review = document.createElement("button");
-    review.type = "button";
-    review.textContent = "Review";
-    review.addEventListener("click", () => {
-      imageGenerationReviewIndex = position;
-      renderImageGenerationReview(payload);
-      imageGenerationReview.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    });
-    figure.append(review);
-    imageGenerationResultsGrid.append(figure);
+}
+
+const imageGenerationTerminalStatuses = new Set(["COMPLETE", "PARTIAL", "FAILED", "ERROR"]);
+const imageGenerationPolling = new Set();
+
+function renderImageGenerationStatus() {
+  const busy = imageGenerationPending || imageGenerationJobIds.some((id) => {
+    const job = imageGenerationJobs.get(id);
+    return !job || !imageGenerationTerminalStatuses.has(job.status);
+  });
+  imageGenerationSubmit.disabled = busy;
+  imageGenerationFill.disabled = busy || !imageGenerationJobIds.length || !imageGenerationSlots.some((assignment, index) =>
+    !imageGenerationResult(index) && (!assignment || imageGenerationTerminalStatuses.has(imageGenerationJobs.get(assignment.requestId)?.status)));
+  imageGenerationClear.disabled = busy || !imageGenerationJobIds.length;
+  const completed = imageGenerationReviewableSlots().length;
+  imageGenerationProgress.textContent = `${completed} of ${IMAGE_GENERATION_SLOT_COUNT} slots filled`;
+  if (!imageGenerationSource.dataset.assetId) {
+    const sourceJob = [...imageGenerationJobs.values()].find((job) => job.source_asset_id);
+    if (sourceJob) {
+      imageGenerationSource.dataset.assetId = sourceJob.source_asset_id;
+      imageGenerationSource.dataset.checksum = sourceJob.source_checksum || "";
+      imageGenerationSource.textContent = "Updating an image from the Image Inventory";
+      imageGenerationSource.hidden = false;
+    }
   }
-  renderImageGenerationReview(payload);
+  const selected = imageGenerationResult(imageGenerationSelectedSlot);
+  imageGenerationReviewImport.disabled = !selected;
+  imageGenerationReviewUpdate.hidden = !imageGenerationSource.dataset.assetId;
+  imageGenerationReviewUpdate.disabled = !selected || !selected.job.source_asset_id;
+  imageGenerationResultsGrid.replaceChildren();
+  for (let index = 0; index < IMAGE_GENERATION_SLOT_COUNT; index += 1) {
+    const result = imageGenerationResult(index);
+    const assignment = imageGenerationSlots[index];
+    const job = assignment && imageGenerationJobs.get(assignment.requestId);
+    const card = document.createElement("figure");
+    card.className = `image-generation-result${index === imageGenerationSelectedSlot ? " is-selected" : ""}`;
+    const title = document.createElement("figcaption");
+    title.textContent = `Slot ${index + 1}${index === imageGenerationSelectedSlot ? " · Selected" : ""}`;
+    card.append(title);
+    if (result) {
+      const preview = document.createElement("button");
+      preview.type = "button";
+      preview.className = "image-generation-result-preview";
+      preview.setAttribute("aria-label", `Review slot ${index + 1}`);
+      preview.addEventListener("click", () => openImageGenerationReview(index));
+      const image = document.createElement("img");
+      image.src = result.image.url;
+      image.alt = `Generated image in slot ${index + 1}`;
+      image.loading = "lazy";
+      preview.append(image);
+      card.append(preview);
+      const controls = document.createElement("div");
+      controls.className = "button-row compact";
+      const review = document.createElement("button");
+      review.type = "button";
+      review.textContent = "Review";
+      review.addEventListener("click", () => openImageGenerationReview(index));
+      const download = document.createElement("a");
+      download.href = `${result.image.url}?download=true`;
+      download.download = `zet-image-slot-${index + 1}`;
+      download.textContent = "Download";
+      controls.append(review, download);
+      card.append(controls);
+    } else {
+      const status = document.createElement("p");
+      status.textContent = assignment ? (job && imageGenerationTerminalStatuses.has(job.status) ? "Failed" : job?.status || "Loading") : "Empty";
+      card.append(status);
+    }
+    imageGenerationResultsGrid.append(card);
+  }
+  renderImageGenerationReview();
 }
 
 async function pollImageGeneration(requestId) {
-  if (state.imageGenerationRequestId !== requestId) return;
+  if (!imageGenerationJobIds.includes(requestId) || imageGenerationPolling.has(requestId)) return;
+  imageGenerationPolling.add(requestId);
   try {
     const payload = await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { bindToPage: false });
-    if (state.imageGenerationRequestId !== requestId) return;
-    renderImageGenerationStatus(payload);
-    if (!state.imageGenerationTerminal) setTimeout(() => pollImageGeneration(requestId), 1400);
+    if (!imageGenerationJobIds.includes(requestId)) return;
+    imageGenerationJobs.set(requestId, payload);
+    if (payload.error) showMessageElement(imageGenerationMessage, payload.error, payload.completed ? "warning" : "error");
+    renderImageGenerationStatus();
+    if (!imageGenerationTerminalStatuses.has(payload.status)) setTimeout(() => pollImageGeneration(requestId), 1400);
   } catch (error) {
-    if (state.imageGenerationRequestId !== requestId) return;
-    showMessageElement(imageGenerationMessage, `Unable to check AI_Proxy job: ${error.message}`, "error");
-    imageGenerationSubmit.disabled = true;
-    setTimeout(() => pollImageGeneration(requestId), 4000);
+    if (imageGenerationJobIds.includes(requestId)) {
+      showMessageElement(imageGenerationMessage, `Unable to check AI_Proxy job: ${error.message}`, "error");
+      setTimeout(() => pollImageGeneration(requestId), 4000);
+    }
+  } finally {
+    imageGenerationPolling.delete(requestId);
   }
 }
 
-async function submitImageGeneration(event) {
-  event.preventDefault();
+async function submitImageGenerationForSlots(slotIndexes) {
+  if (imageGenerationPending || !slotIndexes.length) return;
+  const previousResults = slotIndexes.map((slot) => imageGenerationResult(slot)).filter(Boolean);
   if (imageGenerationMode === "img2img" && !imageGenerationReference.files.length && !imageGenerationReferenceData) {
     showMessageElement(imageGenerationMessage, "Choose a reference image for img2img.", "error");
     return;
   }
-  imageGenerationSubmit.disabled = true;
+  imageGenerationPending = true;
+  renderImageGenerationStatus();
   showMessageElement(imageGenerationMessage, "Staging images through AI_Proxy…", "info");
-  imageGenerationResultsGrid.replaceChildren();
   try {
-    if (state.imageGenerationRequestId && state.imageGenerationTerminal) {
-      await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(state.imageGenerationRequestId)}`, {
-        method: "DELETE", bindToPage: false,
-      });
-    }
-    const file = imageGenerationMode === "img2img"
-      ? (imageGenerationReference.files[0] || imageGenerationPastedFile)
-      : null;
+    const file = imageGenerationMode === "img2img" ? (imageGenerationReference.files[0] || imageGenerationPastedFile) : null;
     const referenceImage = file ? await readImageGenerationReference(file) : imageGenerationReferenceData;
     const payload = await fetchJson("/api/image-generation/jobs", {
       method: "POST",
@@ -1428,39 +1528,57 @@ async function submitImageGeneration(event) {
         negative_prompt: imageGenerationNegative.value,
         width: Number(imageGenerationWidth.value),
         height: Number(imageGenerationHeight.value),
-        count: Number(imageGenerationCount.value),
+        count: slotIndexes.length,
         reference_image: referenceImage,
         source_asset_id: imageGenerationSource.dataset.assetId || "",
         source_checksum: imageGenerationSource.dataset.checksum || "",
       }),
       bindToPage: false,
     });
-    state.imageGenerationRequestId = payload.request_id;
-    state.imageGenerationTerminal = false;
+    slotIndexes.forEach((slot, index) => { imageGenerationSlots[slot] = {requestId: payload.request_id, index}; });
+    if (slotIndexes.includes(imageGenerationSelectedSlot)) imageGenerationSelectedSlot = -1;
+    imageGenerationJobIds.push(payload.request_id);
+    imageGenerationJobs.set(payload.request_id, payload);
     saveImageGenerationState();
-    imageGenerationProgress.textContent = "Queued with AI_Proxy…";
-    renderImageGenerationStatus(payload);
-    if (!state.imageGenerationTerminal) setTimeout(() => pollImageGeneration(payload.request_id), 900);
+    showMessageElement(imageGenerationMessage, "", "info");
+    if (!imageGenerationTerminalStatuses.has(payload.status)) setTimeout(() => pollImageGeneration(payload.request_id), 900);
+    for (const previous of previousResults) {
+      try {
+        const updated = await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(previous.assignment.requestId)}/images/${previous.assignment.index}`, {
+          method: "DELETE", bindToPage: false,
+        });
+        imageGenerationJobs.set(previous.assignment.requestId, updated);
+      } catch (error) {
+        showMessageElement(imageGenerationMessage, `Previous slot image could not be cleared: ${error.message}`, "warning");
+      }
+    }
   } catch (error) {
-    imageGenerationSubmit.disabled = false;
     showMessageElement(imageGenerationMessage, error.message, "error");
+  } finally {
+    imageGenerationPending = false;
+    renderImageGenerationStatus();
   }
 }
 
+function submitImageGeneration(event) {
+  event.preventDefault();
+  void submitImageGenerationForSlots([0, 1, 2, 3]);
+}
+
 async function clearImageGenerationResults() {
-  const requestId = state.imageGenerationRequestId;
-  if (!requestId || !state.imageGenerationTerminal) return;
+  if (imageGenerationPending || !imageGenerationJobIds.length) return;
+  imageGenerationPending = true;
+  renderImageGenerationStatus();
   try {
-    await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { method: "DELETE", bindToPage: false });
-    state.imageGenerationRequestId = null;
-    state.imageGenerationTerminal = false;
+    for (const requestId of imageGenerationJobIds) {
+      await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { method: "DELETE", bindToPage: false });
+    }
+    imageGenerationSlots = Array(IMAGE_GENERATION_SLOT_COUNT).fill(null);
+    imageGenerationSelectedSlot = -1;
+    imageGenerationJobIds = [];
+    imageGenerationJobs.clear();
     window.localStorage.removeItem(IMAGE_GENERATION_STORAGE_KEY);
-    imageGenerationResultsGrid.replaceChildren();
-    imageGenerationReview.hidden = true;
-    imageGenerationReviewIndex = 0;
-    imageGenerationProgress.textContent = "";
-    imageGenerationSubmit.disabled = false;
-    imageGenerationClear.disabled = true;
+    imageGenerationReview.close();
     showMessageElement(imageGenerationMessage, "Results cleared.", "success");
     imageGenerationForm.reset();
     imageGenerationReferenceData = "";
@@ -1475,6 +1593,9 @@ async function clearImageGenerationResults() {
     setImageGenerationMode("txt2img");
   } catch (error) {
     showMessageElement(imageGenerationMessage, error.message, "error");
+  } finally {
+    imageGenerationPending = false;
+    renderImageGenerationStatus();
   }
 }
 
@@ -1483,7 +1604,6 @@ async function loadImageGenerationOptions() {
     try {
       const payload = await fetchJson("/api/image-generation/options", { bindToPage: false });
       imageGenerationModel.textContent = `${payload.model} · ${payload.checkpoint}`;
-      imageGenerationCount.value = payload.default_count || 4;
       imageGenerationWidth.value = payload.default_width || 1024;
       imageGenerationHeight.value = payload.default_height || 1024;
       imageGenerationOptionsLoaded = true;
@@ -9171,7 +9291,9 @@ async function selectEntityLibraryAsset(assetId) {
   entityLibraryReplace.disabled = false;
   entityLibraryModifyGenerated.hidden = asset.origin === "pipeline" || asset.status === "archived";
   entityLibraryGeneratePrompt.disabled = asset.status === "archived" || Boolean(asset.prompt && asset.negative_prompt);
+  entityLibraryGenerateIdentity.disabled = asset.status === "archived";
   entityLibraryPromptStatus.textContent = "";
+  entityLibraryIdentityStatus.textContent = "";
   entityLibraryModifyStatus.textContent = "";
   entityLibraryEditLabel.value = asset.label || "";
   entityLibraryEditPrompt.value = asset.prompt || "";
@@ -13873,21 +13995,60 @@ imageCatalogBulkClear.addEventListener("click", () => {
 });
 entityLibraryModifyGenerated.addEventListener("click", modifyEntityLibraryImageWithGenerator);
 entityLibraryGeneratePrompt.addEventListener("click", generateEntityImagePrompt);
+entityLibraryGenerateIdentity.addEventListener("click", generateEntityIdentity);
 imageGenerationReviewPrevious.addEventListener("click", () => {
-  imageGenerationReviewIndex = Math.max(0, imageGenerationReviewIndex - 1);
-  if (state.imageGenerationRequestId) pollImageGeneration(state.imageGenerationRequestId);
+  const slots = imageGenerationReviewableSlots();
+  imageGenerationReviewIndex = slots[Math.max(0, slots.indexOf(imageGenerationReviewIndex) - 1)];
+  renderImageGenerationReview();
 });
 imageGenerationReviewNext.addEventListener("click", () => {
-  imageGenerationReviewIndex += 1;
-  if (state.imageGenerationRequestId) pollImageGeneration(state.imageGenerationRequestId);
+  const slots = imageGenerationReviewableSlots();
+  imageGenerationReviewIndex = slots[Math.min(slots.length - 1, slots.indexOf(imageGenerationReviewIndex) + 1)];
+  renderImageGenerationReview();
+});
+imageGenerationReviewClose.addEventListener("click", () => imageGenerationReview.close());
+imageGenerationReviewSelect.addEventListener("click", () => {
+  imageGenerationSelectedSlot = imageGenerationSelectedSlot === imageGenerationReviewIndex ? -1 : imageGenerationReviewIndex;
+  saveImageGenerationState();
+  renderImageGenerationStatus();
+});
+imageGenerationReviewRetry.addEventListener("click", () => {
+  const slot = imageGenerationReviewIndex;
+  imageGenerationReview.close();
+  void submitImageGenerationForSlots([slot]);
+});
+imageGenerationReviewClear.addEventListener("click", async () => {
+  const current = imageGenerationResult(imageGenerationReviewIndex);
+  if (!current) return;
+  const slots = imageGenerationReviewableSlots();
+  const position = slots.indexOf(imageGenerationReviewIndex);
+  imageGenerationPending = true;
+  renderImageGenerationStatus();
+  try {
+    const updated = await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(current.assignment.requestId)}/images/${current.assignment.index}`, {
+      method: "DELETE", bindToPage: false,
+    });
+    imageGenerationJobs.set(current.assignment.requestId, updated);
+    const slot = imageGenerationReviewIndex;
+    imageGenerationSlots[slot] = null;
+    if (imageGenerationSelectedSlot === slot) imageGenerationSelectedSlot = -1;
+    const next = slots[position + 1] ?? slots[position - 1];
+    imageGenerationReviewIndex = next ?? -1;
+    saveImageGenerationState();
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  } finally {
+    imageGenerationPending = false;
+    renderImageGenerationStatus();
+  }
 });
 imageGenerationReviewImport.addEventListener("click", openImageGenerationImportDialog);
 imageGenerationReviewUpdate.addEventListener("click", async () => {
-  const requestId = state.imageGenerationRequestId;
-  if (!requestId) return;
+  const selected = imageGenerationResult(imageGenerationSelectedSlot);
+  if (!selected?.job.source_asset_id) return;
   imageGenerationReviewUpdate.disabled = true;
   try {
-    const result = await fetchJson("/api/image-generation/jobs/" + encodeURIComponent(requestId) + "/images/" + imageGenerationReviewIndex + "/apply", { method: "POST" });
+    const result = await fetchJson("/api/image-generation/jobs/" + encodeURIComponent(selected.assignment.requestId) + "/images/" + selected.assignment.index + "/apply", { method: "POST" });
     await activatePage("auxiliary-resources", { skipAutosave: true });
     await selectEntityLibraryAsset(result.asset.asset_id);
     showAuxResourceMessage("Image updated in the inventory.", "success");
@@ -13898,25 +14059,33 @@ imageGenerationReviewUpdate.addEventListener("click", async () => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (imageGenerationReview.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || "")) return;
+  if (!imageGenerationReview.open || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || "")) return;
   if (event.key === "ArrowLeft" && !imageGenerationReviewPrevious.disabled) imageGenerationReviewPrevious.click();
   if (event.key === "ArrowRight" && !imageGenerationReviewNext.disabled) imageGenerationReviewNext.click();
 });
 imageGenerationTxt2img.addEventListener("click", () => { setImageGenerationMode("txt2img"); saveImageGenerationState(); });
 imageGenerationImg2img.addEventListener("click", () => { setImageGenerationMode("img2img"); saveImageGenerationState(); });
 imageGenerationForm.addEventListener("submit", submitImageGeneration);
+imageGenerationFill.addEventListener("click", () => {
+  const slots = imageGenerationSlots.map((assignment, index) => ({assignment, index}))
+    .filter(({assignment, index}) => !imageGenerationResult(index)
+      && (!assignment || imageGenerationTerminalStatuses.has(imageGenerationJobs.get(assignment.requestId)?.status)))
+    .map(({index}) => index);
+  void submitImageGenerationForSlots(slots);
+});
 imageGenerationClear.addEventListener("click", clearImageGenerationResults);
 imageGenerationReference.addEventListener("change", () => {
   imageGenerationPastedFile = null;
   setImageGenerationReference(imageGenerationReference.files[0]);
   const file = imageGenerationReference.files[0];
   if (file) readImageGenerationReference(file).then((data) => {
+    if (imageGenerationReference.files[0] !== file) return;
     imageGenerationReferenceData = data;
     saveImageGenerationReference().catch(() => showMessageElement(imageGenerationMessage, "Unable to save the reference image.", "error"));
     saveImageGenerationState();
   }).catch(() => showMessageElement(imageGenerationMessage, "Unable to save the reference image.", "error"));
 });
-for (const input of [imageGenerationPrompt, imageGenerationNegative, imageGenerationWidth, imageGenerationHeight, imageGenerationCount]) {
+for (const input of [imageGenerationPrompt, imageGenerationNegative, imageGenerationWidth, imageGenerationHeight]) {
   input.addEventListener("input", saveImageGenerationState);
   input.addEventListener("change", saveImageGenerationState);
 }
@@ -13929,7 +14098,9 @@ imageGenerationReferencePreview.addEventListener("paste", async (event) => {
     imageGenerationReference.value = "";
     imageGenerationPastedFile = file;
     setImageGenerationReference(file);
-    imageGenerationReferenceData = await readImageGenerationReference(file);
+    const data = await readImageGenerationReference(file);
+    if (imageGenerationPastedFile !== file) return;
+    imageGenerationReferenceData = data;
     await saveImageGenerationReference();
     saveImageGenerationState();
   }

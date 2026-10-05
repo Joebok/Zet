@@ -28,6 +28,20 @@ class ImagePromptGenerationService:
         "negative guidance for artifacts or unwanted additions without negating visible required content. "
         "Do not infer hidden details. Return only the requested JSON object."
     )
+    IDENTITY_SCHEMA = {
+        "type": "object",
+        "properties": {"identity": {"type": "string"}},
+        "required": ["identity"],
+        "additionalProperties": False,
+    }
+    IDENTITY_INSTRUCTIONS = (
+        "Look at the supplied image and write a short, concise identity description for the pictured "
+        "person, creature, place, or object. Include only distinctive visible, stable facts that a "
+        "scene builder needs to recognize and depict the same entity when this image is referenced. "
+        "Do not write an image generation prompt. Omit composition, camera, lighting, art style, "
+        "background, actions, and generic quality terms. Do not guess names, history, personality, "
+        "or details that are not visible. Use one compact sentence or phrase. Return only the requested JSON object."
+    )
 
     def __init__(self, zet_app, project_root: str | Path, model_service=None, runner=subprocess.run):
         self.zet_app = zet_app
@@ -38,13 +52,19 @@ class ImagePromptGenerationService:
         self._jobs: dict[str, dict] = {}
 
     def start(self, asset_id: str) -> dict:
+        return self._start(asset_id, "prompt")
+
+    def start_identity(self, asset_id: str) -> dict:
+        return self._start(asset_id, "identity")
+
+    def _start(self, asset_id: str, kind: str) -> dict:
         asset = self.zet_app.entity_library_asset(asset_id)
         if asset.get("status") == "archived":
             raise ValueError("Archived images cannot be analyzed.")
         if hashlib.sha256(Path(asset["image_path"]).read_bytes()).hexdigest() != asset["checksum"]:
             raise ValueError("The image changed outside the library. Refresh the inventory before analysis.")
         job_id = uuid4().hex
-        job = {"job_id": job_id, "asset_id": asset_id, "checksum": asset["checksum"],
+        job = {"job_id": job_id, "asset_id": asset_id, "checksum": asset["checksum"], "kind": kind,
                "status": "RUNNING", "draft": None, "error": "", "existing_prompt": asset.get("prompt", ""),
                "existing_negative_prompt": asset.get("negative_prompt", "")}
         with self._lock:
@@ -64,7 +84,8 @@ class ImagePromptGenerationService:
                 current = self.zet_app.entity_library_asset(result["asset_id"])
                 if (current.get("checksum") != result["checksum"]
                         or hashlib.sha256(Path(current["image_path"]).read_bytes()).hexdigest() != result["checksum"]):
-                    result.update(status="FAILED", error="The image changed during analysis. Run Generate Prompt again.")
+                    action = "Generate Identity" if result["kind"] == "identity" else "Generate Prompt"
+                    result.update(status="FAILED", error=f"The image changed during analysis. Run {action} again.")
             except Exception:
                 result.update(status="FAILED", error="The image was removed during analysis.")
         result.pop("checksum", None)
@@ -72,6 +93,17 @@ class ImagePromptGenerationService:
 
     def _run(self, job_id: str, asset: dict) -> None:
         try:
+            with self._lock:
+                kind = self._jobs[job_id]["kind"]
+            if kind == "identity":
+                draft = self._codex("gpt-6-luna", asset["image_path"],
+                                    instructions=self.IDENTITY_INSTRUCTIONS, schema=self.IDENTITY_SCHEMA)
+                identity = draft.get("identity")
+                if not isinstance(identity, str) or not identity.strip():
+                    raise ValueError("Luna returned an empty identity description.")
+                with self._lock:
+                    self._jobs[job_id].update(status="COMPLETE", draft={"identity": identity.strip()})
+                return
             model = str(self.zet_app.config.ai_image_prompt_generation_model or "image-analysis:latest").strip()
             if model.startswith("codex:"):
                 draft = self._codex(model.removeprefix("codex:"), asset["image_path"])
@@ -105,25 +137,26 @@ class ImagePromptGenerationService:
             if installs:
                 executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
         if not executable:
-            raise RuntimeError("Codex CLI is unavailable for image prompt generation.")
+            raise RuntimeError("Codex CLI is unavailable for image analysis.")
         return executable
 
-    def _codex(self, model: str, image_path: str) -> dict:
+    def _codex(self, model: str, image_path: str, *, instructions: str | None = None,
+               schema: dict | None = None) -> dict:
         with tempfile.TemporaryDirectory(prefix="zet_image_prompt_") as temporary:
             root = Path(temporary)
-            schema = root / "schema.json"
+            schema_path = root / "schema.json"
             output = root / "draft.json"
-            schema.write_text(json.dumps(self.SCHEMA), encoding="utf-8")
+            schema_path.write_text(json.dumps(schema or self.SCHEMA), encoding="utf-8")
             command = [self._codex_executable(), "-a", "never", "-s", "read-only",
                        "-m", model, "-c", 'model_reasoning_effort="high"',
                        "-C", str(self.project_root), "exec", "--ignore-user-config",
-                       "--skip-git-repo-check", "--ephemeral", "--output-schema", str(schema),
+                       "--skip-git-repo-check", "--ephemeral", "--output-schema", str(schema_path),
                        "--output-last-message", str(output), "--image", str(image_path)]
-            result = self.runner(command, input=self.INSTRUCTIONS, capture_output=True,
+            result = self.runner(command, input=instructions or self.INSTRUCTIONS, capture_output=True,
                                  text=True, timeout=900, check=False)
             if result.returncode:
                 raise RuntimeError((result.stderr or result.stdout or "Codex image analysis failed")[-2000:])
             value = json.loads(output.read_text(encoding="utf-8"))
             if not isinstance(value, dict):
-                raise RuntimeError("Codex returned an invalid image prompt draft.")
+                raise RuntimeError("Codex returned an invalid image analysis draft.")
             return value

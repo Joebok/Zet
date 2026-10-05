@@ -17,6 +17,18 @@ from zet.web.app import create_app
 
 
 class WebAppTests(unittest.TestCase):
+    def test_image_identity_button_starts_luna_job(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = write_project_fixture(Path(temp_dir))
+            client = TestClient(create_app(config_path))
+            self.assertIn('id="entity-library-generate-identity"', client.get("/").text)
+            service = client.app.state.image_prompt_generation_service
+            with patch.object(service, "start_identity", return_value={"job_id": "identity-job", "status": "RUNNING"}) as start:
+                response = client.post("/api/entity-library/assets/image-1/generate-identity")
+            self.assertEqual(200, response.status_code, response.text)
+            self.assertEqual("identity-job", response.json()["job_id"])
+            start.assert_called_once_with("image-1")
+
     def test_local_assets_can_start_and_check_library_wide_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

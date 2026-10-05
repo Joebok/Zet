@@ -42,10 +42,10 @@ test("universe pages create and save canonical art style", async ({ page }) => {
   await expect(page.locator("#universe-list")).toContainText("Updated painterly fantasy");
 });
 
-test("ad hoc image generation stages img2img dimensions and displays downloadable results", async ({ page }) => {
-  let submitted;
+test("image generation fills eight slots and imports the selected image's prompt", async ({ page }) => {
+  const submitted = [];
+  const jobs = new Map();
   let imported;
-  let failNextJobRead = false;
   await page.route("**/api/image-generation/options", (route) => route.fulfill({
     json: {
       model: "Qwen Image 2.1", checkpoint: "qwen.safetensors", default_count: 4,
@@ -54,39 +54,49 @@ test("ad hoc image generation stages img2img dimensions and displays downloadabl
   }));
   await page.route("**/api/image-generation/jobs", async (route) => {
     if (route.request().method() === "POST") {
-      submitted = route.request().postDataJSON();
-      await route.fulfill({
-        json: {
-          request_id: "browser-image-job", mode: "img2img", status: "QUEUED",
-          requested: submitted.count, completed: 0, failed: 0, images: [], error: "",
-        },
-      });
+      const request = route.request().postDataJSON();
+      submitted.push(request);
+      const request_id = `browser-image-job-${submitted.length}`;
+      const job = {
+        request_id, mode: request.mode, status: "COMPLETE", requested: request.count,
+        completed: request.count, failed: 0, error: "", prompt: request.prompt,
+        negative_prompt: request.negative_prompt, source_asset_id: "",
+        images: Array.from({ length: request.count }, (_, index) => ({
+          index, url: `/api/image-generation/jobs/${request_id}/images/${index}`,
+        })),
+      };
+      jobs.set(request_id, job);
+      await route.fulfill({ json: job });
       return;
     }
-    await route.fulfill({ json: { message: "Image generation results cleared." } });
+    await route.fulfill({ status: 405 });
   });
-  await page.route("**/api/image-generation/jobs/browser-image-job", (route) => {
-    if (failNextJobRead && route.request().method() === "GET") {
-      failNextJobRead = false;
-      return route.fulfill({ status: 503, json: { detail: "Temporary service restart" } });
+  await page.route(/\/api\/image-generation\/jobs\/browser-image-job-\d+$/, (route) => {
+    const id = route.request().url().split("/").at(-1);
+    if (route.request().method() === "DELETE") {
+      jobs.delete(id);
+      return route.fulfill({ json: { message: "Image generation results cleared." } });
+    }
+    return route.fulfill({ json: jobs.get(id) });
+  });
+  await page.route(/\/api\/image-generation\/jobs\/browser-image-job-\d+\/images\/\d+$/, (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/");
+    const id = parts.at(-3);
+    const index = Number(parts.at(-1));
+    if (route.request().method() === "DELETE") {
+      const job = jobs.get(id);
+      job.images = job.images.filter((image) => image.index !== index);
+      job.completed = job.images.length;
+      return route.fulfill({ json: job });
     }
     return route.fulfill({
-    json: {
-      request_id: "browser-image-job", mode: "img2img", status: "COMPLETE",
-      requested: 1, completed: 1, failed: 0, error: "",
-      prompt: "Make the object carved from jade", negative_prompt: "plastic, scratches",
-      images: [{ index: 0, url: "/api/image-generation/jobs/browser-image-job/images/0" }],
-    },
+      status: 200, contentType: "image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
     });
   });
-  await page.route("**/api/image-generation/jobs/browser-image-job/images/0", (route) => route.fulfill({
-    status: 200,
-    contentType: "image/png",
-    body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
-  }));
 
   await openPage(page, "image-generation");
-  await expect(page.locator("#image-generation-count")).toHaveValue("4");
+  await expect(page.locator("#image-generation-results-grid figure")).toHaveCount(8);
   await expect(page.locator("#image-generation-width")).toHaveValue("1024");
   await expect(page.locator("#image-generation-height")).toHaveValue("1024");
   await page.locator("#image-generation-img2img").click();
@@ -97,31 +107,41 @@ test("ad hoc image generation stages img2img dimensions and displays downloadabl
     buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
   });
   await page.locator("#image-generation-prompt").fill("Make the object carved from jade");
+  await page.locator("#image-generation-negative").fill("plastic");
   await page.locator("#image-generation-width").fill("1280");
   await page.locator("#image-generation-height").fill("768");
-  await page.locator("#image-generation-count").fill("1");
-  await page.getByRole("button", { name: "Generate" }).click();
-  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(1);
-  expect(submitted).toMatchObject({
-    mode: "img2img", width: 1280, height: 768, count: 1,
+  await page.getByRole("button", { name: "Render First 4" }).click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(4);
+  expect(submitted[0]).toMatchObject({
+    mode: "img2img", width: 1280, height: 768, count: 4,
     prompt: "Make the object carved from jade",
   });
-  expect(submitted.reference_image).toMatch(/^data:image\/png;base64,/);
-  await expect(page.getByRole("link", { name: "Download 1" })).toBeVisible();
-  await expect(page.locator("#image-generation-progress")).toContainText("complete");
-  failNextJobRead = true;
+  expect(submitted[0].reference_image).toMatch(/^data:image\/png;base64,/);
+  await page.locator("#image-generation-prompt").fill("Make the object from bronze");
+  await page.locator("#image-generation-negative").fill("plastic, scratches");
+  await page.getByRole("button", { name: "Fill Slots" }).click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(8);
+  expect(submitted[1]).toMatchObject({ count: 4, prompt: "Make the object from bronze" });
+  await page.getByRole("button", { name: "Review slot 5" }).click();
+  await expect(page.locator("#image-generation-review-prompt")).toHaveText("Make the object from bronze");
+  await page.locator("#image-generation-review-previous").click();
+  await expect(page.locator("#image-generation-review-prompt")).toHaveText("Make the object carved from jade");
+  await page.locator("#image-generation-review-next").click();
+  await page.locator("#image-generation-review-select").click();
+  await page.locator("#image-generation-review-close").click();
+  await expect(page.locator("#image-generation-review-import")).toBeEnabled();
   await page.reload();
-  await expect(page.locator("#image-generation-prompt")).toHaveValue("Make the object carved from jade");
+  await expect(page.locator("#image-generation-prompt")).toHaveValue("Make the object from bronze");
   await expect(page.locator("#image-generation-width")).toHaveValue("1280");
-  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(1);
-  await expect(page.getByRole("link", { name: "Download 1" })).toBeVisible();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(8);
+  await expect(page.locator("#image-generation-review-import")).toBeEnabled();
   const libraryImport = await page.request.post("/api/entity-library/assets?label=Generated+Import+Fixture", {
     data: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
     headers: { "content-type": "image/png" },
   });
   expect(libraryImport.ok()).toBeTruthy();
   const libraryAsset = (await libraryImport.json()).asset;
-  await page.route("**/api/image-generation/jobs/browser-image-job/images/0/import", async (route) => {
+  await page.route("**/api/image-generation/jobs/browser-image-job-2/images/0/import", async (route) => {
     imported = route.request().postDataJSON();
     await route.fulfill({ json: { asset: libraryAsset, duplicate: false } });
   });
@@ -129,18 +149,102 @@ test("ad hoc image generation stages img2img dimensions and displays downloadabl
   await expect(page.locator("#auxiliary-resources-page")).toHaveClass(/active/);
   await expect(page.locator("#entity-library-import-dialog")).toBeVisible();
   await expect(page.locator("#entity-library-import-preview")).toBeVisible();
-  await expect(page.locator("#entity-library-import-prompt")).toHaveText("Make the object carved from jade");
+  await expect(page.locator("#entity-library-import-prompt")).toHaveText("Make the object from bronze");
   await expect(page.locator("#entity-library-import-negative-prompt")).toHaveText("plastic, scratches");
-  const importResponse = page.waitForResponse((response) => response.url().includes("/api/image-generation/jobs/browser-image-job/images/0/import") && response.ok());
+  const importResponse = page.waitForResponse((response) => response.url().includes("/api/image-generation/jobs/browser-image-job-2/images/0/import") && response.ok());
   await page.locator("#entity-library-import").click();
   await importResponse;
-  expect(imported).toMatchObject({ label: "Make the object carved from jade", provenance: "Image Generation job browser-image-job, result 1" });
+  expect(imported).toMatchObject({ label: "Make the object from bronze", provenance: "Image Generation job browser-image-job-2, result 1" });
   await expect(page.locator("#entity-library-import-dialog")).toBeHidden();
   await expect(page.locator("#entity-library-save")).toBeEnabled();
   await page.evaluate(() => window.activatePage("image-generation", { skipAutosave: true }));
+  await page.getByRole("button", { name: "Review slot 5" }).click();
+  await page.locator("#image-generation-review-clear").click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(7);
+  await page.locator("#image-generation-review-close").click();
+  await page.locator("#image-generation-prompt").fill("Make the object from ruby");
+  await page.getByRole("button", { name: "Fill Slots" }).click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(8);
+  expect(submitted[2]).toMatchObject({ count: 1, prompt: "Make the object from ruby" });
   await page.locator("#image-generation-clear").click();
   await expect(page.locator("#image-generation-results-grid img")).toHaveCount(0);
   await expect(page.locator("#image-generation-prompt")).toHaveValue("");
+});
+
+test("inventory img2img replaces saved and previously chosen references", async ({ page }) => {
+  const sourceBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64");
+  await openPage(page, "auxiliary-resources");
+  const response = await page.request.post("/api/entity-library/assets?label=Inventory+Reference+Fixture", {
+    data: sourceBytes, headers: { "content-type": "image/png" },
+  });
+  expect(response.ok()).toBeTruthy();
+  const asset = (await response.json()).asset;
+  await page.route(`**/api/entity-library/assets/${asset.asset_id}`, async (route) => {
+    const result = await route.fetch();
+    const payload = await result.json();
+    payload.asset.width = 1280;
+    payload.asset.height = 768;
+    await route.fulfill({ response: result, json: payload });
+  });
+  await page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("zet-image-generation", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("state");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction("state", "readwrite");
+      transaction.objectStore("state").put("data:image/png;base64,YmFk", "reference");
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.evaluate(async (assetId) => {
+    await window.activatePage("auxiliary-resources", { skipAutosave: true });
+    await selectEntityLibraryAsset(assetId);
+  }, asset.asset_id);
+  const submitted = [];
+  await page.route("**/api/image-generation/jobs", (route) => {
+    const payload = route.request().postDataJSON();
+    submitted.push(payload);
+    return route.fulfill({ json: {
+      request_id: `inventory-reference-job-${submitted.length}`, mode: "img2img", status: "COMPLETE",
+      requested: 4, completed: 0, failed: 0, error: "", images: [],
+      prompt: payload.prompt, negative_prompt: payload.negative_prompt,
+      source_asset_id: payload.source_asset_id, source_checksum: payload.source_checksum,
+    } });
+  });
+  await page.locator("#entity-library-modify-generated").click();
+  await expect(page.locator("#image-generation-page")).toHaveClass(/active/);
+  await expect(page.locator("#image-generation-width")).toHaveValue("1280");
+  await expect(page.locator("#image-generation-height")).toHaveValue("768");
+  await page.locator("#image-generation-prompt").fill("Edit the inventory image");
+  await page.getByRole("button", { name: "Render First 4" }).click();
+  await expect.poll(() => submitted.length).toBe(1);
+  expect(submitted[0].source_asset_id).toBe(asset.asset_id);
+  expect(Buffer.from(submitted[0].reference_image.split(",")[1], "base64")).toEqual(sourceBytes);
+
+  await page.locator("#image-generation-reference").setInputFiles({
+    name: "old-reference.png", mimeType: "image/png", buffer: Buffer.concat([sourceBytes, Buffer.from("old")]),
+  });
+  await page.locator("#image-generation-width").fill("1024");
+  await page.locator("#image-generation-height").fill("1024");
+  await page.evaluate(async (assetId) => {
+    await window.activatePage("auxiliary-resources", { skipAutosave: true });
+    await selectEntityLibraryAsset(assetId);
+  }, asset.asset_id);
+  await page.locator("#entity-library-modify-generated").click();
+  await expect(page.locator("#image-generation-reference")).toHaveValue("");
+  await expect(page.locator("#image-generation-width")).toHaveValue("1280");
+  await expect(page.locator("#image-generation-height")).toHaveValue("768");
+  await page.locator("#image-generation-prompt").fill("Edit the inventory image again");
+  await page.getByRole("button", { name: "Render First 4" }).click();
+  await expect.poll(() => submitted.length).toBe(2);
+  expect(Buffer.from(submitted[1].reference_image.split(",")[1], "base64")).toEqual(sourceBytes);
 });
 
 test("navigation cancels a delayed review load and ignores its late response", async ({ page }) => {

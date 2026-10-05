@@ -258,6 +258,29 @@ def test_completed_results_survive_service_restart_until_cleared(tmp_path: Path)
         restarted.status(result["request_id"])
 
 
+def test_clearing_one_result_preserves_other_indexes_and_prompts(tmp_path: Path) -> None:
+    service, config_path = _service(tmp_path)
+    result = service.submit({"mode": "txt2img", "prompt": "A silver lantern", "count": 2})
+    request_id = result["request_id"]
+    for child in service._jobs[request_id]["children"]:
+        _finish_proxy_child(service, child, success=True)
+    assert service.status(request_id)["completed"] == 2
+
+    cleared = service.clear_image(request_id, 0)
+    assert cleared["completed"] == 1
+    assert cleared["images"] == [{"index": 1, "url": f"/api/image-generation/jobs/{request_id}/images/1"}]
+    with pytest.raises(KeyError, match="not found"):
+        service.image(request_id, 0)
+    assert service.library_result(request_id, 1)[2]["prompt"] == "A silver lantern"
+
+    restarted = AdHocImageGenerationService(
+        ZetApp.from_config(config_path, validate_catalog=False), Path(__file__).resolve().parents[1],
+    )
+    assert restarted.status(request_id)["images"] == cleared["images"]
+    assert restarted.image(request_id, 1) == (png_bytes(), "image/png")
+    restarted.clear(request_id)
+
+
 def test_image_generation_api_exposes_defaults_and_validates_dimensions(tmp_path: Path) -> None:
     config_path = write_project_fixture(tmp_path)
     with TestClient(create_app(config_path, validate_catalog_on_create=False)) as client:

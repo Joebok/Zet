@@ -266,7 +266,7 @@ class AdHocImageGenerationService:
                 "mode": job["mode"],
                 "status": job["status"],
                 "requested": job["count"],
-                "completed": len(job["images"]),
+                "completed": sum(image is not None for image in job["images"]),
                 "failed": job["failures"],
                 "error": job["error"],
                 "prompt": job.get("prompt", ""),
@@ -275,21 +275,21 @@ class AdHocImageGenerationService:
                 "source_checksum": job.get("source_checksum", ""),
                 "images": [
                     {"index": index, "url": f"/api/image-generation/jobs/{request_id}/images/{index}"}
-                    for index in range(len(job["images"]))
+                    for index, image in enumerate(job["images"]) if image is not None
                 ],
             }
 
     def image(self, request_id: str, index: int) -> tuple[bytes, str]:
         with self._lock:
             job = self._jobs.get(request_id)
-            if job is None or index < 0 or index >= len(job["images"]):
+            if job is None or index < 0 or index >= len(job["images"]) or job["images"][index] is None:
                 raise KeyError("Image not found.")
             return job["images"][index]
 
     def library_result(self, request_id: str, index: int):
         with self._lock:
             job = self._jobs.get(request_id)
-            if job is None or index < 0 or index >= len(job["images"]):
+            if job is None or index < 0 or index >= len(job["images"]) or job["images"][index] is None:
                 raise KeyError("Generated image not found.")
             image_bytes, mime_type = job["images"][index]
             return image_bytes, mime_type, {
@@ -332,6 +332,18 @@ class AdHocImageGenerationService:
             self._release(job)
             del self._jobs[request_id]
             shutil.rmtree(self.results_root / request_id, ignore_errors=True)
+
+    def clear_image(self, request_id: str, index: int) -> dict[str, Any]:
+        with self._lock:
+            job = self._jobs.get(request_id)
+            if job is None or index < 0 or index >= len(job["images"]) or job["images"][index] is None:
+                raise KeyError("Generated image not found.")
+            if job["status"] in {"QUEUED", "RUNNING"}:
+                raise AdHocImageGenerationError("Wait for queued images to finish before clearing a slot.")
+            job["images"][index] = None
+            (self.results_root / request_id / f"image-{index}.bin").unlink(missing_ok=True)
+            self._save_job(job)
+            return self.status(request_id)
 
     def _refresh(self, job: dict[str, Any]) -> None:
         if job["status"] in {"COMPLETE", "PARTIAL", "FAILED", "ERROR"}:
@@ -398,7 +410,7 @@ class AdHocImageGenerationService:
             if transfer_message:
                 job["error"] = transfer_message
             return
-        completed = len(job["images"])
+        completed = sum(image is not None for image in job["images"])
         if job["failures"] and completed:
             job["status"] = "PARTIAL"
         elif job["failures"]:
@@ -417,7 +429,11 @@ class AdHocImageGenerationService:
         directory = self.results_root / job["request_id"]
         directory.mkdir(parents=True, exist_ok=True)
         image_records = []
-        for index, (image_bytes, content_type) in enumerate(job["images"]):
+        for index, image in enumerate(job["images"]):
+            if image is None:
+                image_records.append(None)
+                continue
+            image_bytes, content_type = image
             filename = f"image-{index}.bin"
             image_path = directory / filename
             if not image_path.exists() or image_path.stat().st_size != len(image_bytes):
@@ -442,7 +458,7 @@ class AdHocImageGenerationService:
                 continue
             try:
                 record = json.loads(record_path.read_text(encoding="utf-8"))
-                images = [((directory / item["filename"]).read_bytes(), str(item["content_type"]))
+                images = [((directory / item["filename"]).read_bytes(), str(item["content_type"])) if item else None
                           for item in record.get("images", [])]
                 job = {**record, "workspace": Path(record["workspace"]),
                        "prompt_path": Path(record["prompt_path"]), "images": images}

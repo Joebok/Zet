@@ -2312,6 +2312,13 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/entity-library/assets/{asset_id}/generate-identity")
+    def entity_library_generate_identity(asset_id: str) -> dict[str, Any]:
+        try:
+            return app.state.image_prompt_generation_service.start_identity(asset_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/entity-library/prompt-generation/{job_id}")
     def entity_library_prompt_generation_status(job_id: str) -> dict[str, Any]:
         try:

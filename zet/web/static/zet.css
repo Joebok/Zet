@@ -475,8 +475,13 @@ main {
   gap: .4rem;
   margin: 0;
   min-width: 0;
+  padding: .6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
+.image-generation-result.is-selected { border-color: var(--accent); }
+.image-generation-result-preview { padding: 0; border: 0; background: transparent; cursor: pointer; }
 .image-generation-result img {
   aspect-ratio: 1 / 1;
   background: var(--surface-muted, #171c25);
@@ -485,9 +490,10 @@ main {
   width: 100%;
 }
 
-.image-generation-result > a:last-child { justify-self: start; }
-
-.image-generation-review { display: grid; gap: 12px; margin: 12px 0 20px; }
+.image-generation-review { width: min(900px, 94vw); max-height: 92vh; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: inherit; }
+.image-generation-review[open] { display: grid; gap: 12px; }
+.image-generation-review:not([open]) { display: none; }
+.image-generation-review::backdrop { background: rgba(0, 0, 0, .72); }
 .image-generation-review > img { width: 100%; max-height: 68vh; object-fit: contain; background: var(--surface-muted, #171c25); border-radius: 8px; }
 .image-generation-review > p { overflow-wrap: anywhere; margin: 0; }
 
@@ -5295,6 +5301,8 @@ dd {
 .entity-library-editor > label { min-width: 0; }
 .entity-library-editor > label:nth-of-type(4), .entity-library-editor > label:nth-of-type(5) { grid-column: 1 / -1; }
 .entity-library-editor input, .entity-library-editor textarea, .entity-library-editor select { width: 100%; }
+.inventory-identity-caption { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.inventory-identity-caption button { width: auto; flex: none; }
 .entity-library-editor .danger-action { justify-self: start; }
 .inventory-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 6px 0 14px; }
 .inventory-section-heading h2 { margin: 0; }

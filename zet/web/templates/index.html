@@ -594,7 +594,7 @@
           <section class="inventory-detail-group"><h3>Prompt descriptions</h3>
             <label>Generation prompt<textarea id="entity-library-edit-prompt" placeholder="Describe the visible image." disabled></textarea></label>
             <label>Negative prompt<textarea id="entity-library-edit-negative-prompt" placeholder="Elements to avoid." disabled></textarea></label>
-            <label>Prompt identity<textarea id="entity-library-edit-identity" disabled></textarea></label>
+            <div class="inventory-identity-field"><div class="inventory-identity-caption"><label for="entity-library-edit-identity">Prompt identity</label><button id="entity-library-generate-identity" type="button" disabled>Generate Identity</button></div><textarea id="entity-library-edit-identity" disabled></textarea><div id="entity-library-identity-status" class="status-text" role="status"></div></div>
             <label>Prompt costume<textarea id="entity-library-edit-costume" disabled></textarea></label>
             <label>Preferred reference key<input id="entity-library-edit-reference" placeholder="tsaeytte.jewelry.front_side" disabled><small>Stable key for &#123;&#123;LIB:REF:key&#125;&#125; in templates. Use lowercase letters, numbers, dots, underscores, or hyphens.</small></label>
           </section>
@@ -1884,27 +1884,26 @@
             <label>Width<input id="image-generation-width" type="number" min="256" max="4096" step="32" value="1024" required></label>
             <label>Height<input id="image-generation-height" type="number" min="256" max="4096" step="32" value="1024" required></label>
           </div>
-          <label>
-            Images
-            <input id="image-generation-count" type="number" min="1" max="16" step="1" value="4" required>
-          </label>
           <p class="status-text">Width and height must be from 256 to 4096 in steps of 32. AI_Proxy starts ComfyUI when needed.</p>
           <div class="button-row compact">
-            <button id="image-generation-submit" class="primary-action" type="submit">Generate</button>
+            <button id="image-generation-submit" class="primary-action" type="submit">Render First 4</button>
+            <button id="image-generation-fill" type="button" disabled>Fill Slots</button>
             <button id="image-generation-clear" type="button" disabled>Clear Results</button>
             <span id="image-generation-progress" class="status-text" aria-live="polite"></span>
           </div>
         </form>
         <section class="control-panel image-generation-results" aria-label="Generated images">
-          <h2>Results</h2>
-          <section id="image-generation-review" class="image-generation-review" aria-label="Image result review" hidden>
+          <h2>Results · 8 slots</h2>
+          <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
+          <div class="button-row"><button id="image-generation-review-import" class="primary-action" type="button" disabled>Add to Image Inventory</button><button id="image-generation-review-update" type="button" hidden disabled>Update Image Inventory</button></div>
+          <dialog id="image-generation-review" class="image-generation-review" aria-label="Image result review">
+            <div class="button-row compact"><button id="image-generation-review-close" type="button">Close</button></div>
             <div class="button-row compact"><button id="image-generation-review-previous" type="button" disabled>Previous</button><span id="image-generation-review-count" class="status-text"></span><button id="image-generation-review-next" type="button" disabled>Next</button></div>
             <img id="image-generation-review-image" alt="Selected generated result">
             <p><strong>Prompt</strong><br><span id="image-generation-review-prompt"></span></p>
             <p><strong>Negative prompt</strong><br><span id="image-generation-review-negative"></span></p>
-            <div class="button-row"><button id="image-generation-review-import" class="primary-action" type="button">Import into Image Library</button><button id="image-generation-review-update" class="primary-action" type="button" hidden>Update Image Inventory</button></div>
-          </section>
-          <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
+            <div class="button-row"><button id="image-generation-review-select" class="primary-action" type="button">Select</button><button id="image-generation-review-retry" type="button">Retry</button><button id="image-generation-review-clear" type="button">Clear</button></div>
+          </dialog>
         </section>
       </div>
     </section>
