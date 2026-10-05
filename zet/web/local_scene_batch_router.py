@@ -37,6 +37,14 @@ def create_local_scene_batch_router(app_factory):
     def delete(story_slug: str, scene_slug: str, run_id: str):
         return call(lambda: service().delete(story_slug, scene_slug, run_id) or {"deleted": True})
 
+    @router.get("/{run_id}/publication-review")
+    def publication_review(story_slug: str, scene_slug: str, run_id: str):
+        return call(lambda: service().publication_review(story_slug, scene_slug, run_id))
+
+    @router.get("/{run_id}/targets/{target_id}/locked")
+    def locked_image(story_slug: str, scene_slug: str, run_id: str, target_id: str):
+        return call(lambda: FileResponse(service().artifact(story_slug, scene_slug, run_id, target_id, "locked")))
+
     @router.post("/{run_id}/actions/{action}")
     def action(story_slug: str, scene_slug: str, run_id: str, action: str, payload: dict = Body(default={})):
         def perform():

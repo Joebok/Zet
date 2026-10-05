@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261004-scene-review">
+  <link rel="stylesheet" href="/static/zet.css?v=20261005-batch-review">
 </head>
 <body>
   <header class="app-header">
@@ -80,7 +80,6 @@
       <div class="toolbar-menu local-assets-menu">
         <button id="local-assets-button" class="tab workflow-tab" type="button" aria-expanded="false" aria-controls="local-assets-menu">Assets ▾</button>
         <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
-          <button class="tab workflow-tab" data-page="local-batch-status">Batch Status</button>
           <button class="tab workflow-tab" data-page="local-body-reference">Body-Reference</button>
           <button class="tab workflow-tab" data-page="local-head-image">Head-Image</button>
           <button class="tab workflow-tab" data-page="local-character-assembly">Character-Assembly</button>
@@ -112,6 +111,7 @@
     </div>
     <div class="toolbar-actions">
       <button id="toolbar-restart-zet" class="toolbar-restart-button navigation-action" type="button" aria-label="Restart Zet" title="Restart Zet">♻</button>
+      <button id="toolbar-batches" class="tab navigation-action" data-page="local-batch-status" type="button">Batches</button>
       <div class="toolbar-menu">
         <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
         <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
@@ -825,7 +825,10 @@
           </table>
         </section>
         <aside class="review-actions item-editor">
-          <button id="costume-add-new" class="create-action" type="button">Add New</button>
+          <div class="button-row compact costume-create-actions">
+            <button id="costume-add-new" class="create-action" type="button">Add New</button>
+            <button id="costume-wizard-open" type="button">Costume Wizard</button>
+          </div>
           <button id="costume-delete" class="navigation-action" type="button" hidden>Delete Costume</button>
           <h3 id="costume-form-title">Add Costume</h3>
           <label>
@@ -844,6 +847,41 @@
           </section>
         </aside>
       </div>
+      <dialog id="costume-wizard-dialog" class="costume-wizard-dialog" aria-labelledby="costume-wizard-title">
+        <div class="costume-wizard-header">
+          <div><h2 id="costume-wizard-title">Costume Wizard</h2><p id="costume-wizard-context" class="status-text"></p></div>
+          <button id="costume-wizard-close" type="button">Back to Costumes</button>
+        </div>
+        <div id="costume-wizard-message" class="action-message" hidden></div>
+        <section id="costume-wizard-intake" class="control-panel">
+          <div class="costume-wizard-resume"><label>Resume a draft<select id="costume-wizard-resume"><option value="">New costume draft</option></select></label><button id="costume-wizard-resume-button" type="button">Resume</button></div>
+          <label>Costume name<input id="costume-wizard-name" type="text" placeholder="Ceremonial outfit"></label>
+          <div class="costume-wizard-images">
+            <article class="costume-wizard-image-slot" data-slot="1"><h3>Reference image 1</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>What this image conveys<input class="costume-wizard-caption" type="text" placeholder="Front of the outfit"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="2"><h3>Reference image 2</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>What this image conveys<input class="costume-wizard-caption" type="text" placeholder="Back of the outfit"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="3"><h3>Reference image 3</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>What this image conveys<input class="costume-wizard-caption" type="text" placeholder="Close-up of the top"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
+          </div>
+          <label>Extra info<textarea id="costume-wizard-extra" rows="4" placeholder="Any other details the references do not show"></textarea></label>
+          <button id="costume-wizard-create" class="primary-action" type="button">Create Costume Draft</button>
+        </section>
+        <section id="costume-wizard-workspace" class="control-panel" hidden>
+          <div id="costume-wizard-questions"></div>
+          <div id="costume-wizard-review" class="costume-wizard-review" hidden></div>
+          <div id="costume-wizard-errors" class="costume-wizard-errors" hidden></div>
+          <label>Costume template (Markdown)<textarea id="costume-wizard-markdown" rows="28" spellcheck="false"></textarea></label>
+          <div class="button-row compact">
+            <button id="costume-wizard-generate" type="button" hidden>Retry Draft</button>
+            <button id="costume-wizard-answer" type="button" hidden>Submit answers</button>
+            <button id="costume-wizard-save" type="button">Save Draft</button>
+            <button id="costume-wizard-test" type="button">Test Render</button>
+            <button id="costume-wizard-accept" class="primary-action" type="button">Accept Costume</button>
+          </div>
+          <div id="costume-wizard-test-result" class="costume-wizard-test-result" hidden></div>
+          <label>Refinement instructions<textarea id="costume-wizard-refinement" rows="3" placeholder="Describe what should change in the next draft"></textarea></label>
+          <button id="costume-wizard-refine" type="button">Apply Refinements</button>
+          <div class="button-row compact"><button id="costume-wizard-abandon" class="danger-action" type="button">Abandon Wizard</button></div>
+        </section>
+      </dialog>
     </section>
 
     <section id="help-page" class="page">
@@ -1085,10 +1123,22 @@
         <button id="scene-batch-start" type="button" disabled>Render Next Group</button>
         <button id="scene-batch-stop" type="button" disabled>Stop</button>
         <button id="scene-batch-refresh" type="button">Refresh</button>
-        <button id="scene-batch-publish" type="button" disabled>Publish Scene</button>
+        <button id="scene-batch-publish" type="button" disabled>Review &amp; Publish</button>
       </div>
       <div id="scene-batch-groups"></div>
     </section>
+    <dialog id="scene-batch-publication-dialog" class="scene-batch-publication-dialog" aria-labelledby="scene-batch-publication-title">
+      <div class="scene-batch-review-heading">
+        <h2 id="scene-batch-publication-title">Review selected images before publishing</h2>
+        <button id="scene-batch-publication-close" type="button">Cancel</button>
+      </div>
+      <p>Publishing locks each promoted image. Compare each selected candidate with its current locked image, or reject the candidate and keep the current lock.</p>
+      <div id="scene-batch-publication-targets"></div>
+      <div class="button-row compact">
+        <button id="scene-batch-publication-submit" type="button" disabled>Apply review decisions</button>
+      </div>
+      <p id="scene-batch-publication-message" role="status"></p>
+    </dialog>
     <dialog id="scene-batch-review-dialog" class="scene-batch-review-dialog" aria-labelledby="scene-batch-review-title">
       <div class="scene-batch-review-layout">
         <figure class="scene-batch-review-image"><img id="scene-batch-review-image" alt=""></figure>
@@ -1994,6 +2044,10 @@
               <label>Image prompt generation model<select id="setting-image-prompt-generation-model" form="automation-form"></select></label>
               <p class="managed-llm-description">Describe images using an Ollama vision model or a Codex model.</p>
             </article>
+            <article class="managed-llm-role">
+              <label>Costume Wizard model<select id="setting-costume-wizard-model" form="automation-form"></select></label>
+              <p class="managed-llm-description">Analyzes costume references, drafts templates, and reviews test renders. Defaults to Codex GPT-6 Luna.</p>
+            </article>
             <article class="managed-llm-role" data-llm-role="scene_builder">
               <label>Scene Builder narrative interview<select id="setting-ai-scene-builder-model" form="automation-form"></select></label>
               <p class="managed-llm-description"></p>
@@ -2280,9 +2334,9 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20261003-scene-render-slots"></script>
+  <script src="/static/zet.js?v=20261005-batches-navigation"></script>
   <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
-  <script src="/static/local_scene_batches.js?v=20261004-fill-slots"></script>
-  <script src="/static/local_batch_status.js?v=20261002-pipeline-colors"></script>
+  <script src="/static/local_scene_batches.js?v=20261005-publication-review"></script>
+  <script src="/static/local_batch_status.js?v=20261005-scene-tiles"></script>
 </body>
 </html>

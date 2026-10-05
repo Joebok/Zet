@@ -485,6 +485,8 @@ def test_partial_publication_recovers_without_creating_locked_backups(batches, m
     locked = batches.story.scene_image_path("Story", "Scene")
     locked.parent.mkdir(parents=True, exist_ok=True)
     locked.write_bytes(b"previous locked output")
+    reviews = {target["target_id"]: {**target, "decision": "promote"}
+               for target in batches.publication_review("Story", "Scene", run["run_id"])["targets"]}
     promote = batches.app.scene_image_review_service.promote
     def fail_main(story, scene, target, **kwargs):
         if target == "main":
@@ -492,15 +494,91 @@ def test_partial_publication_recovers_without_creating_locked_backups(batches, m
         return promote(story, scene, target, **kwargs)
     monkeypatch.setattr(batches.app.scene_image_review_service, "promote", fail_main)
     with pytest.raises(RuntimeError, match="interrupted"):
-        action(batches, run, "publish")
+        action(batches, run, "publish", reviews=reviews)
     state = json.loads((Path(run["root"]) / "state.json").read_text())
     assert list(state["publication"]["targets"]) == ["background"]
     monkeypatch.setattr(batches.app.scene_image_review_service, "promote", promote)
-    run = action(batches, run, "publish")
+    run = action(batches, run, "publish", reviews=reviews)
     assert run["status"] == "COMPLETE"
     backups = list(batches.targets.review_paths("Story", "Scene", "main")["backups"].glob("*.png"))
     assert len(backups) == 1
     action(batches, run, "publish")
+
+
+def publication_reviews(batches, run, **decisions):
+    review = batches.publication_review("Story", "Scene", run["run_id"])
+    return {target["target_id"]: {**target, "decision": decisions.get(target["target_id"], "promote")}
+            for target in review["targets"]}
+
+
+def test_publication_review_keeps_existing_lock_and_rejects_selected_candidate(batches):
+    run = complete_run(batches)
+    paths = batches.targets.review_paths("Story", "Scene", "main")
+    paths["locked"].parent.mkdir(parents=True, exist_ok=True)
+    paths["locked"].write_bytes(b"previous locked scene")
+    paths["metadata"].parent.mkdir(parents=True, exist_ok=True)
+    paths["metadata"].write_text('{"previous": true}', encoding="utf-8")
+    with pytest.raises(ValueError, match="Compare the candidate"):
+        action(batches, run, "publish")
+    assert not batches.targets.review_paths("Story", "Scene", "background")["locked"].exists()
+    reviews = publication_reviews(batches, run, main="keep-current")
+    candidate_path = Path(run["groups"]["main"]["candidates"][0]["image_path"])
+    run = action(batches, run, "publish", reviews=reviews)
+    assert run["status"] == "COMPLETE"
+    assert run["groups"]["main"]["status"] == "CURRENT_LOCK_KEPT"
+    assert run["groups"]["main"]["candidates"][0]["human_review"]["decision"] == "reject"
+    assert paths["locked"].read_bytes() == b"previous locked scene"
+    assert paths["metadata"].read_text() == '{"previous": true}'
+    assert candidate_path.is_file()
+    assert not list(paths["backups"].glob("*.png"))
+    # Retrying publication must not promote a candidate that was rejected.
+    run = action(batches, run, "publish")
+    assert paths["locked"].read_bytes() == b"previous locked scene"
+    run = action(batches, run, "select", target_id="main", candidate_id="main-002")
+    assert run["status"] == "READY_TO_PUBLISH"
+
+
+def test_publication_review_promotes_with_backup_and_exposes_comparison_images(batches):
+    run = complete_run(batches)
+    paths = batches.targets.review_paths("Story", "Scene", "main")
+    paths["locked"].parent.mkdir(parents=True, exist_ok=True)
+    paths["locked"].write_bytes(png_bytes())
+    app = FastAPI()
+    app.include_router(create_local_scene_batch_router(lambda: batches.app))
+    client = TestClient(app)
+    base = f"/api/stories/Story/scenes/Scene/local-batches/{run['run_id']}"
+    response = client.get(base + "/publication-review")
+    assert response.status_code == 200
+    target = next(item for item in response.json()["targets"] if item["target_id"] == "main")
+    assert target["locked_exists"]
+    assert target["locked_sha256"] == hashlib.sha256(png_bytes()).hexdigest()
+    assert client.get(base + "/targets/main/locked").content == png_bytes()
+    reviews = publication_reviews(batches, run)
+    response = client.post(base + "/actions/publish", json={"reviews": reviews})
+    assert response.status_code == 200
+    assert response.json()["status"] == "COMPLETE"
+    assert len(list(paths["backups"].glob("*.png"))) == 1
+    metadata = json.loads(paths["metadata"].read_text())
+    assert metadata["batch_id"] == run["run_id"]
+
+
+@pytest.mark.parametrize("change", ["locked", "selection", "incomplete", "missing-lock"])
+def test_publication_review_validates_all_decisions_before_replacing_any_lock(batches, change):
+    run = complete_run(batches)
+    reviews = publication_reviews(batches, run)
+    if change == "locked":
+        locked = batches.targets.review_paths("Story", "Scene", "main")["locked"]
+        locked.parent.mkdir(parents=True, exist_ok=True)
+        locked.write_bytes(b"lock changed while dialog was open")
+    elif change == "selection":
+        run = action(batches, run, "select", target_id="main", candidate_id="main-002")
+    elif change == "incomplete":
+        reviews.pop("main")
+    else:
+        reviews["main"]["decision"] = "keep-current"
+    with pytest.raises(ValueError):
+        action(batches, run, "publish", reviews=reviews)
+    assert not batches.targets.review_paths("Story", "Scene", "background")["locked"].exists()
 
 
 def test_partial_candidates_retry_and_source_changes_only_invalidate_descendants(batches, monkeypatch):

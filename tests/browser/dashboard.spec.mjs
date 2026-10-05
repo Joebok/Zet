@@ -572,7 +572,7 @@ test("WP03 To Do and Template Instruction Manuals open and report load failures"
   );
 });
 
-test("Batch Status is first in local Assets and links directly to the batch", async ({ page }) => {
+test("Batches is persistent in the toolbar and links directly to the batch", async ({ page }) => {
   await page.route("**/api/local/batch-status", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -586,8 +586,11 @@ test("Batch Status is first in local Assets and links directly to the batch", as
   }));
   await openPage(page, "local-batch-status");
 
-  await page.locator("#local-assets-button").click();
-  await expect(page.locator("#local-assets-menu [data-page]").first()).toHaveAttribute("data-page", "local-batch-status");
+  await expect(page.locator('#local-assets-menu [data-page="local-batch-status"]')).toHaveCount(0);
+  await expect(page.locator("#toolbar-batches")).toBeVisible();
+  await expect(page.locator("#toolbar-batches")).toHaveText("Batches");
+  expect(await page.locator("#toolbar-restart-zet").evaluate(node => node.nextElementSibling.id)).toBe("toolbar-batches");
+  expect(await page.locator("#toolbar-batches").evaluate(node => node.nextElementSibling.querySelector("button").id)).toBe("toolbar-settings-button");
   await expect(page.locator("#local-assets-menu #local-run-all-remaining")).toHaveCount(0);
   await expect(page.locator("#local-batch-status-page #local-run-all-remaining")).toBeVisible();
   const link = page.locator("#local-batch-status-groups a");
@@ -1492,7 +1495,7 @@ test("Character Development consolidates local Assets and derived workflows", as
   await page.locator("#local-assets-button").click();
   await expect(page.locator("#local-assets-button")).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#local-assets-menu button")).toHaveText([
-    "Batch Status", "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
+    "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
   ]);
   await page.locator('#local-assets-menu [data-page="local-body-reference"]').click();
   await expect(page.locator("#local-pipeline-page")).toHaveClass(/active/);
@@ -1517,7 +1520,7 @@ test("Run all Remaining starts independently of the open page", async ({ page, r
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   await page.locator("#local-assets-button").click();
-  await page.locator('#local-assets-menu [data-page="local-batch-status"]').click();
+  await page.locator('#toolbar-batches').click();
   const started = page.waitForResponse((response) => response.url().endsWith("/api/local/run-all-remaining")
     && response.request().method() === "POST");
   await page.locator("#local-run-all-remaining").click();
@@ -1870,7 +1873,7 @@ test("Character Development is the only character workspace and keeps its produc
   await expect(page.locator("#workspace-local")).toHaveCount(0);
   expect(summaryRequests.some((url) => new URL(url).searchParams.get("workspace") === "local")).toBe(false);
   await page.locator("#local-assets-button").click();
-  await page.locator('#local-assets-menu [data-page="local-batch-status"]').click();
+  await page.locator('#toolbar-batches').click();
   expect(summaryRequests.some((url) => new URL(url).searchParams.get("workspace") === "local")).toBe(false);
 });
 

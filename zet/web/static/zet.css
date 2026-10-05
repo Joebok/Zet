@@ -1430,6 +1430,68 @@ main {
   overflow-wrap: anywhere;
 }
 
+.batch-status-card.batch-status-scene {
+  background: #e9f2fa;
+  border-color: #a7c5df;
+}
+
+.batch-status-review-link {
+  display: inline-block;
+  font-weight: 600;
+  margin-top: 12px;
+}
+
+.scene-batch-publication-dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-sizing: border-box;
+  max-height: 92vh;
+  max-width: 96vw;
+  padding: 20px;
+  width: 1100px;
+}
+
+.scene-batch-publication-dialog::backdrop {
+  background: rgb(0 0 0 / 75%);
+}
+
+.scene-batch-publication-target {
+  border-top: 1px solid var(--border);
+  padding: 16px 0;
+}
+
+.scene-batch-publication-images {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scene-batch-publication-images figure {
+  margin: 0;
+}
+
+.scene-batch-publication-images figcaption {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.scene-batch-publication-images img {
+  background: #111;
+  height: 320px;
+  object-fit: contain;
+  width: 100%;
+}
+
+.scene-batch-publication-target label {
+  display: block;
+  margin-top: 12px;
+}
+
+@media (max-width: 700px) {
+  .scene-batch-publication-images { grid-template-columns: 1fr; }
+  .scene-batch-publication-images img { height: 240px; }
+}
+
 .batch-status-card a {
   color: var(--primary);
 }
@@ -5323,6 +5385,28 @@ dd {
 .inventory-dialog { width: min(720px, calc(100vw - 28px)); max-height: 88vh; overflow: auto; border: 1px solid #c4d9dd; border-radius: 12px; box-shadow: 0 18px 60px rgb(15 35 45 / 26%); }
 .inventory-dialog::backdrop { background: rgb(15 30 38 / 54%); }
 .inventory-dialog .control-panel { box-shadow: none; border: 0; padding: 6px 0 14px; }
+
+.costume-create-actions { justify-content: flex-end; }
+.costume-wizard-dialog { width: min(1280px, calc(100vw - 28px)); max-height: 94vh; overflow: auto; border: 1px solid #c4d9dd; border-radius: 14px; padding: 20px; box-shadow: 0 18px 60px rgb(15 35 45 / 26%); }
+.costume-wizard-dialog::backdrop { background: rgb(15 30 38 / 62%); }
+.costume-wizard-dialog[open] { display: grid; gap: 14px; }
+.costume-wizard-header, .costume-wizard-resume { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.costume-wizard-header h2 { margin: 0; }
+.costume-wizard-images { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.costume-wizard-image-slot { display: grid; align-content: start; gap: 9px; border: 1px solid #d5e0e2; border-radius: 10px; padding: 12px; }
+.costume-wizard-image-slot h3 { margin: 0; }
+.costume-wizard-file { display: block; margin-top: 5px; max-width: 100%; }
+.costume-wizard-paste { min-height: 52px; display: grid; place-items: center; border: 1px dashed #8aa3a8; border-radius: 8px; color: #526a70; cursor: pointer; text-align: center; }
+.costume-wizard-paste:focus { outline: 2px solid #347c8a; }
+.costume-wizard-preview { max-width: 100%; max-height: 220px; object-fit: contain; justify-self: center; }
+.costume-wizard-dialog textarea { width: 100%; box-sizing: border-box; }
+#costume-wizard-markdown { min-height: 420px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.costume-wizard-review, .costume-wizard-errors { white-space: pre-wrap; border-radius: 8px; padding: 12px; background: #eef5f4; }
+.costume-wizard-errors { color: #8a2f27; background: #fff1ee; }
+.costume-wizard-test-result { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .8fr); gap: 16px; align-items: start; }
+.costume-wizard-test-result img { max-width: 100%; border-radius: 8px; }
+.costume-wizard-test-result p { white-space: pre-wrap; }
+@media (max-width: 760px) { .costume-wizard-images { grid-template-columns: 1fr; } .costume-wizard-test-result { grid-template-columns: 1fr; } .costume-wizard-header, .costume-wizard-resume { align-items: stretch; flex-direction: column; } }
 .entity-library-import-preview { display: block; max-width: 100%; max-height: 32vh; margin: 0 auto 12px; object-fit: contain; }
 .inventory-merge-conflict { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
 .inventory-merge-conflict label { overflow-wrap: anywhere; }

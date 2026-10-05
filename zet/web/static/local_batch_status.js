@@ -36,7 +36,7 @@
 
   function renderBatch(batch) {
     const card = document.createElement("article");
-    card.className = "batch-status-card";
+    card.className = `batch-status-card${batch.pipeline === "scene" ? " batch-status-scene" : ""}`;
 
     const title = document.createElement("h3");
     const link = document.createElement("a");
@@ -57,6 +57,15 @@
     appendField(fields, "Costume", batch.costume);
     appendField(fields, "Current view", batch.current_view);
     card.append(title, fields);
+    if (batch.pipeline === "scene" && batch.status === "READY_TO_PUBLISH") {
+      const review = document.createElement("a");
+      const url = new URL(directBatchUrl(batch), window.location.href);
+      url.searchParams.set("publication_review", "1");
+      review.href = url.toString();
+      review.className = "batch-status-review-link";
+      review.textContent = "Review & Publish";
+      card.append(review);
+    }
     return card;
   }
 

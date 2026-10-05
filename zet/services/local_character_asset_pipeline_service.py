@@ -83,7 +83,7 @@ class LocalCharacterAssetPipelineService:
         ),
     }
 
-    def __init__(self, app: Any, project_root: str | Path, pipeline: str):
+    def __init__(self, app: Any, project_root: str | Path, pipeline: str, *, runs_root: str | Path | None = None):
         if pipeline not in self.PIPELINES:
             raise LocalCharacterAssetPipelineError(f"Unsupported local pipeline: {pipeline}")
         self.app = app
@@ -92,7 +92,7 @@ class LocalCharacterAssetPipelineService:
         self.pipeline = pipeline
         self.library_root = Path(app.config.base_library_path).resolve()
         self.character_root = Path(app.config.base_character_path).resolve()
-        self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
+        self.root = Path(runs_root).resolve() if runs_root else self.library_root / "PipelineCandidates" / "Character-Pipeline"
         self.asset_store = LocalAssetStoreService(self.library_root)
         self._runner_lock = threading.Lock()
 

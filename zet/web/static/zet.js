@@ -84,6 +84,7 @@ const state = {
   identityKeyPreview: null,
   costumes: [],
   selectedCostumeSlug: null,
+  costumeWizard: null,
   sceneAppearances: [],
   selectedSceneAppearanceId: null,
   expressionAssets: [],
@@ -435,6 +436,7 @@ const settingPromptCondenseModel = document.querySelector("#setting-prompt-conde
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
 const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image-description-model");
 const settingImagePromptGenerationModel = document.querySelector("#setting-image-prompt-generation-model");
+const settingCostumeWizardModel = document.querySelector("#setting-costume-wizard-model");
 const settingAiSceneBuilderModel = document.querySelector("#setting-ai-scene-builder-model");
 const settingLocalBodyReferenceFaceGateModel = document.querySelector("#setting-local-body-reference-face-gate-model");
 const settingLocalBodyReferenceReviewModel = document.querySelector("#setting-local-body-reference-review-model");
@@ -583,6 +585,32 @@ const costumeTemplateFile = document.querySelector("#costume-template-file");
 const costumeCreate = document.querySelector("#costume-create");
 const costumePreviewSection = document.querySelector("#costume-preview-section");
 const costumePreview = document.querySelector("#costume-preview");
+const costumeWizardDialog = document.querySelector("#costume-wizard-dialog");
+const costumeWizardOpen = document.querySelector("#costume-wizard-open");
+const costumeWizardClose = document.querySelector("#costume-wizard-close");
+const costumeWizardContext = document.querySelector("#costume-wizard-context");
+const costumeWizardMessage = document.querySelector("#costume-wizard-message");
+const costumeWizardResume = document.querySelector("#costume-wizard-resume");
+const costumeWizardResumeButton = document.querySelector("#costume-wizard-resume-button");
+const costumeWizardName = document.querySelector("#costume-wizard-name");
+const costumeWizardExtra = document.querySelector("#costume-wizard-extra");
+const costumeWizardIntake = document.querySelector("#costume-wizard-intake");
+const costumeWizardWorkspace = document.querySelector("#costume-wizard-workspace");
+const costumeWizardCreate = document.querySelector("#costume-wizard-create");
+const costumeWizardGenerate = document.querySelector("#costume-wizard-generate");
+const costumeWizardQuestions = document.querySelector("#costume-wizard-questions");
+const costumeWizardAnswer = document.querySelector("#costume-wizard-answer");
+const costumeWizardMarkdown = document.querySelector("#costume-wizard-markdown");
+const costumeWizardReview = document.querySelector("#costume-wizard-review");
+const costumeWizardErrors = document.querySelector("#costume-wizard-errors");
+const costumeWizardSave = document.querySelector("#costume-wizard-save");
+const costumeWizardTest = document.querySelector("#costume-wizard-test");
+const costumeWizardAccept = document.querySelector("#costume-wizard-accept");
+const costumeWizardTestResult = document.querySelector("#costume-wizard-test-result");
+const costumeWizardRefinement = document.querySelector("#costume-wizard-refinement");
+const costumeWizardRefine = document.querySelector("#costume-wizard-refine");
+const costumeWizardAbandon = document.querySelector("#costume-wizard-abandon");
+let costumeWizardPollTimer = null;
 const sceneAppearanceStatus = document.querySelector("#scene-appearance-status");
 const sceneAppearanceMessage = document.querySelector("#scene-appearance-message");
 const sceneAppearanceTableBody = document.querySelector("#scene-appearance-table tbody");
@@ -2384,6 +2412,7 @@ function saveWorkspacePreferences() {
 }
 
 function pageWorkspace(page) {
+  if (page === "local-batch-status") return null;
   if (["universes", "universe-create", "universe-settings"].includes(page)) return null;
   if (CHARACTER_PAGES.has(page)) return "character";
   if (LOCAL_PAGES.has(page)) return "character";
@@ -2419,7 +2448,7 @@ function renderHeaderStoryContext() {
 
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["onboarding", "Overview"], ["local-batch-status", "Assets"], ["identity-keys", "Identity Keys"],
+    ["onboarding", "Overview"], ["local-body-reference", "Assets"], ["identity-keys", "Identity Keys"],
     ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
   ],
   story: [
@@ -2429,6 +2458,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 };
 
 const RESPONSIVE_TOOL_PAGES = [
+  ["local-batch-status", "Batches"],
   ["image-generation", "Image Generation"],
   ["auxiliary-resources", "Image Inventory"], ["template-editor", "Template Editor"], ["ai-controls", "AI Queue"],
   ["pipeline-controls", "Pipeline Controls"],
@@ -3901,7 +3931,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#local-pipeline-page").classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
   document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview" && page !== "local-batch-status");
   document.querySelector("#local-batch-status-page").classList.toggle("active", page === "local-batch-status");
-  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page) || page === "local-batch-status");
+  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
   if (LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
       "local-body-reference": "Body-Reference",
@@ -3978,6 +4008,7 @@ async function activatePage(page, options = {}) {
   }
   if (page === "scene-batches") {
     await window.SceneBatches.open({story: state.selectedStorySlug, scene: state.selectedSceneSlug, retiredPage,
+      publicationReview: retiredRoute.get("publication_review") === "1",
       retiredAskId: options.preferredAskId || retiredRoute.get("ask_id") || "",
       retiredTarget: options.renderTargetId || retiredRoute.get("render_target_id") || "main"});
   }
@@ -4536,6 +4567,300 @@ async function saveCostume() {
     costumeCreate.disabled = false;
   }
 }
+
+function showCostumeWizardMessage(message, kind = "info") {
+  costumeWizardMessage.hidden = !message;
+  costumeWizardMessage.textContent = message || "";
+  costumeWizardMessage.className = `action-message ${kind}`.trim();
+}
+
+function setCostumeWizardSession(session) {
+  state.costumeWizard = session;
+  costumeWizardContext.textContent = `${session.character} / ${session.phase} · ${session.status || "Draft"}`;
+  costumeWizardIntake.hidden = Boolean(session.markdown || session.session_id);
+  costumeWizardWorkspace.hidden = !session.session_id;
+  costumeWizardMarkdown.value = session.markdown || "";
+  const draftReview = [session.draft_review || "", ...(session.refinements || []).map((item) => `Suggested refinement: ${item}`)]
+    .filter(Boolean).join("\n\n");
+  costumeWizardReview.hidden = !draftReview;
+  costumeWizardReview.textContent = draftReview;
+  const errors = session.validation_errors || [];
+  costumeWizardErrors.hidden = !errors.length;
+  costumeWizardErrors.textContent = errors.join("\n");
+  costumeWizardQuestions.replaceChildren();
+  const questions = session.questions || [];
+  questions.forEach((question, index) => {
+    const label = document.createElement("label");
+    label.textContent = question;
+    const input = document.createElement("textarea");
+    input.rows = 2;
+    input.dataset.questionIndex = String(index);
+    label.append(input);
+    costumeWizardQuestions.append(label);
+  });
+  costumeWizardAnswer.hidden = !questions.length;
+  costumeWizardGenerate.hidden = !(session.status === "FAILED" && !session.markdown);
+  const running = session.job?.status === "RUNNING";
+  costumeWizardGenerate.disabled = running;
+  costumeWizardTestResult.replaceChildren();
+  const renders = session.test_renders || [];
+  costumeWizardTestResult.hidden = !renders.length;
+  renders.forEach((render, index) => {
+    const card = document.createElement("article");
+    const heading = document.createElement("strong");
+    heading.textContent = `Front test ${index + 1}${render.revision_id === session.revision_id ? " · current draft" : " · earlier draft"}`;
+    const image = document.createElement("img");
+    image.src = `${render.image_url}?v=${encodeURIComponent(render.render_id)}`;
+    image.alt = `Costume Wizard front test render ${index + 1}`;
+    const review = document.createElement("p");
+    review.textContent = render.review || "The test render is ready for review.";
+    card.append(heading, image, review);
+    if ((render.refinements || []).length) {
+      const suggestions = document.createElement("p");
+      suggestions.textContent = `Suggested refinements:\n${render.refinements.map((item) => `• ${item}`).join("\n")}`;
+      card.append(suggestions);
+    }
+    costumeWizardTestResult.append(card);
+  });
+  costumeWizardMarkdown.disabled = running;
+  costumeWizardCreate.disabled = running;
+  costumeWizardAnswer.disabled = running;
+  costumeWizardSave.disabled = running || !session.markdown;
+  costumeWizardTest.disabled = running || !session.markdown;
+  costumeWizardAccept.disabled = running || !session.markdown || errors.length > 0;
+  costumeWizardRefine.disabled = running || !session.markdown;
+  costumeWizardAbandon.disabled = session.status === "ACCEPTED" || session.status === "ABANDONED";
+  if (running) {
+    showCostumeWizardMessage(`${session.job?.kind === "render" ? "Rendering and reviewing" : "Analyzing references and drafting"}…`);
+    scheduleCostumeWizardPoll(session.session_id);
+  } else if (session.job?.status === "FAILED") {
+    showCostumeWizardMessage(session.job.error || "The wizard task failed. Review the draft and retry.", "error");
+  } else if (session.status === "NEEDS_INPUT") {
+    showCostumeWizardMessage("Answer the questions below to continue drafting.");
+  } else if (session.markdown && !errors.length) {
+    showCostumeWizardMessage("Draft is ready. Save, test, or accept this revision.");
+  }
+}
+
+function scheduleCostumeWizardPoll(sessionId) {
+  clearTimeout(costumeWizardPollTimer);
+  costumeWizardPollTimer = setTimeout(async () => {
+    try {
+      const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(sessionId)}`);
+      setCostumeWizardSession(payload.session);
+    } catch (error) {
+      showCostumeWizardMessage(error.message, "error");
+    }
+  }, 1800);
+}
+
+async function loadCostumeWizardSessions() {
+  const params = currentQuery();
+  const payload = await fetchJson(`/api/costume-wizard?${params.toString()}`);
+  costumeWizardResume.replaceChildren(option("", "New costume draft"));
+  for (const session of payload.sessions || []) {
+    costumeWizardResume.append(option(session.session_id, `${session.name} · ${session.status}`));
+  }
+}
+
+function clearCostumeWizardIntake() {
+  costumeWizardName.value = "";
+  costumeWizardExtra.value = "";
+  for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
+    slot.querySelector(".costume-wizard-file").value = "";
+    slot.querySelector(".costume-wizard-caption").value = "";
+    slot.querySelector(".costume-wizard-preview").removeAttribute("src");
+    slot.querySelector(".costume-wizard-preview").hidden = true;
+  }
+  state.costumeWizard = null;
+  costumeWizardWorkspace.hidden = true;
+  costumeWizardIntake.hidden = false;
+}
+
+async function openCostumeWizard() {
+  clearCostumeWizardIntake();
+  costumeWizardContext.textContent = `${state.character || ""} / ${state.phase || ""}`;
+  showCostumeWizardMessage("");
+  costumeWizardDialog.showModal();
+  try {
+    await loadCostumeWizardSessions();
+  } catch (error) {
+    showCostumeWizardMessage(error.message, "error");
+  }
+}
+
+async function resumeCostumeWizard() {
+  const sessionId = costumeWizardResume.value;
+  if (!sessionId) return;
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(sessionId)}`);
+    costumeWizardIntake.hidden = true;
+    costumeWizardName.value = payload.session.name || "";
+    setCostumeWizardSession(payload.session);
+  } catch (error) {
+    showCostumeWizardMessage(error.message, "error");
+  }
+}
+
+async function createCostumeWizardDraft() {
+  const name = costumeWizardName.value.trim();
+  if (!name) return showCostumeWizardMessage("Costume name is required.", "error");
+  const form = new FormData();
+  form.set("name", name);
+  form.set("extra_info", costumeWizardExtra.value);
+  let count = 0;
+  for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
+    const file = slot.querySelector(".costume-wizard-file").files?.[0];
+    const caption = slot.querySelector(".costume-wizard-caption").value.trim();
+    if (file) {
+      count += 1;
+      if (!caption) return showCostumeWizardMessage(`Describe what reference image ${slot.dataset.slot} conveys.`, "error");
+      form.set(`image_${slot.dataset.slot}`, file, file.name);
+      form.set(`caption_${slot.dataset.slot}`, caption);
+    }
+  }
+  if (!count) return showCostumeWizardMessage("Add at least one reference image.", "error");
+  costumeWizardCreate.disabled = true;
+  try {
+    const params = currentQuery();
+    const payload = await fetchJson(`/api/costume-wizard?${params.toString()}`, { method: "POST", body: form });
+    costumeWizardIntake.hidden = true;
+    costumeWizardName.value = payload.session.name || name;
+    setCostumeWizardSession(payload.session);
+    await loadCostumeWizardSessions();
+  } catch (error) {
+    showCostumeWizardMessage(error.message, "error");
+    costumeWizardCreate.disabled = false;
+  }
+}
+
+async function submitCostumeWizardAnswers() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  const answers = Array.from(costumeWizardQuestions.querySelectorAll("textarea[data-question-index]"))
+    .map((input) => ({ question: session.questions[Number(input.dataset.questionIndex)], answer: input.value.trim() }));
+  if (answers.some((item) => !item.answer)) return showCostumeWizardMessage("Answer each question to continue.", "error");
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/answers`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
+    });
+    setCostumeWizardSession(payload.session);
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function retryCostumeWizardDraft() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/generate`, { method: "POST" });
+    setCostumeWizardSession(payload.session);
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function saveCostumeWizardDraft() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/draft`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: session.revision_id, markdown: costumeWizardMarkdown.value }),
+    });
+    setCostumeWizardSession(payload.session);
+    showCostumeWizardMessage("Draft saved.");
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function testCostumeWizardDraft() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    if (costumeWizardMarkdown.value !== session.markdown) await saveCostumeWizardDraft();
+    const current = state.costumeWizard;
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(current.session_id)}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: current.revision_id }),
+    });
+    setCostumeWizardSession(payload.session);
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function applyCostumeWizardRefinements() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/refine`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: session.revision_id, instructions: costumeWizardRefinement.value }),
+    });
+    setCostumeWizardSession(payload.session);
+    costumeWizardRefinement.value = "";
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function acceptCostumeWizardDraft() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    if (costumeWizardMarkdown.value !== session.markdown) await saveCostumeWizardDraft();
+    const current = state.costumeWizard;
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(current.session_id)}/accept`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: current.revision_id }),
+    });
+    state.costumes = payload.costumes || state.costumes;
+    state.selectedCostumeSlug = payload.costume?.slug || null;
+    renderCostumeTable();
+    renderCostumeEditor();
+    costumeWizardDialog.close();
+    showCostumeMessage(payload.message || "Costume accepted.");
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function abandonCostumeWizard() {
+  const session = state.costumeWizard;
+  if (!session) { costumeWizardDialog.close(); return; }
+  try {
+    await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/abandon`, { method: "POST" });
+    clearTimeout(costumeWizardPollTimer);
+    costumeWizardDialog.close();
+    showCostumeMessage("Costume Wizard draft abandoned.");
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
+  const fileInput = slot.querySelector(".costume-wizard-file");
+  const pasteZone = slot.querySelector(".costume-wizard-paste");
+  const preview = slot.querySelector(".costume-wizard-preview");
+  const showPreview = (file) => {
+    if (!file) return;
+    preview.src = URL.createObjectURL(file);
+    preview.hidden = false;
+  };
+  fileInput.addEventListener("change", () => showPreview(fileInput.files?.[0]));
+  pasteZone.addEventListener("click", () => pasteZone.focus());
+  pasteZone.addEventListener("paste", (event) => {
+    const item = Array.from(event.clipboardData?.items || []).find((entry) => entry.type.startsWith("image/"));
+    const file = item?.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([file], `pasted-costume-${slot.dataset.slot}.png`, { type: file.type || "image/png" }));
+    fileInput.files = transfer.files;
+    showPreview(fileInput.files[0]);
+  });
+}
+
+costumeWizardOpen.addEventListener("click", openCostumeWizard);
+costumeWizardClose.addEventListener("click", () => { clearTimeout(costumeWizardPollTimer); costumeWizardDialog.close(); });
+costumeWizardResumeButton.addEventListener("click", resumeCostumeWizard);
+costumeWizardCreate.addEventListener("click", createCostumeWizardDraft);
+costumeWizardGenerate.addEventListener("click", retryCostumeWizardDraft);
+costumeWizardAnswer.addEventListener("click", submitCostumeWizardAnswers);
+costumeWizardSave.addEventListener("click", saveCostumeWizardDraft);
+costumeWizardTest.addEventListener("click", testCostumeWizardDraft);
+costumeWizardRefine.addEventListener("click", applyCostumeWizardRefinements);
+costumeWizardAccept.addEventListener("click", acceptCostumeWizardDraft);
+costumeWizardAbandon.addEventListener("click", abandonCostumeWizard);
 
 function sceneAppearanceReferenceLines(references) {
   return (references || []).map((item) => `${item.role || ""} | ${item.label || ""} | ${item.tag || ""}`).join("\n");
@@ -11563,6 +11888,7 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(settingAiPromptAnalysisModel, automation.ai_prompt_analysis_model || "");
   setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
   setOllamaModelValue(settingImagePromptGenerationModel, automation.ai_image_prompt_generation_model || "image-analysis:latest");
+  setOllamaModelValue(settingCostumeWizardModel, automation.ai_costume_wizard_model || "codex:gpt-6-luna");
   setOllamaModelValue(settingAiSceneBuilderModel, automation.ai_scene_builder_model || "");
   setOllamaModelValue(settingLocalBodyReferenceFaceGateModel, automation.local_body_reference_face_gate_model || "");
   setOllamaModelValue(settingLocalBodyReferenceReviewModel, automation.local_body_reference_review_model || "");
@@ -11596,6 +11922,7 @@ const ollamaModelControls = () => [
   settingAiPromptAnalysisModel,
   settingAiImageDescriptionModel,
   settingImagePromptGenerationModel,
+  settingCostumeWizardModel,
   settingAiSceneBuilderModel,
   settingLocalBodyReferenceFaceGateModel,
   settingLocalBodyReferenceReviewModel,
@@ -11658,10 +11985,10 @@ function setOllamaModelValue(control, value) {
 
 async function refreshOllamaModelOptions() {
   const current = new Map(ollamaModelControls().map((control) => [control, control.value]));
-  const addCodexPromptModels = () => {
+  const addCodexPromptModels = (control) => {
     for (const model of ["gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"]) {
-      if (!Array.from(settingImagePromptGenerationModel.options).some((option) => option.value === "codex:" + model)) {
-        settingImagePromptGenerationModel.add(new Option("Codex · " + model, "codex:" + model));
+      if (!Array.from(control.options).some((option) => option.value === "codex:" + model)) {
+        control.add(new Option("Codex · " + model, "codex:" + model));
       }
     }
   };
@@ -11670,7 +11997,7 @@ async function refreshOllamaModelOptions() {
     for (const control of ollamaModelControls()) {
       setSelectOptions(control, control === settingImagePromptGenerationModel
         ? (payload.vision_models || []) : (payload.models || []));
-      if (control === settingImagePromptGenerationModel) addCodexPromptModels();
+      if ([settingImagePromptGenerationModel, settingCostumeWizardModel].includes(control)) addCodexPromptModels(control);
       setOllamaModelValue(control, current.get(control));
     }
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
@@ -11678,8 +12005,10 @@ async function refreshOllamaModelOptions() {
       `Loaded ${(payload.models || []).length} Ollama model(s); ${(payload.vision_models || []).length} report vision capability.`,
     );
   } catch (error) {
-    addCodexPromptModels();
+    addCodexPromptModels(settingImagePromptGenerationModel);
+    addCodexPromptModels(settingCostumeWizardModel);
     setOllamaModelValue(settingImagePromptGenerationModel, current.get(settingImagePromptGenerationModel));
+    setOllamaModelValue(settingCostumeWizardModel, current.get(settingCostumeWizardModel));
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
     showMessage(error.message, "error");
   }
@@ -11777,6 +12106,7 @@ function automationPayloadFromForm() {
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
     ai_image_description_model: settingAiImageDescriptionModel.value,
     ai_image_prompt_generation_model: settingImagePromptGenerationModel.value,
+    ai_costume_wizard_model: settingCostumeWizardModel.value,
     ai_scene_builder_model: settingAiSceneBuilderModel.value,
     local_body_reference_face_gate_model: settingLocalBodyReferenceFaceGateModel.value,
     local_body_reference_review_model: settingLocalBodyReferenceReviewModel.value,

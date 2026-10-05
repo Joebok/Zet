@@ -452,6 +452,7 @@ class LocalSceneBatchService:
                         path.unlink()
                 if state["selected_views"].get(target) == item["candidate_id"]:
                     state["selected_views"].pop(target, None)
+                    state.pop("publication", None)
             group["candidates"] = sorted(
                 (item for item in group["candidates"] if item["candidate_id"] in active_ids),
                 key=lambda item: item["slot"])
@@ -543,7 +544,8 @@ class LocalSceneBatchService:
                             _REVIEWS.submit(self._rate, story, scene, run_id, target, group.get("revision", 0), job_id)
                         group["status"] = ("SELECTED" if target in selected else "AWAITING_HUMAN_SELECTION")
                         if state.get("publication", {}).get("status") == "COMPLETE" and target in selected:
-                            group["status"] = "PUBLISHED"
+                            decision = state["publication"].get("reviews", {}).get(target, {}).get("decision")
+                            group["status"] = "CURRENT_LOCK_KEPT" if decision == "keep-current" else "PUBLISHED"
                 elif not active and any(item["status"] == "FAILED" for item in candidates):
                     group["status"] = "FAILED"
                 elif not active and not any(item["status"] == "COMPLETE" for item in candidates):
@@ -802,6 +804,7 @@ class LocalSceneBatchService:
                 candidate = next((item for item in group["candidates"] if item["candidate_id"] == candidate_id), None)
                 if name == "select" and not candidate_id:
                     state["selected_views"].pop(target, None)
+                    state.pop("publication", None)
                 elif not candidate:
                     raise ValueError("Choose a candidate from this target.")
                 elif name == "review":
@@ -817,6 +820,8 @@ class LocalSceneBatchService:
                     expected_hash = str(candidate.get("sha256") or "")
                     if expected_hash and _hash(image_path) != expected_hash:
                         raise ValueError("The completed image was changed after rendering.")
+                    if state["selected_views"].get(target) != candidate_id:
+                        state.pop("publication", None)
                     state["selected_views"][target] = candidate_id
             elif name == "clear":
                 candidate_id = str(payload.get("candidate_id") or "")
@@ -847,10 +852,11 @@ class LocalSceneBatchService:
                 state["rankings"].pop(target, None)
                 if state["selected_views"].get(target) == candidate_id:
                     state["selected_views"].pop(target, None)
+                    state.pop("publication", None)
             elif name == "reevaluate":
                 state["rankings"].pop(target, None)
             elif name == "publish":
-                self._publish(root, spec, state)
+                self._publish(root, spec, state, payload.get("reviews"))
             else:
                 raise ValueError("Unknown scene batch action.")
             write_json_atomic(root / "spec.json", spec)
@@ -923,20 +929,78 @@ class LocalSceneBatchService:
             write_json_atomic(root / "state.json", state)
         group["status"] = "RUNNING"
 
-    def _publish(self, root, spec, state):
+    def publication_review(self, story: str, scene: str, run_id: str) -> dict:
+        """Capture the selected candidates and current locks for a human comparison."""
+        self.detail(story, scene, run_id)
+        root = self.root(story, scene, run_id)
+        with file_lock(root / "state.lock"):
+            spec, state = _read(root / "spec.json"), _read(root / "state.json")
+            selected = self._selected(state, verify=True)
+            if not all(target in selected for target in spec["views"]):
+                raise ValueError("Select an available image for every active target before publishing.")
+            targets = []
+            with file_lock(self.targets.pipeline_path(story, scene, "main") / "Scene_Review.lock"):
+                for definition in spec["targets"]:
+                    target = definition["target_id"]
+                    locked = self.targets.review_paths(story, scene, target)["locked"]
+                    targets.append({"target_id": target, "label": definition["label"],
+                                    "candidate_id": selected[target]["candidate_id"],
+                                    "candidate_sha256": selected[target]["sha256"],
+                                    "locked_sha256": _hash(locked) if locked.is_file() else "",
+                                    "locked_exists": locked.is_file()})
+            return {"run_id": run_id, "targets": targets}
+
+    def _publish(self, root, spec, state, reviews=None):
         all_selected = self._selected(state, verify=True)
         selected = {target: all_selected[target] for target in spec["views"] if target in all_selected}
         if set(selected) != set(spec["views"]):
             raise ValueError("Select an available image for every active target before publishing.")
         publication = state.setdefault("publication", {"status": "PUBLISHING", "targets": {}})
         with file_lock(self.targets.pipeline_path(spec["story_slug"], spec["scene_slug"], "main") / "Scene_Review.lock"):
+            # Validate every comparison before replacing any image. Retrying a committed
+            # target uses its recorded outcome so an interrupted publication is recoverable.
+            decisions = {}
+            if reviews is not None:
+                if not isinstance(reviews, dict) or set(reviews) != set(spec["views"]):
+                    raise ValueError("Review every active target before publishing.")
+            for target in spec["views"]:
+                selection = selected[target]
+                locked = self.targets.review_paths(spec["story_slug"], spec["scene_slug"], target)["locked"]
+                digest = _hash(locked) if locked.is_file() else ""
+                outcome = publication.get("reviews", {}).get(target, {})
+                committed = (publication["targets"].get(target) == selection["sha256"]
+                             and digest == outcome.get("result_sha256", selection["sha256"]))
+                if committed:
+                    continue
+                review = reviews.get(target, {}) if reviews is not None else {}
+                decision = review.get("decision", "promote")
+                if decision not in {"promote", "keep-current"}:
+                    raise ValueError("Choose whether to promote the candidate or keep the current locked image.")
+                if reviews is not None:
+                    if (review.get("candidate_id") != selection["candidate_id"]
+                            or review.get("candidate_sha256") != selection["sha256"]
+                            or review.get("locked_sha256") != digest):
+                        raise ValueError("Scene images changed after comparison. Reopen the publication review.")
+                elif digest:
+                    raise ValueError("Compare the candidate with the current locked image before publishing.")
+                if decision == "keep-current" and not digest:
+                    raise ValueError("There is no current locked image to keep.")
+                decisions[target] = (decision, digest)
             for target in spec["views"]:
                 paths = self.targets.review_paths(spec["story_slug"], spec["scene_slug"], target)
                 selection = selected[target]
-                if publication["targets"].get(target) == selection["sha256"] and paths["locked"].is_file() and _hash(paths["locked"]) == selection["sha256"]:
+                if target not in decisions:
                     continue
+                decision, digest = decisions[target]
                 candidate = next(item for item in state["groups"][target]["candidates"]
                                  if item["candidate_id"] == selection["candidate_id"])
+                if decision == "keep-current":
+                    candidate["human_review"] = {"decision": "reject"}
+                    publication.setdefault("reviews", {})[target] = {
+                        "decision": decision, "candidate_id": selection["candidate_id"], "result_sha256": digest}
+                    publication["targets"][target] = selection["sha256"]
+                    write_json_atomic(root / "state.json", state)
+                    continue
                 attempt = state["groups"][target].get("attempts", {}).get(candidate.get("attempt_id"),
                                                                               state["groups"][target])
                 atomic_copy(Path(selection["path"]), paths["candidate"])
@@ -949,6 +1013,10 @@ class LocalSceneBatchService:
                     "render_input_hash": attempt.get("render_input_hash", "")})
                 self.app.scene_image_review_service.promote(spec["story_slug"], spec["scene_slug"], target,
                                                             preserve_previous=True)
+                candidate["human_review"] = {"decision": "keep"}
+                publication.setdefault("reviews", {})[target] = {
+                    "decision": decision, "candidate_id": selection["candidate_id"],
+                    "result_sha256": selection["sha256"]}
                 publication["targets"][target] = selection["sha256"]
                 write_json_atomic(root / "state.json", state)
         publication.update(status="COMPLETE", published_at=_now())
@@ -983,6 +1051,13 @@ class LocalSceneBatchService:
             if not 0 <= int(index) < len(references):
                 raise ValueError("Unknown current reference image.")
             path = Path(references[int(index)]["path"])
+        elif kind == "locked":
+            path = self.targets.review_paths(story, scene, target)["locked"]
+            # This canonical path is computed by the target service, rather than
+            # read from batch state, and intentionally lives outside the batch root.
+            if not path.is_file():
+                raise ValueError("The current locked image is unavailable.")
+            return path
         elif kind == "image":
             path = Path(next(item for item in group["candidates"] if item["candidate_id"] == index)["image_path"])
         elif kind == "analysis":

@@ -5,6 +5,11 @@ window.SceneBatches = (() => {
   const message = document.querySelector("#scene-batch-message");
   const reviewDialog = document.querySelector("#scene-batch-review-dialog");
   const reviewMessage = document.querySelector("#scene-batch-review-message");
+  const publicationDialog = document.querySelector("#scene-batch-publication-dialog");
+  const publicationHost = document.querySelector("#scene-batch-publication-targets");
+  const publicationMessage = document.querySelector("#scene-batch-publication-message");
+  const publicationSubmit = document.querySelector("#scene-batch-publication-submit");
+  let publicationReview = null, publicationDecisions = {};
   let context = null, run = null, pending = false, timer = null, version = 0;
   let reviewKey = null;
   const node = (tag, text, className = "") => {
@@ -93,12 +98,75 @@ window.SceneBatches = (() => {
     const selected = run.selected_views[item.target] === item.candidate.candidate_id;
     void perform(action, {target_id: item.target, candidate_id: action === "select" && selected ? "" : item.candidate.candidate_id});
   }
+  async function openPublicationReview() {
+    if (pending || run?.status !== "READY_TO_PUBLISH") return;
+    const expectedVersion = version, expectedId = run.run_id;
+    pending = true;
+    publicationReview = null; publicationDecisions = {};
+    publicationHost.replaceChildren(); publicationSubmit.disabled = true;
+    publicationMessage.textContent = "Loading selected candidates and current locked images…";
+    if (!publicationDialog.open) publicationDialog.showModal();
+    render();
+    try {
+      const review = await request(`${base()}/${expectedId}/publication-review`);
+      if (version !== expectedVersion || run?.run_id !== expectedId) return;
+      publicationReview = review;
+      for (const target of review.targets) {
+        const section = node("section", null, "scene-batch-publication-target");
+        section.dataset.targetId = target.target_id;
+        section.append(node("h3", target.label));
+        const images = node("div", null, "scene-batch-publication-images");
+        for (const [label, suffix] of [
+          ["Selected candidate", `images/${encodeURIComponent(target.candidate_id)}`],
+          ["Current locked image", target.locked_exists ? `locked?v=${target.locked_sha256}` : null],
+        ]) {
+          const figure = node("figure"); figure.append(node("figcaption", label));
+          if (suffix) {
+            const image = node("img"); image.alt = `${target.label}: ${label}`;
+            image.src = route(target.target_id, suffix); figure.append(image);
+          } else figure.append(node("p", "No locked image yet.", "muted"));
+          images.append(figure);
+        }
+        section.append(images);
+        const label = node("label", "Publication decision ");
+        const select = node("select");
+        select.setAttribute("aria-label", `${target.label} publication decision`);
+        for (const [value, text] of [["", "Choose a decision…"], ["promote", "Promote candidate to locked"],
+          ...(target.locked_exists ? [["keep-current", "Reject candidate; keep current locked image"]] : [])]) {
+          const option = node("option", text); option.value = value; select.append(option);
+        }
+        select.addEventListener("change", () => {
+          publicationDecisions[target.target_id] = select.value;
+          publicationSubmit.disabled = pending || !review.targets.every(item => publicationDecisions[item.target_id]);
+        });
+        label.append(select); section.append(label); publicationHost.append(section);
+      }
+      publicationMessage.textContent = "Choose a decision for every target. Previous locks are backed up when replaced.";
+    } catch (error) {
+      if (version === expectedVersion) publicationMessage.textContent = error.message;
+    } finally {
+      if (version === expectedVersion) { pending = false; render(); }
+    }
+  }
+  function submitPublicationReview() {
+    if (pending || !publicationReview || !publicationReview.targets.every(item => publicationDecisions[item.target_id])) return;
+    const reviews = Object.fromEntries(publicationReview.targets.map(target => [target.target_id, {
+      decision: publicationDecisions[target.target_id], candidate_id: target.candidate_id,
+      candidate_sha256: target.candidate_sha256, locked_sha256: target.locked_sha256,
+    }]));
+    void perform("publish", {reviews});
+  }
   async function perform(action, payload = {}) {
     if (pending || !run) return;
     const expectedVersion = version, expectedId = run.run_id;
     pending = true;
     message.textContent = `${action.replaceAll("-", " ")}…`;
     if (reviewDialog.open) reviewMessage.textContent = message.textContent;
+    if (publicationDialog.open) {
+      publicationMessage.textContent = "Applying review decisions…";
+      publicationSubmit.disabled = true;
+      publicationHost.querySelectorAll("select").forEach(select => { select.disabled = true; });
+    }
     render();
     try {
       const updated = await request(`${base()}/${expectedId}/actions/${action}`, payload);
@@ -110,6 +178,9 @@ window.SceneBatches = (() => {
         reviewKey = next ? candidateKey(next.target, next.candidate.candidate_id) : null;
       }
       run = updated;
+      if (action === "publish") {
+        publicationDialog.close(); publicationReview = null;
+      }
       if (!reviewKey && reviewDialog.open) reviewDialog.close();
       message.textContent = run.status.replaceAll("_", " "); render();
       if (reviewDialog.open) reviewMessage.textContent = "";
@@ -117,8 +188,17 @@ window.SceneBatches = (() => {
       if (version === expectedVersion) {
         message.textContent = error.message;
         if (reviewDialog.open) reviewMessage.textContent = error.message;
+        if (publicationDialog.open) publicationMessage.textContent = error.message;
       }
-    } finally { if (version === expectedVersion) { pending = false; render(); scheduleRefresh(); } }
+    } finally {
+      if (version === expectedVersion) {
+        pending = false; render(); scheduleRefresh();
+        if (publicationDialog.open) {
+          publicationHost.querySelectorAll("select").forEach(select => { select.disabled = false; });
+          publicationSubmit.disabled = !publicationReview?.targets.every(item => publicationDecisions[item.target_id]);
+        }
+      }
+    }
   }
   function render() {
     host.replaceChildren();
@@ -235,6 +315,8 @@ window.SceneBatches = (() => {
   }
   async function open(nextContext) {
     clearTimeout(timer); timer = null; const expectedVersion = ++version; pending = false;
+    if (publicationDialog.open) publicationDialog.close();
+    publicationReview = null;
     if (!nextContext.story || !nextContext.scene) { message.textContent = "Select a story and scene first."; context = null; run = null; render(); return; }
     if (context?.story !== nextContext.story || context?.scene !== nextContext.scene) {
       run = null; reviewKey = null;
@@ -252,11 +334,14 @@ window.SceneBatches = (() => {
       message.textContent = "Each target has eight slots. Clearing or retrying a slot replaces its image.";
       render();
       scheduleRefresh();
+      if (nextContext.publicationReview && run.status === "READY_TO_PUBLISH") await openPublicationReview();
     } catch (error) { message.textContent = error.message; run = null; render(); }
   }
   document.querySelector("#scene-batch-start").addEventListener("click", () => void perform("start"));
   document.querySelector("#scene-batch-stop").addEventListener("click", () => void perform("stop"));
-  document.querySelector("#scene-batch-publish").addEventListener("click", () => void perform("publish"));
+  document.querySelector("#scene-batch-publish").addEventListener("click", () => void openPublicationReview());
+  document.querySelector("#scene-batch-publication-close").addEventListener("click", () => publicationDialog.close());
+  publicationSubmit.addEventListener("click", submitPublicationReview);
   document.querySelector("#scene-batch-refresh").addEventListener("click", () => void refresh(true));
   document.querySelector("#scene-batch-review-close").addEventListener("click", () => reviewDialog.close());
   document.querySelector("#scene-batch-review-prev").addEventListener("click", () => navigateReview(-1));

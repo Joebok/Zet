@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+from email import policy
+from email.parser import BytesParser
 import json
 import time
 import threading
@@ -67,6 +69,30 @@ def _read_json_file(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         data = {}
     return data
+
+
+def _parse_costume_wizard_multipart(content_type: str, body: bytes) -> dict[str, Any]:
+    """Read the wizard's small fixed multipart form without an optional parser package."""
+    if len(body) > 80 * 1024 * 1024:
+        raise ValueError("Costume Wizard uploads must total less than 80 MB.")
+    message = BytesParser(policy=policy.default).parsebytes(
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("ascii", "strict") + body
+    )
+    if not message.is_multipart() or message.get_content_type() != "multipart/form-data":
+        raise ValueError("Expected a multipart costume wizard form.")
+    fields: dict[str, Any] = {}
+    for part in message.iter_parts():
+        if part.get_content_disposition() != "form-data":
+            continue
+        name = part.get_param("name", header="content-disposition")
+        if not name:
+            continue
+        filename = part.get_filename()
+        if filename is not None:
+            fields[name] = {"filename": filename, "contents": part.get_payload(decode=True) or b""}
+        else:
+            fields[name] = part.get_content()
+    return fields
 
 
 def _render_console_asset_for_task(zet_app: ZetApp, task):
@@ -826,6 +852,7 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ),
         ai_image_description_model=str(payload.get("ai_image_description_model", defaults.ai_image_description_model)),
         ai_image_prompt_generation_model=str(payload.get("ai_image_prompt_generation_model", defaults.ai_image_prompt_generation_model)),
+        ai_costume_wizard_model=str(payload.get("ai_costume_wizard_model", defaults.ai_costume_wizard_model)),
         ai_scene_builder_model=str(payload.get("ai_scene_builder_model", defaults.ai_scene_builder_model)),
         local_body_reference_face_gate_model=str(
             payload.get("local_body_reference_face_gate_model", defaults.local_body_reference_face_gate_model)
@@ -2833,6 +2860,119 @@ def create_app(
         zet_app = _app(app.state.config_path)
         try:
             return {"costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)]}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/costume-wizard")
+    def costume_wizard_sessions(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """List resumable costume wizard drafts for a character phase."""
+        zet_app = _app(app.state.config_path)
+        return {"sessions": zet_app.costume_wizard_service.list_sessions(character, phase)}
+
+    @app.post("/api/costume-wizard")
+    async def costume_wizard_create(request: Request, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+        """Create an isolated wizard session from up to three image references."""
+        zet_app = _app(app.state.config_path)
+        try:
+            form = _parse_costume_wizard_multipart(request.headers.get("content-type", ""), await request.body())
+            images = []
+            for index in range(1, 4):
+                upload = form.get(f"image_{index}")
+                caption = str(form.get(f"caption_{index}") or "").strip()
+                if upload is None or not upload.get("filename"):
+                    continue
+                images.append({"filename": upload["filename"], "caption": caption, "contents": upload["contents"]})
+            result = zet_app.costume_wizard_service.create_session(
+                character, phase, str(form.get("name") or ""), str(form.get("extra_info") or ""), images)
+            return {"session": result}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/costume-wizard/{session_id}")
+    def costume_wizard_status(session_id: str) -> dict[str, Any]:
+        try:
+            return {"session": _app(app.state.config_path).costume_wizard_service.get_session(session_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/costume-wizard/{session_id}/images/{index}")
+    def costume_wizard_image(session_id: str, index: int) -> FileResponse:
+        try:
+            return FileResponse(_app(app.state.config_path).costume_wizard_service.image_path(session_id, index))
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/costume-wizard/{session_id}/generate")
+    def costume_wizard_generate(session_id: str) -> dict[str, Any]:
+        try:
+            return {"session": _app(app.state.config_path).costume_wizard_service.generate_draft(session_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/costume-wizard/{session_id}/answers")
+    def costume_wizard_answers(session_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return {"session": _app(app.state.config_path).costume_wizard_service.generate_draft(
+                session_id, payload.get("answers") or [])}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/costume-wizard/{session_id}/draft")
+    def costume_wizard_update_draft(session_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            session = _app(app.state.config_path).costume_wizard_service.update_draft(
+                session_id, str(payload.get("revision_id") or ""), str(payload.get("markdown") or ""))
+            return {"session": session}
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/costume-wizard/{session_id}/render")
+    def costume_wizard_render(session_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return {"session": _app(app.state.config_path).costume_wizard_service.render_test(
+                session_id, str(payload.get("revision_id") or ""))}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/costume-wizard/{session_id}/test-image")
+    def costume_wizard_test_image(session_id: str) -> FileResponse:
+        try:
+            return FileResponse(_app(app.state.config_path).costume_wizard_service.test_image_path(session_id))
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/costume-wizard/{session_id}/test-images/{render_id}")
+    def costume_wizard_test_image_history(session_id: str, render_id: str) -> FileResponse:
+        try:
+            return FileResponse(_app(app.state.config_path).costume_wizard_service.test_image_path(session_id, render_id))
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/costume-wizard/{session_id}/refine")
+    def costume_wizard_refine(session_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            return {"session": _app(app.state.config_path).costume_wizard_service.refine(
+                session_id, str(payload.get("revision_id") or ""), str(payload.get("instructions") or ""))}
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/costume-wizard/{session_id}/accept")
+    def costume_wizard_accept(session_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        zet_app = _app(app.state.config_path)
+        try:
+            session = zet_app.costume_wizard_service.get_session(session_id)
+            result = zet_app.costume_wizard_service.accept(session_id, str(payload.get("revision_id") or ""))
+            costumes = zet_app.list_costumes(session["character"], session["phase"])
+            return {"costume": _costume_payload(zet_app, session["character"], session["phase"], result.costume),
+                    "costumes": [_costume_payload(zet_app, session["character"], session["phase"], item) for item in costumes],
+                    "message": f"Accepted costume {result.costume.name}."}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/costume-wizard/{session_id}/abandon")
+    def costume_wizard_abandon(session_id: str) -> dict[str, Any]:
+        try:
+            return {"session": _app(app.state.config_path).costume_wizard_service.abandon(session_id)}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

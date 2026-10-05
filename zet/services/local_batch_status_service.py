@@ -106,7 +106,7 @@ class LocalBatchStatusService:
                 if status not in groups:
                     continue
                 groups[status].append({"pipeline": "scene", "pipeline_label": "Scene", "run_id": batch["run_id"],
-                    "batch_name": batch["batch_name"], "character": "", "phase": "", "costume": "",
+                    "batch_name": str(batch.get("batch_name") or "").strip(), "character": "", "phase": "", "costume": "",
                     "story_slug": batch["story_slug"], "scene_slug": batch["scene_slug"],
                     "render_target_id": batch["render_target_id"], "current_view": batch["target_label"],
                     "created_at": batch["created_at"], "status": status,
