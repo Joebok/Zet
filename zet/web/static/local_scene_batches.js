@@ -245,7 +245,7 @@ window.SceneBatches = (() => {
       const sources = node("div", null, "local-pipeline-sources");
       (group.next_reference_images || group.reference_images || []).forEach((reference, index) => {
         const figure = node("figure"), caption = `Image ${reference.image_index || index + 1} — ${reference.prompt_role || reference.role || "reference"}: ${reference.label || reference.tag}`;
-        const image = node("img"); image.src = route(target, `next-references/${index}`); image.alt = caption; image.loading = "lazy";
+        const image = node("img"); image.src = `${route(target, `next-references/${index}`)}?sha256=${encodeURIComponent(reference.sha256 || "")}`; image.alt = caption; image.loading = "lazy";
         figure.append(node("figcaption", caption), image); sources.append(figure);
       });
       section.append(sources);

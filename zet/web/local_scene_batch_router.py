@@ -74,6 +74,7 @@ def create_local_scene_batch_router(app_factory):
 
     @router.get("/{run_id}/targets/{target_id}/next-references/{index}")
     def next_reference(story_slug: str, scene_slug: str, run_id: str, target_id: str, index: int):
-        return call(lambda: FileResponse(service().artifact(story_slug, scene_slug, run_id, target_id, "next-reference", str(index))))
+        return call(lambda: FileResponse(service().artifact(story_slug, scene_slug, run_id, target_id, "next-reference", str(index)),
+                                         headers={"Cache-Control": "no-store"}))
 
     return router

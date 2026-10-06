@@ -3596,8 +3596,14 @@ function builderTargetIsDirty(targetId = state.activeBuilderRenderTarget || "mai
   if (!state.savedBaselines.sceneBuilder) return false;
   if (targetId === "main") return sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder;
   builderSyncControls();
-  return JSON.stringify(builderSubsceneFromData(state.sceneBuilder, targetId))
-    !== JSON.stringify(builderSubsceneFromData(savedSceneBuilderData(), targetId));
+  const baseline = savedSceneBuilderData();
+  return JSON.stringify({
+    subscene: builderSubsceneFromData(state.sceneBuilder, targetId),
+    dialogue: builderDialogueRowsForTarget(state.sceneBuilder, targetId),
+  }) !== JSON.stringify({
+    subscene: builderSubsceneFromData(baseline, targetId),
+    dialogue: builderDialogueRowsForTarget(baseline, targetId),
+  });
 }
 
 function replaceBuilderSubscene(data, targetId, subscene) {
@@ -6678,6 +6684,65 @@ function builderElementOptions(selected = "") {
   }).join("");
 }
 
+function builderAllElementOptions(selected = "") {
+  return `<option value=""></option>` + (state.sceneBuilder?.scene_elements || []).map((element) => {
+    const value = element.id || "";
+    return `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(element.display_name || value)}</option>`;
+  }).join("");
+}
+
+function builderDialogueTarget(dialogue) {
+  return dialogue?.subscene_id || "main";
+}
+
+function builderDialogueRowsForTarget(data, targetId) {
+  return (data?.dialogue || []).map((item, index) => ({ item, index }))
+    .filter(({ item }) => targetId === "main" || builderDialogueTarget(item) === targetId);
+}
+
+function builderDialogueChanges(current, baseline) {
+  const now = current?.dialogue || [];
+  const before = baseline?.dialogue || [];
+  const key = (item) => JSON.stringify(item);
+  const rows = Array.from({ length: before.length + 1 }, () => Array(now.length + 1).fill(0));
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    for (let j = now.length - 1; j >= 0; j -= 1) {
+      rows[i][j] = key(before[i]) === key(now[j])
+        ? rows[i + 1][j + 1] + 1
+        : Math.max(rows[i + 1][j], rows[i][j + 1]);
+    }
+  }
+  const matchedBefore = new Set();
+  const matchedNow = new Set();
+  let i = 0;
+  let j = 0;
+  while (i < before.length && j < now.length) {
+    if (key(before[i]) === key(now[j])) {
+      matchedBefore.add(i); matchedNow.add(j); i += 1; j += 1;
+    } else if (rows[i + 1][j] >= rows[i][j + 1]) i += 1;
+    else j += 1;
+  }
+  const remainingBefore = before.map((_, index) => index).filter((index) => !matchedBefore.has(index));
+  const remainingNow = now.map((_, index) => index).filter((index) => !matchedNow.has(index));
+  const upserts = [];
+  remainingNow.forEach((currentIndex, offset) => {
+    const originalIndex = remainingBefore[offset];
+    upserts.push({ index: originalIndex ?? before.length + currentIndex - remainingNow[0], dialogue: now[currentIndex] });
+  });
+  return {
+    upserts,
+    delete_indices: remainingBefore.slice(remainingNow.length),
+  };
+}
+
+function builderDialogueTargetOptions(selected = "main") {
+  const main = `<option value=""${selected === "main" ? " selected" : ""}>Full Scene</option>`;
+  const targets = (state.sceneBuilder?.subscenes || []).map((item) =>
+    `<option value="${escapeHtml(item.id)}"${selected === item.id ? " selected" : ""}>${escapeHtml(item.name || item.id)}</option>`
+  ).join("");
+  return main + targets;
+}
+
 function builderElementLabel(elementId) {
   const element = (state.sceneBuilder?.scene_elements || []).find((item) => item.id === elementId);
   return element?.display_name || elementId || "";
@@ -6710,7 +6775,9 @@ function builderSyncControls() {
   for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-field]")) {
     setPathValue(state.sceneBuilder, control.dataset.builderField, control.type === "number" ? Number(control.value || 0) : control.value);
   }
+  const changedDialogueSpeakers = new Set();
   const element = builderSelectedElement();
+  const previousElementSubscene = element?.subscene_id || "";
   if (element) {
     for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-element-field]")) {
       const field = control.dataset.builderElementField;
@@ -6735,6 +6802,14 @@ function builderSyncControls() {
           setPathValue(element, field, control.value);
         } else {
           element[field] = control.value;
+        }
+      }
+    }
+    if (element.subscene_id !== previousElementSubscene) {
+      for (const dialogue of state.sceneBuilder.dialogue || []) {
+        if (dialogue.speaker_element_id === element.id) {
+          dialogue.subscene_id = element.subscene_id || "";
+          changedDialogueSpeakers.add(dialogue);
         }
       }
     }
@@ -6771,12 +6846,21 @@ function builderSyncControls() {
     const dialogue = state.sceneBuilder.dialogue[Number(control.dataset.builderDialogue)];
     if (dialogue) {
       const field = control.dataset.builderDialogueField;
+      if (field === "speaker_element_id" && dialogue[field] !== control.value) {
+        changedDialogueSpeakers.add(dialogue);
+      }
+      if (field === "subscene_id" && !control.value && !Object.hasOwn(dialogue, field)) continue;
+      if (field === "panel_placement" && control.value === "auto" && !Object.hasOwn(dialogue, field)) continue;
       if (field === "max_lines") {
         dialogue[field] = Number(control.value || 0);
       } else {
         dialogue[field] = control.value;
       }
     }
+  }
+  for (const dialogue of changedDialogueSpeakers) {
+    const speaker = (state.sceneBuilder.scene_elements || []).find((item) => item.id === dialogue.speaker_element_id);
+    dialogue.subscene_id = speaker?.subscene_id || "";
   }
   const placement = builderSelectedPlacement();
   if (placement) {
@@ -6829,7 +6913,11 @@ function builderApplyChange(event) {
     changedElement.costume = "";
     changedElement.reference_images = [];
   }
-  if (event?.target?.id === "builder-composition-element" || event?.target?.matches("input, textarea") || changedField === "subscene_id") {
+  if (event?.target?.id === "builder-composition-element" || event?.target?.matches("input, textarea")) {
+    return;
+  }
+  if (changedField === "subscene_id") {
+    renderSceneBuilder();
     return;
   }
   renderSceneBuilder();
@@ -7079,9 +7167,11 @@ function builderAddDialogue() {
   state.sceneBuilder.dialogue.push({
     id: `dialogue_${Date.now()}`,
     speaker_element_id: selectedElement?.id || "",
+    subscene_id: selectedElement?.subscene_id || "",
     text: "",
     target_element_id: "",
     pointer_target: "speaker mouth",
+    panel_placement: "auto",
     max_lines: 3,
     notes: "",
   });
@@ -7280,15 +7370,26 @@ function builderRenderElementWorkspace() {
 }
 
 function builderRenderDialogueEditor() {
-  const rows = (state.sceneBuilder.dialogue || []).map((dialogue, index) => `
+  const activeSubscene = builderActiveSubscene();
+  const targetId = activeSubscene?.id || "main";
+  const rows = builderDialogueRowsForTarget(state.sceneBuilder, targetId).map(({ item: dialogue, index }) => `
     <div class="scene-builder-dialogue-entry">
       <div class="review-header">
         <h4>Dialogue ${index + 1}</h4>
+        ${!activeSubscene && builderDialogueTarget(dialogue) !== "main" ? `<span${builderSubsceneStyle(dialogue.subscene_id)}>${escapeHtml((state.sceneBuilder.subscenes || []).find((item) => item.id === dialogue.subscene_id)?.name || dialogue.subscene_id)}</span>` : ""}
         <button type="button" data-builder-action="delete-dialogue" data-builder-dialogue-index="${index}">Delete</button>
       </div>
       <div class="scene-builder-fields">
-        <label>${builderCaption("(Speaker) ... says exactly: [text]", "dialogue[].speaker_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="speaker_element_id">${builderElementOptions(dialogue.speaker_element_id || "")}</select></label>
-        <label>${builderCaption("(Target) Dialogue is directed toward ...", "dialogue[].target_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="target_element_id">${builderElementOptions(dialogue.target_element_id || "")}</select></label>
+        <label>${builderCaption("(Speaker) ... says exactly: [text]", "dialogue[].speaker_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="speaker_element_id">${builderAllElementOptions(dialogue.speaker_element_id || "")}</select></label>
+        <label>${builderCaption("(Target) Dialogue is directed toward ...", "dialogue[].target_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="target_element_id">${builderAllElementOptions(dialogue.target_element_id || "")}</select></label>
+        <label>Render in<select data-builder-dialogue="${index}" data-builder-dialogue-field="subscene_id">${builderDialogueTargetOptions(builderDialogueTarget(dialogue))}</select><small>Moving the speaker later resets this assignment.</small></label>
+        <label>Panel placement<select data-builder-dialogue="${index}" data-builder-dialogue-field="panel_placement">
+          <option value="auto"${!dialogue.panel_placement || dialogue.panel_placement === "auto" ? " selected" : ""}>Automatic</option>
+          <option value="left"${dialogue.panel_placement === "left" ? " selected" : ""}>Left of speaker</option>
+          <option value="right"${dialogue.panel_placement === "right" ? " selected" : ""}>Right of speaker</option>
+          <option value="above"${dialogue.panel_placement === "above" ? " selected" : ""}>Above speaker</option>
+          <option value="below"${dialogue.panel_placement === "below" ? " selected" : ""}>Below speaker</option>
+        </select></label>
         <label class="full">${builderCaption("(Text) Speaker says exactly: \"...\"", "dialogue[].text")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="text">${escapeHtml(dialogue.text || "")}</textarea></label>
         <label>${builderCaption("(Pointer target) Aim dialogue-panel pointer at ...", "dialogue[].pointer_target")}<input value="${escapeHtml(dialogue.pointer_target || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="pointer_target"></label>
         <label>${builderCaption("(Max lines) Wrap dialogue in no more than ... lines.", "dialogue[].max_lines")}<input type="number" min="1" value="${escapeHtml(dialogue.max_lines || 3)}" data-builder-dialogue="${index}" data-builder-dialogue-field="max_lines"></label>
@@ -7302,6 +7403,7 @@ function builderRenderDialogueEditor() {
         <h4>Dialogue</h4>
         <button type="button" data-builder-action="add-dialogue">Add Dialogue</button>
       </div>
+      ${activeSubscene ? `<p>Dialogue assigned to ${escapeHtml(activeSubscene.name || activeSubscene.id)}.</p>` : "<p>Dialogue assigned to subscenes is labeled here.</p>"}
       ${rows || "<p>No dialogue entries.</p>"}
     </div>
   `;
@@ -8051,7 +8153,7 @@ function renderSceneBuilder() {
       </section>
       ${builderPhoneSectionToggle("dialogue", "Dialogue")}
       <section id="builder-panel-dialogue" class="scene-builder-section scene-builder-relationships" data-builder-section-panel="dialogue" aria-label="Dialogue and relationships">
-        ${activeSubscene ? `<div class="scene-builder-card"><h4>Dialogue and interactions</h4><p>These are shared full-scene values. Return to Full Scene to edit them.</p></div>` : `${builderRenderDialogueEditor()}${builderRenderInteractions()}`}
+        ${builderRenderDialogueEditor()}${builderRenderInteractions()}
       </section>
       ${builderPhoneSectionToggle("environment", "Environment")}
       <section id="builder-panel-environment" class="scene-builder-section scene-builder-environment" data-builder-section-panel="environment" aria-label="Environment">
@@ -8199,6 +8301,7 @@ async function saveSceneBuilder({ fullScene = false } = {}) {
   builderSyncControls();
   const targetId = state.activeBuilderRenderTarget || "main";
   const activeSubscene = fullScene ? null : builderActiveSubscene();
+  const baselineData = savedSceneBuilderData();
   try {
     const endpoint = activeSubscene
       ? `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/subscenes/${encodeURIComponent(targetId)}`
@@ -8206,7 +8309,11 @@ async function saveSceneBuilder({ fullScene = false } = {}) {
     const payload = await fetchJson(endpoint, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(activeSubscene || state.sceneBuilder),
+      body: JSON.stringify(activeSubscene ? {
+        subscene: activeSubscene,
+        expected_revision: state.sceneBuilder._revision || 0,
+        dialogue_changes: builderDialogueChanges(state.sceneBuilder, baselineData),
+      } : state.sceneBuilder),
     });
     if (activeSubscene) {
       const persistedData = payload.document?.data;
@@ -8214,6 +8321,7 @@ async function saveSceneBuilder({ fullScene = false } = {}) {
       replaceBuilderSubscene(state.sceneBuilder, targetId, persistedSubscene);
       const baseline = savedSceneBuilderData();
       replaceBuilderSubscene(baseline, targetId, persistedSubscene);
+      baseline.dialogue = JSON.parse(JSON.stringify(persistedData?.dialogue || baseline.dialogue || []));
       if (persistedData && Object.hasOwn(persistedData, "_revision")) {
         state.sceneBuilder._revision = persistedData._revision;
         baseline._revision = persistedData._revision;

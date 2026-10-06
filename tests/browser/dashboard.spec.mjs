@@ -1296,15 +1296,27 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   expect((await page.request.put(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`, { data })).ok()).toBe(true);
   expect((await page.request.post(`/api/stories/${storySlug}/scenes/${sceneSlug}/subscenes/background/enable`)).ok()).toBe(true);
 
+  const withSubscene = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  const dialogueData = (await withSubscene.json()).document.data;
+  dialogueData.scene_elements.push({ id: "speaker", display_name: "Speaker", resource_type: "Scene-Only", element_type: "Character", fallback_visual_description: "A clear speaking character", subscene_id: "background" });
+  dialogueData.placements.push({ id: "speaker-placement", scene_element_id: "speaker", position_within_cell: "left", depth: "foreground" });
+  dialogueData.dialogue = [{ id: "line", speaker_element_id: "speaker", subscene_id: "background", text: "Original line.", pointer_target: "speaker mouth" }];
+  expect((await page.request.put(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`, { data: dialogueData })).ok()).toBe(true);
+
   await page.locator("#scene-builder-open").click();
   await page.locator('[data-builder-field="scene.story_beat"]').fill("Unsaved full-scene beat");
   await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
   const focalPoint = page.locator('[data-builder-subscene-field="focal_point"]');
   await focalPoint.fill("Distant ruined tower");
+  const dialogueText = page.locator('[data-builder-dialogue="0"][data-builder-dialogue-field="text"]');
+  await expect(dialogueText).toHaveValue("Original line.");
+  await dialogueText.fill("Updated line.");
+  await page.locator('[data-builder-dialogue="0"][data-builder-dialogue-field="panel_placement"]').selectOption("right");
   const scopedSave = page.waitForRequest((request) => request.url().endsWith("/builder/subscenes/background") && request.method() === "PUT");
   await page.getByRole("button", { name: "Save Subscene", exact: true }).click();
   const saveRequest = await scopedSave;
-  expect((await saveRequest.postDataJSON()).id).toBe("background");
+  expect((await saveRequest.postDataJSON()).subscene.id).toBe("background");
+  expect((await saveRequest.postDataJSON()).dialogue_changes.upserts[0].dialogue.text).toBe("Updated line.");
   expect(await page.evaluate(() => state.sceneBuilder.scene.story_beat)).toBe("Unsaved full-scene beat");
   await expect(page.locator("#scene-builder-save-state")).toContainText("other changes dirty");
 
@@ -1312,6 +1324,8 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   const persistedData = (await persisted.json()).document.data;
   expect(persistedData.scene.story_beat).toBe("Persisted story beat");
   expect(persistedData.subscenes.find((item) => item.id === "background").prompt_overrides.focal_point).toBe("Distant ruined tower");
+  expect(persistedData.dialogue[0].text).toBe("Updated line.");
+  expect(persistedData.dialogue[0].panel_placement).toBe("right");
 
   await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').first().click();
   const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT");

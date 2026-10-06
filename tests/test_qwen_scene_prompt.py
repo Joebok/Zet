@@ -36,6 +36,24 @@ class QwenScenePromptTests(unittest.TestCase):
         self.assertIn("short tail ends at Tsaeytte's visible mouth", prompt)
         self.assertIn("Ivory rectangular box beside Tsaeytte, clear of the arch inscription", prompt)
 
+    def test_dialogue_placement_and_external_listener_context_reach_qwen_prompt(self):
+        for placement, direction in (("left", "to the left"), ("right", "to the right"),
+                                     ("above", "above"), ("below", "below")):
+            prompt = compile_qwen_scene_prompt({
+                "elements": [{"id": "kaeldor", "display_name": "Kaeldor"}],
+                "dialogue": [{"speaker_element_id": "kaeldor", "speaker_name": "Kaeldor",
+                              "target_name": "Tsaeytte", "target_context": "Tsaeytte and Valindia",
+                              "speaker_context": "Kaeldor and the Schoolboys", "text": "Sorry.",
+                              "panel_placement": placement}],
+            })
+            self.assertIn(f"sits {direction} of Kaeldor", prompt)
+            self.assertIn("Tsaeytte is in the separate Tsaeytte and Valindia image", prompt)
+            self.assertIn("do not add a second copy of the speaker", prompt)
+            self.assertEqual(1, prompt.count('contains only "Sorry."'))
+        automatic = compile_qwen_scene_prompt({"elements": [{"id": "kaeldor", "display_name": "Kaeldor"}],
+                                              "dialogue": [{"speaker_element_id": "kaeldor", "text": "Sorry."}]})
+        self.assertIn("sits just above Kaeldor", automatic)
+
     def test_dialogue_follows_placed_speaker_and_avoids_other_character(self):
         prompt = compile_qwen_scene_prompt({
             "elements": [

@@ -15,12 +15,14 @@ from uuid import uuid4
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
 from zet.services.atomic_file_service import write_json_atomic
+from zet.services.chatgpt_prompt_contract import enrich_reference_files
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.local_candidate_review_contract import normalize_human_decision, adjust_candidate_ranking
 from zet.services.local_image_ranking_service import rank_images_with_luna
 from zet.services.local_render_policy import SCENE_PROFILE, require_qwen_profile
 from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
 from zet.services.scene_prompt_sections import load_final_image_prompt_sections
+from zet.services.scene_render_compiler import compile_scene_render_ir
 from zet.services.pipeline_compiler_support import universe_art_style
 from zet.services.summary_cache import invalidate_summary_cache
 from zet.services.workflow_storage import atomic_copy, file_lock, supersede_task, validate_image
@@ -600,7 +602,7 @@ class LocalSceneBatchService:
             except OSError:
                 image_signature = None
             selected_signatures.append((target, candidate_id, image_signature))
-        return json.dumps((builder_signature, selected_signatures), separators=(",", ":"))
+        return json.dumps(("compiler-image-order-v1", builder_signature, selected_signatures), separators=(",", ":"))
 
     def _refresh_reference_previews(self, root: Path, spec: dict, state: dict, selected: dict) -> bool:
         """Expose the saved references that would feed each target's next render."""
@@ -624,6 +626,14 @@ class LocalSceneBatchService:
                         tag = self.targets.image_tag(spec["story_slug"], spec["scene_slug"], dependency)
                         bindings[tag] = {**source, "tag": tag, "label": self.targets.target_label(scene, dependency),
                                          "kind": "scene-render"}
+                image_inputs = compile_scene_render_ir(
+                    projected, {}, {"references": list(bindings.values())},
+                    load_final_image_prompt_sections(self.project_root / "Config/Prompt_Templates/final_image_prompt_tail_v1.md"),
+                )["image_inputs"]
+                image_inputs = [item for item in image_inputs if item["tag"] in bindings]
+                ordered_tags = [item["tag"] for item in image_inputs]
+                references = enrich_reference_files([bindings[tag] for tag in ordered_tags], image_inputs)
+                references.extend(reference for tag, reference in bindings.items() if tag not in ordered_tags)
                 preview_dir = root / "reference-previews" / target
                 preview_dir.mkdir(parents=True, exist_ok=True)
                 previews = []
@@ -631,7 +641,7 @@ class LocalSceneBatchService:
                     str(item.get("source_path") or ""): item
                     for item in state["groups"].get(target, {}).get("next_reference_images", [])
                 }
-                for index, reference in enumerate(bindings.values(), 1):
+                for index, reference in enumerate(references, 1):
                     source = Path(str(reference.get("path") or ""))
                     if not source.is_file():
                         continue

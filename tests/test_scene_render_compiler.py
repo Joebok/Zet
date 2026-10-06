@@ -199,6 +199,21 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertNotIn("Valindia_38f52dd6", prompt)
         self.assertNotIn("Tsaeytte_12345678", prompt)
 
+    def test_explicit_dialogue_panel_placement_and_external_target_are_compiled(self):
+        for placement, direction in (("left", "to the left"), ("right", "to the right"),
+                                     ("above", "above"), ("below", "below")):
+            prompt = self._prompt({
+                "scene_elements": [{"id": "speaker", "display_name": "Kaeldor"}],
+                "dialogue": [{"speaker_element_id": "speaker", "speaker_name": "Kaeldor",
+                              "speaker_context": "Kaeldor and the Schoolboys", "target_name": "Tsaeytte",
+                              "target_context": "Tsaeytte and Valindia", "panel_placement": placement,
+                              "text": "Sorry."}],
+            })
+            self.assertIn(f"Place the dialogue panel {direction} of Kaeldor", prompt)
+            self.assertIn("Tsaeytte is in the separate Tsaeytte and Valindia image", prompt)
+            self.assertIn("do not add a second copy of the speaker", prompt)
+            self.assertEqual(1, prompt.count('Kaeldor says exactly: "Sorry."'))
+
     def test_reference_instructions_require_an_image_and_match_element_type(self):
         scene = {
             "scene_elements": [

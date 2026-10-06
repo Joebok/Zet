@@ -47,7 +47,7 @@ def action(batches, run, name, **payload):
     return batches.action("Story", "Scene", run["run_id"], name, payload)
 
 
-def finish(batches, run, target, *, failed=False, foreign=False, index=0, wait=True):
+def finish(batches, run, target, *, failed=False, foreign=False, index=0, wait=True, color="red"):
     candidate = run["groups"][target]["candidates"][index]
     ask = batches.proxy.ask_root() / candidate["ask_id"]
     answer = batches.proxy.answer_root() / candidate["ask_id"]
@@ -58,7 +58,7 @@ def finish(batches, run, target, *, failed=False, foreign=False, index=0, wait=T
     write_json_atomic(answer / "ask_manifest.json", manifest)
     write_json_atomic(answer / "answer_manifest.json", {"ask_id": candidate["ask_id"], "status": "ERROR" if failed else "SUCCESS",
                       "expected_output": "render.png", "error_message": "Test render failure"})
-    (answer / "render.png").write_bytes(png_bytes())
+    (answer / "render.png").write_bytes(png_bytes(color))
     run = batches.detail("Story", "Scene", run["run_id"])
     if wait:
         for _ in range(100):
@@ -123,6 +123,56 @@ def test_dynamic_groups_and_disabled_targets(batches, count):
     run = create(batches)
     assert len(run["views"]) == count + 1
     assert "off" not in run["views"]
+
+
+def test_selected_subscene_previews_match_prompt_order_and_submitted_images(batches):
+    data = batches.story.load_scene_builder_data("Story", "Scene").data
+    for element_id, label in [("schoolboys", "Kaeldor and the Schoolboys"), ("friends", "Tsaeytte and Valindia")]:
+        data["scene_elements"].append({"id": element_id, "display_name": label,
+            "resource_type": "Scene-Only", "element_type": "Prop", "fallback_visual_description": label})
+        data["placements"].append({"id": f"p_{element_id}", "scene_element_id": element_id,
+            "depth": "midground", "position_within_cell": "center"})
+        data["subscenes"].append({"id": f"{element_id}_view", "kind": "element", "enabled": True,
+            "name": label, "anchor_element_id": element_id})
+    batches.story.save_scene_builder_data("Story", "Scene", data)
+    run = create(batches)
+    colors = {"background": "blue", "schoolboys_view": "green", "friends_view": "red"}
+    for target, color in colors.items():
+        run = action(batches, run, "render", target_id=target)
+        for index in range(4):
+            run = finish(batches, run, target, index=index, wait=False,
+                         color="yellow" if index == 1 else color)
+        run = action(batches, run, "select", target_id=target, candidate_id=f"{target}-001")
+
+    run = action(batches, run, "render", target_id="main")
+    main = run["groups"]["main"]
+    assert [item["tag"] for item in main["next_reference_images"]] == [item["tag"] for item in main["reference_images"]]
+    for preview, reference in zip(main["next_reference_images"], main["reference_images"], strict=True):
+        assert preview["image_index"] == reference["image_index"]
+        assert preview["prompt_role"] == reference["prompt_role"]
+        assert preview["sha256"] == reference["sha256"]
+        target = reference["tag"].split(":")[-1].removesuffix("}}")
+        assert Path(preview["path"]).read_bytes() == png_bytes(colors[target])
+    ask = batches.proxy.ask_root() / main["candidates"][0]["ask_id"] / "ask_manifest.json"
+    manifest = json.loads(ask.read_text(encoding="utf-8"))
+    assert [(ask.parent / item["path"]).read_bytes() for item in manifest["reference_files"]] == [
+        Path(item["path"]).read_bytes() for item in main["next_reference_images"]]
+
+    api = FastAPI()
+    api.include_router(create_local_scene_batch_router(lambda: batches.app))
+    client = TestClient(api)
+    url = f"/api/stories/Story/scenes/Scene/local-batches/{run['run_id']}/targets/main/next-references/0"
+    response = client.get(url)
+    assert response.content == png_bytes("blue")
+    assert response.headers["cache-control"] == "no-store"
+    previous_hash = main["next_reference_images"][0]["sha256"]
+    run = action(batches, run, "select", target_id="background", candidate_id="background-002")
+    assert run["groups"]["main"]["next_reference_images"][0]["sha256"] != previous_hash
+    assert client.get(url).content == png_bytes("yellow")
+    # Existing slots retain their original inputs; a new attempt uses the new selection.
+    assert main["reference_images"][0]["sha256"] == previous_hash
+    run = action(batches, run, "compile", target_id="main")
+    assert Path(run["groups"]["main"]["reference_images"][0]["path"]).read_bytes() == png_bytes("yellow")
 
 
 def test_saved_target_changes_reconcile_without_showing_inactive_targets(batches):

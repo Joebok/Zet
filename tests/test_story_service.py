@@ -922,6 +922,114 @@ ink wash
             with self.assertRaisesRegex(StoryServiceError, "does not match"):
                 service.save_scene_builder_subscene_data("Demo", "Opening", "background", {"id": "detail"})
 
+    def test_dialogue_follows_speaker_moves_but_keeps_manual_target_until_next_move(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene_elements"] = [
+                {"id": "speaker", "display_name": "Speaker", "element_type": "Character", "subscene_id": "voice"},
+                {"id": "listener", "display_name": "Listener", "element_type": "Character", "subscene_id": "listener_view"},
+            ]
+            data["subscenes"] = [
+                {"id": "voice", "name": "Voice", "kind": "background", "enabled": True},
+                {"id": "listener_view", "name": "Listener View", "kind": "background", "enabled": True},
+            ]
+            data["dialogue"] = [{"id": "line", "speaker_element_id": "speaker", "target_element_id": "listener", "subscene_id": "voice", "text": "Hello."}]
+            service.save_scene_builder_data("Demo", "Opening", data)
+
+            changed = service.load_scene_builder_data("Demo", "Opening").data
+            changed["scene_elements"][0]["subscene_id"] = ""
+            saved = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual("", saved.data["dialogue"][0]["subscene_id"])
+
+            changed = saved.data
+            changed["dialogue"][0]["subscene_id"] = "listener_view"
+            manual = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual("listener_view", manual.data["dialogue"][0]["subscene_id"])
+
+            changed = manual.data
+            changed["scene_elements"][0]["subscene_id"] = "voice"
+            moved = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual("voice", moved.data["dialogue"][0]["subscene_id"])
+
+            changed = moved.data
+            changed["dialogue"][0]["speaker_element_id"] = "listener"
+            changed_speaker = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual("listener_view", changed_speaker.data["dialogue"][0]["subscene_id"])
+
+    def test_scoped_subscene_save_updates_dialogue_and_rejects_stale_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene"]["story_beat"] = "Preserve draft context."
+            data["scene_elements"] = [{"id": "speaker", "display_name": "Speaker", "element_type": "Character", "subscene_id": "voice"}]
+            data["subscenes"] = [{"id": "voice", "name": "Voice", "kind": "background", "enabled": True}]
+            data["dialogue"] = [
+                {"id": "one", "speaker_element_id": "speaker", "subscene_id": "voice", "text": "Old text."},
+                {"id": "two", "speaker_element_id": "speaker", "subscene_id": "voice", "text": "Keep this line."},
+                {"id": "three", "speaker_element_id": "speaker", "subscene_id": "voice", "text": "Keep this too."},
+            ]
+            service.save_scene_builder_data("Demo", "Opening", data)
+            loaded = service.load_scene_builder_data("Demo", "Opening").data
+            old_revision = loaded["_revision"]
+            subscene = copy.deepcopy(loaded["subscenes"][0])
+            subscene["name"] = "Voice Detail"
+            changed_line = copy.deepcopy(loaded["dialogue"][0])
+            changed_line["text"] = "Updated text."
+
+            saved = service.save_scene_builder_subscene_data("Demo", "Opening", "voice", {
+                "subscene": subscene,
+                "expected_revision": old_revision,
+                "dialogue_changes": {"upserts": [{"index": 0, "dialogue": changed_line}], "delete_indices": [1]},
+            })
+            self.assertEqual("Updated text.", saved.data["dialogue"][0]["text"])
+            self.assertEqual("Keep this too.", saved.data["dialogue"][1]["text"])
+            self.assertEqual("Preserve draft context.", saved.data["scene"]["story_beat"])
+            with self.assertRaisesRegex(StoryServiceError, "changed since it was loaded"):
+                service.save_scene_builder_subscene_data("Demo", "Opening", "voice", {
+                    "subscene": subscene,
+                    "expected_revision": old_revision,
+                    "dialogue_changes": {"upserts": [], "delete_indices": []},
+                })
+
+    def test_subscene_projection_routes_dialogue_and_keeps_external_listener_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene_elements"] = [
+                {"id": "speaker", "display_name": "Speaker", "element_type": "Character", "subscene_id": "voice"},
+                {"id": "listener", "display_name": "Listener", "element_type": "Character", "subscene_id": "other"},
+            ]
+            data["subscenes"] = [
+                {"id": "voice", "name": "Voice View", "kind": "background", "enabled": True},
+                {"id": "other", "name": "Other View", "kind": "background", "enabled": True},
+            ]
+            data["dialogue"] = [{"id": "line", "speaker_element_id": "speaker", "target_element_id": "listener", "subscene_id": "voice", "text": "Hello."}]
+            targets = service.scene_render_target_service
+            voice = targets.project_subscene(data, "voice")
+            main = targets.project_main(data, {})
+            self.assertEqual(["line"], [item["id"] for item in voice["dialogue"]])
+            self.assertEqual("Other View", voice["dialogue"][0]["target_context"])
+            self.assertEqual([], main["dialogue"])
+            data["dialogue"][0]["subscene_id"] = "other"
+            with self.assertRaisesRegex(StoryServiceError, "speaker .* is not visible"):
+                targets.project_subscene(data, "other")
+
     def test_create_subscene_adds_an_assignable_colored_render_target(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

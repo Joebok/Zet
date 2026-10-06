@@ -1322,6 +1322,41 @@ class StoryService:
         if int(data.get("_revision", 0)) != revision:
             raise StoryServiceError("Scene changed since it was loaded. Reload before saving; your draft was not written.")
         normalized = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, data)
+        if current:
+            previous = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, current)
+            old_elements = {str(item.get("id") or ""): item for item in previous.get("scene_elements") or []}
+            new_elements = {str(item.get("id") or ""): item for item in normalized.get("scene_elements") or []}
+            old_dialogue = previous.get("dialogue") or []
+            old_dialogue_by_id = {str(item.get("id")): item for item in old_dialogue if isinstance(item, dict) and item.get("id")}
+            matched_old_dialogue: set[int] = set()
+            for index, item in enumerate(normalized.get("dialogue") or []):
+                old = old_dialogue_by_id.get(str(item.get("id") or ""))
+                if old is not None:
+                    matched_old_dialogue.add(next(i for i, candidate in enumerate(old_dialogue) if candidate is old))
+                else:
+                    old = {}
+                    candidates = [
+                        (old_index, candidate) for old_index, candidate in enumerate(old_dialogue)
+                        if old_index not in matched_old_dialogue and isinstance(candidate, dict)
+                    ]
+                    exact = next(((old_index, candidate) for old_index, candidate in candidates if candidate == item), None)
+                    same_line = next((
+                        (old_index, candidate) for old_index, candidate in candidates
+                        if candidate.get("text") == item.get("text")
+                    ), None)
+                    positional = (index, old_dialogue[index]) if len(old_dialogue) == len(normalized.get("dialogue") or []) and index < len(old_dialogue) else None
+                    match = exact or same_line or positional
+                    if match:
+                        matched_old_dialogue.add(match[0])
+                        old = match[1]
+                speaker_id = str(item.get("speaker_element_id") or "")
+                old_speaker_id = str(old.get("speaker_element_id") or "")
+                old_speaker = old_elements.get(old_speaker_id, {})
+                new_speaker = new_elements.get(speaker_id, {})
+                moved = str(old_speaker.get("subscene_id") or "") != str(new_speaker.get("subscene_id") or "")
+                changed_speaker = bool(old_speaker_id and speaker_id and old_speaker_id != speaker_id)
+                if speaker_id and (moved or changed_speaker):
+                    item["subscene_id"] = str(new_speaker.get("subscene_id") or "")
         normalized["_revision"] = revision + 1
         self.scene_render_target_service.assert_valid_graph(normalized)
         now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -1340,15 +1375,43 @@ class StoryService:
         document = self.load_scene_builder_data(story_slug, scene_slug)
         if document.blocked:
             raise StoryServiceError(document.error or "Scene Builder JSON is blocked.")
-        if not isinstance(subscene, dict) or str(subscene.get("id") or "") != target_id:
+        envelope = subscene if isinstance(subscene, dict) and "subscene" in subscene else None
+        definition = envelope.get("subscene") if envelope else subscene
+        if not isinstance(definition, dict) or str(definition.get("id") or "") != target_id:
             raise StoryServiceError("Subscene payload does not match the requested render target.")
+        expected_revision = envelope.get("expected_revision") if envelope else None
+        if expected_revision is not None and int(expected_revision) != int(document.data.get("_revision", 0)):
+            raise StoryServiceError("Scene changed since it was loaded. Reload before saving; your draft was not written.")
         data = copy.deepcopy(document.data)
         subscenes = data.get("subscenes") or []
         index = next((index for index, item in enumerate(subscenes) if item.get("id") == target_id), -1)
         if index < 0:
             raise StoryServiceError(f"Unknown subscene render target: {target_id}")
-        subscenes[index] = copy.deepcopy(subscene)
+        subscenes[index] = copy.deepcopy(definition)
         data["subscenes"] = subscenes
+        if envelope:
+            dialogue = copy.deepcopy(data.get("dialogue") or [])
+            changes = envelope.get("dialogue_changes") or {}
+            for change in changes.get("upserts") or []:
+                dialogue_index = int(change.get("index", -1))
+                value = copy.deepcopy(change.get("dialogue"))
+                if not isinstance(value, dict) or dialogue_index < 0 or dialogue_index > len(dialogue):
+                    raise StoryServiceError("Invalid scoped dialogue update.")
+                if dialogue_index == len(dialogue):
+                    dialogue.append(value)
+                else:
+                    previous = dialogue[dialogue_index]
+                    old_speaker = str(previous.get("speaker_element_id") or "") if isinstance(previous, dict) else ""
+                    new_speaker = str(value.get("speaker_element_id") or "")
+                    if old_speaker and new_speaker and old_speaker != new_speaker:
+                        elements = {str(item.get("id") or ""): item for item in data.get("scene_elements") or []}
+                        value["subscene_id"] = str(elements.get(new_speaker, {}).get("subscene_id") or "")
+                    dialogue[dialogue_index] = value
+            for dialogue_index in sorted({int(value) for value in changes.get("delete_indices") or []}, reverse=True):
+                if 0 <= dialogue_index < len(dialogue):
+                    dialogue.pop(dialogue_index)
+            data["dialogue"] = dialogue
+            data["_revision"] = int(expected_revision)
         return self.save_scene_builder_data(story_slug, scene_slug, data)
 
     def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:

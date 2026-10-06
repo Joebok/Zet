@@ -280,12 +280,19 @@ def _dialogue_description(
     if not exact:
         return ""
     speaker_id = str(item.get("speaker_element_id") or "")
-    speaker = _text(elements.get(speaker_id, {}).get("display_name") or "the speaker")
+    speaker = _text(item.get("speaker_name") or elements.get(speaker_id, {}).get("display_name") or "the speaker")
     placement = placement or {}
     location = " ".join(part for part in (
         _text(placement.get("position_within_cell")), _text(placement.get("depth"))
     ) if part)
-    detail = f'A clearly visible speech balloon shaped as a rounded-corner rectangle sits just above {speaker}'
+    panel_placement = _text(item.get("panel_placement"))
+    if panel_placement in {"left", "right", "above", "below"}:
+        direction = {"left": "to the left", "right": "to the right", "above": "above", "below": "below"}[panel_placement]
+        detail = f'A clearly visible speech balloon shaped as a rounded-corner rectangle sits {direction} of {speaker}'
+    else:
+        detail = f'A clearly visible speech balloon shaped as a rounded-corner rectangle sits just above {speaker}'
+    if panel_placement in {"left", "right", "above", "below"}:
+        detail += " in this image's screen coordinates"
     if location:
         detail += f" at {location}"
     detail += f'; its border fits closely around the text with minimal padding; it contains only "{exact}"'
@@ -299,6 +306,17 @@ def _dialogue_description(
         detail += f"; its short tail ends at {speaker}'s visible mouth"
     elif pointer_target:
         detail += f"; its short tail points toward {pointer_target}"
+    speaker_context = _text(item.get("speaker_context"))
+    if speaker_context:
+        detail += f"; {speaker} is visible within the referenced {speaker_context} image, so do not add a second copy of the speaker"
+    target_id = str(item.get("target_element_id") or "")
+    target_name = _text(item.get("target_name") or elements.get(target_id, {}).get("display_name"))
+    if target_name:
+        detail += f"; the line is addressed to {target_name}"
+    target_context = _text(item.get("target_context"))
+    if target_context:
+        target_name = target_name or "the addressed listener"
+        detail += f"; {target_name} is in the separate {target_context} image and is outside this render; retain the listener context without adding them here"
     detail += "; the balloon stays clear of faces and readable background text"
     notes = _text(item.get("notes"))
     if notes:

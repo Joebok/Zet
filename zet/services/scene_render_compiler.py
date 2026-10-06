@@ -982,9 +982,17 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
             "# Render Task",
             "",
             (
-                "Create one clean full-canvas background plate. Render only the assigned background subscene; do not add foreground subjects, dialogue, a planning grid, or comic panels."
+                (
+                    "Create one clean full-canvas background plate. Render only the assigned background subscene and its assigned dialogue panels; do not add other foreground subjects, a planning grid, or comic panels."
+                    if ir.get("dialogue") else
+                    "Create one clean full-canvas background plate. Render only the assigned background subscene; do not add foreground subjects, dialogue, a planning grid, or comic panels."
+                )
                 if is_subscene else
-                f"Create one clean standalone visual reference for {target_name}. Render the element or group as a coherent subject; do not add dialogue, a planning grid, or comic panels."
+                (
+                    f"Create one clean standalone visual reference for {target_name}. Render the element or group and its assigned dialogue panels as a coherent image; do not add unassigned dialogue, a planning grid, or comic panels."
+                    if ir.get("dialogue") else
+                    f"Create one clean standalone visual reference for {target_name}. Render the element or group as a coherent subject; do not add dialogue, a planning grid, or comic panels."
+                )
                 if is_element_subscene else
                 "Create one finished scene. Do not show the planning grid or split the image into comic panels."
             ),
@@ -1003,6 +1011,8 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
         if anchor_notes:
             lines.append(f"- **Target notes:** {_sentence(anchor_notes)}")
         lines.append("")
+    if ir.get("dialogue") and (is_subscene or is_element_subscene):
+        lines.append("Render dialogue panels assigned to this target as part of the image, exactly once, with each pointer attached to its speaker.")
     legacy_prompt = ir.get("prompt_schema_version") == 1
     image_inputs = _items(ir.get("image_inputs"))
     if legacy_prompt and ir.get("render_inputs"):
@@ -1193,11 +1203,21 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
         for index, item in enumerate(dialogue, start=1):
             if len(dialogue) > 1:
                 lines.extend([f"## Dialogue Panel {index}", ""])
-            speaker = get_element_display_name(_clean(item.get("speaker_element_id")), elements_by_id)
+            speaker = clean_prompt_sentence(item.get("speaker_name")) or get_element_display_name(_clean(item.get("speaker_element_id")), elements_by_id)
             lines.append(f"{speaker} says exactly: \"{item.get('text', '')}\"")
-            target = get_element_display_name(_clean(item.get("target_element_id")), elements_by_id) if _clean(item.get("target_element_id")) else ""
+            speaker_context = clean_prompt_sentence(item.get("speaker_context"))
+            if speaker_context:
+                lines.append(f"The speaker is visible within the referenced {speaker_context} image; do not add a second copy of the speaker.")
+            target = clean_prompt_sentence(item.get("target_name")) or (get_element_display_name(_clean(item.get("target_element_id")), elements_by_id) if _clean(item.get("target_element_id")) else "")
             if target:
                 lines.append(f"Place the panel so the dialogue reads as directed toward {target}.")
+                target_context = clean_prompt_sentence(item.get("target_context"))
+                if target_context:
+                    lines.append(f"{target} is in the separate {target_context} image and is outside this render; retain that listener context without adding the listener to this image.")
+            panel_placement = _clean(item.get("panel_placement"))
+            if panel_placement in {"left", "right", "above", "below"}:
+                panel_direction = {"left": "to the left", "right": "to the right", "above": "above", "below": "below"}[panel_placement]
+                lines.append(f"Place the dialogue panel {panel_direction} of {speaker} in this image's screen coordinates.")
             pointer_target = clean_prompt_sentence(item.get("pointer_target"))
             if pointer_target:
                 lines.append(f"Aim the dialogue-panel pointer at {pointer_target}.")
