@@ -1,0 +1,16 @@
+{
+  "action": "replace",
+  "text": "country girl",
+  "speaker": "Valindia",
+  "box": [
+    0.37241735537190085,
+    0.1890625,
+    0.09917355371900827,
+    0.06851851851851852
+  ],
+  "speaker_anchor": [
+    0.35485537190082644,
+    0.2427662037037037
+  ],
+  "policy": "Pillow raster balloon; applied only to the reviewed safe box"
+}

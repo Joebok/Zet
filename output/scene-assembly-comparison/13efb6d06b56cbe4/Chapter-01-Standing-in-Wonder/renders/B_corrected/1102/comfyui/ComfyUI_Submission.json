@@ -1,0 +1,9 @@
+{
+  "status": "COMPLETE",
+  "server_url": "http://127.0.0.1:8188",
+  "workflow_sha256": "ca8076f85c058856561c1819a11032f1a2841dd9697825147ce3178237496a41",
+  "prompt_id": "45e4dac3-48b4-4c48-996c-72a9e8f45a67",
+  "image_paths": [
+    "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\renders\\B_corrected\\1102\\comfyui\\fa6b3d9dec2c_1_1102_00001_.png"
+  ]
+}

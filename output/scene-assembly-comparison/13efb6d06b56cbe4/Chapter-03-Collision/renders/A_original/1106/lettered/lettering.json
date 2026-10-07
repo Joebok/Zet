@@ -1,0 +1,16 @@
+{
+  "action": "add",
+  "text": "sorry",
+  "speaker": "Kaeldor",
+  "box": [
+    0.1339719522968198,
+    0.4204969772403983,
+    0.15901060070671377,
+    0.03698435277382646
+  ],
+  "speaker_anchor": [
+    0.11453732332155477,
+    0.46032628022759603
+  ],
+  "policy": "Pillow raster balloon; applied only to the reviewed safe box"
+}

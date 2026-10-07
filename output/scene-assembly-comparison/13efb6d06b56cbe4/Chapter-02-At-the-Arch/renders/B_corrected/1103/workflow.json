@@ -1,0 +1,147 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-02-At-the-Arch/B_corrected/01_reference-slot-1-Tsaeytte.jpg"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-02-At-the-Arch/B_corrected/02_02_003.png"
+    }
+  },
+  "13": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-02-At-the-Arch/B_corrected/03_reference_Valindia_with_dialogue.png"
+    }
+  },
+  "14": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-02-At-the-Arch/B_corrected/04_reference-slot-4-group.jpg"
+    }
+  },
+  "4": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "Create one finished illustrated story frame by composing the supplied references. Use the archway image as the background canvas. Place the source groups as complete cutouts; do not invent extra people. <image1> supplies the accepted character pose and clothing for Tsaeytte · Youth · Woodland outfit · Left Profile. <image2> supplies the archway architecture and inscription for Spire Archway (new). <image3> supplies the accepted character pose and clothing for Valindia · Adult · School Outfit · Right Profile. <image4> supplies the accepted group appearance and internal arrangement for Schoolboys and Kaeldor. Place the boys as a compact middle-distance group beneath the central arch. Put the tall red-haired woman at left and the petite dark-haired woman at right in the foreground, at matching full-body scale. Keep each woman's accepted walking pose and head turn. Leave a small clear balloon area above the left woman. Place each source exactly once. Preserve pose, body proportions, expression, costume, group membership, and every visible prop shown in that source. Maintain natural depth and overlap, keep visible feet in contact with the path, and preserve each group's internal arrangement. Valindia walks away at left and turns only her head toward Tsaeytte. Tsaeytte walks away at right, carrying her books, and turns only her head toward Valindia. The three boys roughhouse together in the middle distance beneath the arch. Valindia says the exact words \"country girl\" in a readable balloon. Keep the arch inscription readable and consistent with its reference. Use painterly semi-realistic fantasy illustration with refined anime-influenced facial stylization. Draw one dialogue balloon for Valindia containing exactly \"country girl\" on no more than 1 line(s); point it to that speaker and keep it clear of faces.",
+      "negative_prompt": "",
+      "resolution": 1024,
+      "images.image_1": [
+        "11",
+        0
+      ],
+      "images.image_2": [
+        "12",
+        0
+      ],
+      "images.image_3": [
+        "13",
+        0
+      ],
+      "images.image_4": [
+        "14",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1376,
+      "height": 768,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1103,
+      "steps": 40,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "15",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "4",
+        1
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ZetExperiment/13efb6d06b56cbe4/Chapter-02-At-the-Arch/B_corrected/1103",
+      "images": [
+        "7",
+        0
+      ]
+    }
+  },
+  "15": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "cpu",
+      "dtype": "int8"
+    }
+  }
+}

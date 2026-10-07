@@ -1,0 +1,133 @@
+[
+  {
+    "role": "story_reference",
+    "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4",
+    "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\reference_Tsaeytte_with_dialogue.png",
+    "kind": "entity-library",
+    "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+    "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+    "set_id": "",
+    "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+    "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+    "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+    "image_index": 1,
+    "prompt_role": "subject_reference",
+    "applies_to": "Tsaeytte",
+    "preserve": [
+      "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+    ],
+    "change": [],
+    "ignore": [
+      "source pose",
+      "source background",
+      "source framing"
+    ],
+    "notes": "",
+    "assignments": [
+      {
+        "applies_to": "Tsaeytte",
+        "prompt_role": "subject_reference",
+        "preserve": [
+          "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+        ],
+        "change": [],
+        "ignore": [
+          "source pose",
+          "source background",
+          "source framing"
+        ],
+        "notes": ""
+      }
+    ],
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\001",
+    "source_role": "extracted foreground replacing accepted reference slot",
+    "comfyui_input_name": "ZetExperiment/Chapter-01-Standing-in-Wonder/B_corrected/01_reference_Tsaeytte_with_dialogue.png"
+  },
+  {
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\reference-slot-2-group.jpg",
+    "sha256": "f4efdba789e8d94d0b0838b8ee845286f5b91682c20231384fed68706bb4b3ac",
+    "candidate_id": "Schoolboys_440071c5_subscene-002",
+    "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+    "label": "Schoolboys and Kaeldor",
+    "kind": "scene-render",
+    "image_index": 2,
+    "prompt_role": "group_reference",
+    "applies_to": "Schoolboys_440071c5",
+    "preserve": [
+      "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+    ],
+    "change": [],
+    "ignore": [
+      "source canvas",
+      "source background",
+      "source framing",
+      "outer placement",
+      "source lighting"
+    ],
+    "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+    "assignments": [
+      {
+        "applies_to": "Schoolboys_440071c5",
+        "prompt_role": "group_reference",
+        "preserve": [
+          "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+        ],
+        "change": [],
+        "ignore": [
+          "source canvas",
+          "source background",
+          "source framing",
+          "outer placement",
+          "source lighting"
+        ],
+        "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+      }
+    ],
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\slots\\Schoolboys_440071c5_subscene\\Schoolboys_440071c5_subscene-002.png",
+    "source_role": "extracted foreground replacing accepted reference slot",
+    "comfyui_input_name": "ZetExperiment/Chapter-01-Standing-in-Wonder/B_corrected/02_reference-slot-2-group.jpg"
+  },
+  {
+    "role": "story_reference",
+    "label": "Spire Archway (new)",
+    "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\03_002.png",
+    "kind": "entity-library",
+    "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+    "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+    "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+    "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+    "image_index": 3,
+    "prompt_role": "background_reference",
+    "applies_to": "Spire_Archway_a1489c35",
+    "preserve": [
+      "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+    ],
+    "change": [],
+    "ignore": [
+      "source pose",
+      "source background",
+      "source framing"
+    ],
+    "notes": "",
+    "assignments": [
+      {
+        "applies_to": "Spire_Archway_a1489c35",
+        "prompt_role": "background_reference",
+        "preserve": [
+          "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+        ],
+        "change": [],
+        "ignore": [
+          "source pose",
+          "source background",
+          "source framing"
+        ],
+        "notes": ""
+      }
+    ],
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\002.png",
+    "comfyui_input_name": "ZetExperiment/Chapter-01-Standing-in-Wonder/B_corrected/03_03_002.png"
+  }
+]

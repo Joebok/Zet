@@ -1,0 +1,15 @@
+{
+  "status": "COMPLETE",
+  "seed": 1107,
+  "prompt_sha256": "45eb16f6955225c8aac6234c4b72af21aa54ec06695e1008b7dce37fdb5396be",
+  "workflow_sha256": "3e473dbc6a0a878e6fbfbacd23930fad1decf621bf39da5f9df3ea939a3f8cba",
+  "output_sha256": "bc7b1f1734acb27b85519adc65a99963c24cea22ec9c210d307b142d322f3acd",
+  "proposal": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\renders\\A_original\\1107\\comfyui\\87b4f6a832cf_1_1107_00001_.png",
+  "output": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\renders\\A_original\\1107\\candidate.png",
+  "prompt_id": "fb063d8e-b521-44a7-844a-76287b417298",
+  "elapsed_seconds": 100.56,
+  "dimensions": [
+    1376,
+    768
+  ]
+}

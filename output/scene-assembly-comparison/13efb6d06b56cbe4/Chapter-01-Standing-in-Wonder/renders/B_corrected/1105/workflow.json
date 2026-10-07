@@ -1,0 +1,137 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-01-Standing-in-Wonder/B_corrected/01_reference_Tsaeytte_with_dialogue.png"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-01-Standing-in-Wonder/B_corrected/02_reference-slot-2-group.jpg"
+    }
+  },
+  "13": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-01-Standing-in-Wonder/B_corrected/03_03_002.png"
+    }
+  },
+  "4": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "Create one finished illustrated story frame by composing the supplied references. Use the archway image as the background canvas. Place the source groups as complete cutouts; do not invent extra people. <image1> supplies the accepted character pose and clothing for Tsaeytte · Youth · Woodland outfit · Back Left 3 4. <image2> supplies the accepted group appearance and internal arrangement for Schoolboys and Kaeldor. <image3> supplies the archway architecture and inscription for Spire Archway (new). Place the three-student group small in the distant left arch opening. Place the single woman prominently in the right foreground, about three times the group's height. Keep her back three-quarter pose and upward gaze; keep her books against her left side. Leave clear space above and to her left for her balloon. Place each source exactly once. Preserve pose, body proportions, expression, costume, group membership, and every visible prop shown in that source. Maintain natural depth and overlap, keep visible feet in contact with the path, and preserve each group's internal arrangement. Tsaeytte stands at right in a back three-quarter view and looks up at the arch inscription while holding her books. A small, complete group of exactly three students is visible beyond the arch on the left. Tsaeytte speaks the exact words \"Potential is nothing without discipline\" in a readable balloon. Keep the arch inscription readable and consistent with its reference. Use painterly semi-realistic fantasy illustration with refined anime-influenced facial stylization. Draw one dialogue balloon for Tsaeytte containing exactly \"Potential is nothing without discipline\" on no more than 2 line(s); point it to that speaker and keep it clear of faces.",
+      "negative_prompt": "",
+      "resolution": 1024,
+      "images.image_1": [
+        "11",
+        0
+      ],
+      "images.image_2": [
+        "12",
+        0
+      ],
+      "images.image_3": [
+        "13",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 1248,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1105,
+      "steps": 40,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "14",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "4",
+        1
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ZetExperiment/13efb6d06b56cbe4/Chapter-01-Standing-in-Wonder/B_corrected/1105",
+      "images": [
+        "7",
+        0
+      ]
+    }
+  },
+  "14": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "cpu",
+      "dtype": "int8"
+    }
+  }
+}

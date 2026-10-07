@@ -1,0 +1,147 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-02-At-the-Arch/A_original/01_reference-slot-1-Tsaeytte.jpg"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-02-At-the-Arch/A_original/02_02_003.png"
+    }
+  },
+  "13": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-02-At-the-Arch/A_original/03_reference_Valindia_with_dialogue.png"
+    }
+  },
+  "14": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-02-At-the-Arch/A_original/04_reference-slot-4-group.jpg"
+    }
+  },
+  "4": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "A single landscape image in the style of Painterly semi-realistic fantasy illustration with anime-influenced facial stylization and refined linework. <image1> supplies subject reference for Tsaeytte, preserving recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items, ignoring source pose, source background, source framing. <image2> supplies background reference for Spire - Archway, preserving identity, ignoring source framing, source aspect ratio. <image3> supplies subject reference for Valindia, preserving recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items, ignoring source pose, source background, source framing. <image4> supplies group reference for Schoolboys and Kaeldor, preserving the complete element or group's recognizable appearance, component identities, and internal spatial arrangement, ignoring source canvas, source background, source framing, outer placement, source lighting, note: Managed element subscene reference; parent placement and scene instructions take precedence; reference note: Managed element subscene reference; parent placement and scene instructions take precedence. On the path in front of the arch. The main visual focus is Valindia. Their torsos, hips, legs, and feet are oriented toward the arch. The viewer sees both characters primarily from behind. Neither character is walking toward the camera or facing the camera. Valindia, * Tall slender young-adult high elf. * Long pointed ears and a short, full rounded bob with black bangs and underlayers beneath crimson-red outer sections, * Fitted black-and-gold school outfit: high standing-collar tailored jacket with slightly puffed shoulders, long fitted sleeves, flared cuffs, narrow gold piping, and dense botanical and arcane-style gold embroidery. * A broad black leather belt with rectangular gold buckle tops a short structured hip layer over very short fitted black bottoms. Sheer dark brown-black tights continue into black mid-calf leather boots with slouched shafts, rounded-square toes, thick soles, chunky high block heels, buckle straps, and restrained gold linework. * A compact black leather pouch stays at the anatomical-right hip, visible only where the view and panels permit. * A narrow black leather strap with small gold buckle and circular fitting stays around the anatomical-left upper thigh, visible only where the view and panels permit. * Show the established ornate dangling gold earring where naturally visible; a matching earring on the hidden ear is not established. * No long skirt, gown, cape, armor plates, bare legs, stiletto heels, flat footwear, extra weapons, or oversized gear, Valindia's back remains toward the viewer, She turns her head and neck to look toward Tsaeytte, do not rotate her legs, hips, or lower torso toward the camera, at left foreground, Left side of path walking away from camera. She is the closest character to the camera, walking briskly, taking long strides; her back to the viewer, with a amused and curious expression, looking toward Tsaeytte, Valindia is walking down the path to the arch, she has turned her head to look at Tsaeytte. A clearly visible speech balloon shaped as a rounded-corner rectangle sits just above Valindia at left foreground; its border fits closely around the text with minimal padding; it contains only \"country girl\" on one line; its short tail ends at Valindia's visible mouth; the balloon stays clear of faces and readable background text. Schoolboys and Kaeldor, One group of exactly three young elven academy students: Kaeldor, copper-haired Schoolboy 1, and dark-haired Schoolboy 2, at center midground, Approaching Tsaeytte and Valindia. Tsaeytte, * Petite slender high elf, apparent age 17–18. * Long thick black hair reaching mid-back behind the shoulders and long pointed ears. * Woodland-green ribbon bow at the back of the head at the nape, where naturally visible, * Simple practical rural student clothing: leaf-green long-sleeved blouse with modest gathered neckline near the collarbone, simple front tie, loose sleeves gathered at the wrists, and a fully covered waist tucked or gathered into a broad brown leather belt. * A full plain dark forest-green wool skirt falls to lower-calf or ankle height as the pose permits. Thick cream socks and sturdy brown leather lace-up ankle boots with low practical heels remain visible below it. * Keep the fabric matte, durable, modest, and unadorned, with no jewelry, weapons, signs of wealth, adult adventuring gear, leggings, armor, ornate robes, or glamorous uniform, Tsaeytte is holding a stack of books in both arms in front of her, Her back remains toward the viewer, only her head and neck turn toward Valindia, Do not rotate her shoulders or torso toward the camera, at right foreground, Walking hesitantly down the path, with a surprised expression. Spire - Archway, Ornate academy archway and view of the Spire from the reference. The inscription across the upper arch reads \"POTENTIAL IS NOTHING WITHOUT DISCIPLINE\"; the inner arch reads \"THE SPIRE OF CELESTIAL WISDOM\", at background. Lighting: Morning light. Atmosphere: sunny. Mood: happy.",
+      "negative_prompt": "",
+      "resolution": 1024,
+      "images.image_1": [
+        "11",
+        0
+      ],
+      "images.image_2": [
+        "12",
+        0
+      ],
+      "images.image_3": [
+        "13",
+        0
+      ],
+      "images.image_4": [
+        "14",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1376,
+      "height": 768,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1104,
+      "steps": 40,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "15",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "4",
+        1
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ZetExperiment/13efb6d06b56cbe4/Chapter-02-At-the-Arch/A_original/1104",
+      "images": [
+        "7",
+        0
+      ]
+    }
+  },
+  "15": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "cpu",
+      "dtype": "int8"
+    }
+  }
+}

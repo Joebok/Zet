@@ -1,0 +1,570 @@
+{
+  "schema_version": 4,
+  "prompt_schema_version": 2,
+  "engine_profile": "chatgpt_images_2_5_v1",
+  "render_target": {
+    "id": "main",
+    "label": "Full Scene",
+    "kind": "main"
+  },
+  "render_inputs": [],
+  "baked_landmarks": [],
+  "scene": {
+    "id": "chapter_01_standing_in_wonder",
+    "name": "Chapter 01 Standing in Wonder",
+    "slug": "Chapter-01-Standing-in-Wonder",
+    "story_beat": "Tsaeytte has paused to look up at the words inscribed on the arch leading to the Spire of Celestial Wisdom. "
+  },
+  "source": {
+    "scene_json_path": null,
+    "story_settings_path": "Stories/FirstDay/FirstDay.story.json",
+    "source_hashes": {}
+  },
+  "canvas": {
+    "orientation": "portrait",
+    "aspect_ratio": "2:3"
+  },
+  "composition": {
+    "focal_point": "Tsaeytte",
+    "left_to_right": [
+      "Schoolboys_440071c5",
+      "Tsaeytte"
+    ],
+    "composition_notes": "Tsaeytte is the primary focus in the right foreground, seen from behind at three-quarter angle holding books, head tilted up to read the inscription across the top of the arch. The arch inscription and her upward gaze must be visible. Beyond the arch, one small group of exactly three students is goofing around: Schoolboy 1, Schoolboy 2, and Kaeldor on their right. Keep the whole group visible."
+  },
+  "style": {
+    "art_style": "Painterly semi-realistic fantasy illustration with anime-influenced facial stylization and refined linework.",
+    "visual_continuity": {
+      "rules": [
+        "Preserve the story's canonical art style across all scene images.",
+        "Preserve recurring characters, costumes, props, and locations when referenced by scene tags."
+      ],
+      "notes": ""
+    },
+    "profile": {
+      "include_story_premise": false,
+      "include_visual_continuity": true,
+      "include_dialogue_when_scene_has_dialogue": true,
+      "include_reference_assignments": true,
+      "notes": ""
+    }
+  },
+  "environment": {
+    "location": "The pathway in front of the arch.",
+    "lighting": "Morning sun",
+    "mood": "optimistic",
+    "weather_or_atmosphere": "clear",
+    "general_background_notes": "Beyond the archway, the Schoolboys subscene contains both schoolboys and Kaeldor as a single visible background group. Kaeldor appears once, within this group.",
+    "general_foreground_notes": ""
+  },
+  "depth_lanes": {
+    "foreground": [
+      "Tsaeytte"
+    ],
+    "midground": [],
+    "background": [
+      "Schoolboys_440071c5",
+      "Spire_Archway_a1489c35"
+    ]
+  },
+  "elements": [
+    {
+      "id": "Tsaeytte",
+      "display_name": "Tsaeytte",
+      "resource_type": "Character",
+      "element_type": "Character",
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "costume": "Woodland outfit",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+          "tag": "",
+          "asset_id": "",
+          "set_id": "",
+          "primary_prompt_source": true,
+          "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4"
+        }
+      ],
+      "element_visual_override": "Holding stack of books in both arms in front of her.",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": "",
+      "resolved_source_sections": {
+        "identity_preservation_core": "* Tsaeytte is a Youth-phase high elf, apparent age 17–18, with a petite slender build, about 5 feet tall, slim limbs, narrow waist and hips, and softly sloped shoulders.\n* Her skin is light warm golden-beige with a subtle sun-kissed tan, warm peach-gold undertones, and natural healthy color.\n* Her hair is long and thick, reaching mid-back behind the shoulders, with a lightly rumpled texture and soft layered separation.\n* A woodland-green ribbon bow is secured at the back of the head at the nape, with short trailing ends where visible.\n* Preserve her long pointed high-elf ears angled outward and slightly upward, exposing them only where the view and hair permit.\n\nMaintain the same Youth-phase identity, age, long mid-back hair, ribbon placement, ear anatomy, and petite slender proportions. Preserve naturally visible traits without turning the head or body to expose hidden features.",
+        "identity_preservation_costume": "* Simple practical rural student clothing: leaf-green long-sleeved blouse with modest gathered neckline near the collarbone, simple front tie, loose sleeves gathered at the wrists, and a fully covered waist tucked or gathered into a broad brown leather belt.\n* A full plain dark forest-green wool skirt falls to lower-calf or ankle height as the pose permits. Thick cream socks and sturdy brown leather lace-up ankle boots with low practical heels remain visible below it.\n* Keep the fabric matte, durable, modest, and unadorned, with no jewelry, weapons, signs of wealth, adult adventuring gear, leggings, armor, ornate robes, or glamorous uniform.\n\nPreserve naturally visible costume traits without changing the requested body or head orientation to expose hidden features.",
+        "identity_anchors": "* Petite slender high elf, apparent age 17–18.\n* Long thick black hair reaching mid-back behind the shoulders and long pointed ears.\n* Woodland-green ribbon bow at the back of the head at the nape, where naturally visible.",
+        "costume_anchors": "* Simple practical rural student clothing: leaf-green long-sleeved blouse with modest gathered neckline near the collarbone, simple front tie, loose sleeves gathered at the wrists, and a fully covered waist tucked or gathered into a broad brown leather belt.\n* A full plain dark forest-green wool skirt falls to lower-calf or ankle height as the pose permits. Thick cream socks and sturdy brown leather lace-up ankle boots with low practical heels remain visible below it.\n* Keep the fabric matte, durable, modest, and unadorned, with no jewelry, weapons, signs of wealth, adult adventuring gear, leggings, armor, ornate robes, or glamorous uniform.",
+        "identity_anchor_source": "Characters/Tsaeytte/Youth/Character.md",
+        "costume_anchor_source": "Characters/Tsaeytte/Youth/Costume_Woodland_outfit.md",
+        "identity_source": "Library/assets/65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "costume_source": "Library/assets/65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "view_conditioning_diagnostics": [
+          "SCENE_CHARACTER_IDENTITY: view-specific lines omitted because the requested orientation is unavailable",
+          "SCENE_COSTUME_IDENTITY: view-specific lines omitted because the requested orientation is unavailable",
+          "SCENE_CHARACTER_ANCHORS: view-specific lines omitted because the requested orientation is unavailable",
+          "SCENE_COSTUME_ANCHORS: view-specific lines omitted because the requested orientation is unavailable"
+        ],
+        "library_asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "library_checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+        "reference_warnings": []
+      }
+    },
+    {
+      "id": "Schoolboys_440071c5",
+      "display_name": "Schoolboys",
+      "resource_type": "Scene-Only",
+      "element_type": "Character",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [
+        {
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+          "managed_subscene_reference": true,
+          "roles": [
+            "complete element or group appearance",
+            "internal arrangement"
+          ],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+        }
+      ],
+      "element_visual_override": "Preserve all three distinct students and their playful interaction from the subscene reference. Schoolboy 1 gently shoves Schoolboy 2, who laughs; Kaeldor stands to their right, pointing and grinning. Render this group once in the background beyond the archway.",
+      "fallback_visual_description": "One group of exactly three elven academy students: red-haired Schoolboy 1, dark-haired Schoolboy 2, and Kaeldor.",
+      "notes": "",
+      "subscene_id": ""
+    },
+    {
+      "id": "Spire_Archway_a1489c35",
+      "display_name": "Spire - Archway",
+      "resource_type": "Place",
+      "element_type": "Backdrop",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "place",
+      "aux_resource_id": "spire-archway",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "set_id": "",
+          "primary_prompt_source": true,
+          "label": "Spire Archway (new)",
+          "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+          "tag": "",
+          "reference_key": ""
+        }
+      ],
+      "element_visual_override": "Preserve the ornate academy archway and view of the Spire from the reference. The inscription across the upper arch reads \"POTENTIAL IS NOTHING WITHOUT DISCIPLINE\"; the inner arch reads \"THE SPIRE OF CELESTIAL WISDOM\". Keep the inscription visible above Tsaeytte.",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": "",
+      "resolved_source_sections": {
+        "identity_preservation_core": "",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "costume_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "library_asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "library_checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+        "reference_warnings": [
+          "Optional legacy auxiliary fallback is unavailable: Auxiliary resource spire-archway not found."
+        ]
+      }
+    }
+  ],
+  "placements": [
+    {
+      "id": "placement_1784318266007",
+      "scene_element_id": "Tsaeytte",
+      "position_within_cell": "right",
+      "depth": "foreground",
+      "pose": {
+        "summary": "Standing in the right foreground, viewed from behind at three-quarter angle, head tilted upward to read the arch inscription, holding a stack of books in both arms",
+        "gaze_target_element_id": "Spire_Archway_a1489c35",
+        "expression": "curious"
+      },
+      "motion": {
+        "state": "stationary",
+        "direction_screen": "",
+        "cue": ""
+      },
+      "placement_notes": ""
+    },
+    {
+      "id": "placement_1784318527882",
+      "scene_element_id": "Schoolboys_440071c5",
+      "position_within_cell": "center",
+      "depth": "background",
+      "pose": {
+        "summary": "",
+        "gaze_target_element_id": "",
+        "expression": ""
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "",
+        "cue": "Entering the scene from the background, moving along the pathway."
+      },
+      "placement_notes": "Visible through the arch opening, clear of Tsaeytte and the dialogue box. Preserve exactly three students from the subscene; do not add a duplicate Kaeldor.",
+      "world_position": "Small three-person group beyond the arch, in the left-center background; Kaeldor is part of this group"
+    },
+    {
+      "id": "placement_1784319050025",
+      "scene_element_id": "Spire_Archway_a1489c35",
+      "position_within_cell": "",
+      "depth": "background",
+      "pose": {
+        "summary": "",
+        "gaze_target_element_id": "",
+        "expression": ""
+      },
+      "motion": {
+        "state": "stationary",
+        "direction_screen": "",
+        "cue": ""
+      },
+      "placement_notes": ""
+    }
+  ],
+  "interactions": [],
+  "custom_interactions": "",
+  "dialogue": [
+    {
+      "id": "dialogue_1784318436924",
+      "speaker_element_id": "Tsaeytte",
+      "text": "Potential is nothing without discipline",
+      "target_element_id": "",
+      "pointer_target": "speaker mouth",
+      "max_lines": 2,
+      "notes": "Compact rectangular ivory parchment dialogue box beside Tsaeytte, with a small pointer to her mouth, exactly two lines: Potential is nothing / without discipline. Do not cover the arch inscription or the background group."
+    }
+  ],
+  "dialogue_styles": [
+    {
+      "id": "compact_parchment",
+      "display_name": "Compact parchment dialogue panel",
+      "enabled_by_default": true,
+      "panel_prompt": "Compact rectangular parchment dialogue panel with softly rounded corners, minimal padding, warm ivory parchment background, subtle paper texture, and a thin dark bronze border.",
+      "pointer_prompt": "Short unobtrusive triangular pointer aimed toward the speaker's mouth.",
+      "lettering_prompt": "Clean modern comic-style sans-serif lettering, medium weight, crisp edges, high legibility.",
+      "layout_rules": [
+        "Panel should be only slightly larger than the text.",
+        "Do not obscure important faces",
+        "hands",
+        "props",
+        "or focal areas."
+      ],
+      "avoid": [
+        "oversized speech panel",
+        "hard-to-read text",
+        "panel covering faces"
+      ],
+      "notes": ""
+    }
+  ],
+  "references": [
+    {
+      "id": "ref_Tsaeytte_{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+      "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+      "applies_to_element_id": "Tsaeytte",
+      "roles": [
+        "visual reference"
+      ],
+      "preserve": [],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "ref_Schoolboys_440071c5_{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+      "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+      "applies_to_element_id": "Schoolboys_440071c5",
+      "roles": [
+        "complete element or group appearance",
+        "internal arrangement"
+      ],
+      "preserve": [],
+      "change": [],
+      "ignore": [
+        "source canvas",
+        "source background",
+        "source framing",
+        "outer placement",
+        "source lighting"
+      ],
+      "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+    },
+    {
+      "id": "ref_Spire_Archway_a1489c35_{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+      "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+      "applies_to_element_id": "Spire_Archway_a1489c35",
+      "roles": [
+        "visual reference"
+      ],
+      "preserve": [],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": ""
+    }
+  ],
+  "final_image_prompt_sections": {
+    "anatomical_requirements": "# Anatomical Requirements\n\nRender anatomically correct characters.\n\n- Every visible hand has exactly five fingers in the correct anatomical arrangement.\n- Hands, wrists, elbows, shoulders, legs, feet, necks, and torsos are naturally connected.\n- No extra limbs, missing limbs, fused limbs, duplicated body parts, or disconnected anatomy.\n- Fingers have natural proportions and believable poses.\n- Character interactions do not cause anatomy to intersect or merge.",
+    "avoid": "# Avoid\n\n- Inconsistent character identity.\n- Wrong costume.\n- Modern objects.\n- Unreadable faces.\n- Merged characters.\n- Cropped characters.\n- Anatomical distortions.",
+    "high_risk_elements": "# High-Risk Elements\n\nPay particular attention to:\n\n- Hands making gestures.\n- Characters sitting with crossed legs.\n- Characters touching or closely facing each other.\n- Objects held in the hands.\n- Long ears remaining fully attached and correctly shaped.\n- Hair remaining consistent with the reference.",
+    "final_verification": "Tsaeytte looks upward at the arch inscription while holding books; her dialogue box reads exactly Potential is nothing without discipline; both individual schoolboys and Kaeldor appear in the background goofing around."
+  },
+  "resolved_sources": {
+    "references": [
+      {
+        "role": "story_reference",
+        "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4",
+        "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\001",
+        "kind": "entity-library",
+        "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+        "set_id": "",
+        "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9"
+      },
+      {
+        "role": "story_reference",
+        "label": "Spire Archway (new)",
+        "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\002.png",
+        "kind": "entity-library",
+        "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+        "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e"
+      },
+      {
+        "role": "story_reference",
+        "label": "Kaeldor",
+        "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\003.png",
+        "kind": "entity-library",
+        "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png",
+        "sha256": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30"
+      },
+      {
+        "role": "story_reference",
+        "label": "Schoolboy 1",
+        "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\004.png",
+        "kind": "entity-library",
+        "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png",
+        "sha256": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7"
+      },
+      {
+        "role": "story_reference",
+        "label": "Schoolboy 2",
+        "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\005.png",
+        "kind": "entity-library",
+        "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png",
+        "sha256": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f"
+      },
+      {
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\slots\\Schoolboys_440071c5_subscene\\Schoolboys_440071c5_subscene-002.png",
+        "sha256": "f4efdba789e8d94d0b0838b8ee845286f5b91682c20231384fed68706bb4b3ac",
+        "candidate_id": "Schoolboys_440071c5_subscene-002",
+        "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+        "label": "Schoolboys and Kaeldor",
+        "kind": "scene-render"
+      }
+    ],
+    "element_sources": {
+      "Tsaeytte": {
+        "identity_preservation_core": "* Tsaeytte is a Youth-phase high elf, apparent age 17–18, with a petite slender build, about 5 feet tall, slim limbs, narrow waist and hips, and softly sloped shoulders.\n* Her skin is light warm golden-beige with a subtle sun-kissed tan, warm peach-gold undertones, and natural healthy color.\n* Her hair is long and thick, reaching mid-back behind the shoulders, with a lightly rumpled texture and soft layered separation.\n* A woodland-green ribbon bow is secured at the back of the head at the nape, with short trailing ends where visible.\n* Preserve her long pointed high-elf ears angled outward and slightly upward, exposing them only where the view and hair permit.\n\nMaintain the same Youth-phase identity, age, long mid-back hair, ribbon placement, ear anatomy, and petite slender proportions. Preserve naturally visible traits without turning the head or body to expose hidden features.",
+        "identity_preservation_costume": "* Simple practical rural student clothing: leaf-green long-sleeved blouse with modest gathered neckline near the collarbone, simple front tie, loose sleeves gathered at the wrists, and a fully covered waist tucked or gathered into a broad brown leather belt.\n* A full plain dark forest-green wool skirt falls to lower-calf or ankle height as the pose permits. Thick cream socks and sturdy brown leather lace-up ankle boots with low practical heels remain visible below it.\n* Keep the fabric matte, durable, modest, and unadorned, with no jewelry, weapons, signs of wealth, adult adventuring gear, leggings, armor, ornate robes, or glamorous uniform.\n\nPreserve naturally visible costume traits without changing the requested body or head orientation to expose hidden features.",
+        "identity_anchors": "* Petite slender high elf, apparent age 17–18.\n* Long thick black hair reaching mid-back behind the shoulders and long pointed ears.\n* Woodland-green ribbon bow at the back of the head at the nape, where naturally visible.",
+        "costume_anchors": "* Simple practical rural student clothing: leaf-green long-sleeved blouse with modest gathered neckline near the collarbone, simple front tie, loose sleeves gathered at the wrists, and a fully covered waist tucked or gathered into a broad brown leather belt.\n* A full plain dark forest-green wool skirt falls to lower-calf or ankle height as the pose permits. Thick cream socks and sturdy brown leather lace-up ankle boots with low practical heels remain visible below it.\n* Keep the fabric matte, durable, modest, and unadorned, with no jewelry, weapons, signs of wealth, adult adventuring gear, leggings, armor, ornate robes, or glamorous uniform.",
+        "identity_anchor_source": "Characters/Tsaeytte/Youth/Character.md",
+        "costume_anchor_source": "Characters/Tsaeytte/Youth/Costume_Woodland_outfit.md",
+        "identity_source": "Library/assets/65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "costume_source": "Library/assets/65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "view_conditioning_diagnostics": [
+          "SCENE_CHARACTER_IDENTITY: view-specific lines omitted because the requested orientation is unavailable",
+          "SCENE_COSTUME_IDENTITY: view-specific lines omitted because the requested orientation is unavailable",
+          "SCENE_CHARACTER_ANCHORS: view-specific lines omitted because the requested orientation is unavailable",
+          "SCENE_COSTUME_ANCHORS: view-specific lines omitted because the requested orientation is unavailable"
+        ],
+        "library_asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "library_checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+        "reference_warnings": []
+      },
+      "Schoolboys_440071c5": {},
+      "Spire_Archway_a1489c35": {
+        "identity_preservation_core": "",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "costume_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "library_asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "library_checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+        "reference_warnings": [
+          "Optional legacy auxiliary fallback is unavailable: Auxiliary resource spire-archway not found."
+        ]
+      }
+    }
+  },
+  "render_mode": "composite",
+  "image_inputs": [
+    {
+      "index": 1,
+      "role": "subject_reference",
+      "label": "Tsaeytte — Tsaeytte · Youth · Woodland outfit · Back Left 3 4",
+      "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\001",
+      "applies_to": "Tsaeytte",
+      "preserve": [
+        "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+      ],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": "",
+      "source_role": "story_reference",
+      "assignments": [
+        {
+          "applies_to": "Tsaeytte",
+          "prompt_role": "subject_reference",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "role": "group_reference",
+      "label": "Schoolboys — Schoolboys and Kaeldor",
+      "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\slots\\Schoolboys_440071c5_subscene\\Schoolboys_440071c5_subscene-002.png",
+      "applies_to": "Schoolboys_440071c5",
+      "preserve": [
+        "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+      ],
+      "change": [],
+      "ignore": [
+        "source canvas",
+        "source background",
+        "source framing",
+        "outer placement",
+        "source lighting"
+      ],
+      "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+      "source_role": "",
+      "assignments": [
+        {
+          "applies_to": "Schoolboys_440071c5",
+          "prompt_role": "group_reference",
+          "preserve": [
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "role": "background_reference",
+      "label": "Spire - Archway — Spire Archway (new)",
+      "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\002.png",
+      "applies_to": "Spire_Archway_a1489c35",
+      "preserve": [
+        "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+      ],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": "",
+      "source_role": "story_reference",
+      "assignments": [
+        {
+          "applies_to": "Spire_Archway_a1489c35",
+          "prompt_role": "background_reference",
+          "preserve": [
+            "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": ""
+        }
+      ]
+    }
+  ]
+}

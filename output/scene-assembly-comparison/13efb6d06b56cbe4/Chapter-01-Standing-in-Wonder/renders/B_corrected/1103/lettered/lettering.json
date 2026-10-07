@@ -1,0 +1,16 @@
+{
+  "action": "replace",
+  "text": "Potential is nothing without discipline",
+  "speaker": "Tsaeytte",
+  "box": [
+    0.38382862473347545,
+    0.27540451635846375,
+    0.21535181236673773,
+    0.051209103840682786
+  ],
+  "speaker_anchor": [
+    0.6119736140724946,
+    0.33372599573257467
+  ],
+  "policy": "Pillow raster balloon; applied only to the reviewed safe box"
+}
