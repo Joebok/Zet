@@ -81,6 +81,10 @@ class CharacterOnboardingService:
             "species_ancestry": "",
             "gender_presentation": "",
             "canonical_art_style": "",
+            "standing_barefoot_height": "",
+            "eye_height": "",
+            "shoulder_width": "",
+            "body_depth": "",
         }
         exists = phase_path.exists()
         if not exists:
@@ -109,6 +113,10 @@ class CharacterOnboardingService:
             species_ancestry=metadata["species_ancestry"],
             gender_presentation=metadata["gender_presentation"],
             canonical_art_style=metadata["canonical_art_style"],
+            standing_barefoot_height=metadata["standing_barefoot_height"],
+            eye_height=metadata["eye_height"],
+            shoulder_width=metadata["shoulder_width"],
+            body_depth=metadata["body_depth"],
             template_ready=template_ready,
         )
 
@@ -122,12 +130,20 @@ class CharacterOnboardingService:
                     "species_ancestry": extract_template_field(template, ["Species / Ancestry", "Species", "Ancestry"]),
                     "gender_presentation": extract_template_field(template, ["Gender Presentation", "Gender"]),
                     "canonical_art_style": extract_template_field(template, ["Canonical Art Style"]),
+                    "standing_barefoot_height": extract_template_field(template, ["Standing Barefoot Height"]),
+                    "eye_height": extract_template_field(template, ["Eye Height"]),
+                    "shoulder_width": extract_template_field(template, ["Shoulder Width"]),
+                    "body_depth": extract_template_field(template, ["Body Depth"]),
                 }
         return {
             "character": character,
             "species_ancestry": "",
             "gender_presentation": "",
             "canonical_art_style": "",
+            "standing_barefoot_height": "",
+            "eye_height": "",
+            "shoulder_width": "",
+            "body_depth": "",
         }
 
     def save_draft(self, payload: dict[str, Any]) -> CharacterOnboardingDraft:
@@ -293,6 +309,10 @@ class CharacterOnboardingService:
             "species_ancestry": extract_template_field(template_path, ["Species / Ancestry", "Species", "Ancestry"]),
             "gender_presentation": extract_template_field(template_path, ["Gender Presentation", "Gender"]),
             "canonical_art_style": extract_template_field(template_path, ["Canonical Art Style"]),
+            "standing_barefoot_height": extract_template_field(template_path, ["Standing Barefoot Height"]),
+            "eye_height": extract_template_field(template_path, ["Eye Height"]),
+            "shoulder_width": extract_template_field(template_path, ["Shoulder Width"]),
+            "body_depth": extract_template_field(template_path, ["Body Depth"]),
         }
 
     def _normalize_foundation_pipelines(self, pipelines_path: Path) -> None:
@@ -409,6 +429,10 @@ class CharacterOnboardingService:
             "Species / Ancestry": str(payload.get("species_ancestry") or "").strip(),
             "Gender Presentation": str(payload.get("gender_presentation") or "").strip(),
             "Canonical Art Style": str(payload.get("canonical_art_style") or "").strip(),
+            "Standing Barefoot Height": str(payload.get("standing_barefoot_height") or "").strip() or "optional",
+            "Eye Height": str(payload.get("eye_height") or "").strip() or "optional",
+            "Shoulder Width": str(payload.get("shoulder_width") or "").strip() or "optional",
+            "Body Depth": str(payload.get("body_depth") or "").strip() or "optional",
         }
         for label, value in replacements.items():
             text = self._replace_metadata_line(text, label, value)

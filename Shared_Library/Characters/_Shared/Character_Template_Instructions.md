@@ -23,6 +23,8 @@ Use this manual when an existing character design and one or more approved image
 
 Metadata identifies the character and selects global behavior. Character Phase controls phase-specific assets and technical modesty. Gender Presentation affects modesty only for phases containing `adult`. Canonical Art Style should be a compact render-facing style directive.
 
+Enter optional body measurements as feet and inches (for example, `5 ft 8 in` or `5' 8\"`). Use measured standing barefoot height for 3D character scale; eye height, shoulder width, and body depth refine camera and pawn previews. Leave unknown measurements blank rather than estimating them from prose.
+
 ## Body sections
 
 ### `BODY_DESCRIPTION_FACTS` — required

@@ -228,6 +228,10 @@ def template_metadata(template_path: Path) -> dict[str, str]:
         "FOOTWEAR": extract_template_field(template_path, ["Footwear"]),
         "FOOTWEAR_CONTACT": extract_template_field(template_path, ["Footwear Contact", "Footwear Contact Rule"]),
         "FOOTWEAR_GROUNDING": extract_template_field(template_path, ["Footwear Grounding", "Footwear Grounding Rule"]),
+        "STANDING_BAREFOOT_HEIGHT": extract_template_field(template_path, ["Standing Barefoot Height"]),
+        "EYE_HEIGHT": extract_template_field(template_path, ["Eye Height"]),
+        "SHOULDER_WIDTH": extract_template_field(template_path, ["Shoulder Width"]),
+        "BODY_DEPTH": extract_template_field(template_path, ["Body Depth"]),
     }
 
 

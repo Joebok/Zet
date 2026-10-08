@@ -1,0 +1,147 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-03-Collision/C_layers/01_layer-composite.png"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-03-Collision/C_layers/02_01_background-004.png"
+    }
+  },
+  "13": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-03-Collision/C_layers/03_02_Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png"
+    }
+  },
+  "14": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-03-Collision/C_layers/04_03_Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png"
+    }
+  },
+  "4": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "Edit <image1>, the assembled canvas. Preserve all people, their pose, identity, proportions, costumes, props, the arch, and all readable text exactly as shown. Blend only the narrow joins between the placed cutouts and the background, and add believable contact shadows beneath visible feet. Do not move, resize, rotate, redraw, add, or remove any figure or prop. Use <image2> and later images only to confirm identity and group appearance. Preserve each reference group's internal arrangement. Exactly five characters appear: Kaeldor, two schoolboys, Tsaeytte, and Valindia. Tsaeytte remains seated on the ground with her hands behind her supporting her, on the right with Valindia standing behind her. Retain all five books visible in the accepted source; separately record that the authored scene asks for four. The three boys occupy the left foreground as a single intact group; record whether Kaeldor reads as walking. Kaeldor has one small, readable speech balloon containing exactly \"sorry\".",
+      "negative_prompt": "",
+      "resolution": 1024,
+      "images.image_1": [
+        "11",
+        0
+      ],
+      "images.image_2": [
+        "12",
+        0
+      ],
+      "images.image_3": [
+        "13",
+        0
+      ],
+      "images.image_4": [
+        "14",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 928,
+      "height": 1152,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1105,
+      "steps": 40,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "15",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "4",
+        1
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ZetExperiment/13efb6d06b56cbe4/Chapter-03-Collision/C_layers/1105",
+      "images": [
+        "7",
+        0
+      ]
+    }
+  },
+  "15": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "cpu",
+      "dtype": "int8"
+    }
+  }
+}

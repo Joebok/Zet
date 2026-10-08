@@ -33,6 +33,7 @@ from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.path_service import PathService
 from zet.services.performance_instrumentation import record as record_performance
 from zet.services.scene_document_service import SceneDocumentService
+from zet.services.scene_layout_service import SceneLayoutService
 from zet.services.scene_render_target_service import SceneRenderTargetService
 from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
 from zet.services.story_reference_service import StoryReferenceService
@@ -65,6 +66,7 @@ class StoryService:
         self.image_catalog_service = None
         self.scene_render_target_service = SceneRenderTargetService(self, StoryServiceError)
         self.scene_document_service = SceneDocumentService(self, StoryServiceError)
+        self.scene_layout_service = SceneLayoutService(path_service)
         self.story_reference_service = StoryReferenceService(
             path_service,
             asset_repository,
@@ -1412,6 +1414,28 @@ class StoryService:
                     dialogue.pop(dialogue_index)
             data["dialogue"] = dialogue
             data["_revision"] = int(expected_revision)
+        return self.save_scene_builder_data(story_slug, scene_slug, data)
+
+    def save_scene_layout_data(self, story_slug: str, scene_slug: str, target_id: str, layout: dict,
+                               expected_revision: int) -> SceneBuilderDocument:
+        """Save one 3D layout target and its required compatibility conversion."""
+        document = self.load_scene_builder_data(story_slug, scene_slug)
+        if document.blocked:
+            raise StoryServiceError(document.error or "Scene Builder JSON is blocked.")
+        if int(expected_revision) != int(document.data.get("_revision", 0)):
+            raise StoryServiceError("Scene changed since this layout was loaded. Reload before saving; your draft was not written.")
+        data = copy.deepcopy(document.data)
+        service = self.scene_layout_service
+        normalized = service.normalize_targets(data)
+        if target_id not in normalized["targets"]:
+            raise StoryServiceError(f"Unknown scene layout target: {target_id}")
+        elements = service._target_elements(data, target_id)
+        normalized["targets"][target_id] = service.normalize(layout, elements, scene=data)
+        # Store child workspaces with their owning subscene and the main workspace at scene level.
+        for definition in data.get("subscenes") or []:
+            definition["layout_3d"] = normalized["targets"].get(str(definition.get("id") or ""), {})
+        data["layout_3d"] = normalized["targets"]["main"]
+        data["_revision"] = int(expected_revision)
         return self.save_scene_builder_data(story_slug, scene_slug, data)
 
     def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:

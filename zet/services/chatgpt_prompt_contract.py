@@ -16,6 +16,7 @@ IMAGE_INPUT_ROLES = {
     "group_reference",
     "background_reference",
     "style_reference",
+    "layout_reference",
 }
 RENDER_MODES = {"generate", "edit", "composite"}
 

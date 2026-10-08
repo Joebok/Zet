@@ -1849,6 +1849,40 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/3d-layout/draft")
+    def scene_builder_layout_draft(story_slug: str, scene_slug: str, data: dict = Body(...), target_id: str = Query("main")) -> dict[str, Any]:
+        """Create a 3D layout draft without saving scene data."""
+        zet_app = _app(app.state.config_path)
+        try:
+            scene = zet_app.generate_scene_builder(story_slug, scene_slug, data)
+            return {"layout_3d": zet_app.create_scene_layout_draft(scene, target_id)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/3d-layout/preview")
+    def scene_builder_layout_preview(story_slug: str, scene_slug: str, data: dict = Body(...), target_id: str = Query("main")) -> dict[str, Any]:
+        """Preview unsaved 3D layout geometry and its Qwen guidance image."""
+        zet_app = _app(app.state.config_path)
+        try:
+            scene = zet_app.generate_scene_builder(story_slug, scene_slug, data)
+            scene.setdefault("scene", {})["_story_slug"] = story_slug
+            return zet_app.preview_scene_layout(scene, target_id=target_id)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/stories/{story_slug}/scenes/{scene_slug}/builder/3d-layout")
+    def scene_builder_layout_save(story_slug: str, scene_slug: str, data: dict = Body(...), target_id: str = Query("main")) -> dict[str, Any]:
+        """Save one 3D layout workspace without replacing unrelated builder edits."""
+        zet_app = _app(app.state.config_path)
+        try:
+            document = zet_app.save_scene_layout(story_slug, scene_slug, target_id, data.get("layout_3d") or {},
+                                                  int(data.get("expected_revision", -1)))
+            return {"document": _scene_builder_document_payload(zet_app, document),
+                    "has_story_changes": zet_app.story_git_has_changes(),
+                    "message": f"Saved 3D layout for {target_id}.", "target_id": target_id}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/stories/{story_slug}/scenes/{scene_slug}/builder/continue-from")
     def scene_builder_continue_from(story_slug: str, scene_slug: str, source_scene_slug: str = Query(...)) -> dict[str, Any]:
         """Copy another scene's complete editable structure into this scene."""

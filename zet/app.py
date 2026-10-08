@@ -949,6 +949,84 @@ class ZetApp:
         """Generate Scene Builder outputs without saving."""
         return self.story_service.generate_scene_builder_outputs(story_slug, scene_slug, data)
 
+    def preview_scene_layout(self, data: dict, *, width: int = 1024, height: int = 576, target_id: str = "main") -> dict:
+        """Project an unsaved scene layout and return its clean guidance image."""
+        data = __import__("copy").deepcopy(data)
+        if target_id == "main":
+            data["layout_3d"] = data.get("layout_3d") or {}
+        else:
+            definition = next((item for item in data.get("subscenes") or [] if item.get("id") == target_id), None)
+            if definition is None:
+                raise ValueError(f"Scene subscene not found: {target_id}")
+            definition["layout_3d"] = data.get("layout_3d") or definition.get("layout_3d") or {}
+        elements = data.get("scene_elements") or []
+        service = self.story_service.scene_layout_service
+        targets = service.normalize_targets(data)
+        if target_id not in targets["targets"]:
+            raise ValueError(f"Scene subscene not found: {target_id}")
+        layout = targets["targets"][target_id]
+        if target_id == "main":
+            composition = service.compose_targets(data, target_id)
+            visible_ids = {item["element_id"] for item in composition["pawns"]}
+            layout = {**layout, "pawns": [item for item in layout["pawns"] if item["element_id"] in visible_ids]}
+        else:
+            composition = service.compose_targets(data, target_id)
+        if width == 1024 and height == 576:
+            canvas = (data.get("setup") or {}).get("canvas") or {}
+            try:
+                presets = __import__("json").loads(self.story_service._project_config_path("Local_Render_Presets.json").read_text(encoding="utf-8"))
+                budget = int(presets.get("comfyui-qwen-image-2-1-scene", {}).get("pixel_budget", 1_048_576))
+            except (OSError, ValueError, TypeError):
+                budget = 1_048_576
+            width, height = service.output_size(str(canvas.get("aspect_ratio") or "16:9"), budget)
+        from zet.services.scene_background_service import SceneBackgroundService
+        backgrounds = SceneBackgroundService(self.story_service.story_reference_service, self.story_service.scene_render_target_service)
+        background = None
+        background_warning = ""
+        try:
+            background = backgrounds.resolve(data, layout, width=width, height=height)
+        except ValueError as exc:
+            background_warning = str(exc)
+        if target_id == "main":
+            composition_ids = {item["element_id"] for item in composition["pawns"]}
+            main_elements = [item for item in elements if item.get("id") in composition_ids]
+            camera_layout = {**layout, "pawns": [item for item in composition["pawns"]]}
+        else:
+            main_elements = [item for item in elements if item.get("id") in {pawn["element_id"] for pawn in composition["pawns"]}]
+            camera_layout = {**layout, "pawns": composition["pawns"]}
+        projection = service.project(camera_layout, width=width, height=height, aspect=backgrounds.aspect(data))
+        composition["groups_workspace"] = target_id
+        service.aggregate_group_projection(projection, composition, main_elements)
+        projection["warnings"].extend(service.empty_group_warnings(composition, data.get("subscenes") or []))
+        if background:
+            projection["background"] = background["projection"]
+        if background_warning:
+            projection["warnings"].append(background_warning)
+        import base64
+        png = service.render_guidance(camera_layout, projection, main_elements, background_png=background["png_bytes"] if background else None)
+        return {"projection": projection, "guidance_png_base64": base64.b64encode(png).decode("ascii"),
+                "layout_3d": layout, "background_options": backgrounds.options(data),
+                "composition": composition,
+                "background_source_png_base64": base64.b64encode(background["source_png_bytes"]).decode("ascii") if background else "",
+                "sha256": __import__("hashlib").sha256(png).hexdigest(),
+                "warnings": projection["warnings"], "migration_review_required": layout.get("migration_review_required", False),
+                "provisional_elements": [item["element_id"] for item in camera_layout["pawns"] if item["provisional_height"]]}
+
+    def create_scene_layout_draft(self, data: dict, target_id: str = "main") -> dict:
+        """Create an unsaved 3D layout draft from scene elements and legacy positions."""
+        service = self.story_service.scene_layout_service
+        targets = service.normalize_targets(data)
+        if target_id not in targets["targets"]:
+            raise ValueError(f"Scene subscene not found: {target_id}")
+        return targets["targets"][target_id]
+
+    def save_scene_layout(self, story_slug: str, scene_slug: str, target_id: str, layout: dict,
+                          expected_revision: int):
+        """Save a single 3D layout workspace without replacing other scene edits."""
+        return self._indexed_write(lambda: self.story_service.save_scene_layout_data(
+            story_slug, scene_slug, target_id, layout, expected_revision
+        ))
+
     def export_scene_builder_markdown(self, story_slug: str, scene_slug: str, data: dict) -> SceneDocument:
         """Export Scene Builder-managed markdown into the scene file."""
         return self._indexed_write(

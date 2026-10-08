@@ -1,9 +1,110 @@
 import unittest
+import copy
 
 from zet.services.qwen_scene_prompt import analyze_qwen_scene_prompt, compile_qwen_scene_prompt
+from zet.services.scene_render_target_service import SceneRenderTargetService
 
 
 class QwenScenePromptTests(unittest.TestCase):
+    def test_measured_layout_overrides_legacy_spatial_prose_but_keeps_action(self):
+        ir = {
+            "elements": [{"id": "boy", "display_name": "Schoolboy", "element_type": "Character"}],
+            "placements": [{"scene_element_id": "boy", "position_within_cell": "right", "depth": "foreground",
+                            "world_position": "closest to camera on the left", "placement_notes": "standing in the foreground",
+                            "pose": {"summary": "Facing away from the camera, raising his left hand to grab the pouch"}}],
+            "layout_projection": {"subjects": [{"element_id": "boy", "screen": {"x": .72, "y": .5, "width": .12, "height": .4,
+                                                                        "feet": {"x": .72, "y": .7}},
+                                                    "camera_facing": "front three-quarter", "head_facing": "front",
+                                                    "physical_height": "5 ft 7 in", "depth_m": 8}]},
+            "composition": {"left_to_right": ["unrelated", "boy"], "composition_notes": "Boy stands on the left in the back row."},
+        }
+        prompt = compile_qwen_scene_prompt(ir)
+        self.assertIn("feet anchored 72.0%", prompt)
+        self.assertIn("raising his left hand", prompt)
+        self.assertNotIn("closest to camera", prompt)
+        self.assertNotIn("back row", prompt)
+        self.assertNotIn("Facing away from the camera", prompt)
+
+    def test_hidden_projected_subject_is_not_rendered(self):
+        prompt = compile_qwen_scene_prompt({
+            "elements": [{"id": "hidden", "display_name": "Hidden person", "element_type": "Character"}],
+            "placements": [{"scene_element_id": "hidden", "position_within_cell": "none"}],
+            "layout_projection": {"subjects": [{"element_id": "hidden"}]},
+        })
+        self.assertNotIn("Hidden person", prompt)
+
+    def test_group_reference_carries_identity_action_not_parent_placement(self):
+        prompt = compile_qwen_scene_prompt({
+            "elements": [{"id": "group", "display_name": "Schoolboys and Kaeldor", "resource_type": "Scene-Only",
+                          "element_type": "Prop"}],
+            "placements": [{"scene_element_id": "group", "position_within_cell": "center",
+                            "layout_projection": {"kind": "group", "screen": {"x": .5, "y": .5, "width": .4, "height": .7},
+                                                  "members": []}}],
+            "layout_projection": {"subjects": [{"element_id": "group"}]},
+            "image_inputs": [{"index": 1, "role": "subject_reference", "applies_to": "group",
+                              "source_role": "managed_subscene_reference"}],
+        })
+        self.assertIn("member identity, costume, and action reference", prompt)
+        self.assertIn("parent measured projection controls each member's final screen placement", prompt)
+
+    def test_suppressed_legacy_spatial_fields_do_not_change_guided_output_or_fingerprint(self):
+        ir = {
+            "elements": [{"id": "boy", "display_name": "Schoolboy", "element_type": "Character"}],
+            "placements": [{"scene_element_id": "boy", "position_within_cell": "right", "depth": "foreground",
+                            "world_position": "on the left in the near foreground", "placement_notes": "Schoolboy is behind Kaeldor.",
+                            "pose": {"summary": "Raising his left hand", "gaze_target_element_id": ""},
+                            "motion": {"state": "moving", "direction_screen": "left", "cue": "running on the right"}}],
+            "composition": {"left_to_right": ["boy"], "composition_notes": "Schoolboy stands on the left in the back row."},
+            "layout_projection": {"subjects": [{"element_id": "boy", "screen": {"x": .72, "y": .5, "width": .12,
+                                                                           "height": .4, "feet": {"x": .72, "y": .7}},
+                                                     "camera_facing": "front three-quarter", "head_facing": "front",
+                                                     "physical_height": "5 ft 7 in", "depth_m": 8}]},
+        }
+        changed_legacy = copy.deepcopy(ir)
+        changed_legacy["placements"][0].update(position_within_cell="left", depth="background",
+            world_position="closest to camera, far right", placement_notes="Schoolboy is at far right behind the other figures.")
+        changed_legacy["placements"][0]["motion"].update(direction_screen="right", cue="running into the foreground")
+        changed_legacy["composition"]["left_to_right"] = ["other", "boy"]
+        changed_legacy["composition"]["composition_notes"] = "Schoolboy stands in the right foreground."
+        prompt = compile_qwen_scene_prompt(ir)
+        changed_prompt = compile_qwen_scene_prompt(changed_legacy)
+        self.assertEqual(prompt, changed_prompt)
+        self.assertEqual(SceneRenderTargetService.input_hash(ir, {}, []),
+                         SceneRenderTargetService.input_hash(changed_legacy, {}, []))
+
+        changed_geometry = copy.deepcopy(changed_legacy)
+        changed_geometry["layout_projection"]["subjects"][0]["screen"]["feet"]["x"] = .68
+        changed_geometry["layout_projection"]["subjects"][0]["screen"]["x"] = .68
+        geometry_prompt = compile_qwen_scene_prompt(changed_geometry)
+        self.assertNotEqual(changed_prompt, geometry_prompt)
+        self.assertNotEqual(SceneRenderTargetService.input_hash(changed_legacy, {}, []),
+                            SceneRenderTargetService.input_hash(changed_geometry, {}, []))
+
+    def test_3d_layout_instructions_replace_legacy_position_text(self):
+        prompt = compile_qwen_scene_prompt({
+            "style": {"art_style": "fantasy illustration"},
+            "elements": [{"id": "traveler", "display_name": "Traveler", "fallback_visual_description": "a cloaked traveler"}],
+            "placements": [{"scene_element_id": "traveler", "position_within_cell": "left", "depth": "foreground",
+                            "world_position": "inside the left doorway", "pose": {"summary": "standing"},
+                            "layout_projection": {"screen": {"height": .6, "feet": {"x": .28}}, "depth_m": 6.096,
+                                                  "camera_facing": "front", "head_facing": "front",
+                                                  "physical_height": "5 ft 8 in", "occupied_height": "3 ft 0 in"}}],
+            "layout_projection": {"subjects": [], "camera": {"height": "5 ft 6 in", "pitch_degrees": -4.2,
+                                  "yaw_degrees": 8.5, "vertical_fov": 50}},
+            "image_inputs": [{"index": 1, "role": "layout_reference", "label": "3D scene layout",
+                              "preserve": ["camera framing"], "change": ["replace gray pawns"]}],
+        })
+        self.assertIn("<image1> is the measured camera-view layout guide", prompt)
+        self.assertIn("feet anchored 28.0% from screen-left", prompt)
+        self.assertIn("camera distance approximately 20.0 ft", prompt)
+        self.assertIn("standing height 5 ft 8 in", prompt)
+        self.assertIn("staged occupied height 3 ft 0 in", prompt)
+        self.assertIn("camera height of 5 ft 6 in above ground", prompt)
+        self.assertIn("-4.2 degree pitch and 8.5 degree yaw", prompt)
+        self.assertIn("body in a front view", prompt)
+        self.assertNotIn("inside the left doorway", prompt)
+        self.assertNotIn("foreground", prompt)
+
     def test_zero_and_one_reference_scene_prompts(self):
         ir = {"canvas": {"orientation": "portrait"}, "scene": {"story_beat": "An elf opens a gate"},
               "style": {"art_style": "painterly fantasy illustration"},

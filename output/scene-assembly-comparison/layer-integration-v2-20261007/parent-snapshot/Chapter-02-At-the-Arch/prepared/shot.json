@@ -1,0 +1,140 @@
+{
+  "canvas": [
+    1376,
+    768
+  ],
+  "layers": [
+    {
+      "key": "Valindia",
+      "label": "Valindia",
+      "box": [
+        0.18,
+        0.06,
+        0.25,
+        0.91
+      ],
+      "depth": 3,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\Valindia.png",
+      "sha256": "63fb0ef0771895b71021fdada3edde6b75638589444680ef512bb3911425839d",
+      "bbox": [
+        0,
+        0,
+        357,
+        700
+      ],
+      "source_pixels": 249900,
+      "placed_size": [
+        344,
+        675
+      ],
+      "position": [
+        248,
+        70
+      ]
+    },
+    {
+      "key": "group",
+      "label": "Schoolboys and Kaeldor",
+      "box": [
+        0.4,
+        0.19,
+        0.31,
+        0.77
+      ],
+      "depth": 2,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\group.png",
+      "sha256": "266b356c7e2f4ff5d8b2d7ffcf60704af01bf4ea97d87a4af96ae5a7fc30ba5a",
+      "bbox": [
+        0,
+        0,
+        979,
+        856
+      ],
+      "source_pixels": 838024,
+      "placed_size": [
+        427,
+        373
+      ],
+      "position": [
+        550,
+        364
+      ]
+    },
+    {
+      "key": "Tsaeytte",
+      "label": "Tsaeytte",
+      "box": [
+        0.65,
+        0.08,
+        0.28,
+        0.89
+      ],
+      "depth": 3,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\Tsaeytte.png",
+      "sha256": "e7252569ab5bf799e15732fc934b4f6832d2bd7938772bd07903d51c1be36794",
+      "bbox": [
+        0,
+        0,
+        341,
+        536
+      ],
+      "source_pixels": 182776,
+      "placed_size": [
+        385,
+        605
+      ],
+      "position": [
+        895,
+        140
+      ]
+    },
+    {
+      "key": "dialogue-01",
+      "label": "Original dialogue balloon",
+      "box": [
+        0.27,
+        0.01,
+        0.16,
+        0.1
+      ],
+      "depth": 5,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\dialogue-01.png",
+      "sha256": "39b20401eeebc54cfad6762e09c5881eba6107fcadfa6946be615c7275bcdb1a",
+      "bbox": [
+        0,
+        0,
+        154,
+        57
+      ],
+      "source_pixels": 8778,
+      "dialogue_layer": true,
+      "placed_size": [
+        208,
+        77
+      ],
+      "position": [
+        378,
+        7
+      ]
+    }
+  ],
+  "dialogue": [
+    {
+      "text": "country girl",
+      "speaker": "Valindia",
+      "lines": 1
+    }
+  ],
+  "requirements": [
+    "Valindia walks away at left and turns only her head toward Tsaeytte.",
+    "Tsaeytte walks away at right, carrying her books, and turns only her head toward Valindia.",
+    "The three boys roughhouse together in the middle distance beneath the arch.",
+    "Valindia says the exact words \"country girl\" in a readable balloon."
+  ],
+  "dialogue_reference": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\reference_Valindia_with_dialogue.png",
+  "background": {
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\background.png",
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\02_003.png",
+    "sha256": "7b21768476ab3d1d33f037fa84727c05e0893b32300c38dbb3f1379766a3b9b2"
+  }
+}

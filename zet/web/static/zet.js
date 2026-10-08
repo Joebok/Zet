@@ -194,7 +194,9 @@ const LOCAL_ASSET_PAGES = new Set([
 ]);
 const PRODUCTION_PAGES = new Set(["prompt-review"]);
 const IMAGE_GENERATION_SLOT_COUNT = 8;
+const IMAGE_GENERATION_REFERENCE_COUNT = 10;
 let imageGenerationSlots = Array(IMAGE_GENERATION_SLOT_COUNT).fill(null);
+let imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
 let imageGenerationSelectedSlot = -1;
 let imageGenerationJobIds = [];
 const imageGenerationJobs = new Map();
@@ -204,11 +206,8 @@ const characterSelect = document.querySelector("#character-select");
 const imageGenerationForm = document.querySelector("#image-generation-form");
 const imageGenerationTxt2img = document.querySelector("#image-generation-txt2img");
 const imageGenerationImg2img = document.querySelector("#image-generation-img2img");
-const imageGenerationReferenceField = document.querySelector("#image-generation-reference-field");
-const imageGenerationReference = document.querySelector("#image-generation-reference");
-const imageGenerationReferencePreview = document.querySelector("#image-generation-reference-preview");
-const imageGenerationReferenceImage = document.querySelector("#image-generation-reference-image");
-const imageGenerationReferenceHint = document.querySelector("#image-generation-reference-hint");
+const imageGenerationReferenceSlotsElement = document.querySelector("#image-generation-reference-slots");
+const imageGenerationReferenceList = document.querySelector("#image-generation-reference-list");
 const imageGenerationPrompt = document.querySelector("#image-generation-prompt");
 const imageGenerationNegative = document.querySelector("#image-generation-negative");
 const imageGenerationWidth = document.querySelector("#image-generation-width");
@@ -237,9 +236,6 @@ const imageGenerationSource = document.querySelector("#image-generation-source")
 let imageGenerationMode = "txt2img";
 let imageGenerationReviewIndex = -1;
 let entityLibraryImportGeneration = null;
-let imageGenerationReferenceUrl = "";
-let imageGenerationPastedFile = null;
-let imageGenerationReferenceData = "";
 let imageGenerationOptionsLoaded = false;
 const phaseSelect = document.querySelector("#phase-select");
 const deletePhaseButton = document.querySelector("#delete-phase");
@@ -1169,18 +1165,94 @@ function setImageGenerationMode(mode) {
   imageGenerationImg2img.setAttribute("aria-pressed", String(editing));
   imageGenerationTxt2img.classList.toggle("primary-action", !editing);
   imageGenerationImg2img.classList.toggle("primary-action", editing);
-  imageGenerationReferenceField.hidden = !editing;
-  imageGenerationReferencePreview.hidden = !editing;
-  imageGenerationReference.required = editing && !imageGenerationReferenceData;
+  imageGenerationReferenceSlotsElement.hidden = !editing;
 }
 
-function setImageGenerationReference(file) {
-  if (!file || !file.type.startsWith("image/")) return;
-  if (imageGenerationReferenceUrl) URL.revokeObjectURL(imageGenerationReferenceUrl);
-  imageGenerationReferenceUrl = URL.createObjectURL(file);
-  imageGenerationReferenceImage.src = imageGenerationReferenceUrl;
-  imageGenerationReferenceImage.hidden = false;
-  imageGenerationReferenceHint.textContent = file.name || "Reference image selected · paste to replace";
+function renderImageGenerationReferenceSlots() {
+  imageGenerationReferenceList.replaceChildren();
+  for (let index = 0; index < IMAGE_GENERATION_REFERENCE_COUNT; index += 1) {
+    const reference = imageGenerationReferenceSlots[index] || {label: "", data: ""};
+    const slot = document.createElement("div");
+    slot.className = "image-generation-reference-slot";
+    if (index === 0) slot.id = "image-generation-reference-field";
+    const label = document.createElement("label");
+    label.textContent = `Prompt label · Image ${index + 1}`;
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.maxLength = 120;
+    labelInput.placeholder = index === 0 ? "e.g. the character's face" : "e.g. the blue embroidered coat";
+    labelInput.value = reference.label || "";
+    labelInput.setAttribute("aria-label", `Prompt label for reference image ${index + 1}`);
+    labelInput.addEventListener("input", () => {
+      imageGenerationReferenceSlots[index].label = labelInput.value;
+      saveImageGenerationState();
+    });
+    label.append(labelInput);
+    const controls = document.createElement("div");
+    controls.className = "image-generation-reference-controls";
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/png,image/jpeg,image/webp";
+    if (index === 0) fileInput.id = "image-generation-reference";
+    fileInput.setAttribute("aria-label", `Choose reference image ${index + 1}`);
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files[0];
+      if (!file || !file.type.startsWith("image/")) return;
+      try {
+        imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
+        imageGenerationReferenceSlots[index].data = await readImageGenerationReference(file);
+        renderImageGenerationReferenceSlots();
+        await saveImageGenerationReferences();
+        saveImageGenerationState();
+      } catch (error) {
+        showMessageElement(imageGenerationMessage, error.message || "Unable to save the reference image.", "error");
+      }
+    });
+    controls.append(fileInput);
+    if (reference.data) {
+      const preview = document.createElement("img");
+      preview.src = reference.data;
+      preview.alt = `Reference image ${index + 1}: ${reference.label || "unlabeled"}`;
+      preview.className = "image-generation-reference-thumb";
+      controls.append(preview);
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.textContent = "Remove";
+      clear.addEventListener("click", async () => {
+        imageGenerationReferenceSlots[index].data = "";
+        renderImageGenerationReferenceSlots();
+        await saveImageGenerationReferences();
+        saveImageGenerationState();
+      });
+      controls.append(clear);
+    } else {
+      const paste = document.createElement("div");
+      paste.className = "paste-zone image-generation-reference-paste";
+      paste.tabIndex = 0;
+      paste.setAttribute("role", "button");
+      paste.setAttribute("aria-label", `Paste reference image ${index + 1}`);
+      paste.textContent = "Click, then press Ctrl+V to paste";
+      paste.addEventListener("click", () => fileInput.click());
+      paste.addEventListener("paste", async (event) => {
+        const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
+        const file = imageItem?.getAsFile();
+        if (!file) return;
+        event.preventDefault();
+        try {
+          imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
+          imageGenerationReferenceSlots[index].data = await readImageGenerationReference(file);
+          renderImageGenerationReferenceSlots();
+          await saveImageGenerationReferences();
+          saveImageGenerationState();
+        } catch (error) {
+          showMessageElement(imageGenerationMessage, error.message || "Unable to save the reference image.", "error");
+        }
+      });
+      controls.append(paste);
+    }
+    slot.append(label, controls);
+    imageGenerationReferenceList.append(slot);
+  }
 }
 
 function saveImageGenerationState() {
@@ -1191,7 +1263,7 @@ function saveImageGenerationState() {
       negativePrompt: imageGenerationNegative.value,
       width: imageGenerationWidth.value,
       height: imageGenerationHeight.value,
-      referenceName: imageGenerationPastedFile?.name || imageGenerationReference.files[0]?.name || "",
+      referenceLabels: imageGenerationReferenceSlots.map((reference) => reference.label),
       slots: imageGenerationSlots,
       selectedSlot: imageGenerationSelectedSlot,
       jobIds: imageGenerationJobIds,
@@ -1212,12 +1284,17 @@ function openImageGenerationDatabase() {
   });
 }
 
-async function saveImageGenerationReference() {
+async function saveImageGenerationReferences() {
   const database = await openImageGenerationDatabase();
   await new Promise((resolve, reject) => {
     const transaction = database.transaction("state", "readwrite");
-    if (imageGenerationReferenceData) transaction.objectStore("state").put(imageGenerationReferenceData, "reference");
-    else transaction.objectStore("state").delete("reference");
+    const store = transaction.objectStore("state");
+    imageGenerationReferenceSlots.forEach((reference, index) => {
+      const key = `reference-${index}`;
+      if (reference.data) store.put(reference.data, key);
+      else store.delete(key);
+    });
+    store.delete("reference");
     transaction.addEventListener("complete", resolve, { once: true });
     transaction.addEventListener("error", () => reject(transaction.error), { once: true });
   });
@@ -1237,6 +1314,11 @@ async function restoreImageGenerationInputs() {
     imageGenerationNegative.value = saved.negativePrompt || "";
     if (saved.width) imageGenerationWidth.value = saved.width;
     if (saved.height) imageGenerationHeight.value = saved.height;
+    if (Array.isArray(saved.referenceLabels)) {
+      imageGenerationReferenceSlots.forEach((reference, index) => { reference.label = saved.referenceLabels[index] || ""; });
+    } else if (saved.referenceName) {
+      imageGenerationReferenceSlots[0].label = saved.referenceName;
+    }
     if (Array.isArray(saved.slots) && saved.slots.length === IMAGE_GENERATION_SLOT_COUNT) {
       imageGenerationSlots = saved.slots;
       imageGenerationSelectedSlot = Number.isInteger(saved.selectedSlot) ? saved.selectedSlot : -1;
@@ -1254,17 +1336,22 @@ async function restoreImageGenerationInputs() {
   }
   try {
     const database = await openImageGenerationDatabase();
-    imageGenerationReferenceData = await new Promise((resolve, reject) => {
-      const request = database.transaction("state", "readonly").objectStore("state").get("reference");
-      request.addEventListener("success", () => resolve(request.result || ""), { once: true });
+    const store = database.transaction("state", "readonly").objectStore("state");
+    imageGenerationReferenceSlots = await Promise.all(imageGenerationReferenceSlots.map((reference, index) => new Promise((resolve, reject) => {
+      const request = store.get(`reference-${index}`);
+      request.addEventListener("success", () => resolve({...reference, data: request.result || ""}), { once: true });
       request.addEventListener("error", () => reject(request.error), { once: true });
-    });
-    database.close();
-    if (imageGenerationReferenceData) {
-      imageGenerationReferenceImage.src = imageGenerationReferenceData;
-      imageGenerationReferenceImage.hidden = false;
-      imageGenerationReferenceHint.textContent = saved?.referenceName || "Reference image selected · paste to replace";
+    })));
+    if (!imageGenerationReferenceSlots.some((reference) => reference.data)) {
+      const legacy = await new Promise((resolve, reject) => {
+        const request = store.get("reference");
+        request.addEventListener("success", () => resolve(request.result || ""), { once: true });
+        request.addEventListener("error", () => reject(request.error), { once: true });
+      });
+      if (legacy) imageGenerationReferenceSlots[0].data = legacy;
     }
+    database.close();
+    renderImageGenerationReferenceSlots();
   } catch {
     showMessageElement(imageGenerationMessage, "Unable to restore the saved reference image in this browser.", "warning");
   }
@@ -1309,14 +1396,9 @@ async function modifyEntityLibraryImageWithGenerator() {
       imageGenerationSource.hidden = false;
       imageGenerationSource.dataset.assetId = asset.asset_id;
       imageGenerationSource.dataset.checksum = asset.checksum;
-      imageGenerationReference.value = "";
-      imageGenerationPastedFile = null;
-      if (imageGenerationReferenceUrl) URL.revokeObjectURL(imageGenerationReferenceUrl);
-      imageGenerationReferenceUrl = "";
-      imageGenerationReferenceData = data;
-      imageGenerationReferenceImage.src = data;
-      imageGenerationReferenceImage.hidden = false;
-      imageGenerationReferenceHint.textContent = asset.file_name;
+      imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
+      imageGenerationReferenceSlots[0] = {label: "source image", data};
+      renderImageGenerationReferenceSlots();
       imageGenerationPrompt.value = asset.prompt || "";
       imageGenerationNegative.value = asset.negative_prompt || "";
       const sourceWidth = imageGenerationDimensionFromSource(asset.width);
@@ -1325,7 +1407,7 @@ async function modifyEntityLibraryImageWithGenerator() {
       if (sourceHeight) imageGenerationHeight.value = sourceHeight;
       setImageGenerationMode("img2img");
       saveImageGenerationState();
-      await saveImageGenerationReference();
+      await saveImageGenerationReferences();
       await activatePage("image-generation", { skipAutosave: true });
     });
   } catch (error) {
@@ -1537,16 +1619,24 @@ async function pollImageGeneration(requestId) {
 async function submitImageGenerationForSlots(slotIndexes) {
   if (imageGenerationPending || !slotIndexes.length) return;
   const previousResults = slotIndexes.map((slot) => imageGenerationResult(slot)).filter(Boolean);
-  if (imageGenerationMode === "img2img" && !imageGenerationReference.files.length && !imageGenerationReferenceData) {
-    showMessageElement(imageGenerationMessage, "Choose a reference image for img2img.", "error");
-    return;
+  const references = imageGenerationMode === "img2img"
+    ? imageGenerationReferenceSlots.map((reference, index) => ({...reference, index})).filter((reference) => reference.data)
+    : [];
+  if (imageGenerationMode === "img2img") {
+    if (!references.length) {
+      showMessageElement(imageGenerationMessage, "Choose at least one reference image for img2img.", "error");
+      return;
+    }
+    const unlabeled = references.find((reference) => !reference.label.trim());
+    if (unlabeled) {
+      showMessageElement(imageGenerationMessage, `Enter a prompt label for reference image ${unlabeled.index + 1}.`, "error");
+      return;
+    }
   }
   imageGenerationPending = true;
   renderImageGenerationStatus();
   showMessageElement(imageGenerationMessage, "Staging images through AI_Proxy…", "info");
   try {
-    const file = imageGenerationMode === "img2img" ? (imageGenerationReference.files[0] || imageGenerationPastedFile) : null;
-    const referenceImage = file ? await readImageGenerationReference(file) : imageGenerationReferenceData;
     const payload = await fetchJson("/api/image-generation/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1557,7 +1647,8 @@ async function submitImageGenerationForSlots(slotIndexes) {
         width: Number(imageGenerationWidth.value),
         height: Number(imageGenerationHeight.value),
         count: slotIndexes.length,
-        reference_image: referenceImage,
+        reference_images: references.map(({label, data}) => ({label: label.trim(), image: data})),
+        ...(references.length === 1 ? {reference_image: references[0].data} : {}),
         source_asset_id: imageGenerationSource.dataset.assetId || "",
         source_checksum: imageGenerationSource.dataset.checksum || "",
       }),
@@ -1609,12 +1700,9 @@ async function clearImageGenerationResults() {
     imageGenerationReview.close();
     showMessageElement(imageGenerationMessage, "Results cleared.", "success");
     imageGenerationForm.reset();
-    imageGenerationReferenceData = "";
-    imageGenerationPastedFile = null;
-    await saveImageGenerationReference();
-    imageGenerationReferenceImage.removeAttribute("src");
-    imageGenerationReferenceImage.hidden = true;
-    imageGenerationReferenceHint.textContent = "Choose an image or paste one here";
+    imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
+    renderImageGenerationReferenceSlots();
+    await saveImageGenerationReferences();
     imageGenerationSource.hidden = true;
     imageGenerationSource.dataset.assetId = "";
     imageGenerationSource.dataset.checksum = "";
@@ -1909,7 +1997,9 @@ function builderOptions(name) {
 }
 
 function builderOptionHtml(name, selected = "") {
-  return builderOptions(name).map((value) => `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
+  const options = builderOptions(name);
+  const values = name === "aspect_ratio" && selected && !options.includes(selected) ? [...options, selected] : options;
+  return values.map((value) => `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
 }
 
 const SCENE_BUILDER_HELP = {
@@ -7442,6 +7532,10 @@ function builderRenderComposition() {
         ${builderField("setup.composition.composition_notes", "(Composition notes) Rendered as a bullet: ...", "", true, "textarea")}
       </div>
     </div>
+    <div class="scene-builder-card scene-layout-launch-card">
+      <div><h4>3D Layout</h4><p>Place scene elements in feet and inches, set independent body and head facing, and inspect the fixed render camera.</p></div>
+      <button type="button" class="primary-action" data-layout-open>Open 3D Layout</button>
+    </div>
   `;
 }
 
@@ -8130,7 +8224,7 @@ function renderSceneBuilder() {
           <h3>${escapeHtml(scene.name || scene.slug || "Untitled scene")}</h3>
           <p>${escapeHtml(scene.story_beat || "No story beat set.")}</p>
           <p class="status-text">Return to Full Scene to edit shared scene values.</p>
-        </div>${builderRenderSubsceneSettings()}` : `<div class="scene-builder-card scene-builder-story-beat">
+        </div><div class="scene-builder-card scene-layout-launch-card"><div><h4>3D Layout</h4><p>Arrange the members of this subscene at their measured sizes and set its independent camera.</p></div><button type="button" class="primary-action" data-layout-open>Open 3D Layout</button></div>${builderRenderSubsceneSettings()}` : `<div class="scene-builder-card scene-builder-story-beat">
           <span class="eyebrow">Scene foundation</span>
           <h3>Story Beat</h3>
           <div class="scene-builder-fields">
@@ -14512,37 +14606,11 @@ imageGenerationFill.addEventListener("click", () => {
   void submitImageGenerationForSlots(slots);
 });
 imageGenerationClear.addEventListener("click", clearImageGenerationResults);
-imageGenerationReference.addEventListener("change", () => {
-  imageGenerationPastedFile = null;
-  setImageGenerationReference(imageGenerationReference.files[0]);
-  const file = imageGenerationReference.files[0];
-  if (file) readImageGenerationReference(file).then((data) => {
-    if (imageGenerationReference.files[0] !== file) return;
-    imageGenerationReferenceData = data;
-    saveImageGenerationReference().catch(() => showMessageElement(imageGenerationMessage, "Unable to save the reference image.", "error"));
-    saveImageGenerationState();
-  }).catch(() => showMessageElement(imageGenerationMessage, "Unable to save the reference image.", "error"));
-});
+renderImageGenerationReferenceSlots();
 for (const input of [imageGenerationPrompt, imageGenerationNegative, imageGenerationWidth, imageGenerationHeight]) {
   input.addEventListener("input", saveImageGenerationState);
   input.addEventListener("change", saveImageGenerationState);
 }
-imageGenerationReferencePreview.addEventListener("paste", async (event) => {
-  if (imageGenerationMode !== "img2img") return;
-  const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
-  const file = imageItem?.getAsFile();
-  if (file) {
-    event.preventDefault();
-    imageGenerationReference.value = "";
-    imageGenerationPastedFile = file;
-    setImageGenerationReference(file);
-    const data = await readImageGenerationReference(file);
-    if (imageGenerationPastedFile !== file) return;
-    imageGenerationReferenceData = data;
-    await saveImageGenerationReference();
-    saveImageGenerationState();
-  }
-});
 localImageReviewPrev.addEventListener("click", () => {
   selectAdjacentAssetTask(state.localImageReviewTasks, state.selectedLocalImageReviewAskId, -1, selectLocalImageReviewTask);
 });
@@ -14940,3 +15008,72 @@ document.addEventListener("visibilitychange", () => {
 });
 
 main();
+
+window.zetSceneLayout = {
+  drafts: new Map(),
+  current() {
+    const activeTarget = state.activeBuilderRenderTarget || "main";
+    const definition = (state.sceneBuilder?.subscenes || []).find((item) => item.id === activeTarget);
+    return {
+      storySlug: state.selectedStorySlug,
+      sceneSlug: state.selectedSceneSlug,
+      data: state.sceneBuilder,
+      activeTarget,
+      layout: this.drafts.get(activeTarget) || (activeTarget === "main" ? state.sceneBuilder?.layout_3d : definition?.layout_3d),
+    };
+  },
+  setLayout(layout) {
+    if (!state.sceneBuilder) return;
+    const targetId = state.activeBuilderRenderTarget || "main";
+    this.drafts.set(targetId, layout);
+    if (targetId === "main") state.sceneBuilder.layout_3d = layout;
+    else {
+      const definition = (state.sceneBuilder.subscenes || []).find((item) => item.id === targetId);
+      if (definition) definition.layout_3d = layout;
+    }
+    updateDirtyIndicators();
+  },
+  setActiveTarget(targetId) {
+    state.activeBuilderRenderTarget = targetId || "main";
+    updateDirtyIndicators();
+  },
+  async save() {
+    const session = this.current();
+    const targetId = session.activeTarget || "main";
+    const response = await fetch(`/api/stories/${encodeURIComponent(session.storySlug)}/scenes/${encodeURIComponent(session.sceneSlug)}/builder/3d-layout?target_id=${encodeURIComponent(targetId)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout_3d: this.drafts.get(targetId) || session.layout || state.sceneBuilder.layout_3d, expected_revision: state.sceneBuilder._revision || 0 }),
+    });
+    const payload = await response.json();
+    if (!response.ok) { showSceneBuilderMessage(payload.detail || "Unable to save 3D layout.", "error"); return false; }
+    const saved = payload.document?.data;
+    if (saved) {
+      state.sceneBuilder._revision = saved._revision;
+      const baseline = savedSceneBuilderData() || {};
+      baseline._revision = saved._revision;
+      const definition = (state.sceneBuilder.subscenes || []).find((item) => item.id === targetId);
+      if (targetId === "main") {
+        state.sceneBuilder.layout_3d = this.drafts.get(targetId);
+        baseline.layout_3d = saved.layout_3d;
+        for (const savedDefinition of saved.subscenes || []) {
+          const baseDefinition = (baseline.subscenes || []).find((item) => item.id === savedDefinition.id);
+          if (baseDefinition) baseDefinition.layout_3d = savedDefinition.layout_3d;
+          const currentDefinition = (state.sceneBuilder.subscenes || []).find((item) => item.id === savedDefinition.id);
+          if (currentDefinition) currentDefinition.layout_3d = savedDefinition.layout_3d;
+        }
+      } else if (definition) {
+        definition.layout_3d = this.drafts.get(targetId);
+        const baseDefinition = (baseline.subscenes || []).find((item) => item.id === targetId);
+        if (baseDefinition) baseDefinition.layout_3d = definition.layout_3d;
+      }
+      this.drafts.delete(targetId);
+      state.savedBaselines.sceneBuilder = JSON.stringify(baseline);
+    }
+    updateDirtyIndicators();
+    showSceneBuilderMessage(payload.message || "3D layout saved.", "success");
+    return true;
+  },
+  isEditingFullScene() {
+    return !builderActiveSubscene();
+  },
+};

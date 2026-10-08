@@ -1,0 +1,580 @@
+{
+  "schema_version": 4,
+  "prompt_schema_version": 2,
+  "engine_profile": "chatgpt_images_2_5_v1",
+  "render_target": {
+    "id": "Schoolboys_440071c5_subscene",
+    "label": "Schoolboys and Kaeldor",
+    "kind": "element_subscene",
+    "anchor_element_id": "Schoolboys_440071c5",
+    "anchor": {
+      "id": "Schoolboys_440071c5",
+      "display_name": "Schoolboys",
+      "resource_type": "Scene-Only",
+      "element_type": "Character",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [],
+      "element_visual_override": "Preserve all three distinct students and their playful interaction from the subscene reference. Schoolboy 1 gently shoves Schoolboy 2, who laughs; Kaeldor stands to their right, pointing and grinning. Render this group once in the background beyond the archway.",
+      "fallback_visual_description": "One group of exactly three elven academy students: red-haired Schoolboy 1, dark-haired Schoolboy 2, and Kaeldor.",
+      "notes": "",
+      "subscene_id": ""
+    },
+    "depth": 1
+  },
+  "render_inputs": [],
+  "baked_landmarks": [],
+  "scene": {
+    "id": "chapter_01_standing_in_wonder",
+    "name": "Chapter 01 Standing in Wonder",
+    "slug": "Chapter-01-Standing-in-Wonder",
+    "story_beat": ""
+  },
+  "source": {
+    "scene_json_path": null,
+    "story_settings_path": "Stories/FirstDay/FirstDay.story.json",
+    "source_hashes": {}
+  },
+  "canvas": {
+    "orientation": "landscape",
+    "aspect_ratio": "4:3"
+  },
+  "composition": {
+    "focal_point": "The playful interaction between Schoolboy 1, Schoolboy 2, and Kaeldor",
+    "left_to_right": [
+      "schoolboy_1",
+      "schoolboy_2",
+      "Kaeldor_e02a5624"
+    ],
+    "composition_notes": "Exactly three separate young elven males, all full body and clearly identifiable. Red-haired Schoolboy 1 at left gently shoves dark-haired Schoolboy 2 at center; Schoolboy 2 leans away, laughing, raising his hands in mock protest. Kaeldor at right grins and points at the Schoolboy 2. All characters hands and bodies remain distinct. No other people, no speech panels. A single captured moment of harmless horseplay, not a sequence of panels."
+  },
+  "style": {
+    "art_style": "Painterly semi-realistic fantasy illustration with anime-influenced facial stylization and refined linework.",
+    "visual_continuity": {
+      "rules": [
+        "Preserve the story's canonical art style across all scene images.",
+        "Preserve recurring characters, costumes, props, and locations when referenced by scene tags."
+      ],
+      "notes": ""
+    },
+    "profile": {
+      "include_story_premise": false,
+      "include_visual_continuity": true,
+      "include_dialogue_when_scene_has_dialogue": true,
+      "include_reference_assignments": true,
+      "notes": ""
+    }
+  },
+  "environment": {
+    "location": "A simple stretch of stone pathway.",
+    "general_background_notes": "Simple unobtrusive light background. This three-person group will be placed small in the background of the full scene. All characters should be shown full body, head to toe.",
+    "general_foreground_notes": "",
+    "lighting": "Morning sun",
+    "mood": "optimistic",
+    "weather_or_atmosphere": "clear"
+  },
+  "depth_lanes": {
+    "foreground": [],
+    "midground": [
+      "Kaeldor_e02a5624",
+      "schoolboy_1",
+      "schoolboy_2"
+    ],
+    "background": []
+  },
+  "elements": [
+    {
+      "id": "Kaeldor_e02a5624",
+      "display_name": "Kaeldor",
+      "resource_type": "Person",
+      "element_type": "Character",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "person",
+      "aux_resource_id": "kaeldor",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "set_id": "",
+          "primary_prompt_source": true,
+          "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "label": "Kaeldor",
+          "tag": "",
+          "reference_key": ""
+        }
+      ],
+      "element_visual_override": "Short light brown hair with shaved geometric sides, ivory open-collar shirt and burgundy waistcoat from his identity reference; grinning and pointing toward the schoolboys.",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": "Schoolboys_440071c5_subscene",
+      "resolved_source_sections": {
+        "identity_preservation_core": "Kaeldor is a young male elf with pointed ears, warm tan skin, short light-brown hair, shaved geometric patterns at the sides, and a confident grin. Ivory open-collar linen shirt with rolled sleeves, burgundy waistcoat with gold academy crest, dark trousers and leather belt, a blue pendant.",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "costume_source": "Library/assets/9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "library_asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "library_checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+        "reference_warnings": [
+          "Optional legacy auxiliary fallback is unavailable: Auxiliary resource kaeldor not found."
+        ]
+      }
+    },
+    {
+      "id": "schoolboy_1",
+      "display_name": "Schoolboy 1",
+      "resource_type": "Person",
+      "element_type": "Character",
+      "subscene_id": "Schoolboys_440071c5_subscene",
+      "reference_images": [
+        {
+          "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "label": "Schoolboy 1",
+          "roles": [
+            "identity",
+            "costume"
+          ],
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "primary_prompt_source": true,
+          "tag": "",
+          "reference_key": "",
+          "set_id": "",
+          "notes": ""
+        }
+      ],
+      "fallback_visual_description": "Slim young elf with tousled copper-red hair and freckles, ivory shirt, burgundy waistcoat, charcoal trousers, brown boots.",
+      "element_visual_override": "Gently pushing Schoolboy 2 at the shoulder while smiling",
+      "notes": "",
+      "resolved_source_sections": {
+        "identity_preservation_core": "Schoolboy 1: slim youthful male elf with pale warm skin, pointed ears, tousled copper-red hair, freckles and a mischievous smile. burgundy school blazor, ivory shirt purple tie, burgundy academy waistcoat with gold crest, charcoal trousers, brown belt and boots.",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "costume_source": "Library/assets/14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "library_asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "library_checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+        "reference_warnings": []
+      }
+    },
+    {
+      "id": "schoolboy_2",
+      "display_name": "Schoolboy 2",
+      "resource_type": "Person",
+      "element_type": "Character",
+      "subscene_id": "Schoolboys_440071c5_subscene",
+      "reference_images": [
+        {
+          "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "label": "Schoolboy 2",
+          "roles": [
+            "identity",
+            "costume"
+          ],
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "primary_prompt_source": true,
+          "tag": "",
+          "reference_key": "",
+          "set_id": "",
+          "notes": ""
+        }
+      ],
+      "fallback_visual_description": "Young elf with olive skin, short dark hair, hazel eyes and a rounder face, ivory shirt, burgundy waistcoat, charcoal trousers, brown boots.",
+      "element_visual_override": "Leaning away from Schoolboy 1 with raised hands in mock protest and laughing",
+      "notes": "",
+      "resolved_source_sections": {
+        "identity_preservation_core": "Schoolboy 2: youthful male elf with medium olive skin, pointed ears, short dark brown hair, hazel eyes, rounder face and amused grin. burgundy school blazer, ivory shirt, loose deep purple tie, burgundy academy waistcoat with gold crest, charcoal trousers, brown belt and boots.",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "costume_source": "Library/assets/89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "library_asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "library_checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+        "reference_warnings": []
+      }
+    }
+  ],
+  "placements": [
+    {
+      "id": "placement_1784319458561",
+      "scene_element_id": "Kaeldor_e02a5624",
+      "position_within_cell": "right",
+      "depth": "midground",
+      "pose": {
+        "summary": "Standing at the right, one hand pointing toward the schoolboys",
+        "gaze_target_element_id": "schoolboy_2",
+        "expression": "grinning"
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "",
+        "cue": "Entering the scene from the background, moving along the pathway."
+      },
+      "placement_notes": "Kaeldor is approaching from the far side of the archway.",
+      "world_position": "To the right of both schoolboys in the group"
+    },
+    {
+      "id": "schoolboy_1_placement",
+      "scene_element_id": "schoolboy_1",
+      "position_within_cell": "left",
+      "depth": "midground",
+      "pose": {
+        "summary": "Extending one hand to Schoolboy 2's shoulder",
+        "gaze_target_element_id": "schoolboy_2",
+        "expression": "playfully amused"
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "right",
+        "cue": "Harmless schoolboy horseplay"
+      },
+      "placement_notes": ""
+    },
+    {
+      "id": "schoolboy_2_placement",
+      "scene_element_id": "schoolboy_2",
+      "position_within_cell": "center",
+      "depth": "midground",
+      "pose": {
+        "summary": "Leaning sideways with both hands raised in playful protest",
+        "gaze_target_element_id": "schoolboy_1",
+        "expression": "playfully amused"
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "right",
+        "cue": "Harmless schoolboy horseplay"
+      },
+      "placement_notes": ""
+    }
+  ],
+  "interactions": [
+    {
+      "id": "schoolboy_shove",
+      "subject_element_id": "schoolboy_1",
+      "relationship": "playfully shoves",
+      "target_element_id": "schoolboy_2",
+      "note": "One hand on the shoulder, harmless horseplay; Schoolboy 2 leans away laughing."
+    },
+    {
+      "id": "kaeldor_points",
+      "subject_element_id": "Kaeldor_e02a5624",
+      "relationship": "points at",
+      "target_element_id": "schoolboy_2",
+      "note": "Kaeldor grins at the boys' antics from their right."
+    }
+  ],
+  "custom_interactions": "",
+  "dialogue": [],
+  "dialogue_styles": [],
+  "references": [
+    {
+      "id": "ref_Kaeldor_e02a5624_{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+      "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+      "applies_to_element_id": "Kaeldor_e02a5624",
+      "roles": [
+        "visual reference"
+      ],
+      "preserve": [],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "ref_schoolboy_1_{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+      "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+      "applies_to_element_id": "schoolboy_1",
+      "roles": [
+        "identity",
+        "costume"
+      ],
+      "preserve": [
+        "face",
+        "hair",
+        "pointed ears",
+        "academy clothing"
+      ],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "ref_schoolboy_2_{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+      "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+      "applies_to_element_id": "schoolboy_2",
+      "roles": [
+        "identity",
+        "costume"
+      ],
+      "preserve": [
+        "face",
+        "hair",
+        "pointed ears",
+        "academy clothing"
+      ],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": ""
+    }
+  ],
+  "final_image_prompt_sections": {
+    "anatomical_requirements": "# Anatomical Requirements\n\nRender anatomically correct characters.\n\n- Every visible hand has exactly five fingers in the correct anatomical arrangement.\n- Hands, wrists, elbows, shoulders, legs, feet, necks, and torsos are naturally connected.\n- No extra limbs, missing limbs, fused limbs, duplicated body parts, or disconnected anatomy.\n- Fingers have natural proportions and believable poses.\n- Character interactions do not cause anatomy to intersect or merge.",
+    "avoid": "# Avoid\n\n- Inconsistent character identity.\n- Wrong costume.\n- Modern objects.\n- Unreadable faces.\n- Merged characters.\n- Cropped characters.\n- Anatomical distortions.",
+    "high_risk_elements": "# High-Risk Elements\n\nPay particular attention to:\n\n- Hands making gestures.\n- Characters sitting with crossed legs.\n- Characters touching or closely facing each other.\n- Objects held in the hands.\n- Long ears remaining fully attached and correctly shaped.\n- Hair remaining consistent with the reference.",
+    "final_verification": "# Final Verification\n\n<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->\nBefore producing the final image, verify that:\n<!-- ZET:END IMAGE_PROMPT_ONLY -->\n<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->\nCheck the candidate image for these visible requirements:\n<!-- ZET:END ANALYSIS_PROMPT_ONLY -->\n\n- Character count and identities exactly match the scene description.\n- Every character is in the correct left/right position and depth.\n- Every visible hand has exactly five fingers with correct anatomy.\n- Arms, legs, feet, ears, and clothing are fully connected and anatomically correct.\n- Characters are completely separate; no merged bodies or intersecting limbs.\n- Props are held naturally and are clearly readable.\n- Eye lines and interactions match the story beat.\n- Costumes and recurring character features match the supplied references.\n- The setting, lighting, mood, and art style match the scene specification."
+  },
+  "resolved_sources": {
+    "references": [
+      {
+        "role": "story_reference",
+        "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4",
+        "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\001",
+        "kind": "entity-library",
+        "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+        "set_id": "",
+        "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+        "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9"
+      },
+      {
+        "role": "story_reference",
+        "label": "Spire Archway",
+        "tag": "{{LIB:ASSET:95d50224-d948-4d01-8653-665a88241bda}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\002",
+        "kind": "entity-library",
+        "asset_id": "95d50224-d948-4d01-8653-665a88241bda",
+        "checksum": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\95d50224-d948-4d01-8653-665a88241bda",
+        "sha256": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e"
+      },
+      {
+        "role": "story_reference",
+        "label": "Kaeldor",
+        "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\003.png",
+        "kind": "entity-library",
+        "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png",
+        "sha256": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30"
+      },
+      {
+        "role": "story_reference",
+        "label": "Schoolboy 1",
+        "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\004.png",
+        "kind": "entity-library",
+        "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png",
+        "sha256": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7"
+      },
+      {
+        "role": "story_reference",
+        "label": "Schoolboy 2",
+        "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\005.png",
+        "kind": "entity-library",
+        "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png",
+        "sha256": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f"
+      }
+    ],
+    "element_sources": {
+      "Kaeldor_e02a5624": {
+        "identity_preservation_core": "Kaeldor is a young male elf with pointed ears, warm tan skin, short light-brown hair, shaved geometric patterns at the sides, and a confident grin. Ivory open-collar linen shirt with rolled sleeves, burgundy waistcoat with gold academy crest, dark trousers and leather belt, a blue pendant.",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "costume_source": "Library/assets/9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "library_asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "library_checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+        "reference_warnings": [
+          "Optional legacy auxiliary fallback is unavailable: Auxiliary resource kaeldor not found."
+        ]
+      },
+      "schoolboy_1": {
+        "identity_preservation_core": "Schoolboy 1: slim youthful male elf with pale warm skin, pointed ears, tousled copper-red hair, freckles and a mischievous smile. burgundy school blazor, ivory shirt purple tie, burgundy academy waistcoat with gold crest, charcoal trousers, brown belt and boots.",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "costume_source": "Library/assets/14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "library_asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "library_checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+        "reference_warnings": []
+      },
+      "schoolboy_2": {
+        "identity_preservation_core": "Schoolboy 2: youthful male elf with medium olive skin, pointed ears, short dark brown hair, hazel eyes, rounder face and amused grin. burgundy school blazer, ivory shirt, loose deep purple tie, burgundy academy waistcoat with gold crest, charcoal trousers, brown belt and boots.",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "costume_source": "Library/assets/89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "library_asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "library_checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+        "reference_warnings": []
+      }
+    }
+  },
+  "render_mode": "composite",
+  "image_inputs": [
+    {
+      "index": 1,
+      "role": "subject_reference",
+      "label": "Kaeldor — Kaeldor",
+      "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\003.png",
+      "applies_to": "Kaeldor_e02a5624",
+      "preserve": [
+        "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+      ],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": "",
+      "source_role": "story_reference",
+      "assignments": [
+        {
+          "applies_to": "Kaeldor_e02a5624",
+          "prompt_role": "subject_reference",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "role": "costume_reference",
+      "label": "Schoolboy 1 — Schoolboy 1",
+      "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\004.png",
+      "applies_to": "schoolboy_1",
+      "preserve": [
+        "face",
+        "hair",
+        "pointed ears",
+        "academy clothing"
+      ],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": "",
+      "source_role": "story_reference",
+      "assignments": [
+        {
+          "applies_to": "schoolboy_1",
+          "prompt_role": "costume_reference",
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "role": "costume_reference",
+      "label": "Schoolboy 2 — Schoolboy 2",
+      "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\005.png",
+      "applies_to": "schoolboy_2",
+      "preserve": [
+        "face",
+        "hair",
+        "pointed ears",
+        "academy clothing"
+      ],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": "",
+      "source_role": "story_reference",
+      "assignments": [
+        {
+          "applies_to": "schoolboy_2",
+          "prompt_role": "costume_reference",
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": ""
+        }
+      ]
+    }
+  ]
+}

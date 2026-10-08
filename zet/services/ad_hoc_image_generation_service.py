@@ -25,6 +25,7 @@ IMAGE_GENERATION_CONSUMER = "zet-image-generation"
 IMAGE_GENERATION_DEFAULT_COUNT = 4
 IMAGE_GENERATION_MAX_COUNT = 16
 IMAGE_GENERATION_MAX_REFERENCE_BYTES = 20 * 1024 * 1024
+IMAGE_GENERATION_MAX_REFERENCES = 10
 IMAGE_GENERATION_DEFAULT_WIDTH = 1024
 IMAGE_GENERATION_DEFAULT_HEIGHT = 1024
 IMAGE_GENERATION_MIN_DIMENSION = 256
@@ -68,6 +69,7 @@ class AdHocImageGenerationService:
             "max_count": IMAGE_GENERATION_MAX_COUNT,
             "default_width": IMAGE_GENERATION_DEFAULT_WIDTH,
             "default_height": IMAGE_GENERATION_DEFAULT_HEIGHT,
+            "max_references": IMAGE_GENERATION_MAX_REFERENCES,
         }
 
     def submit(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -104,32 +106,52 @@ class AdHocImageGenerationService:
         width = self._dimension(payload.get("width", IMAGE_GENERATION_DEFAULT_WIDTH), "Width")
         height = self._dimension(payload.get("height", IMAGE_GENERATION_DEFAULT_HEIGHT), "Height")
 
-        reference_bytes = b""
+        reference_images: list[dict[str, Any]] = []
         if mode == "img2img":
-            encoded = str(payload.get("reference_image") or "")
-            if not encoded:
-                raise AdHocImageGenerationError("Choose a reference image for img2img.")
-            if "," in encoded and encoded.lstrip().startswith("data:"):
-                encoded = encoded.split(",", 1)[1]
-            if len(encoded) > (IMAGE_GENERATION_MAX_REFERENCE_BYTES * 4 // 3 + 8):
-                raise AdHocImageGenerationError("Reference images must be 20 MiB or smaller.")
-            try:
-                reference_bytes = base64.b64decode(encoded, validate=True)
-            except (ValueError, binascii.Error) as exc:
-                raise AdHocImageGenerationError("The reference image data is invalid.") from exc
-            if len(reference_bytes) > IMAGE_GENERATION_MAX_REFERENCE_BYTES:
-                raise AdHocImageGenerationError("Reference images must be 20 MiB or smaller.")
-            try:
-                validate_image(reference_bytes)
-            except ValueError as exc:
-                raise AdHocImageGenerationError(str(exc)) from exc
+            supplied_references = payload.get("reference_images")
+            if supplied_references is None and payload.get("reference_image"):
+                supplied_references = [{"label": "source image", "image": payload["reference_image"]}]
+            if not isinstance(supplied_references, list) or not supplied_references:
+                raise AdHocImageGenerationError("Choose at least one reference image for img2img.")
+            if len(supplied_references) > IMAGE_GENERATION_MAX_REFERENCES:
+                raise AdHocImageGenerationError("Choose no more than 10 reference images for img2img.")
+            for index, item in enumerate(supplied_references, start=1):
+                if not isinstance(item, dict):
+                    raise AdHocImageGenerationError(f"Reference image {index} is invalid.")
+                label = str(item.get("label") or "").strip()
+                if not label:
+                    raise AdHocImageGenerationError(f"Enter a prompt label for reference image {index}.")
+                encoded = str(item.get("image") or "")
+                if not encoded:
+                    raise AdHocImageGenerationError(f"Reference image {index} has no image data.")
+                if "," in encoded and encoded.lstrip().startswith("data:"):
+                    encoded = encoded.split(",", 1)[1]
+                if len(encoded) > (IMAGE_GENERATION_MAX_REFERENCE_BYTES * 4 // 3 + 8):
+                    raise AdHocImageGenerationError("Reference images must be 20 MiB or smaller.")
+                try:
+                    reference_bytes = base64.b64decode(encoded, validate=True)
+                except (ValueError, binascii.Error) as exc:
+                    raise AdHocImageGenerationError(f"Reference image {index} data is invalid.") from exc
+                if len(reference_bytes) > IMAGE_GENERATION_MAX_REFERENCE_BYTES:
+                    raise AdHocImageGenerationError("Reference images must be 20 MiB or smaller.")
+                try:
+                    validate_image(reference_bytes)
+                    with Image.open(BytesIO(reference_bytes)) as image:
+                        extension = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}[image.format]
+                except (ValueError, KeyError) as exc:
+                    raise AdHocImageGenerationError(str(exc)) from exc
+                reference_images.append({"label": label, "bytes": reference_bytes, "extension": extension})
             if source_asset_id:
                 source_path = Path(str(source.get("image_path") or ""))
                 if (not source_path.is_file()
                         or hashlib.sha256(source_path.read_bytes()).hexdigest() != source_checksum
-                        or hashlib.sha256(reference_bytes).hexdigest() != source_checksum):
+                        or hashlib.sha256(reference_images[0]["bytes"]).hexdigest() != source_checksum):
                     raise AdHocImageGenerationError("The reference image does not match the selected inventory image.")
-        preset_name = "comfyui-qwen-head-image-edit" if mode == "img2img" else "comfyui-qwen-head-image-text"
+        preset_name = (
+            ("comfyui-qwen-local-character-edit" if payload.get("reference_images") is not None
+             else "comfyui-qwen-head-image-edit")
+            if mode == "img2img" else "comfyui-qwen-head-image-text"
+        )
         if payload.get("model_family") and payload["model_family"] != "qwen-image-2.1":
             raise AdHocImageGenerationError("Local rendering supports only Qwen Image 2.1.")
         require_qwen_profile(self.project_root, str(payload.get("render_preset") or payload.get("profile") or preset_name),
@@ -149,10 +171,17 @@ class AdHocImageGenerationService:
                 encoding="utf-8",
             )
             references = []
-            if reference_bytes:
-                reference_path = workspace / "reference.png"
-                reference_path.write_bytes(reference_bytes)
-                references = [{"version": 1, "type": "reference_file", "role": "img2img reference", "path": str(reference_path)}]
+            if reference_images:
+                label_lines = ["Reference image labels (images are supplied in this order):"]
+                for index, reference in enumerate(reference_images, start=1):
+                    reference_path = workspace / f"reference_{index:02d}.{reference['extension']}"
+                    reference_path.write_bytes(reference["bytes"])
+                    label_lines.append(f"Image {index}: {reference['label']}")
+                    references.append({
+                        "version": 1, "type": "reference_file", "role": reference["label"],
+                        "label": reference["label"], "path": str(reference_path), "image_index": index,
+                    })
+                prompt = prompt + "\n\n" + "\n".join(label_lines)
         except Exception:
             shutil.rmtree(workspace, ignore_errors=True)
             raise

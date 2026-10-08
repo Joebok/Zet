@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261005-batch-review">
+  <link rel="stylesheet" href="/static/zet.css?v=20261008-image-generation-references">
 </head>
 <body>
   <header class="app-header">
@@ -1909,19 +1909,6 @@
       <div id="image-generation-message" class="action-message" aria-live="polite" hidden></div>
       <div class="image-generation-layout">
         <form id="image-generation-form" class="control-panel image-generation-form">
-          <div class="image-generation-modes" role="group" aria-label="Generation mode">
-            <button id="image-generation-txt2img" type="button" class="primary-action" aria-pressed="true">txt2img</button>
-            <button id="image-generation-img2img" type="button" aria-pressed="false">img2img</button>
-          </div>
-          <div id="image-generation-reference-preview" class="paste-zone image-generation-reference-preview" tabindex="0" role="button" aria-label="Paste a reference image" hidden>
-            <img id="image-generation-reference-image" alt="Selected img2img reference preview" hidden>
-            <p id="image-generation-reference-hint">Click here, then press Ctrl+V to paste an image.</p>
-          </div>
-          <div id="image-generation-source" class="status-text" hidden></div>
-          <label id="image-generation-reference-field" hidden>
-            Reference image
-            <input id="image-generation-reference" type="file" accept="image/png,image/jpeg,image/webp">
-          </label>
           <label>
             Prompt
             <textarea id="image-generation-prompt" rows="6" required placeholder="Describe the prop, creature, or image you want to generate."></textarea>
@@ -1930,6 +1917,15 @@
             Negative prompt <span class="status-text">Optional</span>
             <textarea id="image-generation-negative" rows="2" placeholder="Elements to avoid"></textarea>
           </label>
+          <div id="image-generation-source" class="status-text" hidden></div>
+          <div class="image-generation-modes" role="group" aria-label="Generation mode">
+            <button id="image-generation-txt2img" type="button" class="primary-action" aria-pressed="true">txt2img</button>
+            <button id="image-generation-img2img" type="button" aria-pressed="false">img2img</button>
+          </div>
+          <fieldset id="image-generation-reference-slots" class="image-generation-reference-slots" hidden>
+            <legend>Reference images <span class="status-text">Up to 10. Use each label in your prompt to identify its image.</span></legend>
+            <div id="image-generation-reference-list"></div>
+          </fieldset>
           <div class="image-generation-dimensions">
             <label>Width<input id="image-generation-width" type="number" min="256" max="4096" step="32" value="1024" required></label>
             <label>Height<input id="image-generation-height" type="number" min="256" max="4096" step="32" value="1024" required></label>
@@ -2334,9 +2330,51 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20261005-batches-navigation"></script>
+  <script type="importmap">
+    {"imports":{"three":"/static/vendor/three/build/three.module.js","three/addons/":"/static/vendor/three/examples/jsm/"}}
+  </script>
+  <dialog id="scene-layout-dialog" class="scene-layout-dialog" aria-labelledby="scene-layout-title">
+    <div class="scene-layout-shell">
+      <header class="scene-layout-header">
+        <div><span class="eyebrow">Scene Builder</span><h2 id="scene-layout-title">3D Layout</h2><p id="scene-layout-breadcrumb">Full Scene</p><p>Stage: arrange the actors. Camera: compose the shot. Adjust the background crop separately.</p></div>
+        <div class="button-row"><button type="button" data-layout-action="parent-workspace" hidden>Parent workspace</button><button type="button" data-layout-action="edit-contents" hidden>Edit contents</button><button type="button" data-layout-action="discard">Discard draft</button></div>
+        <button type="button" data-layout-action="close">Close</button>
+      </header>
+      <div class="scene-layout-toolbar">
+        <button type="button" data-layout-mode="stage" aria-pressed="true">Stage</button><button type="button" data-layout-mode="camera" aria-pressed="false">Camera</button>
+        <label>Adjust<select id="scene-layout-adjust"><option value="camera">Camera · drag to move</option><option value="aim">Camera · drag to aim</option><option value="background">Background · drag to frame</option></select></label>
+        <button type="button" data-layout-action="dolly-in">Dolly in</button><button type="button" data-layout-action="dolly-out">Dolly out</button>
+        <label class="checkbox-field"><input id="scene-layout-horizon" type="checkbox"> Horizon guide</label>
+        <button type="button" data-layout-view="orbit">Orbit</button><button type="button" data-layout-view="top">Top</button><button type="button" data-layout-view="front">Front</button><button type="button" data-layout-view="side">Side</button>
+        <button type="button" data-layout-action="move">Move</button><button type="button" data-layout-action="rotate">Rotate</button>
+        <button type="button" data-layout-action="undo" disabled>Undo</button><button type="button" data-layout-action="redo" disabled>Redo</button>
+        <button type="button" data-layout-action="camera-from-view">Use current view as camera</button>
+        <label class="checkbox-field"><input id="scene-layout-camera-lock" type="checkbox"> Lock render camera</label>
+        <label class="checkbox-field"><input id="scene-layout-snap" type="checkbox" checked> Snap to 1 ft</label>
+      </div>
+      <div class="scene-layout-content">
+        <div class="scene-layout-viewport"><canvas id="scene-layout-canvas" aria-label="Interactive 3D scene layout"></canvas><div id="scene-layout-camera-frame" hidden><div id="scene-layout-horizon-line" hidden></div><div id="scene-layout-ground-join-line" hidden><span>Ground join</span></div></div><div class="scene-layout-facing-legend"><span class="scene-layout-body-key">Orange arrow: body faces this way</span><span class="scene-layout-head-key">Blue arrow: head looks this way</span><span class="scene-layout-dial-help">Drag a dial around the selected pawn:</span><span class="scene-layout-body-key">Outer · Body only</span><span class="scene-layout-both-key">Middle · Body + head together</span><span class="scene-layout-head-key">Inner · Head only</span></div><div id="scene-layout-status" role="status"></div></div>
+        <aside class="scene-layout-inspector">
+          <label>Element<select id="scene-layout-element"></select></label>
+          <fieldset id="scene-layout-background-controls" hidden><legend>Background &amp; foreground</legend><label class="scene-layout-full-row">Image<select id="scene-layout-background-source"><option value="">No background</option></select></label><label class="scene-layout-full-row">Image size · 5% to 2000%<input id="scene-layout-background-zoom" type="range" min="0.05" max="20" step="0.01" value="1"></label><label>Horizontal<input id="scene-layout-background-x" type="range" min="-2" max="3" step="0.001" value="0.5"></label><label>Vertical<input id="scene-layout-background-y" type="range" min="-2" max="3" step="0.001" value="0.5"></label><button type="button" data-layout-action="background-fit" class="scene-layout-full-row">Fit whole image</button><button type="button" data-layout-action="background-reset" class="scene-layout-full-row">Reset framing</button><label class="checkbox-field scene-layout-full-row"><input id="scene-layout-ground-enabled" type="checkbox" checked> Show foreground ground</label><label class="scene-layout-full-row">Ground join · up for more foreground<input id="scene-layout-ground-join" type="range" min="0" max="1" step="0.001" value="0.5"></label><button type="button" data-layout-action="ground-align" class="scene-layout-full-row">Align ground</button><label class="scene-layout-full-row">Ground surface<input id="scene-layout-ground-surface" maxlength="1000" placeholder="Stone path, grass, wooden floor…"></label><p class="scene-layout-full-row">Shrink and move the image freely. Pale areas will be extended by generation. Actors stop at the backdrop; adjust the ground join to move it.</p></fieldset>
+          <fieldset><legend>Position (feet/inches)</legend><label>X<input id="scene-layout-x" data-layout-dimension="position" data-axis="0"></label><label>Elevation<input id="scene-layout-y" data-layout-dimension="position" data-axis="1"></label><label>Z<input id="scene-layout-z" data-layout-dimension="position" data-axis="2"></label></fieldset>
+          <fieldset id="scene-layout-size-controls"><legend>Size (feet/inches)</legend><label>Stature<input id="scene-layout-height" data-layout-dimension="stature"></label><label>Occupied height<input id="scene-layout-occupied-height" data-layout-dimension="occupied-height"></label><label>Width<input id="scene-layout-width" data-layout-dimension="dimensions" data-dimension="width"></label><label>Depth<input id="scene-layout-depth" data-layout-dimension="dimensions" data-dimension="depth"></label></fieldset>
+          <fieldset id="scene-layout-facing-controls"><legend>Facing (degrees)</legend><label>Body yaw<input id="scene-layout-body-yaw" type="number" step="5"></label><label>Head yaw<input id="scene-layout-head-yaw" type="number" step="5"></label><label>Head tilt<input id="scene-layout-head-pitch" type="number" step="5"></label><label>Look at<select id="scene-layout-look-at"><option value="">Set facing manually</option><option value="camera">Camera</option></select></label></fieldset>
+          <label>Lens · Wide ↔ Tight<input id="scene-layout-lens" type="range" min="5" max="120" step="1" value="50" dir="rtl"></label>
+          <details><summary>Advanced camera</summary><fieldset><legend>Render camera</legend><label>Position X<input data-camera-point="position" data-axis="0"></label><label>Position Y<input data-camera-point="position" data-axis="1"></label><label>Position Z<input data-camera-point="position" data-axis="2"></label><label>Target X<input data-camera-point="target" data-axis="0"></label><label>Target Y<input data-camera-point="target" data-axis="1"></label><label>Target Z<input data-camera-point="target" data-axis="2"></label><label>Vertical field of view<input id="scene-layout-fov" type="number" min="5" max="120" step="1"></label></fieldset></details>
+          <label>Grid spacing<input id="scene-layout-grid" value="1 ft"></label>
+          <label class="checkbox-field"><input id="scene-layout-migration-confirm" type="checkbox"> I reviewed the approximate imported placements</label>
+          <img id="scene-layout-preview" alt="Projected guidance image for Qwen" hidden>
+          <div id="scene-layout-warnings" role="status"></div>
+          <div class="button-row"><button type="button" data-layout-action="save" class="primary-action">Save Layout</button><button type="button" data-layout-action="preview">Refresh Camera Preview</button></div>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+  <script src="/static/zet.js?v=20261008-image-generation-references"></script>
   <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
   <script src="/static/local_scene_batches.js?v=20261005-publication-review"></script>
   <script src="/static/local_batch_status.js?v=20261005-scene-tiles"></script>
+  <script type="module" src="/static/scene_layout.js?v=20261007-free-backdrop"></script>
 </body>
 </html>

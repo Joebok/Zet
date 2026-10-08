@@ -5,6 +5,10 @@ Character Phase: `[Adult / Youth / Variant / Costume Phase]`
 Species / Ancestry: `[Species]`
 Gender Presentation: `[Optional, non-sensitive rendering descriptor]`
 Canonical Art Style: `[Painterly semi-realistic, anime-influenced facial proportions, etc.]`
+Standing Barefoot Height: `[optional; e.g. 5 ft 8 in]`
+Eye Height: `[optional; e.g. 5 ft 2 in]`
+Shoulder Width: `[optional; e.g. 1 ft 6 in]`
+Body Depth: `[optional; e.g. 10 in]`
 
 ---
 

@@ -1,0 +1,2445 @@
+{
+  "schema_version": 1,
+  "run_id": "13efb6d06b56cbe4",
+  "created_at": "2026-10-06T04:30:23.335748+00:00",
+  "profile": "comfyui-qwen-image-2-1-scene",
+  "profile_settings": {
+    "backend": "comfyui",
+    "model_family": "qwen-image-2.1",
+    "diffusion_model": "qwen_image_2.1_int8_convrot.safetensors",
+    "workflow_kind": "qwen_image_21_scene_preview",
+    "pixel_budget": 1048576,
+    "reference_resolution": 1024,
+    "steps": 40,
+    "cfg": 1.0,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1.0,
+    "timeout_seconds": 1800,
+    "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+    "vae": "qwen_image_2.1_vae_bf16.safetensors",
+    "seed": "random",
+    "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
+    "output_subdir": "Local_Test_Renders",
+    "width": 1024,
+    "height": 1024
+  },
+  "seeds": [
+    1101,
+    1102,
+    1103,
+    1104,
+    1105,
+    1106,
+    1107,
+    1108
+  ],
+  "arms": [
+    "A_original",
+    "B_corrected",
+    "C_layers"
+  ],
+  "scenes": {
+    "Chapter-01-Standing-in-Wonder": {
+      "sources": {
+        "group": {
+          "target": "Schoolboys_440071c5_subscene",
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "attempt_id": "a44fcb9fbf364715bd9099394a96e0dc",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\slots\\Schoolboys_440071c5_subscene\\Schoolboys_440071c5_subscene-002.png",
+          "sha256": "f4efdba789e8d94d0b0838b8ee845286f5b91682c20231384fed68706bb4b3ac",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\targets\\Schoolboys_440071c5_subscene\\a44fcb9fbf364715bd9099394a96e0dc\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\targets\\Schoolboys_440071c5_subscene\\a44fcb9fbf364715bd9099394a96e0dc\\Scene_Render_IR.json",
+          "snapshot_path": null,
+          "references": [
+            {
+              "role": "story_reference",
+              "label": "Kaeldor",
+              "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\003.png",
+              "kind": "entity-library",
+              "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+              "checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png",
+              "sha256": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+              "image_index": 1,
+              "prompt_role": "subject_reference",
+              "applies_to": "Kaeldor_e02a5624",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Kaeldor_e02a5624",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Schoolboy 1",
+              "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\004.png",
+              "kind": "entity-library",
+              "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+              "checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png",
+              "sha256": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+              "image_index": 2,
+              "prompt_role": "costume_reference",
+              "applies_to": "schoolboy_1",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "schoolboy_1",
+                  "prompt_role": "costume_reference",
+                  "preserve": [
+                    "face",
+                    "hair",
+                    "pointed ears",
+                    "academy clothing"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Schoolboy 2",
+              "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\06fcb5a9d9a9438186af78031ce81644\\inputs\\005.png",
+              "kind": "entity-library",
+              "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+              "checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png",
+              "sha256": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+              "image_index": 3,
+              "prompt_role": "costume_reference",
+              "applies_to": "schoolboy_2",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "schoolboy_2",
+                  "prompt_role": "costume_reference",
+                  "preserve": [
+                    "face",
+                    "hair",
+                    "pointed ears",
+                    "academy clothing"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            }
+          ],
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\source_images\\group.png",
+          "frozen_prompt_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\group_Qwen_Image_2_1_Prompt.md",
+          "frozen_ir_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\group_Scene_Render_IR.json",
+          "source_sha256_verified": true,
+          "dimensions": [
+            1184,
+            896
+          ],
+          "format": "PNG"
+        },
+        "main": {
+          "target": "main",
+          "candidate_id": "main-001-cc90dcd0",
+          "attempt_id": "cc90dcd049cc40aa8af4a185acb9084e",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\slots\\main\\main-001-cc90dcd0.png",
+          "sha256": "f0774b0a6bdc6b6d25fbc21fcdeedb6101787a4271c012f0fe2420437952a858",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\targets\\main\\cc90dcd049cc40aa8af4a185acb9084e\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\targets\\main\\cc90dcd049cc40aa8af4a185acb9084e\\Scene_Render_IR.json",
+          "snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\snapshot.json",
+          "references": [
+            {
+              "role": "story_reference",
+              "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4",
+              "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\001",
+              "kind": "entity-library",
+              "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+              "set_id": "",
+              "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+              "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+              "image_index": 1,
+              "prompt_role": "subject_reference",
+              "applies_to": "Tsaeytte",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Tsaeytte",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\slots\\Schoolboys_440071c5_subscene\\Schoolboys_440071c5_subscene-002.png",
+              "sha256": "f4efdba789e8d94d0b0838b8ee845286f5b91682c20231384fed68706bb4b3ac",
+              "candidate_id": "Schoolboys_440071c5_subscene-002",
+              "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+              "label": "Schoolboys and Kaeldor",
+              "kind": "scene-render",
+              "image_index": 2,
+              "prompt_role": "group_reference",
+              "applies_to": "Schoolboys_440071c5",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+              "assignments": [
+                {
+                  "applies_to": "Schoolboys_440071c5",
+                  "prompt_role": "group_reference",
+                  "preserve": [
+                    "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source canvas",
+                    "source background",
+                    "source framing",
+                    "outer placement",
+                    "source lighting"
+                  ],
+                  "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Spire Archway (new)",
+              "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\002.png",
+              "kind": "entity-library",
+              "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+              "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+              "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+              "image_index": 3,
+              "prompt_role": "background_reference",
+              "applies_to": "Spire_Archway_a1489c35",
+              "preserve": [
+                "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Spire_Archway_a1489c35",
+                  "prompt_role": "background_reference",
+                  "preserve": [
+                    "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            }
+          ],
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\source_images\\main.png",
+          "frozen_prompt_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\main_Qwen_Image_2_1_Prompt.md",
+          "frozen_ir_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\main_Scene_Render_IR.json",
+          "frozen_snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\main_snapshot.json",
+          "source_sha256_verified": true,
+          "dimensions": [
+            832,
+            1248
+          ],
+          "format": "PNG"
+        }
+      },
+      "shared_references": [
+        {
+          "role": "story_reference",
+          "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4",
+          "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\01_001.png",
+          "kind": "entity-library",
+          "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+          "set_id": "",
+          "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Tsaeytte",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Tsaeytte",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\001"
+        },
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\02_Schoolboys_440071c5_subscene-002.png",
+          "sha256": "f4efdba789e8d94d0b0838b8ee845286f5b91682c20231384fed68706bb4b3ac",
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+          "label": "Schoolboys and Kaeldor",
+          "kind": "scene-render",
+          "image_index": 2,
+          "prompt_role": "group_reference",
+          "applies_to": "Schoolboys_440071c5",
+          "preserve": [
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+          "assignments": [
+            {
+              "applies_to": "Schoolboys_440071c5",
+              "prompt_role": "group_reference",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\slots\\Schoolboys_440071c5_subscene\\Schoolboys_440071c5_subscene-002.png"
+        },
+        {
+          "role": "story_reference",
+          "label": "Spire Archway (new)",
+          "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\03_002.png",
+          "kind": "entity-library",
+          "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+          "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+          "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+          "image_index": 3,
+          "prompt_role": "background_reference",
+          "applies_to": "Spire_Archway_a1489c35",
+          "preserve": [
+            "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Spire_Archway_a1489c35",
+              "prompt_role": "background_reference",
+              "preserve": [
+                "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\a1ed3b000f824a14892001cf69d4bbec\\snapshots\\cc90dcd049cc40aa8af4a185acb9084e\\inputs\\002.png"
+        }
+      ],
+      "output_size": [
+        832,
+        1248
+      ],
+      "members": [
+        "Tsaeytte",
+        "Schoolboy 1",
+        "Schoolboy 2",
+        "Kaeldor"
+      ],
+      "requirements": [
+        "Tsaeytte stands at right in a back three-quarter view and looks up at the arch inscription while holding her books.",
+        "A small, complete group of exactly three students is visible beyond the arch on the left.",
+        "Tsaeytte speaks the exact words \"Potential is nothing without discipline\" in a readable balloon."
+      ],
+      "dialogue": [
+        {
+          "text": "Potential is nothing without discipline",
+          "speaker": "Tsaeytte",
+          "lines": 2
+        }
+      ],
+      "inherited_defects": [],
+      "arm_status": {
+        "A_original": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "B_corrected": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "C_layers": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        }
+      },
+      "shot": {
+        "canvas": [
+          832,
+          1248
+        ],
+        "layers": [
+          {
+            "key": "group",
+            "label": "Schoolboys and Kaeldor",
+            "box": [
+              0.22,
+              0.5,
+              0.29,
+              0.24
+            ],
+            "depth": 1,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\group.png",
+            "sha256": "09bd7b722efbe31d98b0cd4cef0be97a1d082fcedbf63b95876b5095b800d409",
+            "bbox": [
+              0,
+              0,
+              1184,
+              896
+            ],
+            "source_pixels": 1060864,
+            "placed_size": [
+              241,
+              182
+            ],
+            "position": [
+              183,
+              742
+            ]
+          },
+          {
+            "key": "Tsaeytte",
+            "label": "Tsaeytte",
+            "box": [
+              0.54,
+              0.3,
+              0.3,
+              0.68
+            ],
+            "depth": 3,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\Tsaeytte.png",
+            "sha256": "abe625c906487b6ef344639a5b1944f93152a9fd25fe9112bf365fcdcc641fd7",
+            "bbox": [
+              0,
+              0,
+              256,
+              816
+            ],
+            "source_pixels": 208896,
+            "placed_size": [
+              250,
+              797
+            ],
+            "position": [
+              449,
+              426
+            ]
+          },
+          {
+            "key": "dialogue-01",
+            "label": "Original dialogue balloon",
+            "box": [
+              0.68,
+              0.2,
+              0.25,
+              0.1
+            ],
+            "depth": 5,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\dialogue-01.png",
+            "sha256": "ae82143b884a704d1c9dd39f2653a5b34cbbab81141ab24fc1e32bc2270e7d8d",
+            "bbox": [
+              0,
+              0,
+              168,
+              87
+            ],
+            "source_pixels": 14616,
+            "dialogue_layer": true,
+            "placed_size": [
+              208,
+              108
+            ],
+            "position": [
+              566,
+              266
+            ]
+          }
+        ],
+        "dialogue": [
+          {
+            "text": "Potential is nothing without discipline",
+            "speaker": "Tsaeytte",
+            "lines": 2
+          }
+        ],
+        "requirements": [
+          "Tsaeytte stands at right in a back three-quarter view and looks up at the arch inscription while holding her books.",
+          "A small, complete group of exactly three students is visible beyond the arch on the left.",
+          "Tsaeytte speaks the exact words \"Potential is nothing without discipline\" in a readable balloon."
+        ],
+        "dialogue_reference": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\reference_Tsaeytte_with_dialogue.png",
+        "background": {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\background.png",
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\03_002.png",
+          "sha256": "93bffe5979054b9724a356b113f9cbd889862cf34056c35a62565a58e9021ebc"
+        }
+      },
+      "prepared_hashes": {
+        "background.png": "93bffe5979054b9724a356b113f9cbd889862cf34056c35a62565a58e9021ebc",
+        "dialogue-01.png": "ae82143b884a704d1c9dd39f2653a5b34cbbab81141ab24fc1e32bc2270e7d8d",
+        "group.png": "09bd7b722efbe31d98b0cd4cef0be97a1d082fcedbf63b95876b5095b800d409",
+        "layer-composite.png": "64261414205383d539c27a4c026efcd609bb5c1ee2c5fc08e3989a89ba9705cd",
+        "layout-left.png": "2b8498a90ae8917a82a63a0ab36d2c50de7773e63ab0aebc5c6788829e01da76",
+        "layout-preview.png": "64261414205383d539c27a4c026efcd609bb5c1ee2c5fc08e3989a89ba9705cd",
+        "protected-foreground-mask.png": "1e730a40ad01dc744714dde33615ae71cd52cef247d3fc9f43c4140c31b35981",
+        "qwen-edit-mask.png": "5827e80cd97a5833b178fea50737a20829cfc2c205ddcb553e1d9c7c647b6c5b",
+        "reference_Tsaeytte_with_dialogue.png": "567d030fb3c69bae45b711b72a0ee366044fbcec1365b198f48407743fea8c16",
+        "shot.json": "d5cc3f3ffb56c231be6cea3593b5f29a220409c7c49be54fb724fb8dd84d4f9c",
+        "Tsaeytte.png": "abe625c906487b6ef344639a5b1944f93152a9fd25fe9112bf365fcdcc641fd7"
+      },
+      "prep_status": "APPROVED",
+      "profile_settings": {
+        "backend": "comfyui",
+        "model_family": "qwen-image-2.1",
+        "diffusion_model": "qwen_image_2.1_int8_convrot.safetensors",
+        "workflow_kind": "qwen_image_21_scene_preview",
+        "pixel_budget": 1038336,
+        "reference_resolution": 1024,
+        "steps": 40,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0,
+        "timeout_seconds": 1800,
+        "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae": "qwen_image_2.1_vae_bf16.safetensors",
+        "seed": "random",
+        "supports_reference_images": true,
+        "qwen_cache_enabled": true,
+        "qwen_cache_device": "cpu",
+        "qwen_cache_dtype": "int8",
+        "output_subdir": "Local_Test_Renders",
+        "width": 1024,
+        "height": 1024
+      },
+      "layout_approved_at": "2026-10-06T05:18:04.589329+00:00"
+    },
+    "Chapter-02-At-the-Arch": {
+      "sources": {
+        "group": {
+          "target": "Schoolboys_and_Kaeldor_1791131636182_subscene",
+          "candidate_id": "Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68",
+          "attempt_id": "eda1bd68354347dea43541bec900bb67",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\slots\\Schoolboys_and_Kaeldor_1791131636182_subscene\\Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68.png",
+          "sha256": "1eb9b0a1eeb059b455b33fbf9aeee542a1baf68161ddf1f9cbcac7b9ec41143d",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\targets\\Schoolboys_and_Kaeldor_1791131636182_subscene\\eda1bd68354347dea43541bec900bb67\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\targets\\Schoolboys_and_Kaeldor_1791131636182_subscene\\eda1bd68354347dea43541bec900bb67\\Scene_Render_IR.json",
+          "snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\eda1bd68354347dea43541bec900bb67\\snapshot.json",
+          "references": [
+            {
+              "role": "story_reference",
+              "label": "Kaeldor",
+              "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\eda1bd68354347dea43541bec900bb67\\inputs\\002.png",
+              "kind": "entity-library",
+              "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+              "checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png",
+              "sha256": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+              "image_index": 1,
+              "prompt_role": "costume_reference",
+              "applies_to": "Kaeldor_2fa4554e",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Kaeldor_2fa4554e",
+                  "prompt_role": "costume_reference",
+                  "preserve": [
+                    "face",
+                    "hair",
+                    "pointed ears",
+                    "academy clothing"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Schoolboy 1",
+              "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\eda1bd68354347dea43541bec900bb67\\inputs\\005.png",
+              "kind": "entity-library",
+              "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+              "checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png",
+              "sha256": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+              "image_index": 2,
+              "prompt_role": "costume_reference",
+              "applies_to": "Schoolboy_1_1791131550649",
+              "preserve": [
+                "identity"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Schoolboy_1_1791131550649",
+                  "prompt_role": "costume_reference",
+                  "preserve": [
+                    "identity"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Schoolboy 2",
+              "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\eda1bd68354347dea43541bec900bb67\\inputs\\006.png",
+              "kind": "entity-library",
+              "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+              "checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png",
+              "sha256": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+              "image_index": 3,
+              "prompt_role": "costume_reference",
+              "applies_to": "Schoolboy_2_1791131568217",
+              "preserve": [
+                "identity"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Schoolboy_2_1791131568217",
+                  "prompt_role": "costume_reference",
+                  "preserve": [
+                    "identity"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            }
+          ],
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\source_images\\group.png",
+          "frozen_prompt_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\group_Qwen_Image_2_1_Prompt.md",
+          "frozen_ir_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\group_Scene_Render_IR.json",
+          "frozen_snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\group_snapshot.json",
+          "source_sha256_verified": true,
+          "dimensions": [
+            1184,
+            896
+          ],
+          "format": "PNG"
+        },
+        "main": {
+          "target": "main",
+          "candidate_id": "main-006-690f8267",
+          "attempt_id": "690f82677e3a42dcb0955bcdee439274",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\slots\\main\\main-006-690f8267.png",
+          "sha256": "93ac2069991d8860a20bf45e1679588228437a42de559a4a814e75837633aa6d",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\targets\\main\\690f82677e3a42dcb0955bcdee439274\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\targets\\main\\690f82677e3a42dcb0955bcdee439274\\Scene_Render_IR.json",
+          "snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\690f82677e3a42dcb0955bcdee439274\\snapshot.json",
+          "references": [
+            {
+              "role": "story_reference",
+              "label": "Tsaeytte · Youth · Woodland outfit · Left Profile",
+              "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.left-profile}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\690f82677e3a42dcb0955bcdee439274\\inputs\\001",
+              "kind": "entity-library",
+              "asset_id": "004b3e3a-fcdc-414f-9d0b-488f53b3852c",
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.left-profile",
+              "set_id": "",
+              "checksum": "92c84fdf0096f2dd0e7c4f868fa7b0a5e7043d2951d814c5cab6276d42f9e2b9",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\004b3e3a-fcdc-414f-9d0b-488f53b3852c",
+              "sha256": "92c84fdf0096f2dd0e7c4f868fa7b0a5e7043d2951d814c5cab6276d42f9e2b9",
+              "image_index": 1,
+              "prompt_role": "subject_reference",
+              "applies_to": "Tsaeytte",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Tsaeytte",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Spire Archway (new)",
+              "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\690f82677e3a42dcb0955bcdee439274\\inputs\\003.png",
+              "kind": "entity-library",
+              "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+              "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+              "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+              "image_index": 2,
+              "prompt_role": "background_reference",
+              "applies_to": "Spire_Archway_5a71be2c",
+              "preserve": [
+                "identity"
+              ],
+              "change": [],
+              "ignore": [
+                "source framing",
+                "source aspect ratio"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Spire_Archway_5a71be2c",
+                  "prompt_role": "background_reference",
+                  "preserve": [
+                    "identity"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source framing",
+                    "source aspect ratio"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Valindia · Adult · School Outfit · Right Profile",
+              "tag": "{{LIB:REF:valindia.adult.costume-dressing.school-outfit.right-profile}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\690f82677e3a42dcb0955bcdee439274\\inputs\\004",
+              "kind": "entity-library",
+              "asset_id": "28057a7a-fc16-456e-8873-c9955ae9e94b",
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.right-profile",
+              "set_id": "",
+              "checksum": "0f5662455514c82f7f1465ea4645c55265b0c6cc310de508c0b795fde4276d1c",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\28057a7a-fc16-456e-8873-c9955ae9e94b",
+              "sha256": "0f5662455514c82f7f1465ea4645c55265b0c6cc310de508c0b795fde4276d1c",
+              "image_index": 3,
+              "prompt_role": "subject_reference",
+              "applies_to": "Valindia_120e4adf",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Valindia_120e4adf",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\slots\\Schoolboys_and_Kaeldor_1791131636182_subscene\\Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68.png",
+              "sha256": "1eb9b0a1eeb059b455b33fbf9aeee542a1baf68161ddf1f9cbcac7b9ec41143d",
+              "candidate_id": "Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68",
+              "tag": "{{SCENE_RENDER:FirstDay:Chapter-02-At-the-Arch:Schoolboys_and_Kaeldor_1791131636182_subscene}}",
+              "label": "Schoolboys and Kaeldor",
+              "kind": "scene-render",
+              "image_index": 4,
+              "prompt_role": "group_reference",
+              "applies_to": "Schoolboys_and_Kaeldor_1791131636182",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+              "assignments": [
+                {
+                  "applies_to": "Schoolboys_and_Kaeldor_1791131636182",
+                  "prompt_role": "group_reference",
+                  "preserve": [
+                    "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source canvas",
+                    "source background",
+                    "source framing",
+                    "outer placement",
+                    "source lighting"
+                  ],
+                  "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+                }
+              ]
+            }
+          ],
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\source_images\\main.png",
+          "frozen_prompt_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\main_Qwen_Image_2_1_Prompt.md",
+          "frozen_ir_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\main_Scene_Render_IR.json",
+          "frozen_snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\main_snapshot.json",
+          "source_sha256_verified": true,
+          "dimensions": [
+            1376,
+            768
+          ],
+          "format": "PNG"
+        }
+      },
+      "shared_references": [
+        {
+          "role": "story_reference",
+          "label": "Tsaeytte · Youth · Woodland outfit · Left Profile",
+          "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.left-profile}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\01_001.png",
+          "kind": "entity-library",
+          "asset_id": "004b3e3a-fcdc-414f-9d0b-488f53b3852c",
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.left-profile",
+          "set_id": "",
+          "checksum": "92c84fdf0096f2dd0e7c4f868fa7b0a5e7043d2951d814c5cab6276d42f9e2b9",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\004b3e3a-fcdc-414f-9d0b-488f53b3852c",
+          "sha256": "92c84fdf0096f2dd0e7c4f868fa7b0a5e7043d2951d814c5cab6276d42f9e2b9",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Tsaeytte",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Tsaeytte",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\690f82677e3a42dcb0955bcdee439274\\inputs\\001"
+        },
+        {
+          "role": "story_reference",
+          "label": "Spire Archway (new)",
+          "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\02_003.png",
+          "kind": "entity-library",
+          "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+          "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+          "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+          "image_index": 2,
+          "prompt_role": "background_reference",
+          "applies_to": "Spire_Archway_5a71be2c",
+          "preserve": [
+            "identity"
+          ],
+          "change": [],
+          "ignore": [
+            "source framing",
+            "source aspect ratio"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Spire_Archway_5a71be2c",
+              "prompt_role": "background_reference",
+              "preserve": [
+                "identity"
+              ],
+              "change": [],
+              "ignore": [
+                "source framing",
+                "source aspect ratio"
+              ],
+              "notes": ""
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\690f82677e3a42dcb0955bcdee439274\\inputs\\003.png"
+        },
+        {
+          "role": "story_reference",
+          "label": "Valindia · Adult · School Outfit · Right Profile",
+          "tag": "{{LIB:REF:valindia.adult.costume-dressing.school-outfit.right-profile}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\03_004.png",
+          "kind": "entity-library",
+          "asset_id": "28057a7a-fc16-456e-8873-c9955ae9e94b",
+          "reference_key": "valindia.adult.costume-dressing.school-outfit.right-profile",
+          "set_id": "",
+          "checksum": "0f5662455514c82f7f1465ea4645c55265b0c6cc310de508c0b795fde4276d1c",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\28057a7a-fc16-456e-8873-c9955ae9e94b",
+          "sha256": "0f5662455514c82f7f1465ea4645c55265b0c6cc310de508c0b795fde4276d1c",
+          "image_index": 3,
+          "prompt_role": "subject_reference",
+          "applies_to": "Valindia_120e4adf",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Valindia_120e4adf",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\snapshots\\690f82677e3a42dcb0955bcdee439274\\inputs\\004"
+        },
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\04_Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68.png",
+          "sha256": "1eb9b0a1eeb059b455b33fbf9aeee542a1baf68161ddf1f9cbcac7b9ec41143d",
+          "candidate_id": "Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-02-At-the-Arch:Schoolboys_and_Kaeldor_1791131636182_subscene}}",
+          "label": "Schoolboys and Kaeldor",
+          "kind": "scene-render",
+          "image_index": 4,
+          "prompt_role": "group_reference",
+          "applies_to": "Schoolboys_and_Kaeldor_1791131636182",
+          "preserve": [
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+          "assignments": [
+            {
+              "applies_to": "Schoolboys_and_Kaeldor_1791131636182",
+              "prompt_role": "group_reference",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-02-At-the-Arch\\Local_Batches\\bc5874ca8480481da4d73e63bcd8ceea\\slots\\Schoolboys_and_Kaeldor_1791131636182_subscene\\Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68.png"
+        }
+      ],
+      "output_size": [
+        1376,
+        768
+      ],
+      "members": [
+        "Valindia",
+        "Schoolboy 1",
+        "Schoolboy 2",
+        "Kaeldor",
+        "Tsaeytte"
+      ],
+      "requirements": [
+        "Valindia walks away at left and turns only her head toward Tsaeytte.",
+        "Tsaeytte walks away at right, carrying her books, and turns only her head toward Valindia.",
+        "The three boys roughhouse together in the middle distance beneath the arch.",
+        "Valindia says the exact words \"country girl\" in a readable balloon."
+      ],
+      "dialogue": [
+        {
+          "text": "country girl",
+          "speaker": "Valindia",
+          "lines": 1
+        }
+      ],
+      "inherited_defects": [],
+      "arm_status": {
+        "A_original": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "B_corrected": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "C_layers": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        }
+      },
+      "shot": {
+        "canvas": [
+          1376,
+          768
+        ],
+        "layers": [
+          {
+            "key": "Valindia",
+            "label": "Valindia",
+            "box": [
+              0.18,
+              0.06,
+              0.25,
+              0.91
+            ],
+            "depth": 3,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\Valindia.png",
+            "sha256": "63fb0ef0771895b71021fdada3edde6b75638589444680ef512bb3911425839d",
+            "bbox": [
+              0,
+              0,
+              357,
+              700
+            ],
+            "source_pixels": 249900,
+            "placed_size": [
+              344,
+              675
+            ],
+            "position": [
+              248,
+              70
+            ]
+          },
+          {
+            "key": "group",
+            "label": "Schoolboys and Kaeldor",
+            "box": [
+              0.4,
+              0.19,
+              0.31,
+              0.77
+            ],
+            "depth": 2,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\group.png",
+            "sha256": "266b356c7e2f4ff5d8b2d7ffcf60704af01bf4ea97d87a4af96ae5a7fc30ba5a",
+            "bbox": [
+              0,
+              0,
+              979,
+              856
+            ],
+            "source_pixels": 838024,
+            "placed_size": [
+              427,
+              373
+            ],
+            "position": [
+              550,
+              364
+            ]
+          },
+          {
+            "key": "Tsaeytte",
+            "label": "Tsaeytte",
+            "box": [
+              0.65,
+              0.08,
+              0.28,
+              0.89
+            ],
+            "depth": 3,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\Tsaeytte.png",
+            "sha256": "e7252569ab5bf799e15732fc934b4f6832d2bd7938772bd07903d51c1be36794",
+            "bbox": [
+              0,
+              0,
+              341,
+              536
+            ],
+            "source_pixels": 182776,
+            "placed_size": [
+              385,
+              605
+            ],
+            "position": [
+              895,
+              140
+            ]
+          },
+          {
+            "key": "dialogue-01",
+            "label": "Original dialogue balloon",
+            "box": [
+              0.27,
+              0.01,
+              0.16,
+              0.1
+            ],
+            "depth": 5,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\dialogue-01.png",
+            "sha256": "39b20401eeebc54cfad6762e09c5881eba6107fcadfa6946be615c7275bcdb1a",
+            "bbox": [
+              0,
+              0,
+              154,
+              57
+            ],
+            "source_pixels": 8778,
+            "dialogue_layer": true,
+            "placed_size": [
+              208,
+              77
+            ],
+            "position": [
+              378,
+              7
+            ]
+          }
+        ],
+        "dialogue": [
+          {
+            "text": "country girl",
+            "speaker": "Valindia",
+            "lines": 1
+          }
+        ],
+        "requirements": [
+          "Valindia walks away at left and turns only her head toward Tsaeytte.",
+          "Tsaeytte walks away at right, carrying her books, and turns only her head toward Valindia.",
+          "The three boys roughhouse together in the middle distance beneath the arch.",
+          "Valindia says the exact words \"country girl\" in a readable balloon."
+        ],
+        "dialogue_reference": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\reference_Valindia_with_dialogue.png",
+        "background": {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\prepared\\background.png",
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\02_003.png",
+          "sha256": "7b21768476ab3d1d33f037fa84727c05e0893b32300c38dbb3f1379766a3b9b2"
+        }
+      },
+      "prepared_hashes": {
+        "background.png": "7b21768476ab3d1d33f037fa84727c05e0893b32300c38dbb3f1379766a3b9b2",
+        "dialogue-01.png": "39b20401eeebc54cfad6762e09c5881eba6107fcadfa6946be615c7275bcdb1a",
+        "group.png": "266b356c7e2f4ff5d8b2d7ffcf60704af01bf4ea97d87a4af96ae5a7fc30ba5a",
+        "layer-composite.png": "50b28218e22702b67a09709cea3acf4d698d4d4e8be6d97ff57b8b75047ae959",
+        "layout-preview.png": "50b28218e22702b67a09709cea3acf4d698d4d4e8be6d97ff57b8b75047ae959",
+        "protected-foreground-mask.png": "6916d90c605c2ef1f4621c6ffee50f806945fda2f24b075145e425a28031bd0e",
+        "qwen-edit-mask.png": "7e7b97942cca14f06bb59154eb335c996023806d7b3445598009605c851b42b3",
+        "reference_Valindia_with_dialogue.png": "23aa27fdcae4adf6197e0f4f33f017d6d4dc9d02eb77a3f3210a528aa33ebe62",
+        "shot.json": "5b17e1d616b70531da270272ff9f5f92d4355a7581531dc39fa1a8440e24cd24",
+        "Tsaeytte.png": "e7252569ab5bf799e15732fc934b4f6832d2bd7938772bd07903d51c1be36794",
+        "Valindia.png": "63fb0ef0771895b71021fdada3edde6b75638589444680ef512bb3911425839d"
+      },
+      "prep_status": "APPROVED",
+      "profile_settings": {
+        "backend": "comfyui",
+        "model_family": "qwen-image-2.1",
+        "diffusion_model": "qwen_image_2.1_int8_convrot.safetensors",
+        "workflow_kind": "qwen_image_21_scene_preview",
+        "pixel_budget": 1056768,
+        "reference_resolution": 1024,
+        "steps": 40,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0,
+        "timeout_seconds": 1800,
+        "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae": "qwen_image_2.1_vae_bf16.safetensors",
+        "seed": "random",
+        "supports_reference_images": true,
+        "qwen_cache_enabled": true,
+        "qwen_cache_device": "cpu",
+        "qwen_cache_dtype": "int8",
+        "output_subdir": "Local_Test_Renders",
+        "width": 1024,
+        "height": 1024
+      },
+      "layout_approved_at": "2026-10-06T05:18:04.599258+00:00"
+    },
+    "Chapter-03-Collision": {
+      "sources": {
+        "group": {
+          "target": "Kaeldor_and_the_Schoolboys_1791152906199_subscene",
+          "candidate_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec",
+          "attempt_id": "1b4658ece9a242af91aaf1c1d3eba4ac",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Kaeldor_and_the_Schoolboys_1791152906199_subscene\\Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png",
+          "sha256": "0cd277465d4d028e0e3674fb3957260d292533eccc7d4e4f24c8641475aa9db3",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\targets\\Kaeldor_and_the_Schoolboys_1791152906199_subscene\\1b4658ece9a242af91aaf1c1d3eba4ac\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\targets\\Kaeldor_and_the_Schoolboys_1791152906199_subscene\\1b4658ece9a242af91aaf1c1d3eba4ac\\Scene_Render_IR.json",
+          "snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\1b4658ece9a242af91aaf1c1d3eba4ac\\snapshot.json",
+          "references": [
+            {
+              "role": "story_reference",
+              "label": "Kaeldor",
+              "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\1b4658ece9a242af91aaf1c1d3eba4ac\\inputs\\003.png",
+              "kind": "entity-library",
+              "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+              "checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png",
+              "sha256": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+              "image_index": 1,
+              "prompt_role": "subject_reference",
+              "applies_to": "Kaeldor_2fa4554e",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Kaeldor_2fa4554e",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Schoolboy 1",
+              "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\1b4658ece9a242af91aaf1c1d3eba4ac\\inputs\\005.png",
+              "kind": "entity-library",
+              "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+              "checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png",
+              "sha256": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+              "image_index": 2,
+              "prompt_role": "subject_reference",
+              "applies_to": "Schoolboy_1_1791240161841",
+              "preserve": [
+                "identity",
+                "costume"
+              ],
+              "change": [
+                "pose"
+              ],
+              "ignore": [
+                "background"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Schoolboy_1_1791240161841",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "identity",
+                    "costume"
+                  ],
+                  "change": [
+                    "pose"
+                  ],
+                  "ignore": [
+                    "background"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Schoolboy 2",
+              "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\1b4658ece9a242af91aaf1c1d3eba4ac\\inputs\\006.png",
+              "kind": "entity-library",
+              "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+              "checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png",
+              "sha256": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+              "image_index": 3,
+              "prompt_role": "subject_reference",
+              "applies_to": "Schoolboy_2_1791240176928",
+              "preserve": [
+                "identity",
+                "costume"
+              ],
+              "change": [
+                "pose"
+              ],
+              "ignore": [
+                "background"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Schoolboy_2_1791240176928",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "identity",
+                    "costume"
+                  ],
+                  "change": [
+                    "pose"
+                  ],
+                  "ignore": [
+                    "background"
+                  ],
+                  "notes": ""
+                }
+              ]
+            }
+          ],
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\group.png",
+          "frozen_prompt_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\group_Qwen_Image_2_1_Prompt.md",
+          "frozen_ir_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\group_Scene_Render_IR.json",
+          "frozen_snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\group_snapshot.json",
+          "source_sha256_verified": true,
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG"
+        },
+        "main": {
+          "target": "main",
+          "candidate_id": "main-001-99151f9f",
+          "attempt_id": "99151f9f91304f2e850801db2588c666",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\main\\main-001-99151f9f.png",
+          "sha256": "278ca1de8c57142038c9c62cc306c2748c5a9bdf1ca2e5be9dd46bb11983fe7f",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\targets\\main\\99151f9f91304f2e850801db2588c666\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\targets\\main\\99151f9f91304f2e850801db2588c666\\Scene_Render_IR.json",
+          "snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\99151f9f91304f2e850801db2588c666\\snapshot.json",
+          "references": [
+            {
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\background\\background-004.png",
+              "sha256": "986fb906c009b5070fc3b35c27e51d87491c784e836d29add5fe37354b67f41f",
+              "candidate_id": "background-004",
+              "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:background}}",
+              "label": "Background",
+              "kind": "scene-render",
+              "image_index": 1,
+              "prompt_role": "background_reference",
+              "applies_to": "background",
+              "preserve": [
+                "the accepted subscene's subjects, arrangement, architecture, materials, and identifying details"
+              ],
+              "change": [],
+              "ignore": [
+                "outer placement, final-canvas framing, and any content assigned to other image inputs"
+              ],
+              "notes": "backdrop",
+              "assignments": [
+                {
+                  "applies_to": "background",
+                  "prompt_role": "background_reference",
+                  "preserve": [
+                    "the accepted subscene's subjects, arrangement, architecture, materials, and identifying details"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "outer placement, final-canvas framing, and any content assigned to other image inputs"
+                  ],
+                  "notes": "backdrop"
+                }
+              ]
+            },
+            {
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Kaeldor_and_the_Schoolboys_1791152906199_subscene\\Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png",
+              "sha256": "0cd277465d4d028e0e3674fb3957260d292533eccc7d4e4f24c8641475aa9db3",
+              "candidate_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec",
+              "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:Kaeldor_and_the_Schoolboys_1791152906199_subscene}}",
+              "label": "Kaeldor and the Schoolboys",
+              "kind": "scene-render",
+              "image_index": 2,
+              "prompt_role": "group_reference",
+              "applies_to": "Kaeldor_and_the_Schoolboys_1791152906199",
+              "preserve": [
+                "the dialogue panel and pointer for Kaeldor, including the exact text \"sorry\", exactly once"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+              "assignments": [
+                {
+                  "applies_to": "Kaeldor_and_the_Schoolboys_1791152906199",
+                  "prompt_role": "group_reference",
+                  "preserve": [
+                    "the dialogue panel and pointer for Kaeldor, including the exact text \"sorry\", exactly once"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source canvas",
+                    "source background",
+                    "source framing",
+                    "outer placement",
+                    "source lighting"
+                  ],
+                  "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+                }
+              ]
+            },
+            {
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Tsaeytte_and_Valindia_1791243031945_subscene\\Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png",
+              "sha256": "769a63f42f7cd98155561414a4c3e4c43b5c2ebeebc416b424482cfe69a47cfa",
+              "candidate_id": "Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76",
+              "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:Tsaeytte_and_Valindia_1791243031945_subscene}}",
+              "label": "Tsaeytte and Valindia",
+              "kind": "scene-render",
+              "image_index": 3,
+              "prompt_role": "group_reference",
+              "applies_to": "Tsaeytte_and_Valindia_1791243031945",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+              "assignments": [
+                {
+                  "applies_to": "Tsaeytte_and_Valindia_1791243031945",
+                  "prompt_role": "group_reference",
+                  "preserve": [
+                    "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source canvas",
+                    "source background",
+                    "source framing",
+                    "outer placement",
+                    "source lighting"
+                  ],
+                  "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+                }
+              ]
+            }
+          ],
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\main.png",
+          "frozen_prompt_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\main_Qwen_Image_2_1_Prompt.md",
+          "frozen_ir_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\main_Scene_Render_IR.json",
+          "frozen_snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\main_snapshot.json",
+          "source_sha256_verified": true,
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG"
+        },
+        "pair": {
+          "target": "Tsaeytte_and_Valindia_1791243031945_subscene",
+          "candidate_id": "Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76",
+          "attempt_id": "f5e8bd76f5b344429cdd09e591044837",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Tsaeytte_and_Valindia_1791243031945_subscene\\Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png",
+          "sha256": "769a63f42f7cd98155561414a4c3e4c43b5c2ebeebc416b424482cfe69a47cfa",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\targets\\Tsaeytte_and_Valindia_1791243031945_subscene\\f5e8bd76f5b344429cdd09e591044837\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\targets\\Tsaeytte_and_Valindia_1791243031945_subscene\\f5e8bd76f5b344429cdd09e591044837\\Scene_Render_IR.json",
+          "snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\snapshot.json",
+          "references": [
+            {
+              "role": "story_reference",
+              "label": "Tsaeytte · Youth · Woodland outfit · Front Left 3 4",
+              "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\inputs\\001",
+              "kind": "entity-library",
+              "asset_id": "fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4",
+              "set_id": "",
+              "checksum": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+              "sha256": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8",
+              "image_index": 1,
+              "prompt_role": "subject_reference",
+              "applies_to": "Tsaeytte",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Tsaeytte",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Valindia · Adult · School Outfit · Front Right 3 4",
+              "tag": "{{LIB:REF:valindia.adult.costume-dressing.school-outfit.front-right-3-4}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\inputs\\002",
+              "kind": "entity-library",
+              "asset_id": "d69af379-ac56-4f57-a8fe-3b16308b0065",
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.front-right-3-4",
+              "set_id": "",
+              "checksum": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\d69af379-ac56-4f57-a8fe-3b16308b0065",
+              "sha256": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf",
+              "image_index": 2,
+              "prompt_role": "subject_reference",
+              "applies_to": "Valindia_8844d004",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Valindia_8844d004",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            }
+          ],
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\pair.png",
+          "frozen_prompt_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\pair_Qwen_Image_2_1_Prompt.md",
+          "frozen_ir_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\pair_Scene_Render_IR.json",
+          "frozen_snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\pair_snapshot.json",
+          "source_sha256_verified": true,
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG"
+        },
+        "background": {
+          "target": "background",
+          "candidate_id": "background-004",
+          "attempt_id": "9c28cb77ee7a4ab5bf5ef9ebfc635231",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\background\\background-004.png",
+          "sha256": "986fb906c009b5070fc3b35c27e51d87491c784e836d29add5fe37354b67f41f",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\targets\\background\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\targets\\background\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\Scene_Render_IR.json",
+          "snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\snapshot.json",
+          "references": [
+            {
+              "role": "story_reference",
+              "label": "Spire Archway (new)",
+              "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\inputs\\004.png",
+              "kind": "entity-library",
+              "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+              "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+              "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+              "image_index": 1,
+              "prompt_role": "background_reference",
+              "applies_to": "Spire_Archway_efbf29cc",
+              "preserve": [
+                "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Spire_Archway_efbf29cc",
+                  "prompt_role": "background_reference",
+                  "preserve": [
+                    "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            }
+          ],
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\background.png",
+          "frozen_prompt_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\background_Qwen_Image_2_1_Prompt.md",
+          "frozen_ir_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\background_Scene_Render_IR.json",
+          "frozen_snapshot_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\background_snapshot.json",
+          "source_sha256_verified": true,
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG"
+        }
+      },
+      "shared_references": [
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\01_background-004.png",
+          "sha256": "986fb906c009b5070fc3b35c27e51d87491c784e836d29add5fe37354b67f41f",
+          "candidate_id": "background-004",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:background}}",
+          "label": "Background",
+          "kind": "scene-render",
+          "image_index": 1,
+          "prompt_role": "background_reference",
+          "applies_to": "background",
+          "preserve": [
+            "the accepted subscene's subjects, arrangement, architecture, materials, and identifying details"
+          ],
+          "change": [],
+          "ignore": [
+            "outer placement, final-canvas framing, and any content assigned to other image inputs"
+          ],
+          "notes": "backdrop",
+          "assignments": [
+            {
+              "applies_to": "background",
+              "prompt_role": "background_reference",
+              "preserve": [
+                "the accepted subscene's subjects, arrangement, architecture, materials, and identifying details"
+              ],
+              "change": [],
+              "ignore": [
+                "outer placement, final-canvas framing, and any content assigned to other image inputs"
+              ],
+              "notes": "backdrop"
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\background\\background-004.png"
+        },
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\02_Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png",
+          "sha256": "0cd277465d4d028e0e3674fb3957260d292533eccc7d4e4f24c8641475aa9db3",
+          "candidate_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:Kaeldor_and_the_Schoolboys_1791152906199_subscene}}",
+          "label": "Kaeldor and the Schoolboys",
+          "kind": "scene-render",
+          "image_index": 2,
+          "prompt_role": "group_reference",
+          "applies_to": "Kaeldor_and_the_Schoolboys_1791152906199",
+          "preserve": [
+            "the dialogue panel and pointer for Kaeldor, including the exact text \"sorry\", exactly once"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+          "assignments": [
+            {
+              "applies_to": "Kaeldor_and_the_Schoolboys_1791152906199",
+              "prompt_role": "group_reference",
+              "preserve": [
+                "the dialogue panel and pointer for Kaeldor, including the exact text \"sorry\", exactly once"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Kaeldor_and_the_Schoolboys_1791152906199_subscene\\Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png"
+        },
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\03_Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png",
+          "sha256": "769a63f42f7cd98155561414a4c3e4c43b5c2ebeebc416b424482cfe69a47cfa",
+          "candidate_id": "Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:Tsaeytte_and_Valindia_1791243031945_subscene}}",
+          "label": "Tsaeytte and Valindia",
+          "kind": "scene-render",
+          "image_index": 3,
+          "prompt_role": "group_reference",
+          "applies_to": "Tsaeytte_and_Valindia_1791243031945",
+          "preserve": [
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+          "assignments": [
+            {
+              "applies_to": "Tsaeytte_and_Valindia_1791243031945",
+              "prompt_role": "group_reference",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+            }
+          ],
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Tsaeytte_and_Valindia_1791243031945_subscene\\Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png"
+        }
+      ],
+      "output_size": [
+        928,
+        1152
+      ],
+      "members": [
+        "Kaeldor",
+        "Schoolboy 1",
+        "Schoolboy 2",
+        "Tsaeytte",
+        "Valindia"
+      ],
+      "requirements": [
+        "Exactly five characters appear: Kaeldor, two schoolboys, Tsaeytte, and Valindia.",
+        "Tsaeytte remains seated on the ground with her hands behind her supporting her, on the right with Valindia standing behind her.",
+        "Retain all five books visible in the accepted source; separately record that the authored scene asks for four.",
+        "The three boys occupy the left foreground as a single intact group; record whether Kaeldor reads as walking.",
+        "Kaeldor has one small, readable speech balloon containing exactly \"sorry\"."
+      ],
+      "dialogue": [
+        {
+          "text": "sorry",
+          "speaker": "Kaeldor",
+          "lines": 1
+        }
+      ],
+      "inherited_defects": [
+        "Accepted group contains five books although authored requirement is four.",
+        "Accepted Kaeldor stride may read as standing rather than walking."
+      ],
+      "arm_status": {
+        "A_original": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "B_corrected": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "C_layers": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        }
+      },
+      "shot": {
+        "canvas": [
+          928,
+          1152
+        ],
+        "layers": [
+          {
+            "key": "group",
+            "label": "Kaeldor and the Schoolboys",
+            "box": [
+              0.01,
+              0.3,
+              0.48,
+              0.7
+            ],
+            "depth": 3,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\prepared\\group.png",
+            "sha256": "866dde31e0b906213037015fad0b8debd8a2d049d8efe955fe9346708daf5a1c",
+            "bbox": [
+              0,
+              0,
+              743,
+              1152
+            ],
+            "source_pixels": 855936,
+            "placed_size": [
+              445,
+              690
+            ],
+            "position": [
+              10,
+              462
+            ]
+          },
+          {
+            "key": "pair",
+            "label": "Tsaeytte and Valindia",
+            "box": [
+              0.44,
+              0.4,
+              0.55,
+              0.57
+            ],
+            "depth": 2,
+            "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\prepared\\pair.png",
+            "sha256": "2d322921328aa1292db8c7b65723f18a4468d8d515e8622b3b3d6688e407a588",
+            "bbox": [
+              0,
+              0,
+              928,
+              1150
+            ],
+            "source_pixels": 1067200,
+            "placed_size": [
+              510,
+              632
+            ],
+            "position": [
+              409,
+              485
+            ]
+          }
+        ],
+        "dialogue": [
+          {
+            "text": "sorry",
+            "speaker": "Kaeldor",
+            "lines": 1
+          }
+        ],
+        "requirements": [
+          "Exactly five characters appear: Kaeldor, two schoolboys, Tsaeytte, and Valindia.",
+          "Tsaeytte remains seated on the ground with her hands behind her supporting her, on the right with Valindia standing behind her.",
+          "Retain all five books visible in the accepted source; separately record that the authored scene asks for four.",
+          "The three boys occupy the left foreground as a single intact group; record whether Kaeldor reads as walking.",
+          "Kaeldor has one small, readable speech balloon containing exactly \"sorry\"."
+        ],
+        "background": {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\prepared\\background.png",
+          "source_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\background.png",
+          "sha256": "a4d93a38809c072ecdc6bf6ff75a03d97b7b2a0372d1967d56c10e2883c85f6a"
+        }
+      },
+      "prepared_hashes": {
+        "background.png": "a4d93a38809c072ecdc6bf6ff75a03d97b7b2a0372d1967d56c10e2883c85f6a",
+        "group.png": "866dde31e0b906213037015fad0b8debd8a2d049d8efe955fe9346708daf5a1c",
+        "layer-composite.png": "f2817e02b3b32b8ab4ba654cae0f02c71e4c1e9af28ebae1cad30582a1f2b316",
+        "layout-left.png": "2711045d5f623ee0e6266943a31ea398fa1e16c3d5faa2a5da99df4f545aae32",
+        "layout-preview.png": "f2817e02b3b32b8ab4ba654cae0f02c71e4c1e9af28ebae1cad30582a1f2b316",
+        "pair.png": "2d322921328aa1292db8c7b65723f18a4468d8d515e8622b3b3d6688e407a588",
+        "protected-foreground-mask.png": "631a449b136b0b743102c2d29d0981b679f43b7d956a5c063f7f10592112c7a6",
+        "qwen-edit-mask.png": "0b512d18d4befba73e204073c28a50751f24844b9c06f523788a3058a3e06ca7",
+        "shot.json": "6c983548d28f20d8f8960c778d062acab0f76264431598685b856a7590fb0b5f"
+      },
+      "prep_status": "APPROVED",
+      "profile_settings": {
+        "backend": "comfyui",
+        "model_family": "qwen-image-2.1",
+        "diffusion_model": "qwen_image_2.1_int8_convrot.safetensors",
+        "workflow_kind": "qwen_image_21_scene_preview",
+        "pixel_budget": 1069056,
+        "reference_resolution": 1024,
+        "steps": 40,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0,
+        "timeout_seconds": 1800,
+        "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+        "vae": "qwen_image_2.1_vae_bf16.safetensors",
+        "seed": "random",
+        "supports_reference_images": true,
+        "qwen_cache_enabled": true,
+        "qwen_cache_device": "cpu",
+        "qwen_cache_dtype": "int8",
+        "output_subdir": "Local_Test_Renders",
+        "width": 1024,
+        "height": 1024
+      },
+      "layout_approved_at": "2026-10-06T05:18:04.609202+00:00"
+    }
+  },
+  "environment": {
+    "python": "3.14.6 (tags/v3.14.6:c63aec6, Jun 10 2026, 10:26:10) [MSC v.1944 64 bit (AMD64)]",
+    "pillow": "12.3.0",
+    "numpy": "2.5.1",
+    "opencv": "5.0.0"
+  },
+  "seed_arm_schedule": {
+    "1101": [
+      "A_original",
+      "B_corrected",
+      "C_layers"
+    ],
+    "1102": [
+      "B_corrected",
+      "C_layers",
+      "A_original"
+    ],
+    "1103": [
+      "C_layers",
+      "A_original",
+      "B_corrected"
+    ],
+    "1104": [
+      "A_original",
+      "B_corrected",
+      "C_layers"
+    ],
+    "1105": [
+      "B_corrected",
+      "C_layers",
+      "A_original"
+    ],
+    "1106": [
+      "C_layers",
+      "A_original",
+      "B_corrected"
+    ],
+    "1107": [
+      "A_original",
+      "B_corrected",
+      "C_layers"
+    ],
+    "1108": [
+      "B_corrected",
+      "C_layers",
+      "A_original"
+    ]
+  },
+  "render_completed_at": "2026-10-06T07:20:50.853427+00:00",
+  "source_inventory": {
+    "Chapter-01-Standing-in-Wonder": {
+      "sources": {
+        "group": {
+          "target": "Schoolboys_440071c5_subscene",
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "attempt_id": "a44fcb9fbf364715bd9099394a96e0dc",
+          "sha256": "f4efdba789e8d94d0b0838b8ee845286f5b91682c20231384fed68706bb4b3ac",
+          "dimensions": [
+            1184,
+            896
+          ],
+          "format": "PNG",
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\source_images\\group.png"
+        },
+        "main": {
+          "target": "main",
+          "candidate_id": "main-001-cc90dcd0",
+          "attempt_id": "cc90dcd049cc40aa8af4a185acb9084e",
+          "sha256": "f0774b0a6bdc6b6d25fbc21fcdeedb6101787a4271c012f0fe2420437952a858",
+          "dimensions": [
+            832,
+            1248
+          ],
+          "format": "PNG",
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\source_images\\main.png"
+        }
+      },
+      "references": [
+        {
+          "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\01_001.png",
+          "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "dimensions": [
+            832,
+            1216
+          ],
+          "format": "PNG"
+        },
+        {
+          "label": "Schoolboys and Kaeldor",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\02_Schoolboys_440071c5_subscene-002.png",
+          "sha256": "f4efdba789e8d94d0b0838b8ee845286f5b91682c20231384fed68706bb4b3ac",
+          "dimensions": [
+            1184,
+            896
+          ],
+          "format": "PNG"
+        },
+        {
+          "label": "Spire Archway (new)",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\03_002.png",
+          "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+          "dimensions": [
+            1600,
+            1024
+          ],
+          "format": "PNG"
+        }
+      ]
+    },
+    "Chapter-02-At-the-Arch": {
+      "sources": {
+        "group": {
+          "target": "Schoolboys_and_Kaeldor_1791131636182_subscene",
+          "candidate_id": "Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68",
+          "attempt_id": "eda1bd68354347dea43541bec900bb67",
+          "sha256": "1eb9b0a1eeb059b455b33fbf9aeee542a1baf68161ddf1f9cbcac7b9ec41143d",
+          "dimensions": [
+            1184,
+            896
+          ],
+          "format": "PNG",
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\source_images\\group.png"
+        },
+        "main": {
+          "target": "main",
+          "candidate_id": "main-006-690f8267",
+          "attempt_id": "690f82677e3a42dcb0955bcdee439274",
+          "sha256": "93ac2069991d8860a20bf45e1679588228437a42de559a4a814e75837633aa6d",
+          "dimensions": [
+            1376,
+            768
+          ],
+          "format": "PNG",
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\source_images\\main.png"
+        }
+      },
+      "references": [
+        {
+          "label": "Tsaeytte · Youth · Woodland outfit · Left Profile",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\01_001.png",
+          "sha256": "92c84fdf0096f2dd0e7c4f868fa7b0a5e7043d2951d814c5cab6276d42f9e2b9",
+          "dimensions": [
+            832,
+            1216
+          ],
+          "format": "PNG"
+        },
+        {
+          "label": "Spire Archway (new)",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\02_003.png",
+          "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+          "dimensions": [
+            1600,
+            1024
+          ],
+          "format": "PNG"
+        },
+        {
+          "label": "Valindia · Adult · School Outfit · Right Profile",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\03_004.png",
+          "sha256": "0f5662455514c82f7f1465ea4645c55265b0c6cc310de508c0b795fde4276d1c",
+          "dimensions": [
+            832,
+            1216
+          ],
+          "format": "PNG"
+        },
+        {
+          "label": "Schoolboys and Kaeldor",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\frozen\\references\\04_Schoolboys_and_Kaeldor_1791131636182_subscene-003-eda1bd68.png",
+          "sha256": "1eb9b0a1eeb059b455b33fbf9aeee542a1baf68161ddf1f9cbcac7b9ec41143d",
+          "dimensions": [
+            1184,
+            896
+          ],
+          "format": "PNG"
+        }
+      ]
+    },
+    "Chapter-03-Collision": {
+      "sources": {
+        "group": {
+          "target": "Kaeldor_and_the_Schoolboys_1791152906199_subscene",
+          "candidate_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec",
+          "attempt_id": "1b4658ece9a242af91aaf1c1d3eba4ac",
+          "sha256": "0cd277465d4d028e0e3674fb3957260d292533eccc7d4e4f24c8641475aa9db3",
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG",
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\group.png"
+        },
+        "main": {
+          "target": "main",
+          "candidate_id": "main-001-99151f9f",
+          "attempt_id": "99151f9f91304f2e850801db2588c666",
+          "sha256": "278ca1de8c57142038c9c62cc306c2748c5a9bdf1ca2e5be9dd46bb11983fe7f",
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG",
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\main.png"
+        },
+        "pair": {
+          "target": "Tsaeytte_and_Valindia_1791243031945_subscene",
+          "candidate_id": "Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76",
+          "attempt_id": "f5e8bd76f5b344429cdd09e591044837",
+          "sha256": "769a63f42f7cd98155561414a4c3e4c43b5c2ebeebc416b424482cfe69a47cfa",
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG",
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\pair.png"
+        },
+        "background": {
+          "target": "background",
+          "candidate_id": "background-004",
+          "attempt_id": "9c28cb77ee7a4ab5bf5ef9ebfc635231",
+          "sha256": "986fb906c009b5070fc3b35c27e51d87491c784e836d29add5fe37354b67f41f",
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG",
+          "frozen_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\background.png"
+        }
+      },
+      "references": [
+        {
+          "label": "Background",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\01_background-004.png",
+          "sha256": "986fb906c009b5070fc3b35c27e51d87491c784e836d29add5fe37354b67f41f",
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG"
+        },
+        {
+          "label": "Kaeldor and the Schoolboys",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\02_Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png",
+          "sha256": "0cd277465d4d028e0e3674fb3957260d292533eccc7d4e4f24c8641475aa9db3",
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG"
+        },
+        {
+          "label": "Tsaeytte and Valindia",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\03_Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png",
+          "sha256": "769a63f42f7cd98155561414a4c3e4c43b5c2ebeebc416b424482cfe69a47cfa",
+          "dimensions": [
+            928,
+            1152
+          ],
+          "format": "PNG"
+        }
+      ]
+    }
+  }
+}

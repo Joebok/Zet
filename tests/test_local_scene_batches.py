@@ -114,6 +114,27 @@ def test_selection_checkpoints_and_canonical_publication(batches):
     action(batches, run, "publish")
 
 
+def test_explicit_seed_render_uses_two_requested_seeds_and_fresh_batch_preserves_prior_candidates(batches):
+    run = create(batches)
+    run_id = run["run_id"]
+    run = action(batches, run, "render", target_id="background", seeds=[1101, 1102])
+    active = run["groups"]["background"]["active_candidates"]
+    submitted = [item for item in active if item["status"] in {"QUEUED", "RUNNING", "SUBMITTING"}]
+    assert [item["seed"] for item in submitted] == [1101, 1102]
+    run = finish_group(batches, run, "background")
+    completed = [item for item in run["groups"]["background"]["active_candidates"] if item["status"] == "COMPLETE"]
+    assert [item["seed"] for item in completed] == [1101, 1102]
+    previous_paths = [Path(item["image_path"]) for item in completed]
+    assert all(path.is_file() for path in previous_paths)
+
+    fresh = batches.create("Story", "Scene", {"fresh_batch": True})
+    assert fresh["run_id"] != run_id
+    preserved = batches.detail("Story", "Scene", run_id)
+    assert [item["seed"] for item in preserved["groups"]["background"]["active_candidates"]
+            if item["status"] == "COMPLETE"] == [1101, 1102]
+    assert all(path.is_file() for path in previous_paths)
+
+
 @pytest.mark.parametrize("count", [0, 1, 10])
 def test_dynamic_groups_and_disabled_targets(batches, count):
     data = batches.story.load_scene_builder_data("Story", "Scene").data

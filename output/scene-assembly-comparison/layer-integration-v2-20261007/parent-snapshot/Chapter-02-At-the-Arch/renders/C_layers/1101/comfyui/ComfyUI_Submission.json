@@ -1,0 +1,9 @@
+{
+  "status": "COMPLETE",
+  "server_url": "http://127.0.0.1:8188",
+  "workflow_sha256": "0fb1391351d135a0e231ba9cc9dda1ea24d1e7a6352d3542364eec92b63a5dd8",
+  "prompt_id": "a1c2e489-b599-4a99-8a7d-0701fe687d8c",
+  "image_paths": [
+    "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-02-At-the-Arch\\renders\\C_layers\\1101\\comfyui\\5cbcbe41599e_1_1101_00001_.png"
+  ]
+}

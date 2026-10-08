@@ -113,7 +113,9 @@ class LocalSceneBatchService:
         originals.extend([self.story._library_absolute_path(self.story.load_scene(story, scene).record.path),
                           self.story._library_absolute_path(self.story.load_story(story).record.story_file_path)])
         originals.extend(self.project_root / "zet/services" / name for name in
-                         ["qwen_scene_prompt.py", "scene_render_compiler.py", "scene_render_target_service.py", "story_render_service.py"])
+                         ["qwen_scene_prompt.py", "scene_render_compiler.py", "scene_render_target_service.py", "story_render_service.py",
+                          "scene_layout_service.py", "scene_background_service.py", "scene_spatial_contract.py",
+                          "imperial_units.py"])
         originals.extend(Path(item["source_path"]) for item in style_sources.values())
         for sections in sources.values():
             originals.extend(self.story._library_absolute_path(value) for key, value in sections.items()
@@ -140,8 +142,15 @@ class LocalSceneBatchService:
 
     def create(self, story: str, scene: str, payload: dict) -> dict:
         existing = self.list_runs(story, scene)
-        if existing:
+        if existing and not payload.get("fresh_batch"):
             return self.detail(story, scene, existing[0]["run_id"])
+        if existing:
+            for spec_path in self.workspace(story, scene).glob("*/spec.json"):
+                state = _read(spec_path.parent / "state.json")
+                if any(candidate.get("status") in {"SUBMITTING", "QUEUED", "RUNNING"}
+                       for group in state.get("groups", {}).values()
+                       for candidate in group.get("candidates", [])):
+                    raise ValueError("Wait for active renders to finish before creating a fresh batch.")
         plan = self.preview(story, scene, payload)
         story, scene = plan["story_slug"], plan["scene_slug"]
         run_id = uuid4().hex
@@ -795,6 +804,14 @@ class LocalSceneBatchService:
                                         in {"EMPTY", "STOPPED", "FAILED"}]
                     else:
                         slot_numbers = list(range(1, INITIAL_SLOT_COUNT + 1))
+                    explicit_seeds = payload.get("seeds")
+                    if explicit_seeds is not None:
+                        if name != "render" or not isinstance(explicit_seeds, list) or not explicit_seeds:
+                            raise ValueError("Explicit seeds are supported for a render action with a non-empty seed list.")
+                        if any(not isinstance(seed, int) or isinstance(seed, bool) or not 0 <= seed < 2**63
+                               for seed in explicit_seeds):
+                            raise ValueError("Render seeds must be non-negative 63-bit integers.")
+                        slot_numbers = list(range(1, len(explicit_seeds) + 1))
                     if not slot_numbers:
                         raise ValueError("There are no empty render slots to fill." if name == "fill"
                                          else "There are no unfinished render slots to resume.")
@@ -808,7 +825,11 @@ class LocalSceneBatchService:
                         group, target, slot_numbers, attempt_id, force_new=had_attempt or name in {"retry", "rerender"})
                     self._discard_replaced_candidates(root, state)
                     state["rankings"].pop(target, None)
-                    self._queue(root, spec, state, target, candidate_ids=candidate_ids)
+                    seed_by_candidate_id = None
+                    if explicit_seeds is not None:
+                        seed_by_candidate_id = dict(zip(candidate_ids, explicit_seeds, strict=True))
+                    self._queue(root, spec, state, target, candidate_ids=candidate_ids,
+                                seed_by_candidate_id=seed_by_candidate_id)
             elif name in {"select", "review", "move-rank"}:
                 candidate_id = str(payload.get("candidate_id") or "")
                 candidate = next((item for item in group["candidates"] if item["candidate_id"] == candidate_id), None)
@@ -899,7 +920,7 @@ class LocalSceneBatchService:
             ids.append(current["candidate_id"])
         return ids
 
-    def _queue(self, root, spec, state, target, *, candidate_ids, allow_retry=False):
+    def _queue(self, root, spec, state, target, *, candidate_ids, allow_retry=False, seed_by_candidate_id=None):
         group = state["groups"][target]
         profile = require_qwen_profile(self.project_root, SCENE_PROFILE)
         attempt = group.get("attempts", {}).get(group.get("attempt_id"), group)
@@ -915,7 +936,8 @@ class LocalSceneBatchService:
                 continue
             if item["status"] in {"QUEUED", "RUNNING", "SUBMITTING"}:
                 continue
-            item["seed"] = random.SystemRandom().randrange(2**63)
+            item["seed"] = (seed_by_candidate_id or {}).get(item["candidate_id"],
+                             random.SystemRandom().randrange(2**63))
             render_attempt_id = uuid4().hex
             source_id = f"SceneSlot_{spec['run_id']}_{target}_{item['candidate_id']}_{render_attempt_id}"
             slot_path = root / "slots" / target / f"{item['candidate_id']}.png"

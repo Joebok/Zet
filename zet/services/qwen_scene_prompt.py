@@ -5,6 +5,17 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from zet.services.scene_spatial_contract import (
+    gaze_is_consistent,
+    frame_extension_contract,
+    has_measured_layout,
+    group_reference_contract,
+    layout_reference_contract,
+    projected_subject_text,
+    projection_for_element,
+    suppress_spatial_clauses,
+)
+
 
 _ARRIVAL_LANGUAGE = re.compile(
     r"\b(?:approach(?:ing|es)?|enter(?:ing|s)?|arriv(?:e|es|ing)|"
@@ -65,7 +76,7 @@ def _placements(ir: dict[str, Any], elements: dict[str, dict[str, Any]]) -> list
 
 
 def _reference_lines(
-    image_inputs: list[dict[str, Any]], elements: dict[str, dict[str, Any]]
+    image_inputs: list[dict[str, Any]], elements: dict[str, dict[str, Any]], *, measured_layout: bool = False
 ) -> list[str]:
     lines: list[str] = []
     for index, item in enumerate(image_inputs, start=1):
@@ -105,6 +116,23 @@ def _reference_lines(
             roles = [" ".join(part for part in (role, f"for {name}" if name else "") if part)]
 
         detail = f"{tag} supplies {' and '.join(roles)}"
+        if item.get("role") == "layout_reference":
+            detail = (f"{tag} is the measured camera-view layout guide; preserve its framing, subject count, "
+                      "projected positions, relative heights, and overlaps while replacing the gray pawns "
+                      "with their assigned scene elements")
+        elif measured_layout and any(
+            elements.get(target_id, {}).get("resource_type") == "Scene-Only"
+            for target_id in ([str(assignment.get("applies_to") or "") for assignment in assignments]
+                              or [str(item.get("applies_to") or "")])
+        ):
+            group_ids = [target_id for target_id in (
+                [str(assignment.get("applies_to") or "") for assignment in assignments]
+                or [str(item.get("applies_to") or "")]
+            ) if elements.get(target_id, {}).get("resource_type") == "Scene-Only"]
+            group_names = [
+                _text(elements.get(target_id, {}).get("display_name")) for target_id in group_ids
+            ]
+            detail = f"{tag} is a member identity, costume, and action reference for {', '.join(name for name in group_names if name)}; {group_reference_contract()}"
         assigned_preserve = {
             _text(value).casefold()
             for assignment in assignments
@@ -175,9 +203,36 @@ def _appearance_parts(value: Any, name: str = "") -> tuple[list[str], bool]:
 
 
 def _subject_description(
-    element: dict[str, Any], placement: dict[str, Any], interactions: list[str], elements: dict[str, dict[str, Any]]
+    element: dict[str, Any], placement: dict[str, Any], interactions: list[str], elements: dict[str, dict[str, Any]],
+    ir: dict[str, Any] | None = None,
 ) -> str:
     name = _text(element.get("display_name")) or "The subject"
+    projection = placement.get("layout_projection") if isinstance(placement.get("layout_projection"), dict) else None
+    projection = projection or projection_for_element(ir or {"placements": [placement]}, str(element.get("id") or ""))
+    if projection:
+        identity_source = element.get("resolved_source_sections") or {}
+        identity = _text(identity_source.get("identity_preservation_core") or element.get("fallback_visual_description"))
+        costume = _text(identity_source.get("identity_preservation_costume"))
+        pose = placement.get("pose") if isinstance(placement.get("pose"), dict) else {}
+        gaze_id = str(pose.get("gaze_target_element_id") or "")
+        if gaze_id and not gaze_is_consistent(ir or {}, projection, gaze_id):
+            gaze_id = ""
+        gaze = _text(elements.get(gaze_id, {}).get("display_name") or gaze_id)
+        expression = _text(pose.get("expression") or placement.get("expression"))
+        pose_summary = suppress_spatial_clauses(pose.get("summary"))
+        override = suppress_spatial_clauses(element.get("element_visual_override"))
+        placement_notes = suppress_spatial_clauses(placement.get("placement_notes"))
+        motion = placement.get("motion") if isinstance(placement.get("motion"), dict) else {}
+        cue = suppress_spatial_clauses(motion.get("cue")) if _text(motion.get("state")).casefold() == "moving" else ""
+        pose_summary = pose_summary.rstrip(" .!?")
+        override = override.rstrip(" .!?")
+        clauses = [f"{name} appears once", identity, costume,
+                   projected_subject_text(projection, display_name=name),
+                   pose_summary, override,
+                   (f"with an {expression} expression" if expression[:1].casefold() in "aeiou" else f"with a {expression} expression") if expression else "",
+                   f"looking toward {gaze}" if gaze else "", placement_notes, cue]
+        clauses.extend(suppress_spatial_clauses(value) for value in interactions)
+        return _sentence(", ".join(item for item in clauses if item))
     source = element.get("resolved_source_sections") or {}
     source = source if isinstance(source, dict) else {}
     identity = _text(
@@ -282,7 +337,8 @@ def _dialogue_description(
     speaker_id = str(item.get("speaker_element_id") or "")
     speaker = _text(item.get("speaker_name") or elements.get(speaker_id, {}).get("display_name") or "the speaker")
     placement = placement or {}
-    location = " ".join(part for part in (
+    projection = placement.get("layout_projection") if isinstance(placement.get("layout_projection"), dict) else None
+    location = projected_subject_text(projection, display_name=speaker) if projection else " ".join(part for part in (
         _text(placement.get("position_within_cell")), _text(placement.get("depth"))
     ) if part)
     panel_placement = _text(item.get("panel_placement"))
@@ -426,7 +482,11 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
     composition = ir.get("composition") or {}
     environment = ir.get("environment") or {}
     style = ir.get("style") or {}
-    if isinstance(composition, dict) and isinstance(composition.get("left_to_right"), list):
+    if has_measured_layout(ir):
+        visible.sort(key=lambda pair: float(
+            ((pair[1].get("layout_projection") or {}).get("screen") or {}).get("x", .5)
+        ))
+    elif isinstance(composition, dict) and isinstance(composition.get("left_to_right"), list):
         order = {str(element_id): index for index, element_id in enumerate(composition["left_to_right"])}
         visible.sort(key=lambda pair: order.get(str(pair[0].get("id") or ""), len(order)))
     else:
@@ -452,10 +512,26 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
         opening = f"A single {orientation} image in the style of {medium}. {_sentence(scene.get('story_beat'))} "
 
     parts = [opening.strip()]
-    parts.extend(_reference_lines(image_inputs, elements))
+    parts.extend(_reference_lines(image_inputs, elements, measured_layout=has_measured_layout(ir)))
+    if has_measured_layout(ir):
+        parts.append(layout_reference_contract())
+    if ir.get("layout_projection"):
+        if ir["layout_projection"].get("background"):
+            parts.append("Preserve the already selected background crop and framing shown in the layout guide and background reference. Integrate the subjects into that setting without zooming, stretching, or reframing the background. The guide's gray subjects are placeholders to replace with their assigned scene elements.")
+        parts.extend(frame_extension_contract(ir))
+        ground = ir["layout_projection"].get("ground") or {}
+        if ground.get("enabled"):
+            parts.append(f"Render {ground.get('surface') or 'a ground surface matching the setting'} across the foreground, continuing naturally from the backdrop at the indicated ground join. Replace the flat preview ground color with the scene's actual surface and lighting.")
+        camera = (ir.get("layout_projection") or {}).get("camera") or {}
+        if camera:
+            parts.append(
+                f"Use a camera height of {camera.get('height')} above ground, "
+                f"a {camera.get('pitch_degrees')} degree pitch and {camera.get('yaw_degrees')} degree yaw, "
+                f"with a {camera.get('vertical_fov')} degree vertical field of view."
+            )
     for value in (environment.get("location"), environment.get("general_background_notes")):
         if _text(value):
-            for note in _note_sentences(value):
+            for note in _note_sentences(suppress_spatial_clauses(value) if has_measured_layout(ir) else value):
                 if not _is_parent_placement_note(note):
                     parts.append(_sentence(note))
 
@@ -464,12 +540,13 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
         if focal_point:
             parts.append(_sentence(f"The main visual focus is {focal_point}"))
         order = composition.get("left_to_right")
-        if order and not isinstance(order, list):
+        if order and not isinstance(order, list) and not has_measured_layout(ir):
             parts.append(_sentence(f"The composition reads {order}"))
 
         names = [_text(element.get("display_name")) for element, _ in visible]
         names = [name for name in names if name]
-        for note in _note_sentences(composition.get("composition_notes")):
+        composition_notes = suppress_spatial_clauses(composition.get("composition_notes")) if has_measured_layout(ir) else composition.get("composition_notes")
+        for note in _note_sentences(composition_notes):
             if not _is_redundant_scene_note(note, names):
                 parts.append(_sentence(note))
 
@@ -480,7 +557,7 @@ def compile_qwen_scene_prompt(ir: dict[str, Any]) -> str:
         element_id = str(element.get("id") or "")
         rendered_subjects.add(element_id)
         clauses = interactions.get(element_id, [])
-        description = _subject_description(element, placement, clauses, elements)
+        description = _subject_description(element, placement, clauses, elements, ir)
         parts.append(description)
         for item in dialogue:
             if str(item.get("speaker_element_id") or "") == element_id:

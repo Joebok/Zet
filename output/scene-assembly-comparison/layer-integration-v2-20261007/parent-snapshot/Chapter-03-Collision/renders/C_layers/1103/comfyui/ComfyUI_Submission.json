@@ -1,0 +1,9 @@
+{
+  "status": "COMPLETE",
+  "server_url": "http://127.0.0.1:8188",
+  "workflow_sha256": "d8753f36a4e261fc4900da859ffa10accdbba35fd99d2f223f9479ddf5f85a4c",
+  "prompt_id": "0c00d5df-94d1-49d1-80f6-492a5b534095",
+  "image_paths": [
+    "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\renders\\C_layers\\1103\\comfyui\\b3c9e419eca4_1_1103_00001_.png"
+  ]
+}

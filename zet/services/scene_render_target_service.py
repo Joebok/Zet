@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from zet.services.scene_spatial_contract import fingerprint_payload
+
 
 MAIN_RENDER_TARGET = "main"
 BACKGROUND_RENDER_TARGET = "background"
@@ -621,6 +623,8 @@ class SceneRenderTargetService:
             anchor["resolved_source_sections"] = anchor_sections
         projected = copy.deepcopy(data)
         members = self._members(data, target_id)
+        projected["_layout_source_elements"] = copy.deepcopy(data.get("scene_elements") or [])
+        projected["layout_3d"] = copy.deepcopy(definition.get("layout_3d"))
         projected["scene_elements"] = [item for item in projected.get("scene_elements") or [] if item.get("id") in members]
         projected["placements"] = [item for item in projected.get("placements") or [] if item.get("scene_element_id") in members]
         canvas, environment = self.effective_setup(data, target_id)
@@ -660,6 +664,8 @@ class SceneRenderTargetService:
             return self._project_element_subscene(data, definition)
         projected = copy.deepcopy(data)
         members = self._members(data, target_id)
+        projected["_layout_source_elements"] = copy.deepcopy(data.get("scene_elements") or [])
+        projected["layout_3d"] = copy.deepcopy(definition.get("layout_3d"))
         projected["scene_elements"] = [item for item in projected.get("scene_elements") or [] if item.get("id") in members]
         projected["placements"] = [item for item in projected.get("placements") or [] if item.get("scene_element_id") in members]
         composition = projected.setdefault("setup", {}).setdefault("composition", {})
@@ -686,6 +692,10 @@ class SceneRenderTargetService:
     def project_main(self, data: dict, statuses: dict[str, dict]) -> dict:
         self._assert_dialogue_speakers_represented(data, MAIN_RENDER_TARGET)
         projected = copy.deepcopy(data)
+        # Keep backdrop bindings available after accepted backgrounds bake their elements away.
+        projected["_layout_source_elements"] = copy.deepcopy([
+            item for item in data.get("scene_elements") or [] if item.get("element_type") == "Backdrop"
+        ])
         active = [item for item in data.get("subscenes") or [] if item.get("enabled")]
         active_backgrounds = [item for item in active if item.get("kind") != "element"]
         element_target_ids = {
@@ -720,6 +730,10 @@ class SceneRenderTargetService:
             for element_id in baked_ids if element_id in all_elements
         ]
         excluded_ids = baked_ids | hidden_element_ids
+        projected["_layout_source_elements"] = copy.deepcopy([
+            item for item in data.get("scene_elements") or []
+            if str(item.get("subscene_id") or "") in element_target_ids
+        ]) + list(projected.get("_layout_source_elements") or [])
         projected["scene_elements"] = [item for item in projected.get("scene_elements") or [] if item.get("id") not in excluded_ids]
         projected["placements"] = [item for item in projected.get("placements") or [] if item.get("scene_element_id") not in excluded_ids]
         projected["dialogue"] = self._project_dialogue(data, MAIN_RENDER_TARGET)
@@ -753,7 +767,7 @@ class SceneRenderTargetService:
     @staticmethod
     def input_hash(ir: dict, story_settings: dict, references: list[dict]) -> str:
         digest = hashlib.sha256()
-        payload = copy.deepcopy(ir)
+        payload = fingerprint_payload(ir)
         source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
         for key in ("scene_json_path", "story_settings_path", "source_hashes"):
             source.pop(key, None)

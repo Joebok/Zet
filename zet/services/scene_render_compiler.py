@@ -14,6 +14,16 @@ from zet.services.chatgpt_prompt_contract import (
 )
 from zet.services.scene_prompt_cleanup import cleanup_compiled_scene_prompt
 from zet.services.scene_prompt_sections import select_final_image_prompt_sections
+from zet.services.scene_spatial_contract import (
+    gaze_is_consistent,
+    frame_extension_contract,
+    group_reference_contract,
+    has_measured_layout,
+    layout_reference_contract,
+    projected_subject_text,
+    projection_for_element,
+    suppress_spatial_clauses,
+)
 from zet.services.prompt_template_service import filter_prompt_variant_blocks
 from zet.services.performance_instrumentation import record
 
@@ -203,6 +213,8 @@ def compile_scene_render_ir(
         "depth_lanes": scene_data.get("depth_lanes", {}),
         "elements": _items(scene_data.get("scene_elements")),
         "placements": placements,
+        "layout_3d": scene_data.get("layout_3d") if isinstance(scene_data.get("layout_3d"), dict) else None,
+        "layout_projection": scene_data.get("_layout_projection"),
         "interactions": _items(scene_data.get("interactions")),
         "custom_interactions": _clean(scene_data.get("custom_interactions")),
         "dialogue": dialogue,
@@ -232,7 +244,9 @@ def _scene_image_inputs(ir: dict[str, Any]) -> list[dict[str, Any]]:
         seen.add(tag)
         source = dict(resolved.get(tag, {}))
         prompt_role = _clean(render_input.get("prompt_role") or render_input.get("role")).casefold()
-        if prompt_role not in {"edit_base", "background_reference", "group_reference"}:
+        if prompt_role == "layout_reference":
+            pass
+        elif prompt_role not in {"edit_base", "background_reference", "group_reference"}:
             prompt_role = "background_reference"
         source.update({
             "tag": tag,
@@ -255,10 +269,10 @@ def _scene_image_inputs(ir: dict[str, Any]) -> list[dict[str, Any]]:
         roles = {value.casefold() for value in _lines(reference.get("roles"))}
         element_type = _clean(element.get("element_type"))
         resource_type = _clean(element.get("resource_type"))
-        explicit_prompt_role = next((
+        explicit_prompt_role = _clean(reference.get("prompt_role")) or next((
             role for role in (
                 "edit_base", "subject_reference", "costume_reference", "object_reference",
-                "group_reference", "background_reference", "style_reference",
+                "group_reference", "background_reference", "style_reference", "layout_reference",
             ) if role in roles
         ), "")
         prompt_role = explicit_prompt_role or (
@@ -290,6 +304,15 @@ def _scene_image_inputs(ir: dict[str, Any]) -> list[dict[str, Any]]:
             by_tag[tag] = {**record, "assignments": []}
         if assignment not in by_tag[tag]["assignments"]:
             by_tag[tag]["assignments"].append(assignment)
+    framed_tag = ((ir.get("layout_projection") or {}).get("background") or {}).get("source_tag")
+    if framed_tag in by_tag:
+        record = by_tag[framed_tag]
+        for binding in [record, *record.get("assignments", [])]:
+            binding["preserve"] = list(dict.fromkeys([*(binding.get("preserve") or []), "the selected background crop and framing"]))
+            binding["ignore"] = [value for value in binding.get("ignore") or []
+                                 if not any(word in value.lower() for word in ("framing", "aspect ratio", "placement"))]
+            if ((ir.get("layout_projection") or {}).get("background") or {}).get("extension_regions"):
+                binding["ignore"].append("pale empty extension areas; generate continuous setting details in these areas")
     return build_image_inputs(by_tag.values(), render_mode=ir["render_mode"])
 
 
@@ -779,6 +802,24 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
     element = _element(ir, element_id)
     pose = placement.get("pose", {}) if isinstance(placement.get("pose"), dict) else {}
     pose_summary = clean_prompt_sentence(pose.get("summary") if pose else placement.get("pose"))
+    if has_measured_layout(ir):
+        name = get_element_display_name(element_id, elements_by_id)
+        projection = projection_for_element(ir, element_id) or {}
+        spatial = projected_subject_text(projection, display_name=name) if projection else ""
+        action = suppress_spatial_clauses(pose_summary)
+        parts = [spatial, action]
+        target_id = _clean(pose.get("gaze_target_element_id") or placement.get("gaze_target_element_id"))
+        if target_id and projection and gaze_is_consistent(ir, projection, target_id):
+            target = get_element_display_name(target_id, elements_by_id)
+            if target:
+                parts.append(f"Looks directly at {target}")
+        expression = suppress_spatial_clauses(pose.get("expression") or placement.get("expression"))
+        if expression:
+            parts.append(f"Expression: {expression}")
+        override = suppress_spatial_clauses(element.get("element_visual_override"))
+        if override:
+            parts.append(override)
+        return ". ".join(part.rstrip(". ") for part in parts if part)
     if pose_summary.casefold() in {"standing", "stands"}:
         pose_summary = ""
     world_position = clean_prompt_sentence(placement.get("world_position"))
@@ -839,12 +880,17 @@ def _placement_line(ir: dict[str, Any], placement: dict[str, Any], elements_by_i
     return " ".join(item for item in sentences if item)
 
 
-def _reference_defaults(element: dict[str, Any], ref: dict[str, Any]) -> tuple[str, str]:
+def _reference_defaults(element: dict[str, Any], ref: dict[str, Any], *, measured_layout: bool = False) -> tuple[str, str]:
     element_type = _clean(element.get("element_type"))
     resource_type = _clean(element.get("resource_type"))
     roles = {item.lower() for item in _lines(ref.get("roles"))}
     tag = _clean(ref.get("tag")).lower()
     if "internal arrangement" in roles:
+        if measured_layout:
+            return (
+                "the recognizable appearance, identities, costumes, and assigned actions of the group's members",
+                "source camera angle, outer placement, relative scale, member viewing angles, framing, background, and lighting",
+            )
         return (
             "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement",
             "source canvas, background, crop, framing, absolute scale, outer placement, pose where overridden by the parent, and lighting",
@@ -879,7 +925,7 @@ def _relationship_key(value: Any) -> str:
     return re.sub(r"\s+", " ", _clean(value).lower()).strip()
 
 
-def _interaction_lines(ir: dict[str, Any], elements_by_id: dict[str, dict[str, Any]]) -> list[str]:
+def _interaction_lines(ir: dict[str, Any], elements_by_id: dict[str, dict[str, Any]], *, measured_layout: bool = False) -> list[str]:
     records = []
     seen = set()
     for item in ir.get("interactions", []):
@@ -907,7 +953,8 @@ def _interaction_lines(ir: dict[str, Any], elements_by_id: dict[str, dict[str, A
             and _clean(item.get("target_element_id")) == target
             and _relationship_key(item.get("relationship") or item.get("type")) == relationship
         ), {})
-        note = clean_prompt_sentence(source.get("note"))
+        note_value = suppress_spatial_clauses(source.get("note")) if measured_layout else source.get("note")
+        note = clean_prompt_sentence(note_value)
         line = f"{get_element_display_name(subject, elements_by_id)} {relationship} {get_element_display_name(target, elements_by_id)}"
         if note:
             line += f"; {note}"
@@ -915,8 +962,10 @@ def _interaction_lines(ir: dict[str, Any], elements_by_id: dict[str, dict[str, A
     return lines
 
 
-def _custom_interaction_lines(ir: dict[str, Any]) -> list[str]:
-    return [line if line.startswith("- ") else f"- {line}" for value in str(ir.get("custom_interactions") or "").splitlines() if (line := value.strip())]
+def _custom_interaction_lines(ir: dict[str, Any], *, measured_layout: bool = False) -> list[str]:
+    values = str(ir.get("custom_interactions") or "").splitlines()
+    return [line if line.startswith("- ") else f"- {line}" for value in values
+            if (line := (suppress_spatial_clauses(value) if measured_layout else value).strip())]
 
 
 def _risk_constraint_lines(ir: dict[str, Any]) -> list[str]:
@@ -927,6 +976,11 @@ def _risk_constraint_lines(ir: dict[str, Any]) -> list[str]:
         item for item in elements
         if _clean(item.get("id")) in visible_ids
         and _clean(item.get("element_type")) in {"Character", "Monster"}
+        and next((
+            _clean(placement.get("position_within_cell")).casefold() != "none"
+            for placement in placements
+            if _placement_element_id(placement) == _clean(item.get("id"))
+        ), True)
     ]
     relationship_text = " ".join(
         _clean(item.get("relationship")) + " " + _clean(item.get("note"))
@@ -975,6 +1029,7 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
     target = ir.get("render_target", {}) if isinstance(ir.get("render_target"), dict) else {}
     is_subscene = target.get("kind") == "subscene"
     is_element_subscene = target.get("kind") == "element_subscene"
+    measured_layout = has_measured_layout(ir)
     target_anchor = target.get("anchor") if isinstance(target.get("anchor"), dict) else {}
     target_name = clean_prompt_sentence(target_anchor.get("display_name") or target.get("label")) or "the assigned element"
     lines = (
@@ -1032,6 +1087,8 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
             *image_input_prompt(image_inputs).splitlines(),
             "",
         ])
+        if measured_layout:
+            lines.extend(["# Group References", "", f"- {group_reference_contract()}", ""])
     if image_inputs and not legacy_prompt and prompt_variant == "generation":
         lines.extend([
             "# Change Contract",
@@ -1043,7 +1100,18 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
             preserve_contract_prompt(_clean(ir.get("render_mode")), image_inputs),
             "",
         ])
-    story_beat = clean_prompt_sentence(ir.get("scene", {}).get("story_beat"))
+    if (ir.get("layout_projection") or {}).get("background"):
+        lines.extend(["# Background Framing", "",
+                      "- Preserve the selected crop and framing in the background reference and camera-view layout. Replace gray subjects with their assigned scene elements and integrate them naturally into the setting.",
+                      *[f"- {item}" for item in frame_extension_contract(ir)], ""])
+    ground = (ir.get("layout_projection") or {}).get("ground") or {}
+    if ground.get("enabled"):
+        lines.extend(["# Foreground Surface", "",
+                      f"- Render {ground.get('surface') or 'a ground surface matching the setting'} continuing from the backdrop at the measured join. Replace the preview ground color with the actual scene surface.", ""])
+    if measured_layout:
+        lines.extend(["# Measured Layout Authority", "", f"- {layout_reference_contract()}", ""])
+    story_beat_value = suppress_spatial_clauses(ir.get("scene", {}).get("story_beat")) if measured_layout else ir.get("scene", {}).get("story_beat")
+    story_beat = clean_prompt_sentence(story_beat_value)
     if story_beat:
         lines.extend(["# Story Beat", "", f"- {_sentence(story_beat)}", ""])
     if legacy_prompt and ir.get("references"):
@@ -1052,7 +1120,7 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
             element_id = _clean(ref.get("applies_to_element_id"))
             element = elements_by_id.get(element_id, {})
             name = get_element_display_name(element_id, elements_by_id)
-            preserve, ignore = _reference_defaults(element, ref)
+            preserve, ignore = _reference_defaults(element, ref, measured_layout=measured_layout)
             tag = clean_prompt_sentence(ref.get("tag"))
             roles = ", ".join(
                 role for role in _lines(ref.get("roles"))
@@ -1067,8 +1135,9 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
     lines.extend(["# Canvas", ""])
     lines.append(f"- {clean_prompt_sentence(canvas.get('orientation')) or 'Landscape'} {clean_prompt_sentence(canvas.get('aspect_ratio')) or '16:9'}.")
     composition_lines = []
-    if clean_prompt_sentence(composition.get("focal_point")):
-        composition_lines.append(f"- Primary focal point: {clean_prompt_sentence(composition.get('focal_point'))}.")
+    focal_point = suppress_spatial_clauses(composition.get("focal_point")) if measured_layout else clean_prompt_sentence(composition.get("focal_point"))
+    if focal_point:
+        composition_lines.append(f"- Primary focal point: {focal_point}.")
     placements_by_element_id = {
         _placement_element_id(placement): placement
         for placement in ir.get("placements", [])
@@ -1079,8 +1148,8 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
         for item in ir.get("baked_landmarks", [])
         if _clean(item.get("id")) and _clean(item.get("position_within_cell")).casefold() not in {"", "none"}
     })
-    read_order = _lines(composition.get("left_to_right"))
-    for depth in ("foreground", "midground", "background", "distant background"):
+    read_order = [] if measured_layout else _lines(composition.get("left_to_right"))
+    for depth in ("foreground", "midground", "background", "distant background") if not measured_layout else ():
         depth_element_ids = [
             element_id for element_id in read_order
             if element_id in placements_by_element_id
@@ -1101,8 +1170,9 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
                 f"- Exact {depth} left-to-right order: {', then '.join(ordered)}. "
                 "Shared broad screen regions are intentional; this exact sequence resolves their order."
             )
-    if clean_prompt_sentence(composition.get("composition_notes")):
-        composition_lines.append(f"- {_sentence(composition.get('composition_notes'))}")
+    composition_notes = suppress_spatial_clauses(composition.get("composition_notes")) if measured_layout else clean_prompt_sentence(composition.get("composition_notes"))
+    if composition_notes:
+        composition_lines.append(f"- {_sentence(composition_notes)}")
     if composition_lines:
         lines.extend(["", "# Composition", "", *composition_lines])
     if ir.get("placements"):
@@ -1110,15 +1180,16 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
             "",
             "# Spatial Coordinate Contract",
             "",
-            "- Screen-left and screen-right always mean the viewer's left and right.",
-            "- Foreground, midground, background, and distant background are separate depth lanes ordered from nearest to farthest from the camera.",
-            "- Apply each left-to-right ordering within its stated depth lane; subjects in different depth lanes may share the same horizontal position.",
-            "- Screen placement, depth, movement direction, destination, body facing or visible body view, head direction, and gaze are independent facts.",
+            (f"- {layout_reference_contract()}" if measured_layout else "- Screen-left and screen-right always mean the viewer's left and right."),
+            ("- Use the measured screen bounds, camera distance, body and head views, and ground contact for each staged subject." if measured_layout else "- Foreground, midground, background, and distant background are separate depth lanes ordered from nearest to farthest from the camera."),
+            ("- Do not use authored visual-read order or position/depth prose to override measured placement." if measured_layout else "- Apply each left-to-right ordering within its stated depth lane; subjects in different depth lanes may share the same horizontal position."),
+            ("- Screen placement, depth, movement direction, destination, body facing or visible body view, head direction, and gaze are independent facts." if not measured_layout else ""),
         ])
     backdrop_lines = []
     backdrop_name = get_element_display_name(_clean(backdrop.get("id")), elements_by_id) if backdrop else ""
     backdrop_description = _backdrop_description(backdrop) if backdrop else ""
-    location = clean_prompt_sentence(environment.get("location"))
+    location_value = suppress_spatial_clauses(environment.get("location")) if measured_layout else environment.get("location")
+    location = clean_prompt_sentence(location_value)
     background_notes = clean_prompt_sentence(environment.get("general_background_notes"))
     if backdrop or location or background_notes:
         if location:
@@ -1127,6 +1198,8 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
             backdrop_lines.append(f"- {backdrop_name} defines the overall background and surrounding setting.")
         if backdrop_description and backdrop_description.lower() not in {location.lower(), background_notes.lower()}:
             backdrop_lines.append(f"- Show {backdrop_description}.")
+        if measured_layout:
+            background_notes = suppress_spatial_clauses(background_notes)
         if background_notes and background_notes.lower() not in {location.lower(), backdrop_description.lower()}:
             backdrop_lines.append(f"- {_sentence(background_notes)}")
         if backdrop:
@@ -1136,6 +1209,8 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
     lines.extend(["", "# Character and Object Staging", ""])
     staging_count = 0
     for placement in ir.get("placements", []):
+        if _clean(placement.get("position_within_cell")).casefold() == "none":
+            continue
         element = _element(ir, _clean(placement.get("scene_element_id")))
         if _clean(element.get("element_type")) in {"Character", "Monster", "Place", "Prop", "Effect", "Vehicle"}:
             name = get_element_display_name(_clean(placement.get("scene_element_id")), elements_by_id)
@@ -1145,11 +1220,13 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
         lines.extend(["- No staging specified."])
     motion_lines = []
     for placement in ir.get("placements", []):
+        if _clean(placement.get("position_within_cell")).casefold() == "none":
+            continue
         motion = placement.get("motion", {}) if isinstance(placement.get("motion"), dict) else {}
         if _clean(motion.get("state")) == "moving":
             name = get_element_display_name(_clean(placement.get("scene_element_id")), elements_by_id)
-            direction = clean_prompt_sentence(motion.get("direction_screen"))
-            cue = clean_prompt_sentence(motion.get("cue"))
+            direction = clean_prompt_sentence(motion.get("direction_screen")) if not measured_layout else ""
+            cue = clean_prompt_sentence(motion.get("cue")) if not measured_layout else suppress_spatial_clauses(motion.get("cue"))
             details = [f"{name} is visibly moving"]
             if direction:
                 details.append(f"{direction} on screen")
@@ -1165,13 +1242,14 @@ def final_image_prompt_text(ir: dict[str, Any], *, prompt_variant: str = "genera
             prop_lines.append(f"- {_sentence(text)}")
     if prop_lines:
         lines.extend(["", "# Props and States", "", *prop_lines])
-    interaction_lines = _interaction_lines(ir, elements_by_id)
-    custom_interaction_lines = _custom_interaction_lines(ir)
+    interaction_lines = _interaction_lines(ir, elements_by_id, measured_layout=measured_layout)
+    custom_interaction_lines = _custom_interaction_lines(ir, measured_layout=measured_layout)
     if interaction_lines or custom_interaction_lines:
         lines.extend(["", "# Interactions", "", *[f"- {line}" for line in interaction_lines], *custom_interaction_lines])
-    environment_lines = [
-        _sentence(environment.get("general_foreground_notes")),
-    ]
+    foreground_notes = environment.get("general_foreground_notes")
+    if measured_layout:
+        foreground_notes = suppress_spatial_clauses(foreground_notes)
+    environment_lines = [_sentence(foreground_notes)]
     environment_lines = [item for item in environment_lines if item]
     if environment_lines:
         lines.extend(["", "# Environment", "", *environment_lines])
