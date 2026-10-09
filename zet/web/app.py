@@ -44,6 +44,7 @@ from zet.services.local_gate_registry_service import LocalGateRegistryService
 from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
 from zet.web.local_scene_batch_router import create_local_scene_batch_router
 from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
+from zet.web.narrative_router import create_narrative_router
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -953,6 +954,7 @@ def create_app(
     async def lifespan(application: FastAPI):
         application.state.image_generation_service.start()
         for zet_app in application.state.universe_apps.values():
+            zet_app.narrative_generation_service.start_background()
             zet_app.image_catalog_service.repository.load()
             zet_app.library_index_reconciler.start()
             _schedule_recovery(zet_app)
@@ -961,6 +963,7 @@ def create_app(
         finally:
             application.state.image_generation_service.stop()
             for zet_app in application.state.universe_apps.values():
+                zet_app.narrative_generation_service.stop_background()
                 zet_app.library_index_reconciler.stop()
 
     app = FastAPI(title="Zet Web", lifespan=lifespan)
@@ -1040,6 +1043,7 @@ def create_app(
             if existing is None:
                 existing = ZetApp.from_config(app.state.config_path, universe_id=universe_id)
                 existing.library_index_reconciler.start()
+                existing.narrative_generation_service.start_background()
                 _schedule_recovery(existing)
                 app.state.universe_apps[universe_id] = existing
             return existing
@@ -1062,9 +1066,11 @@ def create_app(
         selected = current_universe.get() or app.state.zet_app.universe_id
         previous = app.state.universe_apps.get(selected)
         if previous:
+            previous.narrative_generation_service.stop_background()
             previous.library_index_reconciler.stop()
         replacement = ZetApp.from_config(app.state.config_path, universe_id=selected)
         replacement.library_index_reconciler.start()
+        replacement.narrative_generation_service.start_background()
         app.state.universe_apps[selected] = replacement
         if selected == app.state.zet_app.universe_id:
             app.state.zet_app = replacement
@@ -1131,6 +1137,11 @@ def create_app(
     app.include_router(create_local_character_asset_pipeline_router(lambda: _app(app.state.config_path), PROJECT_ROOT))
     app.include_router(create_local_scene_batch_router(lambda: _app(app.state.config_path)))
     app.include_router(create_ad_hoc_image_generation_router(lambda: app.state.image_generation_service))
+    app.include_router(create_narrative_router(lambda: _app(app.state.config_path)))
+
+    @app.get("/narrative", response_class=HTMLResponse)
+    def narrative_page() -> str:
+        return (PACKAGE_ROOT / "templates" / "narrative.html").read_text(encoding="utf-8")
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:

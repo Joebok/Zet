@@ -125,7 +125,9 @@ def render_preview(
                                    if workflow_kind == "qwen_image_21_scene_preview" else ""),
         )
     else:
-        positive, negative = split_labeled_prompt(final_prompt_path.read_text(encoding="utf-8"))
+        prompt_text = final_prompt_path.read_text(encoding="utf-8")
+        positive, negative = ((prompt_text, "") if workflow_kind == "qwen_narrative_prompt"
+                              else split_labeled_prompt(prompt_text))
         compilation = compile_prompt_to_comfyui_workflow(
             positive,
             negative,

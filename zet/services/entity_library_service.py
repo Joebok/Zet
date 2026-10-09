@@ -293,6 +293,16 @@ class EntityLibraryService:
             output.append(self._json(item))
         return output
 
+    def image_binding(self, asset_id: str) -> dict:
+        """Resolve an already chosen image without inventory scans or prompt metadata."""
+        item = self.repository.fetchone("SELECT asset_id,label,file_name FROM assets WHERE asset_id=?", (asset_id,))
+        if item is None:
+            raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
+        path = self._image_path(asset_id, item["file_name"])
+        if not path.is_file():
+            raise EntityLibraryServiceError(f"Reference image is unavailable: {asset_id}")
+        return {**item, "image_path": str(path)}
+
     def get_asset(self, asset_id: str) -> dict:
         item = next((row for row in self.list_assets(include_archived=True) if row["asset_id"] == asset_id), None)
         if item is None:

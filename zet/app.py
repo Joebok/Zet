@@ -211,6 +211,10 @@ class ZetApp:
         self.scene_image_review_service = SceneImageReviewService(story_service)
         from zet.services.local_scene_batch_service import LocalSceneBatchService
         self.local_scene_batch_service = LocalSceneBatchService(self, Path(__file__).resolve().parents[1])
+        from zet.services.narrative_scene_service import NarrativeSceneService
+        from zet.services.narrative_generation_service import NarrativeGenerationService
+        self.narrative_scene_service = NarrativeSceneService(self)
+        self.narrative_generation_service = NarrativeGenerationService(self.narrative_scene_service)
         self.workspace_summary_service = WorkspaceSummaryService(
             character_onboarding_service,
             asset_repository,

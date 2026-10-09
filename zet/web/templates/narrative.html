@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Narrative Scenes · Zet</title>
+  <link rel="icon" href="/img/favicon_io/favicon.ico">
+  <link rel="stylesheet" href="/static/zet.css">
+  <link rel="stylesheet" href="/static/narrative.css">
+</head>
+<body class="narrative-app">
+  <header class="narrative-header">
+    <a href="/" class="dashboard-link">← Zet dashboard</a>
+    <strong>Narrative Scenes</strong>
+    <label>Universe <select id="narrative-universe" aria-label="Universe"></select></label>
+    <a id="narrative-home" href="/narrative">Stories</a>
+    <span id="narrative-model"></span>
+  </header>
+  <nav id="narrative-breadcrumb" aria-label="Breadcrumb"></nav>
+  <p id="narrative-message" role="status" aria-live="polite"></p>
+  <main id="narrative-root" aria-label="Narrative workspace"></main>
+  <dialog id="element-dialog" aria-label="Element editor"></dialog>
+  <dialog id="library-dialog" aria-label="Choose reference image"></dialog>
+  <dialog id="membership-dialog" aria-label="Assign scene elements"></dialog>
+  <dialog id="image-dialog" aria-label="Image review">
+    <button type="button" data-close="image-dialog">Close</button>
+    <img id="review-image" alt="Rendered candidate">
+  </dialog>
+  <script type="module" src="/static/narrative.js"></script>
+</body>
+</html>

@@ -24,6 +24,7 @@ PromptCondense = "image-analysis:latest"
 PromptAnalysis = "image-analysis:latest"
 ImageDescription = "image-analysis:latest"
 SceneBuilder = "general:latest"
+NarrativeScene = "general:latest"
 
 LocalBodyReferenceFaceGate = "image-analysis-alt:latest"
 LocalBodyReferenceReview = "image-analysis:latest"
