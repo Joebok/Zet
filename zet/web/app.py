@@ -872,6 +872,18 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
 
 
 def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> dict[str, Any]:
+    if not character or not phase:
+        service = zet_app.pipeline_control_service
+        return {
+            "config_path": str(service.config_path),
+            "pipelines_path": "",
+            "automation": _jsonable(service.automation_settings()),
+            "render_profiles": service.render_profiles(),
+            "managed_llm_roles": service.managed_llm_roles(),
+            "pipeline_rows": [],
+            "project_config_rows": service.project_config_rows(),
+            "pipeline_names": [],
+        }
     snapshot = zet_app.pipeline_control_snapshot(character, phase)
     pipeline_names = sorted({row.pipeline for row in snapshot.pipeline_rows})
     return {
@@ -952,6 +964,19 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        def refresh_ollama_catalog() -> None:
+            try:
+                application.state.ollama_model_service.refresh_model_catalog()
+            except Exception:
+                # Ollama may not be running when Zet starts; the last saved catalog remains usable.
+                pass
+
+        application.state.ollama_catalog_refresh_thread = threading.Thread(
+            target=refresh_ollama_catalog,
+            name="ollama-model-catalog-refresh",
+            daemon=True,
+        )
+        application.state.ollama_catalog_refresh_thread.start()
         application.state.image_generation_service.start()
         for zet_app in application.state.universe_apps.values():
             zet_app.narrative_generation_service.start_background()
@@ -968,6 +993,9 @@ def create_app(
 
     app = FastAPI(title="Zet Web", lifespan=lifespan)
     app.state.config_path = str(config_path)
+    app.state.ollama_model_service = OllamaModelService(
+        cache_path=config_path.resolve().parent / "Config" / "ollama-models-cache.json"
+    )
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
     app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
@@ -4006,9 +4034,18 @@ def create_app(
     @app.get("/api/ai-controls/ollama-models")
     def ai_controls_ollama_models() -> dict[str, Any]:
         try:
-            return OllamaModelService().list_models()
+            service = app.state.ollama_model_service
+            catalog = service.cached_models()
+            return catalog if catalog is not None else service.refresh_model_catalog()
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"Unable to load Ollama models: {exc}") from exc
+
+    @app.post("/api/ai-controls/ollama-models/refresh")
+    def refresh_ai_controls_ollama_models() -> dict[str, Any]:
+        try:
+            return app.state.ollama_model_service.refresh_model_catalog()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Unable to refresh Ollama models: {exc}") from exc
 
     @app.get("/api/render-console/tasks")
     def render_console_tasks(

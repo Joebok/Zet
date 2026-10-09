@@ -7,7 +7,8 @@ from zet.services.narrative_scene_service import NarrativeSceneService
 
 @pytest.fixture
 def author(tmp_path):
-    return NarrativeSceneService(SimpleNamespace(config=SimpleNamespace(base_library_path=str(tmp_path))))
+    return NarrativeSceneService(SimpleNamespace(config=SimpleNamespace(base_library_path=str(tmp_path),
+                                                                       ai_narrative_scene_model="general:latest")))
 
 
 def test_target_isolation_and_context(author):
@@ -48,6 +49,28 @@ def test_invalid_new_target_does_not_create_partial_records(author):
         author.create_target(story, scene, {"title": "Invalid", "width": 777})
     assert author.scene(story, scene)["targets"] == []
     assert list(author.repository.folder(story, scene).glob("*/target.json")) == []
+
+
+def test_story_thumbnails_follow_scene_order_and_only_selected_assemblies(author):
+    author.app.narrative_assembly_service = SimpleNamespace(bind_layers=lambda *args: [])
+    story = author.create_story({"title": "Story"})["id"]
+    scenes = [author.create_scene(story, {"title": title})["id"]
+              for title in ("Arrival", "Unselected assembly", "No assembly")]
+    assembly = author.create_target(story, scenes[0], {"title": "Final assembly", "kind": "assembly"})
+    assembly["selected_id"] = "a" * 32
+    author.repository.write(assembly, story, scenes[0], assembly["id"])
+    author.create_target(story, scenes[1], {"title": "Final assembly", "kind": "assembly"})
+    subscene = author.create_target(story, scenes[2], {"title": "Selected subscene"})
+    subscene["selected_id"] = "b" * 32
+    author.repository.write(subscene, story, scenes[2], subscene["id"])
+
+    assert author.stories()[0]["scenes"] == [
+        {"id": scenes[0], "title": "Arrival", "final_assembly": {
+            "target_id": assembly["id"], "candidate_id": "a" * 32}},
+        {"id": scenes[1], "title": "Unselected assembly", "final_assembly": None},
+        {"id": scenes[2], "title": "No assembly", "final_assembly": None},
+    ]
+    assert "scenes" not in author.repository.read(story)
 
 
 def test_target_summaries_put_backdrops_first_without_changing_saved_order(author):

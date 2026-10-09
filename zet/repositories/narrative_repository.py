@@ -30,9 +30,16 @@ class NarrativeRepository:
 
     def read(self, story: str, scene: str = "", target: str = "") -> dict:
         path = self.path(story, scene, target)
-        if not path.is_file():
-            raise KeyError("Narrative record not found.")
-        return json.loads(path.read_text(encoding="utf-8"))
+        # Coordinate readers with atomic replacements, which can briefly deny reads on Windows.
+        with self.lock():
+            if not path.is_file():
+                raise KeyError("Narrative record not found.")
+            record = json.loads(path.read_text(encoding="utf-8"))
+        if target:
+            from zet.models.narrative import NarrativeTarget
+            for key, value in asdict(NarrativeTarget(record["title"], record["kind"])).items():
+                record.setdefault(key, value)
+        return record
 
     def write(self, record, story: str, scene: str = "", target: str = "") -> dict:
         data = record if isinstance(record, dict) else asdict(record)

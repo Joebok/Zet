@@ -32,7 +32,8 @@ class NarrativeProxyService:
             "task_type": "narrative_" + job["kind"], "queue_priority": 100,
         }
         if schema:
-            manifest.update(ollama_model=self.config.ai_narrative_scene_model, ollama_chat=True, json_output=True,
+            manifest.update(ollama_model=job.get("model") or self.config.ai_narrative_scene_model, ollama_chat=True, json_output=True,
+                            ollama_allow_unmanaged_model=True,
                             response_schema=schema, ollama_temperature=0.2, ollama_think=False,
                             ollama_request_options={"system": "You are a concise illustration assistant. Keep reasoning minimal. "
                                                     "Return only the requested JSON, without explaining your process."})
@@ -60,6 +61,8 @@ class NarrativeProxyService:
                 ask = json.loads((answer / "ask_manifest.json").read_text(encoding="utf-8"))
                 expected = {"ask_id": job["id"], "consumer": CONSUMER, "narrative_story_id": story,
                             "narrative_scene_id": scene, "narrative_target_id": target, "universe_id": self.config.universe_id}
+                if job.get("model") and job["kind"] != "image":
+                    expected["ollama_model"] = job["model"]
                 if any(ask.get(key) != value for key, value in expected.items()):
                     return "FAILED", "Answer ownership did not match this narrative target."
                 result = json.loads((answer / "answer_manifest.json").read_text(encoding="utf-8"))
@@ -67,6 +70,14 @@ class NarrativeProxyService:
                     return "FAILED", "Answer did not match the requested output."
                 if result.get("status") != "SUCCESS":
                     return "FAILED", str(result.get("error_message") or "AI_Proxy job failed.")
+                if job.get("kind") != "image":
+                    provenance = job.setdefault("provenance", {})
+                    if ask.get("ollama_model"):
+                        job.setdefault("model", ask["ollama_model"])
+                        provenance.update(model=job["model"], provider="ollama")
+                    if result.get("ollama_runtime"):
+                        provenance["runtime"] = result["ollama_runtime"]
+                        provenance["effective_model"] = result["ollama_runtime"].get("effective_alias", "")
                 filename = str(result["expected_output"])
                 if Path(filename).name != filename:
                     return "FAILED", "Invalid AI_Proxy output filename."

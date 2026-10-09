@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import uvicorn
-from PIL import Image
+from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -227,6 +227,15 @@ answer_dir.mkdir(parents=True, exist_ok=True)
     json.dumps({"ask_id": "Ask_Harvested", "asset_id": 1, "status": "SUCCESS"}) + "\n",
     encoding="utf-8",
 )
+
+# Narrative assembly fixtures retain visible silhouettes and have exact final dimensions.
+narrative_images = root / "narrative-images"
+narrative_images.mkdir()
+group_image = Image.new("RGBA", (256, 256), (255, 255, 255, 0))
+ImageDraw.Draw(group_image).rectangle((64, 32, 191, 223), fill=(220, 20, 30, 255))
+group_image.save(narrative_images / "group.png")
+Image.new("RGB", (512, 256), "blue").save(narrative_images / "backdrop.png")
+Image.new("RGB", (256, 256), "green").save(narrative_images / "proposal.png")
 
 app = create_app(config_path)
 

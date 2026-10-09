@@ -1923,10 +1923,6 @@
             <button id="image-generation-txt2img" type="button" class="primary-action" aria-pressed="true">txt2img</button>
             <button id="image-generation-img2img" type="button" aria-pressed="false">img2img</button>
           </div>
-          <fieldset id="image-generation-reference-slots" class="image-generation-reference-slots" hidden>
-            <legend>Reference images <span class="status-text">Up to 10. Use each label in your prompt to identify its image.</span></legend>
-            <div id="image-generation-reference-list"></div>
-          </fieldset>
           <div class="image-generation-dimensions">
             <label>Width<input id="image-generation-width" type="number" min="256" max="4096" step="32" value="1024" required></label>
             <label>Height<input id="image-generation-height" type="number" min="256" max="4096" step="32" value="1024" required></label>
@@ -1938,6 +1934,10 @@
             <button id="image-generation-clear" type="button" disabled>Clear Results</button>
             <span id="image-generation-progress" class="status-text" aria-live="polite"></span>
           </div>
+          <fieldset id="image-generation-reference-slots" class="image-generation-reference-slots" hidden>
+            <legend>Reference images <span class="status-text">Up to 10. Use each label in your prompt to identify its image.</span></legend>
+            <div id="image-generation-reference-list"></div>
+          </fieldset>
         </form>
         <section class="control-panel image-generation-results" aria-label="Generated images">
           <h2>Results · 8 slots</h2>
@@ -2372,7 +2372,7 @@ Add prompt language here.
       </div>
     </div>
   </dialog>
-  <script src="/static/zet.js?v=20261008-image-generation-references"></script>
+  <script src="/static/zet.js?v=20261009-config-context-free-model-settings-image-generation-paste-targets"></script>
   <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
   <script src="/static/local_scene_batches.js?v=20261005-publication-review"></script>
   <script src="/static/local_batch_status.js?v=20261005-scene-tiles"></script>

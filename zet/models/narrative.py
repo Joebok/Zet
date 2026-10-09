@@ -60,6 +60,13 @@ class NarrativeTarget:
     slots: list[str | None] = field(default_factory=lambda: [None] * 8)
     selected_id: str | None = None
     active_llm_job: str | None = None
+    interview_model: str = ""
+    prompt_model: str = ""
+    prompt_provenance: dict = field(default_factory=dict)
+    layers: list[dict] = field(default_factory=list)
+    assembly_mode: str = "finish_composite"
+    source_snapshot: dict = field(default_factory=dict)
+    backdrop_adaptation: dict = field(default_factory=dict)
 
 
 @dataclass

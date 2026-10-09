@@ -1,6 +1,6 @@
 """HTTP presentation for the independent narrative workflow."""
 from fastapi import APIRouter, Body, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from zet.services.narrative_scene_service import ProtectedNarrativeImages
 
@@ -24,10 +24,23 @@ def create_narrative_router(app_provider):
     def generation():
         return app_provider().narrative_generation_service
 
+    def references():
+        return app_provider().narrative_reference_service
+
+    @router.get("/sources")
+    def source_options(kind: str = Query("backdrop")):
+        return call(references().sources, kind)
+
+    @router.post("/sources/preview")
+    def source_preview(data: dict = Body(...)):
+        return call(references().preview, data)
+
     @router.get("/options")
     def options():
         app = app_provider()
-        return {"model": app.config.ai_narrative_scene_model, "slot_count": 8, "renderer": "Qwen Image 2.1"}
+        from zet.services.narrative_codex_service import CODEX_MODELS
+        return {"model": app.config.ai_narrative_scene_model, "slot_count": 8, "renderer": "Qwen Image 2.1",
+                "codex_models": ["codex:" + model for model in CODEX_MODELS]}
 
     @router.get("/library")
     def library(q: str = Query("")):
@@ -98,6 +111,39 @@ def create_narrative_router(app_provider):
         return call(author().create_target, story, scene, data)
 
     target_path = "/stories/{story}/scenes/{scene}/targets/{target}"
+
+    @router.post("/stories/{story}/scenes/{scene}/references")
+    def import_reference(story: str, scene: str, data: dict = Body(...)):
+        return call(references().create, story, scene, data)
+
+    @router.post(target_path + "/backdrop-source")
+    def backdrop_source_action(story: str, scene: str, target: str, data: dict = Body(...)):
+        return call(references().backdrop_action, story, scene, target, data)
+
+    @router.get(target_path + "/source-image")
+    def pinned_source_image(story: str, scene: str, target: str):
+        return FileResponse(call(references().image, story, scene, target))
+
+    @router.get(target_path + "/crop-preview")
+    def crop_preview(story: str, scene: str, target: str):
+        return Response(call(references().crop, story, scene, target), media_type="image/png")
+
+    def assembly():
+        return app_provider().narrative_assembly_service
+
+    @router.get(target_path + "/composite")
+    def composite(story: str, scene: str, target: str, download: bool = Query(False)):
+        return Response(call(assembly().preview, story, scene, target), media_type="image/png",
+                        headers={"Content-Disposition": 'attachment; filename="composite.png"'} if download else {},
+                        )
+
+    @router.get(target_path + "/layers/{layer}/image")
+    def layer_image(story: str, scene: str, target: str, layer: str, kind: str = Query("cutout")):
+        return Response(call(assembly().layer_image, story, scene, target, layer, kind), media_type="image/png")
+
+    @router.get(target_path + "/candidates/{candidate}/composite")
+    def candidate_composite(story: str, scene: str, target: str, candidate: str):
+        return FileResponse(call(assembly().candidate_composite, story, scene, target, candidate))
 
     @router.get(target_path)
     def target_detail(story: str, scene: str, target: str):

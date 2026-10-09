@@ -1231,8 +1231,8 @@ function renderImageGenerationReferenceSlots() {
       paste.tabIndex = 0;
       paste.setAttribute("role", "button");
       paste.setAttribute("aria-label", `Paste reference image ${index + 1}`);
-      paste.textContent = "Click, then press Ctrl+V to paste";
-      paste.addEventListener("click", () => fileInput.click());
+      paste.textContent = "Click to select, then press Ctrl+V to paste";
+      paste.addEventListener("click", () => paste.focus());
       paste.addEventListener("paste", async (event) => {
         const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
         const file = imageItem?.getAsFile();
@@ -12052,12 +12052,9 @@ async function openPipelineInspectionFolder() {
 }
 
 async function loadPipelineControls() {
-  if (!state.character || !state.phase) {
-    pipelineControlsStatus.textContent = "No character/phase selected.";
-    return;
-  }
   pipelineControlsStatus.textContent = "Loading pipeline controls...";
-  const payload = await fetchJson(`/api/pipeline-controls?${currentQuery().toString()}`);
+  const params = activePageName() === "local-image-config" ? new URLSearchParams() : currentQuery();
+  const payload = await fetchJson(`/api/pipeline-controls?${params.toString()}`);
   renderPipelineControls(payload);
 }
 
@@ -12185,7 +12182,7 @@ function setOllamaModelValue(control, value) {
   control.value = model;
 }
 
-async function refreshOllamaModelOptions() {
+async function refreshOllamaModelOptions(refresh = false) {
   const current = new Map(ollamaModelControls().map((control) => [control, control.value]));
   const addCodexPromptModels = (control) => {
     for (const model of ["gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"]) {
@@ -12195,7 +12192,9 @@ async function refreshOllamaModelOptions() {
     }
   };
   try {
-    const payload = await fetchJson("/api/ai-controls/ollama-models");
+    const payload = await fetchJson(refresh
+      ? "/api/ai-controls/ollama-models/refresh"
+      : "/api/ai-controls/ollama-models", { method: refresh ? "POST" : "GET" });
     for (const control of ollamaModelControls()) {
       setSelectOptions(control, control === settingImagePromptGenerationModel
         ? (payload.vision_models || []) : (payload.models || []));
@@ -12326,7 +12325,8 @@ async function saveAutomationSettings(event) {
       : showAiControlsMessage;
   showMessage("Saving...");
   try {
-    const payload = await fetchJson(`/api/pipeline-controls/automation?${currentQuery().toString()}`, {
+    const params = activePageName() === "local-image-config" ? new URLSearchParams() : currentQuery();
+    const payload = await fetchJson(`/api/pipeline-controls/automation?${params.toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(automationPayloadFromForm()),
@@ -14448,7 +14448,7 @@ for (const control of document.querySelectorAll('[form="automation-form"]')) {
   control.addEventListener("change", updateDirtyIndicators);
 }
 refreshLocalRenderCheckpoints.addEventListener("click", refreshLocalRenderCheckpointOptions);
-refreshOllamaModels.addEventListener("click", refreshOllamaModelOptions);
+refreshOllamaModels.addEventListener("click", () => refreshOllamaModelOptions(true));
 settingLocalRenderPreset.addEventListener("change", refreshLocalRenderCheckpointOptions);
 refreshComfyuiCheckpoints.addEventListener("click", refreshComfyuiCheckpointOptions);
 settingComfyuiProfile.addEventListener("change", refreshComfyuiCheckpointOptions);

@@ -130,6 +130,11 @@
     }
   }
 
+  function cacheBustedImageUrl(url) {
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}v=${Date.now()}`;
+  }
+
   function payload() {
     return {
       character: document.querySelector("#character-select").value,
@@ -466,7 +471,7 @@
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          image.src = route("source", run.run_id, view, role);
+          image.src = cacheBustedImageUrl(route("source", run.run_id, view, role));
           figure.append(caption, image);
           sources.append(figure);
         }
@@ -506,7 +511,7 @@
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          image.src = route("reference-image", run.run_id, view, String(index));
+          image.src = cacheBustedImageUrl(route("reference-image", run.run_id, view, String(index)));
           figure.append(caption, image);
           sources.append(figure);
         }

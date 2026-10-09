@@ -43,7 +43,10 @@ are supplied. This prevents unrelated actors leaking into backdrop prompts.
 
 Subscenes default to a plain neutral background at 1216 × 832; backdrops
 default to 1344 × 768. Returned image bytes, including alpha, are preserved.
-Final assembly and background removal are later-phase work.
+Final assembly and background removal are covered in
+[Phase 2](Narrative_Scenes_Phase_2.md).
+Cross-scene backdrop reuse and independent subscene imports are covered in
+[Narrative scene references](Narrative_Scene_References.md).
 
 ## Fresh-story acceptance
 

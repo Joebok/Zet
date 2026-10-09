@@ -32,6 +32,7 @@ node_modules/
 test-results/
 playwright-report/
 Condensed_Image_Prompt.md
+Config/ollama-models-cache.json
 .DS_Store
 Docs/ToDo.md
 Docs/Template_Schema_Review

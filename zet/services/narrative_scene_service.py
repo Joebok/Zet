@@ -9,7 +9,8 @@ from zet.services.entity_library_service import EntityLibraryServiceError
 
 VISUAL_FIELDS = ("setting", "camera", "perspective", "lighting", "style")
 TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing", "width", "height",
-                 "element_ids", "visual_overrides", "prompt")
+                 "element_ids", "visual_overrides", "prompt", "interview_model", "prompt_model", "layers", "assembly_mode",
+                 "backdrop_adaptation")
 SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas")
 
 
@@ -25,7 +26,19 @@ class NarrativeSceneService:
         self.repository = NarrativeRepository(zet_app.config.base_library_path)
 
     def stories(self) -> list[dict]:
-        return self.repository.stories()
+        with self.repository.lock():
+            stories = self.repository.stories()
+            for story in stories:
+                story["scenes"] = []
+                for scene_id in story["scene_ids"]:
+                    scene = self.repository.read(story["id"], scene_id)
+                    assembly = next((target for target in self.list_targets(story["id"], scene_id)
+                                     if target["kind"] == "assembly"), None)
+                    story["scenes"].append({"id": scene_id, "title": scene["title"],
+                                            "final_assembly": {"target_id": assembly["id"],
+                                                               "candidate_id": assembly["selected_id"]}
+                                            if assembly and assembly["selected_id"] else None})
+            return stories
 
     def create_story(self, data: dict) -> dict:
         with self.repository.lock():
@@ -102,14 +115,26 @@ class NarrativeSceneService:
         with self.repository.lock():
             parent = self.repository.read(story, scene)
             kind = data.get("kind", "subscene")
-            if kind not in {"subscene", "backdrop"}:
-                raise ValueError("Choose subscene or backdrop.")
+            if kind not in {"subscene", "backdrop", "assembly"}:
+                raise ValueError("Choose subscene, backdrop or assembly.")
+            if kind == "assembly":
+                existing_id = next((target_id for target_id in parent["target_ids"]
+                                    if self.repository.read(story, scene, target_id)["kind"] == "assembly"), None)
+                if existing_id:
+                    return self.repository.read(story, scene, existing_id)
             record = NarrativeTarget(self._title(data), kind)
             if kind == "backdrop":
                 record.width, record.height, record.framing = 1344, 768, "Wide environment"
+            elif kind == "assembly":
+                record.width, record.height, record.framing = 1344, 768, "Final scene"
+                record.narrative = parent["intent"]
             record = asdict(record)
             self._patch(record, data, TARGET_FIELDS)
             self._validate_target(record, parent)
+            if kind == "assembly":
+                record["layers"] = self.app.narrative_assembly_service.bind_layers(story, scene, record, [])
+                if record["prompt"]:
+                    record["prompt_provenance"] = {"assembly_mode": record["assembly_mode"], "edited": True}
             self.repository.write(record, story, scene, record["id"])
             parent["target_ids"].append(record["id"])
             self.repository.write(parent, story, scene)
@@ -118,12 +143,37 @@ class NarrativeSceneService:
     def update_target(self, story: str, scene: str, target: str, data: dict) -> dict:
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
+            previous_layers = record["layers"]
+            previous_prompt = record["prompt"]
             self._patch(record, data, TARGET_FIELDS)
             self._validate_target(record, self.repository.read(story, scene))
+            if record["kind"] == "assembly" and "layers" in data:
+                record["layers"] = self.app.narrative_assembly_service.bind_layers(story, scene, record, previous_layers)
+            if record["prompt"] != previous_prompt:
+                record["prompt_provenance"] = {**record["prompt_provenance"], "edited": True}
+                if record["kind"] == "assembly":
+                    record["prompt_provenance"]["assembly_mode"] = record["assembly_mode"]
+            history_id = data.get("use_prompt_job")
+            if history_id:
+                job = record["jobs"].get(history_id, {})
+                if job.get("kind") not in {"synthesize", "generate"} or not isinstance(job.get("result"), str):
+                    raise ValueError("Choose a completed prompt output.")
+                record["prompt"] = job["result"]
+                record["prompt_provenance"] = {**job.get("provenance", {}), "job_id": history_id, "edited": False}
+                if record["kind"] == "assembly":
+                    record["assembly_mode"] = job["detail"].get("assembly_mode", "finish_composite")
+                    record["prompt_provenance"]["assembly_mode"] = record["assembly_mode"]
+                record["active_llm_job"] = None
             return self.repository.write(record, story, scene, target)
 
     @staticmethod
     def _validate_target(record, parent):
+        from zet.services.narrative_reference_service import NarrativeReferenceService
+        NarrativeReferenceService.validate_adaptation(record)
+        if record["assembly_mode"] not in ("finish_composite", "assemble_references"):
+            raise ValueError("Choose finish_composite or assemble_references.")
+        if record["kind"] != "assembly" and record["assembly_mode"] != "finish_composite":
+            raise ValueError("Only final assemblies have an assembly mode.")
         for key in ("width", "height"):
             value = record[key]
             if isinstance(value, bool) or not isinstance(value, int) or not 256 <= value <= 4096 or value % 32:
@@ -135,6 +185,16 @@ class NarrativeSceneService:
         overrides = record["visual_overrides"]
         if not isinstance(overrides, dict) or any(key not in VISUAL_FIELDS or not isinstance(value, str) for key, value in overrides.items()):
             raise ValueError("Visual overrides must contain scene visual fields as text.")
+        for key in ("interview_model", "prompt_model"):
+            value = record[key]
+            if not isinstance(value, str) or len(value) > 200 or any(char.isspace() for char in value):
+                raise ValueError("Model identifiers must be text without whitespace.")
+            if value == "codex:":
+                raise ValueError("Enter a Codex model after codex:.")
+        if not isinstance(record["layers"], list) or len(record["layers"]) > 32:
+            raise ValueError("Choose up to 32 source layers.")
+        if record["kind"] != "assembly" and record["layers"]:
+            raise ValueError("Only final assemblies have source layers.")
 
     def target(self, story: str, scene: str, target: str) -> dict:
         record = self.repository.read(story, scene, target)
@@ -152,11 +212,23 @@ class NarrativeSceneService:
             elements.append(element)
         inherited = {key: parent[key] for key in VISUAL_FIELDS}
         effective = {key: record["visual_overrides"].get(key) or value for key, value in inherited.items()}
-        return {**record, "elements": elements, "inherited_context": inherited, "context": effective,
-                "scene_title": parent["title"]}
+        detail = {**record, "elements": elements, "inherited_context": inherited, "context": effective,
+                  "scene_title": parent["title"], "effective_models": {
+                      key: record[key] or self.app.config.ai_narrative_scene_model
+                      for key in ("interview_model", "prompt_model")}}
+        if record["kind"] == "assembly":
+            detail["assembly_sources"] = self.app.narrative_assembly_service.sources(story, scene)
+            detail["source_groups"] = [{"title": layer["label"], "narrative": layer.get("narrative", ""),
+                                        "role": layer["role"]} for layer in record["layers"] if layer["visible"]]
+        return detail
 
     def references(self, detail: dict) -> list[dict]:
         refs = []
+        snapshot = detail.get("source_snapshot") or {}
+        if detail["kind"] == "backdrop" and snapshot.get("image_file"):
+            path = self.app.narrative_reference_service.image(snapshot["destination_story_id"],
+                                                             snapshot["destination_scene_id"], detail["id"])
+            refs.append({"path": str(path), "label": snapshot["title"], "role": "backdrop source", "image_index": 1})
         for element in detail["elements"]:
             if element["asset_id"]:
                 asset = self.library_asset(element["asset_id"])
