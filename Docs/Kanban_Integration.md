@@ -1,4 +1,4 @@
-# Kanban task forwarding and capture (packets 04–05)
+# Kanban task forwarding and capture (packets 04–06)
 
 Zet now exposes task forwarding through `ZetApp.create_task(payload)` and
 `POST /api/tasks`. Kanban owns its board files, intake validation, and request-ID
@@ -11,11 +11,11 @@ packets. The main dashboard now has Create task and Open board toolbar actions.
 Create task opens a compact Bug, Improvement, or Feature report with a context
 preview. Bug details are optional. The page, universe, timestamp, running revision,
 and relevant character/phase IDs and labels come from an explicit dashboard
-provider. Global tools exclude stale character selections. Local pipeline, story,
-auxiliary page, and attachment providers arrive in packets 06–08; those specialized
-selections are not captured yet. Arbitrary URL parameters, prompts, source
+provider. Global tools exclude stale character selections. Local pipeline capture
+and restoration are described below; story, auxiliary page, and attachment
+providers arrive in packets 07–08. Arbitrary URL parameters, prompts, source
 documents, and application state are not copied. Navigation links include the
-recorded page and supported context parameters; fuller restoration is packet 06–08.
+recorded page and supported context parameters.
 
 Context freezes when the form opens, including while configuration is loading.
 Refresh context replaces it explicitly before delivery. Closing the form keeps the
@@ -31,6 +31,30 @@ after uncertain delivery it warns that the original ticket may already exist.
 Only one submission can run at a time. The form remains available while Kanban is
 offline or unconfigured; configure the registered project ID before submitting.
 The existing markdown To Do editor remains until replacement coverage in packet 09.
+
+## Local context and Return to Zet (packet 06)
+
+The four local asset pipelines capture character, phase, pipeline, batch/run, and
+costume when applicable. Batch names and costume labels come from existing backend
+responses. Loading and failed lookups retain requested identifiers with explicit
+loading/unavailable states instead of treating stale details as selected. Global
+tools and the unselected Batches page omit unrelated header selections.
+
+Create task inside a local candidate review also records its candidate and the
+matching backend local-asset key when available. Candidate details, file paths,
+prompts, gate responses, and source documents are not copied. The Return to Zet
+link restores the pipeline and batch; candidate review reopening is not included.
+
+Each local Batches card has Create task. It reports that row's character, phase,
+costume, and run, rather than the header context. Return to Zet opens Batches and
+marks the recorded card when still present. Scene-batch reporting is packet 07.
+
+Task links carry `task_context=1` and `task_universe` plus supported selections.
+They restore the recorded universe in this tab without writing the saved global
+default. Local JSON requests and image URLs follow that universe. A missing
+universe, character, phase, costume, or batch produces a visible restoration notice
+while opening the recorded page with an available fallback. These links do not
+start jobs or edit data. The original ticket snapshot and retry body remain intact.
 
 ## Configuration
 
@@ -107,7 +131,8 @@ Zet does not retry automatically. A changed project mapping or report can cause
 
 Packet 03 is merged in [Kanban PR #4](https://github.com/Joebok/Zet_Kanban/pull/4).
 Packet 04 is merged in [Zet PR #31](https://github.com/Joebok/Zet/pull/31).
-Packets 04–05 target Zet's active dashboard branch
+Packet 05 is merged in [Zet PR #33](https://github.com/Joebok/Zet/pull/33).
+Packets 04–06 target Zet's active dashboard branch
 `V5-Re-Alignment-to-Local-Image-Generation`, as selected by the user, rather than
 including its unrelated development history in a PR against main. No live board
 reset, task creation, agent execution, or library changes are part of validation.

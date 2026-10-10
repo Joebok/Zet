@@ -5,6 +5,9 @@
   const refreshButton = document.querySelector("#local-batch-status-refresh");
   let timer = null;
   let inFlight = false;
+  let batches = [];
+  let loadState = "loading";
+  let selectedRun = new URLSearchParams(window.location.search).get("task_batch") || "";
 
   const pipelinePages = {
     "body-reference": "local-body-reference",
@@ -22,6 +25,8 @@
       local_batch: batch.run_id,
     });
     if (batch.pipeline === "costume-dressing" && batch.costume) params.set("local_costume", batch.costume);
+    const universe = document.querySelector("#universe-select").value;
+    if (universe) params.set("task_universe", universe);
     return `${window.location.pathname}?${params.toString()}`;
   }
 
@@ -37,6 +42,8 @@
   function renderBatch(batch) {
     const card = document.createElement("article");
     card.className = `batch-status-card${batch.pipeline === "scene" ? " batch-status-scene" : ""}`;
+    card.dataset.runId = batch.run_id;
+    if (batch.run_id === selectedRun) card.setAttribute("aria-current", "true");
 
     const title = document.createElement("h3");
     const link = document.createElement("a");
@@ -57,6 +64,20 @@
     appendField(fields, "Costume", batch.costume);
     appendField(fields, "Current view", batch.current_view);
     card.append(title, fields);
+    if (pipelinePages[batch.pipeline]) {
+      const report = document.createElement("button");
+      report.type = "button";
+      report.textContent = "Create task";
+      report.addEventListener("click", () => {
+        selectedRun = batch.run_id;
+        for (const item of groupsHost.querySelectorAll("[data-run-id]")) {
+          if (item.dataset.runId === selectedRun) item.setAttribute("aria-current", "true");
+          else item.removeAttribute("aria-current");
+        }
+        void window.ZetTaskCapture.open();
+      });
+      card.append(report);
+    }
     if (batch.pipeline === "scene" && batch.status === "READY_TO_PUBLISH") {
       const review = document.createElement("a");
       const url = new URL(directBatchUrl(batch), window.location.href);
@@ -72,6 +93,10 @@
   function render(payload) {
     groupsHost.replaceChildren();
     const groups = payload.groups || [];
+    batches = groups.flatMap((group) => group.batches || []);
+    if (selectedRun && !batches.some((batch) => batch.run_id === selectedRun)) {
+      window.ZetTaskCapture.notice(`Recorded batch "${selectedRun}" is unavailable on the Batches page.`);
+    }
     if (!groups.length) {
       message.textContent = "No active or actionable batches.";
       return;
@@ -93,15 +118,18 @@
   async function refresh() {
     if (inFlight || !page.classList.contains("active") || document.hidden) return;
     inFlight = true;
+    loadState = "loading";
     refreshButton.disabled = true;
     message.textContent = "Loading batch status…";
     try {
-      const response = await fetch("/api/local/batch-status", { headers: { Accept: "application/json" } });
+      const response = await fetch("/api/local/batch-status", { headers: { Accept: "application/json",
+        "X-Zet-Universe": document.querySelector("#universe-select").value } });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || response.statusText || "Request failed");
-      if (page.classList.contains("active")) render(payload);
+      if (page.classList.contains("active")) { loadState = "selected"; render(payload); }
     } catch (error) {
       groupsHost.replaceChildren();
+      loadState = "unavailable";
       message.textContent = `Could not load batch status: ${error.message}`;
     } finally {
       inFlight = false;
@@ -127,5 +155,20 @@
   window.ZetLocalBatchStatus = {
     activate: startPolling,
     deactivate: stopPolling,
+    taskContext() {
+      if (!selectedRun) return { selections: {}, parameters: {} };
+      const batch = batches.find((item) => item.run_id === selectedRun);
+      const selection = { state: loadState === "selected" ? batch ? "selected" : "unavailable" : loadState,
+        id: selectedRun, label: batch?.batch_name || selectedRun };
+      const selections = { batch: { ...selection }, run: { ...selection } };
+      const parameters = { task_batch: selectedRun };
+      if (batch && pipelinePages[batch.pipeline]) {
+        selections.pipeline = { state: selection.state, id: batch.pipeline, label: batch.pipeline_label || batch.pipeline };
+        for (const name of ["character", "phase", "costume"]) {
+          if (batch[name]) selections[name] = { state: selection.state, id: batch[name], label: batch[name] };
+        }
+      }
+      return { selections, parameters };
+    },
   };
 })();

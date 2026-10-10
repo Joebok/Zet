@@ -26,7 +26,9 @@
   const activeStatuses = new Set(["PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"]);
   const state = { pipeline: "", generation: 0, run: null, runs: [], reviewCandidates: [], reviewIndex: -1,
     gatePolicies: {}, frontSourcePath: "", poll: null, previewGeneration: 0, contextKey: "", compareOpposite: false,
-    polledRun: null, pollInFlight: false, renderedSelections: {} };
+    polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
+    runState: "absent", costumesState: "absent", runRequest: 0 };
+  const restoreParams = new URLSearchParams(window.location.search);
 
   function contextKey() {
     return `${document.querySelector("#character-select").value}\u0000${document.querySelector("#phase-select").value}`;
@@ -66,7 +68,8 @@
   }
 
   async function request(path, options = {}) {
-    const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+    const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json",
+      "X-Zet-Universe": document.querySelector("#universe-select").value, ...options.headers } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || response.statusText || "Request failed");
     return data;
@@ -131,6 +134,7 @@
   }
 
   function cacheBustedImageUrl(url) {
+    url = universeImageUrl(url);
     const separator = url.includes("?") ? "&" : "?";
     return `${url}${separator}v=${Date.now()}`;
   }
@@ -271,7 +275,14 @@
     });
   }
 
-  function imageUrl(candidate) { return route("image", state.run.run_id, "", candidate.candidate_id); }
+  function universeImageUrl(path) {
+    const url = new URL(path, window.location.origin);
+    const universe = document.querySelector("#universe-select").value;
+    if (universe) url.searchParams.set("universe_id", universe);
+    return url.pathname + url.search;
+  }
+
+  function imageUrl(candidate) { return universeImageUrl(route("image", state.run.run_id, "", candidate.candidate_id)); }
 
   function renderErrorDetails(candidate) {
     const message = String(candidate.render_error || "").trim();
@@ -634,12 +645,21 @@
   }
 
   async function loadRun(runId, generation = state.generation) {
+    const requestId = ++state.runRequest;
+    state.runState = runId ? "loading" : "absent";
     if (!runId) { state.run = null; render(); return; }
-    const loaded = await request(route("detail", runId));
-    if (generation !== state.generation || contextKey() !== state.contextKey) return;
-    state.run = loaded;
-    state.polledRun = null;
-    render();
+    try {
+      const loaded = await request(route("detail", runId));
+      if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
+      state.run = loaded;
+      state.runState = "selected";
+      state.polledRun = null;
+      render();
+    } catch (error) {
+      if (requestId !== state.runRequest || generation !== state.generation) return;
+      state.runState = "unavailable";
+      throw error;
+    }
   }
 
   async function pollForImages(runId, generation = state.generation) {
@@ -664,8 +684,13 @@
   }
 
   async function refreshRuns(preferred = "", generation = state.generation) {
-    state.runs = (await request(route("runs"))).runs || [];
+    state.runsState = "loading";
+    let result;
+    try { result = await request(route("runs")); }
+    catch (error) { if (generation === state.generation) state.runsState = "unavailable"; throw error; }
     if (generation !== state.generation) return;
+    state.runs = result.runs || [];
+    state.runsState = "selected";
     const select = $("runs");
     select.replaceChildren();
     for (const run of state.runs) {
@@ -675,6 +700,9 @@
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
     const routeBatch = new URLSearchParams(window.location.search).get("local_batch") || "";
+    if (restoreParams.get("task_context") === "1" && routeBatch && !state.runs.some((run) => run.run_id === routeBatch)) {
+      window.ZetTaskCapture.notice(`Recorded batch "${routeBatch}" is unavailable for this selection. Showing an available batch, if any.`);
+    }
     const chosen = [preferred, current, routeBatch].find((id) => id && state.runs.some((run) => run.run_id === id)) || state.runs[0]?.run_id || "";
     select.value = chosen;
     await loadRun(chosen, generation);
@@ -703,6 +731,9 @@
 
   async function refreshContext() {
     state.generation += 1;
+    state.runRequest += 1;
+    state.runsState = "loading";
+    state.runState = "loading";
     state.contextKey = contextKey();
     state.run = null;
     state.polledRun = null;
@@ -721,12 +752,16 @@
 
   async function loadCostumes() {
     if (!isCostume()) return;
+    state.costumesState = "loading";
     const generation = state.generation;
     const pipeline = state.pipeline;
     const character = document.querySelector("#character-select").value;
     const phase = document.querySelector("#phase-select").value;
-    const data = await request(`/api/costumes?${new URLSearchParams({ character, phase })}`);
+    let data;
+    try { data = await request(`/api/costumes?${new URLSearchParams({ character, phase })}`); }
+    catch (error) { if (generation === state.generation) state.costumesState = "unavailable"; throw error; }
     if (generation !== state.generation || pipeline !== state.pipeline || contextKey() !== state.contextKey) return;
+    state.costumesState = "selected";
     const select = $("costume");
     const previous = select.value;
     select.replaceChildren(...(data.costumes || []).map((item) => new Option(item.name, item.name)));
@@ -734,10 +769,16 @@
     const routeCostume = new URLSearchParams(window.location.search).get("local_costume") || "";
     const preferred = routeCostume || previous;
     if (Array.from(select.options).some((item) => item.value === preferred)) select.value = preferred;
+    else if (routeCostume && restoreParams.get("task_context") === "1") {
+      window.ZetTaskCapture.notice(`Recorded costume "${routeCostume}" is unavailable. Showing an available costume, if any.`);
+    }
   }
 
   function configurePipeline(pipeline) {
     state.pipeline = pipeline;
+    state.runsState = "loading";
+    state.runState = "absent";
+    state.costumesState = isCostume() ? "loading" : "absent";
     state.generation += 1;
     state.contextKey = contextKey();
     state.run = null;
@@ -776,7 +817,8 @@
     if (busy()) { setStatus("Stop the current batch before changing its reference image.", true); return; }
     try {
       const response = await fetch(`/api/local/head-image/sources?${new URLSearchParams({ ...context, filename: file.name || "pasted-reference.png" })}`, {
-        method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
+        method: "POST", headers: { "Content-Type": file.type || "application/octet-stream",
+          "X-Zet-Universe": document.querySelector("#universe-select").value }, body: file,
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || "Could not upload the reference image.");
@@ -1196,6 +1238,7 @@
       if (button) void handleAction(button).catch((error) => setStatus(error.message, true));
     });
     $("review-close").addEventListener("click", () => $("review-dialog").close());
+    $("review-task").addEventListener("click", () => void window.ZetTaskCapture.open());
     $("gate-prompt-close").addEventListener("click", () => $("gate-prompt-dialog").close());
     $("gate-prompt-dialog").addEventListener("click", (event) => {
       if (event.target === $("gate-prompt-dialog")) $("gate-prompt-dialog").close();
@@ -1229,5 +1272,39 @@
   document.querySelector("#phase-select").addEventListener("change", () => {
     if (state.pipeline && document.querySelector("#local-pipeline-page").classList.contains("active")) setTimeout(() => void refreshContext(), 0);
   });
-  window.ZetLocalAssetPipeline = { activate, deactivate };
+  function taskContext(page) {
+    const pipeline = pagePipelines[page];
+    const parameters = {};
+    const selections = { pipeline: { state: "selected", id: pipeline,
+      label: document.querySelector("#local-pipeline-title").textContent.trim() } };
+    const routeParams = new URLSearchParams(window.location.search);
+    const matching = pipeline === state.pipeline && contextKey() === state.contextKey;
+    const status = matching ? state.runsState : "loading";
+    const runId = status === "selected" ? $("runs").value
+      : routeParams.get("page") === page ? routeParams.get("local_batch") || "" : "";
+    const run = matching && state.run?.run_id === runId && state.runState === "selected" ? state.run : null;
+    const batch = state.runs.find((item) => item.run_id === runId);
+    const runSelection = runId ? { state: run ? "selected" : status === "selected" ? state.runState : status,
+      id: runId, label: run?.batch_name || batch?.batch_name || runId } : { state: status === "selected" ? "absent" : status };
+    selections.run = { ...runSelection };
+    selections.batch = { ...runSelection };
+    if (runId) parameters.local_batch = runId;
+    if (pipeline === "costume-dressing") {
+      const costume = matching && state.costumesState === "selected" ? selectedCostume() : routeParams.get("local_costume") || "";
+      const costumeState = matching ? state.costumesState : "loading";
+      selections.costume = costume ? { state: costumeState, id: costume, label: costume }
+        : { state: costumeState === "selected" ? "absent" : costumeState };
+      if (costume) parameters.local_costume = costume;
+    }
+    if (run && $("review-dialog").open) {
+      const candidate = state.reviewCandidates[state.reviewIndex];
+      if (candidate && (run.candidates || []).some((item) => item.candidate_id === candidate.candidate_id)) {
+        selections.candidate = { state: "selected", id: candidate.candidate_id, label: `${candidate.view} · ${candidate.candidate_id}` };
+        const asset = Object.entries(run.local_assets || {}).find(([, item]) => item.candidate_id === candidate.candidate_id && item.batch_id === run.run_id);
+        if (asset) selections.asset = { state: "selected", id: asset[0], label: candidate.view };
+      }
+    }
+    return { selections, parameters };
+  }
+  window.ZetLocalAssetPipeline = { activate, deactivate, taskContext };
 })();

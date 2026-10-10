@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261010-task-capture">
+  <link rel="stylesheet" href="/static/zet.css?v=20261010-local-task-context">
 </head>
 <body>
   <header class="app-header">
@@ -142,6 +142,7 @@
   </nav>
 
   <main>
+    <p id="task-context-notice" class="action-message" role="status" aria-live="polite" hidden></p>
     <section id="universes-page" class="page">
       <div class="page-title-row"><h1>Universes</h1><button class="primary-action tab" type="button" data-page="universe-create">New Universe</button></div>
       <div id="universes-message" class="action-message" hidden></div>
@@ -321,6 +322,7 @@
           <section id="local-pipeline-review-panel"></section>
           <button id="local-pipeline-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
           <div class="local-pipeline-review-view-navigation">
+            <button id="local-pipeline-review-task" type="button">Create task</button>
             <button id="local-pipeline-review-prev-view" type="button">Prev View</button>
             <button id="local-pipeline-review-next-view" type="button">Next View</button>
           </div>
@@ -2431,12 +2433,12 @@ Add prompt language here.
       </div>
     </div>
   </dialog>
-  <script src="/static/task_capture.js?v=20261010"></script>
-  <script src="/static/zet.js?v=20261010-task-capture"></script>
+  <script src="/static/task_capture.js?v=20261010-local-context"></script>
+  <script src="/static/zet.js?v=20261010-local-task-context"></script>
   <script src="/static/quick_character_wizard.js?v=20261009"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261010-task-context"></script>
   <script src="/static/local_scene_batches.js?v=20261005-publication-review"></script>
-  <script src="/static/local_batch_status.js?v=20261005-scene-tiles"></script>
+  <script src="/static/local_batch_status.js?v=20261010-task-context"></script>
   <script type="module" src="/static/scene_layout.js?v=20261007-free-backdrop"></script>
 </body>
 </html>
