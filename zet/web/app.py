@@ -46,7 +46,7 @@ from zet.web.local_scene_batch_router import create_local_scene_batch_router
 from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
 from zet.web.quick_character_wizard_router import create_quick_character_wizard_router
 from zet.web.narrative_router import create_narrative_router
-from zet.web.task_router import create_task_router
+from zet.web.task_router import create_task_router, render_task_capture_page
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -1184,7 +1184,7 @@ def create_app(
 
     @app.get("/narrative", response_class=HTMLResponse)
     def narrative_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "narrative.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "narrative.html")
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -1200,7 +1200,7 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        return (PACKAGE_ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "index.html")
 
     @app.get("/local-body-reference")
     def local_body_reference_page() -> RedirectResponse:

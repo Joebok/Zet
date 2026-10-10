@@ -1,9 +1,17 @@
 from collections.abc import Callable
+from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException, Response
 
 from zet.app import ZetApp
 from zet.services.task_service import TaskServiceError
+
+
+def render_task_capture_page(path: Path) -> str:
+    """Render the shared capture dialog into a known dashboard template."""
+    return path.read_text(encoding="utf-8").replace(
+        "<!-- TASK_CAPTURE_FORM -->", path.with_name("task_capture.html").read_text(encoding="utf-8")
+    )
 
 
 def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:

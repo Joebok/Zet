@@ -1,3 +1,7 @@
+const taskStoryRoute = new URLSearchParams(window.location.search);
+let sceneCandidateRestorePending = taskStoryRoute.get("task_context") === "1" && taskStoryRoute.get("page") === "scene-candidates";
+let builderTaskRestorePending = taskStoryRoute.get("task_context") === "1" && taskStoryRoute.get("page") === "scene-builder";
+let zineTaskRestorePending = taskStoryRoute.get("task_context") === "1" && taskStoryRoute.get("page") === "zine";
 const state = {
   universeId: "",
   universeGeneration: 0,
@@ -105,6 +109,7 @@ const state = {
   sceneDetail: null,
   zines: [],
   selectedZineSlug: null,
+  zineLoadState: "absent",
   zineDocument: null,
   zineStorySlug: null,
   zineStorySources: [],
@@ -117,12 +122,15 @@ const state = {
   sceneBuilderReferences: [],
   sceneBuilderRenderTargets: [],
   activeBuilderRenderTarget: "main",
+  sceneBuilderLoadState: "absent",
+  requestedBuilderTargetId: "main",
   showBuilderContextElements: true,
   sceneBuilderOpen: false,
   sceneBuilderInterview: null,
   sceneBuilderInterviewSeed: null,
   sceneCandidateSources: [],
   sceneCandidates: [],
+  sceneCandidatesLoadState: "absent",
   selectedSceneCandidateSource: null,
   selectedSceneCandidateId: null,
   selectedSceneCandidateStorySlug: null,
@@ -6366,6 +6374,7 @@ function renderZineTable() {
 }
 
 function renderZineDocument(document) {
+  state.zineLoadState = document ? "selected" : "absent";
   state.zineDocument = document;
   state.selectedZineSlug = document?.zine?.slug || null;
   const metadata = document?.metadata || {};
@@ -6425,6 +6434,11 @@ async function loadZines() {
     await loadZineStorySources();
     const payload = await fetchJson("/api/zines");
     state.zines = payload.zines || [];
+    if (zineTaskRestorePending && taskStoryRoute.get("task_zine")) {
+      const requested = taskStoryRoute.get("task_zine");
+      if (state.zines.some(item=>item.slug===requested)) state.selectedZineSlug = requested;
+      else window.ZetTaskCapture.notice(`Recorded zine "${requested}" is unavailable. Showing an available zine.`);
+    }
     if (state.selectedZineSlug && !state.zines.some((item) => item.slug === state.selectedZineSlug)) {
       state.selectedZineSlug = null;
     }
@@ -6436,6 +6450,11 @@ async function loadZines() {
       await selectZine(state.selectedZineSlug, { skipGuard: true });
     } else {
       clearZineEditor();
+    }
+    if (zineTaskRestorePending) {
+      const story = taskStoryRoute.get("story_slug");
+      if (state.stories.some(item=>item.slug===story)) { state.zineStorySlug = story; renderZineStoryOptions(); await loadZineStorySources(); }
+      zineTaskRestorePending = false;
     }
     zineStatus.textContent = `${state.zines.length} zine${state.zines.length === 1 ? "" : "s"}`;
   } catch (error) {
@@ -6449,9 +6468,11 @@ async function selectZine(slug, options = {}) {
   if (slug === state.selectedZineSlug && state.zineDocument?.zine?.slug === slug) return;
   const select = async () => {
     state.selectedZineSlug = slug;
+    state.zineLoadState = "loading";
     renderZineTable();
     try {
       const payload = await fetchJson(`/api/zines/${encodeURIComponent(slug)}`);
+      if (state.selectedZineSlug !== slug) return;
       renderZineDocument(payload.document);
       const sceneTag = Object.values(payload.document?.metadata?.slots || {})
         .find((value) => String(value).startsWith("{{SCENE:"));
@@ -6464,6 +6485,7 @@ async function selectZine(slug, options = {}) {
       showZineMessage("");
     } catch (error) {
       showZineMessage(error.message, "error");
+      if (state.selectedZineSlug === slug) state.zineLoadState = "unavailable";
     }
   };
   if (options.skipGuard) {
@@ -7794,12 +7816,18 @@ async function setSelectedSceneCandidatePassed(passed) {
 }
 
 async function loadSceneCandidates() {
+  state.sceneCandidatesLoadState = "loading";
   sceneCandidateStatus.textContent = "Loading candidates...";
   showSceneCandidateMessage("");
   try {
     if (!state.stories.length) await loadStories();
     const sourcesPayload = await fetchJson("/api/scene-candidate-sources");
     state.sceneCandidateSources = sourcesPayload.sources || [];
+    if (sceneCandidateRestorePending && taskStoryRoute.get("task_source")) {
+      const requested = taskStoryRoute.get("task_source");
+      if (state.sceneCandidateSources.some((item) => item.key === requested)) state.selectedSceneCandidateSource = requested;
+      else window.ZetTaskCapture.notice(`Recorded candidate source "${requested}" is unavailable. Showing an available source.`);
+    }
     if (!state.selectedSceneCandidateSource || !state.sceneCandidateSources.some((item) => item.key === state.selectedSceneCandidateSource)) {
       state.selectedSceneCandidateSource = state.sceneCandidateSources[0]?.key || null;
     }
@@ -7807,15 +7835,30 @@ async function loadSceneCandidates() {
     sceneCandidateSource.value = state.selectedSceneCandidateSource || "";
     const source = state.sceneCandidateSources.find((item) => item.key === state.selectedSceneCandidateSource);
     if (!source) {
+      state.sceneCandidatesLoadState = "unavailable";
+      if (sceneCandidateRestorePending) window.ZetTaskCapture.notice("The recorded candidate source is unavailable.");
       state.sceneCandidates = [];
       sceneCandidateStatus.textContent = "No candidate sources configured.";
       renderSceneCandidates();
       return;
     }
     sceneCandidateSourceMeta.textContent = `${source.path} • modified ${source.modified_at || "unknown"} • read-only`;
+    if (sceneCandidateRestorePending && state.stories.some(item=>item.slug===taskStoryRoute.get("story_slug"))) {
+      state.selectedSceneCandidateStorySlug = taskStoryRoute.get("story_slug");
+    }
     state.selectedSceneCandidateStorySlug ||= source.default_story_slug || null;
     const payload = await fetchJson(`/api/scene-candidates?source_key=${encodeURIComponent(source.key)}`);
     state.sceneCandidates = payload.items || [];
+    state.sceneCandidatesLoadState = "selected";
+    if (sceneCandidateRestorePending) {
+      const requested = taskStoryRoute.get("task_candidate");
+      const found = state.sceneCandidates.find((item) => item.candidate_id === requested);
+      if (found) {
+        state.selectedSceneCandidateId = requested;
+        sceneCandidateFilter.value = ["rendered", "passed"].includes(found.import_state) ? found.import_state : "in_progress";
+      } else if (requested) window.ZetTaskCapture.notice(`Recorded candidate "${requested}" is unavailable. Showing an available candidate.`);
+      sceneCandidateRestorePending = false;
+    }
     if (!state.sceneCandidates.some((item) => item.candidate_id === state.selectedSceneCandidateId)) {
       state.selectedSceneCandidateId = state.sceneCandidates[0]?.candidate_id || null;
     }
@@ -7824,6 +7867,7 @@ async function loadSceneCandidates() {
   } catch (error) {
     if (isRequestCancellation(error)) return;
     sceneCandidateStatus.textContent = "Load failed.";
+    state.sceneCandidatesLoadState = "unavailable";
     showSceneCandidateMessage(error.message, "error");
   }
 }
@@ -8302,6 +8346,8 @@ async function loadScenePromptAnalysis(renderTargetId = state.activeBuilderRende
 }
 
 async function openSceneBuilder(preferredRenderTargetId = "main") {
+  state.sceneBuilderLoadState = "loading";
+  state.requestedBuilderTargetId = preferredRenderTargetId;
   if (!state.selectedStorySlug || !state.selectedSceneSlug) {
     showSceneBuilderMessage("Select a scene first.", "error");
     return;
@@ -8325,6 +8371,7 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
     if (!selectionMatches()) return;
     const document = payload.document || {};
     if (document.blocked) {
+      state.sceneBuilderLoadState = "unavailable";
       showSceneBuilderMessage(document.error || "Scene Builder JSON is blocked.", "error");
       return;
     }
@@ -8345,11 +8392,22 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
       || (state.sceneBuilder.subscenes || []).some((item) => item.id === preferredRenderTargetId)
       ? preferredRenderTargetId
       : "main";
+    const restoringTask = builderTaskRestorePending && taskStoryRoute.get("story_slug") === storySlug && taskStoryRoute.get("scene_slug") === sceneSlug;
+    if (restoringTask && preferredRenderTargetId !== state.activeBuilderRenderTarget) {
+      window.ZetTaskCapture.notice(`Recorded render target "${preferredRenderTargetId}" is unavailable. Showing the main scene.`);
+    }
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
+    const recordedElement = taskStoryRoute.get("task_element");
+    if (restoringTask && recordedElement) {
+      if (state.sceneBuilder.scene_elements?.some((item) => item.id === recordedElement)) state.selectedBuilderElementId = recordedElement;
+      else window.ZetTaskCapture.notice(`Recorded editor element "${recordedElement}" is unavailable.`);
+    }
+    if (restoringTask) builderTaskRestorePending = false;
     state.builderResponsiveSection = "elements";
     state.sceneBuilderOpen = true;
     state.loadedBuilderContext = loadedBuilderContext;
+    state.sceneBuilderLoadState = "selected";
     renderSceneBuilder();
     state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
     updateDirtyIndicators();
@@ -8373,6 +8431,7 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
     });
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
+    if (selectionMatches()) state.sceneBuilderLoadState = "unavailable";
   } finally {
     updateSceneContextControls();
   }
@@ -14795,10 +14854,16 @@ async function main() {
     const params = new URLSearchParams(window.location.search);
     const routeStory = params.get("story_slug");
     const routeScene = params.get("scene_slug");
+    if (params.get("task_context") === "1" && routeStory && !state.stories.some((item) => item.slug === routeStory)) {
+      window.ZetTaskCapture.notice(`Recorded story "${routeStory}" is unavailable. Showing an available story.`);
+    }
     if (routeStory && state.stories.some((item) => item.slug === routeStory)) {
       state.selectedStorySlug = routeStory;
       await loadWorkspaceSummary();
       const routeScenes = canonicalSceneCollection(routeStory);
+      if (params.get("task_context") === "1" && routeScene && !routeScenes.some((item) => item.slug === routeScene)) {
+        window.ZetTaskCapture.notice(`Recorded scene "${routeScene}" is unavailable. Showing an available scene.`);
+      }
       state.selectedSceneSlug = routeScene && routeScenes.some((item) => item.slug === routeScene)
         ? routeScene
         : routeScenes[0]?.slug || null;
@@ -15059,6 +15124,52 @@ window.ZetTaskCapture.registerProvider(() => {
   if (local) {
     Object.assign(selections, local.selections);
     for (const [key, value] of Object.entries(local.parameters)) source.searchParams.set(key, value);
+  }
+  if (STORY_PAGES.has(page) || PRODUCTION_PAGES.has(page)) {
+    const storyId = page === "scene-candidates" ? state.selectedSceneCandidateStorySlug || state.selectedStorySlug
+      : page === "zine" ? state.zineStorySlug : state.selectedStorySlug;
+    const story = state.stories.find((item) => item.slug === storyId);
+    selections.story = storyId ? {state:story ? "selected" : "unavailable",id:storyId,label:story?.title || storyId} : {state:"absent"};
+    if (storyId) source.searchParams.set("story_slug",storyId);
+    if (page === "zine" && state.selectedZineSlug) {
+      const id = state.selectedZineSlug;
+      selections.zine = {state:state.zineLoadState,id,label:state.zineDocument?.zine?.slug === id ? state.zineDocument.metadata?.zine_name || id : id};
+      source.searchParams.set("task_zine",id);
+    }
+    if (["scenes", "scene-builder", "scene-batches", "prompt-review"].includes(page)) {
+      const id = state.selectedSceneSlug;
+      const scene = canonicalSceneCollection(storyId).find((item) => item.slug === id);
+      selections.scene = id ? {state:scene ? "selected" : "unavailable",id,label:scene?.title || id} : {state:"absent"};
+      if (id) source.searchParams.set("scene_slug",id);
+    }
+    if (page === "scene-builder") {
+      const ready = state.sceneBuilderLoadState === "selected" && state.loadedBuilderContext.storySlug === storyId && state.loadedBuilderContext.sceneSlug === state.selectedSceneSlug;
+      const id = ready ? state.activeBuilderRenderTarget : state.requestedBuilderTargetId;
+      const target = ready ? state.sceneBuilder?.subscenes?.find((item) => item.id === id) : null;
+      selections.render_target = {state:ready ? id === "main" || target ? "selected" : "unavailable" : state.sceneBuilderLoadState === "unavailable" ? "unavailable" : "loading",id,label:target?.name || target?.title || id};
+      if (target) selections.subscene = {...selections.render_target};
+      source.searchParams.set("render_target_id",id);
+      const element = ready ? state.sceneBuilder?.scene_elements?.find((item) => item.id === state.selectedBuilderElementId) : null;
+      if (element) { selections.editor_element = {state:"selected",id:element.id,label:element.name || element.id}; source.searchParams.set("task_element",element.id); }
+      if (element) {
+        for (const name of ["character","phase","costume"]) {
+          if (typeof element[name] === "string" && element[name]) selections[name] = {state:"selected",id:element[name],label:element[name]};
+        }
+      }
+    }
+    if (page === "scene-candidates") {
+      const id = state.selectedSceneCandidateId || (sceneCandidateRestorePending ? taskStoryRoute.get("task_candidate") : null);
+      const candidate = state.sceneCandidates.find((item) => item.candidate_id === id);
+      if (id) {
+        selections.candidate = {state:state.sceneCandidatesLoadState === "selected" ? candidate ? "selected" : "unavailable" : state.sceneCandidatesLoadState,id,label:candidate?.title || id};
+        source.searchParams.set("task_candidate",id);
+      }
+      if (state.selectedSceneCandidateSource) source.searchParams.set("task_source",state.selectedSceneCandidateSource);
+    }
+    if (page === "scene-batches") {
+      const batch = window.SceneBatches?.taskContext();
+      if (batch) { Object.assign(selections,batch.selections); for (const [key,value] of Object.entries(batch.parameters)) source.searchParams.set(key,value); }
+    }
   }
   return { page_id: page,
     page_name: LOCAL_ASSET_PAGES.has(page) ? document.querySelector("#local-pipeline-title").textContent.trim()

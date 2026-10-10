@@ -199,6 +199,16 @@ def test_zet_app_exposes_forwarding_and_dashboard_installs_router(tmp_path):
     assert json.loads(sent.call_args.args[0].data)["context"] == payload()["context"]
 
 
+@pytest.mark.parametrize("path", ["/", "/narrative"])
+def test_dashboard_pages_render_one_shared_task_form(tmp_path, path):
+    app = create_app(write_project_fixture(tmp_path), validate_catalog_on_create=False)
+    response = TestClient(app).get(path)
+    assert response.status_code == 200
+    assert response.text.count('id="task-capture-form"') == 1
+    assert 'id="toolbar-create-task"' in response.text
+    assert 'TASK_CAPTURE_FORM' not in response.text
+
+
 def test_real_http_transport_refuses_redirect_and_does_not_use_ambient_proxy(tmp_path, monkeypatch):
     received = []
     class Handler(BaseHTTPRequestHandler):

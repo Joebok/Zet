@@ -14,6 +14,7 @@
 .narrative-app label { font-weight:500; }
 .narrative-app input, .narrative-app textarea, .narrative-app select { font:inherit; border:1px solid var(--border); border-radius:5px; padding:.55rem; background:white; color:var(--text); }
 .narrative-app textarea { width:100%; min-height:95px; resize:vertical; line-height:1.5; }
+.narrative-app .task-capture-dialog textarea { min-height:0; }
 .narrative-app button { cursor:pointer; padding:.55rem .8rem; border:1px solid var(--border); border-radius:5px; background:var(--surface); color:var(--text); font:inherit; }
 .narrative-app button.primary { background:var(--primary); color:white; border-color:var(--primary); }
 .narrative-app button.danger { color:var(--danger); }
