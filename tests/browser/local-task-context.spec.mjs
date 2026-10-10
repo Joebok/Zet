@@ -135,6 +135,7 @@ test("a Batches card reports its row and Return to Zet restores the selected car
   expect(snapshot.selections.costume.id).toBe("Travel");
   await page.goto(snapshot.source_url);
   await expect(page.locator('[data-run-id="batch-1"]')).toHaveAttribute("aria-current", "true");
+  await page.screenshot({ path: "test-results/local-task-batches.png" });
   await page.locator("#toolbar-create-task").click();
   expect(JSON.parse(await page.locator("#task-capture-context").textContent())).toEqual(snapshot);
 });

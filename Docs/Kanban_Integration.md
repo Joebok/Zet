@@ -2,7 +2,7 @@
 
 Zet now exposes task forwarding through `ZetApp.create_task(payload)` and
 `POST /api/tasks`. Kanban owns its board files, intake validation, and request-ID
-receipts. Zet never reads or writes those files. Specialized workspace context
+receipts. Zet never reads or writes those files. Story and auxiliary-page context
 providers, attachments, and removal of To Do are later
 packets. The main dashboard now has Create task and Open board toolbar actions.
 
