@@ -5498,3 +5498,16 @@ dd {
   .scene-layout-viewport { min-height: 320px; }
   .scene-layout-inspector { border-left: 0; border-top: 1px solid var(--border); }
 }
+/* Quick character authoring shares the library dialog and controls. */
+#quick-character-wizard-dialog { width: min(1120px, 94vw); max-width: min(1120px, 94vw); max-height: 92vh; overflow: auto; }
+#quick-character-wizard-dialog h2 { flex: 1; }
+#quick-character-wizard-dialog label { display: block; margin: 8px 0; }
+#quick-character-wizard-dialog textarea { width: 100%; min-height: 0; box-sizing: border-box; }
+#quick-character-wizard-dialog .qc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+#quick-character-wizard-dialog .qc-controls { display: flex; flex-wrap: wrap; gap: 16px; }
+#quick-character-wizard-dialog .qc-card { border: 1px solid var(--border, #777); padding: 12px; border-radius: 8px; min-width: 0; }
+#quick-character-wizard-dialog .qc-card img { display: block; width: 100%; max-height: 330px; object-fit: contain; margin: 8px 0; }
+#quick-character-wizard-dialog figure.qc-card { margin: 0; }
+#quick-character-wizard-dialog .qc-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
+#quick-character-wizard-dialog .qc-selected { border: 2px solid var(--accent, #7389d8); }
+@media (max-width: 760px) { #quick-character-wizard-dialog .qc-grid { grid-template-columns: 1fr; } }

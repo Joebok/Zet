@@ -49,6 +49,7 @@ ImagePromptGeneration = "codex:gpt-6-luna"
             self.assertEqual(config.render_backend, "manual_chatgpt")
             self.assertEqual(config.ai_image_prompt_generation_model, "codex:gpt-6-luna")
             self.assertEqual(config.ai_costume_wizard_model, "codex:gpt-6-luna")
+            self.assertEqual(config.ai_quick_character_wizard_model, "codex:gpt-6-luna")
             self.assertEqual(config.local_render_layout_backend, "forge_couple_basic")
             self.assertEqual(config.zine_print_scale, 0.978)
             self.assertEqual(config.zine_page_margin, 4)

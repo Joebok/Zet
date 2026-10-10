@@ -44,6 +44,7 @@ from zet.services.local_gate_registry_service import LocalGateRegistryService
 from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
 from zet.web.local_scene_batch_router import create_local_scene_batch_router
 from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
+from zet.web.quick_character_wizard_router import create_quick_character_wizard_router
 from zet.web.narrative_router import create_narrative_router
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
@@ -854,6 +855,7 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ai_image_description_model=str(payload.get("ai_image_description_model", defaults.ai_image_description_model)),
         ai_image_prompt_generation_model=str(payload.get("ai_image_prompt_generation_model", defaults.ai_image_prompt_generation_model)),
         ai_costume_wizard_model=str(payload.get("ai_costume_wizard_model", defaults.ai_costume_wizard_model)),
+        ai_quick_character_wizard_model=str(payload.get("ai_quick_character_wizard_model", defaults.ai_quick_character_wizard_model)),
         ai_scene_builder_model=str(payload.get("ai_scene_builder_model", defaults.ai_scene_builder_model)),
         local_body_reference_face_gate_model=str(
             payload.get("local_body_reference_face_gate_model", defaults.local_body_reference_face_gate_model)
@@ -999,6 +1001,7 @@ def create_app(
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
     app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
+    app.state.zet_app.quick_character_wizard_service.generation_service = app.state.image_generation_service
     app.state.image_prompt_generation_service = ImagePromptGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.universe_lock = threading.RLock()
     app.state.recovery_lock = threading.Lock()
@@ -1165,6 +1168,15 @@ def create_app(
     app.include_router(create_local_character_asset_pipeline_router(lambda: _app(app.state.config_path), PROJECT_ROOT))
     app.include_router(create_local_scene_batch_router(lambda: _app(app.state.config_path)))
     app.include_router(create_ad_hoc_image_generation_router(lambda: app.state.image_generation_service))
+
+    def quick_character_wizard_service():
+        service = _app(app.state.config_path).quick_character_wizard_service
+        # Share the durable render transport; references are session snapshots,
+        # while drafts and publication remain bound to the requested universe.
+        service.generation_service = app.state.image_generation_service
+        return service
+
+    app.include_router(create_quick_character_wizard_router(quick_character_wizard_service))
     app.include_router(create_narrative_router(lambda: _app(app.state.config_path)))
 
     @app.get("/narrative", response_class=HTMLResponse)

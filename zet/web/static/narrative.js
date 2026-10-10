@@ -400,10 +400,10 @@ function renderTarget(targets) {
     <div><section class="narrative-card"><h2>Prompt and generation</h2>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
       <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
-      <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre><button data-action="use-prompt">Use this prompt</button></details>
-      <div class="narrative-actions"><button data-action="synthesize">Write prompt</button><button data-action="rerun_prompt">Re-run last prompt</button><button class="primary" data-action="generate" data-count="1">Generate 1 from inputs</button><button class="primary" data-action="generate" data-count="4">Generate 4 from inputs</button></div>
-      <div class="narrative-actions"><button data-action="render" data-count="1">Render edited prompt · 1</button><button data-action="render" data-count="4">Render edited prompt · 4</button><button data-action="refresh">Refresh</button></div>
-      <p class="narrative-muted">Generate from inputs writes a new prompt and renders it. Render edited prompt sends the text above exactly as entered.</p>
+      <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
+      <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div>
+      <div class="narrative-actions"><button class="primary" data-action="render" data-count="1">Render 1</button><button class="primary" data-action="render" data-count="4">Render 4</button><button data-action="refresh">Refresh</button></div>
+      <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></section>
     <section class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
   updateLive();
@@ -454,9 +454,9 @@ function updateLive() {
   if (llmWorking && document.activeElement === prompt) prompt.blur();
   prompt.disabled = llmWorking;
   prompt.setAttribute('aria-busy', String(llmWorking));
-  const promptActions = ['interview','rerun_interview','synthesize','rerun_prompt','generate','render','use-prompt'];
+  const promptActions = ['interview','rerun_interview','synthesize','render'];
   for (const button of root.querySelectorAll('[data-action]')) {
-    if (promptActions.includes(button.dataset.action)) button.disabled = busy || llmWorking || (['generate','render'].includes(button.dataset.action) && detail.kind==='backdrop' && detail.source_snapshot?.image_file && ['crop','unchanged'].includes(detail.backdrop_adaptation?.operation)) || (button.dataset.action === 'render' && Boolean(document.querySelector('#narrative-assembly-prompt-warning')?.textContent));
+    if (promptActions.includes(button.dataset.action)) button.disabled = busy || llmWorking || (button.dataset.action === 'render' && detail.kind==='backdrop' && detail.source_snapshot?.image_file && ['crop','unchanged'].includes(detail.backdrop_adaptation?.operation)) || (button.dataset.action === 'render' && Boolean(document.querySelector('#narrative-assembly-prompt-warning')?.textContent));
   }
   const interviewJob = working.find(job=>job.kind === 'interview');
   if (interviewJob) {
@@ -470,7 +470,7 @@ function updateLive() {
   const lastAuthorJob = jobs.filter(job=>job.kind !== 'image').at(-1);
   const failures = lastAuthorJob?.status === 'FAILED' ? [lastAuthorJob] : [];
   document.querySelector('#narrative-job-status').innerHTML = `<p class="${working.length || llmSubmitting ? 'narrative-pending' : 'narrative-muted'}">${working.length ? working.map(job=>`${esc(job.kind)}: ${esc(job.status.toLowerCase())}${job.kind !== 'image' ? ' · '+esc(job.model || 'Model not recorded') : ''}`).join(' · ') : llmSubmitting ? 'Submitting LLM request…' : 'Ready'}${llmWorking ? ' · Final prompt is unavailable until the LLM finishes.' : ''}</p>`+
-    failures.filter(job=>job.kind !== 'image').map(job=>`<div class="narrative-failure">${esc(modelName(job.provenance))} · ${esc(job.error)} <button data-retry-job="${job.id}">Retry</button></div>`).join('');
+    failures.filter(job=>job.kind !== 'image').map(job=>`<div class="narrative-failure">${esc(modelName(job.provenance))} · ${esc(job.error)}${job.kind === 'interview' ? ` <button data-retry-job="${job.id}">Retry</button>` : ''}</div>`).join('');
   const signature = JSON.stringify([detail.slots,detail.candidates,detail.selected_id]);
   if (signature === slotSignature) return;
   slotSignature = signature;
@@ -483,7 +483,7 @@ function updateLive() {
       <details><summary><span>Prompt and source</span> ${copyPromptButton(id)}</summary><p>${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}${candidate.assembly_snapshot ? ' · '+assemblyModeName(candidate.assembly_mode) : ''}</p><pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre>${candidate.assembly_snapshot ? `${(candidate.assembly_snapshot.has_composite ?? (candidate.assembly_snapshot.assembly_mode || 'finish_composite')==='finish_composite') ? `<a href="${esc(artifactUrl(`candidates/${id}/composite`))}" target="_blank">Compare raw composite</a>` : ''}<p>${candidate.assembly_snapshot.layers.filter(layer=>layer.visible).map(layer=>esc(layer.label)).join(' · ')}</p>` : ''}</details>
       <div class="narrative-actions narrative-review-actions">${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select">Select</button>` : ''}
       ${candidate.source_snapshot ? `<p class="narrative-muted">Source: ${esc(candidate.source_snapshot.scene_title)} · ${esc(candidate.source_snapshot.title)} · ${esc(candidate.backdrop_adaptation?.operation||'edit')}</p>` : ''}
-      ${!candidate.locked && id !== detail.selected_id ? candidate.status === 'FAILED' && (candidate.assembly_snapshot || candidate.source_snapshot) ? `<button data-candidate="${id}" data-candidate-action="retry">Retry</button>` : `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regen'}</button>` : ''}
+      ${!candidate.locked && id !== detail.selected_id ? `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regen'}</button>` : ''}
       <button data-candidate="${id}" data-candidate-action="clear">Clear</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
       : `<div class="narrative-actions"><button data-render-slot="${index+1}">Generate</button></div>`}</article>`;
   }).join('');
@@ -734,7 +734,7 @@ document.addEventListener('click',event=>{
     } else if (button.dataset.candidate) {
       await save(); const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction});
       if (result) { detail=result; updateLive(); status('Updated'); }
-    } else if (button.dataset.renderSlot) await start(root.querySelector('#narrative-prompt').value.trim() ? 'render' : 'generate',1,Number(button.dataset.renderSlot));
+    } else if (button.dataset.renderSlot) await start('render',1,Number(button.dataset.renderSlot));
     else if (button.dataset.retryJob) {
       const job = detail.jobs[button.dataset.retryJob]; await start(job.kind,job.candidate_ids?.length === 4 ? 4 : 1,undefined,job.detail.kind==='assembly' || job.detail.source_snapshot?.image_file ? job.id : undefined);
     } else {
@@ -748,7 +748,6 @@ document.addEventListener('click',event=>{
         }
         case 'preview-crop': {await save();const image=document.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
         case 'create-assembly': {await save();const target=await api(base()+'/targets','POST',{title:'Final assembly',kind:'assembly'});await navigate({...route,target:target.id});break;}
-        case 'use-prompt': {await save();const id=document.querySelector('#narrative-prompt-history').value;if(!id) throw new Error('Choose a previous prompt.');await api(base(),'PATCH',{use_prompt_job:id});mergeTarget(await api(base()));break;}
         case 'add-layer': {
           await save();const source=detail.assembly_sources.find(item=>item.id===document.querySelector('#assembly-source').value);
           if(!source?.candidates.length) throw new Error('Generate a completed source image first.');

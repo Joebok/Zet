@@ -4,11 +4,9 @@ import copy
 import hashlib
 import io
 import json
-import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +16,7 @@ from uuid import uuid4
 from PIL import Image
 
 from Scripts.Compile_Character_Template import load_template_sections_with_sources
+from zet.services.structured_ai_service import codex_json
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
 from zet.services.ollama_model_service import OllamaModelService
@@ -33,7 +32,6 @@ _ACTIVE: set[str] = set()
 _ACTIVE_LOCK = threading.Lock()
 _SESSION_LOCKS: dict[str, threading.RLock] = {}
 _SESSION_LOCKS_LOCK = threading.Lock()
-_CODEX_MODELS = {"gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"}
 _FACT_SCHEMA = {
     "type": "object", "properties": {"facts": {"type": "array", "items": {"type": "object",
         "properties": {"text": {"type": "string"}, "views": {"type": "array", "items": {"type": "string"}},
@@ -225,32 +223,8 @@ class CostumeWizardService:
         return self.get_session(session_id)
 
     def _codex_json(self, model: str, system: str, prompt: str, schema: dict, images: list[str]) -> dict:
-        if model not in _CODEX_MODELS:
-            raise CostumeWizardError(f"Unsupported Costume Wizard Codex model: {model}")
-        executable = shutil.which("codex")
-        if not executable and os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-            installs = list((Path(os.environ["LOCALAPPDATA"]) / "OpenAI" / "Codex" / "bin").glob("*/codex.exe"))
-            if installs:
-                executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
-        if not executable:
-            raise CostumeWizardError("Codex CLI is unavailable for Costume Wizard.")
-        with tempfile.TemporaryDirectory(prefix="zet_costume_wizard_") as temp:
-            schema_path, output = Path(temp) / "schema.json", Path(temp) / "answer.json"
-            schema_path.write_text(json.dumps(schema), encoding="utf-8")
-            command = [executable, "-a", "never", "-s", "read-only", "-m", model,
-                       "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root), "exec",
-                       "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema",
-                       str(schema_path), "--output-last-message", str(output)]
-            for image in images:
-                command.extend(["--image", image])
-            completed = subprocess.run(command, input=f"{system}\n\n{prompt}", capture_output=True, text=True,
-                                       encoding="utf-8", errors="replace", timeout=1800, check=False)
-            if completed.returncode:
-                raise CostumeWizardError((completed.stderr or completed.stdout or "Codex Costume Wizard task failed")[-2000:])
-            value = json.loads(output.read_text(encoding="utf-8"))
-            if not isinstance(value, dict):
-                raise CostumeWizardError("Codex returned an invalid Costume Wizard response.")
-            return value
+        return codex_json(self.project_root, model, system, prompt, schema, images,
+                          label="Costume Wizard", error_type=CostumeWizardError)
 
     def _ask(self, prompt: str, schema: dict, images: list[str] | None = None, *, model: str | None = None) -> dict:
         selected = str(model or self.app.config.ai_costume_wizard_model or "codex:gpt-6-luna").strip()

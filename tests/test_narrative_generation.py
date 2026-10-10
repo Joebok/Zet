@@ -11,6 +11,7 @@ from tests.support.image_fixture import png_bytes
 from zet.app import ZetApp
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.narrative_generation_service import NarrativeGenerationService
+from zet.services.narrative_prompt_service import assemble_prompt
 from zet.services.narrative_scene_service import ProtectedNarrativeImages
 from zet.web.narrative_router import create_narrative_router
 
@@ -227,10 +228,144 @@ def test_library_bindings_and_prompt_order_without_metadata_injection(rig, monke
     detail = complete(service, ids, job["id"], {"scene": "A and B talk together.", "rendering": "Daylight."})
     assert "<image1> depicts B" in detail["prompt"]
     assert "<image2> depicts A" in detail["prompt"]
+    assert "Scene\nA <image2> and B <image1> talk together." in detail["prompt"]
     assert "OLD TEMPLATE" not in detail["prompt"]
     manifest = json.loads((service.proxy.client.ask_root / latest_job(detail, "image")["id"] / "ask_manifest.json").read_text())
     assert [ref["label"] for ref in manifest["reference_files"]] == ["B", "A"]
     assert all(not Path(ref["path"]).is_absolute() for ref in manifest["reference_files"])
+
+
+@pytest.mark.parametrize("action", ["synthesize", "generate"])
+def test_fight_inline_bindings_use_frozen_references_and_reach_render(rig, action):
+    app, author, service, ids = rig
+    elements = []
+    for name, color in (("Tsaeytte", "green"), ("Valindia", "red"), ("Kaeldor", "blue")):
+        asset = app.entity_library_service.import_asset(name, "image/png", png_bytes(color))
+        elements.append(author.save_element(*ids[:2], {"name": name, "asset_id": asset["asset_id"]}))
+    author.update_target(*ids, {"element_ids": [element["id"] for element in elements]})
+    draft = service.start(*ids, {"action": action})
+    job = latest_job(draft, action)
+    assert "Use exact supplied element names" in job["request"]
+    assert "Repeat the actor's name for gestures, held objects, effects and interactions" in job["request"]
+    assert "Do not mention image numbers" in job["request"]
+    assert set(job["schema"]["properties"]) == {"scene", "rendering"}
+    assert all(Path(ref["path"]).is_file() for ref in job["references"])
+    # Current assignments change while the LLM works; its frozen order remains authoritative.
+    author.update_target(*ids, {"element_ids": [element["id"] for element in reversed(elements)]})
+    detail = complete(service, ids, job["id"], {
+        "scene": "Kaeldor stands left, pointing his fist at Valindia. Tsaeytte shields Valindia. "
+                 "Tsaeytte holds a flame orb in her right hand.",
+        "rendering": "Keep Tsaeytte's right hand and Valindia’s face visible.",
+    })
+    assert "Kaeldor <image3> stands left, pointing his fist at Valindia <image2>." in detail["prompt"]
+    assert "Tsaeytte <image1> shields Valindia <image2>." in detail["prompt"]
+    assert "Tsaeytte <image1> holds a flame orb in her right hand." in detail["prompt"]
+    assert "Tsaeytte's <image1> right hand and Valindia’s <image2> face" in detail["prompt"]
+    assert author.repository.read(*ids)["prompt"] == detail["prompt"]
+    if action == "synthesize":
+        assert not any(item["kind"] == "image" for item in detail["jobs"].values())
+        # Render the saved synthesis with its matching assignments.
+        author.update_target(*ids, {"element_ids": [element["id"] for element in elements]})
+        detail = service.start(*ids, {"action": "render"})
+    image_job = latest_job(detail, "image")
+    ask = service.proxy.client.ask_root / image_job["id"]
+    manifest = json.loads((ask / "ask_manifest.json").read_text())
+    assert [ref["label"] for ref in manifest["reference_files"]] == ["Tsaeytte", "Valindia", "Kaeldor"]
+    assert (ask / "prompt.md").read_text(encoding="utf-8") == detail["prompt"]
+    assert detail["candidates"][detail["slots"][0]]["prompt"] == detail["prompt"]
+
+
+@pytest.fixture
+def prompt_detail():
+    return {"kind": "subscene", "elements": [], "framing": "Full body", "width": 1280, "height": 832}
+
+
+@pytest.mark.parametrize(("names", "scene", "expected"), [
+    (["Tsaeytte"], "TSAEYTTE turns; tsaeytte smiles.", "TSAEYTTE <image1> turns; tsaeytte <image1> smiles."),
+    (["Tsaeytte"], "Tsaeytte's hand, Tsaeytte’s gaze.", "Tsaeytte's <image1> hand, Tsaeytte’s <image1> gaze."),
+    (["Ann", "Ann Marie"], "Ann Marie faces Ann; Joanne and Annex wait.",
+     "Ann Marie <image2> faces Ann <image1>; Joanne and Annex wait."),
+    (["Kael(dor)"], "(Kael(dor)), Kael(dor)!", "(Kael(dor) <image1>), Kael(dor) <image1>!"),
+    (["Tsaeytte"], "Tsaeytte <image9> shields Tsaeytte <image1>.",
+     "Tsaeytte <image1> shields Tsaeytte <image1>."),
+    (["Tsaeytte"], "Tsaeytte <image2><image3> turns.", "Tsaeytte <image1> turns."),
+    ([], "A quiet room.", "A quiet room."),
+])
+def test_inline_bindings_preserve_complete_names_and_punctuation(prompt_detail, names, scene, expected):
+    prompt_detail["elements"] = [{"name": name, "kind": "subject", "asset_id": name} for name in names]
+    refs = [{"label": name, "role": "appearance"} for name in names]
+    prose = {"scene": scene, "rendering": scene}
+    prompt = assemble_prompt(prompt_detail, prose, refs)
+    assert prompt.startswith(f"Scene\n{expected}\n\nReferences\n")
+    assert f"Rendering\n{expected}\n\nConstraints\n" in prompt
+    assert prose == {"scene": scene, "rendering": scene}
+    # Generated tags can be passed through assembly again without accumulating tags.
+    assert assemble_prompt(prompt_detail, {"scene": expected, "rendering": expected}, refs) == prompt
+
+
+def test_inline_bindings_cover_props_environment_and_leave_text_only_elements(prompt_detail):
+    prompt_detail["elements"] = [
+        {"name": "Traveler", "kind": "subject", "asset_id": "traveler"},
+        {"name": "Parchment", "kind": "prop", "asset_id": "parchment"},
+        {"name": "Gate", "kind": "environment", "asset_id": "gate"},
+        {"name": "Lantern", "kind": "prop", "asset_id": ""},
+    ]
+    refs = [{"label": element["name"], "role": "appearance"} for element in prompt_detail["elements"] if element["asset_id"]]
+    prompt = assemble_prompt(prompt_detail, {
+        "scene": "Traveler carries Parchment through Gate beside Lantern.", "rendering": "Light Gate and Lantern.",
+    }, refs)
+    assert "Traveler <image1> carries Parchment <image2> through Gate <image3> beside Lantern." in prompt
+    assert "Rendering\nLight Gate <image3> and Lantern." in prompt
+    assert "<image2> depicts Parchment. Preserve defining physical appearance" in prompt
+    assert "<image3> depicts Gate. Preserve defining physical appearance" in prompt
+
+
+def test_inline_bindings_account_for_backdrop_source_slot(prompt_detail):
+    prompt_detail.update(kind="backdrop", elements=[{"name": "Guard", "kind": "subject", "asset_id": "guard"}])
+    refs = [{"label": "Courtyard", "role": "backdrop source"}, {"label": "Guard", "role": "appearance"}]
+    prompt = assemble_prompt(prompt_detail, {"scene": "Guard stands in Courtyard.", "rendering": "Light Guard."}, refs)
+    assert "Scene\nGuard <image2> stands in Courtyard." in prompt
+    assert "Rendering\nLight Guard <image2>." in prompt
+    assert "<image1> is the original backdrop." in prompt
+    assert "<image2> depicts Guard." in prompt
+
+
+def test_ambiguous_reference_labels_fail_generation_without_rendering(rig):
+    app, author, service, ids = rig
+    asset = app.entity_library_service.import_asset("Identity", "image/png", png_bytes("green"))
+    elements = [author.save_element(*ids[:2], {"name": name, "asset_id": asset["asset_id"]})
+                for name in ("Tsaeytte", "tsaeytte")]
+    author.update_target(*ids, {"element_ids": [element["id"] for element in elements]})
+    draft = service.start(*ids, {"action": "generate"})
+    job = latest_job(draft, "generate")
+    detail = complete(service, ids, job["id"], {"scene": "Tsaeytte raises a hand.", "rendering": "Daylight."})
+    failed = latest_job(detail, "generate")
+    assert failed["status"] == "FAILED"
+    assert "Ambiguous reference label" in failed["error"]
+    assert not any(item["kind"] == "image" for item in detail["jobs"].values())
+    assert detail["prompt"] == ""
+
+
+@pytest.mark.parametrize("mode", ["finish_composite", "assemble_references"])
+def test_assembly_prompts_do_not_receive_inline_element_bindings(prompt_detail, mode):
+    prompt_detail.update(kind="assembly", assembly_mode=mode)
+    refs = [{"label": "Group", "role": "base", "image_index": 1, "fit": "cover"}]
+    prompt = assemble_prompt(prompt_detail, {"scene": "Group remains placed.", "rendering": "Light Group."}, refs)
+    assert "Group remains placed." in prompt
+    assert "Rendering\nLight Group." in prompt
+    assert "Group <image" not in prompt
+
+
+def test_manual_prompt_with_referenced_name_is_submitted_without_inline_changes(rig):
+    app, author, service, ids = rig
+    asset = app.entity_library_service.import_asset("Traveler", "image/png", png_bytes("green"))
+    element = author.save_element(*ids[:2], {"name": "Traveler", "asset_id": asset["asset_id"]})
+    prompt = "Scene\nTraveler holds a lantern. Traveler <image7> turns.\nRendering\nLight Traveler."
+    author.update_target(*ids, {"element_ids": [element["id"]], "prompt": prompt})
+    detail = service.start(*ids, {"action": "render"})
+    ask = service.proxy.client.ask_root / latest_job(detail, "image")["id"]
+    assert (ask / "prompt.md").read_bytes() == prompt.encode("utf-8")
+    assert detail["prompt"] == prompt
 
 
 def test_dispatch_recovers_between_image_submissions(rig, monkeypatch):

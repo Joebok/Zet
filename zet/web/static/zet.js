@@ -433,6 +433,7 @@ const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-
 const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image-description-model");
 const settingImagePromptGenerationModel = document.querySelector("#setting-image-prompt-generation-model");
 const settingCostumeWizardModel = document.querySelector("#setting-costume-wizard-model");
+const settingQuickCharacterWizardModel = document.querySelector("#setting-quick-character-wizard-model");
 const settingAiSceneBuilderModel = document.querySelector("#setting-ai-scene-builder-model");
 const settingLocalBodyReferenceFaceGateModel = document.querySelector("#setting-local-body-reference-face-gate-model");
 const settingLocalBodyReferenceReviewModel = document.querySelector("#setting-local-body-reference-review-model");
@@ -8948,6 +8949,7 @@ const sceneImagePicker = {
   onError: (error) => showSceneMessage(error.message, "error"),
 };
 
+let quickCharacterLibrarySelection = null;
 const builderImagePicker = {
   library: true,
   labelOnly: true,
@@ -8962,6 +8964,13 @@ const builderImagePicker = {
   rows: () => state.builderImagePickerReferences,
   setRows: (rows) => { state.builderImagePickerReferences = rows; },
   onSelect: async (item, mode = "asset") => {
+    if (quickCharacterLibrarySelection) {
+      const select = quickCharacterLibrarySelection;
+      quickCharacterLibrarySelection = null;
+      builderImagePickerModal.close();
+      await select(item);
+      return;
+    }
     const element = builderSelectedElement();
     if (!element) {
       return;
@@ -12088,6 +12097,7 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
   setOllamaModelValue(settingImagePromptGenerationModel, automation.ai_image_prompt_generation_model || "image-analysis:latest");
   setOllamaModelValue(settingCostumeWizardModel, automation.ai_costume_wizard_model || "codex:gpt-6-luna");
+  setOllamaModelValue(settingQuickCharacterWizardModel, automation.ai_quick_character_wizard_model || "codex:gpt-6-luna");
   setOllamaModelValue(settingAiSceneBuilderModel, automation.ai_scene_builder_model || "");
   setOllamaModelValue(settingLocalBodyReferenceFaceGateModel, automation.local_body_reference_face_gate_model || "");
   setOllamaModelValue(settingLocalBodyReferenceReviewModel, automation.local_body_reference_review_model || "");
@@ -12122,6 +12132,7 @@ const ollamaModelControls = () => [
   settingAiImageDescriptionModel,
   settingImagePromptGenerationModel,
   settingCostumeWizardModel,
+  settingQuickCharacterWizardModel,
   settingAiSceneBuilderModel,
   settingLocalBodyReferenceFaceGateModel,
   settingLocalBodyReferenceReviewModel,
@@ -12198,7 +12209,7 @@ async function refreshOllamaModelOptions(refresh = false) {
     for (const control of ollamaModelControls()) {
       setSelectOptions(control, control === settingImagePromptGenerationModel
         ? (payload.vision_models || []) : (payload.models || []));
-      if ([settingImagePromptGenerationModel, settingCostumeWizardModel].includes(control)) addCodexPromptModels(control);
+      if ([settingImagePromptGenerationModel, settingCostumeWizardModel, settingQuickCharacterWizardModel].includes(control)) addCodexPromptModels(control);
       setOllamaModelValue(control, current.get(control));
     }
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
@@ -12208,8 +12219,10 @@ async function refreshOllamaModelOptions(refresh = false) {
   } catch (error) {
     addCodexPromptModels(settingImagePromptGenerationModel);
     addCodexPromptModels(settingCostumeWizardModel);
+    addCodexPromptModels(settingQuickCharacterWizardModel);
     setOllamaModelValue(settingImagePromptGenerationModel, current.get(settingImagePromptGenerationModel));
     setOllamaModelValue(settingCostumeWizardModel, current.get(settingCostumeWizardModel));
+    setOllamaModelValue(settingQuickCharacterWizardModel, current.get(settingQuickCharacterWizardModel));
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
     showMessage(error.message, "error");
   }
@@ -12308,6 +12321,7 @@ function automationPayloadFromForm() {
     ai_image_description_model: settingAiImageDescriptionModel.value,
     ai_image_prompt_generation_model: settingImagePromptGenerationModel.value,
     ai_costume_wizard_model: settingCostumeWizardModel.value,
+    ai_quick_character_wizard_model: settingQuickCharacterWizardModel.value,
     ai_scene_builder_model: settingAiSceneBuilderModel.value,
     local_body_reference_face_gate_model: settingLocalBodyReferenceFaceGateModel.value,
     local_body_reference_review_model: settingLocalBodyReferenceReviewModel.value,
@@ -15077,3 +15091,28 @@ window.zetSceneLayout = {
     return !builderActiveSubscene();
   },
 };
+
+// A narrow dashboard bridge keeps wizard presentation in its own module.
+window.zetQuickCharacterWizard = {
+  fetchJson,
+  selectedAsset: () => entityLibrarySelectedAsset,
+  universe: () => state.universeId,
+  fileUrl,
+  refreshLibrary: loadEntityLibraryInventory,
+  openAsset: selectEntityLibraryAsset,
+  openSet: async (setId) => { await loadEntityLibraryInventory(); activateInventoryView("sets"); renderEntityLibraryOrganizer("sets", setId); },
+  openLibraryPicker: async (onSelect) => {
+    quickCharacterLibrarySelection = onSelect;
+    // Its usual Scene Builder page may be hidden while the library is active.
+    const parent = builderImagePickerModal.parentNode;
+    const next = builderImagePickerModal.nextSibling;
+    document.body.append(builderImagePickerModal);
+    builderImagePickerModal.addEventListener("close", () => parent.insertBefore(builderImagePickerModal, next), { once: true });
+    builderImagePickerSearch.value = "";
+    builderImagePickerMode.value = "asset";
+    builderImagePickerModal.showModal();
+    await loadEntityLibraryPickerFilters();
+    await loadImagePickerReferences(builderImagePicker);
+  },
+};
+builderImagePickerModal.addEventListener("close", () => { quickCharacterLibrarySelection = null; });

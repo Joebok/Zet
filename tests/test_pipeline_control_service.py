@@ -120,6 +120,7 @@ Backend = "local_image"
                     ai_prompt_analysis_model="analysis-model",
                     ai_prompt_analysis_auto_queue_on_render=True,
                     ai_image_description_model="catalog-model",
+                    ai_quick_character_wizard_model="codex:gpt-6-sol",
                     ai_scene_builder_model="scene-builder-model",
                     local_body_reference_face_gate_model="face-gate-model",
                     zine_print_scale=0.965,
@@ -145,6 +146,7 @@ Backend = "local_image"
             self.assertEqual(reloaded.ai_prompt_analysis_model, "analysis-model")
             self.assertTrue(reloaded.ai_prompt_analysis_auto_queue_on_render)
             self.assertEqual(reloaded.ai_image_description_model, "catalog-model")
+            self.assertEqual(reloaded.ai_quick_character_wizard_model, "codex:gpt-6-sol")
             self.assertEqual(reloaded.ai_scene_builder_model, "scene-builder-model")
             self.assertEqual(reloaded.local_body_reference_face_gate_model, "face-gate-model")
             self.assertEqual(reloaded.zine_print_scale, 0.965)

@@ -1,5 +1,6 @@
 """Short narrative instructions and deterministic reference bindings."""
 import json
+import re
 
 
 def object_schema(properties: dict) -> dict:
@@ -59,6 +60,9 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "Begin with 'Create a new illustration' and use supplied images only for their stated roles. "
             "Integrate narrative, reactions, gestures, staging, important props, framing and visibility into one coherent event. "
             "Preserve named participants and essential facts. Use narrative direction over generic aesthetics. "
+            "Use exact supplied element names when introducing participants and describing their actions. "
+            "Repeat the actor's name for gestures, held objects, effects and interactions whenever ownership could be ambiguous. "
+            "Avoid ownerless action fragments and ambiguous pronouns; clearly name whose hand holds an object or creates an effect. "
             "References preserve identity and costume, not source pose, gaze or camera. Do not invent extra people or significant props. "
             "Only reference_images identifies supplied images. Other elements have text directions only. Do not claim that a "
             "text-only prop or subject has a supplied image. Do not mention image numbers or describe reference bindings in your paragraphs. "
@@ -100,6 +104,33 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
     return instructions + "\n\nCurrent inputs:\n" + json.dumps(context, ensure_ascii=False) + "\n\nLatest direction:\n" + message, schema
 
 
+def _bind_reference_names(prose: dict, references: list[dict]) -> dict:
+    """Bind element mentions using the frozen order sent to the image encoder."""
+    tags = {}
+    names = []
+    for index, reference in enumerate(references, 1):
+        if reference["role"] == "backdrop source":
+            continue
+        name = reference["label"].strip()
+        key = name.casefold()
+        if key in tags:
+            raise ValueError(f"Ambiguous reference label '{name}': use distinct element names for each reference image.")
+        tags[key] = f"<image{index}>"
+        names.append(name)
+    if not names:
+        return prose
+    # One pass prevents shorter names from matching inside already-bound longer names.
+    pattern = re.compile(
+        r"(?<!\w)(?P<name>" + "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+        + r")(?!\w)(?P<possessive>['’]s(?!\w))?(?:[ \t]*<image\d+>)*", re.IGNORECASE)
+
+    def bind(match):
+        name = match.group("name")
+        return name + (match.group("possessive") or "") + " " + tags[name.casefold()]
+
+    return {**prose, **{key: pattern.sub(bind, prose[key]) for key in ("scene", "rendering")}}
+
+
 def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
     if not all(isinstance(prose.get(key), str) and prose[key].strip() for key in ("scene", "rendering")):
         raise ValueError("The LLM returned no usable scene or rendering prose.")
@@ -133,6 +164,7 @@ def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
                 f"Rendering\n{prose['rendering'].strip()}\n\nConstraints\n"
                 "Blend background joins and add contact shadows. Do not add, remove, resize, move or redraw subjects. "
                 f"Keep the composition unchanged. Canvas: {detail['width']} × {detail['height']} pixels.")
+    prose = _bind_reference_names(prose, references)
     bindings = []
     referenced_elements = [item for item in detail["elements"] if item["asset_id"]]
     element_index = 0
