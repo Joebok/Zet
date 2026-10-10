@@ -48,18 +48,18 @@ VIEW_LABELS = {
 }
 VIEW_RULES = {
     "FRONT": "The face points squarely toward camera; show both sides of the face evenly.",
-    "FRONT_LEFT_3_4": "Turn the whole head toward the character's anatomical left; show more left cheek and ear, with both eyes visible.",
-    "FRONT_RIGHT_3_4": "Turn the whole head toward the character's anatomical right; show more right cheek and ear, with both eyes visible.",
-    "LEFT_PROFILE": "Show the character's exact anatomical left profile; keep the nose pointing image-left.",
-    "RIGHT_PROFILE": "Show the character's exact anatomical right profile; keep the nose pointing image-right.",
-    "BACK_LEFT_3_4": "Show the back of the skull and hair with the anatomical left rear side nearer the camera.",
-    "BACK_RIGHT_3_4": "Show the back of the skull and hair with the anatomical right rear side nearer the camera.",
+    "FRONT_LEFT_3_4": "Turn the whole head toward screen-left; show more of the near-side cheek and ear, with both eyes visible.",
+    "FRONT_RIGHT_3_4": "Turn the whole head toward screen-right; show more of the near-side cheek and ear, with both eyes visible.",
+    "LEFT_PROFILE": "Show an exact profile with the near side visible; keep the nose pointing image-left.",
+    "RIGHT_PROFILE": "Show an exact profile with the near side visible; keep the nose pointing image-right.",
+    "BACK_LEFT_3_4": "Show the back of the skull and hair; the near side is closer to the camera.",
+    "BACK_RIGHT_3_4": "Show the back of the skull and hair; the near side is closer to the camera.",
     "BACK": "Show the back of the head squarely; do not reveal the face.",
 }
 GAZE_RULES = {
     "FRONT": "The face points toward the viewer, so a forward gaze is correct.",
-    "FRONT_LEFT_3_4": "The face and nose turn toward the character's anatomical left. The eyes must turn with the face instead of maintaining eye contact with the camera.",
-    "FRONT_RIGHT_3_4": "The face and nose turn toward the character's anatomical right. The eyes must turn with the face instead of maintaining eye contact with the camera.",
+    "FRONT_LEFT_3_4": "The face and nose turn toward screen-left. The eyes must turn with the face instead of maintaining eye contact with the camera.",
+    "FRONT_RIGHT_3_4": "The face and nose turn toward screen-right. The eyes must turn with the face instead of maintaining eye contact with the camera.",
     "LEFT_PROFILE": "The nose points toward image-left. The visible eye must look along the nose direction, not back toward the camera.",
     "RIGHT_PROFILE": "The nose points toward image-right. The visible eye must look along the nose direction, not back toward the camera.",
 }
@@ -81,12 +81,29 @@ class LocalHeadImageService:
         "source_identity": "Compare the supplied reference image with the generated FRONT candidate. Is there a clear character identity mismatch? Return TRUE only for a clear mismatch; otherwise return FALSE.",
     }
 
+    @staticmethod
+    def _apply_phase_change(spec: dict[str, Any]) -> bool:
+        if "apply_phase_change" not in spec:
+            return bool(spec.get("front_source"))
+        return bool(spec.get("apply_phase_change"))
+
     def __init__(self, app: Any, project_root: str | Path):
         self.app = app
         self.project_root = Path(project_root).resolve()
         self.library_root = Path(app.config.base_library_path).resolve()
-        self.root = self.library_root / "Experiments" / "Character-Pipeline"
+        self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
         self.asset_store = LocalAssetStoreService(self.library_root)
+        self._runner_lock = threading.Lock()
+
+    def _ask_belongs_to_run(self, ask: dict, run: dict) -> bool:
+        configured = str(getattr(self.app.config, "universe_id", "Moonsea"))
+        legacy = bool(getattr(self.app.config, "universe_is_legacy", True))
+        owner = str(ask.get("universe_id") or ("Moonsea" if legacy else "")).strip()
+        run_owner = str(run.get("universe_id") or ("Moonsea" if legacy else "")).strip()
+        return bool(owner) and owner == configured and run_owner == owner
+
+    def _active_key(self, run_id: str) -> str:
+        return f"{self.library_root}::{run_id}"
 
     @staticmethod
     def _now() -> str:
@@ -128,6 +145,10 @@ class LocalHeadImageService:
         character, phase = str(payload.get("character") or "").strip(), str(payload.get("phase") or "").strip()
         if not character or not phase:
             raise LocalHeadImageError("Character and phase are required.")
+        status_loader = getattr(self.app, "character_onboarding_status", None)
+        status = status_loader(character, phase) if callable(status_loader) else None
+        if status is not None and not status.template_ready:
+            raise LocalHeadImageError("A valid Character.md is required before local Head-Image can run: " + "; ".join(status.validation_errors))
         front_count, other_count = int(payload.get("front_count") or 8), int(payload.get("other_count") or 4)
         if front_count < 1 or other_count < 1 or front_count + 7 * other_count > 256:
             raise LocalHeadImageError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
@@ -156,14 +177,19 @@ class LocalHeadImageService:
         target.write_bytes(contents)
         return {"path": str(target), "name": target.name}
 
-    def _compile(self, run_root: Path, character: str, phase: str, view: str, references: list[dict]) -> dict[str, Any]:
+    def _compile(self, run_root: Path, character: str, phase: str, view: str, references: list[dict],
+                 *, apply_phase_change: bool = False) -> dict[str, Any]:
         output_dir = run_root / "prompts" / view
         template_path = Path(self.app.config.base_character_path) / character / phase / "Character.md"
         job = {"Job": f"LocalHeadImage_{run_root.name}_{view}", "Task": "head-image", "Character": character,
                "Phase": phase, "Head View": view, "Template Path": str(template_path),
-               "Output Directory": str(output_dir), "Reference Files": references}
+               "Output Directory": str(output_dir), "Reference Files": references,
+               "Apply Phase Change": apply_phase_change}
         try:
-            result = compile_head_image_job(job, self.project_root, pipeline_mode="local")
+            result = compile_head_image_job(
+                job, self.project_root, pipeline_mode="local",
+                universe_root=self.app.config.base_library_path,
+            )
             from zet.services.local_prompt_improvement_service import record_compiler_sources
             record_compiler_sources(output_dir)
             return result
@@ -206,13 +232,17 @@ class LocalHeadImageService:
                                    "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
                                    "gates": {}, "human_review": {"decision": "undecided"},
                                    "retry_count": 0})
+        apply_phase_change = bool(payload.get("apply_phase_change")) and bool(source_snapshot)
         front_prompt = self._compile(root, plan["character"], plan["phase"], FRONT,
-                                     ([{"role": "head_image_source", "path": source_snapshot}] if source_snapshot else []))
+                                     ([{"role": "head_image_source", "path": source_snapshot}] if source_snapshot else []),
+                                     apply_phase_change=apply_phase_change)
         spec = {"schema_version": 1, "review_version": 2, "kind": "local_head_image", "run_id": run_id,
+                "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "batch_name": "",
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "views": list(VIEWS), "front_count": plan["front_count"], "other_count": plan["other_count"],
                 "candidate_count": total, "front_source": source_snapshot,
+                "apply_phase_change": apply_phase_change,
                 "front_source_sha256": self._hash(Path(source_snapshot)) if source_snapshot else "",
                 "front_prompt_path": front_prompt["final_prompt"], "front_prompt_sha256": self._hash(Path(front_prompt["final_prompt"])),
                 "candidates": candidates, "front_anchor": None, "selected_views": {}, "rankings": {}, "created_by": "zet"}
@@ -237,10 +267,11 @@ class LocalHeadImageService:
                 candidates[candidate_id].update(update)
         value = {**spec, **state, "candidates": list(candidates.values()), "root": str(root),
                  "stop_requested": bool(state.get("stop_requested"))}
+        value["apply_phase_change"] = self._apply_phase_change(spec)
         active = state.get("status") in ACTIVE_RUN_STATUSES
         if active:
             with self._active_lock:
-                value["interrupted"] = run_id not in self._active
+                value["interrupted"] = self._active_key(run_id) not in self._active
                 if value["interrupted"]:
                     value["status"] = "INTERRUPTED"
         else:
@@ -325,6 +356,7 @@ class LocalHeadImageService:
                 run = self.detail(str(spec["run_id"]))
                 result.append({"run_id": run["run_id"], "batch_name": run.get("batch_name", ""),
                                "character": run["character"], "phase": run["phase"],
+                               "apply_phase_change": self._apply_phase_change(spec),
                                "created_at": run["created_at"], "status": run["status"],
                                "candidate_count": run["candidate_count"],
                                "complete_count": sum(1 for item in run["candidates"] if item.get("image_path")),
@@ -350,7 +382,7 @@ class LocalHeadImageService:
                 status = str(state.get("status") or spec.get("status") or "UNKNOWN")
                 if status in ACTIVE_RUN_STATUSES:
                     with self._active_lock:
-                        if run_id not in self._active:
+                        if self._active_key(run_id) not in self._active:
                             status = "INTERRUPTED"
                 candidates = {item["candidate_id"]: item for item in spec.get("candidates", [])}
                 for candidate_id, update in (state.get("candidates") or {}).items():
@@ -359,6 +391,7 @@ class LocalHeadImageService:
                 result.append({
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
+                    "apply_phase_change": self._apply_phase_change(spec),
                     "created_at": spec.get("created_at", ""), "status": status,
                     "candidate_count": int(spec.get("candidate_count") or len(candidates)),
                     "complete_count": sum(bool(item.get("image_path")) for item in candidates.values()),
@@ -407,7 +440,8 @@ class LocalHeadImageService:
             if not anchor_path.is_file():
                 raise LocalHeadImageError("Selected FRONT anchor image is missing.")
             references = [{"role": "head_image_source", "label": "Selected local FRONT anchor", "path": str(anchor_path)}]
-        compiled = self._compile(root, run["character"], run["phase"], candidate["view"], references)
+        compiled = self._compile(root, run["character"], run["phase"], candidate["view"], references,
+                                 apply_phase_change=bool(run.get("apply_phase_change", False)))
         prompt_path = Path(compiled["final_prompt"])
         candidate_dir = root / "renders" / candidate_id
         candidate_dir.mkdir(parents=True, exist_ok=True)
@@ -443,6 +477,10 @@ class LocalHeadImageService:
 
     def _proxy_answer(self, ask_id: str) -> tuple[str, dict[str, Any]]:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
+        receipt = paths.lifecycle.read_receipt(ask_id)
+        if receipt:
+            return "HARVESTED", {"ask_id": ask_id, "status": receipt.get("answer_status", receipt.get("status", "")),
+                                  "error_message": receipt.get("error_message", "")}
         for status, folder in (("QUEUED", paths.ask_root()), ("RUNNING", paths.running_root()), ("ANSWERED", paths.answer_root())):
             path = folder / ask_id
             if path.is_dir():
@@ -460,7 +498,9 @@ class LocalHeadImageService:
             return
         ask = json.loads((answer_dir / "ask_manifest.json").read_text(encoding="utf-8"))
         answer = json.loads((answer_dir / "answer_manifest.json").read_text(encoding="utf-8"))
-        if ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id or ask.get("pipeline") != "Local-Head-Image":
+        run = self.detail(run_id)
+        if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
+                or ask.get("pipeline") != "Local-Head-Image" or not self._ask_belongs_to_run(ask, run)):
             raise LocalHeadImageError("AI Proxy answer does not belong to this Local Head-Image candidate.")
         if answer.get("status") in {"ERROR", "RETRY_LATER"}:
             raise LocalHeadImageError(str(answer.get("error_message") or "AI Proxy render failed."))
@@ -567,6 +607,7 @@ class LocalHeadImageService:
             shutil.copy2(path, staging / name)
         (staging / "OLLAMA_PROMPT.md").write_text(definition.prompt, encoding="utf-8")
         manifest = {"version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+                    "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
                     "pipeline": "Local-Head-Image", "pipeline_stage": f"HEAD_IMAGE_{definition.key.upper()}_GATE",
                     "worker_type": "ollama_generate", "ollama_model": str(getattr(self.app.config, "local_body_reference_face_gate_model", "image-analysis-alt:latest")),
                     "ollama_think": False, "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in input_images],
@@ -589,6 +630,7 @@ class LocalHeadImageService:
         ask = json.loads((folder / "ask_manifest.json").read_text(encoding="utf-8"))
         answer = json.loads((folder / "answer_manifest.json").read_text(encoding="utf-8"))
         if (ask.get("ask_id") != ask_id or ask.get("local_head_image_run_id") != run_id
+                or not self._ask_belongs_to_run(ask, self.detail(run_id))
                 or ask.get("candidate_id") != candidate_id or ask.get("task_type") != "local_head_image_gate"):
             raise LocalHeadImageError("AI Proxy gate answer does not match its Local Head-Image candidate.")
         if answer.get("status") in {"ERROR", "RETRY_LATER"}:
@@ -736,7 +778,7 @@ class LocalHeadImageService:
         try:
             with file_lock(root / "runner.lock", timeout=0):
                 with self._active_lock:
-                    self._active.add(run_id)
+                    self._active.add(self._active_key(run_id))
                 run = self.detail(run_id)
                 if views is None:
                     views = {FRONT} if not run.get("front_anchor") else {view for view in VIEWS if view != FRONT}
@@ -819,7 +861,7 @@ class LocalHeadImageService:
             self._run_update(run_id, status="ERROR", error=str(exc))
         finally:
             with self._active_lock:
-                self._active.discard(run_id)
+                self._active.discard(self._active_key(run_id))
 
     def gate_prompt(self, run_id: str, view: str, gate: str) -> str:
         if view not in VIEWS:
@@ -857,7 +899,8 @@ class LocalHeadImageService:
                 if not anchor_path.is_file():
                     raise LocalHeadImageError("Select a FRONT anchor before viewing this view's prompt.")
                 references = [{"role": "head_image_source", "label": "Selected local FRONT anchor", "path": str(anchor_path)}]
-            compiled = self._compile(Path(run["root"]), run["character"], run["phase"], view, references)
+            compiled = self._compile(Path(run["root"]), run["character"], run["phase"], view, references,
+                                     apply_phase_change=bool(run.get("apply_phase_change", False)))
             path = Path(compiled["final_prompt"])
         return path.read_text(encoding="utf-8")
 
@@ -1223,7 +1266,7 @@ class LocalHeadImageService:
     def _assert_rerun_allowed(self, run: dict[str, Any], views: set[str]) -> None:
         if run.get("status") in ACTIVE_RUN_STATUSES or run.get("status") == "STOPPING":
             raise LocalHeadImageError("Stop the active batch before re-running candidates.")
-        if self._runner_lock.locked() or run["run_id"] in self._active:
+        if self._runner_lock.locked() or self._active_key(run["run_id"]) in self._active:
             raise LocalHeadImageError("Wait for the local image runner to finish before re-running candidates.")
         for view in views:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
@@ -1306,12 +1349,15 @@ class LocalHeadImageService:
             shutil.copy2(source, destination)
             references = [{"role": "head_image_source", "path": str(destination)}]
 
-        prompt = self._compile(root, run["character"], run["phase"], FRONT, references)
+        apply_phase_change = bool(run.get("apply_phase_change", False)) and bool(destination)
+        prompt = self._compile(root, run["character"], run["phase"], FRONT, references,
+                               apply_phase_change=apply_phase_change)
         spec_path = root / "spec.json"
         spec = json.loads(spec_path.read_text(encoding="utf-8"))
         old_source = Path(str(spec.get("front_source") or "")).resolve()
         spec.update(front_source=str(destination) if destination else "",
                     front_source_sha256=self._hash(destination) if destination else "",
+                    apply_phase_change=apply_phase_change,
                     front_prompt_path=prompt["final_prompt"],
                     front_prompt_sha256=self._hash(Path(prompt["final_prompt"])))
         self._write(spec_path, spec)
@@ -1394,6 +1440,7 @@ class LocalHeadImageService:
                 failed_gate="", render_error="", human_review={"decision": "undecided"},
                 retry_count=int(item.get("retry_count") or 0) + 1,
                 seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))
+        state.update(status="QUEUED", stop_requested=False, error="")
         self._write(root / "state.json", state)
         return self.detail(run_id)
 
@@ -1497,7 +1544,7 @@ class LocalHeadImageService:
         run = self.detail(run_id)
         if run.get("status") == "CANCELLED" and run.get("created_by_autogenerate"):
             with self._active_lock:
-                if run_id in self._active:
+                if self._active_key(run_id) in self._active:
                     raise LocalHeadImageError("Wait for the stopped batch runner to finish before resuming.")
             root, state = self._state(run_id)
             resume_cancelled_autogenerate_state(run, state, ready_status="READY_FOR_VIEWS")

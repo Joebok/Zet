@@ -33,7 +33,7 @@ class LocalRunAllRemainingService:
         self.app = app
         self.project_root = Path(project_root).resolve()
         self.library_root = Path(app.config.base_library_path).resolve()
-        self.root = self.library_root / "Experiments" / "Character-Pipeline" / "RunAllRemaining"
+        self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline" / "RunAllRemaining"
         self.active_path = self.root / "active.json"
 
     @staticmethod
@@ -255,7 +255,8 @@ class LocalRunAllRemainingService:
         while run.get("status") in ACTIVE_RUN_STATUSES and not run.get("interrupted"):
             time.sleep(2)
             run = adapter.detail(run_id, **kwargs)
-        if run.get("status") in {"INTERRUPTED", "CANCELLED", "STOPPED", "ERROR"}:
+        if (run.get("status") in {"INTERRUPTED", "CANCELLED", "STOPPED", "ERROR"}
+                or run.get("stop_requested")):
             if pipeline == "body-reference":
                 (Path(run["root"]) / "cancelled.json").unlink(missing_ok=True)
             adapter._run_update(run_id, **kwargs, status="QUEUED", stop_requested=False, error="")
@@ -289,7 +290,6 @@ class LocalRunAllRemainingService:
                             message="Dependent views need a human FRONT selection.")
             return
         # Reconcile missing images with the proxy before deciding whether to retry.
-        blocked_candidate_ids: set[str] = set()
         for candidate in run.get("candidates") or []:
             if candidate.get("view") not in selected_views or Path(str(candidate.get("image_path") or "")).is_file():
                 continue
@@ -300,7 +300,6 @@ class LocalRunAllRemainingService:
                     proxy_status, answer = adapter._proxy_answer(ask_id)
                     if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER"}:
                         error = str(answer.get("error_message") or "Render proxy failed.")
-                        blocked_candidate_ids.add(str(candidate["candidate_id"]))
                         changes = {"status": "FAILED", "render_error": error}
                         if pipeline == "body-reference":
                             adapter._candidate_update(run_id, candidate["candidate_id"], changes)
@@ -308,6 +307,15 @@ class LocalRunAllRemainingService:
                             adapter._update(run_id, candidate["candidate_id"], kwargs["costume"], **changes)
                         else:
                             adapter._update(run_id, candidate["candidate_id"], **changes)
+                        try:
+                            if pipeline in {"character-assembly", "costume-dressing"}:
+                                adapter.retry_candidate(run_id, candidate["candidate_id"], kwargs["costume"])
+                            else:
+                                adapter.retry_candidate(run_id, candidate["candidate_id"])
+                        except Exception:
+                            # Keep the failed candidate in the render set; execute_run can
+                            # make the final retry decision with the current persisted state.
+                            pass
                         continue
                 except Exception:
                     proxy_status = "UNKNOWN"
@@ -332,7 +340,7 @@ class LocalRunAllRemainingService:
                 except Exception:
                     pass
         candidate_ids = {str(item["candidate_id"]) for item in run.get("candidates") or []
-                         if item.get("view") in selected_views and item.get("candidate_id") not in blocked_candidate_ids
+                         if item.get("view") in selected_views
                          and not Path(str(item.get("image_path") or "")).is_file()}
         for view in (item for item in run.get("views") or [] if item in selected_views):
             view_candidate_ids = {str(item["candidate_id"]) for item in run.get("candidates") or []

@@ -1,0 +1,302 @@
+{
+  "schema_version": 4,
+  "file_kind": "scene",
+  "scene": {
+    "id": "chapter_01_standing_in_wonder",
+    "name": "Chapter 01 Standing in Wonder",
+    "slug": "Chapter-01-Standing-in-Wonder",
+    "story_settings_path": "Stories/FirstDay/FirstDay.story.json",
+    "associated_png_path": "Stories/FirstDay/Chapter-01-Standing-in-Wonder.png",
+    "story_beat": "Tsaeytte has paused to look up at the words inscribed on the arch leading to the Spire of Celestial Wisdom. "
+  },
+  "setup": {
+    "canvas": {
+      "orientation": "portrait",
+      "aspect_ratio": "2:3"
+    },
+    "composition": {
+      "focal_point": "Tsaeytte",
+      "left_to_right": [
+        "Schoolboys_440071c5",
+        "Kaeldor_e02a5624",
+        "Tsaeytte"
+      ],
+      "composition_notes": "Tsaeytte is looking up towards the top of the arch to read the inscription. Kaeldor and the schoolboys are on the far side of the arch, Kaeldor is on the screen-right of the schoolboys."
+    },
+    "environment": {
+      "location": "The pathway in front of the arch.",
+      "lighting": "Morning sun",
+      "mood": "optimistic",
+      "weather_or_atmosphere": "clear",
+      "general_background_notes": "Kaeldor and the Schoolboys are in the background on the far side of the archway.",
+      "general_foreground_notes": ""
+    }
+  },
+  "scene_elements": [
+    {
+      "id": "Tsaeytte",
+      "display_name": "Tsaeytte",
+      "resource_type": "Character",
+      "element_type": "Character",
+      "character": "Tsaeytte",
+      "phase": "Youth",
+      "costume": "Woodland outfit",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+          "tag": "",
+          "asset_id": "",
+          "set_id": "",
+          "primary_prompt_source": true,
+          "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4"
+        }
+      ],
+      "element_visual_override": "Holding stack of books in both arms in front of her.",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": ""
+    },
+    {
+      "id": "Schoolboys_440071c5",
+      "display_name": "Schoolboys",
+      "resource_type": "Scene-Only",
+      "element_type": "Character",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "",
+      "aux_resource_id": "",
+      "reference_images": [
+        {
+          "tag": "{{AUX:person:school-boys:schoolboys}}",
+          "roles": [
+            "visual reference"
+          ],
+          "preserve": [],
+          "change": [],
+          "ignore": [],
+          "notes": "",
+          "asset_id": "",
+          "reference_key": "",
+          "set_id": "",
+          "primary_prompt_source": true
+        }
+      ],
+      "element_visual_override": "The two elven schoolboys are playing roughly, shoving and pushing each other.",
+      "fallback_visual_description": "Two elven schoolboys. ",
+      "notes": "",
+      "subscene_id": ""
+    },
+    {
+      "id": "Spire_Archway_a1489c35",
+      "display_name": "Spire - Archway",
+      "resource_type": "Place",
+      "element_type": "Backdrop",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "place",
+      "aux_resource_id": "spire-archway",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "set_id": "",
+          "primary_prompt_source": true,
+          "asset_id": "95d50224-d948-4d01-8653-665a88241bda",
+          "label": "Spire Archway",
+          "tag": "",
+          "reference_key": ""
+        }
+      ],
+      "element_visual_override": "",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": ""
+    },
+    {
+      "id": "Kaeldor_e02a5624",
+      "display_name": "Kaeldor",
+      "resource_type": "Person",
+      "element_type": "Character",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "person",
+      "aux_resource_id": "kaeldor",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "preserve": [],
+          "change": [],
+          "set_id": "",
+          "primary_prompt_source": true,
+          "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "label": "Kaeldor",
+          "tag": "",
+          "reference_key": ""
+        }
+      ],
+      "element_visual_override": "Kaeldor is grouped with the elven schoolboys, in the background beyond the archway.",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": ""
+    }
+  ],
+  "subscenes": [
+    {
+      "id": "sub_scene_1",
+      "name": "Sub-Scene 1",
+      "enabled": true,
+      "kind": "background",
+      "assembly_role": "backdrop",
+      "anchor_element_id": "",
+      "ui_color": "#DDEAF4",
+      "prompt_overrides": {
+        "focal_point": "",
+        "composition_notes": "",
+        "general_foreground_notes": "",
+        "general_background_notes": ""
+      }
+    }
+  ],
+  "placements": [
+    {
+      "id": "placement_1784318266007",
+      "scene_element_id": "Tsaeytte",
+      "position_within_cell": "right",
+      "depth": "foreground",
+      "pose": {
+        "summary": "Standing facing the archway, holding stack of books.",
+        "gaze_target_element_id": "",
+        "expression": "curious"
+      },
+      "motion": {
+        "state": "stationary",
+        "direction_screen": "",
+        "cue": ""
+      },
+      "placement_notes": ""
+    },
+    {
+      "id": "placement_1784318527882",
+      "scene_element_id": "Schoolboys_440071c5",
+      "position_within_cell": "center",
+      "depth": "background",
+      "pose": {
+        "summary": "",
+        "gaze_target_element_id": "",
+        "expression": ""
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "",
+        "cue": "Entering the scene from the background, moving along the pathway."
+      },
+      "placement_notes": "They are approaching from the far side of the archway.",
+      "world_position": "In the background on the far side of the archway to the screen-left of Kaeldor."
+    },
+    {
+      "id": "placement_1784319050025",
+      "scene_element_id": "Spire_Archway_a1489c35",
+      "position_within_cell": "",
+      "depth": "background",
+      "pose": {
+        "summary": "",
+        "gaze_target_element_id": "",
+        "expression": ""
+      },
+      "motion": {
+        "state": "stationary",
+        "direction_screen": "",
+        "cue": ""
+      },
+      "placement_notes": ""
+    },
+    {
+      "id": "placement_1784319458561",
+      "scene_element_id": "Kaeldor_e02a5624",
+      "position_within_cell": "center",
+      "depth": "background",
+      "pose": {
+        "summary": "pointing towards the schoolboys",
+        "gaze_target_element_id": "",
+        "expression": ""
+      },
+      "motion": {
+        "state": "moving",
+        "direction_screen": "",
+        "cue": "Entering the scene from the background, moving along the pathway."
+      },
+      "placement_notes": "Kaeldor is approaching from the far side of the archway.",
+      "world_position": "In the background on the far side of the archway to the screen-right of the schoolboys."
+    }
+  ],
+  "interactions": [],
+  "custom_interactions": "",
+  "dialogue": [
+    {
+      "id": "dialogue_1784318436924",
+      "speaker_element_id": "Tsaeytte",
+      "text": "Potential is nothing without discipline",
+      "target_element_id": "",
+      "pointer_target": "speaker mouth",
+      "max_lines": 2,
+      "notes": ""
+    }
+  ],
+  "final_image_prompt_overrides": {
+    "anatomical_requirements": "",
+    "avoid": "",
+    "high_risk_elements": "",
+    "final_verification": ""
+  },
+  "metadata": {
+    "created_at": "2026-07-17T12:57:34",
+    "updated_at": "2026-10-03T06:12:55",
+    "created_by": "Zet Scene Builder"
+  },
+  "depth_lanes": {
+    "foreground": [
+      "Tsaeytte"
+    ],
+    "midground": [],
+    "background": [
+      "Schoolboys_440071c5",
+      "Spire_Archway_a1489c35",
+      "Kaeldor_e02a5624"
+    ]
+  },
+  "_revision": 21,
+  "_validation_warnings": []
+}

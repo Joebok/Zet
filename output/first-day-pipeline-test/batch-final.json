@@ -1,0 +1,1548 @@
+{
+  "schema_version": 1,
+  "kind": "scene",
+  "run_id": "bebc2869c8c04af094a63fc585168ff5",
+  "story_slug": "FirstDay",
+  "scene_slug": "Chapter-01-Standing-in-Wonder",
+  "batch_name": "First Day pipeline test 2026-10-03",
+  "created_at": "2026-10-03T06:30:37-07:00",
+  "views": [
+    "Schoolboys_440071c5_subscene",
+    "main"
+  ],
+  "targets": [
+    {
+      "target_id": "Schoolboys_440071c5_subscene",
+      "label": "Schoolboys and Kaeldor",
+      "kind": "element",
+      "count": 2,
+      "dependencies": []
+    },
+    {
+      "target_id": "main",
+      "label": "Full Scene",
+      "kind": "main",
+      "count": 3,
+      "dependencies": [
+        "Schoolboys_440071c5_subscene"
+      ]
+    }
+  ],
+  "candidate_count": 5,
+  "status": "AWAITING_HUMAN_SELECTION",
+  "stop_requested": false,
+  "groups": {
+    "Schoolboys_440071c5_subscene": {
+      "status": "SELECTED",
+      "candidates": [
+        {
+          "candidate_id": "Schoolboys_440071c5_subscene-001",
+          "seed": 2134335664145620724,
+          "status": "COMPLETE",
+          "human_review": {
+            "decision": "reject"
+          },
+          "render_attempts": [
+            {
+              "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_Schoolboys_440071c5_subscene_Schoolboys_440071c5_subscene-001_7c25eb53b16247c6baed981f0c2a375f",
+              "seed": 2134335664145620724,
+              "created_at": "2026-10-03T06:31:29-07:00",
+              "status": "COMPLETE",
+              "error": "",
+              "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_063129_480584_3685791e4be042cb84aa4b3d44ba3c08",
+              "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-001\\7c25eb53b16247c6baed981f0c2a375f\\candidate.png",
+              "updated_at": "2026-10-03T06:42:04-07:00",
+              "sha256": "ac450a1253ccdbb9836361813c244aaeb4861e1bd6d2dba8c368231f810e307b"
+            }
+          ],
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_Schoolboys_440071c5_subscene_Schoolboys_440071c5_subscene-001_7c25eb53b16247c6baed981f0c2a375f",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_063129_480584_3685791e4be042cb84aa4b3d44ba3c08",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-001\\7c25eb53b16247c6baed981f0c2a375f\\candidate.png",
+          "error": "",
+          "sha256": "ac450a1253ccdbb9836361813c244aaeb4861e1bd6d2dba8c368231f810e307b"
+        },
+        {
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "seed": 1718189174096029664,
+          "status": "COMPLETE",
+          "human_review": {
+            "decision": "undecided"
+          },
+          "render_attempts": [
+            {
+              "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_Schoolboys_440071c5_subscene_Schoolboys_440071c5_subscene-002_3d3c8b9489784332889a9703052f9006",
+              "seed": 1718189174096029664,
+              "created_at": "2026-10-03T06:31:29-07:00",
+              "status": "COMPLETE",
+              "error": "",
+              "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_063129_620752_a3f932b099fe4b97a52b4f8f1774e70e",
+              "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+              "updated_at": "2026-10-03T06:43:22-07:00",
+              "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10"
+            }
+          ],
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_Schoolboys_440071c5_subscene_Schoolboys_440071c5_subscene-002_3d3c8b9489784332889a9703052f9006",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_063129_620752_a3f932b099fe4b97a52b4f8f1774e70e",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+          "error": "",
+          "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10"
+        }
+      ],
+      "attempts": [],
+      "attempt_id": "e9cdab9e53a1485baf172e87803ded30",
+      "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Qwen_Image_2_1_Prompt.md",
+      "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Scene_Render_IR.json",
+      "reference_images": [
+        {
+          "role": "story_reference",
+          "label": "Kaeldor",
+          "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\003",
+          "kind": "entity-library",
+          "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "checksum": "fa9f2e09d2811d67fcd0c1eb71eb2a7db6c72227201c5de51d7ee05f73e1632e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "sha256": "fa9f2e09d2811d67fcd0c1eb71eb2a7db6c72227201c5de51d7ee05f73e1632e",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Kaeldor_e02a5624",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Kaeldor_e02a5624",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Schoolboy 1",
+          "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\004",
+          "kind": "entity-library",
+          "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "checksum": "beaaa44128e194bcfb858f3366a5ef0a10157325e450e43cd8d5492c15347aec",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "sha256": "beaaa44128e194bcfb858f3366a5ef0a10157325e450e43cd8d5492c15347aec",
+          "image_index": 2,
+          "prompt_role": "costume_reference",
+          "applies_to": "schoolboy_1",
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "schoolboy_1",
+              "prompt_role": "costume_reference",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Schoolboy 2",
+          "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\005",
+          "kind": "entity-library",
+          "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "checksum": "e30866ef5e0a5ca980ab1475f2b32e9bc384f9069ef1a2c97b68651852b865f7",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "sha256": "e30866ef5e0a5ca980ab1475f2b32e9bc384f9069ef1a2c97b68651852b865f7",
+          "image_index": 3,
+          "prompt_role": "costume_reference",
+          "applies_to": "schoolboy_2",
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "schoolboy_2",
+              "prompt_role": "costume_reference",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        }
+      ],
+      "prompt_sha256": "7d92ea109c1115cb6d71370cd468d95e9f804e144c35701a8d139a5247308045",
+      "ir_sha256": "312f2b73d237b9f4b2833d93996b6f755f1694ad9dd924bdb70df5b2f2feac1a",
+      "render_input_hash": "963fdb6591c4f7c0205d01121bf12d42194274a07fd01649de71e0af04d5fc9c",
+      "source_selections": {},
+      "stale_reason": ""
+    },
+    "main": {
+      "status": "AWAITING_HUMAN_SELECTION",
+      "candidates": [
+        {
+          "candidate_id": "main-001",
+          "seed": 1635503317741239446,
+          "status": "COMPLETE",
+          "human_review": {
+            "decision": "undecided"
+          },
+          "render_attempts": [
+            {
+              "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-001_e5aaccda4bfb4221b1954bb845e215b5",
+              "seed": 1635503317741239446,
+              "created_at": "2026-10-03T06:53:12-07:00",
+              "status": "COMPLETE",
+              "error": "",
+              "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065312_858864_b2828d706fee4967ad94deb8d9785ee8",
+              "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-001\\e5aaccda4bfb4221b1954bb845e215b5\\candidate.png",
+              "updated_at": "2026-10-03T06:55:07-07:00",
+              "sha256": "0837f3f554770500e491529579490d8c33968615a1824d472ad68d0bae501bac"
+            }
+          ],
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-001_e5aaccda4bfb4221b1954bb845e215b5",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065312_858864_b2828d706fee4967ad94deb8d9785ee8",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-001\\e5aaccda4bfb4221b1954bb845e215b5\\candidate.png",
+          "error": "",
+          "sha256": "0837f3f554770500e491529579490d8c33968615a1824d472ad68d0bae501bac"
+        },
+        {
+          "candidate_id": "main-002",
+          "seed": 5416259721032947534,
+          "status": "COMPLETE",
+          "human_review": {
+            "decision": "undecided"
+          },
+          "render_attempts": [
+            {
+              "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-002_d34749a132864335bd207ab2bab3512d",
+              "seed": 5416259721032947534,
+              "created_at": "2026-10-03T06:53:13-07:00",
+              "status": "COMPLETE",
+              "error": "",
+              "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065313_032881_6658c4a3da2043a7bf84f06d532ec57d",
+              "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-002\\d34749a132864335bd207ab2bab3512d\\candidate.png",
+              "updated_at": "2026-10-03T06:56:37-07:00",
+              "sha256": "bb0c499a35f4cae47336d724d65fad94b0e712553e08620ef3657758e5a1c6c0"
+            }
+          ],
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-002_d34749a132864335bd207ab2bab3512d",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065313_032881_6658c4a3da2043a7bf84f06d532ec57d",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-002\\d34749a132864335bd207ab2bab3512d\\candidate.png",
+          "error": "",
+          "sha256": "bb0c499a35f4cae47336d724d65fad94b0e712553e08620ef3657758e5a1c6c0"
+        },
+        {
+          "candidate_id": "main-003",
+          "seed": 6623179385141988444,
+          "status": "COMPLETE",
+          "human_review": {
+            "decision": "undecided"
+          },
+          "render_attempts": [
+            {
+              "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-003_c3dc51b2f42a4dfbb27e73aa269fd864",
+              "seed": 6623179385141988444,
+              "created_at": "2026-10-03T06:53:13-07:00",
+              "status": "COMPLETE",
+              "error": "",
+              "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065313_196034_cebfb23675c24436b28c8c7ba03f17a2",
+              "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-003\\c3dc51b2f42a4dfbb27e73aa269fd864\\candidate.png",
+              "updated_at": "2026-10-03T06:57:58-07:00",
+              "sha256": "bab5b5e6ddfb620d5a6f982de9ce61e69acce74c4f95229ad3e66f9ff0a162f3"
+            }
+          ],
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-003_c3dc51b2f42a4dfbb27e73aa269fd864",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065313_196034_cebfb23675c24436b28c8c7ba03f17a2",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-003\\c3dc51b2f42a4dfbb27e73aa269fd864\\candidate.png",
+          "error": "",
+          "sha256": "bab5b5e6ddfb620d5a6f982de9ce61e69acce74c4f95229ad3e66f9ff0a162f3"
+        }
+      ],
+      "attempts": [
+        {
+          "status": "AWAITING_HUMAN_SELECTION",
+          "candidates": [
+            {
+              "candidate_id": "main-001",
+              "seed": 5320794934880812518,
+              "status": "COMPLETE",
+              "human_review": {
+                "decision": "undecided"
+              },
+              "render_attempts": [
+                {
+                  "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-001_5ae43d5b3fa9405ebed8cd1c7c2fbe33",
+                  "seed": 5320794934880812518,
+                  "created_at": "2026-10-03T06:45:20-07:00",
+                  "status": "COMPLETE",
+                  "error": "",
+                  "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_064520_834650_b9082df7316e4230a8db2bd5b913338a",
+                  "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\dc9b2dc4f7fb4e4e9eb8906b06eb00e9\\main-001\\5ae43d5b3fa9405ebed8cd1c7c2fbe33\\candidate.png",
+                  "updated_at": "2026-10-03T06:47:13-07:00",
+                  "sha256": "68bd8c003948e04da3feb5a16d56b0e6a2f0d9061ecce661de7a288a5289dffa"
+                }
+              ],
+              "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-001_5ae43d5b3fa9405ebed8cd1c7c2fbe33",
+              "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_064520_834650_b9082df7316e4230a8db2bd5b913338a",
+              "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\dc9b2dc4f7fb4e4e9eb8906b06eb00e9\\main-001\\5ae43d5b3fa9405ebed8cd1c7c2fbe33\\candidate.png",
+              "error": "",
+              "sha256": "68bd8c003948e04da3feb5a16d56b0e6a2f0d9061ecce661de7a288a5289dffa"
+            },
+            {
+              "candidate_id": "main-002",
+              "seed": 3551662611799276545,
+              "status": "COMPLETE",
+              "human_review": {
+                "decision": "undecided"
+              },
+              "render_attempts": [
+                {
+                  "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-002_f2af42d73bb548fdb2c52adf3f6ddd8b",
+                  "seed": 3551662611799276545,
+                  "created_at": "2026-10-03T06:45:21-07:00",
+                  "status": "COMPLETE",
+                  "error": "",
+                  "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_064521_009562_d54fb3458e764b70828f8da8e0f86fe8",
+                  "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\dc9b2dc4f7fb4e4e9eb8906b06eb00e9\\main-002\\f2af42d73bb548fdb2c52adf3f6ddd8b\\candidate.png",
+                  "updated_at": "2026-10-03T06:48:37-07:00",
+                  "sha256": "69c6aeb651ea33b9a025fb3321eb2c080d25c8872c8e68ddd9d4ebba4fbf4a68"
+                }
+              ],
+              "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-002_f2af42d73bb548fdb2c52adf3f6ddd8b",
+              "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_064521_009562_d54fb3458e764b70828f8da8e0f86fe8",
+              "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\dc9b2dc4f7fb4e4e9eb8906b06eb00e9\\main-002\\f2af42d73bb548fdb2c52adf3f6ddd8b\\candidate.png",
+              "error": "",
+              "sha256": "69c6aeb651ea33b9a025fb3321eb2c080d25c8872c8e68ddd9d4ebba4fbf4a68"
+            },
+            {
+              "candidate_id": "main-003",
+              "seed": 8722655235151942461,
+              "status": "COMPLETE",
+              "human_review": {
+                "decision": "undecided"
+              },
+              "render_attempts": [
+                {
+                  "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-003_d0eb52d69b0a4444af10b600c6075d3e",
+                  "seed": 8722655235151942461,
+                  "created_at": "2026-10-03T06:45:21-07:00",
+                  "status": "COMPLETE",
+                  "error": "",
+                  "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_064521_165952_b9aa910a6c9f459982b7141b440de5e0",
+                  "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\dc9b2dc4f7fb4e4e9eb8906b06eb00e9\\main-003\\d0eb52d69b0a4444af10b600c6075d3e\\candidate.png",
+                  "updated_at": "2026-10-03T06:49:58-07:00",
+                  "sha256": "8b040e0fc75534798c8f82f990a814e8e6d5825679944da56e6e033312d6c26e"
+                }
+              ],
+              "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-003_d0eb52d69b0a4444af10b600c6075d3e",
+              "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_064521_165952_b9aa910a6c9f459982b7141b440de5e0",
+              "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\dc9b2dc4f7fb4e4e9eb8906b06eb00e9\\main-003\\d0eb52d69b0a4444af10b600c6075d3e\\candidate.png",
+              "error": "",
+              "sha256": "8b040e0fc75534798c8f82f990a814e8e6d5825679944da56e6e033312d6c26e"
+            }
+          ],
+          "stale_reason": "Target rerendered.",
+          "attempt_id": "dc9b2dc4f7fb4e4e9eb8906b06eb00e9",
+          "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\dc9b2dc4f7fb4e4e9eb8906b06eb00e9\\Qwen_Image_2_1_Prompt.md",
+          "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\dc9b2dc4f7fb4e4e9eb8906b06eb00e9\\Scene_Render_IR.json",
+          "reference_images": [
+            {
+              "role": "story_reference",
+              "label": "Tsaeytte \u00b7 Youth \u00b7 Woodland outfit \u00b7 Back Left 3 4",
+              "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\001",
+              "kind": "entity-library",
+              "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+              "set_id": "",
+              "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+              "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+              "image_index": 1,
+              "prompt_role": "subject_reference",
+              "applies_to": "Tsaeytte",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Tsaeytte",
+                  "prompt_role": "subject_reference",
+                  "preserve": [
+                    "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            },
+            {
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+              "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10",
+              "candidate_id": "Schoolboys_440071c5_subscene-002",
+              "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+              "label": "Schoolboys and Kaeldor",
+              "kind": "scene-render",
+              "image_index": 2,
+              "prompt_role": "group_reference",
+              "applies_to": "Schoolboys_440071c5",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+              "assignments": [
+                {
+                  "applies_to": "Schoolboys_440071c5",
+                  "prompt_role": "group_reference",
+                  "preserve": [
+                    "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source canvas",
+                    "source background",
+                    "source framing",
+                    "outer placement",
+                    "source lighting"
+                  ],
+                  "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+                }
+              ]
+            },
+            {
+              "role": "story_reference",
+              "label": "Spire Archway",
+              "tag": "{{LIB:ASSET:95d50224-d948-4d01-8653-665a88241bda}}",
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\002",
+              "kind": "entity-library",
+              "asset_id": "95d50224-d948-4d01-8653-665a88241bda",
+              "checksum": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+              "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\95d50224-d948-4d01-8653-665a88241bda",
+              "sha256": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+              "image_index": 3,
+              "prompt_role": "background_reference",
+              "applies_to": "Spire_Archway_a1489c35",
+              "preserve": [
+                "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "assignments": [
+                {
+                  "applies_to": "Spire_Archway_a1489c35",
+                  "prompt_role": "background_reference",
+                  "preserve": [
+                    "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+                  ],
+                  "change": [],
+                  "ignore": [
+                    "source pose",
+                    "source background",
+                    "source framing"
+                  ],
+                  "notes": ""
+                }
+              ]
+            }
+          ],
+          "prompt_sha256": "f6b04ef78083eef144f63924a2baeae7ff28609cef9cc49107ed3271f0d7c5a7",
+          "ir_sha256": "8ab2ea324e2631e04997412c842ed8dbc4f40dc2b80aa249474c54c082141eff",
+          "render_input_hash": "192f8cc7ac7c43322cb51567c6b0bc198b66485e61035b9eed006bbba0b879d4",
+          "source_selections": {
+            "Schoolboys_440071c5_subscene": {
+              "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+              "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10",
+              "candidate_id": "Schoolboys_440071c5_subscene-002"
+            }
+          },
+          "ranking": {
+            "status": "FAILED",
+            "error": "Reading prompt from stdin...\nFailed to read prompt from stdin: input is not valid UTF-8 (invalid byte at offset 2042). Convert it to UTF-8 and retry (e.g., `iconv -f <ENC> -t UTF-8 prompt.txt`).\n"
+          },
+          "selected_candidate_id": "",
+          "view_review": {}
+        }
+      ],
+      "stale_reason": "",
+      "prompt_sha256": "5bb7af234f5e112a84203209f25964d1b185611c9840fa930a947adcd31f4cbd",
+      "ir_sha256": "8ab2ea324e2631e04997412c842ed8dbc4f40dc2b80aa249474c54c082141eff",
+      "render_input_hash": "192f8cc7ac7c43322cb51567c6b0bc198b66485e61035b9eed006bbba0b879d4",
+      "attempt_id": "db2fc22b439f484f9d32e9e7266fdca8",
+      "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\Qwen_Image_2_1_Prompt.md",
+      "ir_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\Scene_Render_IR.json",
+      "reference_images": [
+        {
+          "role": "story_reference",
+          "label": "Tsaeytte \u00b7 Youth \u00b7 Woodland outfit \u00b7 Back Left 3 4",
+          "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\001",
+          "kind": "entity-library",
+          "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+          "set_id": "",
+          "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Tsaeytte",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Tsaeytte",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+          "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10",
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+          "label": "Schoolboys and Kaeldor",
+          "kind": "scene-render",
+          "image_index": 2,
+          "prompt_role": "group_reference",
+          "applies_to": "Schoolboys_440071c5",
+          "preserve": [
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+          "assignments": [
+            {
+              "applies_to": "Schoolboys_440071c5",
+              "prompt_role": "group_reference",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Spire Archway",
+          "tag": "{{LIB:ASSET:95d50224-d948-4d01-8653-665a88241bda}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\002",
+          "kind": "entity-library",
+          "asset_id": "95d50224-d948-4d01-8653-665a88241bda",
+          "checksum": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\95d50224-d948-4d01-8653-665a88241bda",
+          "sha256": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+          "image_index": 3,
+          "prompt_role": "background_reference",
+          "applies_to": "Spire_Archway_a1489c35",
+          "preserve": [
+            "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Spire_Archway_a1489c35",
+              "prompt_role": "background_reference",
+              "preserve": [
+                "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        }
+      ],
+      "source_selections": {
+        "Schoolboys_440071c5_subscene": {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+          "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10",
+          "candidate_id": "Schoolboys_440071c5_subscene-002"
+        }
+      }
+    }
+  },
+  "selected_views": {
+    "Schoolboys_440071c5_subscene": "Schoolboys_440071c5_subscene-002"
+  },
+  "rankings": {
+    "Schoolboys_440071c5_subscene": {
+      "status": "COMPLETE",
+      "entries": [
+        {
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "reason": "Best match: exactly three full-body young elves in the requested left-to-right order, with the shoulder shove, mock protest, and Kaeldor pointing. The characters preserve the supplied hair, ears, faces, and academy clothing well. The arch and stone architecture conflict with the requested simple background, but the scene is clear and well rendered."
+        },
+        {
+          "candidate_id": "Schoolboys_440071c5_subscene-001",
+          "reason": "The interaction and character references are mostly recognizable, but it appears to include an extra schoolboy, violating the explicit three-person limit. The busier, darker architecture also departs from the requested simple light background. Rendering quality is good."
+        }
+      ],
+      "ordered_candidate_ids": [
+        "Schoolboys_440071c5_subscene-002",
+        "Schoolboys_440071c5_subscene-001"
+      ],
+      "luna_ordered_candidate_ids": [
+        "Schoolboys_440071c5_subscene-002",
+        "Schoolboys_440071c5_subscene-001"
+      ],
+      "input_hashes": {
+        "Schoolboys_440071c5_subscene-001": "ac450a1253ccdbb9836361813c244aaeb4861e1bd6d2dba8c368231f810e307b",
+        "Schoolboys_440071c5_subscene-002": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10"
+      },
+      "model": "gpt-6-luna"
+    },
+    "main": {
+      "status": "COMPLETE",
+      "entries": [
+        {
+          "candidate_id": "main-003",
+          "reason": "Best overall balance: Tsaeytte is the clear right-foreground focus, the full three-student group is visible beyond the arch, and the arch and Spire remain prominent. Her books, outfit, upward gaze, and two-line speech panel follow the prompt well. The panel and small background group are less distinct than ideal, but the scene is cohesive and polished."
+        },
+        {
+          "candidate_id": "main-001",
+          "reason": "Strong reference preservation and clear left-to-right placement, with Tsaeytte, books, arch, Spire, and all three students visible. The group reads as playful, though it is small, and the dialogue panel sits over the Spire view. The overall composition is a little less balanced than main-003."
+        },
+        {
+          "candidate_id": "main-002",
+          "reason": "Preserves the characters and setting, and the students are relatively easy to see. However, Tsaeytte occupies more of the frame and the dialogue panel obscures more of the arch opening and Spire, making the background composition feel crowded. The arch text is also less cleanly legible."
+        }
+      ],
+      "ordered_candidate_ids": [
+        "main-003",
+        "main-001",
+        "main-002"
+      ],
+      "luna_ordered_candidate_ids": [
+        "main-003",
+        "main-001",
+        "main-002"
+      ],
+      "input_hashes": {
+        "main-001": "0837f3f554770500e491529579490d8c33968615a1824d472ad68d0bae501bac",
+        "main-002": "bb0c499a35f4cae47336d724d65fad94b0e712553e08620ef3657758e5a1c6c0",
+        "main-003": "bab5b5e6ddfb620d5a6f982de9ce61e69acce74c4f95229ad3e66f9ff0a162f3"
+      },
+      "model": "gpt-6-luna"
+    }
+  },
+  "view_reviews": {
+    "main": {
+      "observations": "All three revised candidates include all four characters, the arch, and the exact two-line dialogue. main-001 best matches the upward gaze and small distant group; inner arch lettering is imperfect. main-002 has a larger group and partly hides Kaeldor behind Tsaeytte. main-003 has the clearest arch text and all three boys, but Tsaeytte\u2019s head tilt is less clearly upward. The first generation omitted the speech panel; the Qwen dialogue-field fix enabled the successful rerender. UTF-8 ranking and pending-action UI fixes were also verified. Choose a full-scene candidate for publication after review."
+    }
+  },
+  "prompt_improvement_migrated": true,
+  "updated_at": "2026-10-03T06:59:35-07:00",
+  "root": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5",
+  "candidates": [
+    {
+      "candidate_id": "Schoolboys_440071c5_subscene-001",
+      "seed": 2134335664145620724,
+      "status": "COMPLETE",
+      "human_review": {
+        "decision": "reject"
+      },
+      "render_attempts": [
+        {
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_Schoolboys_440071c5_subscene_Schoolboys_440071c5_subscene-001_7c25eb53b16247c6baed981f0c2a375f",
+          "seed": 2134335664145620724,
+          "created_at": "2026-10-03T06:31:29-07:00",
+          "status": "COMPLETE",
+          "error": "",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_063129_480584_3685791e4be042cb84aa4b3d44ba3c08",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-001\\7c25eb53b16247c6baed981f0c2a375f\\candidate.png",
+          "updated_at": "2026-10-03T06:42:04-07:00",
+          "sha256": "ac450a1253ccdbb9836361813c244aaeb4861e1bd6d2dba8c368231f810e307b"
+        }
+      ],
+      "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_Schoolboys_440071c5_subscene_Schoolboys_440071c5_subscene-001_7c25eb53b16247c6baed981f0c2a375f",
+      "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_063129_480584_3685791e4be042cb84aa4b3d44ba3c08",
+      "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-001\\7c25eb53b16247c6baed981f0c2a375f\\candidate.png",
+      "error": "",
+      "sha256": "ac450a1253ccdbb9836361813c244aaeb4861e1bd6d2dba8c368231f810e307b",
+      "view": "Schoolboys_440071c5_subscene",
+      "reference_images": [
+        {
+          "role": "story_reference",
+          "label": "Kaeldor",
+          "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\003",
+          "kind": "entity-library",
+          "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "checksum": "fa9f2e09d2811d67fcd0c1eb71eb2a7db6c72227201c5de51d7ee05f73e1632e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "sha256": "fa9f2e09d2811d67fcd0c1eb71eb2a7db6c72227201c5de51d7ee05f73e1632e",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Kaeldor_e02a5624",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Kaeldor_e02a5624",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Schoolboy 1",
+          "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\004",
+          "kind": "entity-library",
+          "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "checksum": "beaaa44128e194bcfb858f3366a5ef0a10157325e450e43cd8d5492c15347aec",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "sha256": "beaaa44128e194bcfb858f3366a5ef0a10157325e450e43cd8d5492c15347aec",
+          "image_index": 2,
+          "prompt_role": "costume_reference",
+          "applies_to": "schoolboy_1",
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "schoolboy_1",
+              "prompt_role": "costume_reference",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Schoolboy 2",
+          "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\005",
+          "kind": "entity-library",
+          "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "checksum": "e30866ef5e0a5ca980ab1475f2b32e9bc384f9069ef1a2c97b68651852b865f7",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "sha256": "e30866ef5e0a5ca980ab1475f2b32e9bc384f9069ef1a2c97b68651852b865f7",
+          "image_index": 3,
+          "prompt_role": "costume_reference",
+          "applies_to": "schoolboy_2",
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "schoolboy_2",
+              "prompt_role": "costume_reference",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        }
+      ],
+      "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Qwen_Image_2_1_Prompt.md"
+    },
+    {
+      "candidate_id": "Schoolboys_440071c5_subscene-002",
+      "seed": 1718189174096029664,
+      "status": "COMPLETE",
+      "human_review": {
+        "decision": "undecided"
+      },
+      "render_attempts": [
+        {
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_Schoolboys_440071c5_subscene_Schoolboys_440071c5_subscene-002_3d3c8b9489784332889a9703052f9006",
+          "seed": 1718189174096029664,
+          "created_at": "2026-10-03T06:31:29-07:00",
+          "status": "COMPLETE",
+          "error": "",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_063129_620752_a3f932b099fe4b97a52b4f8f1774e70e",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+          "updated_at": "2026-10-03T06:43:22-07:00",
+          "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10"
+        }
+      ],
+      "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_Schoolboys_440071c5_subscene_Schoolboys_440071c5_subscene-002_3d3c8b9489784332889a9703052f9006",
+      "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_063129_620752_a3f932b099fe4b97a52b4f8f1774e70e",
+      "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+      "error": "",
+      "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10",
+      "view": "Schoolboys_440071c5_subscene",
+      "reference_images": [
+        {
+          "role": "story_reference",
+          "label": "Kaeldor",
+          "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\003",
+          "kind": "entity-library",
+          "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "checksum": "fa9f2e09d2811d67fcd0c1eb71eb2a7db6c72227201c5de51d7ee05f73e1632e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "sha256": "fa9f2e09d2811d67fcd0c1eb71eb2a7db6c72227201c5de51d7ee05f73e1632e",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Kaeldor_e02a5624",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Kaeldor_e02a5624",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, and body proportions"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Schoolboy 1",
+          "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\004",
+          "kind": "entity-library",
+          "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "checksum": "beaaa44128e194bcfb858f3366a5ef0a10157325e450e43cd8d5492c15347aec",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "sha256": "beaaa44128e194bcfb858f3366a5ef0a10157325e450e43cd8d5492c15347aec",
+          "image_index": 2,
+          "prompt_role": "costume_reference",
+          "applies_to": "schoolboy_1",
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "schoolboy_1",
+              "prompt_role": "costume_reference",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Schoolboy 2",
+          "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\005",
+          "kind": "entity-library",
+          "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "checksum": "e30866ef5e0a5ca980ab1475f2b32e9bc384f9069ef1a2c97b68651852b865f7",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "sha256": "e30866ef5e0a5ca980ab1475f2b32e9bc384f9069ef1a2c97b68651852b865f7",
+          "image_index": 3,
+          "prompt_role": "costume_reference",
+          "applies_to": "schoolboy_2",
+          "preserve": [
+            "face",
+            "hair",
+            "pointed ears",
+            "academy clothing"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "schoolboy_2",
+              "prompt_role": "costume_reference",
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        }
+      ],
+      "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Qwen_Image_2_1_Prompt.md"
+    },
+    {
+      "candidate_id": "main-001",
+      "seed": 1635503317741239446,
+      "status": "COMPLETE",
+      "human_review": {
+        "decision": "undecided"
+      },
+      "render_attempts": [
+        {
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-001_e5aaccda4bfb4221b1954bb845e215b5",
+          "seed": 1635503317741239446,
+          "created_at": "2026-10-03T06:53:12-07:00",
+          "status": "COMPLETE",
+          "error": "",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065312_858864_b2828d706fee4967ad94deb8d9785ee8",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-001\\e5aaccda4bfb4221b1954bb845e215b5\\candidate.png",
+          "updated_at": "2026-10-03T06:55:07-07:00",
+          "sha256": "0837f3f554770500e491529579490d8c33968615a1824d472ad68d0bae501bac"
+        }
+      ],
+      "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-001_e5aaccda4bfb4221b1954bb845e215b5",
+      "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065312_858864_b2828d706fee4967ad94deb8d9785ee8",
+      "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-001\\e5aaccda4bfb4221b1954bb845e215b5\\candidate.png",
+      "error": "",
+      "sha256": "0837f3f554770500e491529579490d8c33968615a1824d472ad68d0bae501bac",
+      "view": "main",
+      "reference_images": [
+        {
+          "role": "story_reference",
+          "label": "Tsaeytte \u00b7 Youth \u00b7 Woodland outfit \u00b7 Back Left 3 4",
+          "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\001",
+          "kind": "entity-library",
+          "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+          "set_id": "",
+          "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Tsaeytte",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Tsaeytte",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+          "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10",
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+          "label": "Schoolboys and Kaeldor",
+          "kind": "scene-render",
+          "image_index": 2,
+          "prompt_role": "group_reference",
+          "applies_to": "Schoolboys_440071c5",
+          "preserve": [
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+          "assignments": [
+            {
+              "applies_to": "Schoolboys_440071c5",
+              "prompt_role": "group_reference",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Spire Archway",
+          "tag": "{{LIB:ASSET:95d50224-d948-4d01-8653-665a88241bda}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\002",
+          "kind": "entity-library",
+          "asset_id": "95d50224-d948-4d01-8653-665a88241bda",
+          "checksum": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\95d50224-d948-4d01-8653-665a88241bda",
+          "sha256": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+          "image_index": 3,
+          "prompt_role": "background_reference",
+          "applies_to": "Spire_Archway_a1489c35",
+          "preserve": [
+            "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Spire_Archway_a1489c35",
+              "prompt_role": "background_reference",
+              "preserve": [
+                "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        }
+      ],
+      "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\Qwen_Image_2_1_Prompt.md"
+    },
+    {
+      "candidate_id": "main-002",
+      "seed": 5416259721032947534,
+      "status": "COMPLETE",
+      "human_review": {
+        "decision": "undecided"
+      },
+      "render_attempts": [
+        {
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-002_d34749a132864335bd207ab2bab3512d",
+          "seed": 5416259721032947534,
+          "created_at": "2026-10-03T06:53:13-07:00",
+          "status": "COMPLETE",
+          "error": "",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065313_032881_6658c4a3da2043a7bf84f06d532ec57d",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-002\\d34749a132864335bd207ab2bab3512d\\candidate.png",
+          "updated_at": "2026-10-03T06:56:37-07:00",
+          "sha256": "bb0c499a35f4cae47336d724d65fad94b0e712553e08620ef3657758e5a1c6c0"
+        }
+      ],
+      "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-002_d34749a132864335bd207ab2bab3512d",
+      "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065313_032881_6658c4a3da2043a7bf84f06d532ec57d",
+      "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-002\\d34749a132864335bd207ab2bab3512d\\candidate.png",
+      "error": "",
+      "sha256": "bb0c499a35f4cae47336d724d65fad94b0e712553e08620ef3657758e5a1c6c0",
+      "view": "main",
+      "reference_images": [
+        {
+          "role": "story_reference",
+          "label": "Tsaeytte \u00b7 Youth \u00b7 Woodland outfit \u00b7 Back Left 3 4",
+          "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\001",
+          "kind": "entity-library",
+          "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+          "set_id": "",
+          "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Tsaeytte",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Tsaeytte",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+          "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10",
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+          "label": "Schoolboys and Kaeldor",
+          "kind": "scene-render",
+          "image_index": 2,
+          "prompt_role": "group_reference",
+          "applies_to": "Schoolboys_440071c5",
+          "preserve": [
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+          "assignments": [
+            {
+              "applies_to": "Schoolboys_440071c5",
+              "prompt_role": "group_reference",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Spire Archway",
+          "tag": "{{LIB:ASSET:95d50224-d948-4d01-8653-665a88241bda}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\002",
+          "kind": "entity-library",
+          "asset_id": "95d50224-d948-4d01-8653-665a88241bda",
+          "checksum": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\95d50224-d948-4d01-8653-665a88241bda",
+          "sha256": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+          "image_index": 3,
+          "prompt_role": "background_reference",
+          "applies_to": "Spire_Archway_a1489c35",
+          "preserve": [
+            "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Spire_Archway_a1489c35",
+              "prompt_role": "background_reference",
+              "preserve": [
+                "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        }
+      ],
+      "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\Qwen_Image_2_1_Prompt.md"
+    },
+    {
+      "candidate_id": "main-003",
+      "seed": 6623179385141988444,
+      "status": "COMPLETE",
+      "human_review": {
+        "decision": "undecided"
+      },
+      "render_attempts": [
+        {
+          "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-003_c3dc51b2f42a4dfbb27e73aa269fd864",
+          "seed": 6623179385141988444,
+          "created_at": "2026-10-03T06:53:13-07:00",
+          "status": "COMPLETE",
+          "error": "",
+          "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065313_196034_cebfb23675c24436b28c8c7ba03f17a2",
+          "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-003\\c3dc51b2f42a4dfbb27e73aa269fd864\\candidate.png",
+          "updated_at": "2026-10-03T06:57:58-07:00",
+          "sha256": "bab5b5e6ddfb620d5a6f982de9ce61e69acce74c4f95229ad3e66f9ff0a162f3"
+        }
+      ],
+      "source_ask_id": "SceneBatch_bebc2869c8c04af094a63fc585168ff5_main_main-003_c3dc51b2f42a4dfbb27e73aa269fd864",
+      "ask_id": "Ask_Render_Task_LOCAL_RENDER_20261003_065313_196034_cebfb23675c24436b28c8c7ba03f17a2",
+      "image_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\main-003\\c3dc51b2f42a4dfbb27e73aa269fd864\\candidate.png",
+      "error": "",
+      "sha256": "bab5b5e6ddfb620d5a6f982de9ce61e69acce74c4f95229ad3e66f9ff0a162f3",
+      "view": "main",
+      "reference_images": [
+        {
+          "role": "story_reference",
+          "label": "Tsaeytte \u00b7 Youth \u00b7 Woodland outfit \u00b7 Back Left 3 4",
+          "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\001",
+          "kind": "entity-library",
+          "asset_id": "65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+          "set_id": "",
+          "checksum": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\65aff39b-0d98-4c3f-97a7-d3a8a4890069",
+          "sha256": "455f50560aa1637c99930f681d1a4946a92d102ccc07a708da3c79303b7df4c9",
+          "image_index": 1,
+          "prompt_role": "subject_reference",
+          "applies_to": "Tsaeytte",
+          "preserve": [
+            "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Tsaeytte",
+              "prompt_role": "subject_reference",
+              "preserve": [
+                "recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        },
+        {
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\Schoolboys_440071c5_subscene\\e9cdab9e53a1485baf172e87803ded30\\Schoolboys_440071c5_subscene-002\\3d3c8b9489784332889a9703052f9006\\candidate.png",
+          "sha256": "d57046aa040572a6f3bb1b2c19a01aa514736c7567f808c7690a433464b80e10",
+          "candidate_id": "Schoolboys_440071c5_subscene-002",
+          "tag": "{{SCENE_RENDER:FirstDay:Chapter-01-Standing-in-Wonder:Schoolboys_440071c5_subscene}}",
+          "label": "Schoolboys and Kaeldor",
+          "kind": "scene-render",
+          "image_index": 2,
+          "prompt_role": "group_reference",
+          "applies_to": "Schoolboys_440071c5",
+          "preserve": [
+            "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+          ],
+          "change": [],
+          "ignore": [
+            "source canvas",
+            "source background",
+            "source framing",
+            "outer placement",
+            "source lighting"
+          ],
+          "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+          "assignments": [
+            {
+              "applies_to": "Schoolboys_440071c5",
+              "prompt_role": "group_reference",
+              "preserve": [
+                "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+              ],
+              "change": [],
+              "ignore": [
+                "source canvas",
+                "source background",
+                "source framing",
+                "outer placement",
+                "source lighting"
+              ],
+              "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+            }
+          ]
+        },
+        {
+          "role": "story_reference",
+          "label": "Spire Archway",
+          "tag": "{{LIB:ASSET:95d50224-d948-4d01-8653-665a88241bda}}",
+          "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\snapshots\\b6d51dcbac634fb1a945888d13ba2541\\inputs\\002",
+          "kind": "entity-library",
+          "asset_id": "95d50224-d948-4d01-8653-665a88241bda",
+          "checksum": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+          "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\95d50224-d948-4d01-8653-665a88241bda",
+          "sha256": "9e6b402fac8aa8d5282df63cb7be7ed331c1d0a4c2443136cc7c308209ea773e",
+          "image_index": 3,
+          "prompt_role": "background_reference",
+          "applies_to": "Spire_Archway_a1489c35",
+          "preserve": [
+            "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "assignments": [
+            {
+              "applies_to": "Spire_Archway_a1489c35",
+              "prompt_role": "background_reference",
+              "preserve": [
+                "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ]
+        }
+      ],
+      "prompt_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-01-Standing-in-Wonder\\Local_Batches\\bebc2869c8c04af094a63fc585168ff5\\targets\\main\\db2fc22b439f484f9d32e9e7266fdca8\\Qwen_Image_2_1_Prompt.md"
+    }
+  ],
+  "ready_targets": [
+    "main"
+  ]
+}

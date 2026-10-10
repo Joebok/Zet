@@ -146,6 +146,18 @@ class CharacterAssemblyPromptTemplateTests(unittest.TestCase):
         self.assertEqual("MISSING_REFERENCE", raised.exception.code)
         self.assertFalse((self.root / "local-back-without-anchor" / "Final_Image_Prompt.md").exists())
 
+    def test_local_non_front_prompt_allows_batches_without_front_anchor(self) -> None:
+        job = self._job("FRONT_LEFT_3_4", output_name="local-three-quarter-without-anchor")
+        job["use_front_anchor"] = False
+
+        result = compile_character_assembly_job(job, PROJECT_ROOT, pipeline_mode="local")
+        prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
+        manifest = json.loads(Path(result["dependency_manifest"]).read_text(encoding="utf-8"))
+
+        self.assertIn("Use only these two images as visual sources.", prompt)
+        self.assertNotIn("Image 3 is the selected FRONT Character-Assembly anchor", prompt)
+        self.assertEqual(["body_reference", "head_image"], manifest["required_reference_roles"])
+
     def test_missing_or_malformed_character_template_is_rejected(self) -> None:
         malformed_path = self.root / "Malformed.md"
         malformed_path.write_text("<!-- ZET:BEGIN IDENTITY_PRESERVATION_CORE -->\n", encoding="utf-8")

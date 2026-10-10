@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -26,6 +28,7 @@ class WorkspaceSummaryServiceTests(unittest.TestCase):
         story.list_stories.return_value = []
         story.list_scenes.return_value = []
         paths = Mock()
+        paths.config = SimpleNamespace(base_library_path=str(root))
         paths.scene_locked_image_path.side_effect = lambda story_slug, scene_slug: root / story_slug / f"{scene_slug}.png"
         paths.scene_candidate_image_path.side_effect = lambda story_slug, scene_slug: root / story_slug / "Candidate" / f"{scene_slug}.png"
         return WorkspaceSummaryService(
@@ -41,17 +44,29 @@ class WorkspaceSummaryServiceTests(unittest.TestCase):
 
     def test_character_summary_recommends_first_incomplete_step(self):
         with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
             assets = [
                 Asset(1, "Test", "Adult", "Body-Reference", "Front", asset_state="LOCKED"),
                 Asset(2, "Test", "Adult", "Character-Assembly", "Front"),
             ]
-            summary = self._service(Path(temp_dir), assets).character_summary("Test", "Adult")
+            locked_path = root / "locked.png"
+            locked_path.write_bytes(b"local locked image")
+            store_path = root / "_state" / "LocalAssets" / "Test" / "Adult" / "local_assets.json"
+            store_path.parent.mkdir(parents=True)
+            store_path.write_text(json.dumps({"assets": {
+                "body-reference:front": {
+                    "pipeline": "Body-Reference", "view": "Front", "qualifier": "",
+                    "locked": True, "stale": False, "locked_image_path": str(locked_path),
+                    "image_sha256": hashlib.sha256(locked_path.read_bytes()).hexdigest(),
+                },
+            }}), encoding="utf-8")
+            summary = self._service(root, assets).character_summary("Test", "Adult")
 
         self.assertEqual(summary.base_reference_locked, 1)
         self.assertEqual(summary.assembly_locked, 0)
-        self.assertEqual(summary.recommended_destination, "assets")
-        self.assertEqual(summary.recommended_action, "Complete character assembly")
-        self.assertEqual([step.key for step in summary.steps], ["setup", "references", "assembly", "identity", "costumes"])
+        self.assertEqual(summary.recommended_destination, "local-body-reference")
+        self.assertEqual(summary.recommended_action, "Complete local body references")
+        self.assertEqual([step.key for step in summary.steps], ["setup", "references", "head-images", "assembly", "identity", "costumes"])
 
     def test_story_summary_reports_candidate_locked_and_next_action(self):
         with tempfile.TemporaryDirectory() as temp_dir:

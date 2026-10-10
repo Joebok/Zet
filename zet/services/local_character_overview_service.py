@@ -45,7 +45,7 @@ class LocalCharacterOverviewService:
         self.character_root = Path(app.config.base_character_path).resolve()
         self.library_root = Path(app.config.base_library_path).resolve()
         self.store = LocalAssetStoreService(self.library_root)
-        self.jobs_root = self.library_root / "Experiments" / "Character-Pipeline" / "Autogenerate"
+        self.jobs_root = self.library_root / "PipelineCandidates" / "Character-Pipeline" / "Autogenerate"
         self._discovery = CharacterPhaseDiscoveryService(self.character_root)
 
     @staticmethod

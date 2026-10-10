@@ -185,6 +185,7 @@ class SceneAppearanceService:
         instructions: str,
         supporting_references: list[dict | SceneAppearanceReference],
     ) -> SceneAppearanceCreateResult:
+        raise SceneAppearanceServiceError("Scene Appearances are retired. Use scene workflows for appearance instructions.")
         appearance_id, name, costume, instructions, references = self._validated_values(
             character, phase, appearance_id, name, costume, instructions, supporting_references
         )
@@ -247,6 +248,7 @@ class SceneAppearanceService:
         instructions: str,
         supporting_references: list[dict | SceneAppearanceReference],
     ) -> SceneAppearanceUpdateResult:
+        raise SceneAppearanceServiceError("Scene Appearances are retired. Use scene workflows for appearance instructions.")
         current = self.get_definition(character, phase, appearance_id)
         appearance_id, name, costume, instructions, references = self._validated_values(
             character, phase, appearance_id, name, costume, instructions, supporting_references

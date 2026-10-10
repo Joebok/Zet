@@ -1,5 +1,6 @@
-import json
 import hashlib
+import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -269,6 +270,9 @@ def test_body_reference_gates_use_their_ollama_settings(tmp_path, monkeypatch):
     for gate in service.review_gates(candidate["view"]):
         record = service._queue_review_gate(run["run_id"], candidate["candidate_id"], gate)
         manifest = json.loads((client.ready_path(record["ask_id"]) / "ask_manifest.json").read_text())
+        route = json.loads((client.route_root / f"{record['ask_id']}.json").read_text())
+        assert manifest["universe_id"] == "Moonsea"
+        assert route["universe_id"] == "Moonsea"
         if gate.key == "orientation":
             assert manifest["ollama_chat"] is True
             assert manifest["ollama_think"] is False
@@ -280,6 +284,7 @@ def test_body_reference_gates_use_their_ollama_settings(tmp_path, monkeypatch):
     legacy_ask = service.detail(run["run_id"])["candidates"][0]["face_gate"]["ask_id"]
     manifest = json.loads((client.ready_path(legacy_ask) / "ask_manifest.json").read_text())
     assert manifest["ollama_think"] is True
+    assert manifest["universe_id"] == "Moonsea"
 
 
 def test_orientation_prompts_and_verdicts():
@@ -288,6 +293,7 @@ def test_orientation_prompts_and_verdicts():
         prompt = next(gate.prompt for gate in LocalBodyReferenceService.review_gates(view)
                       if gate.key == "orientation")
         assert prompt.startswith(f"TARGET: {view}\n\nAuthoritative visual definition:\n\n- ")
+        assert not re.search(r"anatomical[ -](?:left|right)", prompt, re.IGNORECASE)
         assert "Do not derive or reinterpret the view name." in prompt
         assert "Return TRUE when it matches. Return FALSE when it does not match." in prompt
         assert prompt.endswith("TRUE\nor\nFALSE: <brief visible reason>\n\nDo not explain your reasoning.")

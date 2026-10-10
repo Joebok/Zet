@@ -31,7 +31,9 @@ Judge the candidate image against the visible requirements below and the supplie
 
 {{LOCAL_COSTUME_REFERENCE_GUIDANCE}}
 
-Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume. Preserve identity, anatomy, body proportions, pose, body and head orientation, camera, crop, lighting, rendering style, and all non-costume content from Image 1. The costume conforms to the existing body; the body does not change to fit the costume.
+{{LOCAL_CANONICAL_ART_STYLE}}
+
+Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume. Preserve identity, anatomy, body proportions, pose, body and head orientation, camera, crop, lighting, and all non-costume content from Image 1. The costume conforms to the existing body; the body does not change to fit the costume.
 
 # Costume
 
@@ -39,7 +41,7 @@ Replace only the generic fitment clothing, jewelry, equipment, and footwear cont
 
 {{COSTUME_VIEW_HEADING}}
 
-{{COSTUME_DESCRIPTION_VIEW_{VIEW}}}
+{{COSTUME_DESCRIPTION_VIEW_OVERRIDES}}
 
 {{EQUIPMENT_HEADING}}
 
@@ -47,7 +49,9 @@ Replace only the generic fitment clothing, jewelry, equipment, and footwear cont
 
 {{EQUIPMENT_VIEW_HEADING}}
 
-{{EQUIPMENT_JEWELRY_PROPS_VIEW_{VIEW}}}
+{{EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES}}
+
+{{COSTUME_DESCRIPTION_VIEW_SUPPRESSION}}
 
 # Pose, Contact, and Background
 

@@ -1,0 +1,297 @@
+{
+  "canvas": [
+    1376,
+    768
+  ],
+  "background": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\background.png",
+  "layers": [
+    {
+      "key": "Valindia",
+      "label": "Valindia",
+      "box": [
+        0.18,
+        0.06,
+        0.25,
+        0.91
+      ],
+      "depth": 3,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\Valindia.png",
+      "sha256": "16b24a7ed1d7cbe3fe7648f2e0bc9908b30f73126488e4b45e2f47d9bb4fd109",
+      "bbox": [
+        0,
+        0,
+        357,
+        700
+      ],
+      "source_pixels": 249900,
+      "placed_size": [
+        343,
+        699
+      ],
+      "position": [
+        248,
+        46
+      ],
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Valindia\\keep.png",
+      "annotation_keep_sha256": "f2cf4c5dfd22667772839e587398ad265649f1a8cd2e43d640f579541e21d0e3",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Valindia\\remove.png",
+      "annotation_remove_sha256": "8d82fae4436c0123fd86afa5623f5acf1981c001bd4c11a6ec9b205b2de3e0c3",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Valindia\\source-mask-overlay.png",
+      "source_size": [
+        1376,
+        768
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-02-At-the-Arch\\frozen\\source_images\\main.png",
+      "source_image_sha256": "93ac2069991d8860a20bf45e1679588228437a42de559a4a814e75837633aa6d",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        259,
+        52,
+        606,
+        759
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Valindia\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Valindia\\manual-remove.png",
+      "manual_keep_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "manual_remove_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Valindia\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "5f519a19afe560fa9b695de3233b79a48e21fdc1a2333e0834a7915453e3ad5c",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Valindia\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "bounds": [
+        248,
+        46,
+        591,
+        745
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    },
+    {
+      "key": "group",
+      "label": "Schoolboys and Kaeldor",
+      "box": [
+        0.4,
+        0.29,
+        0.31,
+        0.67
+      ],
+      "depth": 2,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\group.png",
+      "sha256": "cf9cd5decfb615f82db1cb97ac29cfb8fbecd87505c0b4385cc57091d3d8b21a",
+      "bbox": [
+        0,
+        0,
+        979,
+        856
+      ],
+      "source_pixels": 838024,
+      "placed_size": [
+        427,
+        373
+      ],
+      "position": [
+        550,
+        364
+      ],
+      "parent_box": [
+        0.4,
+        0.19,
+        0.31,
+        0.77
+      ],
+      "layout_change_reason": "Lower the accepted middle-distance group toward the road plane while retaining its size and internal pose.",
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\group\\keep.png",
+      "annotation_keep_sha256": "fdf720fb387f1fa5b35bc581b2c6957638e448b1a4dace64ee8b28f551adeb6d",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\group\\remove.png",
+      "annotation_remove_sha256": "c33c7212095ce39f0061142d9ad3a8e8fa3954f80f2acb4cfd90b085b7dfb92c",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\group\\source-mask-overlay.png",
+      "source_size": [
+        1184,
+        896
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-02-At-the-Arch\\frozen\\source_images\\group.png",
+      "source_image_sha256": "1eb9b0a1eeb059b455b33fbf9aeee542a1baf68161ddf1f9cbcac7b9ec41143d",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        98,
+        18,
+        1077,
+        874
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\group\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\group\\manual-remove.png",
+      "manual_keep_sha256": "0a310f9efa945550a55cb470f6f3bd6dac9bd8eeea86e5acc0665b8c1fe90de5",
+      "manual_remove_sha256": "0a310f9efa945550a55cb470f6f3bd6dac9bd8eeea86e5acc0665b8c1fe90de5",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\group\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "133dac1e88834176b51d61e84ef7e018ae116f2b94719747c3a44b8a87b07273",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\group\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "0a310f9efa945550a55cb470f6f3bd6dac9bd8eeea86e5acc0665b8c1fe90de5",
+      "bounds": [
+        550,
+        364,
+        977,
+        737
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    },
+    {
+      "key": "Tsaeytte",
+      "label": "Tsaeytte",
+      "box": [
+        0.65,
+        0.08,
+        0.28,
+        0.89
+      ],
+      "depth": 3,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\Tsaeytte.png",
+      "sha256": "c6e543881f214fa5eff5c31758877ea842394b2bf29a217a300bb30002de378e",
+      "bbox": [
+        0,
+        0,
+        341,
+        536
+      ],
+      "source_pixels": 182776,
+      "placed_size": [
+        385,
+        618
+      ],
+      "position": [
+        895,
+        127
+      ],
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Tsaeytte\\keep.png",
+      "annotation_keep_sha256": "5b48e2bde7cc5f72af9ba943094d00f7df3a02b2a370e0dfc5f19666d262667d",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Tsaeytte\\remove.png",
+      "annotation_remove_sha256": "d46b33f079aebbcc6b323871b2a750cb39cee4d04be64df7a44588d894ba68f5",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Tsaeytte\\source-mask-overlay.png",
+      "source_size": [
+        1376,
+        768
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-02-At-the-Arch\\frozen\\source_images\\main.png",
+      "source_image_sha256": "93ac2069991d8860a20bf45e1679588228437a42de559a4a814e75837633aa6d",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        930,
+        145,
+        1264,
+        681
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Tsaeytte\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Tsaeytte\\manual-remove.png",
+      "manual_keep_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "manual_remove_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Tsaeytte\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "1a236dfc4beaab6f1d4d2dd145dc0a4d7276456a09b2798bf9bd6c1256d3f958",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\Tsaeytte\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "f6915e1f0fd6b6487d6a8d569e3b7088b78d5cb6f6c17945fb6a2460d4b840a5",
+      "bounds": [
+        895,
+        127,
+        1280,
+        745
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    },
+    {
+      "key": "dialogue-01",
+      "label": "Original dialogue balloon",
+      "box": [
+        0.27,
+        0.01,
+        0.16,
+        0.1
+      ],
+      "depth": 5,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\dialogue-01.png",
+      "sha256": "4ffba03f2741e6c5cf242147700604b7a87dd775fda84bb5b90a0d71f41bb568",
+      "bbox": [
+        0,
+        0,
+        154,
+        57
+      ],
+      "source_pixels": 8778,
+      "dialogue_layer": true,
+      "placed_size": [
+        208,
+        77
+      ],
+      "position": [
+        378,
+        7
+      ],
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\dialogue-01\\keep.png",
+      "annotation_keep_sha256": "ff92359c62a2fca868a809282148bfe01289225e4477f508d5edd96281234638",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\dialogue-01\\remove.png",
+      "annotation_remove_sha256": "1f9365e08a0af346be54823475fee54d1f40e5e61fae4b72669cd0bda53bc8d6",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\dialogue-01\\source-mask-overlay.png",
+      "source_size": [
+        1376,
+        768
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-02-At-the-Arch\\frozen\\source_images\\main.png",
+      "source_image_sha256": "93ac2069991d8860a20bf45e1679588228437a42de559a4a814e75837633aa6d",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        380,
+        11,
+        534,
+        68
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\dialogue-01\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\dialogue-01\\manual-remove.png",
+      "manual_keep_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "manual_remove_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\dialogue-01\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\annotations\\dialogue-01\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "64dfca7dcbb0090ee09ecafc41ba2b54a7ccabae36d7cb7ee124611d8df8e531",
+      "bounds": [
+        378,
+        7,
+        586,
+        84
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    }
+  ],
+  "layout_changes": [
+    {
+      "layer": "group",
+      "from": [
+        0.4,
+        0.19,
+        0.31,
+        0.77
+      ],
+      "to": [
+        0.4,
+        0.29,
+        0.31,
+        0.67
+      ],
+      "reason": "Lower the accepted middle-distance group toward the road plane while retaining its size and internal pose."
+    }
+  ],
+  "protected_subjects_dialogue": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\protected-subjects-dialogue.png",
+  "edit_mask": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\qwen-edit-mask.png",
+  "integration_weight": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\integration-weight.png",
+  "contact_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\contact-overlay.png",
+  "depth_order": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\depth-order.png",
+  "contact_radius_px": 36,
+  "exterior_band_px": 12,
+  "preview": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\review-preview.png",
+  "raw_composite": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-02-At-the-Arch\\prepared-v2\\raw-composite.png",
+  "luna_review_hashes": {
+    "review-preview.png": "01ccab24670d1a3b65d0d6ed790c454d53b568b492e32d1865e5b091fcd6d07b",
+    "raw-composite.png": "5b515e40d9ecbca55884444a0ab979b3bab6a63e3ea9884f4c78c0638d4e2726",
+    "qwen-edit-mask.png": "112d27e60ea379f71cd6d9b93c617b2b159fb4dee7f9257f9791ab4c51fbbc28",
+    "protected-subjects-dialogue.png": "9c5c6822aa595d67ea1bbcbfbdef8bcc00765a07cf305ada73c4cad5258642b3",
+    "contact-overlay.png": "ae71ceed62392dfef93597adf2b424858b89953c5cc3bac2bdf718ee718a3159",
+    "depth-order.png": "c35e4d9c01e5484fd99c40e79b5b93bc5a508c33fbf7a4a1befd1257c4448add"
+  },
+  "candidate_hash": "57c0e81afce26a45e82f7736fa8e8daea2da255d1130e949686ce0c80aa0097d"
+}

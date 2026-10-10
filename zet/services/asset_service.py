@@ -21,6 +21,7 @@ from zet.services.worker_service import WorkerService
 from zet.services.workflow_storage import atomic_copy
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.summary_cache import invalidate_summary_cache
+from zet.services.pipeline_retirement import is_retired_character_pipeline, require_active_pipeline
 
 
 def serialized_asset(method):
@@ -198,6 +199,7 @@ class AssetService:
     @serialized_asset
     def move_next(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         if asset.pipeline_stage == "ERROR":
             raise AssetServiceError(f"Asset {asset_id} is in ERROR stage and cannot move next")
         if asset.actor == "AI_AGENT":
@@ -235,6 +237,7 @@ class AssetService:
 
     def run_housekeeping(self, character: str, phase: str, asset_id: int) -> Path:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         return self.housekeeping_service.prepare_stage(asset)
 
     def _clear_render_outputs(self, asset: Asset) -> None:
@@ -261,6 +264,7 @@ class AssetService:
     def save_render_review_comment(self, character: str, phase: str, asset_id: int, comment: str) -> str:
         """Save the render-review comment for an asset."""
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         path = self.render_review_comment_path(asset)
         cleaned = str(comment or "").strip()
         if cleaned:
@@ -340,6 +344,7 @@ class AssetService:
         pipeline_name: str,
         include_locked: bool = False,
     ) -> list[BatchRenderResetResult]:
+        require_active_pipeline(pipeline_name)
         render_actor, candidates = self._pipeline_render_reset_candidates(character, phase, pipeline_name, include_locked)
 
         results: list[BatchRenderResetResult] = []
@@ -419,6 +424,7 @@ class AssetService:
     @serialized_asset
     def regenerate(self, character: str, phase: str, asset_id: int, clear_references: bool = False) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
         manifest_actor = self._validate_actor(
             pipeline.name,
@@ -452,6 +458,7 @@ class AssetService:
     @serialized_asset
     def promote_to_locked(self, character: str, phase: str, asset_id: int, replace_existing: bool = False) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         candidate_image_path = self.path_service.candidate_image_path(asset)
         locked_image_path = self.path_service.locked_image_path(asset)
 
@@ -500,6 +507,7 @@ class AssetService:
     @serialized_asset
     def discard_candidate(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         candidate_image_path = self.path_service.candidate_image_path(asset)
         locked_image_path = self.path_service.locked_image_path(asset)
 
@@ -530,6 +538,7 @@ class AssetService:
     @serialized_asset
     def keep_locked(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         locked_image_path = self.path_service.locked_image_path(asset)
 
         if not locked_image_path.exists():
@@ -558,6 +567,7 @@ class AssetService:
     @serialized_asset
     def fail_render_review_to_render(self, character: str, phase: str, asset_id: int, reason: str = "") -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         if asset.pipeline_stage != "RENDER_REVIEW" or asset.actor != "HUMAN_AGENT":
             raise AssetServiceError("Render retry is only available at RENDER_REVIEW / HUMAN_AGENT.")
 
@@ -586,6 +596,7 @@ class AssetService:
     @serialized_asset
     def run_current_worker(self, character: str, phase: str, asset_id: int) -> Asset:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         if asset.actor != "PYTHON":
             raise AssetServiceError("Current worker can only run when Actor is PYTHON.")
 
@@ -645,12 +656,14 @@ class AssetService:
         return failed_asset
 
     def stage_ai_ask(self, character: str, phase: str, asset_id: int) -> Path:
+        require_active_pipeline(self.asset_repository.get_asset(character, phase, asset_id).pipeline)
         result = self.ai_proxy_service.stage_current_ai_ask(character, phase, asset_id)
         invalidate_summary_cache()
         return result
 
     def run_current_worker_chain(self, character: str, phase: str, asset_id: int, max_steps: int = 10) -> WorkerChainResult:
         asset = self.asset_repository.get_asset(character, phase, asset_id)
+        require_active_pipeline(asset.pipeline)
         if asset.actor != "PYTHON":
             raise AssetServiceError("Current worker can only run when Actor is PYTHON.")
 
@@ -682,6 +695,8 @@ class AssetService:
         return WorkerChainResult(asset=updated_asset, worker_count=worker_count, messages=messages)
 
     def _worker_name_for_asset(self, character: str, phase: str, asset: Asset) -> str | None:
+        if is_retired_character_pipeline(asset.pipeline):
+            return None
         pipeline = self.pipeline_repository.get_pipeline(character, phase, asset.pipeline)
         return pipeline.worker_by_stage.get(asset.pipeline_stage)
 

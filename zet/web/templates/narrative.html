@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Narrative Scenes · Zet</title>
+  <link rel="icon" href="/img/favicon_io/favicon.ico">
+  <link rel="stylesheet" href="/static/zet.css">
+  <link rel="stylesheet" href="/static/narrative.css">
+</head>
+<body class="narrative-app">
+  <header class="narrative-header">
+    <a href="/" class="dashboard-link">← Zet dashboard</a>
+    <strong>Narrative Scenes</strong>
+    <label>Universe <select id="narrative-universe" aria-label="Universe"></select></label>
+    <a id="narrative-home" href="/narrative">Stories</a>
+    <span id="narrative-model"></span>
+  </header>
+  <nav id="narrative-breadcrumb" aria-label="Breadcrumb"></nav>
+  <p id="narrative-message" role="status" aria-live="polite"></p>
+  <main id="narrative-root" aria-label="Narrative workspace"></main>
+  <dialog id="story-dialog" aria-label="New Story">
+    <h2>New Story</h2>
+    <form id="new-story">
+      <label class="narrative-field">Title<input name="title" required></label>
+      <label class="narrative-field">Story brief<textarea name="brief"></textarea></label>
+      <div class="narrative-actions"><button class="primary">Create story</button><button type="button" data-close="story-dialog">Cancel</button></div>
+    </form>
+  </dialog>
+  <dialog id="element-dialog" aria-label="Element editor"></dialog>
+  <dialog id="library-dialog" aria-label="Choose reference image"></dialog>
+  <dialog id="membership-dialog" aria-label="Assign scene elements"></dialog>
+  <dialog id="narrative-source-dialog" aria-label="Choose source from another scene"></dialog>
+  <dialog id="image-dialog" class="local-pipeline-review-dialog" aria-label="Image review">
+    <button class="review-close" type="button" data-close="image-dialog">Close</button>
+    <div class="local-pipeline-review-layout">
+      <section class="local-pipeline-review-comparison" aria-label="Candidate image">
+        <figure><header><strong>Image to review</strong></header><img id="review-image" alt="Rendered candidate"></figure>
+      </section>
+      <div class="local-pipeline-review-info">
+        <button id="narrative-review-prev" class="review-nav" type="button" aria-label="Previous candidate">‹</button>
+        <section id="narrative-review-panel"></section>
+        <button id="narrative-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
+      </div>
+    </div>
+  </dialog>
+  <script type="module" src="/static/narrative.js"></script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+{
+  "canvas": [
+    928,
+    1152
+  ],
+  "background": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\background.png",
+  "layers": [
+    {
+      "key": "group",
+      "label": "Kaeldor and the Schoolboys",
+      "box": [
+        0.01,
+        0.3,
+        0.48,
+        0.7
+      ],
+      "depth": 3,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\group.png",
+      "sha256": "5d7d972a3e14f1b0d2fc39d977e061c5798d0999020f95b000a9560904cf3c82",
+      "bbox": [
+        0,
+        0,
+        743,
+        1152
+      ],
+      "source_pixels": 855936,
+      "placed_size": [
+        445,
+        690
+      ],
+      "position": [
+        10,
+        462
+      ],
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\group\\keep.png",
+      "annotation_keep_sha256": "113e79305a5138685499193f2d4e245bf7120ab5fbfd0498be854133e5d2a116",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\group\\remove.png",
+      "annotation_remove_sha256": "f12db468e9327762f374d36aa596eaed82e7e2d72d2d038636511acb41b95bd5",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\group\\source-mask-overlay.png",
+      "source_size": [
+        928,
+        1152
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-03-Collision\\frozen\\source_images\\group.png",
+      "source_image_sha256": "0cd277465d4d028e0e3674fb3957260d292533eccc7d4e4f24c8641475aa9db3",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        62,
+        0,
+        805,
+        1152
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\group\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\group\\manual-remove.png",
+      "manual_keep_sha256": "42d4d37f5ba44672ee927c2e3e50b9e1d6cdcd7c97cbbe2617c7e4d91895e560",
+      "manual_remove_sha256": "42d4d37f5ba44672ee927c2e3e50b9e1d6cdcd7c97cbbe2617c7e4d91895e560",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\group\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "da97d342bef42c9b9add13130ca5262040d78083b3e1614f4b3626c860f91a7d",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\group\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "42d4d37f5ba44672ee927c2e3e50b9e1d6cdcd7c97cbbe2617c7e4d91895e560",
+      "bounds": [
+        10,
+        462,
+        455,
+        1152
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    },
+    {
+      "key": "pair",
+      "label": "Tsaeytte and Valindia",
+      "box": [
+        0.44,
+        0.4,
+        0.55,
+        0.57
+      ],
+      "depth": 2,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\pair.png",
+      "sha256": "a9b1bdce40a71eaa5f09acbe0dfadd3b94a81b1cde5ce531a60012a4757cd647",
+      "bbox": [
+        0,
+        0,
+        928,
+        1150
+      ],
+      "source_pixels": 1067200,
+      "placed_size": [
+        510,
+        631
+      ],
+      "position": [
+        409,
+        486
+      ],
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\pair\\keep.png",
+      "annotation_keep_sha256": "cde8238aa42996950b3b1e013266274ac32d1733988bf46d4324b6ca3d033da2",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\pair\\remove.png",
+      "annotation_remove_sha256": "74770129f0abdf21a2e35b1bd73a1fd91b129618666e4ee8914b6043f71d7906",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\pair\\source-mask-overlay.png",
+      "source_size": [
+        928,
+        1152
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-03-Collision\\frozen\\source_images\\pair.png",
+      "source_image_sha256": "769a63f42f7cd98155561414a4c3e4c43b5c2ebeebc416b424482cfe69a47cfa",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        0,
+        2,
+        928,
+        1150
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\pair\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\pair\\manual-remove.png",
+      "manual_keep_sha256": "42d4d37f5ba44672ee927c2e3e50b9e1d6cdcd7c97cbbe2617c7e4d91895e560",
+      "manual_remove_sha256": "42d4d37f5ba44672ee927c2e3e50b9e1d6cdcd7c97cbbe2617c7e4d91895e560",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\pair\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "712c03d51188911445d26bce8b395e3b2615eb53539459cf71090ef5caffe089",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\annotations\\pair\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "c5accbe5a4ce9180c4809d47a7261045c8bae5d9e45d3272a03d8622b5087981",
+      "bounds": [
+        409,
+        486,
+        919,
+        1117
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    }
+  ],
+  "layout_changes": [],
+  "protected_subjects_dialogue": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\protected-subjects-dialogue.png",
+  "edit_mask": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\qwen-edit-mask.png",
+  "integration_weight": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\integration-weight.png",
+  "contact_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\contact-overlay.png",
+  "depth_order": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\depth-order.png",
+  "contact_radius_px": 44,
+  "exterior_band_px": 14,
+  "preview": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\review-preview.png",
+  "raw_composite": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-03-Collision\\prepared-v2\\raw-composite.png",
+  "luna_review_hashes": {
+    "review-preview.png": "70b4e9b4415b28ebcf7a7c6f2fdb5a946bf8f51763f4b11dd2bad60f1815a4a7",
+    "raw-composite.png": "7f46dc4a4537b867f63bafba9a7ec82f632d0d160f640210eda328b4c81b4594",
+    "qwen-edit-mask.png": "3c588e997dc5065be8b820c027b53b67e23085bc3003d62ac9a86f6765f0960b",
+    "protected-subjects-dialogue.png": "33a89349b9dbeb24a6b6e9aeea623ed0ba38d8f1ae7bce0e59210bf053c9abaa",
+    "contact-overlay.png": "7c08881c98f35561263dc56c0c177703279fc436dd810e5ff18fdb9f67ddee76",
+    "depth-order.png": "4608c20f3a477c8304bc27fbe96b352714161e9ab0e35f05bcc58b78d17a0b3c"
+  },
+  "candidate_hash": "8e74a53ed3f5dce721f7aca1ed4aa2d3d63e72493882c2d728584dafe1372c9c"
+}

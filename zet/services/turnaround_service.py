@@ -16,6 +16,7 @@ from zet.services.character_grid_service import CharacterGridOptions, CharacterG
 from zet.services.image_sheet_service import letter_landscape_height
 from zet.services.path_service import PathService
 from zet.services.turnaround_views import TURNAROUND_VIEW_ORDER
+from zet.services.local_asset_source_service import LocalAssetSourceService
 
 DEFAULT_DETECTION_TOLERANCE = 50.0
 
@@ -61,6 +62,7 @@ class TurnaroundRow:
     locked_count: int
     missing_views: list[str]
     source_asset_ids: list[int]
+    source_local_keys: list[str]
     candidate_image_path: Optional[str]
     candidate_image_exists: bool
     locked_image_path: Optional[str]
@@ -81,6 +83,7 @@ class TurnaroundService:
         turnaround_repository: TurnaroundRepository,
         path_service: PathService,
         grid_service: CharacterGridService | None = None,
+        local_sources: LocalAssetSourceService | None = None,
     ):
         """Initialize the service with repositories and path helpers."""
         self.asset_repository = asset_repository
@@ -88,6 +91,7 @@ class TurnaroundService:
         self.turnaround_repository = turnaround_repository
         self.path_service = path_service
         self.grid_service = grid_service or CharacterGridService()
+        self.local_sources = local_sources
 
     def _timestamp(self) -> str:
         """Return the current timestamp for persisted records."""
@@ -264,6 +268,7 @@ class TurnaroundService:
             locked_count=len(assets_by_view),
             missing_views=missing_views,
             source_asset_ids=source_asset_ids,
+            source_local_keys=[],
             candidate_image_path=str(candidate_path) if candidate_path else None,
             candidate_image_exists=candidate_exists,
             locked_image_path=str(locked_path) if locked_path else None,
@@ -274,33 +279,82 @@ class TurnaroundService:
             auxiliary_sheets=self._auxiliary_rows(sheets, turnaround_id),
         )
 
-    def list_rows(self, character: str, phase: str) -> list[TurnaroundRow]:
-        """List all possible turnaround rows from configured pipeline groups."""
-        assets = self.asset_repository.list_assets(character, phase)
-        pipeline_names = [
-            pipeline.name
-            for pipeline in self.pipeline_repository.list_pipelines(character, phase)
-            if pipeline.name not in {"Expression", "Head-Image"}
-        ]
-        keys: set[tuple[str, Optional[str], Optional[str], Optional[str]]] = set()
-        for asset in assets:
-            if asset.pipeline in pipeline_names:
-                keys.add(self._group_key(asset))
-        sheets = self.turnaround_repository.list_sheets(character, phase)
+    @staticmethod
+    def _local_view_label(value: str) -> str:
+        labels = {
+            "FRONT": "Front", "FRONT_LEFT_3_4": "Front-Left-3-4", "FRONT_RIGHT_3_4": "Front-Right-3-4",
+            "LEFT_PROFILE": "Left-Profile", "RIGHT_PROFILE": "Right-Profile",
+            "BACK_LEFT_3_4": "Back-Left-3-4", "BACK_RIGHT_3_4": "Back-Right-3-4", "BACK": "Back",
+        }
+        return labels.get(str(value).upper(), str(value))
+
+    def _local_rows(self, character: str, phase: str, sheets: list[TurnaroundSheet]) -> list[TurnaroundRow]:
+        if self.local_sources is None:
+            return []
+        names = {"body-reference": "Body-Reference", "character-assembly": "Character-Assembly",
+                 "costume-dressing": "Costume-Dressing"}
+        grouped: dict[tuple[str, str], dict[str, dict]] = {}
+        for source in self.local_sources.list_sources(character, phase):
+            pipeline = names.get(str(source["pipeline"]).lower())
+            if not pipeline:
+                continue
+            key = (pipeline, str(source.get("costume") or ""))
+            grouped.setdefault(key, {})[self._local_view_label(source["view"])] = source
         rows = []
-        for key in sorted(keys, key=lambda item: (pipeline_names.index(item[0]) if item[0] in pipeline_names else 999, item[1] or "", item[2] or "", item[3] or "")):
-            turnaround_id = self._turnaround_id(*key)
-            rows.append(
-                self._row_from_group(
-                    character,
-                    phase,
-                    key,
-                    self._locked_assets_by_view(assets, key),
-                    self._sheet_for_id(sheets, turnaround_id),
-                    sheets,
-                )
-            )
+        for (pipeline, costume), assets_by_view in sorted(grouped.items()):
+            missing = [view for view in TURNAROUND_VIEW_ORDER if view not in assets_by_view]
+            turnaround_id = self._turnaround_id(f"Local-{pipeline}", costume, None)
+            sheet = self._sheet_for_id(sheets, turnaround_id)
+            candidate = self._stored_path(sheet.candidate_image_path) if sheet else None
+            locked = self._stored_path(sheet.locked_image_path) if sheet else self.path_service.turnaround_locked_image_path(character, phase, turnaround_id)
+            sources = [assets_by_view[view] for view in TURNAROUND_VIEW_ORDER if view in assets_by_view]
+            rows.append(TurnaroundRow(
+                turnaround_id=turnaround_id, character=character, phase=phase, source_pipeline=pipeline,
+                costume=costume or None, expression=None, scene_appearance_id=None, scene_appearance=None,
+                label=self._label(pipeline, costume or None, None),
+                status="locked" if locked and locked.exists() else "candidate ready for review" if candidate and candidate.exists() else "missing locked assets" if missing else "ready for turnaround",
+                ready=not missing, detection_tolerance=self._sheet_detection_tolerance(sheet), locked_count=len(sources),
+                missing_views=missing, source_asset_ids=[], source_local_keys=[item["source_key"] for item in sources],
+                candidate_image_path=str(candidate) if candidate else None, candidate_image_exists=bool(candidate and candidate.exists()),
+                locked_image_path=str(locked) if locked else None, locked_image_exists=bool(locked and locked.exists()),
+                analysis_path=sheet.analysis_path if sheet else None, diagnostics_path=sheet.diagnostics_path if sheet else None,
+                updated_at=sheet.updated_at if sheet else None, auxiliary_sheets=self._auxiliary_rows(sheets, turnaround_id),
+            ))
         return rows
+
+    def _historical_rows(self, character: str, phase: str, sheets: list[TurnaroundSheet]) -> list[TurnaroundRow]:
+        """Keep saved sheets visible without offering regeneration from retired sources."""
+        rows = []
+        for sheet in sheets:
+            if sheet.sheet_type != "full" or sheet.turnaround_id.startswith("Local-"):
+                continue
+            candidate = self._stored_path(sheet.candidate_image_path)
+            locked = self._stored_path(sheet.locked_image_path)
+            candidate_exists = bool(candidate and candidate.is_file())
+            locked_exists = bool(locked and locked.is_file())
+            rows.append(TurnaroundRow(
+                turnaround_id=sheet.turnaround_id, character=character, phase=phase,
+                source_pipeline=sheet.source_pipeline, costume=sheet.costume, expression=sheet.expression,
+                scene_appearance_id=sheet.scene_appearance_id, scene_appearance=sheet.scene_appearance,
+                label=sheet.label or self._label(sheet.source_pipeline, sheet.costume, sheet.expression, sheet.scene_appearance),
+                status="locked" if locked_exists or sheet.status == "LOCKED" else "candidate ready for review" if candidate_exists else "historical",
+                ready=False, detection_tolerance=self._sheet_detection_tolerance(sheet),
+                locked_count=len(sheet.source_asset_ids or sheet.source_local_keys),
+                missing_views=list(TURNAROUND_VIEW_ORDER), source_asset_ids=list(sheet.source_asset_ids),
+                source_local_keys=list(sheet.source_local_keys),
+                candidate_image_path=str(candidate) if candidate else sheet.candidate_image_path,
+                candidate_image_exists=candidate_exists,
+                locked_image_path=str(locked) if locked else sheet.locked_image_path,
+                locked_image_exists=locked_exists, analysis_path=sheet.analysis_path,
+                diagnostics_path=sheet.diagnostics_path, updated_at=sheet.updated_at,
+                auxiliary_sheets=self._auxiliary_rows(sheets, sheet.turnaround_id),
+            ))
+        return rows
+
+    def list_rows(self, character: str, phase: str) -> list[TurnaroundRow]:
+        """List local-source groups and preserve historical sheets as read-only rows."""
+        sheets = self.turnaround_repository.list_sheets(character, phase)
+        return self._local_rows(character, phase, sheets) + self._historical_rows(character, phase, sheets)
 
     def get_row(self, character: str, phase: str, turnaround_id: str) -> TurnaroundRow:
         """Return one turnaround dashboard row by id."""
@@ -314,10 +368,29 @@ class TurnaroundService:
         row = self.get_row(character, phase, turnaround_id)
         if not row.ready:
             raise TurnaroundServiceError(f"Missing locked assets: {', '.join(row.missing_views)}")
+        if turnaround_id.startswith("Local-"):
+            if self.local_sources is None:
+                raise TurnaroundServiceError("Local turnaround sources are unavailable.")
+            row = self.get_row(character, phase, turnaround_id)
+            sources = self.local_sources.list_sources(character, phase)
+            source_keys = set(row.source_local_keys)
+            by_key = {item["source_key"]: item for item in sources}
+            if not source_keys.issubset(by_key):
+                raise TurnaroundServiceError("One or more locked local turnaround sources are stale.")
+            from types import SimpleNamespace
+            local = [by_key[key] for key in row.source_local_keys]
+            labels = {"body-reference": "Body-Reference", "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing"}
+            return [SimpleNamespace(asset_id=0, pipeline=labels[item["pipeline"].lower()], costume=item["costume"] or None,
+                                    expression=None, scene_appearance_id=None, scene_appearance=None,
+                                    body_view=self._local_view_label(item["view"]), image_path=item["image_path"],
+                                    source_key=item["source_key"]) for item in local]
         assets = self.asset_repository.list_assets(character, phase)
         key = (row.source_pipeline, row.costume, row.expression, row.scene_appearance_id)
         assets_by_view = self._locked_assets_by_view(assets, key)
         return [assets_by_view[view] for view in TURNAROUND_VIEW_ORDER]
+
+    def _source_image_path(self, asset) -> Path:
+        return Path(asset.image_path) if getattr(asset, "image_path", None) else self.path_service.locked_image_path(asset)
 
     def generate_candidate(
         self,
@@ -340,7 +413,7 @@ class TurnaroundService:
             backup_dir = self.path_service.character_backup_path(character, phase) / "TurnaroundCandidates"
             backup_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(candidate_dir), str(backup_dir / f"{turnaround_id}.{backup_suffix}"))
-        image_paths = [self.path_service.locked_image_path(asset) for asset in source_assets]
+        image_paths = [self._source_image_path(asset) for asset in source_assets]
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
@@ -357,7 +430,8 @@ class TurnaroundService:
             scene_appearance_id=first.scene_appearance_id,
             scene_appearance=first.scene_appearance,
             status="RENDER_REVIEW",
-            source_asset_ids=[asset.asset_id for asset in source_assets],
+            source_asset_ids=[] if getattr(first, "source_key", None) else [asset.asset_id for asset in source_assets],
+            source_local_keys=[asset.source_key for asset in source_assets if getattr(asset, "source_key", None)],
             candidate_image_path=str(result.grid_path),
             locked_image_path=str(self.path_service.turnaround_locked_image_path(character, phase, turnaround_id)),
             label=self._label(first.pipeline, first.costume, first.expression, first.scene_appearance),
@@ -416,7 +490,7 @@ class TurnaroundService:
             backup_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(candidate_dir), str(backup_dir / f"{partial_id}.{backup_suffix}"))
 
-        image_paths = [self.path_service.locked_image_path(asset) for asset in source_assets]
+        image_paths = [self._source_image_path(asset) for asset in source_assets]
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
@@ -439,7 +513,8 @@ class TurnaroundService:
             detection_tolerance=tolerance,
             deletable=True,
             status="RENDER_REVIEW",
-            source_asset_ids=[asset.asset_id for asset in source_assets],
+            source_asset_ids=[] if getattr(first, "source_key", None) else [asset.asset_id for asset in source_assets],
+            source_local_keys=[asset.source_key for asset in source_assets if getattr(asset, "source_key", None)],
             candidate_image_path=str(result.grid_path),
             locked_image_path=str(self._partial_locked_path(character, phase, partial_id)),
             analysis_path=str(result.analysis_path),
@@ -480,7 +555,7 @@ class TurnaroundService:
             backup_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(candidate_dir), str(backup_dir / f"{partial_turnaround_id}.{backup_suffix}"))
 
-        image_paths = [self.path_service.locked_image_path(asset) for asset in source_assets]
+        image_paths = [self._source_image_path(asset) for asset in source_assets]
         result = self.grid_service.assemble_grid(
             image_paths,
             candidate_dir,
@@ -491,7 +566,8 @@ class TurnaroundService:
         sheet.crop_percent = crop_value
         sheet.detection_tolerance = tolerance
         sheet.status = "RENDER_REVIEW"
-        sheet.source_asset_ids = [asset.asset_id for asset in source_assets]
+        sheet.source_asset_ids = [] if getattr(source_assets[0], "source_key", None) else [asset.asset_id for asset in source_assets]
+        sheet.source_local_keys = [asset.source_key for asset in source_assets if getattr(asset, "source_key", None)]
         sheet.candidate_image_path = str(result.grid_path)
         sheet.analysis_path = str(result.analysis_path)
         sheet.diagnostics_path = str(result.diagnostics_path)

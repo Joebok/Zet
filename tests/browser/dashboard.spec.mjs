@@ -25,6 +25,228 @@ function delayedGate(delayMs = 120_000) {
   return { promise, release };
 }
 
+test("universe pages create and save canonical art style", async ({ page }) => {
+  await openPage(page, "universes");
+  await expect(page.locator("#universe-list")).toContainText("Moonsea");
+  await page.getByRole("button", { name: "New Universe" }).click();
+  await expect(page.locator("#universe-create-page")).toHaveClass(/active/);
+  await page.locator("#universe-create-name").fill("Test Realm");
+  await page.locator("#universe-create-art-style").fill("Painterly fantasy");
+  await page.getByRole("button", { name: "Create Universe" }).click();
+  await expect(page.locator("#universe-settings-title")).toHaveText("Test Realm Settings");
+  await expect(page.locator("#universe-settings-art-style")).toHaveValue("Painterly fantasy");
+  await page.locator("#universe-settings-art-style").fill("Updated painterly fantasy");
+  await page.getByRole("button", { name: "Save Settings" }).click();
+  await expect(page.locator("#universe-settings-message")).toHaveText("Settings saved.");
+  await page.getByRole("button", { name: "Back to Universes" }).click();
+  await expect(page.locator("#universe-list")).toContainText("Updated painterly fantasy");
+});
+
+test("image generation fills eight slots and imports the selected image's prompt", async ({ page }) => {
+  const submitted = [];
+  const jobs = new Map();
+  let imported;
+  await page.route("**/api/image-generation/options", (route) => route.fulfill({
+    json: {
+      model: "Qwen Image 2.1", checkpoint: "qwen.safetensors", default_count: 4,
+      default_width: 1024, default_height: 1024,
+    },
+  }));
+  await page.route("**/api/image-generation/jobs", async (route) => {
+    if (route.request().method() === "POST") {
+      const request = route.request().postDataJSON();
+      submitted.push(request);
+      const request_id = `browser-image-job-${submitted.length}`;
+      const job = {
+        request_id, mode: request.mode, status: "COMPLETE", requested: request.count,
+        completed: request.count, failed: 0, error: "", prompt: request.prompt,
+        negative_prompt: request.negative_prompt, source_asset_id: "",
+        images: Array.from({ length: request.count }, (_, index) => ({
+          index, url: `/api/image-generation/jobs/${request_id}/images/${index}`,
+        })),
+      };
+      jobs.set(request_id, job);
+      await route.fulfill({ json: job });
+      return;
+    }
+    await route.fulfill({ status: 405 });
+  });
+  await page.route(/\/api\/image-generation\/jobs\/browser-image-job-\d+$/, (route) => {
+    const id = route.request().url().split("/").at(-1);
+    if (route.request().method() === "DELETE") {
+      jobs.delete(id);
+      return route.fulfill({ json: { message: "Image generation results cleared." } });
+    }
+    return route.fulfill({ json: jobs.get(id) });
+  });
+  await page.route(/\/api\/image-generation\/jobs\/browser-image-job-\d+\/images\/\d+$/, (route) => {
+    const parts = new URL(route.request().url()).pathname.split("/");
+    const id = parts.at(-3);
+    const index = Number(parts.at(-1));
+    if (route.request().method() === "DELETE") {
+      const job = jobs.get(id);
+      job.images = job.images.filter((image) => image.index !== index);
+      job.completed = job.images.length;
+      return route.fulfill({ json: job });
+    }
+    return route.fulfill({
+      status: 200, contentType: "image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
+    });
+  });
+
+  await openPage(page, "image-generation");
+  await expect(page.locator("#image-generation-results-grid figure")).toHaveCount(8);
+  await expect(page.locator("#image-generation-width")).toHaveValue("1024");
+  await expect(page.locator("#image-generation-height")).toHaveValue("1024");
+  await page.locator("#image-generation-img2img").click();
+  await expect(page.locator("#image-generation-reference-field")).toBeVisible();
+  await page.locator("#image-generation-reference").setInputFiles({
+    name: "reference.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
+  });
+  await page.locator("#image-generation-prompt").fill("Make the object carved from jade");
+  await page.locator("#image-generation-negative").fill("plastic");
+  await page.locator("#image-generation-width").fill("1280");
+  await page.locator("#image-generation-height").fill("768");
+  await page.getByRole("button", { name: "Render First 4" }).click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(4);
+  expect(submitted[0]).toMatchObject({
+    mode: "img2img", width: 1280, height: 768, count: 4,
+    prompt: "Make the object carved from jade",
+  });
+  expect(submitted[0].reference_image).toMatch(/^data:image\/png;base64,/);
+  await page.locator("#image-generation-prompt").fill("Make the object from bronze");
+  await page.locator("#image-generation-negative").fill("plastic, scratches");
+  await page.getByRole("button", { name: "Fill Slots" }).click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(8);
+  expect(submitted[1]).toMatchObject({ count: 4, prompt: "Make the object from bronze" });
+  await page.getByRole("button", { name: "Review slot 5" }).click();
+  await expect(page.locator("#image-generation-review-prompt")).toHaveText("Make the object from bronze");
+  await page.locator("#image-generation-review-previous").click();
+  await expect(page.locator("#image-generation-review-prompt")).toHaveText("Make the object carved from jade");
+  await page.locator("#image-generation-review-next").click();
+  await page.locator("#image-generation-review-select").click();
+  await page.locator("#image-generation-review-close").click();
+  await expect(page.locator("#image-generation-review-import")).toBeEnabled();
+  await page.reload();
+  await expect(page.locator("#image-generation-prompt")).toHaveValue("Make the object from bronze");
+  await expect(page.locator("#image-generation-width")).toHaveValue("1280");
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(8);
+  await expect(page.locator("#image-generation-review-import")).toBeEnabled();
+  const libraryImport = await page.request.post("/api/entity-library/assets?label=Generated+Import+Fixture", {
+    data: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64"),
+    headers: { "content-type": "image/png" },
+  });
+  expect(libraryImport.ok()).toBeTruthy();
+  const libraryAsset = (await libraryImport.json()).asset;
+  await page.route("**/api/image-generation/jobs/browser-image-job-2/images/0/import", async (route) => {
+    imported = route.request().postDataJSON();
+    await route.fulfill({ json: { asset: libraryAsset, duplicate: false } });
+  });
+  await page.locator("#image-generation-review-import").click();
+  await expect(page.locator("#auxiliary-resources-page")).toHaveClass(/active/);
+  await expect(page.locator("#entity-library-import-dialog")).toBeVisible();
+  await expect(page.locator("#entity-library-import-preview")).toBeVisible();
+  await expect(page.locator("#entity-library-import-prompt")).toHaveText("Make the object from bronze");
+  await expect(page.locator("#entity-library-import-negative-prompt")).toHaveText("plastic, scratches");
+  const importResponse = page.waitForResponse((response) => response.url().includes("/api/image-generation/jobs/browser-image-job-2/images/0/import") && response.ok());
+  await page.locator("#entity-library-import").click();
+  await importResponse;
+  expect(imported).toMatchObject({ label: "Make the object from bronze", provenance: "Image Generation job browser-image-job-2, result 1" });
+  await expect(page.locator("#entity-library-import-dialog")).toBeHidden();
+  await expect(page.locator("#entity-library-save")).toBeEnabled();
+  await page.evaluate(() => window.activatePage("image-generation", { skipAutosave: true }));
+  await page.getByRole("button", { name: "Review slot 5" }).click();
+  await page.locator("#image-generation-review-clear").click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(7);
+  await page.locator("#image-generation-review-close").click();
+  await page.locator("#image-generation-prompt").fill("Make the object from ruby");
+  await page.getByRole("button", { name: "Fill Slots" }).click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(8);
+  expect(submitted[2]).toMatchObject({ count: 1, prompt: "Make the object from ruby" });
+  await page.locator("#image-generation-clear").click();
+  await expect(page.locator("#image-generation-results-grid img")).toHaveCount(0);
+  await expect(page.locator("#image-generation-prompt")).toHaveValue("");
+});
+
+test("inventory img2img replaces saved and previously chosen references", async ({ page }) => {
+  const sourceBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/QioAAAAASUVORK5CYII=", "base64");
+  await openPage(page, "auxiliary-resources");
+  const response = await page.request.post("/api/entity-library/assets?label=Inventory+Reference+Fixture", {
+    data: sourceBytes, headers: { "content-type": "image/png" },
+  });
+  expect(response.ok()).toBeTruthy();
+  const asset = (await response.json()).asset;
+  await page.route(`**/api/entity-library/assets/${asset.asset_id}`, async (route) => {
+    const result = await route.fetch();
+    const payload = await result.json();
+    payload.asset.width = 1280;
+    payload.asset.height = 768;
+    await route.fulfill({ response: result, json: payload });
+  });
+  await page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("zet-image-generation", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("state");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction("state", "readwrite");
+      transaction.objectStore("state").put("data:image/png;base64,YmFk", "reference");
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.evaluate(async (assetId) => {
+    await window.activatePage("auxiliary-resources", { skipAutosave: true });
+    await selectEntityLibraryAsset(assetId);
+  }, asset.asset_id);
+  const submitted = [];
+  await page.route("**/api/image-generation/jobs", (route) => {
+    const payload = route.request().postDataJSON();
+    submitted.push(payload);
+    return route.fulfill({ json: {
+      request_id: `inventory-reference-job-${submitted.length}`, mode: "img2img", status: "COMPLETE",
+      requested: 4, completed: 0, failed: 0, error: "", images: [],
+      prompt: payload.prompt, negative_prompt: payload.negative_prompt,
+      source_asset_id: payload.source_asset_id, source_checksum: payload.source_checksum,
+    } });
+  });
+  await page.locator("#entity-library-modify-generated").click();
+  await expect(page.locator("#image-generation-page")).toHaveClass(/active/);
+  await expect(page.locator("#image-generation-width")).toHaveValue("1280");
+  await expect(page.locator("#image-generation-height")).toHaveValue("768");
+  await page.locator("#image-generation-prompt").fill("Edit the inventory image");
+  await page.getByRole("button", { name: "Render First 4" }).click();
+  await expect.poll(() => submitted.length).toBe(1);
+  expect(submitted[0].source_asset_id).toBe(asset.asset_id);
+  expect(Buffer.from(submitted[0].reference_image.split(",")[1], "base64")).toEqual(sourceBytes);
+
+  await page.locator("#image-generation-reference").setInputFiles({
+    name: "old-reference.png", mimeType: "image/png", buffer: Buffer.concat([sourceBytes, Buffer.from("old")]),
+  });
+  await page.locator("#image-generation-width").fill("1024");
+  await page.locator("#image-generation-height").fill("1024");
+  await page.evaluate(async (assetId) => {
+    await window.activatePage("auxiliary-resources", { skipAutosave: true });
+    await selectEntityLibraryAsset(assetId);
+  }, asset.asset_id);
+  await page.locator("#entity-library-modify-generated").click();
+  await expect(page.locator("#image-generation-reference")).toHaveValue("");
+  await expect(page.locator("#image-generation-width")).toHaveValue("1280");
+  await expect(page.locator("#image-generation-height")).toHaveValue("768");
+  await page.locator("#image-generation-prompt").fill("Edit the inventory image again");
+  await page.getByRole("button", { name: "Render First 4" }).click();
+  await expect.poll(() => submitted.length).toBe(2);
+  expect(Buffer.from(submitted[1].reference_image.split(",")[1], "base64")).toEqual(sourceBytes);
+});
+
 test("navigation cancels a delayed review load and ignores its late response", async ({ page }) => {
   await openPage(page, "stories");
   let markStarted;
@@ -316,7 +538,7 @@ test("WP03 invalid scene selections fall back to the canonical first scene", asy
 });
 
 test("WP03 To Do and Template Instruction Manuals open and report load failures", async ({ page }) => {
-  await openPage(page, "assets");
+  await openPage(page, "local-batch-status");
   await page.locator("#toolbar-settings-button").click();
   await page.locator("#toolbar-todo-button").click();
   await expect(page.locator("#todo-dialog")).toBeVisible();
@@ -342,7 +564,7 @@ test("WP03 To Do and Template Instruction Manuals open and report load failures"
     contentType: "application/json",
     body: '{"detail":"Seeded manuals failure"}',
   }));
-  await page.evaluate(() => activatePage("assets", { skipAutosave: true }));
+  await page.evaluate(() => activatePage("local-batch-status", { skipAutosave: true }));
   await page.locator("#help-menu-button").click();
   await page.locator("#help-menu button[data-page='help']").click();
   await expect(page.locator("#action-message")).toContainText(
@@ -350,7 +572,7 @@ test("WP03 To Do and Template Instruction Manuals open and report load failures"
   );
 });
 
-test("Batch Status is first in local Assets and links directly to the batch", async ({ page }) => {
+test("Batches is persistent in the toolbar and links directly to the batch", async ({ page }) => {
   await page.route("**/api/local/batch-status", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -364,12 +586,15 @@ test("Batch Status is first in local Assets and links directly to the batch", as
   }));
   await openPage(page, "local-batch-status");
 
-  await page.locator("#local-assets-button").click();
-  await expect(page.locator("#local-assets-menu [data-page]").first()).toHaveAttribute("data-page", "local-batch-status");
+  await expect(page.locator('#local-assets-menu [data-page="local-batch-status"]')).toHaveCount(0);
+  await expect(page.locator("#toolbar-batches")).toBeVisible();
+  await expect(page.locator("#toolbar-batches")).toHaveText("Batches");
+  expect(await page.locator("#toolbar-restart-zet").evaluate(node => node.nextElementSibling.id)).toBe("toolbar-batches");
+  expect(await page.locator("#toolbar-batches").evaluate(node => node.nextElementSibling.querySelector("button").id)).toBe("toolbar-settings-button");
   await expect(page.locator("#local-assets-menu #local-run-all-remaining")).toHaveCount(0);
   await expect(page.locator("#local-batch-status-page #local-run-all-remaining")).toBeVisible();
   const link = page.locator("#local-batch-status-groups a");
-  await expect(link).toHaveText("Winter coat");
+  await expect(link).toHaveText("Mira/Adult/Winter coat");
   const href = new URL(await link.getAttribute("href"), page.url());
   expect(href.searchParams.get("page")).toBe("local-costume-dressing");
   expect(href.searchParams.get("character")).toBe("Mira");
@@ -420,46 +645,18 @@ test("Run All Remaining starts from the top of Batch Status", async ({ page }) =
 test("@desktop-smoke desktop layout does not overflow", async ({ page }) => {
   for (const [width, height] of DESKTOP_VIEWPORTS) {
     await page.setViewportSize({ width, height });
-    await openPage(page, "assets");
+    await openPage(page, "local-batch-status");
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))
       .toBe(true);
   }
 });
 
-test("Scene Appearances selects a locked preview and reports edits", async ({ page }) => {
-  const appearance = {
-    appearance_id: "hell-adventures",
-    name: "Hell Adventures",
-    costume: "Canonical Adventure Gear",
-    instructions: "Morrow on anatomical left shoulder; tusk in anatomical right hand.",
-    supporting_references: [
-      { role: "companion", label: "Morrow", tag: "{{AUX:person:morrow:morrow-raven-form}}" },
-      { role: "prop", label: "Utility Tusk", tag: "{{AUX:thing:utility-tusk:tusk-reference}}" },
-    ],
-    asset_count: 8,
-    path: "SceneAppearances/hell-adventures.json",
-    locked_preview_path: "Turnarounds/hell-adventures.png",
-    locked_preview_exists: true,
-  };
-  await page.route(/\/api\/scene-appearances\?/, async (route) => {
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ scene_appearances: [appearance] }) });
-  });
-  await page.route(/\/api\/scene-appearances\/hell-adventures\?/, async (route) => {
-    const updated = { ...appearance, name: "Hell Expeditions" };
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ scene_appearance: updated, scene_appearances: [updated], message: "Updated Hell Expeditions." }),
-    });
-  });
-  await openPage(page, "scene-appearances");
-  await expect(page.locator("#scene-appearance-status")).toContainText("1 Scene Appearance set");
-  await page.locator("#scene-appearance-table tbody tr").click();
-  await expect(page.locator("#scene-appearance-preview-section")).toBeVisible();
-  await expect(page.locator("#scene-appearance-preview img")).toHaveAttribute("alt", "Locked Scene Appearance turnaround");
-  await page.locator("#scene-appearance-name").fill("Hell Expeditions");
-  await page.locator("#scene-appearance-save").click();
-  await expect(page.locator("#scene-appearance-message")).toContainText("Updated Hell Expeditions");
+test("retired Scene Appearances links resolve to local Assets", async ({ page }) => {
+  await openPage(page, "local-batch-status");
+  await page.evaluate(() => activatePage("scene-appearances", { skipAutosave: true }));
+  await expect(page.locator("#local-batch-status-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-appearances-page")).not.toHaveClass(/active/);
 });
 
 test("Image Inventory filters base outputs and edits logical metadata", async ({ page }) => {
@@ -584,7 +781,7 @@ test("Image Inventory reports queued AI descriptions and harvests drafts without
 });
 
 test("@desktop-smoke workspace shell switches adaptive context and remembers the last page", async ({ page }) => {
-  await openPage(page, "assets");
+  await openPage(page, "local-batch-status");
   await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#character-context")).toBeVisible();
   await expect(page.locator("#story-context")).toBeHidden();
@@ -602,7 +799,7 @@ test("@desktop-smoke workspace shell switches adaptive context and remembers the
   await expect(page.locator("#scenes-page")).toHaveClass(/active/);
 
   await page.locator("#workspace-character").click();
-  await expect(page.locator("#assets-page")).toHaveClass(/active/);
+  await expect(page.locator("#local-batch-status-page")).toHaveClass(/active/);
 });
 
 
@@ -732,6 +929,39 @@ test("@desktop-smoke Scene Builder adds, reorders, and removes multiple referenc
   await expect(tags.nth(0)).toHaveValue("{{ASSET:first}}");
 });
 
+test("Scene Builder selects costume images through their current logical reference", async ({ page }) => {
+  await openPage(page, "scenes");
+  await page.locator("#scene-builder-open").click();
+  await expect(page.locator('[data-builder-field="scene.story_beat"]')).toBeVisible();
+  await page.evaluate(() => {
+    state.characters = ["Tsaeytte"];
+    state.phasesByCharacter = { Tsaeytte: ["Youth"] };
+    const element = {
+      id: "tsaeytte-test", display_name: "Tsaeytte", resource_type: "Character",
+      character: "Tsaeytte", phase: "Youth", costume: "Woodland outfit", reference_images: [],
+      fallback_visual_description: "Tsaeytte in a woodland outfit",
+    };
+    state.sceneBuilder.scene_elements = [element];
+    state.sceneBuilder.placements = [{ id: "tsaeytte-test-placement", scene_element_id: element.id, position_within_cell: "center", depth: "foreground", pose: {}, motion: { state: "stationary" } }];
+    state.selectedBuilderElementId = element.id;
+    renderSceneBuilder();
+  });
+  await page.getByRole("button", { name: "Add reference" }).click();
+  await page.route("**/api/entity-library/picker*", (route) => route.fulfill({ json: { assets: [{
+    asset_id: "test-image", file_name: "generated.png", label: "Tsaeytte · Youth · Woodland outfit · Front",
+    image_path: "/images/test.png", thumbnail_path: "/images/test.png", origin: "pipeline",
+    logical_reference: { reference_key: "tsaeytte.youth.costume-dressing.woodland-outfit.front" },
+    entities: [{ name: "Tsaeytte", variant_name: "Youth" }], width: 32, height: 32,
+  }] } }));
+  await page.locator('[data-builder-action="pick-image-tag"]').click();
+  await expect(page.locator("#builder-image-picker-mode")).toHaveValue("logical");
+  await expect(page.locator("#builder-image-picker-search")).toHaveValue("Tsaeytte Youth Woodland outfit");
+  await page.locator("#builder-image-picker-table tbody tr").first().click();
+  const selected = await page.evaluate(() => state.sceneBuilder.scene_elements[0].reference_images[0]);
+  expect(selected.reference_key).toBe("tsaeytte.youth.costume-dressing.woodland-outfit.front");
+  expect(selected.asset_id).toBeUndefined();
+});
+
 test("render console labels references in attachment order", async ({ page }) => {
   await openPage(page, "render-console");
   await page.evaluate(() => renderConsoleReferenceFiles([
@@ -806,31 +1036,12 @@ test("@desktop-smoke Scene Builder interview applies locally without saving", as
 
 
 
-test("@desktop-smoke source editor guards dirty navigation with Cancel and Discard", async ({ page }) => {
-  await openPage(page, "assets");
-  await page.locator("#asset-table .row-selection-button").first().click();
-  await page.locator("#open-governing-template").click();
-  await expect(page.locator("#template-editor-page")).toHaveClass(/active/);
-  await page.locator("#source-editor-text").fill("Unsaved source editor change");
-  await page.locator("#workspace-story").click();
-  const dialog = page.locator("#unsaved-changes-dialog");
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.locator("#template-editor-page")).toHaveClass(/active/);
-  await page.locator("#workspace-story").click();
-  await dialog.getByRole("button", { name: "Discard" }).click();
-  await expect(page.locator("#stories-page")).toHaveClass(/active/);
-
-  await openPage(page, "assets");
-  await page.locator("#asset-table .row-selection-button").first().click();
-  await page.locator("#open-governing-template").click();
-  await page.locator("#source-editor-text").fill("Saved source editor change");
-  await page.locator("#workspace-story").click();
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(page.locator("#stories-page")).toHaveClass(/active/);
+test("traditional asset routes resolve into the consolidated Assets workflow", async ({ page }) => {
+  await openPage(page, "local-batch-status");
+  await page.evaluate(() => activatePage("assets", { skipAutosave: true }));
+  await expect(page.locator("#local-batch-status-page")).toHaveClass(/active/);
+  await expect(page.locator("#assets-page")).not.toHaveClass(/active/);
 });
-
-
 
 test("@desktop-smoke selection, zine ordering, live status, and image dialogs are accessible", async ({ page }) => {
   await openPage(page, "zine");
@@ -895,7 +1106,7 @@ test("@desktop-smoke scene workflow keeps context and production tools show all 
   await expect(page.locator("#header-story-select")).toHaveValue("Alpha-Story");
   await expect(page.locator("#header-scene-select")).toHaveValue("Closing-Scene");
   await expect(page.locator(".production-scope-toggle")).toHaveCount(0);
-  await expect(page.locator("#story-navigation [data-production-count='render_waiting']")).toHaveText(/[1-9]/);
+  await expect(page.locator("#story-navigation [data-production-count='render_waiting']")).toBeHidden();
   await expect(page.locator("#story-navigation [data-production-count='image_review_waiting']")).toHaveText(/[1-9]/);
   expect(await page.locator(".render-console-layout").evaluate((element) => (
     getComputedStyle(element).gridTemplateColumns.split(" ").length
@@ -1085,15 +1296,27 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   expect((await page.request.put(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`, { data })).ok()).toBe(true);
   expect((await page.request.post(`/api/stories/${storySlug}/scenes/${sceneSlug}/subscenes/background/enable`)).ok()).toBe(true);
 
+  const withSubscene = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  const dialogueData = (await withSubscene.json()).document.data;
+  dialogueData.scene_elements.push({ id: "speaker", display_name: "Speaker", resource_type: "Scene-Only", element_type: "Character", fallback_visual_description: "A clear speaking character", subscene_id: "background" });
+  dialogueData.placements.push({ id: "speaker-placement", scene_element_id: "speaker", position_within_cell: "left", depth: "foreground" });
+  dialogueData.dialogue = [{ id: "line", speaker_element_id: "speaker", subscene_id: "background", text: "Original line.", pointer_target: "speaker mouth" }];
+  expect((await page.request.put(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`, { data: dialogueData })).ok()).toBe(true);
+
   await page.locator("#scene-builder-open").click();
   await page.locator('[data-builder-field="scene.story_beat"]').fill("Unsaved full-scene beat");
-  await page.getByRole("button", { name: "Background", exact: true }).click();
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
   const focalPoint = page.locator('[data-builder-subscene-field="focal_point"]');
   await focalPoint.fill("Distant ruined tower");
+  const dialogueText = page.locator('[data-builder-dialogue="0"][data-builder-dialogue-field="text"]');
+  await expect(dialogueText).toHaveValue("Original line.");
+  await dialogueText.fill("Updated line.");
+  await page.locator('[data-builder-dialogue="0"][data-builder-dialogue-field="panel_placement"]').selectOption("right");
   const scopedSave = page.waitForRequest((request) => request.url().endsWith("/builder/subscenes/background") && request.method() === "PUT");
   await page.getByRole("button", { name: "Save Subscene", exact: true }).click();
   const saveRequest = await scopedSave;
-  expect((await saveRequest.postDataJSON()).id).toBe("background");
+  expect((await saveRequest.postDataJSON()).subscene.id).toBe("background");
+  expect((await saveRequest.postDataJSON()).dialogue_changes.upserts[0].dialogue.text).toBe("Updated line.");
   expect(await page.evaluate(() => state.sceneBuilder.scene.story_beat)).toBe("Unsaved full-scene beat");
   await expect(page.locator("#scene-builder-save-state")).toContainText("other changes dirty");
 
@@ -1101,20 +1324,63 @@ test("@desktop-smoke subscene save and cancel are scoped to the active target", 
   const persistedData = (await persisted.json()).document.data;
   expect(persistedData.scene.story_beat).toBe("Persisted story beat");
   expect(persistedData.subscenes.find((item) => item.id === "background").prompt_overrides.focal_point).toBe("Distant ruined tower");
+  expect(persistedData.dialogue[0].text).toBe("Updated line.");
+  expect(persistedData.dialogue[0].panel_placement).toBe("right");
 
-  await page.getByRole("button", { name: "Full Scene", exact: true }).click();
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').first().click();
   const fullSceneSaved = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT");
   await page.getByRole("button", { name: "Save Full Scene", exact: true }).click();
   expect((await fullSceneSaved).ok()).toBe(true);
   const persistedFullScene = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
   expect((await persistedFullScene.json()).document.data.scene.story_beat).toBe("Unsaved full-scene beat");
 
-  await page.getByRole("button", { name: "Background", exact: true }).click();
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
 
   await focalPoint.fill("Wrong target edit");
   await page.getByRole("button", { name: "Cancel Subscene Edits", exact: true }).click();
   await expect(focalPoint).toHaveValue("Distant ruined tower");
   expect(await page.evaluate(() => state.sceneBuilder.scene.story_beat)).toBe("Unsaved full-scene beat");
+
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="main"]').first().click();
+  await page.locator('[data-builder-field="scene.story_beat"]').fill("Save all before Scene Batches");
+  await page.locator('[data-builder-action="select-render-target"][data-render-target-id="background"]').click();
+  const slotGroup = (targetId) => ({
+    status: "PENDING", candidates: Array.from({ length: 8 }, (_, index) => ({
+      candidate_id: `${targetId}-${String(index + 1).padStart(3, "0")}`, slot: index + 1, status: "EMPTY",
+    })),
+  });
+  const slotRun = {
+    run_id: "a".repeat(32), status: "QUEUED", targets: [
+      { target_id: "background", label: "Background", kind: "background", dependencies: [] },
+      { target_id: "main", label: "Full Scene", kind: "main", dependencies: ["background"] },
+    ], groups: { background: slotGroup("background"), main: slotGroup("main") },
+    selected_views: {}, rankings: {}, view_reviews: {}, ready_targets: ["background"],
+  };
+  slotRun.groups.main.history_candidates = [
+    { candidate_id: "main-old-001", slot: 1, status: "COMPLETE", image_path: "old.png" },
+  ];
+  slotRun.view_reviews.main = { observations: "Old notes", ai_observations: { status: "COMPLETE", text: "Old analysis" } };
+  await page.route(`**/api/stories/${storySlug}/scenes/${sceneSlug}/local-batches**`, async (route) => {
+    if (route.request().method() === "GET" && !route.request().url().endsWith(slotRun.run_id)) {
+      return route.fulfill({ json: { batches: [slotRun], linked_batch_id: slotRun.run_id } });
+    }
+    return route.fulfill({ json: slotRun });
+  });
+  await page.locator(".workflow-tab[data-page='scene-batches']").click();
+  const navigationDialog = page.locator("#unsaved-changes-dialog");
+  await expect(navigationDialog).toBeVisible();
+  const navigationSave = page.waitForResponse((response) => response.url().endsWith("/builder") && response.request().method() === "PUT" && response.ok());
+  await navigationDialog.getByRole("button", { name: "Save" }).click();
+  await navigationSave;
+  await expect(page.locator("#scene-batches-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-batches-page h1")).toHaveText("Scene Renders");
+  await expect(page.locator(".scene-batch-candidates .local-pipeline-candidate")).toHaveCount(16);
+  await expect(page.locator("#scene-batches-page").getByText("Earlier render")).toHaveCount(0);
+  await expect(page.locator("#scene-batches-page").getByText("Observations")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(16);
+  await expect(page.getByRole("button", { name: "Clear", exact: true })).toHaveCount(16);
+  const savedBeforeNavigation = await page.request.get(`/api/stories/${storySlug}/scenes/${sceneSlug}/builder`);
+  expect((await savedBeforeNavigation.json()).document.data.scene.story_beat).toBe("Save all before Scene Batches");
 });
 
 test("@desktop-smoke imported candidate context and prompt analysis use side panels", async ({ page }) => {
@@ -1228,20 +1494,22 @@ test("running prompt analysis harvests and opens without changing the selected p
   expect(queuedAgain).toBe(0);
 });
 
-test("Local workspace reuses dashboard context and routes each workflow in app", async ({ page }) => {
+test("Character Development consolidates local Assets and derived workflows", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
-  await expect(page.locator("#workspace-local")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#workspace-local")).toHaveCount(0);
   await expect(page.locator("#character-context")).toBeVisible();
   await expect(page.locator("#story-context")).toBeHidden();
   await expect(page.locator("#onboarding-page")).toHaveClass(/active/);
-  await expect(page).toHaveURL(/page=local-overview/);
 
   await page.locator("#local-assets-button").click();
   await expect(page.locator("#local-assets-button")).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#local-assets-menu button")).toHaveText([
-    "Batch Status", "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
+    "Body-Reference", "Head-Image", "Character-Assembly", "Costume-Dressing",
   ]);
   await page.locator('#local-assets-menu [data-page="local-body-reference"]').click();
   await expect(page.locator("#local-pipeline-page")).toHaveClass(/active/);
@@ -1249,22 +1517,24 @@ test("Local workspace reuses dashboard context and routes each workflow in app",
   await expect(page.locator("#local-pipeline-page #character-select, #local-pipeline-page #phase-select")).toHaveCount(0);
   await expect(page).toHaveURL(/page=local-body-reference/);
 
-  await page.locator('#local-navigation [data-page="local-turnarounds"]').click();
-  await expect(page.locator("#local-stub-page")).toHaveClass(/active/);
-  await expect(page.locator("#local-stub-title")).toHaveText("Turnarounds");
-  await expect(page.locator("#local-stub-page")).toContainText("coming soon");
+  await page.locator('#character-navigation [data-page="turnarounds"]').click();
+  await expect(page.locator("#turnarounds-page")).toHaveClass(/active/);
+  await page.evaluate(async () => window.activatePage("scene-appearances", { skipAutosave: true }));
+  await expect(page.locator("#local-batch-status-page")).toHaveClass(/active/);
+  await expect(page.locator("#scene-appearances-page")).not.toHaveClass(/active/);
 
   await expect(page.locator("#toolbar-local-body-reference")).toHaveCount(0);
-  await expect(page.locator("#toolbar-local-character-overview")).toHaveCount(1);
   await expect(page.locator("#toolbar-gate-test-rig")).toHaveCount(1);
 });
 
 test("Run all Remaining starts independently of the open page", async ({ page, request }) => {
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
-  await page.locator('#local-assets-menu [data-page="local-batch-status"]').click();
+  await page.locator('#toolbar-batches').click();
   const started = page.waitForResponse((response) => response.url().endsWith("/api/local/run-all-remaining")
     && response.request().method() === "POST");
   await page.locator("#local-run-all-remaining").click();
@@ -1294,9 +1564,11 @@ test("all Local asset routes share batch UI and expose only pipeline-specific in
     await route.fulfill({ json: { candidate_count: 36, views: ["FRONT"] } });
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   for (const [pageName, title] of [
     ["local-body-reference", "Body-Reference"], ["local-head-image", "Head-Image"],
     ["local-character-assembly", "Character-Assembly"], ["local-costume-dressing", "Costume-Dressing"],
@@ -1313,11 +1585,23 @@ test("all Local asset routes share batch UI and expose only pipeline-specific in
     else await expect(page.locator("#local-pipeline-costume-label")).toBeHidden();
     if (["local-character-assembly", "local-costume-dressing"].includes(pageName)) await expect(page.locator("#local-pipeline-anchor-option")).toBeVisible();
     else await expect(page.locator("#local-pipeline-anchor-option")).toBeHidden();
-    if (pageName === "local-head-image") await expect(page.locator("#local-pipeline-source-option")).toBeVisible();
-    else await expect(page.locator("#local-pipeline-source-option")).toBeHidden();
+    if (pageName === "local-head-image") {
+      await expect(page.locator("#local-pipeline-source-option")).toBeVisible();
+      await expect(page.locator("#local-pipeline-apply-phase-change")).toBeVisible();
+      await expect(page.locator("#local-pipeline-apply-phase-change")).not.toBeChecked();
+      await expect(page.locator("#local-pipeline-apply-phase-change")).toBeDisabled();
+      await page.locator("#local-pipeline-source-file").setInputFiles({
+        name: "adult-front.png", mimeType: "image/png",
+        buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64"),
+      });
+      await expect(page.locator("#local-pipeline-apply-phase-change")).toBeEnabled();
+      await page.locator("#local-pipeline-apply-phase-change").check();
+      await page.locator("#local-pipeline-preview").click();
+      await expect.poll(() => previews.some((item) => item.body.apply_phase_change === true)).toBeTruthy();
+    } else await expect(page.locator("#local-pipeline-source-option")).toBeHidden();
   }
   expect(runLists).toHaveLength(4);
-  expect(previews).toHaveLength(4);
+  expect(previews).toHaveLength(5);
   for (const call of runLists) {
     expect(call).toMatch(/character=/);
     expect(call).toMatch(/phase=/);
@@ -1362,9 +1646,11 @@ test("all four local pipelines expose the same ranked candidate review and obser
   });
   await page.route("**/api/local/*/preview", (route) => route.fulfill({ json: { candidate_count: 1, views: ["FRONT"] } }));
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   for (const pageName of ["local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing"]) {
     await page.locator("#local-assets-button").click();
     await page.locator(`#local-assets-menu [data-page="${pageName}"]`).click();
@@ -1410,9 +1696,11 @@ test("costume lock remains available when another batch currently owns the lock"
     await route.fulfill({ json: runFor(costume) });
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-costume-dressing"]').click();
 
@@ -1439,9 +1727,11 @@ test("local provisional source batches are chosen by name and sent as API values
     } });
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-character-assembly"]').click();
   const bodySource = page.locator('#local-pipeline-source-batches select[data-source-role="body_reference"]');
@@ -1465,9 +1755,11 @@ test("local character asset candidates render every view section", async ({ page
   await page.route("**/api/local/character-assembly/runs?**", (route) => route.fulfill({ json: { runs: [{ run_id: run.run_id, status: run.status }] } }));
   await page.route("**/api/local/character-assembly/runs/assembly-render-test", (route) => route.fulfill({ json: run }));
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-character-assembly"]').click();
 
@@ -1504,9 +1796,11 @@ test("Run remaining is placed after batch review actions and tracks unstarted vi
     await route.fulfill({ json: { ...remainingRun, status: "READY_FOR_VIEWS", target_views: ["RIGHT_PROFILE"] } });
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
   await page.locator("#local-assets-button").click();
   await page.locator('#local-assets-menu [data-page="local-body-reference"]').click();
   const runButton = page.locator("#local-pipeline-proceed");
@@ -1527,25 +1821,74 @@ test("Run remaining is placed after batch review actions and tracks unstarted vi
   await expect(runButton).toBeDisabled();
 });
 
-test("Local workspace skips production work summary requests", async ({ page }) => {
+test("Run remaining retries stopped costume images including FRONT without a selection", async ({ page }) => {
+  const runs = [
+    { run_id: "stopped-front", character: "Test", phase: "Adult", costume: "Travel",
+      status: "CANCELLED", stop_requested: true, error: "Render failed", use_front_anchor: true,
+      views: ["FRONT"], candidate_count: 1, selected_views: {}, rankings: {}, local_assets: {},
+      candidates: [{ candidate_id: "F-001", view: "FRONT", status: "FAILED", image_filled: false,
+        image_path: "/missing-front.png", render_error: "Render failed" }] },
+    { run_id: "stopped-other", character: "Test", phase: "Adult", costume: "Travel",
+      status: "CANCELLED", stop_requested: true, error: "Render failed", use_front_anchor: true,
+      views: ["FRONT", "FRONT_RIGHT_3_4"], candidate_count: 2, front_anchor: "F-001",
+      selected_views: { FRONT: "F-001" }, rankings: {}, local_assets: {},
+      candidates: [
+        { candidate_id: "F-001", view: "FRONT", status: "COMPLETE", image_path: "/front.png", image_filled: true },
+        { candidate_id: "FR-005", view: "FRONT_RIGHT_3_4", status: "FAILED", image_filled: false,
+          image_path: "/missing-other.png", render_error: "Render failed" },
+      ] },
+  ];
+  const proceeded = [];
+  await page.route("**/api/local-gates/**", (route) => route.fulfill({ json: { gates: {}, statuses: {} } }));
+  await page.route("**/api/costumes?**", (route) => route.fulfill({ json: { costumes: [{ name: "Travel" }] } }));
+  await page.route("**/api/local/costume-dressing/runs?**", (route) => route.fulfill({
+    json: { runs: runs.map(({ run_id, status }) => ({ run_id, status })) },
+  }));
+  await page.route(/\/api\/local\/costume-dressing\/runs\/stopped-(front|other)\?/, (route) => {
+    const run = runs.find((item) => route.request().url().includes(item.run_id));
+    return route.fulfill({ json: run });
+  });
+  await page.route("**/api/local/costume-dressing/runs/*/views/FRONT/proceed?costume=Travel", (route) => {
+    const run = runs.find((item) => route.request().url().includes(item.run_id));
+    proceeded.push(run.run_id);
+    return route.fulfill({ json: { ...run, status: "READY_FOR_VIEWS", stop_requested: false, error: "",
+      target_views: [run.run_id === "stopped-front" ? "FRONT" : "FRONT_RIGHT_3_4"] } });
+  });
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
+  await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#local-assets-button").click();
+  await page.locator('#local-assets-menu [data-page="local-costume-dressing"]').click();
+  const button = page.locator("#local-pipeline-proceed");
+  for (const run of runs) {
+    await page.locator("#local-pipeline-runs").selectOption(run.run_id);
+    await expect(button).toBeEnabled();
+    await button.click();
+    await expect.poll(() => proceeded.includes(run.run_id)).toBe(true);
+    await expect(button).toBeDisabled();
+  }
+});
+
+test("Character Development is the only character workspace and keeps its production summary", async ({ page }) => {
   const summaryRequests = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.pathname === "/api/production-work-summary") summaryRequests.push(request.url());
   });
 
+  await page.addInitScript(() => localStorage.setItem("zet:workspace-preferences", JSON.stringify({
+    workspace: "local", pages: { character: "local-overview", local: "local-body-reference" },
+  })));
   await page.goto("/");
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#workspace-local").click();
-  await expect(page.locator("#workspace-local")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#workspace-local")).toHaveCount(0);
   expect(summaryRequests.some((url) => new URL(url).searchParams.get("workspace") === "local")).toBe(false);
-
-  const characterSummary = page.waitForRequest((request) => {
-    const url = new URL(request.url());
-    return url.pathname === "/api/production-work-summary" && url.searchParams.get("workspace") === "character";
-  });
-  await page.locator("#workspace-character").click();
-  await characterSummary;
+  await page.locator("#local-assets-button").click();
+  await page.locator('#toolbar-batches').click();
+  expect(summaryRequests.some((url) => new URL(url).searchParams.get("workspace") === "local")).toBe(false);
 });
 
 test("AI Queue stacks queue lists and Config manages Zet processes", async ({ page }) => {

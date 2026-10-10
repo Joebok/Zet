@@ -13,6 +13,7 @@ from zet.models.image_catalog import ImageCatalogItem
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.discovery_context import DiscoveryContext
 from zet.services.performance_instrumentation import record
+from zet.services.local_asset_store_service import LocalAssetStoreService
 
 
 SEMANTIC_CATEGORIES = {"Person", "Place", "Object", "Composite/Scene"}
@@ -55,6 +56,7 @@ class ImageCatalogService:
         self.asset_repository = asset_repository
         self.identity_key_repository = identity_key_repository
         self.turnaround_repository = turnaround_repository
+        self.local_asset_store = LocalAssetStoreService(config.base_library_path)
         self.story_service = story_service
         self.ai_paths = AIProxyPathService(config)
 
@@ -172,6 +174,21 @@ class ImageCatalogService:
     def _discover_character_images(self) -> list[dict]:
         rows = []
         for character, phase in self._character_phases() or []:
+            for asset in self.local_asset_store.locked_assets(character, phase):
+                image_path = Path(asset["image_path"])
+                pipeline = {"body-reference": "Body-Reference", "head-image": "Head-Image",
+                            "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing"}.get(
+                                str(asset.get("pipeline") or "").lower(), str(asset.get("pipeline") or "Local"))
+                identity, costume_text = self._canonical_character_sections(character, phase, asset.get("qualifier") or "")
+                source_key = f"local:{character}:{phase}:{asset['key']}"
+                rows.append(self._base_record(
+                    source_key, source_type="local-pipeline", tag=f"{{{{LOCAL:{character}:{phase}:{asset['key']}}}}}",
+                    label=" | ".join(part for part in [character, phase, pipeline, asset.get("view"), asset.get("qualifier")] if part),
+                    image_path=str(image_path), thumbnail_path=str(image_path), semantic_category="Person",
+                    character=character, phase=phase, costume=str(asset.get("qualifier") or ""),
+                    pipeline=pipeline, view=str(asset.get("view") or ""), inherited_identity=identity,
+                    inherited_costume=costume_text, costume_applicable=True,
+                ))
             try:
                 assets = self.asset_repository.list_assets(character, phase)
             except Exception:
@@ -254,7 +271,7 @@ class ImageCatalogService:
                 sheets = []
             for sheet in sheets:
                 image_path = self.path_service.resolve_path(str(sheet.locked_image_path or ""))
-                if sheet.sheet_type != "full" or not sheet.source_asset_ids or not image_path.is_file():
+                if sheet.sheet_type != "full" or not (sheet.source_asset_ids or sheet.source_local_keys) or not image_path.is_file():
                     continue
                 identity, costume_text = self._canonical_character_sections(character, phase, sheet.costume or "")
                 detail = [self.story_service._asset_reference_pipeline_code(sheet.source_pipeline), "Turnaround"]
@@ -266,7 +283,8 @@ class ImageCatalogService:
                 rows.append(self._base_record(
                     source_key,
                     source_type="turnaround",
-                    tag=f"{{{{ASSET:{character}:{phase}:{sheet.source_asset_ids[0]}:{' | '.join(detail)}}}}}",
+                    tag=(f"{{{{ASSET:{character}:{phase}:{sheet.source_asset_ids[0]}:{' | '.join(detail)}}}}}"
+                         if sheet.source_asset_ids else f"{{{{TURNAROUND:{character}:{phase}:{sheet.turnaround_id}}}}}"),
                     label=sheet.label or sheet.turnaround_id,
                     image_path=str(image_path),
                     thumbnail_path=str(image_path),

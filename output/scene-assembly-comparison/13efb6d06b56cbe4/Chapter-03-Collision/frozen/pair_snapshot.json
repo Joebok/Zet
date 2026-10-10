@@ -1,0 +1,858 @@
+{
+  "scene": {
+    "schema_version": 4,
+    "file_kind": "scene",
+    "scene": {
+      "id": "chapter_03_collision",
+      "name": "Chapter 03 - Collision",
+      "slug": "Chapter-03-Collision",
+      "story_settings_path": "Stories/FirstDay/FirstDay.story.json",
+      "associated_png_path": "Stories/FirstDay/Chapter-03-Collision.png",
+      "story_beat": "Kaeldor and the schoolboys have just carelessly knocked Tsaeytte over, spilling her and her books to the ground.",
+      "_story_slug": "FirstDay"
+    },
+    "setup": {
+      "canvas": {
+        "orientation": "portrait",
+        "aspect_ratio": "4:5"
+      },
+      "composition": {
+        "focal_point": "Tsaeytte",
+        "left_to_right": [
+          "Kaeldor_and_the_Schoolboys_1791152906199",
+          "Tsaeytte_and_Valindia_1791243031945"
+        ],
+        "composition_notes": "Kaeldor and the school boys are walking out of the frame, towards the camera on the left side of the image."
+      },
+      "environment": {
+        "location": "On the pathway in front of the arch.",
+        "lighting": "Morning sun",
+        "mood": "chaotic",
+        "weather_or_atmosphere": "clear",
+        "general_background_notes": "",
+        "general_foreground_notes": ""
+      }
+    },
+    "scene_elements": [
+      {
+        "id": "Tsaeytte",
+        "display_name": "Tsaeytte",
+        "resource_type": "Character",
+        "element_type": "Character",
+        "character": "Tsaeytte",
+        "phase": "Youth",
+        "costume": "Woodland outfit",
+        "aux_category": "",
+        "aux_resource_id": "",
+        "reference_images": [
+          {
+            "roles": [
+              "visual reference"
+            ],
+            "ignore": [
+              "source pose",
+              "source background",
+              "source framing"
+            ],
+            "notes": "",
+            "preserve": [],
+            "change": [],
+            "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4",
+            "tag": "",
+            "asset_id": "",
+            "set_id": "",
+            "primary_prompt_source": true
+          }
+        ],
+        "element_visual_override": "Tsaeytte has just knocked over. She is sitting on the ground, legs splayed out, her arms behind her to support her upper body. Four books scattered around her. Tears are welling up as Tsaeytte begins to cry.",
+        "fallback_visual_description": "",
+        "notes": "",
+        "subscene_id": "Tsaeytte_and_Valindia_1791243031945_subscene",
+        "resolved_source_sections": {
+          "identity_preservation_core": "* Tsaeytte is a Youth-phase high elf, apparent age 17–18, with a petite slender build, about 5 feet tall, slim limbs, narrow waist and hips, and softly sloped shoulders.\n* Her skin is light warm golden-beige with a subtle sun-kissed tan, warm peach-gold undertones, and natural healthy color.\n* Her hair is long and thick, reaching mid-back behind the shoulders, with a lightly rumpled texture and soft layered separation.\n* A woodland-green ribbon bow is secured at the back of the head at the nape, with short trailing ends where visible.\n* Preserve her long pointed high-elf ears angled outward and slightly upward, exposing them only where the view and hair permit.\n\nMaintain the same Youth-phase identity, age, long mid-back hair, ribbon placement, ear anatomy, and petite slender proportions. Preserve naturally visible traits without turning the head or body to expose hidden features.",
+          "identity_preservation_costume": "* Simple practical rural student clothing: leaf-green long-sleeved blouse with modest gathered neckline near the collarbone, simple front tie, loose sleeves gathered at the wrists, and a fully covered waist tucked or gathered into a broad brown leather belt.\n* A full plain dark forest-green wool skirt falls to lower-calf or ankle height as the pose permits. Thick cream socks and sturdy brown leather lace-up ankle boots with low practical heels remain visible below it.\n* Keep the fabric matte, durable, modest, and unadorned, with no jewelry, weapons, signs of wealth, adult adventuring gear, leggings, armor, ornate robes, or glamorous uniform.\n\nPreserve naturally visible costume traits without changing the requested body or head orientation to expose hidden features.",
+          "identity_anchors": "* Petite slender high elf, apparent age 17–18.\n* Long thick black hair reaching mid-back behind the shoulders and long pointed ears.\n* Woodland-green ribbon bow at the back of the head at the nape, where naturally visible.",
+          "costume_anchors": "* Simple practical rural student clothing: leaf-green long-sleeved blouse with modest gathered neckline near the collarbone, simple front tie, loose sleeves gathered at the wrists, and a fully covered waist tucked or gathered into a broad brown leather belt.\n* A full plain dark forest-green wool skirt falls to lower-calf or ankle height as the pose permits. Thick cream socks and sturdy brown leather lace-up ankle boots with low practical heels remain visible below it.\n* Keep the fabric matte, durable, modest, and unadorned, with no jewelry, weapons, signs of wealth, adult adventuring gear, leggings, armor, ornate robes, or glamorous uniform.",
+          "identity_anchor_source": "Characters/Tsaeytte/Youth/Character.md",
+          "costume_anchor_source": "Characters/Tsaeytte/Youth/Costume_Woodland_outfit.md",
+          "identity_source": "Library/assets/fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+          "costume_source": "Library/assets/fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+          "view_conditioning_diagnostics": [
+            "SCENE_CHARACTER_IDENTITY: view-specific lines omitted because the requested orientation is unavailable",
+            "SCENE_COSTUME_IDENTITY: view-specific lines omitted because the requested orientation is unavailable",
+            "SCENE_CHARACTER_ANCHORS: view-specific lines omitted because the requested orientation is unavailable",
+            "SCENE_COSTUME_ANCHORS: view-specific lines omitted because the requested orientation is unavailable"
+          ],
+          "library_asset_id": "fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+          "library_checksum": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8",
+          "reference_warnings": []
+        }
+      },
+      {
+        "id": "Valindia_8844d004",
+        "display_name": "Valindia",
+        "resource_type": "Character",
+        "element_type": "Character",
+        "character": "Valindia",
+        "phase": "Adult",
+        "costume": "School Outfit",
+        "aux_category": "",
+        "aux_resource_id": "",
+        "reference_images": [
+          {
+            "roles": [
+              "visual reference"
+            ],
+            "ignore": [
+              "source pose",
+              "source background",
+              "source framing"
+            ],
+            "notes": "",
+            "preserve": [],
+            "change": [],
+            "reference_key": "valindia.adult.costume-dressing.school-outfit.front-right-3-4",
+            "tag": "",
+            "asset_id": "",
+            "set_id": "",
+            "primary_prompt_source": true
+          }
+        ],
+        "element_visual_override": "Valindia shows an uncharacteristic display of empathy",
+        "fallback_visual_description": "",
+        "notes": "",
+        "subscene_id": "Tsaeytte_and_Valindia_1791243031945_subscene",
+        "resolved_source_sections": {
+          "identity_preservation_core": "* Valindia is a tall, slender young-adult feminine high elf with elongated limbs and legs, narrow waist, modest bust, and fair skin. Preserve adult proportions rather than enlarging the head into a youthful or chibi scale.\n* Her skin is fair and smooth with warm natural undertones.\n* Her straight smooth hair forms a short, softly layered bob ending around the jaw and upper neck, with generous rounded body through the crown and sides and fine ends that hang naturally downward.\n* Hair is deep black at the crown, roots, bangs, and underlayer, with vivid crimson-red through the outer side sections. Preserve the soft transitions without stripes, bands, or sharp color divisions.\n* Long pointed high-elf ears project outward and slightly upward beyond the bob wherever naturally visible.\n\nMaintain the same facial geometry, ice-blue eyes, ear proportions, short black-and-crimson bob, adult age, and tall slender body. Preserve naturally visible traits without changing the requested head or body orientation.",
+          "identity_preservation_costume": "* Fitted black-and-gold school outfit: high standing-collar tailored jacket with slightly puffed shoulders, long fitted sleeves, flared cuffs, narrow gold piping, and dense botanical and arcane-style gold embroidery.\n* A broad black leather belt with rectangular gold buckle tops a short structured hip layer over very short fitted black bottoms. Sheer dark brown-black tights continue into black mid-calf leather boots with slouched shafts, rounded-square toes, thick soles, chunky high block heels, buckle straps, and restrained gold linework.\n* A compact black leather pouch stays at the anatomical-right hip, visible only where the view and panels permit.\n* A narrow black leather strap with small gold buckle and circular fitting stays around the anatomical-left upper thigh, visible only where the view and panels permit.\n* Show the established ornate dangling gold earring where naturally visible; a matching earring on the hidden ear is not established.\n* No long skirt, gown, cape, armor plates, bare legs, stiletto heels, flat footwear, extra weapons, or oversized gear.\n\nPreserve naturally visible costume traits without changing the requested body or head orientation to expose hidden features.",
+          "identity_anchors": "* Tall slender young-adult high elf.\n* Long pointed ears and a short, full rounded bob with black bangs and underlayers beneath crimson-red outer sections.",
+          "costume_anchors": "* Fitted black-and-gold school outfit: high standing-collar tailored jacket with slightly puffed shoulders, long fitted sleeves, flared cuffs, narrow gold piping, and dense botanical and arcane-style gold embroidery.\n* A broad black leather belt with rectangular gold buckle tops a short structured hip layer over very short fitted black bottoms. Sheer dark brown-black tights continue into black mid-calf leather boots with slouched shafts, rounded-square toes, thick soles, chunky high block heels, buckle straps, and restrained gold linework.\n* A compact black leather pouch stays at the anatomical-right hip, visible only where the view and panels permit.\n* A narrow black leather strap with small gold buckle and circular fitting stays around the anatomical-left upper thigh, visible only where the view and panels permit.\n* Show the established ornate dangling gold earring where naturally visible; a matching earring on the hidden ear is not established.\n* No long skirt, gown, cape, armor plates, bare legs, stiletto heels, flat footwear, extra weapons, or oversized gear.",
+          "identity_anchor_source": "Characters/Valindia/Adult/Character.md",
+          "costume_anchor_source": "Characters/Valindia/Adult/Costume_School_Outfit.md",
+          "identity_source": "Library/assets/d69af379-ac56-4f57-a8fe-3b16308b0065",
+          "costume_source": "Library/assets/d69af379-ac56-4f57-a8fe-3b16308b0065",
+          "view_conditioning_diagnostics": [
+            "SCENE_CHARACTER_IDENTITY: view-specific lines omitted because the requested orientation is unavailable",
+            "SCENE_COSTUME_IDENTITY: view-specific lines omitted because the requested orientation is unavailable",
+            "SCENE_CHARACTER_ANCHORS: view-specific lines omitted because the requested orientation is unavailable",
+            "SCENE_COSTUME_ANCHORS: view-specific lines omitted because the requested orientation is unavailable"
+          ],
+          "library_asset_id": "d69af379-ac56-4f57-a8fe-3b16308b0065",
+          "library_checksum": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf",
+          "reference_warnings": []
+        }
+      },
+      {
+        "id": "Kaeldor_2fa4554e",
+        "display_name": "Kaeldor",
+        "resource_type": "Person",
+        "element_type": "Character",
+        "character": "",
+        "phase": "",
+        "costume": "",
+        "aux_category": "person",
+        "aux_resource_id": "kaeldor",
+        "reference_images": [
+          {
+            "roles": [
+              "visual reference"
+            ],
+            "ignore": [
+              "source pose",
+              "source background",
+              "source framing"
+            ],
+            "notes": "",
+            "preserve": [],
+            "change": [],
+            "set_id": "",
+            "primary_prompt_source": true,
+            "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+            "tag": "",
+            "reference_key": ""
+          }
+        ],
+        "element_visual_override": "Kaeldor is walking out of frame toward the camera. He slightly turns his head to mumble to Tsaeytte.",
+        "fallback_visual_description": "",
+        "notes": "",
+        "subscene_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene",
+        "resolved_source_sections": {
+          "identity_preservation_core": "Kaeldor is a young male elf with pointed ears, warm tan skin, short light-brown hair, shaved geometric patterns at the sides, and a confident grin. Ivory open-collar linen shirt with rolled sleeves, burgundy waistcoat with gold academy crest, dark trousers and leather belt, a blue pendant.",
+          "identity_preservation_costume": "",
+          "identity_source": "Library/assets/9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "costume_source": "Library/assets/9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "library_asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+          "library_checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+          "reference_warnings": [
+            "Optional legacy auxiliary fallback is unavailable: Auxiliary resource kaeldor not found."
+          ]
+        }
+      },
+      {
+        "id": "Spire_Archway_efbf29cc",
+        "display_name": "Spire - Archway",
+        "resource_type": "Place",
+        "element_type": "Backdrop",
+        "character": "",
+        "phase": "",
+        "costume": "",
+        "aux_category": "place",
+        "aux_resource_id": "spire-archway",
+        "reference_images": [
+          {
+            "roles": [
+              "visual reference"
+            ],
+            "ignore": [
+              "source pose",
+              "source background",
+              "source framing"
+            ],
+            "notes": "",
+            "set_id": "",
+            "primary_prompt_source": true,
+            "preserve": [],
+            "change": [],
+            "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+            "tag": "",
+            "reference_key": ""
+          }
+        ],
+        "element_visual_override": "",
+        "fallback_visual_description": "",
+        "notes": "",
+        "subscene_id": "background",
+        "resolved_source_sections": {
+          "identity_preservation_core": "Ornate academy archway and view of the Spire from the reference. The inscription across the upper arch reads \"POTENTIAL IS NOTHING WITHOUT DISCIPLINE\".",
+          "identity_preservation_costume": "",
+          "identity_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+          "costume_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+          "library_asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+          "library_checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+          "reference_warnings": [
+            "Optional legacy auxiliary fallback is unavailable: Auxiliary resource spire-archway not found."
+          ]
+        }
+      },
+      {
+        "id": "Kaeldor_and_the_Schoolboys_1791152906199",
+        "display_name": "Kaeldor and the Schoolboys",
+        "resource_type": "Scene-Only",
+        "element_type": "Prop",
+        "character": "",
+        "phase": "",
+        "costume": "",
+        "aux_category": "",
+        "reference_set_id": "",
+        "reference_images": [],
+        "element_visual_override": "",
+        "fallback_visual_description": "",
+        "notes": "",
+        "subscene_id": ""
+      },
+      {
+        "id": "Schoolboy_1_1791240161841",
+        "display_name": "Schoolboy 1",
+        "resource_type": "Person",
+        "element_type": "Character",
+        "character": "",
+        "phase": "",
+        "costume": "",
+        "aux_category": "person",
+        "reference_set_id": "",
+        "reference_images": [
+          {
+            "roles": [
+              "visual reference"
+            ],
+            "preserve": [
+              "identity",
+              "costume"
+            ],
+            "change": [
+              "pose"
+            ],
+            "ignore": [
+              "background"
+            ],
+            "notes": "",
+            "primary_prompt_source": true,
+            "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+            "set_id": "",
+            "tag": "",
+            "reference_key": ""
+          }
+        ],
+        "element_visual_override": "",
+        "fallback_visual_description": "",
+        "notes": "",
+        "subscene_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene",
+        "resolved_source_sections": {
+          "identity_preservation_core": "Schoolboy 1: slim youthful male elf with pale warm skin, pointed ears, tousled copper-red hair, freckles and a mischievous smile. burgundy school blazor, ivory shirt purple tie, burgundy academy waistcoat with gold crest, charcoal trousers, brown belt and boots.",
+          "identity_preservation_costume": "",
+          "identity_source": "Library/assets/14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "costume_source": "Library/assets/14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "library_asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+          "library_checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+          "reference_warnings": []
+        }
+      },
+      {
+        "id": "Schoolboy_2_1791240176928",
+        "display_name": "Schoolboy 2",
+        "resource_type": "Person",
+        "element_type": "Character",
+        "character": "",
+        "phase": "",
+        "costume": "",
+        "aux_category": "person",
+        "reference_set_id": "",
+        "reference_images": [
+          {
+            "roles": [
+              "visual reference"
+            ],
+            "preserve": [
+              "identity",
+              "costume"
+            ],
+            "change": [
+              "pose"
+            ],
+            "ignore": [
+              "background"
+            ],
+            "notes": "",
+            "primary_prompt_source": true,
+            "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+            "set_id": "",
+            "tag": "",
+            "reference_key": ""
+          }
+        ],
+        "element_visual_override": "",
+        "fallback_visual_description": "",
+        "notes": "",
+        "subscene_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene",
+        "resolved_source_sections": {
+          "identity_preservation_core": "Schoolboy 2: stocky, youthful male elf with medium olive skin, pointed ears, short dark brown hair, hazel eyes, rounder face and amused grin. burgundy school blazer, ivory shirt, loose deep purple tie, burgundy academy waistcoat with gold crest, charcoal trousers, brown belt and boots.",
+          "identity_preservation_costume": "",
+          "identity_source": "Library/assets/89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "costume_source": "Library/assets/89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "library_asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+          "library_checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+          "reference_warnings": []
+        }
+      },
+      {
+        "id": "Tsaeytte_and_Valindia_1791243031945",
+        "display_name": "Tsaeytte and Valindia",
+        "resource_type": "Scene-Only",
+        "element_type": "Prop",
+        "character": "",
+        "phase": "",
+        "costume": "",
+        "aux_category": "",
+        "reference_set_id": "",
+        "reference_images": [],
+        "element_visual_override": "",
+        "fallback_visual_description": "",
+        "notes": "",
+        "subscene_id": ""
+      }
+    ],
+    "subscenes": [
+      {
+        "id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene",
+        "name": "Kaeldor and the Schoolboys",
+        "enabled": true,
+        "kind": "element",
+        "assembly_role": "element_reference",
+        "anchor_element_id": "Kaeldor_and_the_Schoolboys_1791152906199",
+        "ui_color": "#DDEAF4",
+        "prompt_overrides": {
+          "focal_point": "",
+          "composition_notes": "",
+          "general_foreground_notes": "",
+          "general_background_notes": ""
+        },
+        "setup": {
+          "canvas": {
+            "orientation": "portrait",
+            "aspect_ratio": "4:5"
+          },
+          "composition": {
+            "focal_point": "Kaeldor",
+            "left_to_right": [],
+            "composition_notes": "Kaeldor is striding forward. He is closely followed by Schoolboy 1 and Schoolboy 2 who are shoving each other. All three are grouped closely together."
+          },
+          "environment": {
+            "location": "",
+            "lighting": {
+              "mode": "inherit",
+              "value": ""
+            },
+            "mood": {
+              "mode": "inherit",
+              "value": ""
+            },
+            "weather_or_atmosphere": {
+              "mode": "inherit",
+              "value": ""
+            },
+            "general_background_notes": "",
+            "general_foreground_notes": ""
+          }
+        }
+      },
+      {
+        "id": "Tsaeytte_and_Valindia_1791243031945_subscene",
+        "name": "Tsaeytte and Valindia",
+        "enabled": true,
+        "kind": "element",
+        "assembly_role": "element_reference",
+        "anchor_element_id": "Tsaeytte_and_Valindia_1791243031945",
+        "ui_color": "#E4E0F3",
+        "prompt_overrides": {
+          "focal_point": "",
+          "composition_notes": "",
+          "general_foreground_notes": "",
+          "general_background_notes": ""
+        },
+        "setup": {
+          "canvas": {
+            "orientation": "portrait",
+            "aspect_ratio": "4:5"
+          },
+          "composition": {
+            "focal_point": "",
+            "left_to_right": [],
+            "composition_notes": "Do not crop the books or any part of Tsaeytte or Valindia out of the image."
+          },
+          "environment": {
+            "location": "",
+            "lighting": {
+              "mode": "inherit",
+              "value": ""
+            },
+            "mood": {
+              "mode": "inherit",
+              "value": ""
+            },
+            "weather_or_atmosphere": {
+              "mode": "inherit",
+              "value": ""
+            },
+            "general_background_notes": "Neutral background with stone pathway.",
+            "general_foreground_notes": "Four books spilled onto pathway around Tsaeytte."
+          }
+        }
+      },
+      {
+        "id": "background",
+        "name": "Background",
+        "enabled": true,
+        "assembly_role": "backdrop",
+        "ui_color": "#DDEAF4",
+        "prompt_overrides": {
+          "focal_point": "",
+          "composition_notes": "Move the camera in closer to the archway so the foreground is almost underneath the archway.",
+          "general_foreground_notes": "",
+          "general_background_notes": ""
+        },
+        "kind": "background",
+        "anchor_element_id": ""
+      }
+    ],
+    "placements": [
+      {
+        "id": "placement_1784320107581",
+        "scene_element_id": "Tsaeytte",
+        "position_within_cell": "right",
+        "depth": "foreground",
+        "pose": {
+          "summary": "Sitting on the ground amongst four scattered books. Legs out front, hands behind to support her.",
+          "gaze_target_element_id": "Kaeldor_2fa4554e",
+          "expression": "sad and confused"
+        },
+        "motion": {
+          "state": "stationary",
+          "direction_screen": "",
+          "cue": ""
+        },
+        "placement_notes": "Tsaeytte is facing towards the left side of the image."
+      },
+      {
+        "id": "placement_1784320169940",
+        "scene_element_id": "Valindia_8844d004",
+        "position_within_cell": "center",
+        "depth": "midground",
+        "pose": {
+          "summary": "raising her hands to her face in concern",
+          "gaze_target_element_id": "Tsaeytte",
+          "expression": "Surprised and concerned"
+        },
+        "motion": {
+          "state": "stationary",
+          "direction_screen": "away from camera",
+          "cue": ""
+        },
+        "placement_notes": "",
+        "world_position": "Near side of the arch, behind Tsaeytte."
+      },
+      {
+        "id": "placement_1784320293818",
+        "scene_element_id": "Kaeldor_2fa4554e",
+        "position_within_cell": "left",
+        "depth": "foreground",
+        "pose": {
+          "summary": "Confidently walking with his hands in his pockets, head turned slightly to screen-right.",
+          "gaze_target_element_id": "",
+          "expression": "confident and shameless"
+        },
+        "motion": {
+          "state": "moving",
+          "direction_screen": "toward camera",
+          "cue": "Kaeldor is striding forward."
+        },
+        "placement_notes": ""
+      },
+      {
+        "id": "placement_1784326509906",
+        "scene_element_id": "Spire_Archway_efbf29cc",
+        "position_within_cell": "",
+        "depth": "background",
+        "pose": {
+          "summary": "",
+          "gaze_target_element_id": "",
+          "expression": ""
+        },
+        "motion": {
+          "state": "stationary",
+          "direction_screen": "",
+          "cue": ""
+        },
+        "placement_notes": ""
+      },
+      {
+        "id": "placement_1791152906199",
+        "scene_element_id": "Kaeldor_and_the_Schoolboys_1791152906199",
+        "position_within_cell": "left",
+        "depth": "foreground",
+        "pose": {
+          "summary": "",
+          "gaze_target_element_id": "",
+          "expression": ""
+        },
+        "motion": {
+          "state": "stationary",
+          "direction_screen": "",
+          "cue": ""
+        },
+        "placement_notes": ""
+      },
+      {
+        "id": "placement_1791240161841",
+        "scene_element_id": "Schoolboy_1_1791240161841",
+        "position_within_cell": "left",
+        "depth": "foreground",
+        "pose": {
+          "summary": "walking forward, pushing Schoolboy 2",
+          "gaze_target_element_id": "",
+          "expression": ""
+        },
+        "motion": {
+          "state": "stationary",
+          "direction_screen": "",
+          "cue": ""
+        },
+        "placement_notes": "",
+        "world_position": "Behind Kaeldor, next to Schoolboy 2"
+      },
+      {
+        "id": "placement_1791240176928",
+        "scene_element_id": "Schoolboy_2_1791240176928",
+        "position_within_cell": "left",
+        "depth": "foreground",
+        "pose": {
+          "summary": "walking forward, shoving Schoolboy 1",
+          "gaze_target_element_id": "Schoolboy_1_1791240161841",
+          "expression": "mischievous"
+        },
+        "motion": {
+          "state": "moving",
+          "direction_screen": "",
+          "cue": ""
+        },
+        "placement_notes": "",
+        "world_position": "Behind Kaeldor next to Schoolboy 1"
+      },
+      {
+        "id": "placement_1791243031945",
+        "scene_element_id": "Tsaeytte_and_Valindia_1791243031945",
+        "position_within_cell": "center",
+        "depth": "midground",
+        "pose": {
+          "summary": "",
+          "gaze_target_element_id": "",
+          "expression": ""
+        },
+        "motion": {
+          "state": "stationary",
+          "direction_screen": "",
+          "cue": ""
+        },
+        "placement_notes": ""
+      }
+    ],
+    "interactions": [],
+    "custom_interactions": "",
+    "dialogue": [
+      {
+        "id": "dialogue_1784326702455",
+        "speaker_element_id": "Kaeldor_2fa4554e",
+        "text": "sorry",
+        "target_element_id": "",
+        "pointer_target": "speaker mouth",
+        "max_lines": 1,
+        "notes": "Small panel and font to indicate half-hearted, mumbled dialog. Kaeldor has only slightly turned his head."
+      }
+    ],
+    "final_image_prompt_overrides": {
+      "anatomical_requirements": "",
+      "avoid": "",
+      "high_risk_elements": "",
+      "final_verification": ""
+    },
+    "metadata": {
+      "created_at": "2026-07-17T13:54:11",
+      "updated_at": "2026-10-05T17:18:11",
+      "created_by": "Zet Scene Builder"
+    },
+    "depth_lanes": {
+      "foreground": [
+        "Tsaeytte",
+        "Kaeldor_2fa4554e",
+        "Kaeldor_and_the_Schoolboys_1791152906199",
+        "Schoolboy_1_1791240161841",
+        "Schoolboy_2_1791240176928"
+      ],
+      "midground": [
+        "Valindia_8844d004",
+        "Tsaeytte_and_Valindia_1791243031945"
+      ],
+      "background": [
+        "Spire_Archway_efbf29cc"
+      ]
+    },
+    "_revision": 31
+  },
+  "settings": {
+    "schema_version": 1,
+    "file_kind": "story_settings",
+    "story": {
+      "id": "firstday",
+      "title": "FirstDay",
+      "slug": "FirstDay",
+      "human_markdown_path": "Stories/FirstDay/FirstDay.md",
+      "premise": "",
+      "notes": ""
+    },
+    "style_defaults": {
+      "canonical_art_style": {
+        "full_prompt_text": "Painterly semi-realistic fantasy illustration with anime-influenced facial stylization and refined linework."
+      },
+      "visual_continuity": {
+        "rules": [
+          "Preserve the story's canonical art style across all scene images.",
+          "Preserve recurring characters, costumes, props, and locations when referenced by scene tags."
+        ],
+        "notes": ""
+      }
+    },
+    "dialogue_styles": [
+      {
+        "id": "compact_parchment",
+        "display_name": "Compact parchment dialogue panel",
+        "enabled_by_default": true,
+        "panel_prompt": "Compact rectangular parchment dialogue panel with softly rounded corners, minimal padding, warm ivory parchment background, subtle paper texture, and a thin dark bronze border.",
+        "pointer_prompt": "Short unobtrusive triangular pointer aimed toward the speaker's mouth.",
+        "lettering_prompt": "Clean modern comic-style sans-serif lettering, medium weight, crisp edges, high legibility.",
+        "layout_rules": [
+          "Panel should be only slightly larger than the text.",
+          "Do not obscure important faces",
+          "hands",
+          "props",
+          "or focal areas."
+        ],
+        "avoid": [
+          "oversized speech panel",
+          "hard-to-read text",
+          "panel covering faces"
+        ],
+        "notes": ""
+      }
+    ],
+    "compiler_profiles": {
+      "final_image_prompt": {
+        "include_story_premise": false,
+        "include_visual_continuity": true,
+        "include_dialogue_when_scene_has_dialogue": true,
+        "include_reference_assignments": true,
+        "notes": ""
+      },
+      "local_render": {
+        "purpose": "composition preview only",
+        "include_dialogue": false,
+        "include_reference_tags": false,
+        "negative_text_terms": [
+          "text",
+          "letters",
+          "caption",
+          "speech bubble",
+          "watermark"
+        ],
+        "notes": ""
+      }
+    },
+    "scene_index": [
+      "Chapter-01-Standing-in-Wonder",
+      "Chapter-02-At-the-Arch",
+      "Chapter-03-Collision",
+      "Chapter-04-A-Lending-Hand",
+      "Chapter-05",
+      "Chapter-06",
+      "Chapter-07-Nice-Hair",
+      "Chapter-08-Nightmare-Version",
+      "Collision"
+    ],
+    "metadata": {
+      "created_at": "2026-07-17T10:40:50",
+      "updated_at": "2026-10-04T07:59:47",
+      "created_by": "Zet Story Settings"
+    }
+  },
+  "sections": {
+    "anatomical_requirements": "# Anatomical Requirements\n\nRender anatomically correct characters.\n\n- Every visible hand has exactly five fingers in the correct anatomical arrangement.\n- Hands, wrists, elbows, shoulders, legs, feet, necks, and torsos are naturally connected.\n- No extra limbs, missing limbs, fused limbs, duplicated body parts, or disconnected anatomy.\n- Fingers have natural proportions and believable poses.\n- Character interactions do not cause anatomy to intersect or merge.",
+    "avoid": "# Avoid\n\n- Inconsistent character identity.\n- Wrong costume.\n- Modern objects.\n- Unreadable faces.\n- Merged characters.\n- Cropped characters.\n- Anatomical distortions.",
+    "high_risk_elements": "# High-Risk Elements\n\nPay particular attention to:\n\n- Hands making gestures.\n- Characters sitting with crossed legs.\n- Characters touching or closely facing each other.\n- Objects held in the hands.\n- Long ears remaining fully attached and correctly shaped.\n- Hair remaining consistent with the reference.",
+    "final_verification": "# Final Verification\n\n<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->\nBefore producing the final image, verify that:\n<!-- ZET:END IMAGE_PROMPT_ONLY -->\n<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->\nCheck the candidate image for these visible requirements:\n<!-- ZET:END ANALYSIS_PROMPT_ONLY -->\n\n- Character count and identities exactly match the scene description.\n- Every character is in the correct left/right position and depth.\n- Every visible hand has exactly five fingers with correct anatomy.\n- Arms, legs, feet, ears, and clothing are fully connected and anatomically correct.\n- Characters are completely separate; no merged bodies or intersecting limbs.\n- Props are held naturally and are clearly readable.\n- Eye lines and interactions match the story beat.\n- Costumes and recurring character features match the supplied references.\n- The setting, lighting, mood, and art style match the scene specification."
+  },
+  "resolved_material_hash": "6be015aedf0c90b5f58fb2ee5c299ea80954a7f97b40c1e99ab1410e72771352",
+  "references": [
+    {
+      "role": "story_reference",
+      "label": "Tsaeytte · Youth · Woodland outfit · Front Left 3 4",
+      "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\inputs\\001",
+      "kind": "entity-library",
+      "asset_id": "fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+      "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4",
+      "set_id": "",
+      "checksum": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8",
+      "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+      "sha256": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8"
+    },
+    {
+      "role": "story_reference",
+      "label": "Valindia · Adult · School Outfit · Front Right 3 4",
+      "tag": "{{LIB:REF:valindia.adult.costume-dressing.school-outfit.front-right-3-4}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\inputs\\002",
+      "kind": "entity-library",
+      "asset_id": "d69af379-ac56-4f57-a8fe-3b16308b0065",
+      "reference_key": "valindia.adult.costume-dressing.school-outfit.front-right-3-4",
+      "set_id": "",
+      "checksum": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf",
+      "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\d69af379-ac56-4f57-a8fe-3b16308b0065",
+      "sha256": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf"
+    },
+    {
+      "role": "story_reference",
+      "label": "Kaeldor",
+      "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\inputs\\003.png",
+      "kind": "entity-library",
+      "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+      "checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+      "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png",
+      "sha256": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30"
+    },
+    {
+      "role": "story_reference",
+      "label": "Spire Archway (new)",
+      "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\inputs\\004.png",
+      "kind": "entity-library",
+      "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+      "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+      "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+      "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e"
+    },
+    {
+      "role": "story_reference",
+      "label": "Schoolboy 1",
+      "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\inputs\\005.png",
+      "kind": "entity-library",
+      "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+      "checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+      "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png",
+      "sha256": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7"
+    },
+    {
+      "role": "story_reference",
+      "label": "Schoolboy 2",
+      "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\inputs\\006.png",
+      "kind": "entity-library",
+      "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+      "checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+      "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png",
+      "sha256": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f"
+    }
+  ],
+  "compiler_sources": {
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\001_Chapter-03-Collision.scene.json": "aa2f80d74fd0e5ab086ec03e92487d76975b352f3edff8fb93bd98717e4a2565",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\002_FirstDay.story.json": "58ed37083b5c8b03557ffa897a456d43dc29a361ff45f6c4deb4ea5f669ed89b",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\003_final_image_prompt_tail_v1.md": "501bc9f472f327f202805221a4f0f74d889da5cd4cc1ef08a55ece85adcfe675",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\004_Chapter-03-Collision.md": "75cd91dc7ce831e86fe75db1b17021dba5899c40c4e2ccee28fed1b90603e37f",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\005_FirstDay.md": "2f47246f5b60123e8ad2cd0a85315dceeba97e435142998ca37142633e3eb189",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\006_qwen_scene_prompt.py": "9e80ba697f179070f3b4edefa5ff170d31de87fe3d8631f496795f64bbd77abb",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\007_scene_render_compiler.py": "01e7c3fca5420a440de3aab3c4c74099e27ed00dd5bdef22561eef3e18d96513",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\008_scene_render_target_service.py": "0c4cd87ba77664b701e3272722366bb06d4105ce175d8009bc2b3bf3d439ae54",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\009_story_render_service.py": "3f9c63cad3aafe852ce7e8930bc906276dfa56ac3c2472a778f7364b23d778ff",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\010_universe.json": "6850ff8d4d45a67f455f19d0113a69803e2ef4614600024e7374ae2a380c4032",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\011_Character.md": "d1a2cba6a0f6979b89716081eb356001db8f5051e3c5b6469d1b27a543538f03",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\012_Costume_Woodland_outfit.md": "3881bec8639ceed14deec1358c6a5beb794f6d150f9ce48923984eeaee762a69",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\014_Character.md": "f985cbfa90e7d35b764090fdd9a427b46cb8714653535b8270e2aad95b41145b",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\015_Costume_School_Outfit.md": "71324d8c5c68c6eeda88d05ea1b092d364941d19cb83596f2121fa864892762b",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\021_fcd4054e-559e-4934-b6b2-43d391fdbd5c": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\022_d69af379-ac56-4f57-a8fe-3b16308b0065": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\023_9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\024_cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\025_14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\f5e8bd76f5b344429cdd09e591044837\\source_files\\026_89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f"
+  },
+  "sources": {
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\Stories\\FirstDay\\Chapter-03-Collision.scene.json": "aa2f80d74fd0e5ab086ec03e92487d76975b352f3edff8fb93bd98717e4a2565",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\Stories\\FirstDay\\FirstDay.story.json": "58ed37083b5c8b03557ffa897a456d43dc29a361ff45f6c4deb4ea5f669ed89b",
+    "C:\\Users\\Joe\\Projects\\Zet_v5\\Config\\Prompt_Templates\\final_image_prompt_tail_v1.md": "501bc9f472f327f202805221a4f0f74d889da5cd4cc1ef08a55ece85adcfe675",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\Stories\\FirstDay\\Chapter-03-Collision.md": "75cd91dc7ce831e86fe75db1b17021dba5899c40c4e2ccee28fed1b90603e37f",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\Stories\\FirstDay\\FirstDay.md": "2f47246f5b60123e8ad2cd0a85315dceeba97e435142998ca37142633e3eb189",
+    "C:\\Users\\Joe\\Projects\\Zet_v5\\zet\\services\\qwen_scene_prompt.py": "9e80ba697f179070f3b4edefa5ff170d31de87fe3d8631f496795f64bbd77abb",
+    "C:\\Users\\Joe\\Projects\\Zet_v5\\zet\\services\\scene_render_compiler.py": "01e7c3fca5420a440de3aab3c4c74099e27ed00dd5bdef22561eef3e18d96513",
+    "C:\\Users\\Joe\\Projects\\Zet_v5\\zet\\services\\scene_render_target_service.py": "0c4cd87ba77664b701e3272722366bb06d4105ce175d8009bc2b3bf3d439ae54",
+    "C:\\Users\\Joe\\Projects\\Zet_v5\\zet\\services\\story_render_service.py": "3f9c63cad3aafe852ce7e8930bc906276dfa56ac3c2472a778f7364b23d778ff",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\universe.json": "6850ff8d4d45a67f455f19d0113a69803e2ef4614600024e7374ae2a380c4032",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\Characters\\Tsaeytte\\Youth\\Character.md": "d1a2cba6a0f6979b89716081eb356001db8f5051e3c5b6469d1b27a543538f03",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\Characters\\Tsaeytte\\Youth\\Costume_Woodland_outfit.md": "3881bec8639ceed14deec1358c6a5beb794f6d150f9ce48923984eeaee762a69",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\Characters\\Valindia\\Adult\\Character.md": "f985cbfa90e7d35b764090fdd9a427b46cb8714653535b8270e2aad95b41145b",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\Characters\\Valindia\\Adult\\Costume_School_Outfit.md": "71324d8c5c68c6eeda88d05ea1b092d364941d19cb83596f2121fa864892762b",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\fcd4054e-559e-4934-b6b2-43d391fdbd5c": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\d69af379-ac56-4f57-a8fe-3b16308b0065": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+    "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f"
+  }
+}

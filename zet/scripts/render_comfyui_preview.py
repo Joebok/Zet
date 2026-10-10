@@ -13,6 +13,9 @@ from zet.services.comfyui_render_service import (
     run_comfyui_workflow,
 )
 from zet.services.config_service import ConfigService
+from zet.services.pipeline_compiler_support import with_universe_art_style
+from zet.services.universe_service import UniverseService
+from zet.services.local_render_policy import require_qwen_profile
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -40,6 +43,11 @@ def main(argv: list[str] | None = None) -> int:
         ir_path = args.scene_render_ir.resolve()
         ir_bytes = ir_path.read_bytes()
         ir = json.loads(ir_bytes.decode("utf-8-sig"))
+        universe_service = UniverseService(
+            config.base_library_path, config_path.parent / "Config" / "universe-selection.json"
+        )
+        universe_root = universe_service.get_universe(universe_service.selection())["root"]
+        ir = with_universe_art_style(ir, universe_root)
         profile_name = args.profile or config.comfyui_profile
         profiles_path = config_path.parent / "Config" / "Local_Render_Presets.json"
         profiles = json.loads(profiles_path.read_text(encoding="utf-8"))
@@ -47,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(profile, dict) or profile.get("backend") != "comfyui":
             raise ValueError(f"Unknown ComfyUI render profile: {profile_name}")
         checkpoint = args.checkpoint or config.comfyui_checkpoint
+        if not args.compile_only:
+            require_qwen_profile(config_path.parent, profile_name, checkpoint=checkpoint)
         scene_slug = str(ir.get("scene", {}).get("slug") or "Scene")
         compilation = compile_ir_to_comfyui_workflow(
             ir,
@@ -108,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
             "prompts": compilation.prompts,
             "layout_plan": compilation.debug.get("layout_plan", {}),
             "references_used": compilation.debug.get("references_used", []),
+            "qwen_reference_cache": compilation.debug.get("qwen_reference_cache"),
             "ipadapter_applications": compilation.debug.get("ipadapter_applications", []),
             "seed": compilation.seed,
             "resolved_seed": compilation.seed,

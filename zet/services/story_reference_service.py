@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import re
+import json
 
 from zet.services.auxiliary_resource_tags import auxiliary_resource_image_for_tag, auxiliary_resource_tags_in_text
+from zet.services.local_asset_source_service import LocalAssetSourceService
+from zet.services.local_asset_store_service import LocalAssetStoreService
 
 
 class StoryReferenceService:
@@ -23,13 +26,48 @@ class StoryReferenceService:
         self.identity_key_repository = identity_key_repository
         self.error_type = error_type
         self.turnaround_repository = turnaround_repository
+        self.local_asset_sources = LocalAssetSourceService(LocalAssetStoreService(path_service.config.base_library_path))
         self.image_catalog_service = None
+        self.entity_library_service = None
+
+    def resolve_library_asset(self, asset_id: str) -> dict:
+        service = self.entity_library_service
+        if service is None:
+            raise self.error_type("The entity image library is unavailable.")
+        asset = service.get_asset(asset_id)
+        if asset.get("status") != "approved":
+            raise self.error_type(f"Image asset is not approved: {asset_id}")
+        return {
+            "role": "story_reference", "label": asset.get("label") or asset["file_name"], "tag": f"{{{{LIB:ASSET:{asset_id}}}}}",
+            "path": asset["image_path"], "kind": "entity-library", "asset_id": asset_id,
+            "checksum": asset["checksum"],
+        }
+
+    def resolve_library_reference(self, reference_key: str) -> dict:
+        service = self.entity_library_service
+        if service is None:
+            raise self.error_type("The entity image library is unavailable.")
+        asset = service.resolve_reference(reference_key)
+        return {
+            "role": "story_reference", "label": asset.get("label") or asset["file_name"], "tag": f"{{{{LIB:REF:{reference_key}}}}}",
+            "path": asset["image_path"], "kind": "entity-library", "asset_id": asset["asset_id"],
+            "reference_key": reference_key, "set_id": asset.get("reference_set_id") or "",
+            "checksum": asset["checksum"],
+        }
 
     def resolve_aux_reference(self, tag: str) -> dict:
         if self.image_catalog_service is not None:
             item = self.image_catalog_service.managed_item_for_tag(tag)
             if item is not None:
                 return {"role": "story_reference", "label": item.label, "tag": item.tag, "path": item.image_path, "kind": "imported"}
+        if self.entity_library_service is not None:
+            try:
+                asset = self.entity_library_service.resolve_legacy_reference(tag)
+                return {"role": "story_reference", "label": asset["label"], "tag": tag,
+                        "path": asset["image_path"], "kind": "entity-library", "asset_id": asset["asset_id"],
+                        "checksum": asset["checksum"]}
+            except Exception:
+                pass
         try:
             resource, image = auxiliary_resource_image_for_tag(self.auxiliary_resource_repository.list_resources(), tag)
         except LookupError as exc:
@@ -50,6 +88,17 @@ class StoryReferenceService:
         if item is None:
             raise self.error_type(f"Imported image reference not found: {tag}")
         return {"role": "story_reference", "label": item.label, "tag": item.tag, "path": item.image_path, "kind": "imported"}
+
+    def resolve_local_asset_reference(self, tag: str, character: str, phase: str, source_key: str) -> dict:
+        try:
+            source = self.local_asset_sources.get_source(character, phase, source_key)
+        except Exception as exc:
+            raise self.error_type(f"Local image reference is no longer locked: {tag}") from exc
+        return {"role": "story_reference", "label": " | ".join(
+                    part for part in [source["pipeline"], source["view"], source["costume"]] if part),
+                "tag": tag, "path": source["image_path"], "kind": "local-pipeline",
+                "source_character": character, "source_phase": phase,
+                "source_local_key": source_key, "checksum": source["image_sha256"]}
 
     def resolve_asset_reference(self, tag: str, character: str, phase: str, asset_id: str) -> dict:
         descriptor = tag.removesuffix("}}").split(":", 4)
@@ -104,6 +153,19 @@ class StoryReferenceService:
             "turnaround_id": sheet.turnaround_id,
         }
 
+    def resolve_turnaround_sheet_reference(self, tag: str, character: str, phase: str, turnaround_id: str) -> dict:
+        if self.turnaround_repository is None:
+            raise self.error_type(f"Turnaround repository is not configured: {tag}")
+        sheet = next((item for item in self.turnaround_repository.list_sheets(character, phase)
+                      if item.turnaround_id == turnaround_id and item.sheet_type == "full"), None)
+        path = self.path_service.resolve_path(str(sheet.locked_image_path or "")) if sheet else None
+        if not sheet or not path or not path.is_file():
+            raise self.error_type(f"Locked turnaround reference not found: {tag}")
+        return {"role": "story_reference", "label": sheet.label or sheet.turnaround_id,
+                "tag": tag, "path": str(path), "kind": "turnaround",
+                "source_character": character, "source_phase": phase,
+                "turnaround_id": sheet.turnaround_id, "source_local_keys": sheet.source_local_keys}
+
     def resolve_identity_reference(self, tag: str, character: str, phase: str, identity_key_id: str) -> dict:
         if self.identity_key_repository is None:
             raise self.error_type(f"Identity Key repository is not configured: {tag}")
@@ -121,6 +183,7 @@ class StoryReferenceService:
             "source_phase": phase,
             "identity_key_id": identity_key.identity_key_id,
             "source_asset_id": identity_key.source_asset_id,
+            "source_local_key": identity_key.source_local_key,
         }
 
     def resolve_scene_reference(self, tag: str, story_slug: str, scene_slug: str) -> dict:
@@ -177,6 +240,8 @@ class StoryReferenceService:
             r"\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}"
             r"|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"
             r"|\{\{SCENE:([^:}]+):([^:}]+)\}\}"
+            r"|\{\{TURNAROUND:([^:}]+):([^:}]+):([^:}]+)\}\}"
+            r"|\{\{LOCAL:([^:}]+):([^:}]+):([^}]+)\}\}"
         )
         for tag, _, _, _ in auxiliary_resource_tags_in_text(scene_text):
             if tag not in seen:
@@ -201,6 +266,40 @@ class StoryReferenceService:
                 references.append(self.resolve_asset_reference(tag, match.group(1), match.group(2), match.group(3)))
             elif match.group(4):
                 references.append(self.resolve_identity_reference(tag, match.group(4), match.group(5), match.group(6)))
+            elif match.group(9):
+                references.append(self.resolve_turnaround_sheet_reference(tag, match.group(9), match.group(10), match.group(11)))
+            elif match.group(12):
+                references.append(self.resolve_local_asset_reference(tag, match.group(12), match.group(13), match.group(14)))
             else:
                 references.append(self.resolve_scene_reference(tag, match.group(7), match.group(8)))
+        for match in re.finditer(r"\{\{LIB:ASSET:([0-9a-fA-F-]{36})\}\}", scene_text or ""):
+            tag = match.group(0)
+            if tag not in seen:
+                seen.add(tag)
+                references.append(self.resolve_library_asset(match.group(1)))
+        for match in re.finditer(r"\{\{LIB:REF:([a-z0-9][a-z0-9._-]*)\}\}", scene_text or ""):
+            tag = match.group(0)
+            if tag not in seen:
+                seen.add(tag)
+                references.append(self.resolve_library_reference(match.group(1)))
+        try:
+            payload = json.loads(scene_text)
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+        def visit(value):
+            if isinstance(value, dict):
+                asset_id = str(value.get("asset_id") or "").strip()
+                reference_key = str(value.get("reference_key") or "").strip()
+                if asset_id or reference_key:
+                    reference = self.resolve_library_asset(asset_id) if asset_id else self.resolve_library_reference(reference_key)
+                    if reference["tag"] not in seen:
+                        seen.add(reference["tag"])
+                        references.append(reference)
+                for child in value.values():
+                    visit(child)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child)
+        if payload is not None:
+            visit(payload)
         return references

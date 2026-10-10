@@ -25,6 +25,11 @@ class CharacterOnboardingStatus:
     species_ancestry: str = ""
     gender_presentation: str = ""
     canonical_art_style: str = ""
+    standing_barefoot_height: str = ""
+    eye_height: str = ""
+    shoulder_width: str = ""
+    body_depth: str = ""
+    template_ready: bool = False
 
 
 @dataclass

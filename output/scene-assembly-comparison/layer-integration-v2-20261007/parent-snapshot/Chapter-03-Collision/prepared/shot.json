@@ -1,0 +1,83 @@
+{
+  "canvas": [
+    928,
+    1152
+  ],
+  "layers": [
+    {
+      "key": "group",
+      "label": "Kaeldor and the Schoolboys",
+      "box": [
+        0.01,
+        0.3,
+        0.48,
+        0.7
+      ],
+      "depth": 3,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\prepared\\group.png",
+      "sha256": "866dde31e0b906213037015fad0b8debd8a2d049d8efe955fe9346708daf5a1c",
+      "bbox": [
+        0,
+        0,
+        743,
+        1152
+      ],
+      "source_pixels": 855936,
+      "placed_size": [
+        445,
+        690
+      ],
+      "position": [
+        10,
+        462
+      ]
+    },
+    {
+      "key": "pair",
+      "label": "Tsaeytte and Valindia",
+      "box": [
+        0.44,
+        0.4,
+        0.55,
+        0.57
+      ],
+      "depth": 2,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\prepared\\pair.png",
+      "sha256": "2d322921328aa1292db8c7b65723f18a4468d8d515e8622b3b3d6688e407a588",
+      "bbox": [
+        0,
+        0,
+        928,
+        1150
+      ],
+      "source_pixels": 1067200,
+      "placed_size": [
+        510,
+        632
+      ],
+      "position": [
+        409,
+        485
+      ]
+    }
+  ],
+  "dialogue": [
+    {
+      "text": "sorry",
+      "speaker": "Kaeldor",
+      "lines": 1
+    }
+  ],
+  "requirements": [
+    "Exactly five characters appear: Kaeldor, two schoolboys, Tsaeytte, and Valindia.",
+    "Tsaeytte remains seated on the ground with her hands behind her supporting her, on the right with Valindia standing behind her.",
+    "Retain all five books visible in the accepted source; separately record that the authored scene asks for four.",
+    "The three boys occupy the left foreground as a single intact group; record whether Kaeldor reads as walking.",
+    "Kaeldor has one small, readable speech balloon containing exactly \"sorry\"."
+  ],
+  "background": {
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\prepared\\background.png",
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\source_images\\background.png",
+    "sha256": "a4d93a38809c072ecdc6bf6ff75a03d97b7b2a0372d1967d56c10e2883c85f6a"
+  }
+}

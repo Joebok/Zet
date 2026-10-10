@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import re
 import shutil
+import tempfile
+from types import SimpleNamespace
 from typing import Any
 
 from zet.services.atomic_file_service import write_json_atomic
@@ -21,7 +23,24 @@ class LocalAssetStoreService:
     """Store local selections next to experiment batches, separate from canonical assets."""
 
     def __init__(self, library_root: str | Path):
-        self.root = Path(library_root).resolve() / "Experiments" / "Character-Pipeline"
+        self.library_root = Path(library_root).resolve()
+        self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
+        self._entity_library = None
+
+    def _publish(self, image: Path, *, character: str, phase: str, pipeline: str, checksum: str,
+                 qualifier: str = "", view: str = "", reference_key: str = "") -> dict[str, Any]:
+        if self._entity_library is None:
+            from zet.repositories.entity_library_repository import EntityLibraryRepository
+            from zet.services.entity_library_service import EntityLibraryService
+            from zet.services.path_service import PathService
+            paths = PathService(SimpleNamespace(base_library_path=str(self.library_root)), self.library_root)
+            repository = EntityLibraryRepository(paths.entity_library_database_path())
+            repository.initialize()
+            self._entity_library = EntityLibraryService(paths, repository)
+        return self._entity_library.register_locked_pipeline_image(
+            image, label=image.stem, pipeline=pipeline, character=character, phase=phase, checksum=checksum,
+            costume=qualifier, view=view, reference_key=reference_key,
+        )
 
     @staticmethod
     def key(pipeline: str, view: str, qualifier: str = "") -> str:
@@ -38,7 +57,7 @@ class LocalAssetStoreService:
         return result
 
     def workspace_path(self, character: str, phase: str) -> Path:
-        return self.root / self._safe(character) / self._safe(phase) / "local_assets.json"
+        return self.library_root / "_state" / "LocalAssets" / self._safe(character) / self._safe(phase) / "local_assets.json"
 
     def _read(self, character: str, phase: str) -> dict[str, Any]:
         path = self.workspace_path(character, phase)
@@ -67,11 +86,37 @@ class LocalAssetStoreService:
                 continue
             if not record.get("locked") or record.get("stale"):
                 continue
+            batch_id = str(record.get("batch_id") or "").strip()
+            if batch_id and not self._batch_exists(character, phase, record, batch_id):
+                continue
             path = Path(str(record.get("locked_image_path") or "")).resolve()
             if not path.is_file() or self._image_hash(path) != record.get("image_sha256"):
                 continue
             result.append({"key": key, **record, "image_path": str(path)})
         return sorted(result, key=lambda item: item["key"])
+
+    def _batch_exists(self, character: str, phase: str, record: dict[str, Any], batch_id: str) -> bool:
+        """Require batch-owned locks to point at a live pipeline batch."""
+        if not re.fullmatch(r"(?:[0-9a-f]{32}|[0-9]{8}_[0-9]{6}_[0-9]{6})", batch_id):
+            return False
+        safe_character, safe_phase = self._safe(character), self._safe(phase)
+        pipeline = str(record.get("pipeline") or "").casefold()
+        batch_root = self.root / safe_character / safe_phase
+        if pipeline == "body-reference":
+            batch_root /= batch_id
+        elif pipeline == "head-image":
+            batch_root = batch_root / "Head-Image" / batch_id
+        elif pipeline == "character-assembly":
+            batch_root = batch_root / "Character-Assembly" / batch_id
+        elif pipeline == "costume-dressing":
+            raw_qualifier = str(record.get("qualifier") or "")
+            if not raw_qualifier:
+                return False
+            qualifier = self._safe(raw_qualifier)
+            batch_root = batch_root / "Costume-Dressing" / qualifier / batch_id
+        else:
+            return False
+        return (batch_root / "spec.json").is_file()
 
     @staticmethod
     def _image_hash(path: Path) -> str:
@@ -199,18 +244,16 @@ class LocalAssetStoreService:
             source = Path(str(record.get("image_path") or "")).resolve()
             if not source.is_file() or self._image_hash(source) != record.get("image_sha256"):
                 raise LocalAssetStoreError(f"Selected image for {key} is missing or has changed; review it again.")
-            locked_root = path.parent / "locked" / self._safe(pipeline)
-            if qualifier:
-                locked_root /= self._safe(qualifier)
-            locked_root /= self._safe(view)
-            locked_path = locked_root / f"{record['image_sha256'][:16]}_{source.name}"
-            locked_root.mkdir(parents=True, exist_ok=True)
-            if not locked_path.exists():
-                shutil.copy2(source, locked_path)
-            if self._image_hash(locked_path) != record["image_sha256"]:
-                raise LocalAssetStoreError(f"Could not verify immutable local image copy for {key}.")
+            try:
+                published = self._publish(source, character=character, phase=phase, pipeline=pipeline,
+                                          checksum=record["image_sha256"], qualifier=qualifier, view=view,
+                                          reference_key=str(record.get("reference_key") or ""))
+            except Exception as exc:
+                raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
+            locked_path = Path(published["image_path"])
             record.update({
-                "locked": True, "locked_image_path": str(locked_path),
+                "locked": True, "locked_image_path": str(locked_path), "entity_library_asset_id": published["asset_id"],
+                "reference_key": (published.get("logical_reference") or {}).get("reference_key", record.get("reference_key", "")),
                 "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 "lock_history": [*record.get("lock_history", []), {
                     "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -235,20 +278,30 @@ class LocalAssetStoreService:
                 if not image.is_file() or self._image_hash(image) != digest:
                     raise LocalAssetStoreError(f"Selected image for {pipeline} {view} is missing or changed.")
                 key = self.key(pipeline, view, qualifier)
-                locked_root = path.parent / "locked" / self._safe(pipeline)
-                if qualifier:
-                    locked_root /= self._safe(qualifier)
-                locked_root /= self._safe(view)
-                locked_path = locked_root / f"{digest[:16]}_{image.name}"
-                staged.append((key, item, image, locked_path, digest))
+                staged.append((key, item, image, Path(), digest))
 
+            published_assets = []
+            with tempfile.TemporaryDirectory() as staging_dir:
+                staged_images = []
+                for index, (key, item, image, _locked_path, digest) in enumerate(staged):
+                    staging_image = Path(staging_dir) / f"{index}{image.suffix}"
+                    shutil.copy2(image, staging_image)
+                    staged_images.append((key, item, image, staging_image, digest))
+                for key, item, image, staging_image, digest in staged_images:
+                    try:
+                        published = self._publish(staging_image, character=character, phase=phase,
+                                                  pipeline=str(item["pipeline"]), checksum=digest,
+                                                  qualifier=str(item.get("qualifier") or ""), view=str(item["view"]),
+                                                  reference_key=str(assets.get(key, {}).get("reference_key") or ""))
+                    except Exception as exc:
+                        raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
+                    locked_path = Path(published["image_path"])
+                    if self._image_hash(locked_path) != digest:
+                        raise LocalAssetStoreError(f"Could not verify permanent image for {key}.")
+                    reference_key = (published.get("logical_reference") or {}).get("reference_key", "")
+                    published_assets.append((key, item, image, locked_path, digest, published["asset_id"], reference_key))
             result = []
-            for key, item, image, locked_path, digest in staged:
-                locked_path.parent.mkdir(parents=True, exist_ok=True)
-                if not locked_path.exists():
-                    shutil.copy2(image, locked_path)
-                if self._image_hash(locked_path) != digest:
-                    raise LocalAssetStoreError(f"Could not verify immutable local image copy for {key}.")
+            for key, item, image, locked_path, digest, catalog_asset_id, published_reference_key in published_assets:
                 current = assets.get(key, {})
                 record = {
                     **current, "pipeline": str(item["pipeline"]), "view": str(item["view"]).upper(),
@@ -257,7 +310,8 @@ class LocalAssetStoreService:
                     "batch_name": str(item.get("batch_name") or ""),
                     "image_path": str(image), "image_sha256": digest,
                     "dependencies": list(item.get("dependencies") or []), "selected": True, "stale": False,
-                    "locked": True, "locked_image_path": str(locked_path),
+                    "locked": True, "locked_image_path": str(locked_path), "entity_library_asset_id": catalog_asset_id,
+                    "reference_key": (published_reference_key or item.get("reference_key") or assets.get(key, {}).get("reference_key") or ""),
                     "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                     "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 }

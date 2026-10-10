@@ -4,15 +4,53 @@ import base64
 import json
 from pathlib import Path
 import re
+import threading
 from urllib import request
 
 
 class OllamaModelService:
     """Discover locally available Ollama models and their capabilities."""
 
-    def __init__(self, base_url: str = "http://localhost:11434", timeout_seconds: float = 5.0):
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        timeout_seconds: float = 5.0,
+        cache_path: str | Path | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.cache_path = Path(cache_path) if cache_path is not None else None
+        self._catalog_lock = threading.Lock()
+
+    def cached_models(self) -> dict | None:
+        """Return the last saved local model catalog, if one is available."""
+        if self.cache_path is None:
+            return None
+        try:
+            value = json.loads(self.cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(value, dict) or not isinstance(value.get("models"), list):
+            return None
+        vision_models = value.get("vision_models", [])
+        if not isinstance(vision_models, list):
+            vision_models = []
+        return {
+            "models": [str(model) for model in value["models"] if isinstance(model, str)],
+            "vision_models": [str(model) for model in vision_models if isinstance(model, str)],
+            "capability_metadata_available": bool(value.get("capability_metadata_available", False)),
+        }
+
+    def refresh_model_catalog(self) -> dict:
+        """Fetch the current Ollama catalog and persist it for later Config page loads."""
+        with self._catalog_lock:
+            catalog = self.list_models()
+            if self.cache_path is not None:
+                self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+                temporary_path = self.cache_path.with_suffix(self.cache_path.suffix + ".tmp")
+                temporary_path.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
+                temporary_path.replace(self.cache_path)
+            return catalog
 
     def _request_json(self, path: str, payload: dict | None = None) -> dict:
         data = None if payload is None else json.dumps(payload).encode("utf-8")

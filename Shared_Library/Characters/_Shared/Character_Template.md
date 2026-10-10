@@ -5,6 +5,10 @@ Character Phase: `[Adult / Youth / Variant / Costume Phase]`
 Species / Ancestry: `[Species]`
 Gender Presentation: `[Optional, non-sensitive rendering descriptor]`
 Canonical Art Style: `[Painterly semi-realistic, anime-influenced facial proportions, etc.]`
+Standing Barefoot Height: `[optional; e.g. 5 ft 8 in]`
+Eye Height: `[optional; e.g. 5 ft 2 in]`
+Shoulder Width: `[optional; e.g. 1 ft 6 in]`
+Body Depth: `[optional; e.g. 10 in]`
 
 ---
 
@@ -34,69 +38,35 @@ Suggested fields:
 
 ## Body Description — View-Specific
 
-<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_OVERRIDES -->
+<!-- ZET:VIEW_DOMAIN body -->
 
-Front view body notes:
+* [f] Front view body notes:
+* [f] [Shoulder width, stance, symmetry, limb visibility, etc.]
+* [fl] Front-left 3/4 body notes:
+* [fl] [Rotation, visible side, silhouette, overlap rules, etc.]
+* [pl] Left profile body notes:
+* [pl] [Profile posture, torso depth, leg alignment, etc.]
+* [bl] Back-left 3/4 body notes:
+* [bl] [Back silhouette, shoulder/hip rotation, limb visibility, etc.]
+* [b] Back view body notes:
+* [b] [Back posture, hair/clothing overlap, shoulder/hip symmetry, etc.]
+* [br] Back-right 3/4 body notes:
+* [br] [Back silhouette, shoulder/hip rotation, limb visibility, etc.]
+* [pr] Right profile body notes:
+* [pr] [Profile posture, torso depth, leg alignment, etc.]
+* [fr] Front-right 3/4 body notes:
+* [fr] [Rotation, visible side, silhouette, overlap rules, etc.]
 
-* `[Shoulder width, stance, symmetry, limb visibility, etc.]`
+<!-- ZET:END BODY_DESCRIPTION_VIEW_OVERRIDES -->
 
-<!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_SUPPRESSION -->
+<!-- ZET:VIEW_DOMAIN body -->
 
-<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
+* [b] `[State body-facing details that must remain hidden in a direct rear view.]`
+* [bl,br] `[Keep rear three-quarter views from rotating toward the front.]`
 
-Front-left 3/4 body notes:
-
-* `[Rotation, visible side, silhouette, overlap rules, etc.]`
-
-<!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
-
-<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-Front-right 3/4 body notes:
-
-* `[Rotation, visible side, silhouette, overlap rules, etc.]`
-
-<!-- ZET:END BODY_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-Left profile body notes:
-
-* `[Profile posture, torso depth, leg alignment, etc.]`
-
-<!-- ZET:END BODY_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-Right profile body notes:
-
-* `[Profile posture, torso depth, leg alignment, etc.]`
-
-<!-- ZET:END BODY_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-Back-left 3/4 body notes:
-
-* `[Back silhouette, shoulder/hip rotation, limb visibility, etc.]`
-
-<!-- ZET:END BODY_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-Back-right 3/4 body notes:
-
-* `[Back silhouette, shoulder/hip rotation, limb visibility, etc.]`
-
-<!-- ZET:END BODY_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN BODY_DESCRIPTION_VIEW_BACK -->
-
-Back view body notes:
-
-* `[Back posture, hair/clothing overlap, shoulder/hip symmetry, etc.]`
-
-<!-- ZET:END BODY_DESCRIPTION_VIEW_BACK -->
+<!-- ZET:END BODY_DESCRIPTION_VIEW_SUPPRESSION -->
 
 ---
 
@@ -105,6 +75,8 @@ Back view body notes:
 ## Head Description — Just the Facts
 
 <!-- ZET:BEGIN HEAD_DESCRIPTION_FACTS -->
+<!-- ZET:VIEW_DOMAIN head -->
+<!-- ZET:VIEW_DEFAULT face_visible -->
 
 [Technical head and face description.]
 
@@ -118,77 +90,43 @@ Suggested fields:
 * Eye shape:
 * Eye color:
 * Eyebrows:
-* Ears:
-* Neck:
-* Head-to-body proportion:
+* [all] Ears:
+* [all] Neck:
+* [all] Head-to-body proportion:
 
 <!-- ZET:END HEAD_DESCRIPTION_FACTS -->
 
 ## Head Description — View-Specific
 
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_OVERRIDES -->
+<!-- ZET:VIEW_DOMAIN head -->
 
-Front view head notes:
+* [f] Front view head notes:
+* [f] [Face symmetry, both eyes visible, ear visibility, etc.]
+* [fl] Front-left 3/4 head notes:
+* [fl] [Visible cheek, far eye visibility, ear visibility, nose angle, etc.]
+* [pl] Left profile head notes:
+* [pl] [Profile nose/chin/ear rules, eye visibility, etc.]
+* [bl] Back-left 3/4 head notes:
+* [bl] [Hair mass, ear edge visibility, cheek/jaw hints, etc.]
+* [b] Back view head notes:
+* [b] [Back of skull, hair silhouette, ear tips if visible, neck connection, etc.]
+* [br] Back-right 3/4 head notes:
+* [br] [Hair mass, ear edge visibility, cheek/jaw hints, etc.]
+* [pr] Right profile head notes:
+* [pr] [Profile nose/chin/ear rules, eye visibility, etc.]
+* [fr] Front-right 3/4 head notes:
+* [fr] [Visible cheek, far eye visibility, ear visibility, nose angle, etc.]
 
-* `[Face symmetry, both eyes visible, ear visibility, etc.]`
+<!-- ZET:END HEAD_DESCRIPTION_VIEW_OVERRIDES -->
 
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_SUPPRESSION -->
+<!-- ZET:VIEW_DOMAIN head -->
 
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
+* [b] `[Keep the face and eyes hidden in a direct rear view.]`
+* [bl,br] `[Keep rear three-quarter views from rotating toward the front.]`
 
-Front-left 3/4 head notes:
-
-* `[Visible cheek, far eye visibility, ear visibility, nose angle, etc.]`
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-Front-right 3/4 head notes:
-
-* `[Visible cheek, far eye visibility, ear visibility, nose angle, etc.]`
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-Left profile head notes:
-
-* `[Profile nose/chin/ear rules, eye visibility, etc.]`
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-Right profile head notes:
-
-* `[Profile nose/chin/ear rules, eye visibility, etc.]`
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-Back-left 3/4 head notes:
-
-* `[Hair mass, ear edge visibility, cheek/jaw hints, etc.]`
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-Back-right 3/4 head notes:
-
-* `[Hair mass, ear edge visibility, cheek/jaw hints, etc.]`
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN HEAD_DESCRIPTION_VIEW_BACK -->
-
-Back view head notes:
-
-* `[Back of skull, hair silhouette, ear tips if visible, neck connection, etc.]`
-
-<!-- ZET:END HEAD_DESCRIPTION_VIEW_BACK -->
+<!-- ZET:END HEAD_DESCRIPTION_VIEW_SUPPRESSION -->
 
 ---
 
@@ -216,69 +154,27 @@ Suggested fields:
 
 ## Hair Description — View-Specific
 
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT -->
+<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_OVERRIDES -->
+<!-- ZET:VIEW_DOMAIN head -->
 
-Front view hair notes:
+* [f] Front view hair notes:
+* [f] [How hair frames the face from the front.]
+* [fl] Front-left 3/4 hair notes:
+* [fl] [Near-side/far-side hair visibility.]
+* [pl] Left profile hair notes:
+* [pl] [Profile silhouette and face-framing edge.]
+* [bl] Back-left 3/4 hair notes:
+* [bl] [Back mass, side curve, neck overlap.]
+* [b] Back view hair notes:
+* [b] [Back silhouette, nape behavior, length endpoints.]
+* [br] Back-right 3/4 hair notes:
+* [br] [Back mass, side curve, neck overlap.]
+* [pr] Right profile hair notes:
+* [pr] [Profile silhouette and face-framing edge.]
+* [fr] Front-right 3/4 hair notes:
+* [fr] [Near-side/far-side hair visibility.]
 
-* `[How hair frames the face from the front.]`
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT -->
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
-
-Front-left 3/4 hair notes:
-
-* `[Near-side/far-side hair visibility.]`
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT_LEFT_3_4 -->
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-Front-right 3/4 hair notes:
-
-* `[Near-side/far-side hair visibility.]`
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_FRONT_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-Left profile hair notes:
-
-* `[Profile silhouette and face-framing edge.]`
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_LEFT_PROFILE -->
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-Right profile hair notes:
-
-* `[Profile silhouette and face-framing edge.]`
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_RIGHT_PROFILE -->
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-Back-left 3/4 hair notes:
-
-* `[Back mass, side curve, neck overlap.]`
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_BACK_LEFT_3_4 -->
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-Back-right 3/4 hair notes:
-
-* `[Back mass, side curve, neck overlap.]`
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_BACK_RIGHT_3_4 -->
-
-<!-- ZET:BEGIN HAIR_DESCRIPTION_VIEW_BACK -->
-
-Back view hair notes:
-
-* `[Back silhouette, nape behavior, length endpoints.]`
-
-<!-- ZET:END HAIR_DESCRIPTION_VIEW_BACK -->
+<!-- ZET:END HAIR_DESCRIPTION_VIEW_OVERRIDES -->
 
 ---
 
@@ -456,6 +352,15 @@ Rendering priorities:
 * Do not add a narrative scene, prominent props, or unrelated characters.
 
 <!-- ZET:END HEAD_IMAGE_CHARACTER_REQUIREMENTS -->
+
+## Expression Guidance
+
+<!-- ZET:BEGIN HEAD_IMAGE_EXPRESSION_GUIDANCE -->
+
+<!-- ZET:VIEW_DOMAIN head -->
+* [head:frontish,profiles] Use a calm, neutral expression with relaxed brows and mouth; keep the lips gently closed, with no smile, frown, or exaggerated emotion. Keep the eyes and gaze aligned with the requested view.
+
+<!-- ZET:END HEAD_IMAGE_EXPRESSION_GUIDANCE -->
 
 ## Negative Guidance
 

@@ -32,7 +32,10 @@ class AuxiliaryResourceRepository:
         """Load the auxiliary resource inventory."""
         path = self.path_service.auxiliary_resource_inventory_path()
         if not path.exists():
-            path = self.path_service.auxiliary_resource_inventory_default_path()
+            legacy_path = self.path_service.library_path("_state", "AuxiliaryResources", "AuxiliaryResources.json")
+            if not legacy_path.exists():
+                legacy_path = self.path_service.library_path("AuxiliaryResources", "AuxiliaryResources.json")
+            path = legacy_path if legacy_path.exists() else self.path_service.auxiliary_resource_inventory_default_path()
             if not path.exists():
                 return self._empty_payload()
         try:

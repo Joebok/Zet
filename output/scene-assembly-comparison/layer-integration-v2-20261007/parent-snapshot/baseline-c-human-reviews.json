@@ -1,0 +1,2314 @@
+{
+  "Chapter-01-Standing-in-Wonder/1101": {
+    "scene": "Chapter-01-Standing-in-Wonder",
+    "seed": 1101,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Multiple kaeldors and schoolboys, tsaeytte hair missing"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "unassessable",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "schoolboys & kaeldor too far back, floating in air"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "schoolboys and kaeldor subscene appears duplicated and stacked on top of each other."
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "contact shadodws for tsaeytte are not correct, not even close."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": "floating kaeldor and subscene do not read as coming towards tsaeytte on the pathway under the arch."
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": "speaking broadly, meets authored requirements but fails in execution"
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Multiple kaeldors and schoolboys, tsaeytte hair missing"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "unassessable",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "schoolboys & kaeldor too far back, floating in air"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "schoolboys and kaeldor subscene appears duplicated and stacked on top of each other."
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "contact shadodws for tsaeytte are not correct, not even close."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": "floating kaeldor and subscene do not read as coming towards tsaeytte on the pathway under the arch."
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": "speaking broadly, meets authored requirements but fails in execution"
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "167a2ee6",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-01-Standing-in-Wonder/1102": {
+    "scene": "Chapter-01-Standing-in-Wonder",
+    "seed": 1102,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Tsaeytte's hair is missing, Kaeldor and schoolboys subscene appears duplicated and superimposed."
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Kaeldor and the schoolboys subscene floating, tsaeytte appears as a giant."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Kaeldor and schoolboys subscene ground is not integrated into background, but sky is."
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Tsaeytte's shadow strange."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": "technically kind of accurate, but defects overwhelm"
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Tsaeytte's hair is missing, Kaeldor and schoolboys subscene appears duplicated and superimposed."
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Kaeldor and the schoolboys subscene floating, tsaeytte appears as a giant."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Kaeldor and schoolboys subscene ground is not integrated into background, but sky is."
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Tsaeytte's shadow strange."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": "technically kind of accurate, but defects overwhelm"
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "a404fb72",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-01-Standing-in-Wonder/1103": {
+    "scene": "Chapter-01-Standing-in-Wonder",
+    "seed": 1103,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Tsaeytte's hair is missing"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Kaeldor and Schoolboy subscene is floating, reading as too far back. Tsaeytte appears as a giant given size and proximity to archway."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Kaeldor and Schoolboy subscene ground not integrated into background."
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "pass",
+        "reason": ""
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": "Defects overwhelm"
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": "Defects overwhelm"
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Tsaeytte's hair is missing"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Kaeldor and Schoolboy subscene is floating, reading as too far back. Tsaeytte appears as a giant given size and proximity to archway."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Kaeldor and Schoolboy subscene ground not integrated into background."
+      },
+      "integration_quality": {
+        "result": "pass",
+        "reason": ""
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": "Defects overwhelm"
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": "Defects overwhelm"
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "45ecffbd",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-01-Standing-in-Wonder/1104": {
+    "scene": "Chapter-01-Standing-in-Wonder",
+    "seed": 1104,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Tsaeytte too large"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Tsaeytte too large"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "8da81d09",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-01-Standing-in-Wonder/1105": {
+    "scene": "Chapter-01-Standing-in-Wonder",
+    "seed": 1105,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Tsaeytte is too large."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Tsaeytte is too large."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "d262dd06",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-01-Standing-in-Wonder/1106": {
+    "scene": "Chapter-01-Standing-in-Wonder",
+    "seed": 1106,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Tsaeytte too large"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Tsaeytte too large"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "E"
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "1f5a8a3d",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-01-Standing-in-Wonder/1107": {
+    "scene": "Chapter-01-Standing-in-Wonder",
+    "seed": 1107,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "kaeldor and schoolboys subscene is duplicated and overlaid on itself. Tsaeytte's hair is missing"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Kaeldor and schoolboys subscene floating, Tsaeytte too large"
+      },
+      "background_continuity": {
+        "result": "unassessable",
+        "reason": "Too many other issues, can't tell."
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Floating subscene, missing hair."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": "Elements are there."
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "kaeldor and schoolboys subscene is duplicated and overlaid on itself. Tsaeytte's hair is missing"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Kaeldor and schoolboys subscene floating, Tsaeytte too large"
+      },
+      "background_continuity": {
+        "result": "unassessable",
+        "reason": "Too many other issues, can't tell."
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Floating subscene, missing hair."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": "Elements are there."
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "ccb14de2",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-01-Standing-in-Wonder/1108": {
+    "scene": "Chapter-01-Standing-in-Wonder",
+    "seed": 1108,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Kaeldor and schoolboys subscene duplicated and overlaid on itself, tsaeytte has no hair (it is transparent where it should be - this is the case for all these failures of \"no hair\" - it is tranparent, not that Tsaeytte is bald."
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Kaeldor and schoolboys are floating, tsaeytte is too large."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "kaeldor and schoolboys floating, strange lines/shadows around tsaeytte's feet."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": "Technically elements are there in approximate the right place."
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Kaeldor and schoolboys subscene duplicated and overlaid on itself, tsaeytte has no hair (it is transparent where it should be - this is the case for all these failures of \"no hair\" - it is tranparent, not that Tsaeytte is bald."
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Kaeldor and schoolboys are floating, tsaeytte is too large."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "kaeldor and schoolboys floating, strange lines/shadows around tsaeytte's feet."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": "Technically elements are there in approximate the right place."
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "c0a516e1",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-02-At-the-Arch/1101": {
+    "scene": "Chapter-02-At-the-Arch",
+    "seed": 1101,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "fail",
+        "reason": "Tsaeytte not facing Valindia"
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Tsaeytte looks like her feet are missing."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Arch image has discontinuity, ground under Kaeldor and schoolboys is off. Unsure of what is happening to Tsaeytte's feet and where she should be standing, but the whole image looks like a bad assembly of separate images."
+      },
+      "native_dialogue": {
+        "result": "fail",
+        "reason": "It looks like too speech bubbles one on top of the other."
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Many seams, poor clipping around characters."
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "fail",
+        "reason": "Tsaeytte not facing Valindia"
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "Tsaeytte looks like her feet are missing."
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Arch image has discontinuity, ground under Kaeldor and schoolboys is off. Unsure of what is happening to Tsaeytte's feet and where she should be standing, but the whole image looks like a bad assembly of separate images."
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Many seams, poor clipping around characters."
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "fail",
+        "reason": "Old bubbles still present, arrow on new bubble is awkwardly constructed."
+      }
+    },
+    "blinded_token": "4ee27f58",
+    "lettering_review": {
+      "action": "replace",
+      "balloon_box": [
+        0.37138429752066116,
+        0.19461805555555556,
+        0.10743801652892562,
+        0.06666666666666667
+      ],
+      "speaker_anchor": [
+        0.3527892561983471,
+        0.2427662037037037
+      ],
+      "reason": ""
+    }
+  },
+  "Chapter-02-At-the-Arch/1102": {
+    "scene": "Chapter-02-At-the-Arch",
+    "seed": 1102,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Kaeldor and the schoolboys are duplicated and overlaid."
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "fail",
+        "reason": "Tsaeytte should be facing Valindia"
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Vertical seam in the archway, defects in pathway - Tsaeytte's and part of Valindia's boots are missing, "
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": ""
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "Kaeldor and the schoolboys are duplicated and overlaid."
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "fail",
+        "reason": "Tsaeytte should be facing Valindia"
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Vertical seam in the archway, defects in pathway - Tsaeytte's and part of Valindia's boots are missing, "
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": ""
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "41fc4aac",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-02-At-the-Arch/1103": {
+    "scene": "Chapter-02-At-the-Arch",
+    "seed": 1103,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams"
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Halos and seams"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Halos and seams"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "fail",
+        "reason": "Old bubble still present."
+      }
+    },
+    "blinded_token": "22406615",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-02-At-the-Arch/1104": {
+    "scene": "Chapter-02-At-the-Arch",
+    "seed": 1104,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams, and B"
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "A B"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams, and B"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "A B"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "20afd98f",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-02-At-the-Arch/1105": {
+    "scene": "Chapter-02-At-the-Arch",
+    "seed": 1105,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams, poor assembly, A, B"
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Seams, poor assembly, A, B"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams, poor assembly, A, B"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Seams, poor assembly, A, B"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "fail",
+        "reason": "Old bubble still present."
+      }
+    },
+    "blinded_token": "11a8e5ce",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-02-At-the-Arch/1106": {
+    "scene": "Chapter-02-At-the-Arch",
+    "seed": 1106,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams, poor assembly"
+      },
+      "native_dialogue": {
+        "result": "fail",
+        "reason": "Duplicate speech bubbles on top of each other."
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Seams, B"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams, poor assembly"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Seams, B"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "fail",
+        "reason": "Old bubbles still present, arrow on new bubble is awkwardly constructed."
+      }
+    },
+    "blinded_token": "3fde8d79",
+    "lettering_review": {
+      "action": "replace",
+      "balloon_box": [
+        0.37241735537190085,
+        0.1890625,
+        0.09917355371900827,
+        0.06851851851851852
+      ],
+      "speaker_anchor": [
+        0.35485537190082644,
+        0.2427662037037037
+      ],
+      "reason": ""
+    }
+  },
+  "Chapter-02-At-the-Arch/1107": {
+    "scene": "Chapter-02-At-the-Arch",
+    "seed": 1107,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "unassessable",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams"
+      },
+      "native_dialogue": {
+        "result": "fail",
+        "reason": "Duplicate speech bubbles over each other"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Seams, artifacts"
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "unassessable",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Seams, artifacts"
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "fail",
+        "reason": "Old bubble still present, arrow on new bubble is awkwardly constructed."
+      }
+    },
+    "blinded_token": "16302c85",
+    "lettering_review": {
+      "action": "replace",
+      "balloon_box": [
+        0.36828512396694213,
+        0.19091435185185185,
+        0.10227272727272728,
+        0.05555555555555555
+      ],
+      "speaker_anchor": [
+        0.35485537190082644,
+        0.23721064814814816
+      ],
+      "reason": ""
+    }
+  },
+  "Chapter-02-At-the-Arch/1108": {
+    "scene": "Chapter-02-At-the-Arch",
+    "seed": 1108,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams"
+      },
+      "native_dialogue": {
+        "result": "fail",
+        "reason": "Duplicated speech bubbles"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Seams, discontinuities, white space around feet of all characters."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "fail",
+        "reason": "B"
+      },
+      "background_continuity": {
+        "result": "fail",
+        "reason": "Seams"
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Seams, discontinuities, white space around feet of all characters."
+      },
+      "narrative_readability": {
+        "result": "fail",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "fail",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "fail",
+        "reason": "Old bubble still present, arrow on new bubble is awkwardly constructed."
+      }
+    },
+    "blinded_token": "acc66ea2",
+    "lettering_review": {
+      "action": "replace",
+      "balloon_box": [
+        0.3806818181818182,
+        0.15943287037037038,
+        0.12293388429752067,
+        0.08518518518518518
+      ],
+      "speaker_anchor": [
+        0.3600206611570248,
+        0.22980324074074074
+      ],
+      "reason": ""
+    }
+  },
+  "Chapter-03-Collision/1101": {
+    "scene": "Chapter-03-Collision",
+    "seed": 1101,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "White space between legs and feet of characters. Ground Tsaeytte is sitting on doesn't match ground Kaeldor and schoolboys are walking on."
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "White space between legs and feet of characters. Ground Tsaeytte is sitting on doesn't match ground Kaeldor and schoolboys are walking on."
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "9251a52d",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-03-Collision/1102": {
+    "scene": "Chapter-03-Collision",
+    "seed": 1102,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "White space between character's feet and legs. Seam in ground."
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "White space between character's feet and legs. Seam in ground."
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "cd364e03",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-03-Collision/1103": {
+    "scene": "Chapter-03-Collision",
+    "seed": 1103,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between character legs and feet, seam in ground between Tsaeytte and Kaeldor"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "fail",
+        "reason": "A"
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between character legs and feet, seam in ground between Tsaeytte and Kaeldor"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "7463d677",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-03-Collision/1104": {
+    "scene": "Chapter-03-Collision",
+    "seed": 1104,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "D"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "D"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "aba0beb7",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-03-Collision/1105": {
+    "scene": "Chapter-03-Collision",
+    "seed": 1105,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between legs and feet."
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between legs and feet."
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "692cc54c",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-03-Collision/1106": {
+    "scene": "Chapter-03-Collision",
+    "seed": 1106,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between legs and feet"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between legs and feet"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "7a08872c",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-03-Collision/1107": {
+    "scene": "Chapter-03-Collision",
+    "seed": 1107,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between legs and feet, seam in ground between Kaelsor and Tsaeytte"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between legs and feet, seam in ground between Kaelsor and Tsaeytte"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "df003f0c",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  },
+  "Chapter-03-Collision/1108": {
+    "scene": "Chapter-03-Collision",
+    "seed": 1108,
+    "criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "native_dialogue": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between legs and feet, seam in ground between Kaeldor and Tsaeytte"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "lettered_criteria": {
+      "cast_and_identity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "pose_and_expression": {
+        "result": "pass",
+        "reason": ""
+      },
+      "props_and_source_retention": {
+        "result": "pass",
+        "reason": ""
+      },
+      "facing_and_gaze": {
+        "result": "pass",
+        "reason": ""
+      },
+      "scale_depth_and_grounding": {
+        "result": "pass",
+        "reason": ""
+      },
+      "background_continuity": {
+        "result": "pass",
+        "reason": ""
+      },
+      "integration_quality": {
+        "result": "fail",
+        "reason": "Whitespace between legs and feet, seam in ground between Kaeldor and Tsaeytte"
+      },
+      "narrative_readability": {
+        "result": "pass",
+        "reason": ""
+      },
+      "authored_requirements": {
+        "result": "pass",
+        "reason": ""
+      },
+      "lettered_dialogue": {
+        "result": "pass",
+        "reason": ""
+      }
+    },
+    "blinded_token": "bd90b5d7",
+    "lettering_review": {
+      "action": "reuse",
+      "balloon_box": null,
+      "speaker_anchor": null,
+      "reason": ""
+    }
+  }
+}

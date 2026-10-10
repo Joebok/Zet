@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Copies image files from a source directory to a destination while preserving their folder structure.
+    Copies all files from a source library to a destination while preserving its folder structure.
 
 .DESCRIPTION
-    Recursively copies image files from the source path to the destination path, preserving the relative
+    Recursively copies the contents of the source path to the destination path, preserving the relative
     directory structure beneath the source root.
 
 .EXAMPLE
-    .\Backup-Images.ps1 -Source "C:\Projects\ImageSet" -Dest "D:\Backups\ImageSet"
+    .\Backup-Images.ps1 -Source "C:\Projects\Zet_Library" -Dest "D:\Backups\Zet_Library"
 #>
 
 [CmdletBinding()]
@@ -23,7 +23,7 @@ param(
     [switch]$OverwriteFiles
 )
 
-function Copy-ImageFiles {
+function Copy-LibraryFiles {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -42,14 +42,15 @@ function Copy-ImageFiles {
         New-Item -ItemType Directory -Path $resolvedDestinationRoot -Force | Out-Null
     }
 
-    $allowedExtensions = @('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.ico')
-
-    Get-ChildItem -LiteralPath $resolvedSourceRoot -File -Recurse | ForEach-Object {
-        $extension = $_.Extension.ToLowerInvariant()
-        if ($extension -notin $allowedExtensions) {
-            return
+    Get-ChildItem -LiteralPath $resolvedSourceRoot -Force -Directory -Recurse | ForEach-Object {
+        $relativePath = $_.FullName.Substring($resolvedSourceRoot.Length).TrimStart('\', '/')
+        $targetPath = Join-Path -Path $resolvedDestinationRoot -ChildPath $relativePath
+        if (-not (Test-Path -LiteralPath $targetPath -PathType Container)) {
+            New-Item -ItemType Directory -Path $targetPath -Force | Out-Null
         }
+    }
 
+    Get-ChildItem -LiteralPath $resolvedSourceRoot -Force -File -Recurse | ForEach-Object {
         $relativePath = $_.FullName.Substring($resolvedSourceRoot.Length).TrimStart('\', '/')
         $targetPath = Join-Path -Path $resolvedDestinationRoot -ChildPath $relativePath
         $targetDirectory = Split-Path -Parent $targetPath
@@ -69,4 +70,4 @@ function Copy-ImageFiles {
     }
 }
 
-Copy-ImageFiles -SourceRoot $SourcePath -DestinationRoot $DestinationPath -Overwrite:$OverwriteFiles
+Copy-LibraryFiles -SourceRoot $SourcePath -DestinationRoot $DestinationPath -Overwrite:$OverwriteFiles

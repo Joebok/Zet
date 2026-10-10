@@ -192,6 +192,8 @@ def process_claimed(
                 "render_profile": preset_name,
                 "checkpoint": ask_manifest.get("checkpoint") or backend_metadata.get("checkpoint"),
                 "workflow_kind": backend_metadata.get("workflow_kind"),
+                **({"qwen_reference_cache": backend_metadata["qwen_reference_cache"]}
+                   if isinstance(backend_metadata.get("qwen_reference_cache"), dict) else {}),
                 **({"prompt": prompt_path.read_text(encoding="utf-8")}
                    if backend_metadata.get("workflow_kind") == "qwen_image_21_scene_preview" else {}),
                 "seed": backend_metadata.get("resolved_seed", backend_metadata.get("seed")),
@@ -207,6 +209,8 @@ def process_claimed(
         answer_manifest["status"] = "SUCCESS"
         answer_manifest["render_preset"] = preset_name
         answer_manifest["workflow_kind"] = backend_metadata.get("workflow_kind")
+        if isinstance(backend_metadata.get("qwen_reference_cache"), dict):
+            answer_manifest["qwen_reference_cache"] = backend_metadata["qwen_reference_cache"]
         answer_manifest["seed"] = backend_metadata.get("resolved_seed", backend_metadata.get("seed"))
         answer_manifest["completed_at"] = now_iso()
         answer_manifest["elapsed_seconds"] = round(time.time() - t0, 2)

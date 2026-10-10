@@ -155,6 +155,7 @@ class ExpressionService:
         markdown: str,
     ) -> ExpressionCreateResult:
         """Save a new expression definition and create one Expression asset."""
+        raise ExpressionServiceError("Expressions are retired. Use scene workflows for expression instructions.")
         label = str(label or "").strip()
         identity_key_id = str(identity_key_id or "").strip()
         if not label:
@@ -223,6 +224,7 @@ class ExpressionService:
         identity_key_id: str,
     ) -> ExpressionUpdateResult:
         """Update an expression label, definition path, and identity-key binding."""
+        raise ExpressionServiceError("Expressions are retired. Use scene workflows for expression instructions.")
         cleaned_label = str(label or "").strip()
         cleaned_key = str(identity_key_id or "").strip()
         if not cleaned_label:

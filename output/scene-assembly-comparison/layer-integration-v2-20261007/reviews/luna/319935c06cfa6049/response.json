@@ -1,0 +1,36 @@
+{
+  "candidate_hash": "8e74a53ed3f5dce721f7aca1ed4aa2d3d63e72493882c2d728584dafe1372c9c",
+  "summary": "All five characters and the readable “sorry” balloon are present. The three boys read as one group, with Kaeldor appearing mid-stride. The five source books are visible; the authored scene asks for four. Prominent magenta outlines remain around the figures and contact areas.",
+  "criteria": {
+    "source_retention": {
+      "result": "pass",
+      "reason": "All five characters, the speech balloon, and all five books from the accepted source are visible. The authored scene asks for four books.",
+      "evidence_region": "Full candidate; scattered books around the seated character’s feet"
+    },
+    "mask_correctness": {
+      "result": "fail",
+      "reason": "The source-mask overlays show red removed areas touching lower shoe and book edges, risking loss of protected subject and prop pixels. The edit mask keeps subject interiors black, but the resulting magenta bands are conspicuous.",
+      "evidence_region": "Group and pair source-mask overlays at bottom edges; candidate outlines around figures and books"
+    },
+    "removable_background": {
+      "result": "pass",
+      "reason": "The source-mask overlays mark the white source backdrops and most source ground scenery for removal while retaining the figures and books.",
+      "evidence_region": "Group and pair source-mask overlays, especially the areas above and around the subjects"
+    },
+    "group_membership": {
+      "result": "pass",
+      "reason": "Exactly five characters appear. The three boys remain together in the left foreground, and Kaeldor’s stepping pose reads as walking.",
+      "evidence_region": "Candidate, left foreground"
+    },
+    "placement_and_contact": {
+      "result": "fail",
+      "reason": "Tsaeytte is seated on the ground with a supporting hand behind her, and Valindia stands behind her. However, conspicuous magenta bands around the silhouettes and ground-contact zones make the assembly look unfinished.",
+      "evidence_region": "Candidate, around the character silhouettes and along the bottom near shoes, books, and the seated figure"
+    },
+    "dialogue_retention": {
+      "result": "pass",
+      "reason": "Kaeldor’s balloon is small, readable, and contains exactly “sorry”.",
+      "evidence_region": "Candidate, above Kaeldor’s shoulder"
+    }
+  }
+}

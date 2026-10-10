@@ -54,7 +54,7 @@ class CharacterSourceServiceTests(unittest.TestCase):
             + _section("GENERAL_DESCRIPTION_FACTS", "adult elf")
             + _section("IDENTITY_PRESERVATION_CORE", "preserve identity")
             + _section("BODY_DESCRIPTION_FACTS", "petite proportions")
-            + _section("BODY_DESCRIPTION_VIEW_FRONT", "front body")
+            + _section("BODY_DESCRIPTION_VIEW_OVERRIDES", "<!-- ZET:VIEW_DOMAIN body -->\n* [f] front body")
             + _section("IDENTITY_PRESERVATION_BODY", "preserve body"),
             encoding="utf-8",
         )
@@ -62,7 +62,7 @@ class CharacterSourceServiceTests(unittest.TestCase):
             _section("COMPILER_NOTES", "costume notes")
             + _section("LOCAL_IMAGE_GEN_OVERRIDES", "costume overrides")
             + _section("COSTUME_DESCRIPTION_FACTS", "green adventure gear")
-            + _section("COSTUME_DESCRIPTION_VIEW_FRONT", "front costume")
+            + _section("COSTUME_DESCRIPTION_VIEW_OVERRIDES", "<!-- ZET:VIEW_DOMAIN body -->\n* [f] front costume")
             + _section("IDENTITY_PRESERVATION_COSTUME", "preserve costume"),
             encoding="utf-8",
         )

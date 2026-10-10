@@ -16,6 +16,8 @@ from zet.services.turnaround_views import TURNAROUND_VIEW_ORDER
 from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import file_lock
+from zet.services.local_asset_source_service import LocalAssetSourceService
+from zet.services.view_conditioning_service import ViewConditioningError, validate_view_controls
 
 
 @dataclass(frozen=True)
@@ -39,10 +41,12 @@ class CostumeServiceError(Exception):
 class CostumeService:
     """Manage costume templates and related Costume-Dressing assets."""
 
-    def __init__(self, asset_repository: AssetRepository, path_service: PathService):
+    def __init__(self, asset_repository: AssetRepository, path_service: PathService,
+                 local_sources: LocalAssetSourceService | None = None):
         """Create a costume service."""
         self.asset_repository = asset_repository
         self.path_service = path_service
+        self.local_sources = local_sources
 
     def _timestamp(self) -> str:
         """Return an ISO timestamp for generated assets."""
@@ -79,12 +83,12 @@ class CostumeService:
             return
         old_folder = re.sub(r"[^A-Za-z0-9_-]+", "_", old_name).strip("_") or "Costume"
         new_folder = re.sub(r"[^A-Za-z0-9_-]+", "_", new_name).strip("_") or "Costume"
-        experiment_root = self.path_service.library_path("Experiments", "Character-Pipeline", character, phase)
+        experiment_root = self.path_service.pipeline_candidates_path("Character-Pipeline", character, phase)
         old_workspace = experiment_root / "Costume-Dressing" / old_folder
         new_workspace = experiment_root / "Costume-Dressing" / new_folder
         old_locked = experiment_root / "locked" / "Costume-Dressing" / old_folder
         new_locked = experiment_root / "locked" / "Costume-Dressing" / new_folder
-        if old_workspace.exists() and new_workspace.exists():
+        if new_workspace.exists() and new_workspace != old_workspace:
             raise CostumeServiceError(f"Local Costume-Dressing workspace already exists: {new_workspace}")
         if old_locked.exists() and new_locked.exists():
             raise CostumeServiceError(f"Local locked Costume-Dressing assets already exist: {new_locked}")
@@ -114,7 +118,8 @@ class CostumeService:
                 self._write_text_atomic(snapshot, text)
                 snapshot.rename(target)
 
-        store_path = experiment_root / "local_assets.json"
+        store_path = (self.local_sources.store.workspace_path(character, phase)
+                      if self.local_sources else experiment_root / "local_assets.json")
         if not store_path.is_file():
             return
         with file_lock(store_path.with_suffix(".lock")):
@@ -133,6 +138,11 @@ class CostumeService:
                 updated["qualifier"] = new_name
                 assets.pop(key)
                 assets[new_key] = updated
+            for item in assets.values():
+                for dependency in item.get("dependencies", []):
+                    if isinstance(dependency, dict) and dependency.get("key"):
+                        dependency["key"] = str(dependency["key"]).replace(
+                            f"costume-dressing:{old_qualifier}:", f"costume-dressing:{new_qualifier}:")
             write_json_atomic(store_path, store)
         if old_locked.exists() and old_locked != new_locked:
             old_locked.rename(new_locked)
@@ -148,10 +158,10 @@ class CostumeService:
         records = payload.get("turnarounds", [])
         old_slug = re.sub(r"[^A-Za-z0-9]+", "-", old_name).strip("-") or "default"
         new_slug = re.sub(r"[^A-Za-z0-9]+", "-", new_name).strip("-") or "default"
-        old_id = f"Costume-Dressing_{old_slug}"
-        new_id = f"Costume-Dressing_{new_slug}"
+        old_id = f"Local-Costume-Dressing_{old_slug}"
+        new_id = f"Local-Costume-Dressing_{new_slug}"
         old_records = [record for record in records if isinstance(record, dict)
-                       and record.get("source_pipeline") == "Costume-Dressing" and record.get("costume") == old_name]
+                       and record.get("turnaround_id") == old_id]
         if not old_records:
             return
         has_new = any(isinstance(record, dict) and record.get("turnaround_id") == new_id for record in records)
@@ -190,7 +200,7 @@ class CostumeService:
             old_locked.rename(new_locked)
         updated_records = []
         for record in records:
-            if not isinstance(record, dict) or record.get("source_pipeline") != "Costume-Dressing" or record.get("costume") != old_name:
+            if not isinstance(record, dict) or record.get("turnaround_id") != old_id:
                 updated_records.append(record)
                 continue
             if has_new:
@@ -198,6 +208,12 @@ class CostumeService:
             updated = dict(record)
             updated["turnaround_id"] = new_id
             updated["costume"] = new_name
+            old_qualifier = re.sub(r"[^a-z0-9_-]+", "_", old_name.strip().lower()).strip("_")
+            new_qualifier = re.sub(r"[^a-z0-9_-]+", "_", new_name.strip().lower()).strip("_")
+            updated["source_local_keys"] = [
+                str(key).replace(f"costume-dressing:{old_qualifier}:", f"costume-dressing:{new_qualifier}:")
+                for key in updated.get("source_local_keys", [])
+            ]
             updated["label"] = str(updated.get("label") or "").replace(old_name, new_name)
             for field in ("candidate_image_path", "locked_image_path", "analysis_path", "diagnostics_path"):
                 if updated.get(field):
@@ -205,6 +221,61 @@ class CostumeService:
             updated_records.append(updated)
         payload["turnarounds"] = updated_records
         write_json_atomic(path, payload)
+
+    def _check_local_rename(self, character: str, phase: str, old_name: str, new_name: str) -> None:
+        """Reject a rename before edits when its local target is busy or occupied."""
+        if old_name == new_name:
+            return
+        experiment_root = self.path_service.pipeline_candidates_path("Character-Pipeline", character, phase)
+        old_folder = re.sub(r"[^A-Za-z0-9_-]+", "_", old_name).strip("_") or "Costume"
+        new_folder = re.sub(r"[^A-Za-z0-9_-]+", "_", new_name).strip("_") or "Costume"
+        old_workspace = experiment_root / "Costume-Dressing" / old_folder
+        new_workspace = experiment_root / "Costume-Dressing" / new_folder
+        new_locked = experiment_root / "locked" / "Costume-Dressing" / new_folder
+        if old_workspace.exists() and new_workspace.exists():
+            raise CostumeServiceError(f"Local Costume-Dressing workspace already exists: {new_workspace}")
+        if new_locked.exists() and new_locked != (experiment_root / "locked" / "Costume-Dressing" / old_folder):
+            raise CostumeServiceError(f"Local locked Costume-Dressing assets already exist: {new_locked}")
+        if self.local_sources is not None:
+            store = self.local_sources.store.detail(character, phase).get("assets", {})
+            old_qualifier = re.sub(r"[^a-z0-9_-]+", "_", old_name.strip().lower()).strip("_")
+            new_qualifier = re.sub(r"[^a-z0-9_-]+", "_", new_name.strip().lower()).strip("_")
+            for key, record in store.items():
+                if (str(record.get("pipeline", "")).lower() == "costume-dressing"
+                        and str(record.get("qualifier") or "").lower() == old_name.lower()):
+                    target_key = str(key).replace(f":{old_qualifier}:", f":{new_qualifier}:")
+                    if target_key != key and target_key in store:
+                        raise CostumeServiceError(f"Local costume asset already exists for {new_name}: {target_key}")
+        for state_path in old_workspace.rglob("state.json") if old_workspace.exists() else []:
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if str(state.get("status", "")).upper() in {"QUEUED", "PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
+                raise CostumeServiceError("Cannot rename a costume while local generation is active.")
+        turnaround_path = self.path_service.character_path(character, phase) / "TurnaroundSheets.json"
+        if turnaround_path.is_file():
+            try:
+                records = json.loads(turnaround_path.read_text(encoding="utf-8")).get("turnarounds", [])
+            except (OSError, json.JSONDecodeError):
+                records = []
+            old_slug = re.sub(r"[^A-Za-z0-9]+", "-", old_name).strip("-") or "default"
+            new_slug = re.sub(r"[^A-Za-z0-9]+", "-", new_name).strip("-") or "default"
+            old_id = f"Local-Costume-Dressing_{old_slug}"
+            new_id = f"Local-Costume-Dressing_{new_slug}"
+            old_exists = any(isinstance(row, dict) and row.get("turnaround_id") == old_id for row in records)
+            new_exists = any(isinstance(row, dict) and row.get("turnaround_id") == new_id for row in records)
+            if old_exists and new_exists:
+                raise CostumeServiceError(f"Local turnaround already exists for {new_name}: {new_id}")
+            if old_exists:
+                pipeline_root = self.path_service.pipeline_base_path(character, phase) / "Turnaround"
+                if (pipeline_root / new_id).exists():
+                    raise CostumeServiceError(f"Local turnaround workspace already exists: {pipeline_root / new_id}")
+                locked_root = self.path_service.character_asset_path(character, phase) / "Turnarounds"
+                new_locked_sheet = locked_root / f"{new_id}.png"
+                old_locked_sheet = locked_root / f"{old_id}.png"
+                if new_locked_sheet.exists() and not old_locked_sheet.exists():
+                    raise CostumeServiceError(f"Local turnaround image already exists: {new_locked_sheet}")
 
     def _rename_asset_images(self, assets: list[Asset], old_names: dict[int, str]) -> None:
         """Rename traditional pipeline and locked images without overwriting files."""
@@ -270,11 +341,9 @@ class CostumeService:
         contents = path.read_text(encoding="utf-8")
         name = self.costume_name_from_slug(path.stem.removeprefix("Costume_"))
         role = self._extract_template_field(contents, ["Costume Role", "Role"]) or None
-        assets = [
-            asset
-            for asset in self.asset_repository.list_assets(character, phase)
-            if asset.pipeline == "Costume-Dressing" and asset.costume == name
-        ]
+        assets = self.local_sources.store.locked_assets(
+            character, phase, pipeline="costume-dressing", qualifier=name
+        ) if self.local_sources else []
         return Costume(
             name=name,
             slug=self.safe_costume_slug(name),
@@ -316,10 +385,16 @@ class CostumeService:
                 upload_path.write_text(markdown, encoding="utf-8")
                 uploaded_sections = load_template_sections(upload_path)
                 actual = set(uploaded_sections)
+                validate_view_controls(str(upload_path))
         except TemplateCompileError as exc:
+            raise CostumeServiceError(str(exc)) from exc
+        except ViewConditioningError as exc:
             raise CostumeServiceError(str(exc)) from exc
         missing = sorted(expected - actual)
         extra = sorted(actual - expected)
+        legacy = sorted(name for name in extra if re.match(r"^(?:(?:BODY|HEAD|HAIR)_DESCRIPTION|COSTUME|EQUIPMENT_JEWELRY_PROPS)_VIEW_(?:FRONT|BACK|LEFT_PROFILE|RIGHT_PROFILE|.*_3_4)$", name))
+        if legacy:
+            raise CostumeServiceError("Legacy per-view sections are unsupported; move their content into tagged VIEW_OVERRIDES: " + ", ".join(legacy))
         if missing:
             raise CostumeServiceError(f"Costume template missing sections: {', '.join(missing)}")
         if extra:
@@ -339,6 +414,12 @@ class CostumeService:
                 if value == str(shared_sections.get(canonical_name) or "").strip():
                     raise CostumeServiceError(f"{canonical_name} still contains shared template placeholder text.")
 
+    def validate_template_file(self, template_path: Path) -> None:
+        """Validate an existing costume template against the active contract."""
+        if not template_path.is_file():
+            raise CostumeServiceError(f"Costume template not found: {template_path}")
+        self._validate_costume_markdown(template_path.read_text(encoding="utf-8"))
+
     def _default_costume_markdown(self) -> str:
         """Return the shared costume template contents."""
         template_path = self.path_service.shared_costume_template_path()
@@ -353,7 +434,7 @@ class CostumeService:
         return sorted(costumes, key=lambda costume: costume.name.lower())
 
     def create_costume(self, character: str, phase: str, costume_name: str, markdown: str) -> CostumeCreateResult:
-        """Save a new costume template and create its eight Costume-Dressing assets."""
+        """Save a costume template for local Costume-Dressing."""
         costume_name = str(costume_name or "").strip()
         if not costume_name:
             raise CostumeServiceError("Costume name is required.")
@@ -362,48 +443,15 @@ class CostumeService:
         costume_path = self.path_service.costume_template_path(character, phase, display_name)
         if costume_path.exists():
             raise CostumeServiceError(f"Costume template already exists: {costume_path.name}")
-        existing = [
-            asset
-            for asset in self.asset_repository.list_assets(character, phase)
-            if asset.pipeline == "Costume-Dressing" and asset.costume == display_name
-        ]
-        if existing:
-            raise CostumeServiceError(f"Costume-Dressing assets already exist for {display_name}.")
         uploaded_markdown = str(markdown or "").strip()
         source_markdown = uploaded_markdown or self._default_costume_markdown()
         if uploaded_markdown:
             self._validate_costume_markdown(source_markdown)
-        assets = []
-        for view in TURNAROUND_VIEW_ORDER:
-            output_name = f"Costume-Dressing_{view}_{view}_{costume_slug.replace('_', '-')}.png"
-            asset = Asset(
-                asset_id=0,
-                character=character,
-                phase=phase,
-                pipeline="Costume-Dressing",
-                body_view=view,
-                head_view=view,
-                costume=display_name,
-                expression=None,
-                asset_state="NEW",
-                pipeline_stage="ADD_REF",
-                actor="PYTHON",
-                ai_state=None,
-                final_image_output=output_name,
-                updated_at=self._timestamp(),
-                costume_path=str(costume_path),
-            )
-            assets.append(asset)
         contents = self._sync_costume_metadata(source_markdown, display_name, character, phase).rstrip() + "\n"
         self._write_text_atomic(costume_path, contents)
-        try:
-            assets = self.asset_repository.create_assets(assets)
-        except Exception:
-            costume_path.unlink(missing_ok=True)
-            raise
         return CostumeCreateResult(
             costume=self._costume_from_path(character, phase, costume_path),
-            assets=assets,
+            assets=[],
         )
 
     def update_costume(self, character: str, phase: str, costume_slug: str, costume_name: str) -> CostumeUpdateResult:
@@ -429,45 +477,7 @@ class CostumeService:
         old_path_existed = old_path.exists()
         contents = old_path.read_text(encoding="utf-8") if old_path_existed else self._default_costume_markdown()
         updated_contents = self._sync_costume_name(contents, display_name)
-        updated_assets = []
-        old_output_names: dict[int, str] = {}
-        for asset in self.asset_repository.list_assets(character, phase):
-            if asset.pipeline != "Costume-Dressing":
-                continue
-            stored_costume_path = self.path_service.resolve_path(asset.costume_path) if asset.costume_path else Path()
-            if asset.costume != existing.name and stored_costume_path != old_path:
-                continue
-            updated_asset = replace(asset)
-            if asset.asset_id > 0 and asset.final_image_output:
-                old_output_names[asset.asset_id] = asset.final_image_output
-            updated_asset.costume = display_name
-            updated_asset.costume_path = str(new_path)
-            updated_asset.final_image_output = f"Costume-Dressing_{asset.body_view}_{asset.body_view}_{new_slug.replace('_', '-')}.png"
-            updated_asset.updated_at = self._timestamp()
-            updated_assets.append(updated_asset)
-
-        existing_views = {asset.body_view for asset in updated_assets}
-        missing_assets = [
-            Asset(
-                asset_id=0,
-                character=character,
-                phase=phase,
-                pipeline="Costume-Dressing",
-                body_view=view,
-                head_view=view,
-                costume=display_name,
-                expression=None,
-                asset_state="NEW",
-                pipeline_stage="ADD_REF",
-                actor="PYTHON",
-                ai_state=None,
-                final_image_output=f"Costume-Dressing_{view}_{view}_{new_slug.replace('_', '-')}.png",
-                updated_at=self._timestamp(),
-                costume_path=str(new_path),
-            )
-            for view in TURNAROUND_VIEW_ORDER
-            if view not in existing_views
-        ]
+        self._check_local_rename(character, phase, existing.name, display_name)
 
         if old_path != new_path:
             self._write_text_atomic(new_path, updated_contents)
@@ -478,25 +488,10 @@ class CostumeService:
                 raise
         else:
             self._write_text_atomic(old_path, updated_contents)
-        try:
-            self.asset_repository.save_assets(updated_assets)
-        except Exception:
-            if old_path != new_path:
-                if old_path_existed:
-                    self._write_text_atomic(old_path, contents)
-                new_path.unlink(missing_ok=True)
-            elif not old_path_existed:
-                old_path.unlink(missing_ok=True)
-            else:
-                self._write_text_atomic(old_path, contents)
-            raise
-
-        created_assets = self.asset_repository.create_assets(missing_assets)
-        self._rename_asset_images(updated_assets, old_output_names)
         self._rename_local_costume_data(character, phase, existing.name, display_name)
         self._rename_turnaround_data(character, phase, existing.name, display_name)
 
         return CostumeUpdateResult(
             costume=self._costume_from_path(character, phase, new_path),
-            assets=updated_assets + created_assets,
+            assets=[],
         )

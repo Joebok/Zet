@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from Scripts.Compile_Character_Template import load_template_sections_with_sources
+
 from zet.models.asset import Asset
 from zet.models.auxiliary_resource import AuxiliaryResource
 from zet.models.identity_key import IdentityKey
@@ -23,7 +25,7 @@ from zet.models.story import (
     StoryRenderTask,
 )
 from zet.repositories.asset_repository import AssetRepository
-from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
+from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository, AuxiliaryResourceRepositoryError
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.auxiliary_resource_service import AUXILIARY_RESOURCE_CATEGORIES
@@ -31,10 +33,12 @@ from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.path_service import PathService
 from zet.services.performance_instrumentation import record as record_performance
 from zet.services.scene_document_service import SceneDocumentService
+from zet.services.scene_layout_service import SceneLayoutService
 from zet.services.scene_render_target_service import SceneRenderTargetService
 from zet.services.scene_prompt_sections import FINAL_IMAGE_PROMPT_SECTION_TITLES
 from zet.services.story_reference_service import StoryReferenceService
 from zet.services.story_render_service import StoryRenderService
+from zet.services.view_conditioning_service import ViewContext, condition_section
 from zet.services.summary_cache import invalidate_summary_cache
 
 
@@ -62,6 +66,7 @@ class StoryService:
         self.image_catalog_service = None
         self.scene_render_target_service = SceneRenderTargetService(self, StoryServiceError)
         self.scene_document_service = SceneDocumentService(self, StoryServiceError)
+        self.scene_layout_service = SceneLayoutService(path_service)
         self.story_reference_service = StoryReferenceService(
             path_service,
             asset_repository,
@@ -124,15 +129,28 @@ class StoryService:
                 return {}
             character_template = self.path_service.character_template_path(character, phase)
             costume_template = self.path_service.costume_template_path(character, phase, costume) if costume else Path()
+            conditioning_diagnostics: list[str] = []
+            def scene_text(path: Path, name: str) -> str:
+                if not path.is_file():
+                    return ""
+                sections, sources = load_template_sections_with_sources(path)
+                if name not in sections:
+                    return ""
+                text, source, _ = condition_section(
+                    sections[name], name, sources[name], ViewContext(unknown_view=True)
+                )
+                conditioning_diagnostics.extend(source.get("view_conditioning_diagnostics", []))
+                return text
             return {
-                "identity_preservation_core": self._source_section(character_template, "SCENE_CHARACTER_IDENTITY"),
-                "identity_preservation_costume": self._source_section(costume_template, "SCENE_COSTUME_IDENTITY"),
-                "identity_anchors": self._source_section(character_template, "SCENE_CHARACTER_ANCHORS"),
-                "costume_anchors": self._source_section(costume_template, "SCENE_COSTUME_ANCHORS"),
+                "identity_preservation_core": scene_text(character_template, "SCENE_CHARACTER_IDENTITY"),
+                "identity_preservation_costume": scene_text(costume_template, "SCENE_COSTUME_IDENTITY"),
+                "identity_anchors": scene_text(character_template, "SCENE_CHARACTER_ANCHORS"),
+                "costume_anchors": scene_text(costume_template, "SCENE_COSTUME_ANCHORS"),
                 "identity_anchor_source": self._library_relative_path(character_template),
                 "costume_anchor_source": self._library_relative_path(costume_template) if costume else "",
                 "identity_source": self._library_relative_path(character_template),
                 "costume_source": self._library_relative_path(costume_template) if costume else "",
+                "view_conditioning_diagnostics": conditioning_diagnostics,
             }
         if resource_type in {"Person", "Place", "Object"}:
             resource_id = str(element.get("reference_set_id") or element.get("aux_resource_id") or "").strip()
@@ -159,12 +177,14 @@ class StoryService:
 
     def _element_source_sections(self, element: dict, catalog_by_tag: dict | None = None) -> dict:
         """Resolve selected-image compiler text, falling back to the canonical element source."""
-        references = [
-            item for item in element.get("reference_images") or []
-            if isinstance(item, dict) and str(item.get("tag") or "").strip()
-        ]
-        if references and self.image_catalog_service is not None:
-            tag = str(references[0].get("tag") or "")
+        references = [item for item in element.get("reference_images") or [] if isinstance(item, dict)]
+        # Composed child renders supply appearance, while the author's element sources
+        # continue to supply identity text. They need no separate catalog description.
+        tagged_references = [item for item in references if str(item.get("tag") or "").strip()
+                             and not item.get("managed_subscene_reference")]
+        if tagged_references and self.image_catalog_service is not None:
+            primary = next((item for item in tagged_references if item.get("primary_prompt_source")), tagged_references[0])
+            tag = str(primary.get("tag") or "")
             catalog_item = (
                 catalog_by_tag.get(tag)
                 if catalog_by_tag is not None
@@ -185,6 +205,46 @@ class StoryService:
                     "identity_status": catalog_item.identity_status,
                     "costume_status": catalog_item.costume_status,
                 }
+        library_references = [item for item in references if str(item.get("asset_id") or item.get("reference_key") or "").strip()]
+        if library_references and self.story_reference_service.entity_library_service is not None:
+            primary = next((item for item in library_references if item.get("primary_prompt_source")), library_references[0])
+            asset_id = str(primary.get("asset_id") or "").strip()
+            reference_key = str(primary.get("reference_key") or "").strip()
+            if asset_id or reference_key:
+                try:
+                    asset = (
+                        self.story_reference_service.entity_library_service.get_asset(asset_id)
+                        if asset_id
+                        else self.story_reference_service.entity_library_service.resolve_reference(reference_key)
+                    )
+                    descriptors = self.story_reference_service.entity_library_service.effective_descriptors(
+                        asset["asset_id"],
+                        str(primary.get("set_id") or asset.get("reference_set_id") or ""),
+                    )
+                    by_type = {item["descriptor_type"]: item["text"] for item in descriptors}
+                    fallback_warning = ""
+                    try:
+                        canonical = self._canonical_element_source_sections(element)
+                    except AuxiliaryResourceRepositoryError as exc:
+                        # A selected library image remains usable after its legacy
+                        # auxiliary resource has been migrated out of the old catalog.
+                        canonical = {}
+                        fallback_warning = f"Optional legacy auxiliary fallback is unavailable: {exc}"
+                    identity = "\n".join(
+                        text for text in (by_type.get("prompt_identity", ""), by_type.get("prompt_object", ""), by_type.get("prompt_background", ""), by_type.get("human_description", "")) if text
+                    ) or str(canonical.get("identity_preservation_core") or "")
+                    return {
+                        **canonical,
+                        "identity_preservation_core": identity,
+                        "identity_preservation_costume": by_type.get("prompt_costume", "") or str(canonical.get("identity_preservation_costume") or ""),
+                        "identity_source": f"Library/assets/{asset['asset_id']}",
+                        "costume_source": f"Library/assets/{asset['asset_id']}",
+                        "library_asset_id": asset["asset_id"],
+                        "library_checksum": asset["checksum"],
+                        "reference_warnings": [fallback_warning] if fallback_warning else [],
+                    }
+                except Exception as exc:
+                    raise StoryServiceError(str(exc)) from exc
         return self._canonical_element_source_sections(element)
 
     def _resolve_scene_element_sources(self, data: dict, *, allow_incomplete_descriptions: bool = False) -> dict:
@@ -214,6 +274,19 @@ class StoryService:
                 ):
                     raise StoryServiceError(
                         f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs costume description text."
+                    )
+                if (
+                    not allow_incomplete_descriptions
+                    and sections.get("library_asset_id")
+                    and not sections.get("identity_preservation_core")
+                    and not str(element.get("fallback_visual_description") or "").strip()
+                    and not (
+                        element.get("element_type") in {"Backdrop", "Prop"}
+                        and str(element.get("element_visual_override") or "").strip()
+                    )
+                ):
+                    raise StoryServiceError(
+                        f"Scene element {element.get('display_name') or element.get('id')} uses an image that needs prompt identity or object description text."
                     )
                 element["resolved_source_sections"] = sections
                 resolved[str(element.get("id") or "")] = sections
@@ -762,8 +835,9 @@ class StoryService:
         new_render_prefix = f"{{{{SCENE_RENDER:{target_story}:{safe_scene_slug}:"
         old_story_rel = f"Stories/{source_story}"
         new_story_rel = f"Stories/{target_story}"
-        old_pipeline_rel = f"Pipelines/Stories/{source_story}/{safe_scene_slug}"
-        new_pipeline_rel = f"Pipelines/Stories/{target_story}/{safe_scene_slug}"
+        library_root = Path(self.path_service.config.base_library_path)
+        old_pipeline_rel = source_pipeline.relative_to(library_root).as_posix()
+        new_pipeline_rel = target_pipeline.relative_to(library_root).as_posix()
         replacements = [
             (old_tag, new_tag),
             (old_render_prefix, new_render_prefix),
@@ -1250,6 +1324,41 @@ class StoryService:
         if int(data.get("_revision", 0)) != revision:
             raise StoryServiceError("Scene changed since it was loaded. Reload before saving; your draft was not written.")
         normalized = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, data)
+        if current:
+            previous = self._normalize_scene_builder_data(safe_story_slug, safe_scene_slug, current)
+            old_elements = {str(item.get("id") or ""): item for item in previous.get("scene_elements") or []}
+            new_elements = {str(item.get("id") or ""): item for item in normalized.get("scene_elements") or []}
+            old_dialogue = previous.get("dialogue") or []
+            old_dialogue_by_id = {str(item.get("id")): item for item in old_dialogue if isinstance(item, dict) and item.get("id")}
+            matched_old_dialogue: set[int] = set()
+            for index, item in enumerate(normalized.get("dialogue") or []):
+                old = old_dialogue_by_id.get(str(item.get("id") or ""))
+                if old is not None:
+                    matched_old_dialogue.add(next(i for i, candidate in enumerate(old_dialogue) if candidate is old))
+                else:
+                    old = {}
+                    candidates = [
+                        (old_index, candidate) for old_index, candidate in enumerate(old_dialogue)
+                        if old_index not in matched_old_dialogue and isinstance(candidate, dict)
+                    ]
+                    exact = next(((old_index, candidate) for old_index, candidate in candidates if candidate == item), None)
+                    same_line = next((
+                        (old_index, candidate) for old_index, candidate in candidates
+                        if candidate.get("text") == item.get("text")
+                    ), None)
+                    positional = (index, old_dialogue[index]) if len(old_dialogue) == len(normalized.get("dialogue") or []) and index < len(old_dialogue) else None
+                    match = exact or same_line or positional
+                    if match:
+                        matched_old_dialogue.add(match[0])
+                        old = match[1]
+                speaker_id = str(item.get("speaker_element_id") or "")
+                old_speaker_id = str(old.get("speaker_element_id") or "")
+                old_speaker = old_elements.get(old_speaker_id, {})
+                new_speaker = new_elements.get(speaker_id, {})
+                moved = str(old_speaker.get("subscene_id") or "") != str(new_speaker.get("subscene_id") or "")
+                changed_speaker = bool(old_speaker_id and speaker_id and old_speaker_id != speaker_id)
+                if speaker_id and (moved or changed_speaker):
+                    item["subscene_id"] = str(new_speaker.get("subscene_id") or "")
         normalized["_revision"] = revision + 1
         self.scene_render_target_service.assert_valid_graph(normalized)
         now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -1268,15 +1377,65 @@ class StoryService:
         document = self.load_scene_builder_data(story_slug, scene_slug)
         if document.blocked:
             raise StoryServiceError(document.error or "Scene Builder JSON is blocked.")
-        if not isinstance(subscene, dict) or str(subscene.get("id") or "") != target_id:
+        envelope = subscene if isinstance(subscene, dict) and "subscene" in subscene else None
+        definition = envelope.get("subscene") if envelope else subscene
+        if not isinstance(definition, dict) or str(definition.get("id") or "") != target_id:
             raise StoryServiceError("Subscene payload does not match the requested render target.")
+        expected_revision = envelope.get("expected_revision") if envelope else None
+        if expected_revision is not None and int(expected_revision) != int(document.data.get("_revision", 0)):
+            raise StoryServiceError("Scene changed since it was loaded. Reload before saving; your draft was not written.")
         data = copy.deepcopy(document.data)
         subscenes = data.get("subscenes") or []
         index = next((index for index, item in enumerate(subscenes) if item.get("id") == target_id), -1)
         if index < 0:
             raise StoryServiceError(f"Unknown subscene render target: {target_id}")
-        subscenes[index] = copy.deepcopy(subscene)
+        subscenes[index] = copy.deepcopy(definition)
         data["subscenes"] = subscenes
+        if envelope:
+            dialogue = copy.deepcopy(data.get("dialogue") or [])
+            changes = envelope.get("dialogue_changes") or {}
+            for change in changes.get("upserts") or []:
+                dialogue_index = int(change.get("index", -1))
+                value = copy.deepcopy(change.get("dialogue"))
+                if not isinstance(value, dict) or dialogue_index < 0 or dialogue_index > len(dialogue):
+                    raise StoryServiceError("Invalid scoped dialogue update.")
+                if dialogue_index == len(dialogue):
+                    dialogue.append(value)
+                else:
+                    previous = dialogue[dialogue_index]
+                    old_speaker = str(previous.get("speaker_element_id") or "") if isinstance(previous, dict) else ""
+                    new_speaker = str(value.get("speaker_element_id") or "")
+                    if old_speaker and new_speaker and old_speaker != new_speaker:
+                        elements = {str(item.get("id") or ""): item for item in data.get("scene_elements") or []}
+                        value["subscene_id"] = str(elements.get(new_speaker, {}).get("subscene_id") or "")
+                    dialogue[dialogue_index] = value
+            for dialogue_index in sorted({int(value) for value in changes.get("delete_indices") or []}, reverse=True):
+                if 0 <= dialogue_index < len(dialogue):
+                    dialogue.pop(dialogue_index)
+            data["dialogue"] = dialogue
+            data["_revision"] = int(expected_revision)
+        return self.save_scene_builder_data(story_slug, scene_slug, data)
+
+    def save_scene_layout_data(self, story_slug: str, scene_slug: str, target_id: str, layout: dict,
+                               expected_revision: int) -> SceneBuilderDocument:
+        """Save one 3D layout target and its required compatibility conversion."""
+        document = self.load_scene_builder_data(story_slug, scene_slug)
+        if document.blocked:
+            raise StoryServiceError(document.error or "Scene Builder JSON is blocked.")
+        if int(expected_revision) != int(document.data.get("_revision", 0)):
+            raise StoryServiceError("Scene changed since this layout was loaded. Reload before saving; your draft was not written.")
+        data = copy.deepcopy(document.data)
+        service = self.scene_layout_service
+        normalized = service.normalize_targets(data)
+        if target_id not in normalized["targets"]:
+            raise StoryServiceError(f"Unknown scene layout target: {target_id}")
+        elements = service._target_elements(data, target_id)
+        normalized["targets"][target_id] = service.normalize(layout, elements, scene=data)
+        # Store child workspaces with their owning subscene and the main workspace at scene level.
+        for definition in data.get("subscenes") or []:
+            definition["layout_3d"] = normalized["targets"].get(str(definition.get("id") or ""), {})
+        data["layout_3d"] = normalized["targets"]["main"]
+        data["_revision"] = int(expected_revision)
         return self.save_scene_builder_data(story_slug, scene_slug, data)
 
     def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
@@ -1340,14 +1499,22 @@ class StoryService:
                 item["reference_images"].append({"tag": item.pop("image_tag"), "roles": ["visual reference"], "ignore": ["source pose", "source background", "source framing"], "notes": ""})
             normalized_references = []
             for reference in item["reference_images"]:
-                if not isinstance(reference, dict) or not str(reference.get("tag") or "").strip():
+                if not isinstance(reference, dict):
                     continue
                 normalized_reference = copy.deepcopy(reference)
-                normalized_reference["tag"] = str(normalized_reference["tag"]).strip()
+                normalized_reference["tag"] = str(normalized_reference.get("tag") or "").strip()
+                normalized_reference["asset_id"] = str(normalized_reference.get("asset_id") or "").strip()
+                normalized_reference["reference_key"] = str(normalized_reference.get("reference_key") or "").strip()
+                normalized_reference["set_id"] = str(normalized_reference.get("set_id") or "").strip()
+                if sum(bool(normalized_reference[key]) for key in ("tag", "asset_id", "reference_key")) != 1:
+                    continue
                 normalized_reference.setdefault("roles", ["visual reference"])
+                normalized_reference.setdefault("primary_prompt_source", False)
                 normalized_reference.setdefault("ignore", ["source pose", "source background", "source framing"])
                 normalized_reference.setdefault("notes", "")
                 normalized_references.append(normalized_reference)
+            if normalized_references and not any(reference.get("primary_prompt_source") for reference in normalized_references):
+                normalized_references[0]["primary_prompt_source"] = True
             item["reference_images"] = normalized_references
             item.pop("identity_prompt", None)
             if item.get("default_visual_description") and not item.get("fallback_visual_description"):
@@ -1514,15 +1681,18 @@ class StoryService:
             if element_type not in {"Character", "Monster", "Prop", "Backdrop"}:
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has invalid element_type {element_type}.")
             has_source = element.get("resource_type") in {"Character", "Person", "Place", "Object"}
-            has_reference = any(str(item.get("tag") or "").strip() for item in element.get("reference_images") or [] if isinstance(item, dict))
+            has_reference = any(
+                str(item.get("tag") or item.get("asset_id") or item.get("reference_key") or "").strip()
+                for item in element.get("reference_images") or [] if isinstance(item, dict)
+            )
             for reference in element.get("reference_images") or []:
                 if not isinstance(reference, dict):
                     warnings.append(f"Scene element {element_id or element.get('display_name')} has an invalid image reference record.")
                     continue
-                tag = str(reference.get("tag") or "").strip()
-                if tag and tag in seen_reference_tags:
-                    warnings.append(f"Image reference tag {tag} is assigned more than once; one numbered input will be used.")
-                seen_reference_tags.add(tag)
+                reference_identity = str(reference.get("tag") or reference.get("asset_id") or reference.get("reference_key") or "").strip()
+                if reference_identity and reference_identity in seen_reference_tags:
+                    warnings.append(f"Image reference {reference_identity} is assigned more than once; one numbered input will be used.")
+                seen_reference_tags.add(reference_identity)
             if not has_reference and not str(element.get("fallback_visual_description") or "").strip():
                 warnings.append(f"Scene element {element_id or element.get('display_name')} has no image reference tag or fallback visual description.")
         for placement in data.get("placements") or []:
@@ -1954,7 +2124,8 @@ class StoryService:
         image_path = self.path_service.resolve_path(str(sheet.locked_image_path or ""))
         available = image_path.is_file()
         return ImageReferenceRow(
-            tag=f"{{{{ASSET:{sheet.character}:{sheet.phase}:{sheet.source_asset_ids[0]}:{' | '.join(detail_parts)}}}}}",
+            tag=(f"{{{{ASSET:{sheet.character}:{sheet.phase}:{sheet.source_asset_ids[0]}:{' | '.join(detail_parts)}}}}}"
+                 if sheet.source_asset_ids else f"{{{{TURNAROUND:{sheet.character}:{sheet.phase}:{sheet.turnaround_id}}}}}"),
             label=(
                 " / ".join(["Scene Appearance", *detail_parts[2:], "Turnaround"])
                 if sheet.source_pipeline == "Scene-Appearance"

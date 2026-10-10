@@ -1,0 +1,137 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-03-Collision/A_original/01_01_background-004.png"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-03-Collision/A_original/02_02_Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png"
+    }
+  },
+  "13": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-03-Collision/A_original/03_03_Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png"
+    }
+  },
+  "4": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "A single portrait image in the style of Painterly semi-realistic fantasy illustration with anime-influenced facial stylization and refined linework. <image1> supplies background reference for background, preserving the accepted subscene's subjects, arrangement, architecture, materials, and identifying details, ignoring outer placement, final-canvas framing, and any content assigned to other image inputs, note: backdrop; reference note: backdrop. <image2> supplies group reference for Kaeldor and the Schoolboys, preserving the dialogue panel and pointer for Kaeldor, including the exact text \"sorry\", exactly once, ignoring source canvas, source background, source framing, outer placement, source lighting, note: Managed element subscene reference; parent placement and scene instructions take precedence; reference note: Managed element subscene reference; parent placement and scene instructions take precedence. <image3> supplies group reference for Tsaeytte and Valindia, preserving the complete element or group's recognizable appearance, component identities, and internal spatial arrangement, ignoring source canvas, source background, source framing, outer placement, source lighting, note: Managed element subscene reference; parent placement and scene instructions take precedence; reference note: Managed element subscene reference; parent placement and scene instructions take precedence. On the pathway in front of the arch. The main visual focus is Tsaeytte. Kaeldor and the school boys are walking out of the frame, towards the camera on the left side of the image. Kaeldor and the Schoolboys, at left foreground. Tsaeytte and Valindia, at center midground. Lighting: Morning sun. Atmosphere: clear. Mood: chaotic.",
+      "negative_prompt": "",
+      "resolution": 1024,
+      "images.image_1": [
+        "11",
+        0
+      ],
+      "images.image_2": [
+        "12",
+        0
+      ],
+      "images.image_3": [
+        "13",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 928,
+      "height": 1152,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1106,
+      "steps": 40,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "14",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "4",
+        1
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ZetExperiment/13efb6d06b56cbe4/Chapter-03-Collision/A_original/1106",
+      "images": [
+        "7",
+        0
+      ]
+    }
+  },
+  "14": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "cpu",
+      "dtype": "int8"
+    }
+  }
+}

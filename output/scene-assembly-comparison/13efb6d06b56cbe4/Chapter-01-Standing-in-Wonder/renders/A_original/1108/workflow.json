@@ -1,0 +1,137 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-01-Standing-in-Wonder/A_original/01_reference_Tsaeytte_with_dialogue.png"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-01-Standing-in-Wonder/A_original/02_reference-slot-2-group.jpg"
+    }
+  },
+  "13": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ZetExperiment/Chapter-01-Standing-in-Wonder/A_original/03_03_002.png"
+    }
+  },
+  "4": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "A single portrait image in the style of Painterly semi-realistic fantasy illustration with anime-influenced facial stylization and refined linework. <image1> supplies subject reference for Tsaeytte, preserving recognizable identity, facial structure, hairstyle, ear shape, body proportions, costume design, costume colors, and signature worn items, ignoring source pose, source background, source framing; disregard source pose, source background, source framing. <image2> supplies group reference for Schoolboys, preserving the complete element or group's recognizable appearance, component identities, and internal spatial arrangement, ignoring source canvas, source background, source framing, outer placement, source lighting, note: Managed element subscene reference; parent placement and scene instructions take precedence; disregard source canvas, source background, source framing, outer placement, source lighting; reference note: Managed element subscene reference; parent placement and scene instructions take precedence. <image3> supplies background reference for Spire - Archway, preserving permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features, ignoring source pose, source background, source framing; disregard source pose, source background, source framing. The pathway in front of the arch. Beyond the archway, the Schoolboys subscene contains both schoolboys and Kaeldor as a single visible background group. Kaeldor appears once, within this group. The main visual focus is Tsaeytte. The arch inscription and her upward gaze must be visible. Keep the whole group visible. Schoolboys, One group of exactly three elven academy students: red-haired Schoolboy 1, dark-haired Schoolboy 2, and Kaeldor, Preserve all three distinct students and their playful interaction from the subscene reference, Render this group once in the background beyond the archway, at center background, Small three-person group beyond the arch, in the left-center background; Kaeldor is part of this group. Tsaeytte, * Petite slender high elf, apparent age 17–18. * Long thick black hair reaching mid-back behind the shoulders and long pointed ears. * Woodland-green ribbon bow at the back of the head at the nape, where naturally visible, * Simple practical rural student clothing: leaf-green long-sleeved blouse with modest gathered neckline near the collarbone, simple front tie, loose sleeves gathered at the wrists, and a fully covered waist tucked or gathered into a broad brown leather belt. * A full plain dark forest-green wool skirt falls to lower-calf or ankle height as the pose permits. Thick cream socks and sturdy brown leather lace-up ankle boots with low practical heels remain visible below it. * Keep the fabric matte, durable, modest, and unadorned, with no jewelry, weapons, signs of wealth, adult adventuring gear, leggings, armor, ornate robes, or glamorous uniform, Holding stack of books in both arms in front of her, at right foreground, Standing in the right foreground, viewed from behind at three-quarter angle, head tilted upward to read the arch inscription, holding a stack of books in both arms, with a curious expression, looking toward Spire - Archway. Spire - Archway, Preserve the ornate academy archway and view of the Spire from the reference, The inscription across the upper arch reads \"POTENTIAL IS NOTHING WITHOUT DISCIPLINE\", the inner arch reads \"THE SPIRE OF CELESTIAL WISDOM\", Keep the inscription visible above Tsaeytte, at background. Tsaeytte has a clearly visible speech panel reading exactly \"Potential is nothing without discipline\" in no more than 2 lines with its pointer aimed at speaker mouth; Compact rectangular ivory parchment dialogue box beside Tsaeytte, with a small pointer to her mouth, exactly two lines: Potential is nothing / without discipline. Do not cover the arch inscription or the background group. Lighting: Morning sun. Atmosphere: clear. Mood: optimistic.",
+      "negative_prompt": "",
+      "resolution": 1024,
+      "images.image_1": [
+        "11",
+        0
+      ],
+      "images.image_2": [
+        "12",
+        0
+      ],
+      "images.image_3": [
+        "13",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 1248,
+      "batch_size": 1
+    }
+  },
+  "6": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1108,
+      "steps": 40,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "14",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "4",
+        1
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ZetExperiment/13efb6d06b56cbe4/Chapter-01-Standing-in-Wonder/A_original/1108",
+      "images": [
+        "7",
+        0
+      ]
+    }
+  },
+  "14": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "cpu",
+      "dtype": "int8"
+    }
+  }
+}

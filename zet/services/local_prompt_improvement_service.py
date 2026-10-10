@@ -48,7 +48,7 @@ def _source_paths(source_map: Path) -> list[Path]:
     paths = []
     for fragment in data.get("fragments") or []:
         value = fragment.get("source_path")
-        if value and Path(str(value)).suffix.lower() in {".md", ".json", ".yaml", ".yml"}:
+        if value and Path(str(value)).suffix.lower() in {".md", ".json", ".yaml", ".yml", ".py"}:
             path = Path(str(value))
             if path.is_file() and path not in paths:
                 paths.append(path)
@@ -124,7 +124,7 @@ class LocalPromptImprovementService:
 
     @staticmethod
     def _view(run: dict[str, Any], view: str) -> str:
-        view = str(view or "").upper()
+        view = str(view or "") if run.get("kind") == "scene" else str(view or "").upper()
         if view not in (run.get("views") or []):
             raise ValueError(f"Unknown local batch view: {view}")
         return view
@@ -313,6 +313,11 @@ class LocalPromptImprovementService:
                          images: list[tuple[dict[str, Any], Path]], missing: list[dict[str, str]]) -> str:
         mapping = "\n".join(f"Image {index}: {item['candidate_id']} (status {item.get('status') or 'UNKNOWN'})"
                             for index, (item, _) in enumerate(images, 1))
+        if self.pipeline == "scene":
+            return (f"Review all supplied scene candidates for target {view}. Describe significant variation in composition, "
+                    "subject placement, continuity, lighting, reference preservation and prompt adherence. Use candidate IDs as evidence. "
+                    "Separate recurring variation from isolated defects. Do not rank or rewrite prompts, and do not claim to inspect missing images.\n"
+                    f"Image mapping:\n{mapping}\nMissing images:\n{json.dumps(missing)}\nSubmitted Qwen prompt:\n{self._saved_prompt(run, view)}")
         return (f"Review every supplied image from the {self.pipeline} batch's {view} view.\n"
                 "Report noticeable structural discrepancies and variations between images that a clearer prompt or template could mitigate. "
                 "Focus on silhouette, garment size and shape, head/body proportions, hair length and form, and equipment or weapon placement. "
@@ -405,8 +410,21 @@ class LocalPromptImprovementService:
                         if path_value:
                             path = Path(str(path_value))
                             add(path, f"prompts/{view}/{path.name}")
-                character = Path(self.adapter.app.config.base_character_path) / str(run.get("character") or "") / str(run.get("phase") or "") / "Character.md"
-                add(character, "sources/Character.md", known_source_hashes.get(str(character.resolve()), ""))
+                if self.pipeline == "scene":
+                    add(root / "snapshot.json", "Scene_Batch_Snapshot.json")
+                    add(root / "spec.json", "Scene_Batch_Spec.json")
+                    for view, group in run["groups"].items():
+                        if group.get("ir_path"):
+                            add(Path(group["ir_path"]), f"prompts/{view}/Scene_Render_IR.json")
+                        for index, reference in enumerate(group.get("reference_images") or [], 1):
+                            source = Path(reference["path"])
+                            add(source, f"references/{view}/{index:03d}{source.suffix.lower()}", reference.get("sha256", ""))
+                        for record in [*group.get("analysis_history", []), group.get("analysis") or {}]:
+                            if record.get("status") == "COMPLETE":
+                                add(Path(record["result_path"]), f"analysis/{view}/{record['ask_id']}.md")
+                else:
+                    character = Path(self.adapter.app.config.base_character_path) / str(run.get("character") or "") / str(run.get("phase") or "") / "Character.md"
+                    add(character, "sources/Character.md", known_source_hashes.get(str(character.resolve()), ""))
                 costume_path = run.get("costume_path")
                 if costume_path:
                     path = Path(str(costume_path))
@@ -418,6 +436,8 @@ class LocalPromptImprovementService:
                 guide = self.project_root / "Docs" / "Prompt_Compiler_Guide.md"
                 add(guide, "Prompt_Compiler_Guide.md")
                 for view in run.get("views") or []:
+                    if self.pipeline == "scene":
+                        continue
                     roles = {"character-assembly": ("body_reference", "head_image"),
                              "costume-dressing": ("character_assembly",)}.get(self.pipeline, ())
                     if view != "FRONT" or (self.pipeline == "head-image" and run.get("front_source")):
@@ -454,7 +474,9 @@ class LocalPromptImprovementService:
         return None
 
     def _package_request(self, run: dict[str, Any]) -> str:
-        return (f"# Prompt Improvement Review\n\nReview the {self.pipeline} batch for {run.get('character')}/{run.get('phase')}. "
+        subject = (f"{run.get('story_slug')}/{run.get('scene_slug')}" if self.pipeline == "scene" else
+                   f"{run.get('character')}/{run.get('phase')}")
+        return (f"# Prompt Improvement Review\n\nReview the {self.pipeline} batch for {subject}. "
                 "Use Observations.json, all available images, saved compiled prompts, the relevant source templates, "
                 "source maps, dependency manifests, and Prompt_Compiler_Guide.md. Identify major structural variation "
                 "that clearer prompt or template wording could reduce. Give evidence by view and candidate ID. "

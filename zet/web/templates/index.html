@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20260926-gate-prompt-dialog">
+  <link rel="stylesheet" href="/static/zet.css?v=20261009-quick-character-wizard">
 </head>
 <body>
   <header class="app-header">
@@ -18,14 +18,18 @@
     </div>
     <div class="workspace-switch" role="group" aria-label="Workspace">
       <button id="workspace-character" class="workspace-option" type="button" aria-pressed="true">Character Development</button>
-      <button id="workspace-local" class="workspace-option" type="button" aria-pressed="false">Local</button>
       <button id="workspace-story" class="workspace-option" type="button" aria-pressed="false">Story Telling</button>
     </div>
     <div class="header-middle">
       <span id="story-git-warning" class="story-git-warning" hidden>Uncommitted story changes</span>
+      <span id="startup-recovery-status" role="status" aria-live="polite" hidden></span>
       <img id="header-fitment-preview" alt="Locked front-left three-quarter Head-Image" hidden>
     </div>
     <div class="context-controls">
+      <label class="universe-context">
+        Universe
+        <select id="universe-select" aria-label="Universe"></select>
+      </label>
       <div id="character-context" class="workspace-context">
         <label>
           Character
@@ -35,6 +39,7 @@
           Phase
           <select id="phase-select"></select>
         </label>
+        <button id="delete-phase" class="navigation-action" type="button">Delete Phase</button>
       </div>
       <div id="story-context" class="workspace-context" hidden>
         <label>
@@ -51,9 +56,6 @@
             <option value="">Scene workflow...</option>
             <option value="scene-builder">Builder</option>
             <option value="prompt-review">Prompt / Analysis</option>
-            <option value="render-console">Render Task</option>
-            <option value="local-image-review">Local Variants</option>
-            <option value="render-review">Candidate Review</option>
             <option value="locked-image">Locked Image</option>
           </select>
         </label>
@@ -65,6 +67,7 @@
           <button id="new-phase" type="button" data-workspace-item="character">Phase</button>
           <button id="new-story" type="button" data-workspace-item="story">Story</button>
           <button id="new-scene" type="button" data-workspace-item="story">Scene</button>
+          <button id="new-universe" class="tab" data-page="universe-create">Universe</button>
         </div>
       </div>
     </div>
@@ -74,74 +77,51 @@
     <select id="responsive-section-menu" class="responsive-section-menu" aria-label="Current workspace section"></select>
     <div id="character-navigation" class="workspace-navigation">
       <button class="tab onboarding-tab" data-page="onboarding">Overview</button>
-      <button class="tab workflow-tab" data-page="assets">Assets</button>
-      <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
-      <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
-      <button class="tab workflow-tab" data-page="costumes">Costumes</button>
-      <button class="tab workflow-tab" data-page="scene-appearances">Scene Appearances</button>
-      <button class="tab workflow-tab" data-page="expressions">Expressions</button>
-      <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
-      <div class="production-navigation" aria-label="Character production">
-        <button class="tab production-tab" data-page="prompt-review">Prompts <span class="production-count" data-production-count="prompt_available" hidden></span><span class="production-analysis-count" data-analysis-pending hidden></span></button>
-        <button class="tab production-tab" data-page="render-console">Render <span class="production-count" data-production-count="render_waiting" hidden></span></button>
-        <button class="tab production-tab" data-page="render-review">Image Review <span class="production-count" data-production-count="image_review_waiting" hidden></span></button>
-      </div>
-      <select id="character-production-menu" class="tab production-menu" aria-label="Character production tools">
-        <option value="" selected>Production ▾</option>
-        <option value="manifest">Manifest</option>
-        <option value="prompt-review">Prompts</option>
-        <option value="render-console">Render</option>
-        <option value="local-image-review">Local Images</option>
-        <option value="render-review">Image Review</option>
-      </select>
-    </div>
-    <div id="local-navigation" class="workspace-navigation" hidden>
-      <button class="tab workflow-tab" data-page="local-overview">Overview</button>
       <div class="toolbar-menu local-assets-menu">
         <button id="local-assets-button" class="tab workflow-tab" type="button" aria-expanded="false" aria-controls="local-assets-menu">Assets ▾</button>
         <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
-          <button class="tab workflow-tab" data-page="local-batch-status">Batch Status</button>
           <button class="tab workflow-tab" data-page="local-body-reference">Body-Reference</button>
           <button class="tab workflow-tab" data-page="local-head-image">Head-Image</button>
           <button class="tab workflow-tab" data-page="local-character-assembly">Character-Assembly</button>
           <button class="tab workflow-tab" data-page="local-costume-dressing">Costume-Dressing</button>
         </div>
       </div>
-      <button class="tab workflow-tab" data-page="local-identity-keys">Identity Keys</button>
-      <button class="tab workflow-tab" data-page="local-turnarounds">Turnarounds</button>
-      <button class="tab workflow-tab" data-page="local-costumes">Costumes</button>
-      <button class="tab workflow-tab" data-page="local-scene-appearances">Scene Appearances</button>
-      <button class="tab workflow-tab" data-page="local-expressions">Expressions</button>
-      <button class="tab workflow-tab" data-page="local-comparison">Comparison</button>
+      <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
+      <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
+      <button class="tab workflow-tab" data-page="costumes">Costumes</button>
+      <button class="tab workflow-tab" data-page="phase-comparison">Phase Comparison</button>
+    </div>
+    <div id="local-navigation" class="workspace-navigation" hidden>
+      <button class="tab workflow-tab" data-page="local-overview">Overview</button>
     </div>
     <div id="story-navigation" class="workspace-navigation" hidden>
+      <a class="tab workflow-tab" href="/narrative">Narrative Scenes</a>
       <button class="tab workflow-tab" data-page="stories">Overview</button>
       <button class="tab workflow-tab" data-page="scenes">Scenes</button>
       <button class="tab workflow-tab" data-page="scene-candidates">Candidates</button>
       <button class="tab workflow-tab" data-page="scene-builder">Scene Builder</button>
+      <button class="tab workflow-tab" data-page="scene-batches">Scene Renders</button>
       <button class="tab workflow-tab" data-page="zine">Zines</button>
       <div class="production-navigation" aria-label="Story production">
         <button class="tab production-tab" data-page="prompt-review">Prompt / Analysis <span class="production-count" data-production-count="prompt_available" hidden></span><span class="production-analysis-count" data-analysis-pending hidden></span></button>
-        <button class="tab production-tab" data-page="render-console">Render Console <span class="production-count" data-production-count="render_waiting" hidden></span></button>
-        <button class="tab production-tab" data-page="render-review">Image Review <span class="production-count" data-production-count="image_review_waiting" hidden></span></button>
       </div>
       <select id="story-production-menu" class="tab production-menu" aria-label="Story production tools">
         <option value="" selected>Production ▾</option>
         <option value="prompt-review">Prompt / Analysis</option>
-        <option value="render-console">Render Console</option>
-        <option value="local-image-review">Local Variants</option>
-        <option value="render-review">Image Review</option>
       </select>
     </div>
     <div class="toolbar-actions">
       <button id="toolbar-restart-zet" class="toolbar-restart-button navigation-action" type="button" aria-label="Restart Zet" title="Restart Zet">♻</button>
+      <button id="toolbar-batches" class="tab navigation-action" data-page="local-batch-status" type="button">Batches</button>
       <div class="toolbar-menu">
         <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
         <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
+          <button class="tab workflow-tab" data-page="image-generation">Image Generation</button>
           <button class="tab workflow-tab" data-page="auxiliary-resources">Image Inventory</button>
           <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
           <button class="tab workflow-tab" data-page="ai-controls">AI Queue</button>
           <button class="tab workflow-tab" data-page="local-image-config">Config</button>
+          <button class="tab workflow-tab" data-page="universes">Universes</button>
           <button id="toolbar-local-character-overview" type="button">Local Character Overview</button>
           <button id="toolbar-gate-test-rig" type="button">Gate Test Rig</button>
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
@@ -160,6 +140,28 @@
   </nav>
 
   <main>
+    <section id="universes-page" class="page">
+      <div class="page-title-row"><h1>Universes</h1><button class="primary-action tab" type="button" data-page="universe-create">New Universe</button></div>
+      <div id="universes-message" class="action-message" hidden></div>
+      <div id="universe-list" class="control-panel" aria-live="polite"></div>
+    </section>
+    <section id="universe-create-page" class="page">
+      <div class="page-title-row"><h1>New Universe</h1></div>
+      <form id="universe-create-form" class="control-panel">
+        <label>Universe Name<input id="universe-create-name" name="name" required maxlength="80" autocomplete="off"></label>
+        <label>Canonical Art Style<textarea id="universe-create-art-style" name="canonical_art_style" rows="4"></textarea></label>
+        <div id="universe-create-message" class="action-message" hidden></div>
+        <div class="button-row compact"><button class="primary-action" type="submit">Create Universe</button><button class="tab" type="button" data-page="universes">Cancel</button></div>
+      </form>
+    </section>
+    <section id="universe-settings-page" class="page">
+      <div class="page-title-row"><h1 id="universe-settings-title">Universe Settings</h1><button class="tab" type="button" data-page="universes">Back to Universes</button></div>
+      <div id="universe-settings-message" class="action-message" hidden></div>
+      <form id="universe-settings-form" class="control-panel">
+        <label>Canonical Art Style<textarea id="universe-settings-art-style" name="canonical_art_style" rows="5"></textarea></label>
+        <div class="button-row compact"><button class="primary-action" type="submit">Save Settings</button><button id="universe-settings-select" type="button">Select Universe</button></div>
+      </form>
+    </section>
     <section id="onboarding-page" class="page">
       <div class="page-title-row">
         <h1>Character Overview</h1>
@@ -247,6 +249,7 @@
             <button id="local-pipeline-start" class="primary-action" type="button" disabled>Start batch</button>
             <button id="local-pipeline-stop" class="danger-action" type="button" hidden>Stop</button>
             <button id="local-pipeline-rerun" type="button" disabled>Re-run batch</button>
+            <label class="local-pipeline-recompile-option"><span>Recompile</span><input id="local-pipeline-rerun-recompile" type="checkbox"></label>
             <button id="local-pipeline-reevaluate" type="button" disabled>Re-evaluate</button>
             <a id="local-pipeline-prompt-improvement-package" hidden download>Download Prompt Improvement Package</a>
             <button id="local-pipeline-proceed" type="button" hidden disabled>Run remaining</button>
@@ -267,6 +270,7 @@
             <label id="local-pipeline-rerun-refresh-option" hidden><span>Refresh references from chosen batches when rerunning</span><input id="local-pipeline-rerun-refresh-sources" type="checkbox" checked></label>
             <div id="local-pipeline-source-option" hidden>
               <label>Optional FRONT reference<input id="local-pipeline-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+              <label id="local-pipeline-apply-phase-change-option" class="local-pipeline-recompile-option"><span>Apply Phase Change</span><input id="local-pipeline-apply-phase-change" type="checkbox" disabled></label>
               <div id="local-pipeline-source-paste" class="local-pipeline-source-paste" contenteditable="true" role="textbox" aria-label="Paste optional FRONT reference image">Click here, then paste a reference image</div>
               <div id="local-pipeline-source-preview" class="muted">No FRONT reference selected.</div>
               <button id="local-pipeline-source-remove" type="button" hidden>Remove reference</button>
@@ -314,6 +318,10 @@
           <button id="local-pipeline-review-prev" class="review-nav" type="button" aria-label="Previous candidate">‹</button>
           <section id="local-pipeline-review-panel"></section>
           <button id="local-pipeline-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
+          <div class="local-pipeline-review-view-navigation">
+            <button id="local-pipeline-review-prev-view" type="button">Prev View</button>
+            <button id="local-pipeline-review-next-view" type="button">Next View</button>
+          </div>
         </div>
       </div>
     </dialog>
@@ -455,6 +463,10 @@
           </div>
           <div class="identity-form-row">
             <label>
+              Source
+              <select id="identity-key-source"><option value="">Select a locked local image</option></select>
+            </label>
+            <label>
               Label
               <input id="identity-key-label" type="text" placeholder="Upper Body">
             </label>
@@ -482,9 +494,164 @@
     <section id="auxiliary-resources-page" class="page">
       <div class="page-title-row">
         <h1>Image Inventory</h1>
+        <button id="entity-library-open-import" type="button" class="secondary-action">Add image</button>
       </div>
+      <nav class="inventory-navigation" aria-label="Image inventory pages">
+        <button type="button" class="inventory-nav active" data-inventory-view="search">Search images</button>
+        <button type="button" class="inventory-nav" data-inventory-view="entities">Entities</button>
+        <button type="button" class="inventory-nav" data-inventory-view="variants">Variants</button>
+        <button type="button" class="inventory-nav" data-inventory-view="sets">Reference sets</button>
+        <button type="button" class="inventory-nav" data-inventory-view="facets">Facets</button>
+      </nav>
+      <section id="entity-library-search-view" class="inventory-view active">
+        <form id="entity-library-search-form" class="inventory-search-bar">
+          <label class="visually-hidden" for="entity-library-search">Search images</label>
+          <input id="entity-library-search" type="search" placeholder="Search by name, subject, set, tag, or facet" autocomplete="off">
+          <button id="entity-library-refresh" class="primary-action" type="submit">Search</button>
+          <button id="quick-character-wizard-open" type="button">Quick Character Wizard</button>
+        </form>
+        <div class="entity-library-layout">
+        <aside class="entity-library-sidebar">
+          <details class="control-panel inventory-filter-panel">
+            <summary>Filters <span id="entity-library-active-filter-count"></span></summary>
+            <label>Entity<select id="entity-library-filter-entity"></select></label>
+            <label>Entity type<select id="entity-library-filter-type"><option value="">All types</option></select></label>
+            <label>Variant<select id="entity-library-filter-variant"></select></label>
+            <label>Reference set<select id="entity-library-filter-set"></select></label>
+            <label>Facet<select id="entity-library-filter-facet"></select></label>
+            <label>Status<select id="entity-library-filter-status"><option value="">All except obsolete and archived</option><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
+            <label>Origin<select id="entity-library-filter-origin"><option value="">All origins</option><option value="import">Imported</option><option value="pipeline">Locked pipeline</option></select></label>
+            <label class="checkbox-field"><input id="entity-library-include-obsolete" type="checkbox"> Include obsolete images</label>
+            <button id="entity-library-clear-filters" class="text-action" type="button">Clear filters</button>
+            <div id="entity-library-filter-chips" class="inventory-filter-chips" aria-label="Active filters"></div>
+            <div id="entity-library-count" class="status-text" role="status"></div>
+          </details>
+          <section class="control-panel">
+            <h2>Add image</h2>
+            <input id="entity-library-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+            <div id="entity-library-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste an image to add to the library"><p>Or click here and paste an image</p></div>
+            <label>Image name<input id="entity-library-new-label" placeholder="Required"></label>
+            <div id="entity-library-generation-prompts" hidden><p><strong>Prompt</strong><br><span id="entity-library-import-prompt"></span></p><p><strong>Negative prompt</strong><br><span id="entity-library-import-negative-prompt"></span></p></div>
+            <label>Generated image entity<select id="entity-library-generated-entity"><option value="">Choose entity</option></select></label>
+            <label>Reference role<select id="entity-library-generated-role"><option value="primary_subject">Primary subject</option><option value="depicted_subject">Depicted subject</option><option value="source">Source reference</option><option value="backdrop">Backdrop</option><option value="location">Location</option><option value="worn_costume">Worn costume</option><option value="held_prop">Held prop</option></select></label>
+            <label>Generation provenance<input id="entity-library-generated-provenance" placeholder="e.g. Qwen prompt or generation run"></label>
+            <button id="entity-library-import" type="button" disabled>Add to library</button>
+            <div id="entity-library-import-status" class="status-text" role="status"></div>
+          </section>
+          <section class="control-panel">
+            <h2>Create entity</h2>
+            <label>Name<input id="entity-library-entity-name"></label>
+            <label>Type<select id="entity-library-entity-type"><option value="character">Character</option><option value="person">Person</option><option value="creature">Creature</option><option value="group">Group</option><option value="location">Location</option><option value="structure">Structure</option><option value="prop">Prop</option><option value="costume">Costume</option><option value="symbol">Symbol</option></select></label>
+            <button id="entity-library-entity-create" type="button">Create entity</button>
+            <label>Variant owner<select id="entity-library-variant-entity"></select></label>
+            <label>Variant name<input id="entity-library-variant-name" placeholder="Adult, raven form, etc."></label>
+            <label>Variant type<select id="entity-library-variant-type"><option value="life_stage">Life stage</option><option value="form">Form</option><option value="state">State</option><option value="version">Version</option></select></label>
+            <button id="entity-library-variant-create" type="button">Create variant</button>
+            <label>Relationship source<select id="entity-library-relation-source"></select></label>
+            <label>Relationship<select id="entity-library-relation-type"><option value="part_of">Part of</option><option value="variant_of">Variant of</option><option value="associated_with">Associated with</option></select></label>
+            <label>Target<select id="entity-library-relation-target"></select></label>
+            <button id="entity-library-relation-create" type="button">Link entities</button>
+          </section>
+          <section class="control-panel">
+            <h2>Reference sets</h2>
+            <label>Set<select id="entity-library-set-select"></select></label>
+            <label>Name<input id="entity-library-set-name"></label>
+            <label>Purpose<input id="entity-library-set-type" placeholder="identity, costume, prop detail..."></label>
+            <div class="button-row compact"><button id="entity-library-set-create" type="button">Create set</button><button id="entity-library-set-save" type="button" disabled>Rename set</button><button id="entity-library-set-delete" class="danger-action" type="button" disabled>Delete set</button></div>
+          </section>
+          <section class="control-panel">
+            <h2>Shared prompt descriptor</h2>
+            <label>Owner type<select id="entity-library-descriptor-owner-type"><option value="entity">Entity</option><option value="variant">Variant</option><option value="set">Reference set</option></select></label>
+            <label>Owner<select id="entity-library-descriptor-owner"></select></label>
+            <label>Descriptor type<select id="entity-library-descriptor-type"><option value="prompt_identity">Prompt identity</option><option value="prompt_costume">Prompt costume</option><option value="prompt_object">Prompt object</option><option value="prompt_background">Prompt background</option><option value="negative_guidance">Negative guidance</option><option value="human_description">Human description</option><option value="selection_notes">Selection notes</option></select></label>
+            <label>Text<textarea id="entity-library-descriptor-text"></textarea></label>
+            <button id="entity-library-descriptor-save" type="button">Save shared descriptor</button>
+          </section>
+        </aside>
+        <section class="control-panel entity-library-results-panel">
+          <div class="image-catalog-results-heading"><h2>Images</h2><div class="entity-library-pagination"><button id="entity-library-previous" type="button" disabled>Previous</button><span id="entity-library-page-status" class="status-text">Page 1</span><button id="entity-library-next" type="button" disabled>Next</button></div></div>
+          <div id="entity-library-results" class="image-catalog-grid"></div>
+        </section>
+        </div>
+      </section>
+      <section id="entity-library-detail-view" class="inventory-view" hidden>
+        <button id="entity-library-back" class="text-action" type="button">← Back to search</button>
+        <aside class="review-actions entity-library-editor">
+          <section class="inventory-detail-group">
+            <h2 id="entity-library-editor-title">Select an image</h2>
+            <img id="entity-library-preview" class="image-preview fullscreen-image-trigger" alt="Selected library image" hidden>
+            <label>Name<input id="entity-library-edit-label" disabled></label>
+            <label>Notes<textarea id="entity-library-edit-notes" disabled></textarea></label>
+            <label>Status<select id="entity-library-edit-status" disabled><option value="approved">Approved</option><option value="draft">Draft</option><option value="obsolete">Obsolete</option><option value="archived">Archived</option></select></label>
+            <button id="entity-library-save" class="primary-action" type="button" disabled>Save image</button>
+            <button id="entity-library-generate-prompt" type="button" disabled>Generate Prompt</button>
+            <div id="entity-library-prompt-status" class="status-text" role="status"></div>
+          </section>
+          <section class="inventory-detail-group"><h3>Organization</h3>
+            <label>Entity links<select id="entity-library-edit-entities" multiple size="6" disabled></select><small>Use Ctrl or Command to select more than one entity.</small></label>
+            <label>Reference sets<select id="entity-library-edit-sets" multiple size="5" disabled></select><small>Group images of the same subject or purpose; use Ctrl or Command to select multiple sets.</small></label>
+            <label>Facets<textarea id="entity-library-edit-facets" placeholder="view:front, framing:object_detail" aria-describedby="entity-library-facets-help" disabled></textarea><small id="entity-library-facets-help">Comma-separated namespace:value pairs, for example view:front, view:left_profile, framing:object_detail. Views are searchable metadata; select the rendered view with tagged template lines.</small></label>
+            <label>Free tags<textarea id="entity-library-edit-tags" placeholder="necklace, earrings" disabled></textarea><small>Comma-separated search words or phrases; no namespace needed.</small></label>
+          </section>
+          <section class="inventory-detail-group"><h3>Prompt descriptions</h3>
+            <label>Generation prompt<textarea id="entity-library-edit-prompt" placeholder="Describe the visible image." disabled></textarea></label>
+            <label>Negative prompt<textarea id="entity-library-edit-negative-prompt" placeholder="Elements to avoid." disabled></textarea></label>
+            <div class="inventory-identity-field"><div class="inventory-identity-caption"><label for="entity-library-edit-identity">Prompt identity</label><button id="entity-library-generate-identity" type="button" disabled>Generate Identity</button></div><textarea id="entity-library-edit-identity" disabled></textarea><div id="entity-library-identity-status" class="status-text" role="status"></div></div>
+            <label>Prompt costume<textarea id="entity-library-edit-costume" disabled></textarea></label>
+            <label>Preferred reference key<input id="entity-library-edit-reference" placeholder="tsaeytte.jewelry.front_side" disabled><small>Stable key for &#123;&#123;LIB:REF:key&#125;&#125; in templates. Use lowercase letters, numbers, dots, underscores, or hyphens.</small></label>
+          </section>
+          <section class="inventory-detail-group inventory-detail-actions"><h3>Image actions</h3>
+            <button id="quick-character-wizard-from-asset" type="button">Quick Character Wizard</button>
+            <button id="entity-library-modify-generated" class="primary-action" type="button" hidden>Modify with Image Generator</button>
+            <span id="entity-library-modify-status" class="status-text" role="status"></span>
+            <label>Replacement image<input id="entity-library-replacement-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled></label>
+            <div id="entity-library-replacement-paste" class="paste-zone" tabindex="0" role="button" aria-label="Paste a replacement image"><p>Or click here and paste a replacement image</p></div>
+            <button id="entity-library-replace" type="button" disabled>Replace with new asset</button>
+            <button id="entity-library-delete" class="danger-action" type="button" disabled>Archive image</button>
+          </section>
+          <section class="inventory-detail-group"><h3>Logical references</h3><ul id="entity-library-logical-references"></ul></section>
+          <section class="inventory-detail-group"><h3>Where used</h3><ul id="entity-library-usages"></ul></section>
+        </aside>
+      </section>
+      <section id="entity-library-organizer-view" class="inventory-view" hidden>
+        <div id="entity-library-organizer"></div>
+      </section>
+      <dialog id="entity-library-import-dialog" class="inventory-dialog">
+        <img id="entity-library-import-preview" class="entity-library-import-preview" alt="Image selected for import" hidden>
+        <div id="entity-library-import-dialog-content"></div>
+        <button id="entity-library-close-import" type="button">Close</button>
+      </dialog>
+      <dialog id="entity-library-merge-dialog" class="inventory-dialog">
+        <h2>Review merge</h2><div id="entity-library-merge-content"></div>
+        <div class="button-row"><button id="entity-library-merge-cancel" type="button">Cancel</button><button id="entity-library-merge-confirm" class="primary-action" type="button" disabled>Merge records</button></div>
+      </dialog>
+      <dialog id="quick-character-wizard-dialog" class="inventory-dialog" aria-labelledby="quick-character-wizard-title">
+        <div class="button-row"><h2 id="quick-character-wizard-title">Quick Character Wizard</h2><button id="qc-close" type="button">Close</button></div>
+        <p>Create front, front 3/4 and profile images from references. Closing keeps your draft.</p>
+        <div class="button-row"><label>Resume draft<select id="qc-sessions"><option value="">Choose a draft</option></select></label><button id="qc-resume" type="button">Resume</button><button id="qc-new" type="button">New draft</button></div>
+        <div id="qc-message" class="status-text" role="status" aria-live="polite"></div>
+        <section id="qc-intake">
+          <div class="qc-controls"><label>Name<input id="qc-name" maxlength="200"></label><label>Framing<select id="qc-framing"><option value="full_body">Full body</option><option value="portrait">Head-and-shoulders portrait</option></select></label><label>Angled views<select id="qc-side"><option value="left">Left side</option><option value="right">Right side</option></select></label></div>
+          <label>Description and instructions<textarea id="qc-notes" rows="3" placeholder="Describe what to preserve or change."></textarea></label>
+          <div id="qc-reference-slots" class="qc-grid"></div>
+          <button id="qc-create" class="primary-action" type="button">Analyze references</button>
+        </section>
+        <section id="qc-draft" hidden>
+          <div id="qc-source-images" class="qc-grid"></div>
+          <div id="qc-questions"></div><button id="qc-answer" type="button" hidden>Submit answers</button>
+          <div class="qc-grid"><section><h3>Observed details</h3><ul id="qc-observations"></ul></section><section><h3>Proposed missing details</h3><ul id="qc-proposals"></ul></section></div>
+          <label>Proposed details to use (one per line; correct or remove before approving)<textarea id="qc-proposed-details" rows="3"></textarea></label>
+          <label>Character description<textarea id="qc-description" rows="6"></textarea></label>
+          <label>Prompt identity<textarea id="qc-identity" rows="2"></textarea></label>
+          <label><input id="qc-approved" type="checkbox"> I have reviewed the description and approved or corrected the proposed details.</label>
+          <div class="button-row"><button id="qc-save-draft" type="button">Save description</button><button id="qc-reanalyze" type="button">Retry analysis</button></div>
+          <div id="qc-views" class="qc-grid"></div>
+          <div class="button-row"><button id="qc-accept" class="primary-action" type="button" disabled>Save three views to library</button><button id="qc-abandon" type="button">Abandon draft</button></div>
+          <div id="qc-publication"></div>
+        </section>
+      </dialog>
       <div id="aux-resource-message" class="action-message" hidden></div>
-      <div class="image-catalog-layout">
+      <div class="image-catalog-layout" hidden>
         <aside class="image-catalog-sidebar">
           <section class="control-panel image-catalog-filter-panel">
             <div class="image-catalog-filter-heading">
@@ -678,7 +845,6 @@
             <thead>
               <tr>
                 <th>costume</th>
-                <th>assets</th>
                 <th>template</th>
                 <th></th>
               </tr>
@@ -687,7 +853,11 @@
           </table>
         </section>
         <aside class="review-actions item-editor">
-          <button id="costume-add-new" class="create-action" type="button">Add New</button>
+          <div class="button-row compact costume-create-actions">
+            <button id="costume-add-new" class="create-action" type="button">Add New</button>
+            <button id="costume-wizard-open" type="button">Costume Wizard</button>
+          </div>
+          <button id="costume-delete" class="navigation-action" type="button" hidden>Delete Costume</button>
           <h3 id="costume-form-title">Add Costume</h3>
           <label>
             Costume Name
@@ -705,6 +875,41 @@
           </section>
         </aside>
       </div>
+      <dialog id="costume-wizard-dialog" class="costume-wizard-dialog" aria-labelledby="costume-wizard-title">
+        <div class="costume-wizard-header">
+          <div><h2 id="costume-wizard-title">Costume Wizard</h2><p id="costume-wizard-context" class="status-text"></p></div>
+          <button id="costume-wizard-close" type="button">Back to Costumes</button>
+        </div>
+        <div id="costume-wizard-message" class="action-message" hidden></div>
+        <section id="costume-wizard-intake" class="control-panel">
+          <div class="costume-wizard-resume"><label>Resume a draft<select id="costume-wizard-resume"><option value="">New costume draft</option></select></label><button id="costume-wizard-resume-button" type="button">Resume</button></div>
+          <label>Costume name<input id="costume-wizard-name" type="text" placeholder="Ceremonial outfit"></label>
+          <div class="costume-wizard-images">
+            <article class="costume-wizard-image-slot" data-slot="1"><h3>Reference image 1</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>What this image conveys<input class="costume-wizard-caption" type="text" placeholder="Front of the outfit"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="2"><h3>Reference image 2</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>What this image conveys<input class="costume-wizard-caption" type="text" placeholder="Back of the outfit"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
+            <article class="costume-wizard-image-slot" data-slot="3"><h3>Reference image 3</h3><label>Browse<input class="costume-wizard-file" type="file" accept="image/*"></label><label>What this image conveys<input class="costume-wizard-caption" type="text" placeholder="Close-up of the top"></label><div class="costume-wizard-paste" tabindex="0">Click here and paste an image</div><img class="costume-wizard-preview" alt="Reference image preview" hidden></article>
+          </div>
+          <label>Extra info<textarea id="costume-wizard-extra" rows="4" placeholder="Any other details the references do not show"></textarea></label>
+          <button id="costume-wizard-create" class="primary-action" type="button">Create Costume Draft</button>
+        </section>
+        <section id="costume-wizard-workspace" class="control-panel" hidden>
+          <div id="costume-wizard-questions"></div>
+          <div id="costume-wizard-review" class="costume-wizard-review" hidden></div>
+          <div id="costume-wizard-errors" class="costume-wizard-errors" hidden></div>
+          <label>Costume template (Markdown)<textarea id="costume-wizard-markdown" rows="28" spellcheck="false"></textarea></label>
+          <div class="button-row compact">
+            <button id="costume-wizard-generate" type="button" hidden>Retry Draft</button>
+            <button id="costume-wizard-answer" type="button" hidden>Submit answers</button>
+            <button id="costume-wizard-save" type="button">Save Draft</button>
+            <button id="costume-wizard-test" type="button">Test Render</button>
+            <button id="costume-wizard-accept" class="primary-action" type="button">Accept Costume</button>
+          </div>
+          <div id="costume-wizard-test-result" class="costume-wizard-test-result" hidden></div>
+          <label>Refinement instructions<textarea id="costume-wizard-refinement" rows="3" placeholder="Describe what should change in the next draft"></textarea></label>
+          <button id="costume-wizard-refine" type="button">Apply Refinements</button>
+          <div class="button-row compact"><button id="costume-wizard-abandon" class="danger-action" type="button">Abandon Wizard</button></div>
+        </section>
+      </dialog>
     </section>
 
     <section id="help-page" class="page">
@@ -887,7 +1092,7 @@
                 <span id="scene-save-state" class="save-state" aria-live="polite"></span>
                 <button id="scene-toggle-image" class="navigation-action" type="button" disabled>Images</button>
                 <button id="scene-builder-open" class="navigation-action" type="button" disabled>Builder</button>
-                <button id="scene-stage-render" class="update-action" type="button" disabled>Render</button>
+                <button id="scene-stage-render" class="update-action" type="button" disabled>Scene Renders</button>
                 <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
                 <button id="scene-delete" class="danger-action" type="button" disabled>Delete Scene</button>
               </div>
@@ -937,6 +1142,54 @@
         </aside>
       </div>
     </section>
+
+    <section id="scene-batches-page" class="page">
+      <div class="page-heading"><h1>Scene Renders</h1><span id="scene-batch-context"></span></div>
+      <p id="scene-batch-message" role="status"></p>
+      <p id="scene-batch-status" class="status-text"></p>
+      <div class="button-row compact">
+        <button id="scene-batch-start" type="button" disabled>Render Next Group</button>
+        <button id="scene-batch-stop" type="button" disabled>Stop</button>
+        <button id="scene-batch-refresh" type="button">Refresh</button>
+        <button id="scene-batch-publish" type="button" disabled>Review &amp; Publish</button>
+      </div>
+      <div id="scene-batch-groups"></div>
+    </section>
+    <dialog id="scene-batch-publication-dialog" class="scene-batch-publication-dialog" aria-labelledby="scene-batch-publication-title">
+      <div class="scene-batch-review-heading">
+        <h2 id="scene-batch-publication-title">Review selected images before publishing</h2>
+        <button id="scene-batch-publication-close" type="button">Cancel</button>
+      </div>
+      <p>Publishing locks each promoted image. Compare each selected candidate with its current locked image, or reject the candidate and keep the current lock.</p>
+      <div id="scene-batch-publication-targets"></div>
+      <div class="button-row compact">
+        <button id="scene-batch-publication-submit" type="button" disabled>Apply review decisions</button>
+      </div>
+      <p id="scene-batch-publication-message" role="status"></p>
+    </dialog>
+    <dialog id="scene-batch-review-dialog" class="scene-batch-review-dialog" aria-labelledby="scene-batch-review-title">
+      <div class="scene-batch-review-layout">
+        <figure class="scene-batch-review-image"><img id="scene-batch-review-image" alt=""></figure>
+        <aside class="scene-batch-review-info">
+          <div class="scene-batch-review-heading">
+            <h2 id="scene-batch-review-title">Review scene candidate</h2>
+            <button id="scene-batch-review-close" type="button">Close</button>
+          </div>
+          <div id="scene-batch-review-details"></div>
+          <div class="button-row compact scene-batch-review-actions">
+            <button id="scene-batch-review-select" type="button">Select</button>
+            <button id="scene-batch-review-retry" type="button">Retry</button>
+            <button id="scene-batch-review-clear" class="danger-action" type="button">Clear</button>
+          </div>
+          <div class="scene-batch-review-navigation">
+            <button id="scene-batch-review-prev" type="button">← Previous</button>
+            <span id="scene-batch-review-position"></span>
+            <button id="scene-batch-review-next" type="button">Next →</button>
+          </div>
+          <p id="scene-batch-review-message" role="status"></p>
+        </aside>
+      </div>
+    </dialog>
 
     <section id="zine-page" class="page">
       <div class="page-title-row">
@@ -1113,14 +1366,15 @@
             Resource Type
             <select id="builder-element-resource-type"></select>
           </label>
+          <label>Display Name<input id="builder-element-scene-name" type="text" required></label>
           <section id="builder-element-character-section">
             <h3>Character</h3>
-            <label>Character<select id="builder-element-character"></select></label>
+            <label>Existing character (optional)<select id="builder-element-character"></select></label>
             <label>Phase<select id="builder-element-phase"></select></label>
             <label>Costume<select id="builder-element-costume"></select></label>
           </section>
           <section id="builder-element-aux-section">
-            <h3>Reference Set</h3>
+            <h3>Reference Set (optional)</h3>
             <label>Set<select id="builder-element-aux"></select></label>
             <button id="builder-element-new-aux" type="button">New Reference Set</button>
             <div id="builder-element-new-aux-form" class="inline-create-form" hidden>
@@ -1133,8 +1387,10 @@
             </div>
           </section>
           <section id="builder-element-scene-section">
-            <h3>Scene-Only</h3>
-            <label>Display Name<input id="builder-element-scene-name" type="text"></label>
+            <p>Scene-only elements have no library reference. Add references or a visual description later if needed.</p>
+          </section>
+          <section id="builder-element-subscene-section" hidden>
+            <p>This creates a named group render target. Move elements into it using each element’s “Render in” field, then render the group before the full scene.</p>
           </section>
           <div class="button-row compact">
             <button id="builder-element-cancel" type="button">Cancel</button>
@@ -1160,18 +1416,23 @@
             <h2 id="builder-image-picker-modal-title">Image References</h2>
             <button id="builder-image-picker-close" type="button">Close</button>
           </div>
+          <label>Entity<select id="builder-image-picker-entity"></select></label>
+          <label>Variant<select id="builder-image-picker-variant"></select></label>
+          <label>Reference set<select id="builder-image-picker-set"></select></label>
+          <label>Facet<select id="builder-image-picker-facet"></select></label>
+          <label>Reference choice<select id="builder-image-picker-mode"><option value="asset">This exact image</option><option value="logical">Current preferred reference</option></select></label>
           <label>
             Character Filter
-            <select id="builder-image-picker-character"></select>
+            <select id="builder-image-picker-character" hidden></select>
           </label>
           <label>
             Search
             <input id="builder-image-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
           </label>
-          <label class="checkbox-field"><input id="builder-image-picker-include-base" type="checkbox"> Include base pipeline images</label>
-          <label>Source<select id="builder-image-picker-source"><option value="">All sources</option><option value="imported">Imported</option><option value="pipeline">Pipeline</option><option value="identity-key">Identity key</option><option value="turnaround">Turnaround</option><option value="scene">Scene</option><option value="subscene">Sub-scene</option></select></label>
-          <label>Category<select id="builder-image-picker-category"><option value="">All categories</option><option>Person</option><option>Place</option><option>Object</option><option>Composite/Scene</option></select></label>
-          <label>Status<select id="builder-image-picker-status"><option value="">All states</option><option value="ready">Ready</option><option value="needs_identity">Needs identity text</option><option value="needs_costume">Needs costume text</option><option value="ai_review_required">AI review required</option></select></label>
+          <label class="checkbox-field" hidden><input id="builder-image-picker-include-base" type="checkbox"></label>
+          <select id="builder-image-picker-source" hidden></select>
+          <select id="builder-image-picker-category" hidden></select>
+          <select id="builder-image-picker-status" hidden></select>
           <button id="builder-image-picker-refresh" type="button">Refresh References</button>
           <div id="builder-image-picker-status" class="status-text"></div>
           <table id="builder-image-picker-table">
@@ -1276,7 +1537,7 @@
             <h2 id="prompt-review-title">Select a prompt</h2>
             <div class="button-row compact">
               <button id="prompt-review-scene-builder" class="navigation-action" hidden>Scene Builder</button>
-              <button id="prompt-review-render-console" class="navigation-action" disabled>Render Console</button>
+              <button id="prompt-review-render-console" class="navigation-action" hidden disabled>Retired</button>
               <button id="copy-prompt">Copy Prompt</button>
               <button id="analyze-prompt" type="button" disabled>Run analysis</button>
               <button id="view-prompt-analysis" class="scene-builder-analysis-view" type="button" disabled>View analysis</button>
@@ -1467,6 +1728,7 @@
               <button id="render-console-local-api-copy" type="button">Copy</button>
             </div>
             <p id="render-console-local-status" class="status-text"></p>
+            <ul id="render-console-qwen-warnings" class="status-text" aria-live="polite" hidden></ul>
             <div id="render-console-local-test-render" class="image-placeholder">No local test render.</div>
           </section>
         </aside>
@@ -1641,9 +1903,9 @@
             <tbody></tbody>
           </table>
         </section>
-        <section class="control-panel ai-render-console-panel">
+        <section class="control-panel ai-render-console-panel" hidden>
           <h2>Render Console</h2>
-          <button id="open-render-console-tab" class="navigation-action">Open Render Console</button>
+          <button id="open-render-console-tab" class="navigation-action" hidden>Retired</button>
           <div id="manual-render-count" class="summary-bar"></div>
           <table id="manual-render-table"><tbody></tbody></table>
         </section>
@@ -1663,6 +1925,59 @@
             </thead>
             <tbody></tbody>
           </table>
+        </section>
+      </div>
+    </section>
+
+    <section id="image-generation-page" class="page">
+      <div class="page-title-row">
+        <div><h1>Image Generation</h1><p class="status-text">Ad hoc images via AI_Proxy · Qwen Image 2.1</p></div>
+        <div id="image-generation-model" class="status-text">Loading model…</div>
+      </div>
+      <div id="image-generation-message" class="action-message" aria-live="polite" hidden></div>
+      <div class="image-generation-layout">
+        <form id="image-generation-form" class="control-panel image-generation-form">
+          <label>
+            Prompt
+            <textarea id="image-generation-prompt" rows="6" required placeholder="Describe the prop, creature, or image you want to generate."></textarea>
+          </label>
+          <label>
+            Negative prompt <span class="status-text">Optional</span>
+            <textarea id="image-generation-negative" rows="2" placeholder="Elements to avoid"></textarea>
+          </label>
+          <div id="image-generation-source" class="status-text" hidden></div>
+          <div class="image-generation-modes" role="group" aria-label="Generation mode">
+            <button id="image-generation-txt2img" type="button" class="primary-action" aria-pressed="true">txt2img</button>
+            <button id="image-generation-img2img" type="button" aria-pressed="false">img2img</button>
+          </div>
+          <div class="image-generation-dimensions">
+            <label>Width<input id="image-generation-width" type="number" min="256" max="4096" step="32" value="1024" required></label>
+            <label>Height<input id="image-generation-height" type="number" min="256" max="4096" step="32" value="1024" required></label>
+          </div>
+          <p class="status-text">Width and height must be from 256 to 4096 in steps of 32. AI_Proxy starts ComfyUI when needed.</p>
+          <div class="button-row compact">
+            <button id="image-generation-submit" class="primary-action" type="submit">Render First 4</button>
+            <button id="image-generation-fill" type="button" disabled>Fill Slots</button>
+            <button id="image-generation-clear" type="button" disabled>Clear Results</button>
+            <span id="image-generation-progress" class="status-text" aria-live="polite"></span>
+          </div>
+          <fieldset id="image-generation-reference-slots" class="image-generation-reference-slots" hidden>
+            <legend>Reference images <span class="status-text">Up to 10. Use each label in your prompt to identify its image.</span></legend>
+            <div id="image-generation-reference-list"></div>
+          </fieldset>
+        </form>
+        <section class="control-panel image-generation-results" aria-label="Generated images">
+          <h2>Results · 8 slots</h2>
+          <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
+          <div class="button-row"><button id="image-generation-review-import" class="primary-action" type="button" disabled>Add to Image Inventory</button><button id="image-generation-review-update" type="button" hidden disabled>Update Image Inventory</button></div>
+          <dialog id="image-generation-review" class="image-generation-review" aria-label="Image result review">
+            <div class="button-row compact"><button id="image-generation-review-close" type="button">Close</button></div>
+            <div class="button-row compact"><button id="image-generation-review-previous" type="button" disabled>Previous</button><span id="image-generation-review-count" class="status-text"></span><button id="image-generation-review-next" type="button" disabled>Next</button></div>
+            <img id="image-generation-review-image" alt="Selected generated result">
+            <p><strong>Prompt</strong><br><span id="image-generation-review-prompt"></span></p>
+            <p><strong>Negative prompt</strong><br><span id="image-generation-review-negative"></span></p>
+            <div class="button-row"><button id="image-generation-review-select" class="primary-action" type="button">Select</button><button id="image-generation-review-retry" type="button">Retry</button><button id="image-generation-review-clear" type="button">Clear</button></div>
+          </dialog>
         </section>
       </div>
     </section>
@@ -1749,6 +2064,18 @@
               <p class="managed-llm-description"></p>
               <div class="managed-llm-templates"></div>
             </article>
+            <article class="managed-llm-role">
+              <label>Image prompt generation model<select id="setting-image-prompt-generation-model" form="automation-form"></select></label>
+              <p class="managed-llm-description">Describe images using an Ollama vision model or a Codex model.</p>
+            </article>
+            <article class="managed-llm-role">
+              <label>Costume Wizard model<select id="setting-costume-wizard-model" form="automation-form"></select></label>
+              <p class="managed-llm-description">Analyzes costume references, drafts templates, and reviews test renders. Defaults to Codex GPT-6 Luna.</p>
+            </article>
+            <article class="managed-llm-role">
+              <label>Quick Character Wizard model<select id="setting-quick-character-wizard-model" form="automation-form"></select></label>
+              <p class="managed-llm-description">Analyzes character references and reviews three-view drafts. Defaults to Codex GPT-6 Luna.</p>
+            </article>
             <article class="managed-llm-role" data-llm-role="scene_builder">
               <label>Scene Builder narrative interview<select id="setting-ai-scene-builder-model" form="automation-form"></select></label>
               <p class="managed-llm-description"></p>
@@ -1771,12 +2098,11 @@
             <label>
               Image generation
               <select id="setting-local-render-backend" form="automation-form">
-                <option value="stable_matrix">Stable Matrix</option>
                 <option value="comfyui">ComfyUI</option>
               </select>
             </label>
-            <fieldset id="stable-matrix-settings">
-              <legend>Stable Matrix</legend>
+            <fieldset id="stable-matrix-settings" hidden disabled>
+              <legend>Retired settings</legend>
               <label>
                 Render profile
                 <select id="setting-local-render-preset" form="automation-form"></select>
@@ -1786,7 +2112,7 @@
                 Checkpoint
                 <select id="setting-local-render-checkpoint" form="automation-form"></select>
               </label>
-              <button id="refresh-local-render-checkpoints" type="button">Refresh Stable Matrix Checkpoints</button>
+              <button id="refresh-local-render-checkpoints" type="button">Retired</button>
               <label>Positive prompt globals<textarea id="setting-local-render-positive-globals" form="automation-form"></textarea></label>
               <label>Negative prompt globals<textarea id="setting-local-render-negative-globals" form="automation-form"></textarea></label>
             </fieldset>
@@ -2036,8 +2362,52 @@ Add prompt language here.
     </dialog>
   </main>
 
-  <script src="/static/zet.js?v=20260926-batch-status"></script>
-  <script src="/static/local_asset_pipeline.js?v=20260926-gate-prompt-dialog"></script>
-  <script src="/static/local_batch_status.js?v=20260926-batch-status"></script>
+  <script type="importmap">
+    {"imports":{"three":"/static/vendor/three/build/three.module.js","three/addons/":"/static/vendor/three/examples/jsm/"}}
+  </script>
+  <dialog id="scene-layout-dialog" class="scene-layout-dialog" aria-labelledby="scene-layout-title">
+    <div class="scene-layout-shell">
+      <header class="scene-layout-header">
+        <div><span class="eyebrow">Scene Builder</span><h2 id="scene-layout-title">3D Layout</h2><p id="scene-layout-breadcrumb">Full Scene</p><p>Stage: arrange the actors. Camera: compose the shot. Adjust the background crop separately.</p></div>
+        <div class="button-row"><button type="button" data-layout-action="parent-workspace" hidden>Parent workspace</button><button type="button" data-layout-action="edit-contents" hidden>Edit contents</button><button type="button" data-layout-action="discard">Discard draft</button></div>
+        <button type="button" data-layout-action="close">Close</button>
+      </header>
+      <div class="scene-layout-toolbar">
+        <button type="button" data-layout-mode="stage" aria-pressed="true">Stage</button><button type="button" data-layout-mode="camera" aria-pressed="false">Camera</button>
+        <label>Adjust<select id="scene-layout-adjust"><option value="camera">Camera · drag to move</option><option value="aim">Camera · drag to aim</option><option value="background">Background · drag to frame</option></select></label>
+        <button type="button" data-layout-action="dolly-in">Dolly in</button><button type="button" data-layout-action="dolly-out">Dolly out</button>
+        <label class="checkbox-field"><input id="scene-layout-horizon" type="checkbox"> Horizon guide</label>
+        <button type="button" data-layout-view="orbit">Orbit</button><button type="button" data-layout-view="top">Top</button><button type="button" data-layout-view="front">Front</button><button type="button" data-layout-view="side">Side</button>
+        <button type="button" data-layout-action="move">Move</button><button type="button" data-layout-action="rotate">Rotate</button>
+        <button type="button" data-layout-action="undo" disabled>Undo</button><button type="button" data-layout-action="redo" disabled>Redo</button>
+        <button type="button" data-layout-action="camera-from-view">Use current view as camera</button>
+        <label class="checkbox-field"><input id="scene-layout-camera-lock" type="checkbox"> Lock render camera</label>
+        <label class="checkbox-field"><input id="scene-layout-snap" type="checkbox" checked> Snap to 1 ft</label>
+      </div>
+      <div class="scene-layout-content">
+        <div class="scene-layout-viewport"><canvas id="scene-layout-canvas" aria-label="Interactive 3D scene layout"></canvas><div id="scene-layout-camera-frame" hidden><div id="scene-layout-horizon-line" hidden></div><div id="scene-layout-ground-join-line" hidden><span>Ground join</span></div></div><div class="scene-layout-facing-legend"><span class="scene-layout-body-key">Orange arrow: body faces this way</span><span class="scene-layout-head-key">Blue arrow: head looks this way</span><span class="scene-layout-dial-help">Drag a dial around the selected pawn:</span><span class="scene-layout-body-key">Outer · Body only</span><span class="scene-layout-both-key">Middle · Body + head together</span><span class="scene-layout-head-key">Inner · Head only</span></div><div id="scene-layout-status" role="status"></div></div>
+        <aside class="scene-layout-inspector">
+          <label>Element<select id="scene-layout-element"></select></label>
+          <fieldset id="scene-layout-background-controls" hidden><legend>Background &amp; foreground</legend><label class="scene-layout-full-row">Image<select id="scene-layout-background-source"><option value="">No background</option></select></label><label class="scene-layout-full-row">Image size · 5% to 2000%<input id="scene-layout-background-zoom" type="range" min="0.05" max="20" step="0.01" value="1"></label><label>Horizontal<input id="scene-layout-background-x" type="range" min="-2" max="3" step="0.001" value="0.5"></label><label>Vertical<input id="scene-layout-background-y" type="range" min="-2" max="3" step="0.001" value="0.5"></label><button type="button" data-layout-action="background-fit" class="scene-layout-full-row">Fit whole image</button><button type="button" data-layout-action="background-reset" class="scene-layout-full-row">Reset framing</button><label class="checkbox-field scene-layout-full-row"><input id="scene-layout-ground-enabled" type="checkbox" checked> Show foreground ground</label><label class="scene-layout-full-row">Ground join · up for more foreground<input id="scene-layout-ground-join" type="range" min="0" max="1" step="0.001" value="0.5"></label><button type="button" data-layout-action="ground-align" class="scene-layout-full-row">Align ground</button><label class="scene-layout-full-row">Ground surface<input id="scene-layout-ground-surface" maxlength="1000" placeholder="Stone path, grass, wooden floor…"></label><p class="scene-layout-full-row">Shrink and move the image freely. Pale areas will be extended by generation. Actors stop at the backdrop; adjust the ground join to move it.</p></fieldset>
+          <fieldset><legend>Position (feet/inches)</legend><label>X<input id="scene-layout-x" data-layout-dimension="position" data-axis="0"></label><label>Elevation<input id="scene-layout-y" data-layout-dimension="position" data-axis="1"></label><label>Z<input id="scene-layout-z" data-layout-dimension="position" data-axis="2"></label></fieldset>
+          <fieldset id="scene-layout-size-controls"><legend>Size (feet/inches)</legend><label>Stature<input id="scene-layout-height" data-layout-dimension="stature"></label><label>Occupied height<input id="scene-layout-occupied-height" data-layout-dimension="occupied-height"></label><label>Width<input id="scene-layout-width" data-layout-dimension="dimensions" data-dimension="width"></label><label>Depth<input id="scene-layout-depth" data-layout-dimension="dimensions" data-dimension="depth"></label></fieldset>
+          <fieldset id="scene-layout-facing-controls"><legend>Facing (degrees)</legend><label>Body yaw<input id="scene-layout-body-yaw" type="number" step="5"></label><label>Head yaw<input id="scene-layout-head-yaw" type="number" step="5"></label><label>Head tilt<input id="scene-layout-head-pitch" type="number" step="5"></label><label>Look at<select id="scene-layout-look-at"><option value="">Set facing manually</option><option value="camera">Camera</option></select></label></fieldset>
+          <label>Lens · Wide ↔ Tight<input id="scene-layout-lens" type="range" min="5" max="120" step="1" value="50" dir="rtl"></label>
+          <details><summary>Advanced camera</summary><fieldset><legend>Render camera</legend><label>Position X<input data-camera-point="position" data-axis="0"></label><label>Position Y<input data-camera-point="position" data-axis="1"></label><label>Position Z<input data-camera-point="position" data-axis="2"></label><label>Target X<input data-camera-point="target" data-axis="0"></label><label>Target Y<input data-camera-point="target" data-axis="1"></label><label>Target Z<input data-camera-point="target" data-axis="2"></label><label>Vertical field of view<input id="scene-layout-fov" type="number" min="5" max="120" step="1"></label></fieldset></details>
+          <label>Grid spacing<input id="scene-layout-grid" value="1 ft"></label>
+          <label class="checkbox-field"><input id="scene-layout-migration-confirm" type="checkbox"> I reviewed the approximate imported placements</label>
+          <img id="scene-layout-preview" alt="Projected guidance image for Qwen" hidden>
+          <div id="scene-layout-warnings" role="status"></div>
+          <div class="button-row"><button type="button" data-layout-action="save" class="primary-action">Save Layout</button><button type="button" data-layout-action="preview">Refresh Camera Preview</button></div>
+        </aside>
+      </div>
+    </div>
+  </dialog>
+  <script src="/static/zet.js?v=20261009-config-context-free-model-settings-image-generation-paste-targets-quick-character-wizard"></script>
+  <script src="/static/quick_character_wizard.js?v=20261009"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
+  <script src="/static/local_scene_batches.js?v=20261005-publication-review"></script>
+  <script src="/static/local_batch_status.js?v=20261005-scene-tiles"></script>
+  <script type="module" src="/static/scene_layout.js?v=20261007-free-backdrop"></script>
 </body>
 </html>

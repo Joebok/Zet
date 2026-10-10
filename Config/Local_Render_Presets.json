@@ -205,6 +205,29 @@
     "seed": "random",
     "output_subdir": "Local_Test_Renders"
   },
+  "comfyui-qwen-narrative": {
+    "backend": "comfyui",
+    "model_family": "qwen-image-2.1",
+    "diffusion_model": "qwen_image_2.1_int8_convrot.safetensors",
+    "workflow_kind": "qwen_narrative_prompt",
+    "prompt_workflow_kind": "qwen_narrative_prompt",
+    "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+    "vae": "qwen_image_2.1_vae_bf16.safetensors",
+    "width": 1216,
+    "height": 832,
+    "steps": 40,
+    "cfg": 1.0,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1.0,
+    "timeout_seconds": 1800,
+    "supports_reference_images": true,
+    "disable_prompt_globals": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
+    "output_subdir": "Local_Test_Renders"
+  },
   "comfyui-qwen-image-2-1-scene": {
     "backend": "comfyui",
     "model_family": "qwen-image-2.1",
@@ -222,6 +245,9 @@
     "vae": "qwen_image_2.1_vae_bf16.safetensors",
     "seed": "random",
     "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-body-reference-text": {
@@ -266,6 +292,9 @@
     "vae": "qwen_image_2.1_vae_bf16.safetensors",
     "seed": "random",
     "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-head-image-text": {
@@ -310,6 +339,9 @@
     "vae": "qwen_image_2.1_vae_bf16.safetensors",
     "seed": "random",
     "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-local-character-edit": {
@@ -332,6 +364,9 @@
     "vae": "qwen_image_2.1_vae_bf16.safetensors",
     "seed": "random",
     "supports_reference_images": true,
+    "qwen_cache_enabled": true,
+    "qwen_cache_device": "cpu",
+    "qwen_cache_dtype": "int8",
     "output_subdir": "Local_Test_Renders"
   }
 }

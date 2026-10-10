@@ -1,0 +1,111 @@
+{
+  "canvas": [
+    832,
+    1248
+  ],
+  "layers": [
+    {
+      "key": "group",
+      "label": "Schoolboys and Kaeldor",
+      "box": [
+        0.22,
+        0.5,
+        0.29,
+        0.24
+      ],
+      "depth": 1,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\group.png",
+      "sha256": "09bd7b722efbe31d98b0cd4cef0be97a1d082fcedbf63b95876b5095b800d409",
+      "bbox": [
+        0,
+        0,
+        1184,
+        896
+      ],
+      "source_pixels": 1060864,
+      "placed_size": [
+        241,
+        182
+      ],
+      "position": [
+        183,
+        742
+      ]
+    },
+    {
+      "key": "Tsaeytte",
+      "label": "Tsaeytte",
+      "box": [
+        0.54,
+        0.3,
+        0.3,
+        0.68
+      ],
+      "depth": 3,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\Tsaeytte.png",
+      "sha256": "abe625c906487b6ef344639a5b1944f93152a9fd25fe9112bf365fcdcc641fd7",
+      "bbox": [
+        0,
+        0,
+        256,
+        816
+      ],
+      "source_pixels": 208896,
+      "placed_size": [
+        250,
+        797
+      ],
+      "position": [
+        449,
+        426
+      ]
+    },
+    {
+      "key": "dialogue-01",
+      "label": "Original dialogue balloon",
+      "box": [
+        0.68,
+        0.2,
+        0.25,
+        0.1
+      ],
+      "depth": 5,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\dialogue-01.png",
+      "sha256": "ae82143b884a704d1c9dd39f2653a5b34cbbab81141ab24fc1e32bc2270e7d8d",
+      "bbox": [
+        0,
+        0,
+        168,
+        87
+      ],
+      "source_pixels": 14616,
+      "dialogue_layer": true,
+      "placed_size": [
+        208,
+        108
+      ],
+      "position": [
+        566,
+        266
+      ]
+    }
+  ],
+  "dialogue": [
+    {
+      "text": "Potential is nothing without discipline",
+      "speaker": "Tsaeytte",
+      "lines": 2
+    }
+  ],
+  "requirements": [
+    "Tsaeytte stands at right in a back three-quarter view and looks up at the arch inscription while holding her books.",
+    "A small, complete group of exactly three students is visible beyond the arch on the left.",
+    "Tsaeytte speaks the exact words \"Potential is nothing without discipline\" in a readable balloon."
+  ],
+  "dialogue_reference": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\reference_Tsaeytte_with_dialogue.png",
+  "background": {
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\prepared\\background.png",
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\frozen\\references\\03_002.png",
+    "sha256": "93bffe5979054b9724a356b113f9cbd889862cf34056c35a62565a58e9021ebc"
+  }
+}

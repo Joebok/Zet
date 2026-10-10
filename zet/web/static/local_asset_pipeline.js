@@ -81,7 +81,7 @@
   function busy(run = state.run) { return Boolean(run && activeStatuses.has(run.status)); }
 
   function unstartedViews(run) {
-    return (run?.views || []).filter((view) => view !== "FRONT" && (() => {
+    return (run?.views || []).filter((view) => (view !== "FRONT" || hasSharedAssetRouter()) && (() => {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
       return candidates.length > 0 && candidates.some((candidate) => candidate.image_filled === false || !candidate.image_path);
     })());
@@ -112,7 +112,8 @@
       case "reanalyze": return `${baseUrl()}/runs/${id}/views/${encodedView}/reanalyze${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "prompt-improvement-package": return `${baseUrl()}/runs/${id}/prompt-improvement-package${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "move-rank": return `${baseUrl()}/runs/${id}/views/${encodedView}/ranking/move${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "select": return `${baseUrl()}/runs/${id}/views/${encodedView}/select${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "select":
+      case "unselect": return `${baseUrl()}/runs/${id}/views/${encodedView}/select${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "review": return `${baseUrl()}/runs/${id}/candidates/${candidate}/review${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "retry": return `${baseUrl()}/runs/${id}/candidates/${candidate}/retry${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "lock": return `${baseUrl()}/runs/${id}/views/${encodedView}/lock${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -129,6 +130,11 @@
     }
   }
 
+  function cacheBustedImageUrl(url) {
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}v=${Date.now()}`;
+  }
+
   function payload() {
     return {
       character: document.querySelector("#character-select").value,
@@ -138,6 +144,7 @@
       other_count: Number($("other-count").value),
       use_front_anchor: hasSharedAssetRouter() ? $("use-anchor").checked : state.pipeline === "body-reference" || state.pipeline === "head-image",
       front_source_path: state.frontSourcePath,
+      apply_phase_change: state.pipeline === "head-image" && Boolean(state.frontSourcePath) && $("apply-phase-change").checked,
       source_batches: hasSharedAssetRouter() ? Object.fromEntries(Array.from($("source-batches").querySelectorAll("select[data-source-role]"), (select) => [select.dataset.sourceRole, select.value])) : {},
     };
   }
@@ -160,7 +167,9 @@
     $("rename").hidden = !run;
     $("proceed").hidden = !run;
     $("proceed").disabled = isBusy || (run?.status === "READY_FOR_VIEWS" && (run.target_views || []).length > 0)
-      || !run?.front_anchor || !unstartedViews(run).length;
+      || (!run?.front_anchor && !(hasSharedAssetRouter()
+        && (run?.use_front_anchor === false || unstartedViews(run).includes("FRONT"))))
+      || !unstartedViews(run).length;
   }
 
   function gateLabel(record, policy) {
@@ -264,6 +273,20 @@
 
   function imageUrl(candidate) { return route("image", state.run.run_id, "", candidate.candidate_id); }
 
+  function renderErrorDetails(candidate) {
+    const message = String(candidate.render_error || "").trim();
+    if (!message) return null;
+    const details = document.createElement("details");
+    details.className = "local-pipeline-render-error error-text";
+    const summary = document.createElement("summary");
+    const firstLine = message.split(/\r?\n/)[0];
+    summary.textContent = `Render error: ${firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine}`;
+    const body = document.createElement("p");
+    body.textContent = message;
+    details.append(summary, body);
+    return details;
+  }
+
   function addButton(host, text, action, { disabled = false, primary = false, view = "", candidate = "" } = {}) {
     const button = document.createElement("button");
     button.type = "button";
@@ -277,11 +300,27 @@
     return button;
   }
 
+  function addRecompileOption(host, id = "") {
+    const label = document.createElement("label");
+    label.className = "local-pipeline-recompile-option";
+    const text = document.createElement("span");
+    text.textContent = "Recompile";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.recompile = "true";
+    if (id) input.id = id;
+    label.append(text, input);
+    label.addEventListener("click", (event) => event.stopPropagation());
+    host.append(label);
+    return input;
+  }
+
   function renderSelectedViews(run) {
     const host = $("selected");
     host.replaceChildren();
     const selected = run.selected_views || {};
-    const assets = Object.values(run.local_assets || {});
+    const qualifier = isCostume() ? String(run.costume || "").trim().toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") : "";
     const lockNotice = document.createElement("p");
     lockNotice.className = "local-pipeline-lock-notice";
     lockNotice.setAttribute("role", "status");
@@ -306,8 +345,8 @@
         image.src = imageUrl(candidate);
         image.alt = `Selected ${view} candidate ${candidate.candidate_id}`;
         article.append(image);
-        const asset = assets.find((item) => item.view === view && String(item.pipeline || "").toLowerCase() === state.pipeline
-          && String(item.qualifier || "") === (isCostume() ? run.costume || "" : ""));
+        const assetKey = `${state.pipeline}${qualifier ? `:${qualifier}` : ""}:${view}`;
+        const asset = run.local_assets?.[assetKey];
         const locked = Boolean(asset?.locked && asset.candidate_id === candidate.candidate_id
           && asset.batch_id === run.run_id);
         const lockedInAnotherBatch = Boolean(asset?.locked && asset.batch_id !== run.run_id);
@@ -349,6 +388,12 @@
       image.alt = `${view} candidate ${candidate.candidate_id}`;
       imageButton.append(image);
       card.append(imageButton);
+      if (candidate.elapsed_seconds != null && Number.isFinite(Number(candidate.elapsed_seconds))) {
+        const generationTime = document.createElement("p");
+        generationTime.className = "local-pipeline-generation-time muted";
+        generationTime.textContent = `Generated in ${Math.round(Number(candidate.elapsed_seconds))} seconds`;
+        card.append(generationTime);
+      }
     } else {
       const pending = document.createElement("p");
       pending.textContent = renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Waiting";
@@ -359,6 +404,8 @@
     const rank = (ranking.ordered_candidate_ids || []).indexOf(candidate.candidate_id);
     status.textContent = `${renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}` : ""}`;
     card.append(status);
+    const renderError = renderErrorDetails(candidate);
+    if (renderError) card.append(renderError);
     for (const line of gateSummary(candidate)) card.append(line);
     const human = document.createElement("p");
     human.className = "muted";
@@ -381,6 +428,7 @@
   function renderViews(run) {
     const host = $("views");
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
+    const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
     host.replaceChildren();
     for (const view of run.views || []) {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
@@ -399,6 +447,7 @@
       const viewActions = document.createElement("span");
       viewActions.className = "button-row compact";
       const viewReady = view === "FRONT" || run.use_front_anchor === false || Boolean(run.front_anchor);
+      addRecompileOption(viewActions);
       addButton(viewActions, "Re-run view", "rerun-view", { disabled: busy(run) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || !viewReady || !candidates.some((item) => ["FAILED", "GATE_REJECTED"].includes(item.status)), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || !viewReady || !candidates.some((item) => item.image_path), view });
@@ -422,7 +471,7 @@
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          image.src = route("source", run.run_id, view, role);
+          image.src = cacheBustedImageUrl(route("source", run.run_id, view, role));
           figure.append(caption, image);
           sources.append(figure);
         }
@@ -455,11 +504,14 @@
         for (const { reference, index } of remainingReferences) {
           const figure = document.createElement("figure");
           const caption = document.createElement("figcaption");
-          caption.textContent = (reference.label || reference.role || "Reference image").replaceAll("_", " ");
+          const imageIndex = reference.image_index || index + 1;
+          const promptRole = reference.prompt_role || reference.role || "reference";
+          const label = reference.label || reference.tag || "Reference image";
+          caption.textContent = `Image ${imageIndex} — ${promptRole}: ${label}`;
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          image.src = route("reference-image", run.run_id, view, String(index));
+          image.src = cacheBustedImageUrl(route("reference-image", run.run_id, view, String(index)));
           figure.append(caption, image);
           sources.append(figure);
         }
@@ -471,10 +523,17 @@
       links.append(document.createTextNode(" · "));
       addLink(links, "Image prompt", route("image-prompt", run.run_id, view));
       details.append(links);
+      const observationDetails = document.createElement("details");
+      observationDetails.className = "local-pipeline-observations";
+      observationDetails.dataset.view = view;
+      observationDetails.open = previousObservationsOpen.get(view) || false;
+      const observationSummary = document.createElement("summary");
+      observationSummary.textContent = "Observations";
+      observationDetails.append(observationSummary);
       const observationSection = document.createElement("section");
       observationSection.className = "local-pipeline-view-observations";
       const observationsLabel = document.createElement("label");
-      observationsLabel.textContent = "Observations";
+      observationsLabel.textContent = "Your observations";
       const observations = document.createElement("textarea");
       observations.dataset.viewObservations = view;
       observations.value = run.view_reviews?.[view]?.observations || "";
@@ -487,7 +546,7 @@
       aiContent.className = "muted local-pipeline-ai-observations";
       aiContent.textContent = `${ai.status || "Pending"}${ai.error ? ` · ${ai.error}` : ""}${ai.stale_reason ? ` · ${ai.stale_reason}` : ""}${ai.text ? `\n\n${ai.text}` : ""}`;
       observationSection.append(aiHeading, aiContent);
-      details.append(observationSection);
+      observationDetails.append(observationSection);
       if (evaluation.evaluation_id || ranking.status) {
         const reviewProgress = document.createElement("p");
         reviewProgress.className = "muted local-pipeline-review-progress";
@@ -505,6 +564,7 @@
       });
       for (const candidate of candidates) gallery.append(renderCandidate(view, candidate, ranking, run));
       details.append(gallery);
+      details.append(observationDetails);
       host.append(details);
     }
     state.renderedSelections = { ...(run.selected_views || {}) };
@@ -536,7 +596,8 @@
     }
     const progress = run.page_summary || {};
     const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
-    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
+    const phaseChangeSummary = state.pipeline === "head-image" && run.apply_phase_change ? " · Phase change rules applied" : "";
+    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
     renderSelectedViews(run);
@@ -608,7 +669,8 @@
     const select = $("runs");
     select.replaceChildren();
     for (const run of state.runs) {
-      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status} · ${run.run_id}`, run.run_id));
+      const phaseChangeLabel = state.pipeline === "head-image" && run.apply_phase_change ? " · Phase change rules" : "";
+      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel} · ${run.run_id}`, run.run_id));
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
@@ -646,6 +708,8 @@
     state.polledRun = null;
     state.renderedSelections = {};
     state.frontSourcePath = "";
+    $("apply-phase-change").checked = false;
+    $("apply-phase-change").disabled = true;
     $("source-preview").textContent = "No FRONT reference selected.";
     $("source-file").value = "";
     $("source-remove").hidden = true;
@@ -678,6 +742,8 @@
     state.contextKey = contextKey();
     state.run = null;
     state.frontSourcePath = "";
+    $("apply-phase-change").checked = false;
+    $("apply-phase-change").disabled = true;
     document.querySelector("#local-pipeline-title").textContent = {
       "body-reference": "Body-Reference", "head-image": "Head-Image",
       "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing",
@@ -715,6 +781,7 @@
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || "Could not upload the reference image.");
       state.frontSourcePath = data.path || "";
+      $("apply-phase-change").disabled = !state.frontSourcePath;
       $("source-preview").replaceChildren();
       const image = document.createElement("img");
       image.src = URL.createObjectURL(file);
@@ -768,6 +835,40 @@
     });
   }
 
+  async function saveReviewDecision(candidate) {
+    const decision = $("review-panel").querySelector("input[name='local-human-decision']:checked")?.value || "undecided";
+    await perform("review", candidate.view, candidate.candidate_id, { decision });
+    state.reviewCandidates = orderedReviewCandidates();
+    state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
+    return state.reviewCandidates[state.reviewIndex] || candidate;
+  }
+
+  async function navigateReview(direction) {
+    const candidate = state.reviewCandidates[state.reviewIndex];
+    if (!candidate) return;
+    try {
+      await saveReviewDecision(candidate);
+      state.reviewCandidates = orderedReviewCandidates();
+      state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id) + direction;
+      renderReview();
+    } catch (error) { setStatus(error.message, true); }
+  }
+
+  async function navigateReviewView(direction) {
+    const candidate = state.reviewCandidates[state.reviewIndex];
+    if (!candidate) return;
+    try {
+      await saveReviewDecision(candidate);
+      state.reviewCandidates = orderedReviewCandidates();
+      const availableViews = (state.run?.views || []).filter((view) =>
+        state.reviewCandidates.some((item) => item.view === view));
+      const targetView = availableViews[availableViews.indexOf(candidate.view) + direction];
+      if (!targetView) return;
+      state.reviewIndex = state.reviewCandidates.findIndex((item) => item.view === targetView);
+      renderReview();
+    } catch (error) { setStatus(error.message, true); }
+  }
+
   function renderReview() {
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
@@ -816,6 +917,9 @@
     const info = document.createElement("p");
     info.className = "local-pipeline-review-meta muted";
     const metadata = [candidate.method && `Method: ${candidate.method}`, candidate.seed && `Seed: ${candidate.seed}`].filter(Boolean);
+    if (candidate.elapsed_seconds != null && Number.isFinite(Number(candidate.elapsed_seconds))) {
+      metadata.push(`Generation time: ${Math.round(Number(candidate.elapsed_seconds))} seconds`);
+    }
     if (candidate.rejection_gate) metadata.push(`Rejected by: ${candidate.rejection_gate}`);
     info.textContent = metadata.join(" · ");
     const decision = document.createElement("fieldset");
@@ -840,11 +944,8 @@
     save.className = "primary-action";
     save.textContent = "Save review";
     save.addEventListener("click", async () => {
-      const selected = decision.querySelector("input:checked")?.value || "undecided";
       try {
-        await perform("review", candidate.view, candidate.candidate_id, { decision: selected });
-        state.reviewCandidates = orderedReviewCandidates();
-        state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
+        await saveReviewDecision(candidate);
         renderReview();
       } catch (error) { setStatus(error.message, true); }
     });
@@ -853,6 +954,7 @@
     select.disabled = selectedViews[candidate.view] === candidate.candidate_id;
     select.addEventListener("click", async () => {
       try {
+        await saveReviewDecision(candidate);
         await perform("select", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id });
         state.reviewCandidates = orderedReviewCandidates();
         state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
@@ -861,6 +963,8 @@
     });
     const content = document.createElement("section");
     content.className = "local-pipeline-review-content";
+    const renderError = renderErrorDetails(candidate);
+    if (renderError) content.append(renderError);
     for (const line of gateSummary(candidate)) content.append(line);
     const ranking = run.rankings?.[candidate.view] || {};
     const rankingOrder = ranking.luna_ordered_candidate_ids || ranking.ordered_candidate_ids || [];
@@ -869,7 +973,7 @@
     const adjustedPosition = adjustedOrder.indexOf(candidate.candidate_id);
     const rankEntry = (ranking.entries || []).find((item) => item.candidate_id === candidate.candidate_id);
     const rankingInfo = document.createElement("p");
-    rankingInfo.className = "local-pipeline-review-explanation";
+    rankingInfo.className = "local-pipeline-review-explanation local-pipeline-review-rank";
     rankingInfo.textContent = rankingPosition >= 0
       ? `Luna rank #${rankingPosition + 1}${rankEntry?.reason ? ` · ${rankEntry.reason}` : ""}`
       : ranking.status === "STALE" ? `Luna ranking stale · ${ranking.stale_reason || "Review inputs changed"}`
@@ -900,6 +1004,7 @@
       up.disabled = adjustedPosition <= 0;
       up.addEventListener("click", async () => {
         try {
+          await saveReviewDecision(candidate);
           await perform("move-rank", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id, direction: "up" });
           state.reviewCandidates = orderedReviewCandidates();
           state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
@@ -912,6 +1017,7 @@
       down.disabled = adjustedPosition >= adjustedOrder.length - 1;
       down.addEventListener("click", async () => {
         try {
+          await saveReviewDecision(candidate);
           await perform("move-rank", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id, direction: "down" });
           state.reviewCandidates = orderedReviewCandidates();
           state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
@@ -920,11 +1026,21 @@
       });
       actions.append(up, down);
     }
+    const quality = document.createElement("section");
+    quality.className = "local-pipeline-review-quality";
+    const qualityHeading = document.createElement("h3");
+    qualityHeading.textContent = "Luna rank & image review";
+    quality.append(qualityHeading, rankingInfo);
+    if (analysis.childElementCount) quality.append(analysis);
     panel.append(title, view);
     if (info.textContent) panel.append(info);
-    panel.append(content, rankingInfo, analysis, decision, actions);
+    panel.append(content, quality, decision, actions);
     $("review-prev").disabled = state.reviewIndex <= 0;
     $("review-next").disabled = state.reviewIndex >= state.reviewCandidates.length - 1;
+    const availableViews = (run.views || []).filter((view) => state.reviewCandidates.some((item) => item.view === view));
+    const currentViewIndex = availableViews.indexOf(candidate.view);
+    $("review-prev-view").disabled = currentViewIndex <= 0;
+    $("review-next-view").disabled = currentViewIndex < 0 || currentViewIndex >= availableViews.length - 1;
   }
 
   function openReview(candidateId) {
@@ -979,9 +1095,13 @@
     }
     if (action === "rerun" || action === "rerun-view") {
       const refreshSources = $("rerun-refresh-sources").checked;
-      const label = refreshSources ? "refresh references from the chosen source batches" : "retain the original reference snapshots";
-      if (!window.confirm(action === "rerun" ? `Re-run this batch and ${label}? This replaces generated images and reviews.` : `Replace all ${view} candidates and ${label}?`)) return;
-      await perform(action, view, candidateId, { refresh_sources: refreshSources });
+      const recompile = action === "rerun"
+        ? $("rerun-recompile").checked
+        : Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
+      const label = recompile || refreshSources ? "refresh references from the chosen source batches" : "retain the original reference snapshots";
+      const compileLabel = recompile ? " Recompile prompts from current templates and coding." : "";
+      if (!window.confirm(action === "rerun" ? `Re-run this batch and ${label}?${compileLabel} This replaces generated images and reviews.` : `Replace all ${view} candidates and ${label}?${compileLabel}`)) return;
+      await perform(action, view, candidateId, { refresh_sources: refreshSources, recompile });
       return;
     }
     if (["delete", "rerun-failed", "unselect", "unlock"].includes(action)) {
@@ -1018,6 +1138,8 @@
       try {
         const created = await request(route("create"), { method: "POST", body: JSON.stringify(payload()) });
         state.frontSourcePath = "";
+        $("apply-phase-change").checked = false;
+        $("apply-phase-change").disabled = true;
         $("source-file").value = "";
         $("source-preview").textContent = "No FRONT reference selected.";
         $("source-remove").hidden = true;
@@ -1053,6 +1175,8 @@
     });
     $("source-remove").addEventListener("click", async () => {
       state.frontSourcePath = "";
+      $("apply-phase-change").checked = false;
+      $("apply-phase-change").disabled = true;
       $("source-file").value = "";
       $("source-preview").textContent = "No FRONT reference selected.";
       $("source-remove").hidden = true;
@@ -1077,8 +1201,10 @@
       if (event.target === $("gate-prompt-dialog")) $("gate-prompt-dialog").close();
     });
     $("review-toggle").addEventListener("change", () => { state.compareOpposite = $("review-toggle").checked; renderReview(); });
-    $("review-prev").addEventListener("click", () => { state.reviewIndex -= 1; renderReview(); });
-    $("review-next").addEventListener("click", () => { state.reviewIndex += 1; renderReview(); });
+    $("review-prev").addEventListener("click", () => { void navigateReview(-1); });
+    $("review-next").addEventListener("click", () => { void navigateReview(1); });
+    $("review-prev-view").addEventListener("click", () => { void navigateReviewView(-1); });
+    $("review-next-view").addEventListener("click", () => { void navigateReviewView(1); });
   }
 
   async function activate(page) {

@@ -1,0 +1,175 @@
+{
+  "type": "object",
+  "required": [
+    "candidate_hash",
+    "criteria",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "candidate_hash": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "criteria": {
+      "type": "object",
+      "required": [
+        "source_retention",
+        "mask_correctness",
+        "removable_background",
+        "group_membership",
+        "placement_and_contact",
+        "dialogue_retention"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source_retention": {
+          "type": "object",
+          "required": [
+            "result",
+            "reason",
+            "evidence_region"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "enum": [
+                "pass",
+                "fail",
+                "unassessable"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "evidence_region": {
+              "type": "string"
+            }
+          }
+        },
+        "mask_correctness": {
+          "type": "object",
+          "required": [
+            "result",
+            "reason",
+            "evidence_region"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "enum": [
+                "pass",
+                "fail",
+                "unassessable"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "evidence_region": {
+              "type": "string"
+            }
+          }
+        },
+        "removable_background": {
+          "type": "object",
+          "required": [
+            "result",
+            "reason",
+            "evidence_region"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "enum": [
+                "pass",
+                "fail",
+                "unassessable"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "evidence_region": {
+              "type": "string"
+            }
+          }
+        },
+        "group_membership": {
+          "type": "object",
+          "required": [
+            "result",
+            "reason",
+            "evidence_region"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "enum": [
+                "pass",
+                "fail",
+                "unassessable"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "evidence_region": {
+              "type": "string"
+            }
+          }
+        },
+        "placement_and_contact": {
+          "type": "object",
+          "required": [
+            "result",
+            "reason",
+            "evidence_region"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "enum": [
+                "pass",
+                "fail",
+                "unassessable"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "evidence_region": {
+              "type": "string"
+            }
+          }
+        },
+        "dialogue_retention": {
+          "type": "object",
+          "required": [
+            "result",
+            "reason",
+            "evidence_region"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "result": {
+              "enum": [
+                "pass",
+                "fail",
+                "unassessable"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "evidence_region": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

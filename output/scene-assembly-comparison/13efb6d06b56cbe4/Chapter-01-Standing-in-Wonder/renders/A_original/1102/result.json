@@ -1,0 +1,15 @@
+{
+  "status": "COMPLETE",
+  "seed": 1102,
+  "prompt_sha256": "d5be3b20e04c74dd8f642adca6b03865e6da1d39cce7ccabcd76389f5366f15a",
+  "workflow_sha256": "90e8f59e82e02f6c4437c35e43424626354abe17cd231d9526d494a626413212",
+  "output_sha256": "fd6be79bbcd06f4e9add9aeaedd4be5faeb11a46c26ea6d007c01bcc64553247",
+  "proposal": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\renders\\A_original\\1102\\comfyui\\f81635f605cf_1_1102_00001_.png",
+  "output": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-01-Standing-in-Wonder\\renders\\A_original\\1102\\candidate.png",
+  "prompt_id": "cf9a7614-2cca-4397-b47d-5e9ac3cdbfbd",
+  "elapsed_seconds": 80.18,
+  "dimensions": [
+    832,
+    1248
+  ]
+}

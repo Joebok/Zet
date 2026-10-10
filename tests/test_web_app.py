@@ -2,6 +2,7 @@ import json
 import base64
 from tests.support.image_fixture import png_bytes
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -16,6 +17,18 @@ from zet.web.app import create_app
 
 
 class WebAppTests(unittest.TestCase):
+    def test_image_identity_button_starts_luna_job(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = write_project_fixture(Path(temp_dir))
+            client = TestClient(create_app(config_path))
+            self.assertIn('id="entity-library-generate-identity"', client.get("/").text)
+            service = client.app.state.image_prompt_generation_service
+            with patch.object(service, "start_identity", return_value={"job_id": "identity-job", "status": "RUNNING"}) as start:
+                response = client.post("/api/entity-library/assets/image-1/generate-identity")
+            self.assertEqual(200, response.status_code, response.text)
+            self.assertEqual("identity-job", response.json()["job_id"])
+            start.assert_called_once_with("image-1")
+
     def test_local_assets_can_start_and_check_library_wide_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -34,8 +47,13 @@ class WebAppTests(unittest.TestCase):
                 started = client.post("/api/local/run-all-remaining")
                 self.assertEqual(200, started.status_code, started.text)
                 campaign_id = started.json()["campaign_id"]
+                deadline = time.monotonic() + 15
                 status = client.get(f"/api/local/run-all-remaining/{campaign_id}")
+                while status.json().get("status") not in {"COMPLETE", "FAILED"} and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                    status = client.get(f"/api/local/run-all-remaining/{campaign_id}")
                 self.assertEqual(200, status.status_code, status.text)
+                self.assertEqual("COMPLETE", status.json()["status"])
                 self.assertEqual(0, status.json()["images_remaining"])
 
     def test_gate_test_rig_and_gate_setup_apis(self):
@@ -127,26 +145,20 @@ class WebAppTests(unittest.TestCase):
             }
 
             created = client.post("/api/scene-appearances", params={"character": "Test", "phase": "Adult"}, json=body)
-            self.assertEqual(200, created.status_code, created.text)
-            self.assertEqual(8, len([
-                item for item in created.json()["assets"] if item["pipeline"] == "Scene-Appearance"
-            ]))
+            self.assertEqual(410, created.status_code, created.text)
+            self.assertIn("retired", created.json()["detail"])
             listed = client.get("/api/scene-appearances", params={"character": "Test", "phase": "Adult"})
-            self.assertEqual("Hell Adventures", listed.json()["scene_appearances"][0]["name"])
-            body["name"] = "Hell Expeditions"
-            body["instructions"] = "Updated arrangement."
+            self.assertEqual([], listed.json()["scene_appearances"])
             updated = client.put(
                 "/api/scene-appearances/hell-adventures",
                 params={"character": "Test", "phase": "Adult"}, json=body,
             )
-            self.assertEqual(200, updated.status_code, updated.text)
-            self.assertTrue(updated.json()["render_changed"])
+            self.assertEqual(410, updated.status_code, updated.text)
             invalid = client.post(
                 "/api/scene-appearances", params={"character": "Test", "phase": "Adult"},
                 json={**body, "appearance_id": "Invalid ID"},
             )
-            self.assertEqual(400, invalid.status_code)
-            self.assertIn("lowercase", invalid.json()["detail"])
+            self.assertEqual(410, invalid.status_code)
 
     def test_image_catalog_import_replace_reference_set_and_delete_api(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -286,11 +298,8 @@ class WebAppTests(unittest.TestCase):
 
             response = client.post("/api/assets/1/run-current-worker", params={"character": "Test", "phase": "Adult"})
 
-            self.assertEqual(response.status_code, 200)
-            payload = response.json()
-            self.assertIn("Ran 1 worker(s)", payload["message"])
-            self.assertIn("Finished at RENDER", payload["message"])
-            self.assertEqual(payload["detail"]["asset"]["pipeline_stage"], "RENDER")
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("Traditional Body-Reference generation is retired", response.json()["detail"])
 
     def test_render_review_api_serves_tasks_detail_and_promotes_to_locked(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -301,8 +310,7 @@ class WebAppTests(unittest.TestCase):
 
             tasks = client.get("/api/render-review/tasks", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(tasks.status_code, 200)
-            self.assertEqual(tasks.json()["items"][0]["asset_id"], 1)
-            self.assertTrue(tasks.json()["items"][0]["candidate_image_exists"])
+            self.assertEqual(tasks.json()["items"], [])
 
             detail = client.get("/api/render-review/1", params={"character": "Test", "phase": "Adult"})
             self.assertEqual(detail.status_code, 200)
@@ -317,23 +325,22 @@ class WebAppTests(unittest.TestCase):
                 params={"character": "Test", "phase": "Adult"},
                 json={"comment": "Good face, boots need checking."},
             )
-            self.assertEqual(comment.status_code, 200)
-            self.assertEqual(comment.json()["render_review_comment"], "Good face, boots need checking.")
-            self.assertTrue(comment.json()["asset"]["has_render_review_comment"])
+            self.assertEqual(comment.status_code, 400)
+            self.assertIn("Traditional Body-Reference generation is retired", comment.json()["detail"])
 
             unconfirmed = client.post(
                 "/api/render-review/1/promote-to-locked",
                 params={"character": "Test", "phase": "Adult"},
             )
-            self.assertEqual(unconfirmed.status_code, 409)
+            self.assertEqual(unconfirmed.status_code, 400)
+            self.assertIn("Traditional Body-Reference generation is retired", unconfirmed.json()["detail"])
 
             promoted = client.post(
                 "/api/render-review/1/promote-to-locked",
                 params={"character": "Test", "phase": "Adult", "replace_existing": "true"},
             )
-            self.assertEqual(promoted.status_code, 200)
-            self.assertEqual(promoted.json()["asset"]["asset_state"], "LOCKED")
-            self.assertEqual(promoted.json()["asset"]["pipeline_stage"], "LOCKED")
+            self.assertEqual(promoted.status_code, 400)
+            self.assertIn("Traditional Body-Reference generation is retired", promoted.json()["detail"])
             self.assertTrue((root / "Assets" / "Test" / "Adult" / "front.png").exists())
 
     def test_render_console_api_lists_task_detail_and_saves_image_answer(self):
@@ -341,12 +348,16 @@ class WebAppTests(unittest.TestCase):
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
             ask_path = write_manual_render_ask(root)
+            manifest_path = ask_path / "ask_manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest.update({"story_slug": "TestStory", "scene_slug": "Opening"})
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             client = TestClient(create_app(config_path))
 
             tasks = client.get("/api/render-console/tasks")
             self.assertEqual(tasks.status_code, 200)
             self.assertEqual(tasks.json()["tasks"][0]["ask_id"], "Ask_Asset_1_RENDER_TEST")
-            self.assertEqual(tasks.json()["tasks"][0]["display_label"], "Body-Reference / Front")
+            self.assertEqual(tasks.json()["tasks"][0]["display_label"], "TestStory / Opening")
 
             detail = client.get("/api/render-console/tasks/Ask_Asset_1_RENDER_TEST")
             self.assertEqual(detail.status_code, 200)

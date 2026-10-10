@@ -1,16 +1,16 @@
 [BaseFolders]
-BaseLibraryPath = "Zet_Library/"
+BaseLibraryPath = "Zet_Library_v5/"
 BaseCharacterPath = "Characters/"
 BaseAssetPath = "Assets/"
 BasePipelinePath = "Pipelines/"
 BaseAIQueuePath = "AI_Queue/"
 
 [BaseFoldersByPlatform.Windows]
-BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library/"
+BaseLibraryPath = "C:/Users/Joe/Projects/Zet_Library_v5/"
 BaseAIQueuePath = "C:/Users/Joe/Dropbox/AI_Queue"
 
 [BaseFoldersByPlatform.Darwin]
-BaseLibraryPath = "/Users/joe/Projects/Zet_Library/"
+BaseLibraryPath = "/Users/joe/Projects/Zet_Library-V5/"
 BaseAIQueuePath = "/Users/joe/Library/CloudStorage/Dropbox/AI_Queue/"
 
 [PromptCondense]
@@ -24,21 +24,13 @@ PromptCondense = "image-analysis:latest"
 PromptAnalysis = "image-analysis:latest"
 ImageDescription = "image-analysis:latest"
 SceneBuilder = "general:latest"
+NarrativeScene = "general:latest"
 
 LocalBodyReferenceFaceGate = "image-analysis-alt:latest"
 LocalBodyReferenceReview = "image-analysis:latest"
 [LocalRender]
 AutoQueueAfterCondense = false
 Backend = "comfyui"
-
-[StableMatrix]
-Profile = "scene-preview-sd15"
-PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
-NegativePromptGlobals = "EasyNegative"
-LayoutBackend = "forge_couple_basic"
-StrictPrimarySubjectCount = true
-ForgeCoupleDebugBasePass = true
-Checkpoint = "sd\\perfectdeliberate_v90.safetensors [aea4ec6c4d]"
 
 [ComfyUI]
 Profile = "comfyui-qwen-image-2-1-scene"
@@ -61,6 +53,9 @@ Width = 3960
 AutoEnabled = true
 IntervalSeconds = 60
 ArchivePath = "E:/Archived/AI_Queue_Archive"
+Debug = false
+DebugRetentionDays = 7
+DebugMaxBytes = 1073741824
 
 [Render]
 Backend = "manual_chatgpt"

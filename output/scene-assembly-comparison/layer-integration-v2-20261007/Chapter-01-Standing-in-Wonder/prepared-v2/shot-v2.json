@@ -1,0 +1,212 @@
+{
+  "canvas": [
+    832,
+    1248
+  ],
+  "background": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\background.png",
+  "layers": [
+    {
+      "key": "group",
+      "label": "Schoolboys and Kaeldor",
+      "box": [
+        0.22,
+        0.5,
+        0.29,
+        0.24
+      ],
+      "depth": 1,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\group.png",
+      "sha256": "4ed6d0616353cc81b35c315fd6983ff53fcb39f3c47514e4420a04f5e6d1ed11",
+      "bbox": [
+        0,
+        0,
+        1184,
+        896
+      ],
+      "source_pixels": 1060864,
+      "placed_size": [
+        241,
+        182
+      ],
+      "position": [
+        183,
+        742
+      ],
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\group\\keep.png",
+      "annotation_keep_sha256": "d7f3a58c3df2073d212ebb0bd7c23a789511fc048f64f5d76f16ac3219393ca5",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\group\\remove.png",
+      "annotation_remove_sha256": "acee2568130a6f1c891efe569ebe2688671b98b75047555ed34801a6a04eb1d0",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\group\\source-mask-overlay.png",
+      "source_size": [
+        1184,
+        896
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-01-Standing-in-Wonder\\frozen\\source_images\\group.png",
+      "source_image_sha256": "f4efdba789e8d94d0b0838b8ee845286f5b91682c20231384fed68706bb4b3ac",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        0,
+        0,
+        1184,
+        896
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\group\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\group\\manual-remove.png",
+      "manual_keep_sha256": "0a310f9efa945550a55cb470f6f3bd6dac9bd8eeea86e5acc0665b8c1fe90de5",
+      "manual_remove_sha256": "0a310f9efa945550a55cb470f6f3bd6dac9bd8eeea86e5acc0665b8c1fe90de5",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\group\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "c0f7b136ebc9ec179c6ef397764092f25c08487993ade67b5d06d3fff0b49965",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\group\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "a8c1402257446592d99a0362dc146bb943068b97794c54734bc20ae748c7eefd",
+      "bounds": [
+        183,
+        742,
+        424,
+        924
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    },
+    {
+      "key": "Tsaeytte",
+      "label": "Tsaeytte",
+      "box": [
+        0.54,
+        0.3,
+        0.3,
+        0.68
+      ],
+      "depth": 3,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\Tsaeytte.png",
+      "sha256": "4bb3f207d321a1ecce3c37d29c7c9c125b3059920e51a2693884e55a9c68b31c",
+      "bbox": [
+        0,
+        0,
+        256,
+        816
+      ],
+      "source_pixels": 208896,
+      "placed_size": [
+        250,
+        810
+      ],
+      "position": [
+        449,
+        413
+      ],
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\Tsaeytte\\keep.png",
+      "annotation_keep_sha256": "7a13c7de2c6bc4558d668a958b3d21edd71f5d81d7cad85721549351df496b7a",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\Tsaeytte\\remove.png",
+      "annotation_remove_sha256": "04c1590f879c46d820ad027b4ed60c7616c6e693181574c13b79ecd022554bd3",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\Tsaeytte\\source-mask-overlay.png",
+      "source_size": [
+        832,
+        1248
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-01-Standing-in-Wonder\\frozen\\source_images\\main.png",
+      "source_image_sha256": "f0774b0a6bdc6b6d25fbc21fcdeedb6101787a4271c012f0fe2420437952a858",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        438,
+        383,
+        694,
+        1212
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\Tsaeytte\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\Tsaeytte\\manual-remove.png",
+      "manual_keep_sha256": "e92b68c9fdd3c7ba1976aa458cbb2132856a54b944110b94f08b995b25f34be6",
+      "manual_remove_sha256": "e92b68c9fdd3c7ba1976aa458cbb2132856a54b944110b94f08b995b25f34be6",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\Tsaeytte\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "e92b68c9fdd3c7ba1976aa458cbb2132856a54b944110b94f08b995b25f34be6",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\Tsaeytte\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "e92b68c9fdd3c7ba1976aa458cbb2132856a54b944110b94f08b995b25f34be6",
+      "bounds": [
+        449,
+        413,
+        699,
+        1223
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    },
+    {
+      "key": "dialogue-01",
+      "label": "Original dialogue balloon",
+      "box": [
+        0.68,
+        0.2,
+        0.25,
+        0.1
+      ],
+      "depth": 5,
+      "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\dialogue-01.png",
+      "sha256": "da2cd81185fdd661b32be95c651e008309c72b7d52f13f754fe76997a2fb4068",
+      "bbox": [
+        0,
+        0,
+        168,
+        87
+      ],
+      "source_pixels": 14616,
+      "dialogue_layer": true,
+      "placed_size": [
+        208,
+        108
+      ],
+      "position": [
+        566,
+        266
+      ],
+      "annotation_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\dialogue-01\\keep.png",
+      "annotation_keep_sha256": "91eb4a7d2695213c165d0022bce0b97b18a891195f754bccbf3001cf9338d91e",
+      "annotation_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\dialogue-01\\remove.png",
+      "annotation_remove_sha256": "da63f996287a99e7f35383cd383aa6aec3e8385c4fb1c1239c6b45558549532e",
+      "source_mask_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\dialogue-01\\source-mask-overlay.png",
+      "source_size": [
+        832,
+        1248
+      ],
+      "source_image": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\parent-snapshot\\Chapter-01-Standing-in-Wonder\\frozen\\source_images\\main.png",
+      "source_image_sha256": "f0774b0a6bdc6b6d25fbc21fcdeedb6101787a4271c012f0fe2420437952a858",
+      "annotation_coordinate_frame": "full_source_image",
+      "source_crop_bbox": [
+        571,
+        279,
+        739,
+        366
+      ],
+      "manual_keep": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\dialogue-01\\manual-keep.png",
+      "manual_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\dialogue-01\\manual-remove.png",
+      "manual_keep_sha256": "e92b68c9fdd3c7ba1976aa458cbb2132856a54b944110b94f08b995b25f34be6",
+      "manual_remove_sha256": "e92b68c9fdd3c7ba1976aa458cbb2132856a54b944110b94f08b995b25f34be6",
+      "automatic_ground_remove": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\dialogue-01\\automatic-ground-remove.png",
+      "automatic_ground_remove_sha256": "e92b68c9fdd3c7ba1976aa458cbb2132856a54b944110b94f08b995b25f34be6",
+      "automatic_subject_restore": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\annotations\\dialogue-01\\automatic-subject-restore.png",
+      "automatic_subject_restore_sha256": "e92b68c9fdd3c7ba1976aa458cbb2132856a54b944110b94f08b995b25f34be6",
+      "bounds": [
+        566,
+        266,
+        774,
+        374
+      ],
+      "transform_policy": "translation plus uniform scaling only"
+    }
+  ],
+  "layout_changes": [],
+  "protected_subjects_dialogue": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\protected-subjects-dialogue.png",
+  "edit_mask": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\qwen-edit-mask.png",
+  "integration_weight": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\integration-weight.png",
+  "contact_overlay": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\contact-overlay.png",
+  "depth_order": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\depth-order.png",
+  "contact_radius_px": 39,
+  "exterior_band_px": 13,
+  "preview": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\review-preview.png",
+  "raw_composite": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\layer-integration-v2-20261007\\Chapter-01-Standing-in-Wonder\\prepared-v2\\raw-composite.png",
+  "luna_review_hashes": {
+    "review-preview.png": "c4e07247cf79c8b780615afb9494514ced3b5d4edb4e332a4dbb347e1c09a947",
+    "raw-composite.png": "a0ab6070a798fc4d13773ee2d5c2e18a978d520e9626a03f23e32d57dc1c3125",
+    "qwen-edit-mask.png": "20fe295af158bf2b31947ae70b5b6552f33e21b9797163dc39d4405d3b8c1b34",
+    "protected-subjects-dialogue.png": "fae024bb780e10d41fb70da631bf002015123b7fb7d5c284b10ed65ecde470f5",
+    "contact-overlay.png": "8858a57cfc850511930e4f04828f59b41a3a2dbc613706d75478301e4f7e78d0",
+    "depth-order.png": "9f79dc62092b497a9e2663305f12bba57e01aa3e466f904c29b1c236bdf73e41"
+  },
+  "candidate_hash": "21c366e91565b82f3c88b92fc8ce7b242c08e577221b42f43e26662c053b08e7"
+}

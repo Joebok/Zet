@@ -24,6 +24,8 @@ class RenderConsoleQueueTests(unittest.TestCase):
             (ask_path / "ask_manifest.json").write_text(json.dumps({
                 "ask_id": "Ask_Test",
                 "worker_type": "manual_chatgpt_render",
+                "story_slug": "TestStory",
+                "scene_slug": "Opening",
                 "prompt_file": "Final_Image_Prompt.md",
                 "expected_output": "image.png",
             }), encoding="utf-8")
@@ -61,6 +63,8 @@ class RenderConsoleQueueTests(unittest.TestCase):
             (ask_path / "ask_manifest.json").write_text(json.dumps({
                 "ask_id": "Ask_Test",
                 "worker_type": "manual_chatgpt_render",
+                "story_slug": "TestStory",
+                "scene_slug": "Opening",
                 "prompt_file": "Final_Image_Prompt.md",
                 "expected_output": "image.png",
             }), encoding="utf-8")
@@ -379,7 +383,10 @@ Checkpoint = "model.safetensors"
                 json.dumps({"canvas": {"aspect_ratio": "16:9"}}),
                 encoding="utf-8",
             )
-            ir_text = json.dumps({"schema_version": 4, "scene": {"slug": "scene"}})
+            ir_text = json.dumps({
+                "schema_version": 4, "scene": {"slug": "scene"}, "source": {}, "canvas": {},
+                "composition": {}, "environment": {}, "resolved_sources": {}, "elements": [], "placements": [],
+            })
             (workspace / "Scene_Render_IR.json").write_text(ir_text, encoding="utf-8")
             app = ZetApp.from_config(config_path)
 

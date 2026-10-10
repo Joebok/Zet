@@ -34,7 +34,7 @@ def test_locked_lookup_returns_verified_immutable_copy(tmp_path: Path) -> None:
     source = tmp_path / "source.png"
     Image.new("RGB", (32, 32), "white").save(source)
     store.record_selection("Valindia", "Adult", "Body-Reference", "FRONT", candidate_id="c010",
-                           image_path=source, batch_id="run-3")
+                           image_path=source, batch_id="")
     record = store.lock("Valindia", "Adult", "Body-Reference", "FRONT")
 
     assets = store.locked_assets("Valindia", "Adult")
@@ -108,3 +108,26 @@ def test_promote_chain_leaves_index_unchanged_when_copy_fails(tmp_path: Path) ->
         with pytest.raises(OSError, match="simulated copy failure"):
             store.promote_chain("Test", "Adult", records)
     assert store.detail("Test", "Adult")["assets"] == {}
+
+
+def test_costume_lock_keeps_logical_reference_across_unlock_and_replacement(tmp_path: Path) -> None:
+    store = LocalAssetStoreService(tmp_path)
+    first = tmp_path / "first.png"
+    replacement = tmp_path / "replacement.png"
+    Image.new("RGB", (32, 32), "white").save(first)
+    Image.new("RGB", (32, 32), "black").save(replacement)
+    store.record_selection("Tsaeytte", "Youth", "Costume-Dressing", "FRONT",
+                           candidate_id="first", image_path=first, batch_id="", qualifier="Woodland_outfit")
+
+    locked = store.lock("Tsaeytte", "Youth", "Costume-Dressing", "FRONT", "Woodland_outfit")
+
+    assert locked["reference_key"] == "tsaeytte.youth.costume-dressing.woodland-outfit.front"
+    store.unlock("Tsaeytte", "Youth", "Costume-Dressing", "FRONT", "Woodland_outfit")
+    store.record_selection("Tsaeytte", "Youth", "Costume-Dressing", "FRONT",
+                           candidate_id="replacement", image_path=replacement, batch_id="",
+                           qualifier="Woodland_outfit")
+    updated = store.lock("Tsaeytte", "Youth", "Costume-Dressing", "FRONT", "Woodland_outfit")
+
+    assert updated["reference_key"] == locked["reference_key"]
+    resolved = store._entity_library.resolve_reference(updated["reference_key"])
+    assert resolved["asset_id"] == updated["entity_library_asset_id"]

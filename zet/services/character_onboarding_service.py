@@ -21,6 +21,7 @@ SCRIPTS_PATH = PROJECT_ROOT / "Scripts"
 
 from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
 from zet.services.pipeline_compiler_support import extract_template_field
+from zet.services.view_conditioning_service import ViewConditioningError, validate_view_controls
 
 
 FOUNDATION_VIEWS = [
@@ -80,6 +81,10 @@ class CharacterOnboardingService:
             "species_ancestry": "",
             "gender_presentation": "",
             "canonical_art_style": "",
+            "standing_barefoot_height": "",
+            "eye_height": "",
+            "shoulder_width": "",
+            "body_depth": "",
         }
         exists = phase_path.exists()
         if not exists:
@@ -89,9 +94,10 @@ class CharacterOnboardingService:
         if exists and template_path.exists():
             metadata = self._template_metadata(template_path)
             errors = self.validate_template(template_path)
-        if exists and template_path.exists() and not errors and not assets_path.exists():
-            messages.append("Template is valid. Foundation assets have not been initialized yet.")
-        complete = exists and template_path.exists() and assets_path.exists() and pipelines_path.exists() and not errors
+        template_ready = exists and template_path.exists() and not errors
+        if template_ready and not assets_path.exists():
+            messages.append("Character template is valid. Local assets can now be created.")
+        complete = template_ready
         return CharacterOnboardingStatus(
             character=character,
             phase=phase,
@@ -107,6 +113,11 @@ class CharacterOnboardingService:
             species_ancestry=metadata["species_ancestry"],
             gender_presentation=metadata["gender_presentation"],
             canonical_art_style=metadata["canonical_art_style"],
+            standing_barefoot_height=metadata["standing_barefoot_height"],
+            eye_height=metadata["eye_height"],
+            shoulder_width=metadata["shoulder_width"],
+            body_depth=metadata["body_depth"],
+            template_ready=template_ready,
         )
 
     def prefill(self, character: str, source_phase: str = "") -> dict[str, str]:
@@ -119,12 +130,20 @@ class CharacterOnboardingService:
                     "species_ancestry": extract_template_field(template, ["Species / Ancestry", "Species", "Ancestry"]),
                     "gender_presentation": extract_template_field(template, ["Gender Presentation", "Gender"]),
                     "canonical_art_style": extract_template_field(template, ["Canonical Art Style"]),
+                    "standing_barefoot_height": extract_template_field(template, ["Standing Barefoot Height"]),
+                    "eye_height": extract_template_field(template, ["Eye Height"]),
+                    "shoulder_width": extract_template_field(template, ["Shoulder Width"]),
+                    "body_depth": extract_template_field(template, ["Body Depth"]),
                 }
         return {
             "character": character,
             "species_ancestry": "",
             "gender_presentation": "",
             "canonical_art_style": "",
+            "standing_barefoot_height": "",
+            "eye_height": "",
+            "shoulder_width": "",
+            "body_depth": "",
         }
 
     def save_draft(self, payload: dict[str, Any]) -> CharacterOnboardingDraft:
@@ -167,7 +186,7 @@ class CharacterOnboardingService:
         return self.status(character, phase)
 
     def initialize_foundation(self, character: str, phase: str) -> None:
-        """Create foundation Assets.json and support folders for an onboarded phase."""
+        """Prepare local workflow folders without creating traditional pipeline rows."""
         phase_path = self.path_service.character_path(character, phase)
         template_path = self.path_service.character_template_path(character, phase)
         if not template_path.exists():
@@ -176,37 +195,19 @@ class CharacterOnboardingService:
         if errors:
             raise CharacterOnboardingError("; ".join(errors))
         self._ensure_phase_scaffold(character, phase, "")
-        assets_path = phase_path / "Assets.json"
-        if assets_path.exists():
-            payload = json.loads(assets_path.read_text(encoding="utf-8"))
-            if payload.get("assets"):
-                return
-        assets = self._foundation_assets(character, phase)
-        reserved_asset_ids = list(range(17, 25))
-        assets_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 2,
-                    "next_asset_id": max(item["asset_id"] for item in assets) + 1,
-                    "reserved_asset_ids": reserved_asset_ids,
-                    "assets": assets,
-                },
-                indent=2,
-            ) + "\n",
-            encoding="utf-8",
-        )
 
     def validate_template(self, template_path: Path) -> list[str]:
         """Validate Character.md against active compiler requirements."""
         if not template_path.exists():
             return [f"Template file not found: {template_path}"]
         errors: list[str] = []
-        for label in ["Character Name", "Character Phase", "Species / Ancestry", "Gender Presentation", "Canonical Art Style"]:
+        for label in ["Character Name", "Character Phase", "Species / Ancestry", "Gender Presentation"]:
             value = extract_template_field(template_path, [label])
             if not value or self._looks_placeholder(value):
                 errors.append(f"{label} must be filled in.")
         try:
             template_sections = load_template_sections(template_path)
+            validate_view_controls(str(template_path))
             shared_sections = load_template_sections(self.path_service.shared_character_path() / "Character_Template.md")
             missing = sorted(set(shared_sections) - set(template_sections))
             extra = sorted(set(template_sections) - set(shared_sections) - COMPATIBLE_CHARACTER_SECTIONS)
@@ -214,6 +215,11 @@ class CharacterOnboardingService:
                 errors.append(f"Missing canonical sections: {', '.join(missing)}")
             if extra:
                 errors.append(f"Unsupported sections: {', '.join(extra)}")
+            legacy_views = sorted(name for name in extra if re.match(
+                r"^(?:BODY|HEAD|HAIR|COSTUME|EQUIPMENT_JEWELRY_PROPS)_.+_VIEW_(?:FRONT|BACK|LEFT_PROFILE|RIGHT_PROFILE|.*_3_4)$", name
+            ))
+            if legacy_views:
+                errors.append("Legacy per-view sections are unsupported; move their content into tagged VIEW_OVERRIDES: " + ", ".join(legacy_views))
             metadata_path = self.project_root / "Config" / "Prompt_Section_Metadata.json"
             metadata = json.loads(metadata_path.read_text(encoding="utf-8")).get("sections", {})
             required_sections: list[str] = []
@@ -234,6 +240,8 @@ class CharacterOnboardingService:
                     errors.append(f"{name} still contains shared template placeholder text.")
         except TemplateCompileError as exc:
             errors.append(str(exc))
+        except ViewConditioningError as exc:
+            errors.append(str(exc))
         except Exception as exc:
             errors.append(f"Template validation failed: {exc}")
         return list(dict.fromkeys(errors))
@@ -243,22 +251,10 @@ class CharacterOnboardingService:
         phase_path = self.path_service.character_path(character, phase)
         phase_path.mkdir(parents=True, exist_ok=True)
         for folder in [
-            phase_path / "Reference_Images" / "Head_Image_Sources",
-            phase_path / "Body_Reference",
-            phase_path / "SceneAppearances",
             self.path_service.character_asset_path(character, phase),
             self.path_service.pipeline_base_path(character, phase),
         ]:
             folder.mkdir(parents=True, exist_ok=True)
-        pipelines_path = phase_path / "Pipelines.json"
-        if not pipelines_path.exists():
-            source = self.path_service.character_path(character, source_phase) / "Pipelines.json" if source_phase else None
-            if source is None or not source.exists():
-                source = self.path_service.character_path("Tsaeytte", "Adult") / "Pipelines.json"
-            if source.exists():
-                shutil.copy2(source, pipelines_path)
-        if pipelines_path.exists():
-            self._normalize_foundation_pipelines(pipelines_path)
         identity_keys_path = phase_path / "IdentityKeys.json"
         if not identity_keys_path.exists():
             identity_keys_path.write_text('{\n  "schema_version": 1,\n  "identity_keys": []\n}\n', encoding="utf-8")
@@ -313,6 +309,10 @@ class CharacterOnboardingService:
             "species_ancestry": extract_template_field(template_path, ["Species / Ancestry", "Species", "Ancestry"]),
             "gender_presentation": extract_template_field(template_path, ["Gender Presentation", "Gender"]),
             "canonical_art_style": extract_template_field(template_path, ["Canonical Art Style"]),
+            "standing_barefoot_height": extract_template_field(template_path, ["Standing Barefoot Height"]),
+            "eye_height": extract_template_field(template_path, ["Eye Height"]),
+            "shoulder_width": extract_template_field(template_path, ["Shoulder Width"]),
+            "body_depth": extract_template_field(template_path, ["Body Depth"]),
         }
 
     def _normalize_foundation_pipelines(self, pipelines_path: Path) -> None:
@@ -385,6 +385,7 @@ class CharacterOnboardingService:
 
     def add_missing_head_image_foundation(self, character: str, phase: str) -> list[Asset]:
         """Append missing Head-Image views without changing existing assets."""
+        raise CharacterOnboardingError("Traditional Head-Image assets are retired. Use the local Assets workflow.")
         self._ensure_phase_scaffold(character, phase, "")
         assets_path = self.path_service.character_path(character, phase) / "Assets.json"
         if not assets_path.exists():
@@ -428,6 +429,10 @@ class CharacterOnboardingService:
             "Species / Ancestry": str(payload.get("species_ancestry") or "").strip(),
             "Gender Presentation": str(payload.get("gender_presentation") or "").strip(),
             "Canonical Art Style": str(payload.get("canonical_art_style") or "").strip(),
+            "Standing Barefoot Height": str(payload.get("standing_barefoot_height") or "").strip() or "optional",
+            "Eye Height": str(payload.get("eye_height") or "").strip() or "optional",
+            "Shoulder Width": str(payload.get("shoulder_width") or "").strip() or "optional",
+            "Body Depth": str(payload.get("body_depth") or "").strip() or "optional",
         }
         for label, value in replacements.items():
             text = self._replace_metadata_line(text, label, value)

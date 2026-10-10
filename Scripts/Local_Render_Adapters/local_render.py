@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from zet.services.local_render_types import LocalRenderRequest
+from zet.services.local_render_policy import require_qwen_profile, SCENE_PROFILE
 
 from .common import LocalRenderError, LocalRenderResult, LocalRenderUnavailable
 
@@ -30,7 +31,7 @@ def render_image(
     final_prompt_path: Path,
     job_output_dir: Path,
     prompt_review_path: Path | None = None,
-    preset_name: str = "body-reference-preview",
+    preset_name: str = SCENE_PROFILE,
     reference_files: list[dict[str, Any]] | None = None,
     aspect_ratio: str = "",
     render_layout: dict[str, Any] | None = None,
@@ -59,22 +60,10 @@ def render_image(
 def render_request(request: LocalRenderRequest) -> LocalRenderResult:
     preset = load_preset(request.project_root, request.profile_name)
     backend = str(preset.get("backend") or "").strip().lower()
-    if backend == "stable_matrix":
-        from Scripts.Local_Render_Adapters.stable_matrix_adapter import render_preview
-
-        return render_preview(
-            project_root=request.project_root,
-            final_prompt_path=request.final_prompt_path,
-            job_output_dir=request.job_output_dir,
-            prompt_review_path=request.prompt_review_path,
-            preset_name=request.profile_name,
-            reference_files=request.reference_files,
-            aspect_ratio=request.aspect_ratio,
-            render_layout=request.render_layout,
-            seed=request.seed,
-            render_overrides=request.render_overrides,
-            checkpoint=request.checkpoint,
-        )
+    try:
+        require_qwen_profile(request.project_root, request.profile_name, backend, request.checkpoint or "")
+    except ValueError as exc:
+        raise LocalRenderError(str(exc)) from exc
     if backend == "comfyui":
         from Scripts.Local_Render_Adapters.comfyui_adapter import render_preview
 

@@ -72,10 +72,10 @@ class ProductionWorkSummaryService:
         scenes = dataset["scene_reviews"]
         pending = dataset["analysis_pending"]
         if workspace == "character":
-            tasks = [task for task in tasks if self._task_matches(task, character=character, phase=phase)]
-            assets = [asset for asset in assets if self._asset_matches(asset, character, phase)]
+            tasks = []
+            assets = []
             scenes = []
-            analysis = len(pending)
+            analysis = 0
         elif workspace == "story":
             tasks = [task for task in tasks if self._task_matches(task, story_slug=story_slug, scene_slug=scene_slug)]
             assets = []

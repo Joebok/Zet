@@ -3,6 +3,7 @@ import os
 import platform
 from pathlib import Path
 import tomllib
+from zet.services.local_render_policy import configured_qwen_profile, configured_qwen_checkpoint, SCENE_PROFILE
 
 
 class ConfigServiceError(Exception):
@@ -31,18 +32,19 @@ class Config:
     ai_asset_workflow_model: str = "general:latest"
     codex_default_model: str = "gpt-6-luna"
     ai_scene_builder_model: str = "general:latest"
+    ai_narrative_scene_model: str = "general:latest"
     local_body_reference_face_gate_model: str = "image-analysis-alt:latest"
     local_body_reference_review_model: str = "image-analysis:latest"
     local_render_auto_queue_after_condense: bool = False
-    local_render_backend: str = "stable_matrix"
-    local_render_preset: str = "body-reference-preview"
+    local_render_backend: str = "comfyui"
+    local_render_preset: str = SCENE_PROFILE
     local_render_positive_prompt_globals: str = ""
     local_render_negative_prompt_globals: str = ""
     local_render_layout_backend: str = "forge_couple_basic"
     local_render_checkpoint: str = ""
     local_render_strict_primary_subject_count: bool = True
     local_render_forge_couple_debug_base_pass: bool = True
-    comfyui_profile: str = "comfyui-core-preview"
+    comfyui_profile: str = SCENE_PROFILE
     comfyui_server_url: str = "http://127.0.0.1:8188"
     comfyui_checkpoint: str = ""
     comfyui_positive_prompt_globals: str = ""
@@ -56,12 +58,21 @@ class Config:
     ai_harvest_auto_enabled: bool = True
     ai_harvest_interval_seconds: int = 300
     ai_harvest_archive_path: str = ""
+    ai_queue_debug: bool = False
+    ai_queue_debug_retention_days: int = 7
+    ai_queue_debug_max_bytes: int = 1073741824
     render_backend: str = "local_image"
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
+    ai_image_prompt_generation_model: str = "image-analysis:latest"
+    ai_costume_wizard_model: str = "codex:gpt-6-luna"
+    ai_quick_character_wizard_model: str = "codex:gpt-6-luna"
     ai_prompt_analysis_instructions_file: str = "Config/AI_Prompt_Analysis_Instructions.md"
     ai_prompt_analysis_auto_queue_on_render: bool = False
     scene_candidate_sources: tuple[SceneCandidateSourceConfig, ...] = ()
+    universe_id: str = "Moonsea"
+    universe_is_legacy: bool = True
+    library_container_path: str = ""
 
 
 class ConfigService:
@@ -186,7 +197,6 @@ class ConfigService:
             prompt_condense = ConfigService._prompt_condense_config(payload)
             ai_models = ConfigService._ai_models_config(payload)
             local_render = ConfigService._local_render_config(payload)
-            stable_matrix = ConfigService._stable_matrix_config(payload)
             comfyui = ConfigService._comfyui_config(payload)
             zine = ConfigService._zine_config(payload)
             turnaround = ConfigService._turnaround_config(payload)
@@ -210,6 +220,7 @@ class ConfigService:
                 ai_asset_workflow_model=str(ai_models.get("AssetWorkflow", "general:latest")),
                 codex_default_model=str(ai_models.get("CodexDefault", "gpt-6-luna")),
                 ai_scene_builder_model=str(ai_models.get("SceneBuilder", "general:latest")),
+                ai_narrative_scene_model=str(ai_models.get("NarrativeScene", "general:latest")),
                 local_body_reference_face_gate_model=str(
                     ai_models.get("LocalBodyReferenceFaceGate", "image-analysis-alt:latest")
                 ),
@@ -217,27 +228,11 @@ class ConfigService:
                     ai_models.get("LocalBodyReferenceReview", "image-analysis:latest")
                 ),
                 local_render_auto_queue_after_condense=bool(local_render.get("AutoQueueAfterCondense", False)),
-                local_render_backend=str(local_render.get("Backend", "stable_matrix")).strip().lower(),
-                local_render_preset=str(stable_matrix.get("Profile", local_render.get("Preset", "body-reference-preview"))),
-                local_render_positive_prompt_globals=str(
-                    stable_matrix.get("PositivePromptGlobals", local_render.get("PositivePromptGlobals", ""))
-                ),
-                local_render_negative_prompt_globals=str(
-                    stable_matrix.get("NegativePromptGlobals", local_render.get("NegativePromptGlobals", ""))
-                ),
-                local_render_layout_backend=str(
-                    stable_matrix.get("LayoutBackend", local_render.get("LayoutBackend", "forge_couple_basic"))
-                ),
-                local_render_checkpoint=str(stable_matrix.get("Checkpoint", local_render.get("Checkpoint", ""))),
-                local_render_strict_primary_subject_count=bool(
-                    stable_matrix.get("StrictPrimarySubjectCount", local_render.get("StrictPrimarySubjectCount", True))
-                ),
-                local_render_forge_couple_debug_base_pass=bool(
-                    stable_matrix.get("ForgeCoupleDebugBasePass", local_render.get("ForgeCoupleDebugBasePass", True))
-                ),
-                comfyui_profile=str(comfyui.get("Profile", "comfyui-core-preview")),
+                local_render_backend="comfyui",
+                local_render_preset=configured_qwen_profile(str(comfyui.get("Profile", SCENE_PROFILE))),
+                comfyui_profile=configured_qwen_profile(str(comfyui.get("Profile", SCENE_PROFILE))),
                 comfyui_server_url=str(comfyui.get("ServerURL", "http://127.0.0.1:8188")),
-                comfyui_checkpoint=str(comfyui.get("Checkpoint", "")),
+                comfyui_checkpoint=configured_qwen_checkpoint(str(comfyui.get("Checkpoint", ""))),
                 comfyui_positive_prompt_globals=str(comfyui.get("PositivePromptGlobals", "")),
                 comfyui_negative_prompt_globals=str(comfyui.get("NegativePromptGlobals", "")),
                 comfyui_poll_seconds=float(comfyui.get("PollSeconds", 1.0)),
@@ -251,6 +246,9 @@ class ConfigService:
                 ai_harvest_archive_path=ConfigService._normalize_path_value(
                     ai_harvest.get("ArchivePath", "Zet_File_Proxy_State/Archive/Harvested")
                 ),
+                ai_queue_debug=bool(ai_harvest.get("Debug", False)) or os.environ.get("ZET_AI_QUEUE_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"},
+                ai_queue_debug_retention_days=max(1, int(ai_harvest.get("DebugRetentionDays", 7))),
+                ai_queue_debug_max_bytes=max(1, int(ai_harvest.get("DebugMaxBytes", 1073741824))),
                 render_backend=str(render.get("Backend", "local_image")),
                 ai_prompt_analysis_model=str(
                     ai_models.get(
@@ -258,6 +256,9 @@ class ConfigService:
                     )
                 ),
                 ai_image_description_model=str(ai_models.get("ImageDescription", "image-analysis:latest")),
+                ai_image_prompt_generation_model=str(ai_models.get("ImagePromptGeneration", "image-analysis:latest")),
+                ai_costume_wizard_model=str(ai_models.get("CostumeWizard", "codex:gpt-6-luna")),
+                ai_quick_character_wizard_model=str(ai_models.get("QuickCharacterWizard", "codex:gpt-6-luna")),
                 ai_prompt_analysis_instructions_file=str(
                     ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")
                 ),

@@ -501,6 +501,35 @@ class LibraryIndexService:
                 row = self._job_history_row(answer_path)
                 if row is not None:
                     history_by_key[(row["job_id"], row["source_path"])] = row
+        for receipt_path, receipt in self.queue_paths.lifecycle.iter_receipts():
+            job_id = str(receipt.get("ask_id") or receipt_path.stem)
+            story = str(receipt.get("story_slug") or "")
+            scene = str(receipt.get("scene_slug") or "")
+            scope_kind = "scene" if story and scene else "asset"
+            source_path = f"queue-local/{receipt_path.relative_to(self.queue_paths.lifecycle.root).as_posix()}"
+            harvested_at = str(receipt.get("harvested_at") or receipt.get("recorded_at") or "")
+            payload = {
+                "harvested_at": harvested_at,
+                "ask_id": job_id,
+                "task_type": receipt.get("task_type") or receipt.get("worker_type") or job_id,
+                "asset_id": receipt.get("asset_id"),
+                "status": receipt.get("status") or receipt.get("answer_status") or "",
+                "details": receipt.get("error_message") or receipt.get("message") or "",
+            }
+            row = {
+                "job_id": job_id,
+                "scope_kind": scope_kind,
+                "story_slug": story,
+                "scene_slug": scene,
+                "render_target_id": str(receipt.get("render_target_id") or "main"),
+                "status": str(receipt.get("answer_status") or receipt.get("status") or "unknown").lower(),
+                "name": str(receipt.get("task_type") or receipt.get("worker_type") or job_id),
+                "completed_at": harvested_at,
+                "source_path": source_path,
+                "fingerprint": self._fingerprint(json.dumps(receipt, sort_keys=True).encode("utf-8")),
+                "payload_json": json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
+            }
+            history_by_key[(job_id, source_path)] = row
         history.extend(history_by_key.values())
         return active, history
 
@@ -758,16 +787,35 @@ class LibraryIndexReconciler:
         self._stop = threading.Event()
         self._wait = wait or self._stop.wait
         self._thread: threading.Thread | None = None
+        self._status_lock = threading.Lock()
+        self._last_result: dict | None = None
+        self._last_error = ""
+        self._running = False
+
+    def status(self) -> dict:
+        with self._status_lock:
+            alive = self._thread is not None and self._thread.is_alive()
+            return {"running": self._running, "active": alive, "last_result": self._last_result,
+                    "last_error": self._last_error}
 
     def run_cycle(self) -> dict:
         return self.service.reconcile()
 
     def _run(self) -> None:
         while not self._stop.is_set():
+            with self._status_lock:
+                self._running = True
+                self._last_error = ""
             try:
-                self.run_cycle()
-            except Exception:
-                pass
+                result = self.run_cycle()
+                with self._status_lock:
+                    self._last_result = result
+            except Exception as exc:
+                with self._status_lock:
+                    self._last_error = str(exc)
+            finally:
+                with self._status_lock:
+                    self._running = False
             if self._wait(self.interval_seconds):
                 break
 

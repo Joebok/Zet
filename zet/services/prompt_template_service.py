@@ -1,13 +1,24 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
-from Scripts.Build_Static_Final_Prompt import prompt_template_path, render_static_prompt_with_source_map, write_compiled_sections
+from Scripts.Build_Static_Final_Prompt import (
+    prompt_template_path,
+    render_static_prompt_with_source_map,
+    write_compiled_sections,
+)
 from Scripts.Compile_Character_Template import (
     TemplateCompileError,
     load_template_sections_with_sources,
     select_sections_for_prompt,
+)
+from zet.services.view_conditioning_service import (
+    ViewConditioningError,
+    ViewContext,
+    condition_sections,
+    normalize_view,
 )
 
 
@@ -97,18 +108,35 @@ class PromptTemplateService:
             for name in payload.get("sections", {})
         }
 
-    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, prompt_variant: str = "generation", pipeline_mode: str = "traditional"):
+    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, body_view: str | None = None, head_view: str | None = None, prompt_variant: str = "generation", pipeline_mode: str = "traditional"):
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
-        return select_sections_for_prompt(
-            all_sections,
+        if str(view_token).upper() in {"EXPRESSION", "ALL", ""} and body_view is None and head_view is None:
+            context = ViewContext()
+        else:
+            context = ViewContext(
+                body_view=normalize_view(body_view or view_token),
+                head_view=normalize_view(head_view or view_token),
+            )
+        try:
+            conditioned_sections, conditioned_sources, conditioned_out = condition_sections(
+                all_sections, section_sources, context
+            )
+        except ViewConditioningError as exc:
+            raise TemplateCompileError(exc.code, str(exc)) from exc
+        selection = select_sections_for_prompt(
+            conditioned_sections,
             filter_prompt_variant_blocks(
                 filter_pipeline_mode_blocks(template_file.read_text(encoding="utf-8"), pipeline_mode),
                 prompt_variant,
             ),
             view_token,
-            section_sources,
+            conditioned_sources,
             self._known_section_names(view_token),
         )
+        filtered_names = set(conditioned_out) & set(selection.missing_optional)
+        selection.missing_optional = [name for name in selection.missing_optional if name not in filtered_names]
+        selection.conditioned_out_sections = sorted(filtered_names)
+        return selection
 
     def render_artifacts(
         self,
@@ -143,9 +171,24 @@ class PromptTemplateService:
             final_prompt_name=final_prompt_path.name,
             image_inputs=image_inputs,
         )
+        if prompt_variant == "generation" and "ZET:SPATIAL" in prompt_text:
+            raise TemplateCompileError("SPATIAL_ANNOTATION_LEAK", "A spatial template annotation reached the generation prompt.")
         final_prompt_path.write_text(prompt_text, encoding="utf-8")
         source_map_path.write_text(
-            json.dumps({**source_map, **metadata}, indent=2, ensure_ascii=ensure_ascii_source_map) + "\n",
+            json.dumps({**source_map, **metadata,
+                        "spatial_translations": [
+                            translation
+                            for source in getattr(selection, "section_sources", {}).values()
+                            for translation in source.get("spatial_translations", [])
+                        ],
+                        "spatial_diagnostics": [
+                            diagnostic
+                            for source in getattr(selection, "section_sources", {}).values()
+                            for diagnostic in source.get("view_conditioning_diagnostics", [])
+                        ] + (["Unresolved anatomical left/right wording remains in this legacy prompt."]
+                             if prompt_variant == "generation" and re.search(
+                                 r"\banatomical[ -](?:left|right)\b", prompt_text, re.IGNORECASE
+                             ) else [])}, indent=2, ensure_ascii=ensure_ascii_source_map) + "\n",
             encoding="utf-8",
         )
         write_compiled_sections(compiled_sections_path, job_metadata=metadata, view_token=view_token, selection=selection)

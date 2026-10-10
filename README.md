@@ -7,9 +7,9 @@ Zet is designed primarily for a personal creative workflow using ChatGPT for fin
 ## Key features
 
 - Guided character onboarding and life-phase management
-- Character-development pipelines for body references, head fitment, costumes, and expressions
+- Local character asset pipelines with batch review, identity keys, turnarounds, costumes, and phase comparison
 - Reusable identity keys, turnarounds, and auxiliary image references
-- Prompt inspection, source editing, AI analysis, and manual or local rendering
+- Scene prompt review, source editing, AI analysis, and manual or local rendering
 - Side-by-side candidate review, approval, regeneration, and asset history
 - Story and scene authoring with a structured scene builder
 - Scene image-reference selection and render staging
@@ -94,7 +94,7 @@ source .venv/bin/activate
 ./run_zet_web.command
 ```
 
-Open [http://localhost:8080](http://localhost:8080). Use **New > Character** to begin character development or **New > Story** to begin a story.
+Open [http://localhost:8081](http://localhost:8081). Use **New > Character** to begin character development or **New > Story** to begin a story.
 
 To stop Zet, press `Ctrl+C` in the terminal running the server.
 
@@ -116,7 +116,7 @@ Run commands from the repository root. On Windows, rerun `setup_venv.bat`; on ma
 
 ### The dashboard does not start
 
-Check whether another process already uses port 8080. The Windows launcher reports an existing Zet listener instead of starting a duplicate.
+Check whether another process already uses port 8081. The Windows launcher reports an existing Zet listener instead of starting a duplicate.
 
 ### Local models or checkpoints are missing
 

@@ -3,11 +3,45 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+from copy import deepcopy
 
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Library_Paths import character_root, resolve_library_path
 from zet.services.prompt_template_service import PromptTemplateService
 from zet.services.view_service import UnknownViewError, ViewService
+
+
+def universe_art_style(universe_root: str | Path | None) -> tuple[str, dict[str, dict]]:
+    """Load the current universe style and its prompt-source metadata."""
+    if universe_root is None:
+        return "", {}
+    marker = Path(universe_root).expanduser().resolve() / "universe.json"
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return "", {}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TemplateCompileError("INVALID_CONFIG", f"Cannot read universe descriptor {marker}: {exc}") from exc
+    sources = {
+        "CANONICAL_ART_STYLE": {
+            "source_kind": "universe_setting",
+            "source_path": str(marker),
+            "source_label": "Universe Canonical Art Style",
+            "json_pointer": "/canonical_art_style",
+            "editable": True,
+        }
+    }
+    return str(data.get("canonical_art_style") or "").strip(), sources
+
+
+def with_universe_art_style(ir: dict, universe_root: str | Path | None) -> dict:
+    """Add a universe style to a local-only IR copy without changing saved scene IR."""
+    art_style, _ = universe_art_style(universe_root)
+    result = deepcopy(ir)
+    if art_style:
+        style = result.get("style") if isinstance(result.get("style"), dict) else {}
+        result["style"] = {**style, "canonical_art_style": art_style}
+    return result
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -52,24 +86,17 @@ def load_view_data(project_root: Path, view_token: str) -> dict:
 
 
 def view_orientation_intro(view_data: dict, include_orientation_details: bool = False) -> str:
-    """Return the shared anatomical side instruction for one view."""
+    """Return the shared screen-space orientation instruction for one view."""
     token = str(view_data.get("_view_token") or "").strip().upper()
     label = str(view_data.get("label") or token.lower().replace("_", " ")).strip()
     viewpoint = re.sub(r"\s+view$", "", label, flags=re.IGNORECASE).strip() or label
-    lines = ["Use anatomical left and right."]
-    if token in {"FRONT_LEFT_3_4", "BACK_LEFT_3_4"}:
-        lines.append(f"The {viewpoint} viewpoint primarily exposes the anatomical left side.")
-    elif token in {"FRONT_RIGHT_3_4", "BACK_RIGHT_3_4"}:
-        lines.append(f"The {viewpoint} viewpoint primarily exposes the anatomical right side.")
+    lines = ["Describe visible sides from the camera's view: use screen-left and screen-right for direct front and back views, and near-side and far-side for three-quarter and profile views."]
     if include_orientation_details:
         orientation = str(view_data.get("orientation_sentence") or "").strip()
         camera_position = str(view_data.get("camera_position") or "").strip()
         details = [value for value in (orientation, "Do not rotate the head independently of the body.", camera_position) if value]
         if orientation:
-            if len(lines) > 1:
-                lines[-1] = f"{lines[-1]} {' '.join(details)}"
-            else:
-                lines.append(" ".join(details))
+            lines.append(" ".join(details))
     return "\n".join(lines)
 
 
@@ -201,6 +228,10 @@ def template_metadata(template_path: Path) -> dict[str, str]:
         "FOOTWEAR": extract_template_field(template_path, ["Footwear"]),
         "FOOTWEAR_CONTACT": extract_template_field(template_path, ["Footwear Contact", "Footwear Contact Rule"]),
         "FOOTWEAR_GROUNDING": extract_template_field(template_path, ["Footwear Grounding", "Footwear Grounding Rule"]),
+        "STANDING_BAREFOOT_HEIGHT": extract_template_field(template_path, ["Standing Barefoot Height"]),
+        "EYE_HEIGHT": extract_template_field(template_path, ["Eye Height"]),
+        "SHOULDER_WIDTH": extract_template_field(template_path, ["Shoulder Width"]),
+        "BODY_DEPTH": extract_template_field(template_path, ["Body Depth"]),
     }
 
 
@@ -402,7 +433,12 @@ def require_job_field(job: dict, canonical: str, *keys: str) -> str:
     return value
 
 
-def template_path_for_job(project_root: Path, job: dict, character: str, phase: str) -> Path:
+def template_path_for_job(
+    project_root: Path, job: dict, character: str, phase: str,
+    *, universe_root: str | Path | None = None,
+) -> Path:
+    if universe_root is not None:
+        return Path(universe_root).expanduser().resolve() / "Characters" / character / phase / "Character.md"
     explicit = job_get(job, "Template Path", "template_path", "character_image_template")
     if explicit:
         return resolve_project_path(project_root, explicit)

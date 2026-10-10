@@ -523,125 +523,44 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
         self.assertIn(b'filename="reference.png"', uploaded_request.data)
         self.assertIn(b"png-data", uploaded_request.data)
 
-    def test_proxy_adapter_passes_compiled_references_to_run(self) -> None:
+    def test_proxy_adapter_passes_qwen_references_and_exact_prompt_to_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "Config").mkdir()
-            (root / "Config" / "Local_Render_Presets.json").write_text(json.dumps({
-                "comfyui-ipadapter-preview": {
-                    **self._profile(),
-                    "workflow_kind": "ipadapter_scene_preview",
-                    "ipadapter_model": "ipadapter.safetensors",
-                    "clip_vision_model": "clip.safetensors",
-                    "character_reference_weight": 0.37,
-                    "character_reference_end_at": 0.66,
-                    "ipadapter_weight_type": "linear",
-                    "ipadapter_combine_embeds": "average",
-                    "ipadapter_embeds_scaling": "V only",
-                },
-            }), encoding="utf-8")
-            (root / "config.toml").write_text(
-                '[ComfyUI]\nCheckpoint = "model.safetensors"\n',
-                encoding="utf-8",
-            )
+            profiles = json.loads((Path(__file__).resolve().parents[1] / "Config/Local_Render_Presets.json").read_text())
+            (root / "Config/Local_Render_Presets.json").write_text(json.dumps(profiles))
             reference = root / "reference.png"
-            reference.write_bytes(b"png")
+            reference.write_bytes(png_bytes())
+            prompt = root / "prompt.md"
+            prompt.write_text("Use <image1> to paint a quiet forest.", encoding="utf-8")
             ir = self._ir()
             ir["references"] = [{"tag": "{{REF}}", "applies_to_element_id": "tsaeytte"}]
-            ir["resolved_sources"] = {
-                "references": [{"tag": "{{REF}}", "path": str(reference)}],
-            }
+            ir["resolved_sources"] = {"references": [{"tag": "{{REF}}", "path": str(reference)}]}
+            ir["render_mode"] = "composite"
+            ir["image_inputs"] = [{"index": 1, "role": "subject_reference", "path": str(reference),
+                                   "label": "Traveler", "applies_to": "Traveler", "preserve": ["identity"]}]
             ir_path = root / "Scene_Render_IR.json"
-            ir_path.write_text(json.dumps(ir), encoding="utf-8")
-            prompt_path = root / "prompt.md"
-            prompt_path.write_text("prompt", encoding="utf-8")
-            output_image = root / "output.png"
-            output_image.write_bytes(b"png")
-            run_result = ComfyUIRunResult("prompt-1", [output_image], {}, {})
-            nodes = {"LoadImage", "CLIPVisionLoader", "IPAdapterModelLoader", "IPAdapterAdvanced"}
+            ir_path.write_text(json.dumps(ir))
             with (
-                patch(
-                    "Scripts.Local_Render_Adapters.comfyui_adapter.list_comfyui_node_types",
-                    return_value=nodes,
-                ),
-                patch(
-                    "Scripts.Local_Render_Adapters.comfyui_adapter.run_comfyui_workflow",
-                    return_value=run_result,
-                ) as run,
+                patch("Scripts.Local_Render_Adapters.comfyui_adapter.list_comfyui_node_types", return_value={
+                    "UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21", "LoadImage",
+                    "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"}),
+                patch("Scripts.Local_Render_Adapters.comfyui_adapter.run_comfyui_workflow",
+                      return_value=ComfyUIRunResult("prompt-1", [reference], {}, {})) as run,
             ):
-                result = render_preview(
-                    project_root=root,
-                    final_prompt_path=prompt_path,
-                    job_output_dir=root / "job",
-                    profile_name="comfyui-ipadapter-preview",
-                    scene_render_ir_path=ir_path,
-                )
-            metadata = json.loads(result.metadata_path.read_text(encoding="utf-8"))
-            self.assertEqual(
-                {
-                    "reference_element_id": "tsaeytte",
-                    "staged_reference_file": run.call_args.kwargs["reference_files"][0]["comfyui_input_name"],
-                    "weight": 0.37,
-                    "start_at": 0.0,
-                    "end_at": 0.66,
-                    "weight_type": "linear",
-                    "combine_embeds": "average",
-                    "embeds_scaling": "V only",
-                },
-                metadata["ipadapter_applications"][0],
-            )
+                render_preview(project_root=root, final_prompt_path=prompt, job_output_dir=root / "job",
+                               profile_name="comfyui-qwen-image-2-1-scene", scene_render_ir_path=ir_path, seed=1)
+            self.assertEqual(str(reference), run.call_args.kwargs["reference_files"][0]["path"])
+            debug = json.loads((root / "job/ComfyUI_Compilation_Debug.json").read_text())
+            self.assertIn(prompt.read_text(), json.dumps(debug["prompts"]))
 
-        references = run.call_args.kwargs["reference_files"]
-        self.assertEqual(str(reference), references[0]["path"])
-        self.assertRegex(references[0]["comfyui_input_name"], r"^Zet/[0-9a-f]{12}/reference\.png$")
-
-    def test_proxy_adapter_applies_single_character_render_overrides(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            (root / "Config").mkdir()
-            profile = json.loads(
-                (Path(__file__).resolve().parents[1] / "Config" / "Local_Render_Presets.json").read_text(
-                    encoding="utf-8"
-                )
-            )["image-recipe-lab-ipadapter-controlnet-sdxl"]
-            (root / "Config" / "Local_Render_Presets.json").write_text(json.dumps({"lab": profile}), encoding="utf-8")
-            (root / "config.toml").write_text('[ComfyUI]\nCheckpoint = "model.safetensors"\n', encoding="utf-8")
-            prompt = root / "Prompt.md"
-            prompt.write_text("Prompt: full body\nNegative: cropped\n", encoding="utf-8")
-            appearance = root / "appearance.png"
-            pose = root / "pose.png"
-            appearance.write_bytes(b"appearance")
-            pose.write_bytes(b"pose")
-            output = root / "output.png"
-            output.write_bytes(b"output")
-            nodes = {
-                "LoadImage", "CLIPVisionLoader", "IPAdapterModelLoader", "IPAdapterAdvanced",
-                "DWPreprocessor", "ControlNetLoader", "ControlNetApplyAdvanced",
-            }
-            with (
-                patch("Scripts.Local_Render_Adapters.comfyui_adapter.list_comfyui_node_types", return_value=nodes),
-                patch(
-                    "Scripts.Local_Render_Adapters.comfyui_adapter.run_comfyui_workflow",
-                    return_value=ComfyUIRunResult("prompt-1", [output], {}, {}),
-                ) as run,
-            ):
-                render_preview(
-                    project_root=root,
-                    final_prompt_path=prompt,
-                    job_output_dir=root / "job",
-                    profile_name="lab",
-                    reference_files=[
-                        {"role": "appearance_reference", "path": str(appearance)},
-                        {"role": "pose_reference", "path": str(pose)},
-                    ],
-                    render_overrides={"width": 900, "height": 1300, "character_reference_weight": 0.45},
-                )
-
-            workflow = run.call_args.args[0]
-            latent = next(node for node in workflow.values() if node["class_type"] == "EmptyLatentImage")
-            adapter = next(node for node in workflow.values() if node["class_type"] == "IPAdapterAdvanced")
-            self.assertEqual((896, 1296), (latent["inputs"]["width"], latent["inputs"]["height"]))
-            self.assertEqual(0.45, adapter["inputs"]["weight"])
+    def test_proxy_adapter_rejects_retired_model_family_before_submission(self) -> None:
+        project = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temp, patch("Scripts.Local_Render_Adapters.comfyui_adapter.run_comfyui_workflow") as run:
+            with self.assertRaisesRegex(ValueError, "only ComfyUI"):
+                render_preview(project_root=project, final_prompt_path=Path(temp) / "unused.md",
+                               job_output_dir=Path(temp), profile_name="image-recipe-lab-ipadapter-controlnet-sdxl")
+            run.assert_not_called()
 
     def test_run_reports_validation_error(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch(
@@ -707,7 +626,8 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                        "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
                        "vae": "qwen_image_2.1_vae_bf16.safetensors", "steps": 40}
             nodes = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
-                     "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "LoadImage"}
+                     "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "LoadImage",
+                     "QwenImage21Cache"}
             compilation = compile_ir_to_comfyui_workflow(ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors",
                                                          seed=7, available_node_types=nodes)
             workflow = compilation.workflow
@@ -720,6 +640,22 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
             self.assertEqual(5, sum(node["class_type"] == "LoadImage" for node in workflow.values()))
             self.assertEqual("", workflow["4"]["inputs"]["negative_prompt"])
             self.assertEqual(1.0, workflow["6"]["inputs"]["cfg"])
+            self.assertEqual(["16", 0], workflow["6"]["inputs"]["model"])
+            self.assertEqual({"enabled": True, "device": "cpu", "dtype": "int8", "reference_count": 5,
+                              "inserted": True, "node_id": "16", "skip_reason": None},
+                             compilation.debug["qwen_reference_cache"])
+            references_five = list(ir["image_inputs"])
+            ir["image_inputs"] = references_five + [
+                {**reference, "index": index}
+                for index, reference in enumerate(references_five, start=6)
+            ]
+            ten_refs = compile_ir_to_comfyui_workflow(
+                ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=nodes)
+            self.assertEqual(10, len(ten_refs.debug["references_used"]))
+            self.assertEqual("21", ten_refs.debug["qwen_reference_cache"]["node_id"])
+            self.assertEqual("QwenImage21Cache", ten_refs.workflow["21"]["class_type"])
+            ir["image_inputs"] = references_five
             manual_refs = [{"image_index": index, "path": ir["image_inputs"][index - 1]["path"]}
                            for index in range(5, 0, -1)]
             ordered = compile_ir_to_comfyui_workflow(
@@ -727,6 +663,30 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                 available_node_types=nodes, reference_files=manual_refs)
             self.assertEqual([1, 2, 3, 4, 5],
                              [item["image_index"] for item in ordered.debug["references_used"]])
+            uncached_types = nodes - {"QwenImage21Cache"}
+            uncached = compile_ir_to_comfyui_workflow(
+                ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=uncached_types)
+            self.assertEqual("QwenImage21Cache node unavailable",
+                             uncached.debug["qwen_reference_cache"]["skip_reason"])
+            self.assertEqual(["1", 0], uncached.workflow["6"]["inputs"]["model"])
+            overridden = compile_ir_to_comfyui_workflow(
+                ir, {**profile, "qwen_cache_device": "gpu", "qwen_cache_dtype": "default"},
+                checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=nodes)
+            self.assertEqual({"model": ["1", 0], "device": "gpu", "dtype": "default"},
+                             overridden.workflow["16"]["inputs"])
+            disabled = compile_ir_to_comfyui_workflow(
+                ir, {**profile, "qwen_cache_enabled": False},
+                checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                available_node_types=nodes)
+            self.assertEqual("disabled_by_profile", disabled.debug["qwen_reference_cache"]["skip_reason"])
+            self.assertNotIn("QwenImage21Cache", {node["class_type"] for node in disabled.workflow.values()})
+            with self.assertRaisesRegex(LocalRenderError, "qwen_cache_dtype"):
+                compile_ir_to_comfyui_workflow(
+                    ir, {**profile, "qwen_cache_dtype": "invalid"},
+                    checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
+                    available_node_types=nodes)
             with self.assertRaisesRegex(LocalRenderError, "do not match the scene IR image slots"):
                 compile_ir_to_comfyui_workflow(
                     ir, profile, checkpoint="qwen_image_2.1_int8_convrot.safetensors", seed=7,
@@ -773,27 +733,12 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
                     timeout_seconds=0,
                 )
 
-    def test_checkpoint_discovery_reads_comfyui_loader_choices(self) -> None:
-        response = MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "CheckpointLoaderSimple": {
-                "input": {"required": {"ckpt_name": [["one.safetensors", "two.safetensors"]]}}
-            }
-        }).encode()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            profiles_path = Path(temp_dir) / "profiles.json"
-            profiles_path.write_text(
-                json.dumps({"comfyui-core-preview": {"backend": "comfyui"}}),
-                encoding="utf-8",
-            )
-            with patch("zet.services.local_render_backend_service.urlopen", return_value=response):
-                checkpoints = LocalRenderBackendService(profiles_path).list_checkpoints(
-                    "comfyui-core-preview",
-                    backend="comfyui",
-                    server_url="http://127.0.0.1:8188",
-                )
-
-        self.assertEqual(["one.safetensors", "two.safetensors"], [item["title"] for item in checkpoints])
+    def test_checkpoint_discovery_rejects_retired_profiles(self) -> None:
+        with patch("zet.services.local_render_backend_service.urlopen") as request:
+            profiles = Path(__file__).resolve().parents[1] / "Config/Local_Render_Presets.json"
+            with self.assertRaisesRegex(ValueError, "only ComfyUI"):
+                LocalRenderBackendService(profiles).list_checkpoints("comfyui-core-preview")
+            request.assert_not_called()
 
     def test_qwen_model_discovery_reads_diffusion_loader_choices(self) -> None:
         response = MagicMock()
@@ -803,7 +748,7 @@ class ComfyUIRenderServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             profiles_path = Path(temp_dir) / "profiles.json"
             profiles_path.write_text(
-                json.dumps({"comfyui-qwen-image-2-1-scene": {"backend": "comfyui", "model_family": "qwen-image-2.1"}}),
+                json.dumps({"comfyui-qwen-image-2-1-scene": {"backend": "comfyui", "model_family": "qwen-image-2.1", "diffusion_model": "qwen_image_2.1_int8_convrot.safetensors"}}),
                 encoding="utf-8",
             )
             with patch("zet.services.local_render_backend_service.urlopen", return_value=response) as request:
@@ -870,6 +815,8 @@ Checkpoint = "model.safetensors"
                 "--seed",
                 "42",
                 "--compile-only",
+                "--profile", "comfyui-core-preview",
+                "--checkpoint", "model.safetensors",
             ])
 
             self.assertEqual(0, exit_code)

@@ -39,11 +39,13 @@ from zet.services.pipeline_compiler_support import (
     output_files,
     require_job_field,
     resolve_project_path,
+    template_path_for_job,
     template_metadata,
     view_instruction,
     reference_by_role,
     reference_files_for_job,
     validate_reference,
+    universe_art_style,
 )
 
 
@@ -55,8 +57,18 @@ def safe_name(value: str) -> str:
     return safe_filename_fragment(value, "Costume")
 
 
-def costume_path_for_job(project_root: Path, job: dict, character: str, phase: str) -> Path:
+def costume_path_for_job(
+    project_root: Path, job: dict, character: str, phase: str,
+    *, universe_root: str | Path | None = None,
+) -> Path:
     explicit = job_get(job, "Costume Path", "costume_path")
+    if universe_root is not None:
+        if explicit:
+            filename = Path(explicit).name
+        else:
+            costume = job_get(job, "Costume", "costume") or "Canonical Adventure Gear"
+            filename = f"Costume_{safe_name(costume).replace('-', '_')}.md"
+        return Path(universe_root).expanduser().resolve() / "Characters" / character / phase / filename
     if explicit:
         return resolve_project_path(project_root, explicit)
     costume = job_get(job, "Costume", "costume") or "Canonical Adventure Gear"
@@ -144,6 +156,11 @@ def costume_metadata_sources(costume_path: Path) -> dict[str, dict]:
 
 _LABELED_BULLET_RE = re.compile(r"^(\s*[-*]\s+)([^:]+):\s*(.*)$")
 _EMPTY_SECTION_VALUES = {"", "none", "n/a", "not applicable"}
+_LEADING_VIEW_TAG_RE = re.compile(r"^(\s*[-*+]\s+)\[[^]]+\]\s*")
+
+
+def _labeled_match(line: str):
+    return _LABELED_BULLET_RE.match(_LEADING_VIEW_TAG_RE.sub(r"\1", line, count=1))
 
 
 def _semantic_value(value: str) -> str:
@@ -154,7 +171,9 @@ def _semantic_value(value: str) -> str:
 
 
 def _clean_section_line(line: str) -> str | None:
-    match = _LABELED_BULLET_RE.match(line)
+    if "<!-- ZET:" in line:
+        return re.sub(r"\.{2,}$", ".", line.replace("`", "").rstrip())
+    match = _labeled_match(line)
     if not match:
         stripped = re.sub(r"^\s*[-*]\s+", "", line).strip()
         if _semantic_value(stripped) in _EMPTY_SECTION_VALUES:
@@ -165,7 +184,9 @@ def _clean_section_line(line: str) -> str | None:
         return None
     value = raw_value.strip().replace("`", "")
     value = re.sub(r"\.{2,}$", ".", value)
-    return f"{prefix}{label.strip()}: {value}"
+    tag_match = re.match(r"^\s*[-*+]\s+(\[[^]]+\]\s*)", line)
+    tag_prefix = tag_match.group(1) if tag_match else ""
+    return f"{prefix}{tag_prefix}{label.strip()}: {value}"
 
 
 def _normalize_section_text(text: str) -> str:
@@ -176,7 +197,7 @@ def _normalize_section_text(text: str) -> str:
 def _labeled_values(text: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in str(text or "").splitlines():
-        match = _LABELED_BULLET_RE.match(line)
+        match = _labeled_match(line)
         if match:
             values[match.group(2).strip().casefold()] = match.group(3).strip()
     return values
@@ -187,7 +208,7 @@ def _filter_section_lines(text: str, keep) -> str:
 
 
 def _is_generic_no_equipment_view_line(line: str) -> bool:
-    value = _semantic_value(_LABELED_BULLET_RE.match(line).group(3)) if _LABELED_BULLET_RE.match(line) else _semantic_value(line)
+    value = _semantic_value(_labeled_match(line).group(3)) if _labeled_match(line) else _semantic_value(line)
     return "no equipment" in value and ("jewelry only" in value or "no jewelry" in value)
 
 
@@ -216,7 +237,7 @@ def normalize_costume_dressing_sections(
     costume_facts = _filter_section_lines(
         costume_facts,
         lambda line: not (
-            (match := _LABELED_BULLET_RE.match(line))
+            (match := _labeled_match(line))
             and match.group(2).strip().casefold() == "costume name"
         ),
     )
@@ -245,7 +266,7 @@ def normalize_costume_dressing_sections(
     has_jewelry = any(
         _semantic_value(value) not in _EMPTY_SECTION_VALUES
         for label, value in combined_values
-        if label == "jewelry"
+        if label in {"jewelry", "necklace", "earrings", "earring", "rings", "ring", "pendant"}
     )
 
     if not has_equipment and not has_jewelry:
@@ -260,7 +281,7 @@ def normalize_costume_dressing_sections(
             equipment_facts = equipment_facts.replace("drift: no ,", "drift: no").replace(",,", ",")
 
         def keep_equipment_line(line: str) -> bool:
-            match = _LABELED_BULLET_RE.match(line)
+            match = _labeled_match(line)
             lower = line.casefold()
             if not has_sided_equipment and (
                 "use anatomical left and right" in lower
@@ -282,8 +303,9 @@ def normalize_costume_dressing_sections(
         if _semantic_value(value)
     }
     selected_view_names = {
-        f"COSTUME_DESCRIPTION_VIEW_{body_view_token}",
-        f"EQUIPMENT_JEWELRY_PROPS_VIEW_{body_view_token}",
+        "COSTUME_DESCRIPTION_VIEW_OVERRIDES",
+        "COSTUME_DESCRIPTION_VIEW_SUPPRESSION",
+        "EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES",
     }
     for name in selected_view_names:
         text = normalized.get(name, "")
@@ -296,7 +318,7 @@ def normalize_costume_dressing_sections(
                 return False
             if _is_generic_no_equipment_view_line(line):
                 return False
-            match = _LABELED_BULLET_RE.match(line)
+            match = _labeled_match(line)
             return not (match and _semantic_value(match.group(3)) in general_values)
 
         compacted = _filter_section_lines(text, keep_view_line)
@@ -467,7 +489,7 @@ Reviewed At:
 
 def compile_costume_dressing_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
-    pipeline_mode: str = "traditional",
+    pipeline_mode: str = "traditional", universe_root: str | Path | None = None,
 ) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
@@ -490,9 +512,14 @@ def compile_costume_dressing_job(
     head_view_token = normalize_view(project_root, raw_head_view)
     body_view_data = load_view_data(project_root, body_view_token)
     head_view_data = load_view_data(project_root, head_view_token)
-    character_template_path = Path(job_get(job, "Template Path", "template_path") or
-                                   (character_root(project_root) / character / phase / "Character.md"))
-    costume_path = costume_path_for_job(project_root, job, character, phase)
+    character_template_path = template_path_for_job(
+        project_root, job, character, phase,
+        universe_root=universe_root if pipeline_mode == "local" else None,
+    )
+    costume_path = costume_path_for_job(
+        project_root, job, character, phase,
+        universe_root=universe_root if pipeline_mode == "local" else None,
+    )
     if not costume_path.exists():
         raise TemplateCompileError("MISSING_TEMPLATE", f"Costume template not found: {costume_path}")
     output_dir = output_dir_for_job(project_root, job, character, phase, body_view_token, head_view_token)
@@ -512,9 +539,11 @@ def compile_costume_dressing_job(
     selection = select_prompt_sections(
         project_root, bundle, all_sections, section_sources, body_view_token,
         prompt_variant=prompt_variant, pipeline_mode=pipeline_mode,
+        body_view=body_view_token, head_view=head_view_token,
     )
     references = auxiliary_references_for_texts(
-        project_root, ["\n".join(selection.sections.values())], references
+        project_root, ["\n".join(selection.sections.values())], references,
+        universe_root=universe_root,
     )
     references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
         references, render_mode="edit"
@@ -555,7 +584,7 @@ def compile_costume_dressing_job(
     body_view_display = re.sub(r"\s+VIEW$", "", str(body_view_data["label"]).upper())
     head_view_display = re.sub(r"\s+VIEW$", "", str(head_view_data["label"]).upper())
     equipment_facts_selected = "EQUIPMENT_JEWELRY_PROPS_FACTS" in selection.sections
-    equipment_view_selected = f"EQUIPMENT_JEWELRY_PROPS_VIEW_{body_view_token}" in selection.sections
+    equipment_view_selected = "EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES" in selection.sections
     equipment_heading = ""
     if equipment_facts_selected:
         equipment_heading = "# Equipment and Jewelry" if any(
@@ -565,6 +594,7 @@ def compile_costume_dressing_job(
             or label.startswith("right side")
             or label.startswith("left side")
         ) else "# Jewelry"
+    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
     metadata_values = {
         "CHARACTER_NAME": character,
         "CHARACTER_PHASE": phase,
@@ -587,7 +617,11 @@ def compile_costume_dressing_job(
             + "Preserve the requested view and the Image 1 pose, body, and framing."
             if pipeline_mode == "local" and body_view_token != "FRONT" else ""
         ),
-        "COSTUME_VIEW_HEADING": "# View-Specific Costume Details" if f"COSTUME_DESCRIPTION_VIEW_{body_view_token}" in selection.sections else "",
+        "LOCAL_CANONICAL_ART_STYLE": (
+            f"Apply the universe's Canonical Art Style: {universe_style}."
+            if universe_style else "Preserve the supplied rendering style."
+        ),
+        "COSTUME_VIEW_HEADING": "# View-Specific Costume Details" if "COSTUME_DESCRIPTION_VIEW_OVERRIDES" in selection.sections else "",
         "EQUIPMENT_HEADING": equipment_heading,
         "EQUIPMENT_VIEW_HEADING": "# View-Specific Equipment Details" if equipment_view_selected else "",
         **contract_values,
@@ -596,6 +630,8 @@ def compile_costume_dressing_job(
         **costume_metadata(costume_path),
     }
     metadata_sources = {
+        **({"LOCAL_CANONICAL_ART_STYLE": universe_sources["CANONICAL_ART_STYLE"]}
+           if universe_style else {}),
         **metadata_source_map(project_root, character_template_path, body_view_token, task, "body"),
         **background_treatment_source_map(project_root),
         **costume_metadata_sources(costume_path),

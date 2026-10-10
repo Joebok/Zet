@@ -87,6 +87,23 @@ class CharacterMarkdownContractTests(unittest.TestCase):
                 paths.character_template_path("New Hero", "Adult").read_text(encoding="utf-8"),
             )
 
+    def test_initialize_foundation_keeps_character_workflow_local_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = self._paths(Path(temp_dir))
+            template = paths.character_template_path("New Hero", "Adult")
+            template.parent.mkdir(parents=True)
+            template.write_text("valid character template", encoding="utf-8")
+            service = CharacterOnboardingService(paths, PROJECT_ROOT)
+            service.validate_template = lambda template_path: []
+
+            service.initialize_foundation("New Hero", "Adult")
+
+            self.assertTrue((template.parent / "IdentityKeys.json").is_file())
+            self.assertTrue((template.parent / "TurnaroundSheets.json").is_file())
+            self.assertFalse((template.parent / "Assets.json").exists())
+            self.assertFalse((template.parent / "Pipelines.json").exists())
+            self.assertFalse((template.parent / "SceneAppearances").exists())
+
     def test_legacy_scene_character_anchors_remain_compatible(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -1,0 +1,35 @@
+{
+  "title": "01 · Arrival",
+  "id": "80f21471f1e24eb6bd2248931e2520cf",
+  "intent": "Tsaeytte pauses at the academy entrance, looking around at the wonders on display. She is very curious about a magical raven who is regarding her.",
+  "setting": "Level stone paving outside an ostentatious magic and wizardry academy.",
+  "camera": "Camera at approximately chest height",
+  "perspective": "Natural perspective, consistent character scale on the same ground plane",
+  "lighting": "Soft natural daylight from the upper left",
+  "style": "Painterly semi-realistic fantasy illustration, anime-influenced facial stylization, refined linework",
+  "canvas": "16:9",
+  "elements": [
+    {
+      "name": "Tsaeytte",
+      "id": "18c329fe4b744fd1838b8da9696bb5ec",
+      "kind": "subject",
+      "asset_id": "fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+      "appearance": "",
+      "reference_role": "appearance"
+    },
+    {
+      "name": "Rolled parchment",
+      "id": "07edb37ab10b4cb18cb735b789e19dde",
+      "kind": "prop",
+      "asset_id": "",
+      "appearance": "A single small rolled parchment",
+      "reference_role": "appearance"
+    }
+  ],
+  "target_ids": [
+    "1c733c6f32474eaeb243aabf313063ec",
+    "00bc1b10eb6d4a9680c783f0930256f0",
+    "f26a63cbdb6b40ee94b4779fec146ff7",
+    "b043789239a44a9f8e4c898e651ba9ed"
+  ]
+}

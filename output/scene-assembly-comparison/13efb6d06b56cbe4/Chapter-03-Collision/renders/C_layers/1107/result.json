@@ -1,0 +1,15 @@
+{
+  "status": "COMPLETE",
+  "seed": 1107,
+  "prompt_sha256": "a1644762e8c5591a9975d44c4200e33c6727ca0259bf7aa3de869c1ec5abc485",
+  "workflow_sha256": "4548e1d2e592e7158d911c65b79ae03dc0f3c72e698f6485a6a2e0b711643e94",
+  "output_sha256": "1b607b49e1a82d404e00d96c37420495ce7f665ad5d05a7993698d20feb97ca4",
+  "proposal": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\renders\\C_layers\\1107\\comfyui\\69e210b8255a_1_1107_00001_.png",
+  "output": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\renders\\C_layers\\1107\\candidate.png",
+  "prompt_id": "557dd2e7-0a3b-49d8-85ee-182db78c3f2b",
+  "elapsed_seconds": 97.39,
+  "dimensions": [
+    928,
+    1152
+  ]
+}

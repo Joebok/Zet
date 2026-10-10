@@ -10,6 +10,7 @@ from typing import Any, Callable
 from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.atomic_file_service import replace_with_retry, write_json_atomic
 from zet.services.config_service import Config
+from zet.services.ai_queue_paths import queue_local_state_root
 from zet.services.workflow_storage import file_lock, subject_key, supersede_task, task_state_path
 
 
@@ -45,7 +46,7 @@ class ManualRenderPublicationService:
 
     @property
     def journal_root(self) -> Path:
-        return self.queue_root / "Zet_File_Proxy_State" / self.JOURNAL_KIND
+        return queue_local_state_root(self.queue_root) / self.JOURNAL_KIND
 
     def intent_path(self, ask_id: str) -> Path:
         return task_state_path(self.queue_root, self.JOURNAL_KIND, str(ask_id))

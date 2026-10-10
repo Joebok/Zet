@@ -8,6 +8,7 @@ import re
 
 from zet.repositories.asset_repository import AssetRepository, AssetRepositoryError
 from zet.repositories.pipeline_repository import PipelineRepository
+from zet.services.local_render_policy import SCENE_PROFILE, require_qwen_profile
 from zet.services.config_service import Config, ConfigService
 
 
@@ -25,13 +26,13 @@ class AutomationSettings:
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
-    local_render_backend: str = "stable_matrix"
+    local_render_backend: str = "comfyui"
     stable_matrix_profile: str = ""
     stable_matrix_positive_prompt_globals: str = ""
     stable_matrix_negative_prompt_globals: str = ""
     stable_matrix_use_forge_couple: bool | None = None
     stable_matrix_checkpoint: str = ""
-    comfyui_profile: str = "comfyui-core-preview"
+    comfyui_profile: str = SCENE_PROFILE
     comfyui_server_url: str = "http://127.0.0.1:8188"
     comfyui_checkpoint: str = ""
     comfyui_positive_prompt_globals: str = ""
@@ -43,6 +44,9 @@ class AutomationSettings:
     prompt_condense_model: str = "general:latest"
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
+    ai_image_prompt_generation_model: str = "image-analysis:latest"
+    ai_costume_wizard_model: str = "codex:gpt-6-luna"
+    ai_quick_character_wizard_model: str = "codex:gpt-6-luna"
     ai_scene_builder_model: str = "general:latest"
     local_body_reference_face_gate_model: str = "image-analysis-alt:latest"
     local_body_reference_review_model: str = "image-analysis:latest"
@@ -77,7 +81,7 @@ class PipelineControlSnapshot:
 
 class PipelineControlService:
     SAFE_RENDER_BACKENDS = {"local_image", "manual_chatgpt"}
-    SAFE_LOCAL_RENDER_BACKENDS = {"stable_matrix", "comfyui"}
+    SAFE_LOCAL_RENDER_BACKENDS = {"comfyui"}
 
     def __init__(
         self,
@@ -193,6 +197,9 @@ class PipelineControlService:
             ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
             ai_prompt_analysis_auto_queue_on_render=bool(self.config.ai_prompt_analysis_auto_queue_on_render),
             ai_image_description_model=str(self.config.ai_image_description_model),
+            ai_image_prompt_generation_model=str(getattr(self.config, "ai_image_prompt_generation_model", "image-analysis:latest")),
+            ai_costume_wizard_model=str(getattr(self.config, "ai_costume_wizard_model", "codex:gpt-6-luna")),
+            ai_quick_character_wizard_model=str(getattr(self.config, "ai_quick_character_wizard_model", "codex:gpt-6-luna")),
             ai_scene_builder_model=str(self.config.ai_scene_builder_model),
             local_body_reference_face_gate_model=str(self.config.local_body_reference_face_gate_model),
             local_body_reference_review_model=str(self.config.local_body_reference_review_model),
@@ -209,29 +216,16 @@ class PipelineControlService:
             profiles = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             profiles = {}
-        result = {"stable_matrix": [], "comfyui": []}
+        result = {"comfyui": []}
         for name, profile in profiles.items() if isinstance(profiles, dict) else []:
             backend = str(profile.get("backend") or "") if isinstance(profile, dict) else ""
-            if backend in result and profile.get("enabled", True):
+            if backend in result and profile.get("enabled", True) and profile.get("model_family") == "qwen-image-2.1":
                 result[backend].append(str(name))
         return {backend: sorted(names) for backend, names in result.items()}
 
     def project_config_rows(self) -> list[dict]:
         return [
             {"Scope": "Project config", "Setting": "LocalRender.Backend", "Value": self.config.local_render_backend},
-            {"Scope": "Project config", "Setting": "StableMatrix.Profile", "Value": self.config.local_render_preset},
-            {
-                "Scope": "Project config",
-                "Setting": "StableMatrix.PositivePromptGlobals",
-                "Value": self.config.local_render_positive_prompt_globals,
-            },
-            {
-                "Scope": "Project config",
-                "Setting": "StableMatrix.NegativePromptGlobals",
-                "Value": self.config.local_render_negative_prompt_globals,
-            },
-            {"Scope": "Project config", "Setting": "StableMatrix.LayoutBackend", "Value": self.config.local_render_layout_backend},
-            {"Scope": "Project config", "Setting": "StableMatrix.Checkpoint", "Value": self.config.local_render_checkpoint},
             {"Scope": "Project config", "Setting": "ComfyUI.Profile", "Value": self.config.comfyui_profile},
             {"Scope": "Project config", "Setting": "ComfyUI.ServerURL", "Value": self.config.comfyui_server_url},
             {"Scope": "Project config", "Setting": "ComfyUI.Checkpoint", "Value": self.config.comfyui_checkpoint},
@@ -248,6 +242,9 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIModels.PromptAnalysis", "Value": self.config.ai_prompt_analysis_model},
             {"Scope": "Project config", "Setting": "AIPromptAnalysis.AutoQueueOnRender", "Value": self.config.ai_prompt_analysis_auto_queue_on_render},
             {"Scope": "Project config", "Setting": "AIModels.ImageDescription", "Value": self.config.ai_image_description_model},
+            {"Scope": "Project config", "Setting": "AIModels.ImagePromptGeneration", "Value": getattr(self.config, "ai_image_prompt_generation_model", "image-analysis:latest")},
+            {"Scope": "Project config", "Setting": "AIModels.CostumeWizard", "Value": getattr(self.config, "ai_costume_wizard_model", "codex:gpt-6-luna")},
+            {"Scope": "Project config", "Setting": "AIModels.QuickCharacterWizard", "Value": getattr(self.config, "ai_quick_character_wizard_model", "codex:gpt-6-luna")},
             {"Scope": "Project config", "Setting": "AIModels.SceneBuilder", "Value": self.config.ai_scene_builder_model},
             {"Scope": "Project config", "Setting": "AIModels.LocalBodyReferenceFaceGate", "Value": self.config.local_body_reference_face_gate_model},
             {"Scope": "Project config", "Setting": "AIModels.LocalBodyReferenceReview", "Value": self.config.local_body_reference_review_model},
@@ -257,22 +254,8 @@ class PipelineControlService:
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         """Persist project-level automation settings."""
         self._validate_settings(settings)
-        stable_profile = settings.stable_matrix_profile or settings.local_render_preset
-        stable_positive = settings.stable_matrix_positive_prompt_globals or settings.local_render_positive_prompt_globals
-        stable_negative = settings.stable_matrix_negative_prompt_globals or settings.local_render_negative_prompt_globals
-        stable_checkpoint = settings.stable_matrix_checkpoint or settings.local_render_checkpoint
-        stable_forge = (
-            settings.local_render_use_forge_couple
-            if settings.stable_matrix_use_forge_couple is None
-            else settings.stable_matrix_use_forge_couple
-        )
         updates = {
-            ("LocalRender", "Backend"): settings.local_render_backend,
-            ("StableMatrix", "Profile"): stable_profile,
-            ("StableMatrix", "PositivePromptGlobals"): stable_positive,
-            ("StableMatrix", "NegativePromptGlobals"): stable_negative,
-            ("StableMatrix", "LayoutBackend"): "forge_couple_basic" if stable_forge else "plain_txt2img",
-            ("StableMatrix", "Checkpoint"): stable_checkpoint,
+            ("LocalRender", "Backend"): "comfyui",
             ("ComfyUI", "Profile"): settings.comfyui_profile,
             ("ComfyUI", "ServerURL"): settings.comfyui_server_url,
             ("ComfyUI", "Checkpoint"): settings.comfyui_checkpoint,
@@ -293,6 +276,9 @@ class PipelineControlService:
             ("AIModels", "PromptAnalysis"): settings.ai_prompt_analysis_model,
             ("AIPromptAnalysis", "AutoQueueOnRender"): settings.ai_prompt_analysis_auto_queue_on_render,
             ("AIModels", "ImageDescription"): settings.ai_image_description_model,
+            ("AIModels", "ImagePromptGeneration"): settings.ai_image_prompt_generation_model,
+            ("AIModels", "CostumeWizard"): settings.ai_costume_wizard_model,
+            ("AIModels", "QuickCharacterWizard"): settings.ai_quick_character_wizard_model,
             ("AIModels", "SceneBuilder"): settings.ai_scene_builder_model,
             ("AIModels", "LocalBodyReferenceFaceGate"): settings.local_body_reference_face_gate_model,
             ("AIModels", "LocalBodyReferenceReview"): settings.local_body_reference_review_model,
@@ -310,10 +296,9 @@ class PipelineControlService:
         if local_backend not in self.SAFE_LOCAL_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_LOCAL_RENDER_BACKENDS))
             raise PipelineControlServiceError(f"Local render backend must be one of: {choices}.")
-        if not (settings.stable_matrix_profile or settings.local_render_preset).strip():
-            raise PipelineControlServiceError("Stable Matrix profile cannot be blank.")
         if not settings.comfyui_profile.strip():
             raise PipelineControlServiceError("ComfyUI profile cannot be blank.")
+        require_qwen_profile(Path(__file__).resolve().parents[2], settings.comfyui_profile, checkpoint=settings.comfyui_checkpoint)
         if not settings.comfyui_server_url.strip():
             raise PipelineControlServiceError("ComfyUI server URL cannot be blank.")
         if settings.comfyui_poll_seconds < 0 or settings.comfyui_timeout_seconds <= 0:
@@ -342,6 +327,8 @@ class PipelineControlService:
             ("Scene Builder", settings.ai_scene_builder_model),
             ("Local Body-Reference face gate", settings.local_body_reference_face_gate_model),
             ("Local Body-Reference review", settings.local_body_reference_review_model),
+            ("Costume Wizard", settings.ai_costume_wizard_model),
+            ("Quick Character Wizard", settings.ai_quick_character_wizard_model),
         )
         for label, model in model_settings:
             if not model.strip():
@@ -353,7 +340,10 @@ class PipelineControlService:
         if not self.config_path.exists():
             raise PipelineControlServiceError(f"Config file not found: {self.config_path}")
         original = self.config_path.read_text(encoding="utf-8")
-        updated = original
+        updated = re.sub(r"(?ms)^\[StableMatrix\].*?(?=^\[|\Z)", "", original)
+        updated = re.sub(r"(?ms)(^\[LocalRender\]\s*\n)(.*?)(?=^\[|\Z)",
+                         lambda match: match[1] + "".join(line for line in match[2].splitlines(keepends=True)
+                             if not re.match(r"\s*(Preset|LayoutBackend|Checkpoint|UseForgeCouple|ForgeCouple\w*|StrictPrimarySubjectCount|PositivePromptGlobals|NegativePromptGlobals)\s*=", line)), updated)
         for (section, key), value in updates.items():
             updated = self._set_section_value(updated, section, key, value)
 

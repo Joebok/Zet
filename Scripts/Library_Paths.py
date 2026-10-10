@@ -7,6 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 from zet.services.config_service import ConfigService
 from zet.services.path_service import PathService
+from zet.services.universe_service import UniverseService
 
 
 def load_project_config(project_root: Path = PROJECT_ROOT):
@@ -15,8 +16,10 @@ def load_project_config(project_root: Path = PROJECT_ROOT):
 
 
 def library_root(project_root: Path = PROJECT_ROOT) -> Path:
-    """Return the configured external library root."""
-    return Path(load_project_config(project_root).base_library_path)
+    """Return the currently selected universe root."""
+    config = load_project_config(project_root)
+    service = UniverseService(config.base_library_path, project_root / "Config" / "universe-selection.json")
+    return Path(service.get_universe(service.selection())["root"])
 
 
 def shared_library_root(project_root: Path = PROJECT_ROOT) -> Path:

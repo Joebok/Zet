@@ -76,6 +76,7 @@ def test_mixed_view_cases_run_with_per_view_prompts_and_snapshot_answers(tmp_pat
     for attempt in started["attempts"]:
         manifest = json.loads((client.ready_path(attempt["ask_id"]) / "ask_manifest.json").read_text(encoding="utf-8"))
         assert manifest["ollama_model"] == "gemma4:12b"
+        assert manifest["universe_id"] == "Moonsea"
         assert "ollama_temperature" not in manifest and "ollama_keep_alive" not in manifest
         Path(attempt["output_path"]).write_text("TRUE", encoding="utf-8")
     finished = service.status(started["run_id"])

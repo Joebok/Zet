@@ -1,13 +1,16 @@
 from pathlib import Path
 from datetime import datetime
 from dataclasses import asdict
+import hashlib
 import json
+from typing import Any
 
 from zet.models.asset import Asset
 from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepository
 from zet.repositories.asset_repository import AssetRepository
 from zet.repositories.identity_key_repository import IdentityKeyRepository
 from zet.repositories.image_catalog_repository import ImageCatalogRepository
+from zet.repositories.entity_library_repository import EntityLibraryRepository
 from zet.repositories.pipeline_repository import PipelineRepository
 from zet.repositories.turnaround_repository import TurnaroundRepository
 from zet.services.asset_service import (
@@ -22,13 +25,18 @@ from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.character_source_service import CharacterSourceService
 from zet.services.config_service import ConfigService
-from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeUpdateResult
+from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeServiceError, CostumeUpdateResult
+from zet.services.costume_wizard_service import CostumeWizardService
+from zet.services.quick_character_wizard_service import QuickCharacterWizardService
 from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
 from zet.services.image_catalog_service import ImageCatalogService
+from zet.services.entity_library_service import EntityLibraryService
 from zet.services.manual_render_publication_service import ManualRenderPublicationService
 from zet.services.path_service import PathService
+from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.local_asset_source_service import LocalAssetSourceService
 from zet.services.phase_comparison_service import PhaseComparisonResult, PhaseComparisonService
 from zet.services.process_service import ProcessService
 from zet.services.pipeline_control_service import AutomationSettings, PipelineControlService, PipelineControlSnapshot
@@ -55,6 +63,8 @@ from zet.services.worker_service import WorkerService
 from zet.services.workspace_summary_service import WorkspaceSummaryService
 from zet.services.zine_service import ZineService
 from zet.services.library_index_service import LibraryIndexReconciler, LibraryIndexService
+from zet.services.library_deletion_service import LibraryDeletionService
+from zet.services.universe_service import UniverseService
 
 
 class AssetRef:
@@ -171,13 +181,19 @@ class ZetApp:
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service
+        self.ai_queue_lifecycle_service = asset_service.ai_answer_harvester.ai_proxy_path_service.lifecycle
         self.prompt_review_service = prompt_review_service
         self.reference_service = reference_service
         self.housekeeping_service = housekeeping_service
         self.path_service = path_service
+        self.local_asset_source_service = LocalAssetSourceService(
+            LocalAssetStoreService(config.base_library_path)
+        )
         self.turnaround_service = turnaround_service
         self.identity_key_service = identity_key_service
         self.costume_service = costume_service
+        self.costume_wizard_service = CostumeWizardService(self, Path(__file__).resolve().parents[1])
+        self.quick_character_wizard_service = QuickCharacterWizardService(self, Path(__file__).resolve().parents[1])
         self.scene_appearance_service = scene_appearance_service
         self.expression_service = expression_service
         self.character_onboarding_service = character_onboarding_service
@@ -191,8 +207,20 @@ class ZetApp:
         self.story_service.library_index_service = self.library_index_service
         self.manual_render_publication_service = ManualRenderPublicationService(config)
         self.image_catalog_service = None
+        self.entity_library_service = None
+        self.library_deletion_service = None
         self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
         self.scene_image_review_service = SceneImageReviewService(story_service)
+        from zet.services.local_scene_batch_service import LocalSceneBatchService
+        self.local_scene_batch_service = LocalSceneBatchService(self, Path(__file__).resolve().parents[1])
+        from zet.services.narrative_scene_service import NarrativeSceneService
+        from zet.services.narrative_generation_service import NarrativeGenerationService
+        self.narrative_scene_service = NarrativeSceneService(self)
+        from zet.services.narrative_reference_service import NarrativeReferenceService
+        self.narrative_reference_service = NarrativeReferenceService(self.narrative_scene_service)
+        from zet.services.narrative_assembly_service import NarrativeAssemblyService
+        self.narrative_assembly_service = NarrativeAssemblyService(self.narrative_scene_service)
+        self.narrative_generation_service = NarrativeGenerationService(self.narrative_scene_service)
         self.workspace_summary_service = WorkspaceSummaryService(
             character_onboarding_service,
             asset_repository,
@@ -245,8 +273,11 @@ class ZetApp:
         return self.pipeline_inspection_service.open_folder(pipeline_id, file_id)
 
     @classmethod
-    def from_config(cls, config_path: str | Path, *, validate_catalog: bool = True) -> "ZetApp":
-        config = ConfigService.load(config_path)
+    def from_config(cls, config_path: str | Path, *, validate_catalog: bool = True, universe_id: str | None = None) -> "ZetApp":
+        container_config = ConfigService.load(config_path)
+        universe_service = UniverseService(container_config.base_library_path, Path(config_path).resolve().parent / "Config" / "universe-selection.json")
+        selected_id = universe_id or universe_service.selection()
+        config = universe_service.bind_config(container_config, selected_id)
         path_service = PathService(config, Path(config_path).resolve().parent)
         asset_repository = AssetRepository(path_service)
         auxiliary_resource_repository = AuxiliaryResourceRepository(path_service)
@@ -296,18 +327,21 @@ class ZetApp:
             path_service,
         )
         reference_service = ReferenceService(asset_repository, path_service)
+        local_asset_sources = LocalAssetSourceService(LocalAssetStoreService(config.base_library_path))
         turnaround_service = TurnaroundService(
             asset_repository,
             pipeline_repository,
             turnaround_repository,
             path_service,
+            local_sources=local_asset_sources,
         )
         identity_key_service = IdentityKeyService(
             asset_repository,
             identity_key_repository,
             path_service,
+            local_asset_sources,
         )
-        costume_service = CostumeService(asset_repository, path_service)
+        costume_service = CostumeService(asset_repository, path_service, local_asset_sources)
         scene_appearance_service = SceneAppearanceService(asset_repository, path_service)
         expression_service = ExpressionService(asset_repository, identity_key_repository, path_service)
         character_onboarding_service = CharacterOnboardingService(path_service)
@@ -316,6 +350,7 @@ class ZetApp:
             pipeline_repository,
             path_service,
             Path(__file__).resolve().parents[1],
+            local_asset_sources,
         )
         story_service = StoryService(
             path_service,
@@ -325,6 +360,8 @@ class ZetApp:
             turnaround_repository,
         )
         image_catalog_repository = ImageCatalogRepository(path_service)
+        entity_library_repository = EntityLibraryRepository(path_service.entity_library_database_path())
+        entity_library_repository.initialize()
         if validate_catalog:
             image_catalog_repository.load()
         image_catalog_service = ImageCatalogService(
@@ -358,9 +395,19 @@ class ZetApp:
             config_path,
         )
         app.ai_proxy_service = ai_proxy_service
+        app.universe_service = universe_service
+        app.universe_id = selected_id
         app.ai_proxy_service.manual_render_publication_service = app.manual_render_publication_service
         app.story_service.story_render_service.publication_service = app.manual_render_publication_service
         app.image_catalog_service = image_catalog_service
+        entity_library_service = EntityLibraryService(path_service, entity_library_repository)
+        entity_library_service.pipeline_provider = lambda: image_catalog_service.list_items(include_base=True)
+        app.entity_library_service = entity_library_service
+        app.library_deletion_service = LibraryDeletionService(
+            path_service, local_asset_sources, entity_library_repository
+        )
+        story_service.story_reference_service.entity_library_service = entity_library_service
+        entity_library_service.refresh_usages(config.base_library_path)
         app.library_index_service.list_items_provider = app._indexed_list_rows
         image_catalog_repository.after_write = app.refresh_library_index
         return app
@@ -417,6 +464,23 @@ class ZetApp:
                     item.scene_slug, item.subscene_id, *item.collections, *item.keywords,
                 )),
             ))
+        if self.entity_library_service is not None:
+            try:
+                for asset in self.entity_library_service.list_assets():
+                    entity_names = [entity["name"] for entity in asset.get("entities", [])]
+                    set_names = [reference_set["name"] for reference_set in asset.get("sets", [])]
+                    facet_values = [f"{facet['namespace']}:{facet['value']}" for facet in asset.get("facets", [])]
+                    rows.append(self._indexed_row(
+                        "inventory", asset["asset_id"], f"{asset['origin']}\0{asset['label'].casefold()}", asset,
+                        source_key=asset.get("origin_key"), status=asset["status"], source_type=asset["origin"],
+                        semantic_category=asset.get("entities", [{}])[0].get("entity_type", ""),
+                        collections=set_names, keywords=facet_values,
+                        search_text=" ".join([asset["asset_id"], asset["label"], asset["origin"], asset["status"], *entity_names, *set_names, *facet_values, *asset.get("tags", [])]),
+                    ))
+            except Exception as exc:
+                self.library_index_service._record_error(
+                    "project/.indexed-dashboard/entity-library", "indexed_dashboard", "provider", str(exc)
+                )
         for source in self.scene_candidate_import_service.list_sources():
             if not source.exists:
                 continue
@@ -555,7 +619,94 @@ class ZetApp:
         result = operation()
         from zet.services.summary_cache import invalidate_summary_cache
         invalidate_summary_cache()
+        if self.entity_library_service is not None:
+            self.entity_library_service.refresh_usages(self.path_service.config.base_library_path)
         self.refresh_library_index()
+        return result
+
+    def entity_library_assets(self, **filters):
+        return self.entity_library_service.list_assets(**filters)
+
+    def entity_library_asset(self, asset_id: str):
+        return self.entity_library_service.get_asset(asset_id)
+
+    def entity_library_update_asset(self, asset_id: str, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.update_asset(asset_id, data))
+
+    def entity_library_replace_asset(self, asset_id: str, mime_type: str, data: bytes):
+        return self._indexed_write(lambda: self.entity_library_service.replace_asset(asset_id, mime_type, data))
+
+    def entity_library_apply_generated_image(self, asset_id: str, expected_checksum: str, mime_type: str,
+                                             data: bytes, prompt: str, negative_prompt: str,
+                                             request_id: str, result_index: int):
+        return self._indexed_write(lambda: self.entity_library_service.apply_generated_image(
+            asset_id, expected_checksum, mime_type, data, prompt, negative_prompt, request_id, result_index))
+
+    def entity_library_import(self, label: str, mime_type: str, data: bytes, **metadata):
+        return self._indexed_write(lambda: self.entity_library_service.import_asset(label, mime_type, data, **metadata))
+
+    def entity_library_import_generated_image(self, label: str, mime_type: str, data: bytes, **metadata):
+        return self._indexed_write(lambda: self.entity_library_service.import_generated_image(label, mime_type, data, **metadata))
+
+    def entity_library_import_generation_result(self, generation_service, request_id: str, result_index: int, *,
+                                                 label: str, entity_id: str = "",
+                                                 reference_role: str = "depicted_subject",
+                                                 provenance: str = ""):
+        data, mime_type, generation = generation_service.library_result(request_id, result_index)
+        prompt = str(generation.get("prompt") or "")
+        negative_prompt = str(generation.get("negative_prompt") or "")
+        if entity_id:
+            return self._indexed_write(lambda: self.entity_library_service.import_generated_image(
+                label, mime_type, data, entity_id=entity_id, reference_role=reference_role,
+                provenance=provenance, prompt=prompt, negative_prompt=negative_prompt))
+        return self._indexed_write(lambda: self.entity_library_service.import_asset(
+            label, mime_type, data, origin="imagegen",
+            origin_key=f"imagegen:{hashlib.sha256(data).hexdigest()}",
+            prompt=prompt, negative_prompt=negative_prompt,
+            provenance_details={"source": "local_image_generation", "request_id": request_id,
+                                "result_index": result_index, "details": provenance}))
+
+    def entity_library_create_entity(self, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.create_entity(data))
+
+    def entity_library_update_entity(self, entity_id: str, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.update_entity(entity_id, data))
+
+    def entity_library_delete_entity(self, entity_id: str):
+        return self._indexed_write(lambda: self.entity_library_service.delete_entity(entity_id))
+
+    def entity_library_update_variant(self, variant_id: str, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.update_variant(variant_id, data))
+
+    def entity_library_delete_variant(self, variant_id: str):
+        return self._indexed_write(lambda: self.entity_library_service.delete_variant(variant_id))
+
+    def entity_library_update_facet(self, facet_id: str, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.update_facet(facet_id, data))
+
+    def entity_library_delete_facet(self, facet_id: str):
+        return self._indexed_write(lambda: self.entity_library_service.delete_facet(facet_id))
+
+    def entity_library_create_facet(self, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.create_facet(data))
+
+    def entity_library_merge(self, kind: str, source_id: str, target_id: str, token: str, resolutions: dict):
+        return self._indexed_write(lambda: self.entity_library_service.merge_records(kind, source_id, target_id, token, resolutions))
+
+    def entity_library_create_set(self, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.create_set(data))
+
+    def entity_library_save_descriptor(self, data: dict):
+        return self._indexed_write(lambda: self.entity_library_service.save_descriptor(data))
+
+    def entity_library_save_logical_reference(self, data: dict, reference_key: str = ""):
+        return self._indexed_write(lambda: self.entity_library_service.save_logical_reference(data, reference_key))
+
+    def entity_library_backfill_costume_references(self, *, dry_run: bool = True):
+        result = self.entity_library_service.backfill_costume_references(dry_run=dry_run)
+        if not dry_run:
+            self.entity_library_service.refresh_usages(self.path_service.config.base_library_path)
+            self.refresh_library_index()
         return result
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
@@ -808,6 +959,84 @@ class ZetApp:
         """Generate Scene Builder outputs without saving."""
         return self.story_service.generate_scene_builder_outputs(story_slug, scene_slug, data)
 
+    def preview_scene_layout(self, data: dict, *, width: int = 1024, height: int = 576, target_id: str = "main") -> dict:
+        """Project an unsaved scene layout and return its clean guidance image."""
+        data = __import__("copy").deepcopy(data)
+        if target_id == "main":
+            data["layout_3d"] = data.get("layout_3d") or {}
+        else:
+            definition = next((item for item in data.get("subscenes") or [] if item.get("id") == target_id), None)
+            if definition is None:
+                raise ValueError(f"Scene subscene not found: {target_id}")
+            definition["layout_3d"] = data.get("layout_3d") or definition.get("layout_3d") or {}
+        elements = data.get("scene_elements") or []
+        service = self.story_service.scene_layout_service
+        targets = service.normalize_targets(data)
+        if target_id not in targets["targets"]:
+            raise ValueError(f"Scene subscene not found: {target_id}")
+        layout = targets["targets"][target_id]
+        if target_id == "main":
+            composition = service.compose_targets(data, target_id)
+            visible_ids = {item["element_id"] for item in composition["pawns"]}
+            layout = {**layout, "pawns": [item for item in layout["pawns"] if item["element_id"] in visible_ids]}
+        else:
+            composition = service.compose_targets(data, target_id)
+        if width == 1024 and height == 576:
+            canvas = (data.get("setup") or {}).get("canvas") or {}
+            try:
+                presets = __import__("json").loads(self.story_service._project_config_path("Local_Render_Presets.json").read_text(encoding="utf-8"))
+                budget = int(presets.get("comfyui-qwen-image-2-1-scene", {}).get("pixel_budget", 1_048_576))
+            except (OSError, ValueError, TypeError):
+                budget = 1_048_576
+            width, height = service.output_size(str(canvas.get("aspect_ratio") or "16:9"), budget)
+        from zet.services.scene_background_service import SceneBackgroundService
+        backgrounds = SceneBackgroundService(self.story_service.story_reference_service, self.story_service.scene_render_target_service)
+        background = None
+        background_warning = ""
+        try:
+            background = backgrounds.resolve(data, layout, width=width, height=height)
+        except ValueError as exc:
+            background_warning = str(exc)
+        if target_id == "main":
+            composition_ids = {item["element_id"] for item in composition["pawns"]}
+            main_elements = [item for item in elements if item.get("id") in composition_ids]
+            camera_layout = {**layout, "pawns": [item for item in composition["pawns"]]}
+        else:
+            main_elements = [item for item in elements if item.get("id") in {pawn["element_id"] for pawn in composition["pawns"]}]
+            camera_layout = {**layout, "pawns": composition["pawns"]}
+        projection = service.project(camera_layout, width=width, height=height, aspect=backgrounds.aspect(data))
+        composition["groups_workspace"] = target_id
+        service.aggregate_group_projection(projection, composition, main_elements)
+        projection["warnings"].extend(service.empty_group_warnings(composition, data.get("subscenes") or []))
+        if background:
+            projection["background"] = background["projection"]
+        if background_warning:
+            projection["warnings"].append(background_warning)
+        import base64
+        png = service.render_guidance(camera_layout, projection, main_elements, background_png=background["png_bytes"] if background else None)
+        return {"projection": projection, "guidance_png_base64": base64.b64encode(png).decode("ascii"),
+                "layout_3d": layout, "background_options": backgrounds.options(data),
+                "composition": composition,
+                "background_source_png_base64": base64.b64encode(background["source_png_bytes"]).decode("ascii") if background else "",
+                "sha256": __import__("hashlib").sha256(png).hexdigest(),
+                "warnings": projection["warnings"], "migration_review_required": layout.get("migration_review_required", False),
+                "provisional_elements": [item["element_id"] for item in camera_layout["pawns"] if item["provisional_height"]]}
+
+    def create_scene_layout_draft(self, data: dict, target_id: str = "main") -> dict:
+        """Create an unsaved 3D layout draft from scene elements and legacy positions."""
+        service = self.story_service.scene_layout_service
+        targets = service.normalize_targets(data)
+        if target_id not in targets["targets"]:
+            raise ValueError(f"Scene subscene not found: {target_id}")
+        return targets["targets"][target_id]
+
+    def save_scene_layout(self, story_slug: str, scene_slug: str, target_id: str, layout: dict,
+                          expected_revision: int):
+        """Save a single 3D layout workspace without replacing other scene edits."""
+        return self._indexed_write(lambda: self.story_service.save_scene_layout_data(
+            story_slug, scene_slug, target_id, layout, expected_revision
+        ))
+
     def export_scene_builder_markdown(self, story_slug: str, scene_slug: str, data: dict) -> SceneDocument:
         """Export Scene Builder-managed markdown into the scene file."""
         return self._indexed_write(
@@ -922,7 +1151,7 @@ class ZetApp:
             include_base=include_base,
             **filters,
         )
-        return [ImageReferenceRow(
+        rows = [ImageReferenceRow(
             tag=item.tag,
             label=item.label,
             character=item.character,
@@ -947,6 +1176,28 @@ class ZetApp:
             identity_status=item.identity_status,
             costume_status=item.costume_status,
         ) for item in items]
+        if self.entity_library_service is not None:
+            for asset in self.entity_library_service.list_assets():
+                if asset["status"] != "approved":
+                    continue
+                entity_labels = [item["name"] for item in asset.get("entities", [])]
+                label = asset.get("label") or asset["file_name"]
+                row_values = dict(
+                    label=label, character=", ".join(entity_labels), phase="", kind="entity-library",
+                    pipeline=asset["origin"], image_path=asset["image_path"], thumbnail_path=asset["thumbnail_path"],
+                    available=True, semantic_category=next(
+                        (item.get("entity_type", "") for item in asset.get("entities") or []), ""
+                    ),
+                    asset_id=asset["asset_id"], origin=asset["origin"], descriptor_ready=asset["descriptor_ready"],
+                )
+                rows.append(ImageReferenceRow(tag=f"{{{{LIB:ASSET:{asset['asset_id']}}}}}", **row_values))
+                logical = asset.get("logical_reference")
+                if logical:
+                    rows.append(ImageReferenceRow(
+                        tag=f"{{{{LIB:REF:{logical['reference_key']}}}}}",
+                        **{**row_values, "reference_key": logical["reference_key"], "asset_id": ""},
+                    ))
+        return rows
 
     def image_catalog_items(self, *, discovery_context: DiscoveryContext | None = None, **filters):
         if discovery_context is not None:
@@ -1084,6 +1335,24 @@ class ZetApp:
         """Return onboarding status for a character phase."""
         return self.character_onboarding_service.status(character, phase)
 
+    def costume_template_status(self, character: str, phase: str, costume: str) -> dict[str, Any]:
+        """Return local readiness for one costume template without foundation onboarding."""
+        template_path = self.path_service.costume_template_path(character, phase, costume)
+        errors: list[str] = []
+        try:
+            self.costume_service.validate_template_file(template_path)
+        except CostumeServiceError as exc:
+            errors.append(str(exc))
+        return {
+            "character": character,
+            "phase": phase,
+            "costume": costume,
+            "template_path": str(template_path),
+            "template_exists": template_path.is_file(),
+            "template_ready": not errors,
+            "validation_errors": errors,
+        }
+
     def character_onboarding_prefill(self, character: str, source_phase: str = ""):
         """Return metadata defaults for a new character or phase."""
         return self.character_onboarding_service.prefill(character, source_phase)
@@ -1180,6 +1449,15 @@ class ZetApp:
             return context
 
     def harvest_ai_answers(self):
+        results = []
+        for universe in self.universe_service.list_universes():
+            target = self if universe["universe_id"] == self.universe_id else ZetApp.from_config(
+                self.config_path, universe_id=universe["universe_id"]
+            )
+            results.extend(target._harvest_current_universe())
+        return results
+
+    def _harvest_current_universe(self):
         results = self.asset_service.harvest_ai_answers()
         from zet.services.local_body_reference_service import LocalBodyReferenceService
         LocalBodyReferenceService(self, Path(__file__).resolve().parents[1]).harvest_face_gate_jobs()
@@ -1302,14 +1580,24 @@ class ZetApp:
         """Archive harvested AI answer folders."""
         return self._indexed_write(self.ai_proxy_service.archive_harvested_answers)
 
+    def cleanup_ai_queue(self) -> dict:
+        """Report legacy queue cleanup candidates without deleting files."""
+        return self.ai_proxy_service.cleanup_ai_queue()
+
     def harvested_answer_count(self) -> int:
         return self.ai_proxy_service.harvested_answer_count()
 
     def recent_ai_harvests(self, limit: int = 20):
+        recent = self.ai_proxy_service.recent_harvests(limit)
         rows = self.library_index_service.repository.query_job_history(
             harvested_only=True, limit=limit
         ).items
-        return [json.loads(str(row.get("payload_json") or "{}")) for row in rows]
+        indexed = [json.loads(str(row.get("payload_json") or "{}")) for row in rows]
+        by_id = {str(row.get("ask_id") or ""): row for row in indexed}
+        by_id.update({str(row.get("ask_id") or ""): row for row in recent})
+        combined = list(by_id.values())
+        combined.sort(key=lambda row: str(row.get("harvested_at") or ""), reverse=True)
+        return combined[:max(0, limit)]
 
     def backfill_ai_harvest_history(self, batch_size: int = 200) -> dict:
         return self.library_index_service.backfill_history(batch_size=batch_size)
@@ -1449,6 +1737,10 @@ class ZetApp:
         """List saved identity keys for a character phase."""
         return self.identity_key_service.list_identity_keys(character, phase)
 
+    def local_asset_sources(self, character: str, phase: str, pipeline: str = ""):
+        """List checksum-verified local locks for derived character workflows."""
+        return self.local_asset_source_service.list_sources(character, phase, pipeline)
+
     def identity_key(self, character: str, phase: str, identity_key_id: str):
         """Return one saved identity key."""
         return self.identity_key_service.get_identity_key(character, phase, identity_key_id)
@@ -1506,6 +1798,14 @@ class ZetApp:
     def update_costume(self, character: str, phase: str, costume_slug: str, costume_name: str) -> CostumeUpdateResult:
         """Update a costume template and its Costume-Dressing assets."""
         return self.costume_service.update_costume(character, phase, costume_slug, costume_name)
+
+    def delete_character_phase(self, character: str, phase: str) -> str:
+        """Move a character phase and its related library data to deleted storage."""
+        return self._indexed_write(lambda: self.library_deletion_service.delete_phase(character, phase))
+
+    def delete_costume(self, character: str, phase: str, costume_slug: str) -> str:
+        """Move a costume and its related library data to deleted storage."""
+        return self._indexed_write(lambda: self.library_deletion_service.delete_costume(character, phase, costume_slug))
 
     def list_scene_appearances(self, character: str, phase: str):
         """List reusable Scene Appearance definitions for a character phase."""

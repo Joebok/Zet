@@ -237,6 +237,7 @@ class GateTestRigService:
             (staging / self.PROMPT_FILE).write_text(prompt, encoding="utf-8")
             manifest = {
                 "version": AI_PROXY_PROTOCOL_VERSION, "ask_id": ask_id, "asset_id": None,
+                "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "pipeline": "Gate-Test-Rig", "pipeline_stage": f"GATE_TEST_{gate.upper()}",
                 "worker_type": "ollama_generate", "ollama_model": config["model"],
                 "ollama_chat": config["api"] == "chat", "ollama_force_generate": config["api"] == "generate",
@@ -263,6 +264,10 @@ class GateTestRigService:
 
     def _proxy_answer(self, ask_id: str) -> dict[str, Any]:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
+        receipt = paths.lifecycle.read_receipt(ask_id)
+        if receipt:
+            return {"ask_id": ask_id, "status": receipt.get("answer_status", receipt.get("status", "")),
+                    "error_message": receipt.get("error_message", "")}
         roots = (paths.ask_root(), paths.running_root(), paths.answer_root())
         for base in roots:
             folder = base / ask_id

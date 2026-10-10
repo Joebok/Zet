@@ -14,6 +14,7 @@
   };
 
   function directBatchUrl(batch) {
+    if (batch.href) return batch.href;
     const params = new URLSearchParams({
       page: pipelinePages[batch.pipeline] || "local-batch-status",
       character: batch.character,
@@ -24,10 +25,10 @@
     return `${window.location.pathname}?${params.toString()}`;
   }
 
-  function appendField(host, label, value) {
+  function appendField(host, label, value, className = "") {
     if (!value) return;
     const field = document.createElement("span");
-    field.className = "batch-status-field";
+    field.className = `batch-status-field ${className}`.trim();
     field.dataset.label = label;
     field.textContent = value;
     host.append(field);
@@ -35,22 +36,36 @@
 
   function renderBatch(batch) {
     const card = document.createElement("article");
-    card.className = "batch-status-card";
+    card.className = `batch-status-card${batch.pipeline === "scene" ? " batch-status-scene" : ""}`;
 
     const title = document.createElement("h3");
     const link = document.createElement("a");
     link.href = directBatchUrl(batch);
-    link.textContent = [batch.character, batch.phase, batch.batch_name || batch.run_id.slice(0, 8)]
+    link.textContent = [batch.story_slug || batch.character, batch.scene_slug || batch.phase, batch.batch_name || batch.run_id.slice(0, 8)]
       .filter(Boolean)
       .join("/");
     title.append(link);
 
     const fields = document.createElement("div");
     fields.className = "batch-status-fields";
-    appendField(fields, "Pipeline", batch.pipeline_label);
+    const pipelineClasses = [
+      "batch-status-pipeline",
+      `pipeline-${batch.pipeline}`,
+    ];
+    if (batch.status !== "RUNNING") pipelineClasses.push("is-muted");
+    appendField(fields, "Pipeline", batch.pipeline_label, pipelineClasses.join(" "));
     appendField(fields, "Costume", batch.costume);
     appendField(fields, "Current view", batch.current_view);
     card.append(title, fields);
+    if (batch.pipeline === "scene" && batch.status === "READY_TO_PUBLISH") {
+      const review = document.createElement("a");
+      const url = new URL(directBatchUrl(batch), window.location.href);
+      url.searchParams.set("publication_review", "1");
+      review.href = url.toString();
+      review.className = "batch-status-review-link";
+      review.textContent = "Review & Publish";
+      card.append(review);
+    }
     return card;
   }
 

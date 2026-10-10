@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from zet.services.scene_spatial_contract import fingerprint_payload
+
 
 MAIN_RENDER_TARGET = "main"
 BACKGROUND_RENDER_TARGET = "background"
@@ -107,6 +109,77 @@ class SceneRenderTargetService:
         for element in data.get("scene_elements") or []:
             if isinstance(element, dict):
                 element["subscene_id"] = str(element.get("subscene_id") or "").strip()
+
+    @staticmethod
+    def dialogue_target(item: dict) -> str:
+        return str(item.get("subscene_id") or MAIN_RENDER_TARGET).strip() or MAIN_RENDER_TARGET
+
+    def _project_dialogue(self, data: dict, target_id: str) -> list[dict]:
+        elements = {
+            str(element.get("id") or ""): element
+            for element in data.get("scene_elements") or [] if isinstance(element, dict)
+        }
+        definitions = {str(item.get("id") or ""): item for item in data.get("subscenes") or []}
+        projected = []
+        for raw in data.get("dialogue") or []:
+            if not isinstance(raw, dict) or self.dialogue_target(raw) != target_id:
+                continue
+            item = copy.deepcopy(raw)
+            speaker_id = str(item.get("speaker_element_id") or "")
+            speaker = elements.get(speaker_id, {})
+            item["speaker_name"] = str(speaker.get("display_name") or speaker_id or "the speaker")
+            owner_id = str(speaker.get("subscene_id") or MAIN_RENDER_TARGET)
+            if owner_id != target_id:
+                definition = definitions.get(owner_id, {})
+                item["speaker_context"] = str(definition.get("name") or owner_id)
+            target_id_for_dialogue = str(item.get("target_element_id") or "")
+            addressed = elements.get(target_id_for_dialogue, {})
+            item["target_name"] = str(addressed.get("display_name") or target_id_for_dialogue)
+            addressed_owner = str(addressed.get("subscene_id") or MAIN_RENDER_TARGET)
+            if target_id_for_dialogue and addressed_owner != target_id:
+                definition = definitions.get(addressed_owner, {})
+                item["target_context"] = str(definition.get("name") or addressed_owner)
+            projected.append(item)
+        return projected
+
+    def _speaker_is_represented(self, data: dict, target_id: str, speaker_id: str) -> bool:
+        graph = self.target_graph(data)
+        elements = graph["elements"]
+        if speaker_id not in elements:
+            return False
+        owner = str(elements[speaker_id].get("subscene_id") or MAIN_RENDER_TARGET)
+        if owner == target_id:
+            return True
+        seen: set[str] = set()
+        while owner != MAIN_RENDER_TARGET and owner not in seen:
+            seen.add(owner)
+            definition = graph["definitions"].get(owner)
+            if not definition or not definition.get("enabled"):
+                return False
+            if target_id == MAIN_RENDER_TARGET and definition.get("kind") == "background":
+                return True
+            if definition.get("kind") != "element":
+                return False
+            anchor = graph["elements"].get(str(definition.get("anchor_element_id") or ""), {})
+            if target_id == MAIN_RENDER_TARGET:
+                owner = str(anchor.get("subscene_id") or MAIN_RENDER_TARGET)
+                if owner == MAIN_RENDER_TARGET:
+                    return True
+            else:
+                if owner == target_id:
+                    return True
+                owner = str(anchor.get("subscene_id") or MAIN_RENDER_TARGET)
+        return False
+
+    def _assert_dialogue_speakers_represented(self, data: dict, target_id: str) -> None:
+        for item in self._project_dialogue(data, target_id):
+            speaker_id = str(item.get("speaker_element_id") or "")
+            if speaker_id and not self._speaker_is_represented(data, target_id, speaker_id):
+                speaker = item.get("speaker_name") or speaker_id
+                raise self.error_type(
+                    f"Dialogue {item.get('id') or ''} is assigned to {self.target_label(data, target_id)}, "
+                    f"but its speaker {speaker} is not visible in that render target."
+                )
 
     def definition(self, data: dict, target_id: str) -> dict | None:
         if target_id == MAIN_RENDER_TARGET:
@@ -485,6 +558,20 @@ class SceneRenderTargetService:
             target_id = str(element.get("subscene_id") or "")
             if target_id and target_id not in ids:
                 warnings.append(f"Scene element {element.get('id') or element.get('display_name')} references missing subscene {target_id}.")
+        definitions = {str(item.get("id") or ""): item for item in data.get("subscenes") or [] if isinstance(item, dict)}
+        elements = {str(item.get("id") or ""): item for item in data.get("scene_elements") or [] if isinstance(item, dict)}
+        for item in data.get("dialogue") or []:
+            if not isinstance(item, dict):
+                continue
+            target_id = self.dialogue_target(item)
+            if target_id != MAIN_RENDER_TARGET and target_id not in definitions:
+                warnings.append(f"Dialogue {item.get('id') or ''} references missing render target {target_id}.")
+            elif target_id != MAIN_RENDER_TARGET and not definitions[target_id].get("enabled"):
+                warnings.append(f"Dialogue {item.get('id') or ''} is assigned to disabled render target {target_id}.")
+            speaker_id = str(item.get("speaker_element_id") or "")
+            speaker = elements.get(speaker_id)
+            if speaker_id and (speaker is None or not self._speaker_is_represented(data, target_id, speaker_id)):
+                warnings.append(f"Dialogue {item.get('id') or ''} speaker {speaker.get('display_name') if speaker else speaker_id} is not visible in render target {target_id}.")
         warnings.extend(self.target_graph(data)["errors"])
         return list(dict.fromkeys(warnings))
 
@@ -510,23 +597,34 @@ class SceneRenderTargetService:
             anchor = elements.get(anchor_id)
             if anchor is None:
                 continue
-            anchor.setdefault("reference_images", []).append({
+            reference = {
                 "tag": self.image_tag(story_slug, scene_slug, str(definition.get("id") or "")),
+                "managed_subscene_reference": True,
                 "roles": ["complete element or group appearance", "internal arrangement"],
                 "ignore": ["source canvas", "source background", "source framing", "outer placement", "source lighting"],
                 "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
-            })
+            }
+            child_dialogue = self._project_dialogue(source, str(definition.get("id") or ""))
+            if child_dialogue:
+                reference["roles"].append("dialogue panels and speaker pointers")
+                reference["preserve"] = [
+                    f"the dialogue panel and pointer for {item.get('speaker_name')}, including the exact text \"{item.get('text') or ''}\", exactly once"
+                    for item in child_dialogue
+                ]
+            anchor.setdefault("reference_images", []).append(reference)
 
     def _project_element_subscene(self, data: dict, definition: dict) -> dict:
         target_id = str(definition.get("id") or "")
         graph = self.target_graph(data)
         anchor_id = str(definition.get("anchor_element_id") or "")
         anchor = copy.deepcopy(graph["elements"].get(anchor_id) or {})
-        anchor_sections = self.story._element_source_sections(anchor)
+        anchor_sections = anchor.get("resolved_source_sections") or self.story._element_source_sections(anchor)
         if anchor_sections:
             anchor["resolved_source_sections"] = anchor_sections
         projected = copy.deepcopy(data)
         members = self._members(data, target_id)
+        projected["_layout_source_elements"] = copy.deepcopy(data.get("scene_elements") or [])
+        projected["layout_3d"] = copy.deepcopy(definition.get("layout_3d"))
         projected["scene_elements"] = [item for item in projected.get("scene_elements") or [] if item.get("id") in members]
         projected["placements"] = [item for item in projected.get("placements") or [] if item.get("scene_element_id") in members]
         canvas, environment = self.effective_setup(data, target_id)
@@ -543,7 +641,7 @@ class SceneRenderTargetService:
             if item.get("subject_element_id") in members and item.get("target_element_id") in members
         ]
         projected["custom_interactions"] = ""
-        projected["dialogue"] = []
+        projected["dialogue"] = self._project_dialogue(data, target_id)
         projected["final_image_prompt_overrides"] = {}
         projected["_render_target"] = {
             "id": target_id,
@@ -561,10 +659,13 @@ class SceneRenderTargetService:
         definition = self.definition(data, target_id)
         if definition is None:
             raise self.error_type(f"Scene subscene not found: {target_id}")
+        self._assert_dialogue_speakers_represented(data, target_id)
         if definition.get("kind") == "element":
             return self._project_element_subscene(data, definition)
         projected = copy.deepcopy(data)
         members = self._members(data, target_id)
+        projected["_layout_source_elements"] = copy.deepcopy(data.get("scene_elements") or [])
+        projected["layout_3d"] = copy.deepcopy(definition.get("layout_3d"))
         projected["scene_elements"] = [item for item in projected.get("scene_elements") or [] if item.get("id") in members]
         projected["placements"] = [item for item in projected.get("placements") or [] if item.get("scene_element_id") in members]
         composition = projected.setdefault("setup", {}).setdefault("composition", {})
@@ -581,7 +682,7 @@ class SceneRenderTargetService:
             if item.get("subject_element_id") in members and item.get("target_element_id") in members
         ]
         projected["custom_interactions"] = ""
-        projected["dialogue"] = []
+        projected["dialogue"] = self._project_dialogue(data, target_id)
         projected["final_image_prompt_overrides"] = {}
         projected["_render_target"] = {"id": target_id, "label": self.target_label(data, target_id), "kind": "subscene"}
         self._inject_element_child_references(projected, data, target_id)
@@ -589,7 +690,12 @@ class SceneRenderTargetService:
         return projected
 
     def project_main(self, data: dict, statuses: dict[str, dict]) -> dict:
+        self._assert_dialogue_speakers_represented(data, MAIN_RENDER_TARGET)
         projected = copy.deepcopy(data)
+        # Keep backdrop bindings available after accepted backgrounds bake their elements away.
+        projected["_layout_source_elements"] = copy.deepcopy([
+            item for item in data.get("scene_elements") or [] if item.get("element_type") == "Backdrop"
+        ])
         active = [item for item in data.get("subscenes") or [] if item.get("enabled")]
         active_backgrounds = [item for item in active if item.get("kind") != "element"]
         element_target_ids = {
@@ -624,8 +730,13 @@ class SceneRenderTargetService:
             for element_id in baked_ids if element_id in all_elements
         ]
         excluded_ids = baked_ids | hidden_element_ids
+        projected["_layout_source_elements"] = copy.deepcopy([
+            item for item in data.get("scene_elements") or []
+            if str(item.get("subscene_id") or "") in element_target_ids
+        ]) + list(projected.get("_layout_source_elements") or [])
         projected["scene_elements"] = [item for item in projected.get("scene_elements") or [] if item.get("id") not in excluded_ids]
         projected["placements"] = [item for item in projected.get("placements") or [] if item.get("scene_element_id") not in excluded_ids]
+        projected["dialogue"] = self._project_dialogue(data, MAIN_RENDER_TARGET)
         projected["interactions"] = [
             item for item in projected.get("interactions") or []
             if item.get("subject_element_id") not in hidden_element_ids
@@ -641,6 +752,10 @@ class SceneRenderTargetService:
                 "assembly_role": item.get("assembly_role") or "backdrop",
                 "tag": self.image_tag(projected["scene"].get("_story_slug", ""), projected["scene"].get("slug", ""), item["id"]),
                 "path": statuses.get(item["id"], {}).get("locked_image_path", ""),
+                "preserve": [
+                    f"the dialogue panel and pointer for {dialogue.get('speaker_name')}, including the exact text \"{dialogue.get('text') or ''}\", exactly once"
+                    for dialogue in self._project_dialogue(data, str(item["id"]))
+                ],
             }
             for item in active_backgrounds
         ]
@@ -652,7 +767,7 @@ class SceneRenderTargetService:
     @staticmethod
     def input_hash(ir: dict, story_settings: dict, references: list[dict]) -> str:
         digest = hashlib.sha256()
-        payload = copy.deepcopy(ir)
+        payload = fingerprint_payload(ir)
         source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
         for key in ("scene_json_path", "story_settings_path", "source_hashes"):
             source.pop(key, None)

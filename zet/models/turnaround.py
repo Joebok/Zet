@@ -21,6 +21,7 @@ class TurnaroundSheet:
     deletable: bool = False
     status: str = "NEW"
     source_asset_ids: list[int] = field(default_factory=list)
+    source_local_keys: list[str] = field(default_factory=list)
     candidate_image_path: Optional[str] = None
     locked_image_path: Optional[str] = None
     analysis_path: Optional[str] = None

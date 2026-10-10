@@ -1,0 +1,292 @@
+{
+  "schema_version": 4,
+  "prompt_schema_version": 2,
+  "engine_profile": "chatgpt_images_2_5_v1",
+  "render_target": {
+    "id": "background",
+    "label": "Background",
+    "kind": "subscene"
+  },
+  "render_inputs": [],
+  "baked_landmarks": [],
+  "scene": {
+    "id": "chapter_03_collision",
+    "name": "Chapter 03 - Collision",
+    "slug": "Chapter-03-Collision",
+    "story_beat": ""
+  },
+  "source": {
+    "scene_json_path": null,
+    "story_settings_path": "Stories/FirstDay/FirstDay.story.json",
+    "source_hashes": {}
+  },
+  "canvas": {
+    "orientation": "portrait",
+    "aspect_ratio": "4:5"
+  },
+  "composition": {
+    "focal_point": "",
+    "left_to_right": [],
+    "composition_notes": "Move the camera in closer to the archway so the foreground is almost underneath the archway."
+  },
+  "style": {
+    "art_style": "Painterly semi-realistic fantasy illustration with anime-influenced facial stylization and refined linework.",
+    "visual_continuity": {
+      "rules": [
+        "Preserve the story's canonical art style across all scene images.",
+        "Preserve recurring characters, costumes, props, and locations when referenced by scene tags."
+      ],
+      "notes": ""
+    },
+    "profile": {
+      "include_story_premise": false,
+      "include_visual_continuity": true,
+      "include_dialogue_when_scene_has_dialogue": true,
+      "include_reference_assignments": true,
+      "notes": ""
+    }
+  },
+  "environment": {
+    "location": "On the pathway in front of the arch.",
+    "lighting": "Morning sun",
+    "mood": "chaotic",
+    "weather_or_atmosphere": "clear",
+    "general_background_notes": "",
+    "general_foreground_notes": ""
+  },
+  "depth_lanes": {
+    "foreground": [],
+    "midground": [],
+    "background": [
+      "Spire_Archway_efbf29cc"
+    ]
+  },
+  "elements": [
+    {
+      "id": "Spire_Archway_efbf29cc",
+      "display_name": "Spire - Archway",
+      "resource_type": "Place",
+      "element_type": "Backdrop",
+      "character": "",
+      "phase": "",
+      "costume": "",
+      "aux_category": "place",
+      "aux_resource_id": "spire-archway",
+      "reference_images": [
+        {
+          "roles": [
+            "visual reference"
+          ],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": "",
+          "set_id": "",
+          "primary_prompt_source": true,
+          "preserve": [],
+          "change": [],
+          "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+          "tag": "",
+          "reference_key": ""
+        }
+      ],
+      "element_visual_override": "",
+      "fallback_visual_description": "",
+      "notes": "",
+      "subscene_id": "background",
+      "resolved_source_sections": {
+        "identity_preservation_core": "Ornate academy archway and view of the Spire from the reference. The inscription across the upper arch reads \"POTENTIAL IS NOTHING WITHOUT DISCIPLINE\".",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "costume_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "library_asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "library_checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+        "reference_warnings": [
+          "Optional legacy auxiliary fallback is unavailable: Auxiliary resource spire-archway not found."
+        ]
+      }
+    }
+  ],
+  "placements": [
+    {
+      "id": "placement_1784326509906",
+      "scene_element_id": "Spire_Archway_efbf29cc",
+      "position_within_cell": "",
+      "depth": "background",
+      "pose": {
+        "summary": "",
+        "gaze_target_element_id": "",
+        "expression": ""
+      },
+      "motion": {
+        "state": "stationary",
+        "direction_screen": "",
+        "cue": ""
+      },
+      "placement_notes": ""
+    }
+  ],
+  "interactions": [],
+  "custom_interactions": "",
+  "dialogue": [],
+  "dialogue_styles": [],
+  "references": [
+    {
+      "id": "ref_Spire_Archway_efbf29cc_{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+      "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+      "applies_to_element_id": "Spire_Archway_efbf29cc",
+      "roles": [
+        "visual reference"
+      ],
+      "preserve": [],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": ""
+    }
+  ],
+  "final_image_prompt_sections": {
+    "anatomical_requirements": "# Anatomical Requirements\n\nRender anatomically correct characters.\n\n- Every visible hand has exactly five fingers in the correct anatomical arrangement.\n- Hands, wrists, elbows, shoulders, legs, feet, necks, and torsos are naturally connected.\n- No extra limbs, missing limbs, fused limbs, duplicated body parts, or disconnected anatomy.\n- Fingers have natural proportions and believable poses.\n- Character interactions do not cause anatomy to intersect or merge.",
+    "avoid": "# Avoid\n\n- Inconsistent character identity.\n- Wrong costume.\n- Modern objects.\n- Unreadable faces.\n- Merged characters.\n- Cropped characters.\n- Anatomical distortions.",
+    "high_risk_elements": "# High-Risk Elements\n\nPay particular attention to:\n\n- Hands making gestures.\n- Characters sitting with crossed legs.\n- Characters touching or closely facing each other.\n- Objects held in the hands.\n- Long ears remaining fully attached and correctly shaped.\n- Hair remaining consistent with the reference.",
+    "final_verification": "# Final Verification\n\n<!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->\nBefore producing the final image, verify that:\n<!-- ZET:END IMAGE_PROMPT_ONLY -->\n<!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->\nCheck the candidate image for these visible requirements:\n<!-- ZET:END ANALYSIS_PROMPT_ONLY -->\n\n- Character count and identities exactly match the scene description.\n- Every character is in the correct left/right position and depth.\n- Every visible hand has exactly five fingers with correct anatomy.\n- Arms, legs, feet, ears, and clothing are fully connected and anatomically correct.\n- Characters are completely separate; no merged bodies or intersecting limbs.\n- Props are held naturally and are clearly readable.\n- Eye lines and interactions match the story beat.\n- Costumes and recurring character features match the supplied references.\n- The setting, lighting, mood, and art style match the scene specification."
+  },
+  "resolved_sources": {
+    "references": [
+      {
+        "role": "story_reference",
+        "label": "Tsaeytte · Youth · Woodland outfit · Front Left 3 4",
+        "tag": "{{LIB:REF:tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\inputs\\001",
+        "kind": "entity-library",
+        "asset_id": "fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+        "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4",
+        "set_id": "",
+        "checksum": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\fcd4054e-559e-4934-b6b2-43d391fdbd5c",
+        "sha256": "d2ddda52dcdea9e0162ab40ae4190aa8c045e1592376afec31150110d4c1a0b8"
+      },
+      {
+        "role": "story_reference",
+        "label": "Valindia · Adult · School Outfit · Front Right 3 4",
+        "tag": "{{LIB:REF:valindia.adult.costume-dressing.school-outfit.front-right-3-4}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\inputs\\002",
+        "kind": "entity-library",
+        "asset_id": "d69af379-ac56-4f57-a8fe-3b16308b0065",
+        "reference_key": "valindia.adult.costume-dressing.school-outfit.front-right-3-4",
+        "set_id": "",
+        "checksum": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\d69af379-ac56-4f57-a8fe-3b16308b0065",
+        "sha256": "4c4398555aafdfdb297e3c349cac2e8464bb9b2ea184525935a50874cbe0b2bf"
+      },
+      {
+        "role": "story_reference",
+        "label": "Kaeldor",
+        "tag": "{{LIB:ASSET:9f329939-120b-4a1c-bb6d-2cfde7467490}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\inputs\\003.png",
+        "kind": "entity-library",
+        "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+        "checksum": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\9f329939-120b-4a1c-bb6d-2cfde7467490_eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30.png",
+        "sha256": "eb5c717744659710ff0930d7a518d2ff031924a14136aa181d25bafcdb74cd30"
+      },
+      {
+        "role": "story_reference",
+        "label": "Spire Archway (new)",
+        "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\inputs\\004.png",
+        "kind": "entity-library",
+        "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\cb9087bb-7b38-4a04-9c2b-7a04a395cb5a.png",
+        "sha256": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e"
+      },
+      {
+        "role": "story_reference",
+        "label": "Schoolboy 1",
+        "tag": "{{LIB:ASSET:14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\inputs\\005.png",
+        "kind": "entity-library",
+        "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+        "checksum": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1_4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7.png",
+        "sha256": "4911bb6b617c683ac915197ca920a2c050a791e1ded21777e342165a344034b7"
+      },
+      {
+        "role": "story_reference",
+        "label": "Schoolboy 2",
+        "tag": "{{LIB:ASSET:89fefb7b-1e0e-4217-b572-274fa76c1aa1}}",
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\inputs\\006.png",
+        "kind": "entity-library",
+        "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+        "checksum": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f",
+        "original_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\images\\89fefb7b-1e0e-4217-b572-274fa76c1aa1_7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f.png",
+        "sha256": "7cd3d6ffae46b0190463a1c5399b87e654c4b49e041533ef151e2d09f1cbb78f"
+      },
+      {
+        "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Kaeldor_and_the_Schoolboys_1791152906199_subscene\\Kaeldor_and_the_Schoolboys_1791152906199_subscene-001.png",
+        "sha256": "f7c2daf5846240e52d497d6319583427a10123c53a5ee4414b78a6058cb563f1",
+        "candidate_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene-001",
+        "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:Kaeldor_and_the_Schoolboys_1791152906199_subscene}}",
+        "label": "Kaeldor and the Schoolboys",
+        "kind": "scene-render"
+      }
+    ],
+    "element_sources": {
+      "Spire_Archway_efbf29cc": {
+        "identity_preservation_core": "Ornate academy archway and view of the Spire from the reference. The inscription across the upper arch reads \"POTENTIAL IS NOTHING WITHOUT DISCIPLINE\".",
+        "identity_preservation_costume": "",
+        "identity_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "costume_source": "Library/assets/cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "library_asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+        "library_checksum": "b5c4097a55b725604a3b458df299d33223d1a8d8faa3e113f05f4e8fbc9af45e",
+        "reference_warnings": [
+          "Optional legacy auxiliary fallback is unavailable: Auxiliary resource spire-archway not found."
+        ]
+      }
+    }
+  },
+  "render_mode": "composite",
+  "image_inputs": [
+    {
+      "index": 1,
+      "role": "background_reference",
+      "label": "Spire - Archway — Spire Archway (new)",
+      "tag": "{{LIB:ASSET:cb9087bb-7b38-4a04-9c2b-7a04a395cb5a}}",
+      "path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\snapshots\\9c28cb77ee7a4ab5bf5ef9ebfc635231\\inputs\\004.png",
+      "applies_to": "Spire_Archway_efbf29cc",
+      "preserve": [
+        "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+      ],
+      "change": [],
+      "ignore": [
+        "source pose",
+        "source background",
+        "source framing"
+      ],
+      "notes": "",
+      "source_role": "story_reference",
+      "assignments": [
+        {
+          "applies_to": "Spire_Archway_efbf29cc",
+          "prompt_role": "background_reference",
+          "preserve": [
+            "permanent architecture, terrain layout, structural proportions, identifying materials, and location-defining features"
+          ],
+          "change": [],
+          "ignore": [
+            "source pose",
+            "source background",
+            "source framing"
+          ],
+          "notes": ""
+        }
+      ]
+    }
+  ]
+}

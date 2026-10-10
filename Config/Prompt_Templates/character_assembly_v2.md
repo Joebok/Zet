@@ -28,6 +28,7 @@ Judge the candidate image against the visible requirements below and the supplie
 
 <!-- ZET:BEGIN LOCAL_PIPELINE_ONLY -->
 {{LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE}}
+{{LOCAL_CANONICAL_ART_STYLE}}
 <!-- ZET:END LOCAL_PIPELINE_ONLY -->
 
 - Preserve Image 1's body proportions, pose, stance, framing, and orientation.

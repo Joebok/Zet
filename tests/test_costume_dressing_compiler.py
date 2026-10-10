@@ -5,10 +5,14 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
+from zet.repositories.entity_library_repository import EntityLibraryRepository
+from zet.services.entity_library_service import EntityLibraryService
+from zet.services.path_service import PathService
 
 
 class CostumeDressingCompilerTests(unittest.TestCase):
@@ -92,7 +96,7 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         )
         return embroidery_tag, jewelry_tag
 
-    def _compile(self, costume_sections: str, body_view: str = "FRONT", head_view: str | None = None, *, prompt_variant: str = "generation") -> tuple[str, dict, dict]:
+    def _compile(self, costume_sections: str, body_view: str = "FRONT", head_view: str | None = None, *, prompt_variant: str = "generation", pipeline_mode: str = "traditional", universe_root: Path | None = None) -> tuple[str, dict, dict]:
         costume_path = self.character_dir / "Costume_Test_Outfit.md"
         costume_path.write_text(
             "\n".join(
@@ -123,10 +127,22 @@ class CostumeDressingCompilerTests(unittest.TestCase):
             },
             self.root,
             prompt_variant=prompt_variant,
+            pipeline_mode=pipeline_mode,
+            universe_root=universe_root,
         )
         prompt = Path(result["final_prompt"]).read_text(encoding="utf-8")
         source_map = json.loads((output_dir / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
         return prompt, source_map, result
+
+    def test_local_prompt_uses_universe_canonical_style(self) -> None:
+        (self.library / "universe.json").write_text(json.dumps({
+            "universe_id": "Moonsea", "name": "Moonsea", "canonical_art_style": "Painterly fantasy illustration.",
+        }), encoding="utf-8")
+        prompt, source_map, _ = self._compile("", pipeline_mode="local", universe_root=self.library)
+        self.assertIn("Apply the universe's Canonical Art Style: Painterly fantasy illustration.", prompt)
+        self.assertNotIn("Preserve the supplied rendering style.", prompt)
+        self.assertTrue(any(item.get("source_path", "").endswith("universe.json")
+                            for item in source_map.get("fragments", [])))
 
     def test_analysis_variant_preserves_costume_facts(self) -> None:
         prompt, _, _ = self._compile(
@@ -141,6 +157,106 @@ class CostumeDressingCompilerTests(unittest.TestCase):
         self.assertNotIn("# Render Task", prompt)
         self.assertNotIn("<!-- ZET:", prompt)
 
+    def test_local_library_references_use_job_universe_root(self) -> None:
+        universe = self.library / "Moonsea"
+        universe.mkdir()
+        (universe / "universe.json").write_text(json.dumps({
+            "universe_id": "Moonsea", "name": "Moonsea",
+        }), encoding="utf-8")
+        other = self.library / "Other"
+        other.mkdir()
+        (other / "universe.json").write_text(json.dumps({
+            "universe_id": "Other", "name": "Other",
+        }), encoding="utf-8")
+        (self.root / "Config" / "universe-selection.json").write_text(
+            json.dumps({"universe_id": "Other"}), encoding="utf-8",
+        )
+        character_template = self.character_dir / "Character.md"
+        self.character_dir = universe / "Characters" / "Tsaeytte" / "Youth"
+        self.character_dir.mkdir(parents=True)
+        shutil.copyfile(character_template, self.character_dir / "Character.md")
+        repository = EntityLibraryRepository(universe / "catalog.sqlite3")
+        repository.initialize()
+        image_library = EntityLibraryService(
+            PathService(SimpleNamespace(base_library_path=str(universe)), self.root), repository,
+        )
+        image = image_library.import_asset("Jewelry", "image/png", b"jewelry")
+        image_library.save_logical_reference({
+            "reference_key": "jewelry.front", "asset_id": image["asset_id"],
+        })
+
+        _, _, result = self._compile(
+            "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
+            "* Jewelry: matching necklace and earrings. {{LIB:REF:jewelry.front}}\n"
+            "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
+            pipeline_mode="local", universe_root=universe,
+        )
+
+        references = [item for item in result["reference_files"] if item["role"] == "entity_library"]
+        self.assertEqual([image["image_path"]], [item["path"] for item in references])
+
+    def test_view_conditioned_logical_references_resolve_to_the_matching_image(self) -> None:
+        repository = EntityLibraryRepository(self.library / "catalog.sqlite3")
+        repository.initialize()
+        image_library = EntityLibraryService(
+            PathService(SimpleNamespace(base_library_path=str(self.library)), self.root), repository
+        )
+        png = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\x0dIHDR" + b"\x00\x00\x00\x20\x00\x00\x00\x10"
+               + b"\x08\x06\x00\x00\x00")
+        front = image_library.import_asset("Front jewelry", "image/png", png + b"front")
+        rear = image_library.import_asset("Rear jewelry", "image/png", png + b"rear")
+        image_library.save_logical_reference({
+            "reference_key": "tsaeytte.canonical_adventure_gear.jewelry.front_side",
+            "label": "Front jewelry", "asset_id": front["asset_id"],
+        })
+        image_library.save_logical_reference({
+            "reference_key": "tsaeytte.canonical_adventure_gear.jewelry.rear",
+            "label": "Rear jewelry", "asset_id": rear["asset_id"],
+        })
+        sections = (
+            "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
+            "* Jewelry: matching necklace and earrings.\n"
+            "* [body:frontish,profiles] Jewelry reference: {{LIB:REF:tsaeytte.canonical_adventure_gear.jewelry.front_side}}\n"
+            "* [body:rearish] Jewelry reference: {{LIB:REF:tsaeytte.canonical_adventure_gear.jewelry.rear}}\n"
+            "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->"
+        )
+
+        _, _, front_result = self._compile(sections, "FRONT")
+        _, _, back_result = self._compile(sections, "BACK")
+
+        front_refs = [item for item in front_result["reference_files"] if item["role"] == "entity_library"]
+        back_refs = [item for item in back_result["reference_files"] if item["role"] == "entity_library"]
+        self.assertEqual([front["image_path"]], [item["path"] for item in front_refs])
+        self.assertEqual([rear["image_path"]], [item["path"] for item in back_refs])
+
+    def test_body_and_head_views_condition_costume_guidance_independently(self) -> None:
+        prompt, _, _ = self._compile(
+            self._sections(
+                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
+                "* Silhouette: `Long continuous rear drape.`\n"
+                "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
+                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_OVERRIDES -->\n"
+                "<!-- ZET:VIEW_DOMAIN body -->\n"
+                "* [body:rear_costume_visible] Keep one continuous rear overskirt drape.\n"
+                "* [body:front_costume_visible] Show the open front bodice.\n"
+                "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_OVERRIDES -->",
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
+                "* [head:all] Earrings: `Dangling gemstone earrings.`\n"
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->",
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->\n"
+                "<!-- ZET:VIEW_DOMAIN body -->\n"
+                "* [head:pr] Show the right earring when unobstructed.\n"
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->",
+            ),
+            body_view="BACK",
+            head_view="RIGHT_PROFILE",
+        )
+
+        self.assertIn("continuous rear overskirt drape", prompt)
+        self.assertIn("Dangling gemstone earrings", prompt)
+        self.assertIn("right earring", prompt)
+        self.assertNotIn("open front bodice", prompt)
+
     @staticmethod
     def _sections(*parts: str) -> str:
         return "\n\n".join(parts)
@@ -154,9 +270,10 @@ class CostumeDressingCompilerTests(unittest.TestCase):
                 "* Jewelry: `Small blue pendant.`.\n"
                 "* Equipment: `None.`.\n"
                 "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->",
-                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_FRONT -->\n"
-                "* Front detail: `Visible center overlap.`.\n"
-                "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_FRONT -->",
+                "<!-- ZET:BEGIN COSTUME_DESCRIPTION_VIEW_OVERRIDES -->\n"
+                "<!-- ZET:VIEW_DOMAIN body -->\n"
+                "* [f] Front detail: `Visible center overlap.`.\n"
+                "<!-- ZET:END COSTUME_DESCRIPTION_VIEW_OVERRIDES -->",
                 "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_FACTS -->\n"
                 "* Use anatomical left and right.\n"
                 "* Right side: `None.`.\n"
@@ -164,9 +281,10 @@ class CostumeDressingCompilerTests(unittest.TestCase):
                 "* Jewelry: `Small blue pendant.`.\n"
                 "* Primary weapon/tool: `N/A`.\n"
                 "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_FACTS -->",
-                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->\n"
-                "* Front view should show `jewelry only; no equipment.`.\n"
-                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_FRONT -->",
+                "<!-- ZET:BEGIN EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->\n"
+                "<!-- ZET:VIEW_DOMAIN body -->\n"
+                "* [f] Front view should show `jewelry only; no equipment.`.\n"
+                "<!-- ZET:END EQUIPMENT_JEWELRY_PROPS_VIEW_OVERRIDES -->",
             )
         )
 

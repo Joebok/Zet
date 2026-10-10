@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +13,7 @@ from fastapi.testclient import TestClient
 from zet.services.comfyui_workflow_registry import compile_prompt_workflow, QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.local_body_reference_service import LocalBodyReferenceService
+from zet.services.local_render_types import LocalRenderError
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService, VIEWS
 from zet.web.app import create_app
 
@@ -28,6 +31,15 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         character_root.mkdir(parents=True)
         shared_character = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
         (character_root / "Character.md").write_text(shared_character.read_text(encoding="utf-8"), encoding="utf-8")
+        shared_character_target = self.root / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
+        shared_character_target.parent.mkdir(parents=True)
+        shared_character_target.write_text(shared_character.read_text(encoding="utf-8"), encoding="utf-8")
+        shared_costume = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Costume_Template.md"
+        shared_costume_target = shared_character_target.parent / "Costume_Template.md"
+        shared_costume_target.write_text(shared_costume.read_text(encoding="utf-8"), encoding="utf-8")
+        metadata_target = self.root / "Config" / "Prompt_Section_Metadata.json"
+        metadata_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(PROJECT_ROOT / "Config" / "Prompt_Section_Metadata.json", metadata_target)
         (character_root / "Costume_Test_Outfit.md").write_text(
             "Costume Name: `Test Outfit`\nFootwear: `boots`\nFootwear Contact: `Boots planted.`\n\n"
             "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\nBlue coat and boots.\n<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->\n",
@@ -205,6 +217,49 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertIn("BACK", continued["target_views"])
         self.assertEqual(source_run["run_id"],
                          continued["sources"]["BACK"]["character_assembly"]["batch_id"])
+
+    def test_costume_rerun_recompile_refreshes_the_costume_template_snapshot(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                  "front_count": 1, "other_count": 1, "use_front_anchor": False,
+                                  "seeds": list(range(8))})
+        source = self.characters / "Test" / "Adult" / "Costume_Test_Outfit.md"
+        source.write_text("Costume Name: `Test Outfit`\nJewelry reference: `rear`\n", encoding="utf-8")
+
+        service.rerun_view(run["run_id"], "BACK", "Test Outfit", recompile=True)
+
+        refreshed = service.detail(run["run_id"], "Test Outfit")
+        snapshot = Path(refreshed["costume_path"])
+        self.assertEqual(source.read_text(encoding="utf-8"), snapshot.read_text(encoding="utf-8"))
+        self.assertEqual(service._hash(snapshot), refreshed["costume_sha256"])
+        compiled_prompt = Path(refreshed["root"]) / "prompts" / "BACK" / "Final_Image_Prompt.md"
+        self.assertTrue(compiled_prompt.is_file())
+
+    def test_costume_batch_recompile_compiles_fresh_prompts_for_every_view(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                  "front_count": 1, "other_count": 1, "use_front_anchor": False,
+                                  "seeds": list(range(8))})
+        source = self.characters / "Test" / "Adult" / "Costume_Test_Outfit.md"
+        source.write_text(
+            "Costume Name: `Test Outfit`\n\n"
+            "<!-- ZET:BEGIN COSTUME_DESCRIPTION_FACTS -->\n"
+            "Freshly recompiled garnet jewelry detail.\n"
+            "<!-- ZET:END COSTUME_DESCRIPTION_FACTS -->\n",
+            encoding="utf-8",
+        )
+
+        result = service.rerun(run["run_id"], "Test Outfit", recompile=True)
+
+        self.assertEqual(service._hash(source), result["costume_sha256"])
+        for view in VIEWS:
+            prompt_dir = Path(result["root"]) / "prompts" / view
+            prompt = (prompt_dir / "Final_Image_Prompt.md").read_text(encoding="utf-8")
+            manifest = json.loads((prompt_dir / "dependency_manifest.json").read_text(encoding="utf-8"))
+            self.assertIn("Freshly recompiled garnet jewelry detail", prompt)
+            self.assertEqual(view, manifest["body_view_token"])
 
     def test_locking_dressing_promotes_selected_assembly_ancestor(self) -> None:
         self._sources("character-assembly")
@@ -447,6 +502,10 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
         required = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
                                        "other_count": 1, "seeds": list(range(8))})
+        front = next(item for item in required["candidates"] if item["view"] == "FRONT")
+        image = Path(required["root"]) / "front.png"
+        image.write_bytes(b"unselected front")
+        service._update(required["run_id"], front["candidate_id"], image_path=str(image), status="COMPLETE")
         with self.assertRaisesRegex(ValueError, "FRONT selection is required for other views"):
             service.proceed(required["run_id"])
 
@@ -454,8 +513,24 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
                                        "other_count": 1, "use_front_anchor": False,
                                        "seeds": list(range(8))})
         result = service.proceed(optional["run_id"])
-        self.assertEqual(list(VIEWS[1:]), result["target_views"])
+        self.assertEqual(list(VIEWS), result["target_views"])
         self.assertIsNone(result["front_anchor"])
+
+    def test_optional_anchor_batch_compiles_non_front_prompt_without_anchor(self) -> None:
+        self._sources("character-assembly")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "character-assembly")
+        run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
+                                  "other_count": 1, "use_front_anchor": False,
+                                  "seeds": list(range(8))})
+
+        refs = service._references(run, "FRONT_LEFT_3_4")
+        compiled = service._compile(run, "FRONT_LEFT_3_4", refs)
+        prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
+        manifest = json.loads(Path(compiled["dependency_manifest"]).read_text(encoding="utf-8"))
+
+        self.assertNotIn("front_assembly", [item["role"] for item in refs])
+        self.assertIn("Use only these two images as visual sources.", prompt)
+        self.assertEqual(["body_reference", "head_image"], manifest["required_reference_roles"])
 
     def test_proceed_uses_selected_front_without_requiring_another_ranking_pass(self) -> None:
         self._sources("character-assembly")
@@ -501,6 +576,103 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         result = service.proceed(run["run_id"], costume)
 
         self.assertEqual(["LEFT_PROFILE"], result["target_views"])
+
+    def test_proceed_restarts_stopped_batch_and_requeues_every_missing_image(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        costume = "Test Outfit"
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": costume,
+                                  "front_count": 2, "other_count": 1, "seeds": list(range(9))})
+        front = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        image = Path(run["root"]) / "selected-front.png"
+        image.write_bytes(b"keep this front")
+        service._update(run["run_id"], front["candidate_id"], costume, status="COMPLETE",
+                        image_path=str(image), ask_id="completed-job", render_error="stale image error", review_error="stale review error",
+                        human_review={"decision": "keep"})
+        root, state = service._state(run["run_id"], costume)
+        state.update(status="CANCELLED", stop_requested=True, error="batch failed",
+                     front_anchor=front["candidate_id"], selected_views={"FRONT": front["candidate_id"]},
+                     target_views=["FRONT_RIGHT_3_4"])
+        failed = next(item for item in run["candidates"] if item["view"] == "FRONT_RIGHT_3_4")
+        state["candidates"][failed["candidate_id"]] = {
+            "status": "QUEUED", "ask_id": "failed-old-job", "render_error": "render failed",
+            "image_path": str(root / "absent.png"), "retry_count": 3,
+            "gates": {"identity": {"status": "FAILED", "error": "old gate error"}},
+        }
+        service._write(root / "state.json", state)
+        queue_root = self.root / "AI_Queue"
+        old_ask = queue_root / "Ask" / "failed-old-job"
+        completed_ask = queue_root / "Ask" / "completed-job"
+        old_ask.mkdir(parents=True)
+        completed_ask.mkdir()
+        self.app.ai_proxy_service = SimpleNamespace(ai_proxy_path_service=SimpleNamespace(
+            config=SimpleNamespace(base_ai_queue_path=str(queue_root)),
+            task_paths=lambda kind: [old_ask, completed_ask],
+        ))
+        partial = root / "renders" / failed["candidate_id"] / "Local_Test_Renders" / "partial.tmp"
+        partial.parent.mkdir(parents=True)
+        partial.write_bytes(b"unfinished render")
+        queued_ids = []
+
+        def stage_replacement(run_id, candidate_id, costume=""):
+            candidate = next(item for item in service.detail(run_id, costume)["candidates"]
+                             if item["candidate_id"] == candidate_id)
+            self.assertFalse(service.detail(run_id, costume)["stop_requested"])
+            self.assertFalse(candidate.get("ask_id"))
+            self.assertEqual("", candidate["render_error"])
+            queued_ids.append(candidate_id)
+            service._update(run_id, candidate_id, costume, status="QUEUED", ask_id=f"new-{candidate_id}")
+
+        result = service.proceed(run["run_id"], costume)
+        missing_ids = {item["candidate_id"] for item in run["candidates"] if item["candidate_id"] != front["candidate_id"]}
+        self.assertFalse(old_ask.exists())
+        self.assertTrue(completed_ask.is_dir())
+        self.assertFalse(partial.exists())
+        self.assertEqual(list(VIEWS), result["target_views"])
+        self.assertEqual("READY_FOR_VIEWS", result["status"])
+        self.assertFalse(result["stop_requested"])
+        self.assertEqual("", result["error"])
+        self.assertEqual([], service.proceed(run["run_id"], costume)["target_views"])
+        preserved = next(item for item in result["candidates"] if item["candidate_id"] == front["candidate_id"])
+        self.assertEqual(str(image), preserved["image_path"])
+        self.assertEqual({"decision": "keep"}, preserved["human_review"])
+        self.assertEqual("", preserved["render_error"])
+        self.assertEqual("", preserved["review_error"])
+        with patch.object(service, "queue_render_candidate", side_effect=stage_replacement), \
+                patch.object(service, "_wait_render", return_value=True), \
+                patch.object(service, "stage_view_evaluation"):
+            service.execute_run(run["run_id"], costume=costume, views=set(result["target_views"]))
+        self.assertEqual(missing_ids, set(queued_ids))
+        self.assertEqual(len(missing_ids), len(queued_ids))
+        refreshed = service.detail(run["run_id"], costume)
+        self.assertNotEqual("CANCELLED", refreshed["status"])
+        retried = next(item for item in refreshed["candidates"] if item["candidate_id"] == failed["candidate_id"])
+        self.assertEqual(4, retried["retry_count"])
+        self.assertEqual({}, retried["gates"])
+
+    def test_proceed_retries_front_before_selection_and_waits_for_anchor(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        costume = "Test Outfit"
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": costume,
+                                  "front_count": 1, "other_count": 1, "seeds": list(range(8))})
+        service.request_stop(run["run_id"], costume)
+        result = service.proceed(run["run_id"], costume)
+        self.assertEqual(["FRONT"], result["target_views"])
+        self.assertEqual(set(VIEWS[1:]), set(result["blocked_views"]))
+        self.assertFalse(result["stop_requested"])
+
+    def test_proceed_waits_for_stopped_runner_to_exit(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        costume = "Test Outfit"
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": costume,
+                                  "front_count": 1, "other_count": 1, "seeds": list(range(8))})
+        service.request_stop(run["run_id"], costume)
+        with patch.object(service, "_is_active", return_value=True):
+            with self.assertRaisesRegex(ValueError, "Wait for active batch work"):
+                service.proceed(run["run_id"], costume)
+        self.assertTrue(service.detail(run["run_id"], costume)["stop_requested"])
 
     def test_execute_run_requeues_stale_running_candidate(self) -> None:
         self._sources("character-assembly")
@@ -719,20 +891,58 @@ class LocalCharacterAssetPipelineTests(unittest.TestCase):
         self.assertEqual(["character_assembly", "front_costume"], [item["role"] for item in refs])
         self.assertIn("Image 2 is the selected FRONT costume image", prompt)
 
-    def test_qwen_local_edit_binds_one_to_three_images_in_input_order(self) -> None:
+    def test_qwen_local_edit_binds_variable_references_and_validates_missing_images(self) -> None:
         profile = {"text_encoder": "encoder", "vae": "vae", "steps": 2}
         common = {"positive_prompt": "edit", "negative_prompt": "", "profile": profile,
                   "checkpoint": "model", "seed": 1, "width": 832, "height": 1216, "output_prefix": "test",
                   "available_node_types": {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
                                             "LoadImage", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"}}
-        for count in (1, 2, 3):
+        refs = []
+        for index in range(1, 12):
+            image = self.root / f"image_{index}.png"
+            image.write_bytes(b"reference")
+            refs.append({"role": str(index), "path": str(image)})
+        for count in (1, 2, 3, 4, 10):
             with self.subTest(reference_count=count):
-                refs = [{"role": str(index), "path": f"image_{index}.png"} for index in range(1, count + 1)]
-                compiled = compile_prompt_workflow(QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW, **common, reference_files=refs)
+                compiled = compile_prompt_workflow(QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW, **common, reference_files=refs[:count])
                 node = compiled.workflow["4"]["inputs"]
-                self.assertEqual([f"image_{index}.png" for index in range(1, count + 1)],
+                self.assertEqual([item["path"] for item in refs[:count]],
                                  [compiled.debug["references_used"][index - 1]["path"] for index in range(1, count + 1)])
                 self.assertEqual(count, len([key for key in node if key.startswith("images.image_")]))
+                for index in range(1, count + 1):
+                    load_node = compiled.workflow[node[f"images.image_{index}"][0]]
+                    self.assertEqual(f"image_{index}.png", load_node["inputs"]["image"])
+        for references, message in (
+            ([], "edit-base reference"),
+            (refs, "at most ten reference images; received 11"),
+            ([refs[0], {}], "reference 2 is missing its image path"),
+            ([refs[0], {"path": str(self.root / "missing.png")}], "reference 2 is missing:"),
+        ):
+            with self.subTest(error=message), self.assertRaisesRegex(LocalRenderError, message):
+                compile_prompt_workflow(QWEN_IMAGE_21_LOCAL_EDIT_WORKFLOW, **common, reference_files=references)
+
+    def test_render_failure_message_is_returned_in_batch_detail(self) -> None:
+        self._sources("costume-dressing")
+        service = LocalCharacterAssetPipelineService(self.app, PROJECT_ROOT, "costume-dressing")
+        run = service.create_run({"character": "Test", "phase": "Adult", "costume": "Test Outfit",
+                                  "front_count": 1, "other_count": 1, "seeds": list(range(8))})
+        candidate = next(item for item in run["candidates"] if item["view"] == "FRONT")
+        message = "ComfyUI validation failed.\nReference image 4 is missing."
+
+        def queue_render(run_id, candidate_id, costume):
+            service._update(run_id, candidate_id, costume, status="QUEUED", ask_id="failed-ask",
+                            image_path=str(Path(run["root"]) / "renders" / "missing.png"))
+
+        with patch.object(service, "queue_render_candidate", side_effect=queue_render), \
+                patch.object(service, "_harvest_render"), \
+                patch.object(service, "_proxy_answer", return_value=("ANSWERED", {
+                    "status": "ERROR", "error_message": message,
+                })):
+            service.execute_run(run["run_id"], views={"FRONT"}, costume="Test Outfit", render_only=True)
+        failed = next(item for item in service.detail(run["run_id"], "Test Outfit")["candidates"]
+                      if item["candidate_id"] == candidate["candidate_id"])
+        self.assertEqual("FAILED", failed["render_status"])
+        self.assertEqual(message, failed["render_error"])
 
     def test_legacy_pipeline_specific_review_routes_are_removed(self) -> None:
         config_path = self.root / "config.toml"
@@ -757,6 +967,46 @@ BaseAIQueuePath = "{queue_root.as_posix()}"
                 self.assertEqual(404, response.status_code, path)
 
     def test_local_pipeline_pages_and_gate_catalog_are_exposed(self) -> None:
+        character_path = self.characters / "Test" / "Adult" / "Character.md"
+        template_text = character_path.read_text(encoding="utf-8")
+        for label, value in {
+            "Character Name": "Test",
+            "Character Phase": "Adult",
+            "Species / Ancestry": "Human",
+            "Gender Presentation": "neutral",
+            "Canonical Art Style": "test illustration style",
+        }.items():
+            template_text = re.sub(rf"(?m)^({re.escape(label)}:\s*)`[^`]*`", rf"\g<1>`{value}`", template_text)
+        metadata = json.loads((PROJECT_ROOT / "Config" / "Prompt_Section_Metadata.json").read_text(encoding="utf-8"))["sections"]
+        for name, record in metadata.items():
+            if not isinstance(record, dict) or not record.get("required_content"):
+                continue
+            marker = re.compile(
+                rf"(<!-- ZET:BEGIN {re.escape(name)} -->)(.*?)(<!-- ZET:END {re.escape(name)} -->)",
+                re.DOTALL,
+            )
+            if marker.search(template_text):
+                template_text = marker.sub(
+                    lambda match: f"{match.group(1)}\n\nTest fixture detail.\n\n{match.group(3)}",
+                    template_text,
+                    count=1,
+                )
+        character_path.write_text(template_text, encoding="utf-8")
+        costume_path = self.characters / "Test" / "Adult" / "Costume_Test_Outfit.md"
+        costume_text = (PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Costume_Template.md").read_text(encoding="utf-8")
+        for name, record in metadata.items():
+            if not name.startswith("COSTUME_") or not isinstance(record, dict) or not record.get("required_content"):
+                continue
+            marker = re.compile(
+                rf"(<!-- ZET:BEGIN {re.escape(name)} -->)(.*?)(<!-- ZET:END {re.escape(name)} -->)",
+                re.DOTALL,
+            )
+            costume_text = marker.sub(
+                lambda match: f"{match.group(1)}\n\nTest fixture detail.\n\n{match.group(3)}",
+                costume_text,
+                count=1,
+            )
+        costume_path.write_text(costume_text, encoding="utf-8")
         config_path = self.root / "config.toml"
         asset_root, pipeline_root, queue_root = self.library / "Assets", self.library / "Pipelines", self.library / "Queue"
         config_path.write_text(f"""[BaseFolders]
@@ -782,7 +1032,11 @@ BaseAIQueuePath = "{queue_root.as_posix()}"
             self.assertEqual((307, "/?page=local-costume-dressing"), (dressing.status_code, dressing.headers["location"]))
             self.assertEqual((307, "/?page=local-body-reference"), (body_reference.status_code, body_reference.headers["location"]))
             self.assertEqual((307, "/?page=local-head-image"), (head_image.status_code, head_image.headers["location"]))
-            self.assertEqual({200}, {response.status_code for response in previews.values()})
+            self.assertEqual(
+                {200},
+                {response.status_code for response in previews.values()},
+                {pipeline: response.text for pipeline, response in previews.items()},
+            )
             for pipeline, response in previews.items():
                 self.assertEqual(pipeline, response.json()["pipeline_config"]["key"])
                 self.assertIn("can_create", response.json())
@@ -791,6 +1045,13 @@ BaseAIQueuePath = "{queue_root.as_posix()}"
             self.assertTrue(previews["head-image"].json()["can_create"])
             self.assertFalse(previews["character-assembly"].json()["can_create"])
             self.assertFalse(previews["costume-dressing"].json()["can_create"])
+            costume_path.write_text("Costume Name: `Test Outfit`\n", encoding="utf-8")
+            invalid_costume = client.post(
+                "/api/local/costume-dressing/preview",
+                json={**context, "costume": "Test Outfit"},
+            )
+            self.assertEqual(400, invalid_costume.status_code)
+            self.assertIn("Costume template missing sections", invalid_costume.json()["detail"])
             self.assertEqual(200, assembly_gates.status_code)
             self.assertEqual({"Disabled"}, set(assembly_gates.json()["statuses"].values()))
 

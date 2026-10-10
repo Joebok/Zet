@@ -14,6 +14,7 @@ from zet.services.comfyui_render_service import (
     run_comfyui_workflow,
 )
 from zet.services.local_render_types import LocalRenderError, LocalRenderResult
+from zet.services.local_render_policy import require_qwen_profile, SCENE_PROFILE, configured_qwen_checkpoint
 
 from .stable_matrix_adapter import split_labeled_prompt
 
@@ -49,7 +50,7 @@ def render_preview(
     final_prompt_path: Path,
     job_output_dir: Path,
     prompt_review_path: Path | None = None,
-    profile_name: str = "comfyui-core-preview",
+    profile_name: str = SCENE_PROFILE,
     scene_render_ir_path: Path | None = None,
     aspect_ratio: str = "",
     reference_files: list[dict[str, Any]] | None = None,
@@ -66,6 +67,7 @@ def render_preview(
         "control_preprocessor", "controlnet_model", "control_strength",
         "control_start", "control_end", "preprocessor_resolution",
         "text_encoder", "vae",
+        "disable_prompt_globals",
     }
     profile = {
         **profile,
@@ -76,8 +78,13 @@ def render_preview(
     }
     config = _load_config(project_root)
     selected_checkpoint = str(checkpoint if checkpoint is not None else config.get("Checkpoint") or "")
-    positive_globals = str(config.get("PositivePromptGlobals") or "")
-    negative_globals = str(config.get("NegativePromptGlobals") or "")
+    if checkpoint is None:
+        selected_checkpoint = configured_qwen_checkpoint(selected_checkpoint)
+    selected_checkpoint = selected_checkpoint or str(profile.get("diffusion_model") or "")
+    require_qwen_profile(project_root, profile_name, checkpoint=selected_checkpoint)
+    disable_prompt_globals = bool(profile.get("disable_prompt_globals"))
+    positive_globals = "" if disable_prompt_globals else str(config.get("PositivePromptGlobals") or "")
+    negative_globals = "" if disable_prompt_globals else str(config.get("NegativePromptGlobals") or "")
     profile_seed = profile.get("seed")
     selected_seed = seed if seed is not None else profile_seed
     workflow_kind = str(
@@ -118,7 +125,9 @@ def render_preview(
                                    if workflow_kind == "qwen_image_21_scene_preview" else ""),
         )
     else:
-        positive, negative = split_labeled_prompt(final_prompt_path.read_text(encoding="utf-8"))
+        prompt_text = final_prompt_path.read_text(encoding="utf-8")
+        positive, negative = ((prompt_text, "") if workflow_kind == "qwen_narrative_prompt"
+                              else split_labeled_prompt(prompt_text))
         compilation = compile_prompt_to_comfyui_workflow(
             positive,
             negative,
@@ -182,6 +191,7 @@ def render_preview(
         "prompts": compilation.prompts,
         "layout_plan": compilation.debug.get("layout_plan", {}),
         "references_used": compilation.debug.get("references_used", []),
+        "qwen_reference_cache": compilation.debug.get("qwen_reference_cache"),
         "ipadapter_applications": compilation.debug.get("ipadapter_applications", []),
         "seed": compilation.seed,
         "resolved_seed": compilation.seed,

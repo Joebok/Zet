@@ -1,0 +1,130 @@
+[
+  {
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\prepared\\layer-composite.png",
+    "label": "Canvas image",
+    "tag": "<image1>",
+    "image_index": 1,
+    "comfyui_input_name": "ZetExperiment/Chapter-03-Collision/C_layers/01_layer-composite.png"
+  },
+  {
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\01_background-004.png",
+    "sha256": "986fb906c009b5070fc3b35c27e51d87491c784e836d29add5fe37354b67f41f",
+    "candidate_id": "background-004",
+    "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:background}}",
+    "label": "Background",
+    "kind": "scene-render",
+    "image_index": 2,
+    "prompt_role": "background_reference",
+    "applies_to": "background",
+    "preserve": [
+      "the accepted subscene's subjects, arrangement, architecture, materials, and identifying details"
+    ],
+    "change": [],
+    "ignore": [
+      "outer placement, final-canvas framing, and any content assigned to other image inputs"
+    ],
+    "notes": "backdrop",
+    "assignments": [
+      {
+        "applies_to": "background",
+        "prompt_role": "background_reference",
+        "preserve": [
+          "the accepted subscene's subjects, arrangement, architecture, materials, and identifying details"
+        ],
+        "change": [],
+        "ignore": [
+          "outer placement, final-canvas framing, and any content assigned to other image inputs"
+        ],
+        "notes": "backdrop"
+      }
+    ],
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\background\\background-004.png",
+    "comfyui_input_name": "ZetExperiment/Chapter-03-Collision/C_layers/02_01_background-004.png"
+  },
+  {
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\02_Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png",
+    "sha256": "0cd277465d4d028e0e3674fb3957260d292533eccc7d4e4f24c8641475aa9db3",
+    "candidate_id": "Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec",
+    "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:Kaeldor_and_the_Schoolboys_1791152906199_subscene}}",
+    "label": "Kaeldor and the Schoolboys",
+    "kind": "scene-render",
+    "image_index": 3,
+    "prompt_role": "group_reference",
+    "applies_to": "Kaeldor_and_the_Schoolboys_1791152906199",
+    "preserve": [
+      "the dialogue panel and pointer for Kaeldor, including the exact text \"sorry\", exactly once"
+    ],
+    "change": [],
+    "ignore": [
+      "source canvas",
+      "source background",
+      "source framing",
+      "outer placement",
+      "source lighting"
+    ],
+    "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+    "assignments": [
+      {
+        "applies_to": "Kaeldor_and_the_Schoolboys_1791152906199",
+        "prompt_role": "group_reference",
+        "preserve": [
+          "the dialogue panel and pointer for Kaeldor, including the exact text \"sorry\", exactly once"
+        ],
+        "change": [],
+        "ignore": [
+          "source canvas",
+          "source background",
+          "source framing",
+          "outer placement",
+          "source lighting"
+        ],
+        "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+      }
+    ],
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Kaeldor_and_the_Schoolboys_1791152906199_subscene\\Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png",
+    "comfyui_input_name": "ZetExperiment/Chapter-03-Collision/C_layers/03_02_Kaeldor_and_the_Schoolboys_1791152906199_subscene-008-1b4658ec.png"
+  },
+  {
+    "path": "C:\\Users\\Joe\\Projects\\Zet_v5\\output\\scene-assembly-comparison\\13efb6d06b56cbe4\\Chapter-03-Collision\\frozen\\references\\03_Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png",
+    "sha256": "769a63f42f7cd98155561414a4c3e4c43b5c2ebeebc416b424482cfe69a47cfa",
+    "candidate_id": "Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76",
+    "tag": "{{SCENE_RENDER:FirstDay:Chapter-03-Collision:Tsaeytte_and_Valindia_1791243031945_subscene}}",
+    "label": "Tsaeytte and Valindia",
+    "kind": "scene-render",
+    "image_index": 4,
+    "prompt_role": "group_reference",
+    "applies_to": "Tsaeytte_and_Valindia_1791243031945",
+    "preserve": [
+      "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+    ],
+    "change": [],
+    "ignore": [
+      "source canvas",
+      "source background",
+      "source framing",
+      "outer placement",
+      "source lighting"
+    ],
+    "notes": "Managed element subscene reference; parent placement and scene instructions take precedence.",
+    "assignments": [
+      {
+        "applies_to": "Tsaeytte_and_Valindia_1791243031945",
+        "prompt_role": "group_reference",
+        "preserve": [
+          "the complete element or group's recognizable appearance, component identities, and internal spatial arrangement"
+        ],
+        "change": [],
+        "ignore": [
+          "source canvas",
+          "source background",
+          "source framing",
+          "outer placement",
+          "source lighting"
+        ],
+        "notes": "Managed element subscene reference; parent placement and scene instructions take precedence."
+      }
+    ],
+    "source_path": "C:\\Users\\Joe\\Projects\\Zet_Library_v5\\Moonsea\\PipelineCandidates\\Stories\\FirstDay\\Chapter-03-Collision\\Local_Batches\\b0eb6b5b168e49c9bfaf64ec4ac9fd36\\slots\\Tsaeytte_and_Valindia_1791243031945_subscene\\Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png",
+    "comfyui_input_name": "ZetExperiment/Chapter-03-Collision/C_layers/04_03_Tsaeytte_and_Valindia_1791243031945_subscene-001-f5e8bd76.png"
+  }
+]

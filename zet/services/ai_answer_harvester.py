@@ -14,6 +14,7 @@ from zet.services.path_service import PathService
 from zet.services.state_machine import StateMachine
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import atomic_copy, file_lock, task_state_path
+from zet.services.pipeline_retirement import is_retired_character_pipeline
 
 
 class AIAnswerHarvesterError(Exception):
@@ -189,6 +190,9 @@ class AIAnswerHarvester:
             raise AIAnswerHarvesterError(f"Missing ask_manifest.json in {answer_path}")
         manifest = self._read_json(manifest_path)
         manifest.update(self.ai_proxy_path_service.file_proxy_client.load_route(answer_path.name))
+        owner = str(manifest.get("universe_id") or "").strip()
+        if not owner and bool(getattr(self.path_service.config, "universe_is_legacy", True)):
+            manifest["universe_id"] = "Moonsea"
         return manifest
 
     def _render_review_comment_path(self, asset) -> Path:
@@ -216,6 +220,7 @@ class AIAnswerHarvester:
             "message": result.message,
             "render_preset": local_render_metadata.get("preset"),
             "workflow_kind": local_render_metadata.get("workflow_kind"),
+            "qwen_reference_cache": local_render_metadata.get("qwen_reference_cache"),
             "seed": local_render_metadata.get("seed"),
             "harvested_at": self.timestamp_provider(),
         }
@@ -485,7 +490,7 @@ class AIAnswerHarvester:
 
     def apply_answer_folder(self, answer_path: Path) -> HarvestResult:
         queue_root = Path(self.path_service.config.base_ai_queue_path)
-        with file_lock(task_state_path(queue_root, "Locks", answer_path.name)):
+        with file_lock(self.ai_proxy_path_service.lifecycle.lock_path(answer_path.name)):
             manifest = self._load_ask_manifest(answer_path)
             character, phase = manifest.get("character"), manifest.get("phase")
             transaction = self.asset_repository.transaction(character, phase) if character and phase else nullcontext()
@@ -528,6 +533,13 @@ class AIAnswerHarvester:
             raise AIAnswerHarvesterError(f"Answer folder {answer_path} is missing character or phase in ask_manifest.json")
 
         asset = self.asset_repository.get_asset(character, phase, answer.asset_id)
+        if is_retired_character_pipeline(asset.pipeline):
+            result = HarvestResult(
+                answer_path=answer_path, ask_id=answer.ask_id, asset_id=answer.asset_id,
+                status="RETIRED", message=f"Traditional {asset.pipeline} answer retained; this workflow is retired.",
+            )
+            self._write_harvest_manifest(answer_path, result)
+            return result
         expected_attempt = self._expected_attempt(asset)
         if expected_attempt and answer.ollama_attempt_id != expected_attempt:
             result = HarvestResult(
@@ -621,6 +633,27 @@ class AIAnswerHarvester:
         raise AIAnswerHarvesterError(f"Unsupported answer status {answer.status} in {answer_path}")
 
     def harvest_once(self) -> list[HarvestResult]:
+        lifecycle = getattr(self.ai_proxy_path_service, "lifecycle", None)
+        client = getattr(self.ai_proxy_path_service, "file_proxy_client", None)
+        results: list[HarvestResult] = []
+        if lifecycle is not None and client is not None:
+            lifecycle.drain_ready_answers(client)
+            for item in lifecycle.reconcile_stale_gate_answers(client):
+                if item.get("status") == "FAILED":
+                    results.append(HarvestResult(
+                        answer_path=Path(item["evidence_path"]), ask_id=item["ask_id"], asset_id=None,
+                        status="FAILED", message=item["message"],
+                    ))
+            # A previous run may have applied the answer and written its harvest
+            # manifest, then stopped before persisting the compact receipt. Finish
+            # that commit without reapplying the answer.
+            for answer_path in lifecycle.inbox_answers():
+                if (answer_path / "harvest_manifest.json").is_file():
+                    try:
+                        self._finish_lifecycle(answer_path)
+                    except Exception:
+                        # Keep the payload available for a later receipt retry.
+                        continue
         answer_paths = [
             answer_path
             for answer_path in self.ai_proxy_path_service.task_paths("answer")
@@ -629,15 +662,31 @@ class AIAnswerHarvester:
         if not answer_paths:
             return []
 
-        results: list[HarvestResult] = []
         for answer_path in answer_paths:
             if self._has_external_consumer(answer_path):
                 continue
             try:
+                manifest = self._load_ask_manifest(answer_path)
+                owner = str(manifest.get("universe_id") or "").strip()
+            except Exception:
+                owner = ""
+            if not owner:
+                if str(getattr(self.path_service.config, "universe_id", "Moonsea")) != "Moonsea":
+                    continue
+                results.append(HarvestResult(answer_path, answer_path.name, None, "ROUTE_REQUIRED",
+                                             "Answer has no universe ownership; files retained for recovery."))
+                continue
+            if owner != str(getattr(self.path_service.config, "universe_id", "Moonsea")):
+                continue
+            try:
                 result = self.apply_answer_folder(answer_path)
                 if result.status.startswith("ALREADY_"):
+                    if result.status.startswith("ALREADY_") and (answer_path / "harvest_manifest.json").is_file():
+                        self._finish_lifecycle(answer_path)
                     continue
                 results.append(result)
+                if (answer_path / "harvest_manifest.json").is_file():
+                    self._finish_lifecycle(answer_path)
             except Exception as exc:
                 result = HarvestResult(
                     answer_path=answer_path,
@@ -655,3 +704,31 @@ class AIAnswerHarvester:
                     pass
                 results.append(result)
         return results
+
+    def _finish_lifecycle(self, answer_path: Path) -> None:
+        lifecycle = getattr(self.ai_proxy_path_service, "lifecycle", None)
+        if lifecycle is None:
+            return
+        harvest = self._read_json(answer_path / "harvest_manifest.json")
+        answer = self._read_json(answer_path / "answer_manifest.json")
+        ask = self._read_json(answer_path / "ask_manifest.json")
+        lifecycle.finish_answer(answer_path, {
+            "status": harvest.get("status") or answer.get("status") or "UNKNOWN",
+            "answer_status": answer.get("status", ""),
+            "message": harvest.get("message", ""),
+            "harvested_at": harvest.get("harvested_at", ""),
+            "task_type": ask.get("task_type") or ask.get("worker_type") or "",
+            "worker_type": ask.get("worker_type") or "",
+            "story_slug": ask.get("story_slug") or "",
+            "scene_slug": ask.get("scene_slug") or "",
+            "render_target_id": ask.get("render_target_id") or "main",
+            "character": ask.get("character") or "",
+            "phase": ask.get("phase") or "",
+            "pipeline": ask.get("pipeline") or "",
+            "engine_profile": ask.get("engine_profile") or "",
+            "asset_id": harvest.get("asset_id", answer.get("asset_id")),
+            "completed_at": answer.get("completed_at", ""),
+            "error_type": answer.get("error_type", ""),
+            "error_message": answer.get("error_message", ""),
+            "chatgpt_refinement": answer.get("chatgpt_refinement"),
+        })

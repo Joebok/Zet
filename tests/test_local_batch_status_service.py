@@ -94,6 +94,22 @@ class LocalBatchStatusServiceTests(unittest.TestCase):
         self.assertEqual(1, response.json()["batch_count"])
         self.assertEqual("head-image-run", response.json()["groups"][0]["batches"][0]["run_id"])
 
+    def test_scene_summary_without_batch_name_does_not_break_aggregation(self):
+        scenes = SimpleNamespace(summaries=lambda: [{
+            "run_id": "scene-run", "status": "RUNNING", "story_slug": "story",
+            "scene_slug": "scene", "render_target_id": "main", "target_label": "Main",
+            "created_at": "2026-10-05T10:00:00",
+        }])
+        service = LocalBatchStatusService(SimpleNamespace(local_scene_batch_service=scenes), Path("."))
+
+        with patch.object(service, "_adapter", return_value=SimpleNamespace(list_run_summaries=lambda: [])):
+            result = service.list_actionable_batches()
+
+        self.assertEqual(1, result["batch_count"])
+        batch = result["groups"][0]["batches"][0]
+        self.assertEqual("scene-run", batch["run_id"])
+        self.assertEqual("", batch["batch_name"])
+
     def test_discovers_queued_costume_batches_in_qualified_workspace(self):
         run_ids = ("6bdedfedce50446689df1688fb951719", "23cfbb159606407b967ffab25b58d1d4")
         with tempfile.TemporaryDirectory() as temp:

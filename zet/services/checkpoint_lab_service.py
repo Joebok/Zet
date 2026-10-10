@@ -25,6 +25,7 @@ from zet.services.scene_render_compiler import (
 )
 from zet.services.stable_matrix_api_compiler import compile_stable_matrix_api_call
 from zet.services.view_service import ViewService
+from zet.services.local_render_policy import require_qwen_profile
 
 
 class CheckpointLabServiceError(ValueError):
@@ -157,6 +158,8 @@ class CheckpointLabService:
             },
             sections,
         )
+        from zet.services.pipeline_compiler_support import with_universe_art_style
+        ir = with_universe_art_style(ir, self.app.config.base_library_path)
         ir["source"]["scene_json_path"] = str(scene_path)
         ir["source"]["story_settings_path"] = str(settings_path)
         return ir
@@ -303,6 +306,8 @@ class CheckpointLabService:
     ) -> dict[str, Any]:
         if not checkpoints or not reference_weights or not seeds:
             raise CheckpointLabServiceError("Checkpoint, reference weight, and seed lists cannot be empty.")
+        for checkpoint in checkpoints:
+            require_qwen_profile(self.project_root, render_profile, checkpoint=checkpoint)
         if any(weight < 0 or weight > 2 for weight in reference_weights):
             raise CheckpointLabServiceError("IP-Adapter reference weights must be between 0 and 2.")
         root = Path(output_dir).expanduser().resolve()
@@ -381,6 +386,8 @@ class CheckpointLabService:
             raise CheckpointLabServiceError("Positive prompt cannot be empty.")
         if not checkpoints or not reference_weights or not seeds:
             raise CheckpointLabServiceError("Checkpoint, reference weight, and seed lists cannot be empty.")
+        for checkpoint in checkpoints:
+            require_qwen_profile(self.project_root, render_profile, checkpoint=checkpoint)
         if any(weight < 0 or weight > 2 for weight in reference_weights):
             raise CheckpointLabServiceError("IP-Adapter reference weights must be between 0 and 2.")
         reference_path = Path(reference_image).expanduser().resolve()

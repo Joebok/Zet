@@ -1,4 +1,9 @@
 const state = {
+  universeId: "",
+  universeGeneration: 0,
+  universes: [],
+  universeSettingsId: "",
+  savedUniverseArtStyle: "",
   workspace: "character",
   activePageId: "",
   productionWorkSummary: { current: {}, project: {} },
@@ -74,9 +79,12 @@ const state = {
   identityKeyMode: "list",
   selectedIdentityKeyId: null,
   identityKeySourceAssetId: null,
+  identityKeySourceLocalKey: null,
+  localAssetSources: [],
   identityKeyPreview: null,
   costumes: [],
   selectedCostumeSlug: null,
+  costumeWizard: null,
   sceneAppearances: [],
   selectedSceneAppearanceId: null,
   expressionAssets: [],
@@ -109,7 +117,6 @@ const state = {
   sceneBuilderReferences: [],
   sceneBuilderRenderTargets: [],
   activeBuilderRenderTarget: "main",
-  builderAllowStaleTarget: "",
   showBuilderContextElements: true,
   sceneBuilderOpen: false,
   sceneBuilderInterview: null,
@@ -134,6 +141,8 @@ const state = {
   imageCatalogOrganization: { collections: [], keywords: [] },
   imageCatalogReferenceSets: [],
   imageCatalogImportBlob: null,
+  entityLibraryImportBlob: null,
+  entityLibraryReplacementBlob: null,
   imageCatalogReplaceBlob: null,
   imageCatalogAddBlob: null,
   selectedImageCatalogId: null,
@@ -161,13 +170,20 @@ const state = {
   transitionPromise: null,
 };
 
+let startupRecoveryTimer = null;
+const universeSelect = document.querySelector("#universe-select");
+const universeSettingsForm = document.querySelector("#universe-settings-form");
+const universeSettingsArtStyle = document.querySelector("#universe-settings-art-style");
+const universeCreateForm = document.querySelector("#universe-create-form");
+
 const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
 const LAST_STORY_CONTEXT_STORAGE_KEY = "zet:last-story-scene";
 const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
+const IMAGE_GENERATION_STORAGE_KEY = "zet:image-generation";
 
-const CHARACTER_PAGES = new Set(["onboarding", "assets", "manifest", "identity-keys", "turnarounds", "costumes", "scene-appearances", "expressions", "phase-comparison"]);
-const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "zine"]);
+const CHARACTER_PAGES = new Set(["onboarding", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
+const STORY_PAGES = new Set(["stories", "scenes", "scene-candidates", "scene-builder", "scene-batches", "zine"]);
 const LOCAL_PAGES = new Set([
   "local-overview", "local-batch-status", "local-body-reference", "local-head-image", "local-character-assembly",
   "local-costume-dressing", "local-identity-keys", "local-turnarounds", "local-costumes",
@@ -176,10 +192,53 @@ const LOCAL_PAGES = new Set([
 const LOCAL_ASSET_PAGES = new Set([
   "local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing",
 ]);
-const PRODUCTION_PAGES = new Set(["prompt-review", "render-console", "local-image-review", "render-review"]);
+const PRODUCTION_PAGES = new Set(["prompt-review"]);
+const IMAGE_GENERATION_SLOT_COUNT = 8;
+const IMAGE_GENERATION_REFERENCE_COUNT = 10;
+let imageGenerationSlots = Array(IMAGE_GENERATION_SLOT_COUNT).fill(null);
+let imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
+let imageGenerationSelectedSlot = -1;
+let imageGenerationJobIds = [];
+const imageGenerationJobs = new Map();
+let imageGenerationPending = false;
 
 const characterSelect = document.querySelector("#character-select");
+const imageGenerationForm = document.querySelector("#image-generation-form");
+const imageGenerationTxt2img = document.querySelector("#image-generation-txt2img");
+const imageGenerationImg2img = document.querySelector("#image-generation-img2img");
+const imageGenerationReferenceSlotsElement = document.querySelector("#image-generation-reference-slots");
+const imageGenerationReferenceList = document.querySelector("#image-generation-reference-list");
+const imageGenerationPrompt = document.querySelector("#image-generation-prompt");
+const imageGenerationNegative = document.querySelector("#image-generation-negative");
+const imageGenerationWidth = document.querySelector("#image-generation-width");
+const imageGenerationHeight = document.querySelector("#image-generation-height");
+const imageGenerationSubmit = document.querySelector("#image-generation-submit");
+const imageGenerationFill = document.querySelector("#image-generation-fill");
+const imageGenerationClear = document.querySelector("#image-generation-clear");
+const imageGenerationProgress = document.querySelector("#image-generation-progress");
+const imageGenerationMessage = document.querySelector("#image-generation-message");
+const imageGenerationModel = document.querySelector("#image-generation-model");
+const imageGenerationResultsGrid = document.querySelector("#image-generation-results-grid");
+const imageGenerationReview = document.querySelector("#image-generation-review");
+const imageGenerationReviewImage = document.querySelector("#image-generation-review-image");
+const imageGenerationReviewCount = document.querySelector("#image-generation-review-count");
+const imageGenerationReviewPrompt = document.querySelector("#image-generation-review-prompt");
+const imageGenerationReviewNegative = document.querySelector("#image-generation-review-negative");
+const imageGenerationReviewPrevious = document.querySelector("#image-generation-review-previous");
+const imageGenerationReviewNext = document.querySelector("#image-generation-review-next");
+const imageGenerationReviewClose = document.querySelector("#image-generation-review-close");
+const imageGenerationReviewSelect = document.querySelector("#image-generation-review-select");
+const imageGenerationReviewRetry = document.querySelector("#image-generation-review-retry");
+const imageGenerationReviewClear = document.querySelector("#image-generation-review-clear");
+const imageGenerationReviewImport = document.querySelector("#image-generation-review-import");
+const imageGenerationReviewUpdate = document.querySelector("#image-generation-review-update");
+const imageGenerationSource = document.querySelector("#image-generation-source");
+let imageGenerationMode = "txt2img";
+let imageGenerationReviewIndex = -1;
+let entityLibraryImportGeneration = null;
+let imageGenerationOptionsLoaded = false;
 const phaseSelect = document.querySelector("#phase-select");
+const deletePhaseButton = document.querySelector("#delete-phase");
 const headerStorySelect = document.querySelector("#header-story-select");
 const headerSceneSelect = document.querySelector("#header-scene-select");
 const sceneWorkflowMenu = document.querySelector("#scene-workflow-menu");
@@ -372,6 +431,9 @@ const settingCodexDefaultModel = document.querySelector("#setting-codex-default-
 const settingPromptCondenseModel = document.querySelector("#setting-prompt-condense-model");
 const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-analysis-model");
 const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image-description-model");
+const settingImagePromptGenerationModel = document.querySelector("#setting-image-prompt-generation-model");
+const settingCostumeWizardModel = document.querySelector("#setting-costume-wizard-model");
+const settingQuickCharacterWizardModel = document.querySelector("#setting-quick-character-wizard-model");
 const settingAiSceneBuilderModel = document.querySelector("#setting-ai-scene-builder-model");
 const settingLocalBodyReferenceFaceGateModel = document.querySelector("#setting-local-body-reference-face-gate-model");
 const settingLocalBodyReferenceReviewModel = document.querySelector("#setting-local-body-reference-review-model");
@@ -440,6 +502,7 @@ const renderConsoleLocalApiText = document.querySelector("#render-console-local-
 const renderConsoleLocalApiCopy = document.querySelector("#render-console-local-api-copy");
 const renderConsoleClearLocalTest = document.querySelector("#render-console-clear-local-test");
 const renderConsoleLocalStatus = document.querySelector("#render-console-local-status");
+const renderConsoleQwenWarnings = document.querySelector("#render-console-qwen-warnings");
 const renderConsoleLocalTestRender = document.querySelector("#render-console-local-test-render");
 const renderConsolePasteZone = document.querySelector("#render-console-paste-zone");
 const renderConsoleFileInput = document.querySelector("#render-console-file-input");
@@ -504,12 +567,14 @@ const identityKeyLabel = document.querySelector("#identity-key-label");
 const identityKeyPercent = document.querySelector("#identity-key-percent");
 const identityKeyCreatePreview = document.querySelector("#identity-key-create-preview");
 const identityKeySave = document.querySelector("#identity-key-save");
+const identityKeySource = document.querySelector("#identity-key-source");
 const identityKeyOriginal = document.querySelector("#identity-key-original");
 const identityKeyPreview = document.querySelector("#identity-key-preview");
 const costumeStatus = document.querySelector("#costume-status");
 const costumeMessage = document.querySelector("#costume-message");
 const costumeTableBody = document.querySelector("#costume-table tbody");
 const costumeAddNew = document.querySelector("#costume-add-new");
+const costumeDelete = document.querySelector("#costume-delete");
 const costumeFormTitle = document.querySelector("#costume-form-title");
 const costumeName = document.querySelector("#costume-name");
 const costumeTemplateFileWrap = document.querySelector("#costume-template-file-wrap");
@@ -517,6 +582,32 @@ const costumeTemplateFile = document.querySelector("#costume-template-file");
 const costumeCreate = document.querySelector("#costume-create");
 const costumePreviewSection = document.querySelector("#costume-preview-section");
 const costumePreview = document.querySelector("#costume-preview");
+const costumeWizardDialog = document.querySelector("#costume-wizard-dialog");
+const costumeWizardOpen = document.querySelector("#costume-wizard-open");
+const costumeWizardClose = document.querySelector("#costume-wizard-close");
+const costumeWizardContext = document.querySelector("#costume-wizard-context");
+const costumeWizardMessage = document.querySelector("#costume-wizard-message");
+const costumeWizardResume = document.querySelector("#costume-wizard-resume");
+const costumeWizardResumeButton = document.querySelector("#costume-wizard-resume-button");
+const costumeWizardName = document.querySelector("#costume-wizard-name");
+const costumeWizardExtra = document.querySelector("#costume-wizard-extra");
+const costumeWizardIntake = document.querySelector("#costume-wizard-intake");
+const costumeWizardWorkspace = document.querySelector("#costume-wizard-workspace");
+const costumeWizardCreate = document.querySelector("#costume-wizard-create");
+const costumeWizardGenerate = document.querySelector("#costume-wizard-generate");
+const costumeWizardQuestions = document.querySelector("#costume-wizard-questions");
+const costumeWizardAnswer = document.querySelector("#costume-wizard-answer");
+const costumeWizardMarkdown = document.querySelector("#costume-wizard-markdown");
+const costumeWizardReview = document.querySelector("#costume-wizard-review");
+const costumeWizardErrors = document.querySelector("#costume-wizard-errors");
+const costumeWizardSave = document.querySelector("#costume-wizard-save");
+const costumeWizardTest = document.querySelector("#costume-wizard-test");
+const costumeWizardAccept = document.querySelector("#costume-wizard-accept");
+const costumeWizardTestResult = document.querySelector("#costume-wizard-test-result");
+const costumeWizardRefinement = document.querySelector("#costume-wizard-refinement");
+const costumeWizardRefine = document.querySelector("#costume-wizard-refine");
+const costumeWizardAbandon = document.querySelector("#costume-wizard-abandon");
+let costumeWizardPollTimer = null;
 const sceneAppearanceStatus = document.querySelector("#scene-appearance-status");
 const sceneAppearanceMessage = document.querySelector("#scene-appearance-message");
 const sceneAppearanceTableBody = document.querySelector("#scene-appearance-table tbody");
@@ -568,6 +659,7 @@ const storyText = document.querySelector("#story-text");
 const storySettingsJson = document.querySelector("#story-settings-json");
 const storySettingsFields = document.querySelector("#story-settings-fields");
 const storyGitWarning = document.querySelector("#story-git-warning");
+const startupRecoveryStatus = document.querySelector("#startup-recovery-status");
 const storyGitStatus = document.querySelector("#story-git-status");
 const storyGitPull = document.querySelector("#story-git-pull");
 const storyGitCommit = document.querySelector("#story-git-commit");
@@ -663,11 +755,17 @@ const builderElementNewAuxCancel = document.querySelector("#builder-element-new-
 const builderElementNewAuxSave = document.querySelector("#builder-element-new-aux-save");
 const builderElementNewAuxStatus = document.querySelector("#builder-element-new-aux-status");
 const builderElementSceneSection = document.querySelector("#builder-element-scene-section");
+const builderElementSubsceneSection = document.querySelector("#builder-element-subscene-section");
 const builderElementSceneName = document.querySelector("#builder-element-scene-name");
 const builderElementCancel = document.querySelector("#builder-element-cancel");
 const builderElementAdd = document.querySelector("#builder-element-add");
 const builderImagePickerClose = document.querySelector("#builder-image-picker-close");
 const builderImagePickerCharacter = document.querySelector("#builder-image-picker-character");
+const builderImagePickerEntity = document.querySelector("#builder-image-picker-entity");
+const builderImagePickerVariant = document.querySelector("#builder-image-picker-variant");
+const builderImagePickerSet = document.querySelector("#builder-image-picker-set");
+const builderImagePickerFacet = document.querySelector("#builder-image-picker-facet");
+const builderImagePickerMode = document.querySelector("#builder-image-picker-mode");
 const builderImagePickerIncludeBase = document.querySelector("#builder-image-picker-include-base");
 const builderImagePickerSource = document.querySelector("#builder-image-picker-source");
 const builderImagePickerCategory = document.querySelector("#builder-image-picker-category");
@@ -725,6 +823,101 @@ fullscreenImageOverlay.append(
 );
 document.body.append(fullscreenImageOverlay);
 const auxResourceMessage = document.querySelector("#aux-resource-message");
+const entityLibrarySearch = document.querySelector("#entity-library-search");
+const entityLibraryFilterEntity = document.querySelector("#entity-library-filter-entity");
+const entityLibraryFilterType = document.querySelector("#entity-library-filter-type");
+const entityLibraryFilterVariant = document.querySelector("#entity-library-filter-variant");
+const entityLibraryFilterSet = document.querySelector("#entity-library-filter-set");
+const entityLibraryFilterFacet = document.querySelector("#entity-library-filter-facet");
+const entityLibraryFilterStatus = document.querySelector("#entity-library-filter-status");
+const entityLibraryFilterOrigin = document.querySelector("#entity-library-filter-origin");
+const entityLibraryIncludeObsolete = document.querySelector("#entity-library-include-obsolete");
+const entityLibraryRefresh = document.querySelector("#entity-library-refresh");
+const entityLibraryCount = document.querySelector("#entity-library-count");
+const entityLibraryResults = document.querySelector("#entity-library-results");
+const entityLibraryFile = document.querySelector("#entity-library-file");
+const entityLibraryNewLabel = document.querySelector("#entity-library-new-label");
+const entityLibraryGenerationPrompts = document.querySelector("#entity-library-generation-prompts");
+const entityLibraryImportPrompt = document.querySelector("#entity-library-import-prompt");
+const entityLibraryImportNegativePrompt = document.querySelector("#entity-library-import-negative-prompt");
+const entityLibraryGeneratedEntity = document.querySelector("#entity-library-generated-entity");
+const entityLibraryGeneratedRole = document.querySelector("#entity-library-generated-role");
+const entityLibraryGeneratedProvenance = document.querySelector("#entity-library-generated-provenance");
+const entityLibraryImport = document.querySelector("#entity-library-import");
+const entityLibraryImportStatus = document.querySelector("#entity-library-import-status");
+const entityLibraryPaste = document.querySelector("#entity-library-paste");
+const entityLibraryEntityName = document.querySelector("#entity-library-entity-name");
+const entityLibraryEntityType = document.querySelector("#entity-library-entity-type");
+const entityLibraryEntityCreate = document.querySelector("#entity-library-entity-create");
+const entityLibraryVariantEntity = document.querySelector("#entity-library-variant-entity");
+const entityLibraryVariantName = document.querySelector("#entity-library-variant-name");
+const entityLibraryVariantType = document.querySelector("#entity-library-variant-type");
+const entityLibraryVariantCreate = document.querySelector("#entity-library-variant-create");
+const entityLibraryRelationSource = document.querySelector("#entity-library-relation-source");
+const entityLibraryRelationTarget = document.querySelector("#entity-library-relation-target");
+const entityLibraryRelationType = document.querySelector("#entity-library-relation-type");
+const entityLibraryRelationCreate = document.querySelector("#entity-library-relation-create");
+const entityLibrarySetName = document.querySelector("#entity-library-set-name");
+const entityLibrarySetType = document.querySelector("#entity-library-set-type");
+const entityLibrarySetSelect = document.querySelector("#entity-library-set-select");
+const entityLibrarySetCreate = document.querySelector("#entity-library-set-create");
+const entityLibrarySetSave = document.querySelector("#entity-library-set-save");
+const entityLibrarySetDelete = document.querySelector("#entity-library-set-delete");
+const entityLibraryPrevious = document.querySelector("#entity-library-previous");
+const entityLibraryNext = document.querySelector("#entity-library-next");
+const entityLibraryPageStatus = document.querySelector("#entity-library-page-status");
+const entityLibraryEditorTitle = document.querySelector("#entity-library-editor-title");
+const entityLibraryPreview = document.querySelector("#entity-library-preview");
+const entityLibraryEditLabel = document.querySelector("#entity-library-edit-label");
+const entityLibraryEditPrompt = document.querySelector("#entity-library-edit-prompt");
+const entityLibraryEditNegativePrompt = document.querySelector("#entity-library-edit-negative-prompt");
+const entityLibraryGeneratePrompt = document.querySelector("#entity-library-generate-prompt");
+const entityLibraryPromptStatus = document.querySelector("#entity-library-prompt-status");
+const entityLibraryGenerateIdentity = document.querySelector("#entity-library-generate-identity");
+const entityLibraryIdentityStatus = document.querySelector("#entity-library-identity-status");
+const entityLibraryModifyGenerated = document.querySelector("#entity-library-modify-generated");
+const entityLibraryModifyStatus = document.querySelector("#entity-library-modify-status");
+const entityLibraryEditNotes = document.querySelector("#entity-library-edit-notes");
+const entityLibraryEditStatus = document.querySelector("#entity-library-edit-status");
+const entityLibraryEditEntities = document.querySelector("#entity-library-edit-entities");
+const entityLibraryEditSets = document.querySelector("#entity-library-edit-sets");
+const entityLibraryEditFacets = document.querySelector("#entity-library-edit-facets");
+const entityLibraryEditTags = document.querySelector("#entity-library-edit-tags");
+const entityLibraryEditIdentity = document.querySelector("#entity-library-edit-identity");
+const entityLibraryEditCostume = document.querySelector("#entity-library-edit-costume");
+const entityLibraryEditReference = document.querySelector("#entity-library-edit-reference");
+const entityLibrarySave = document.querySelector("#entity-library-save");
+const entityLibraryReplacementFile = document.querySelector("#entity-library-replacement-file");
+const entityLibraryReplacementPaste = document.querySelector("#entity-library-replacement-paste");
+const entityLibraryReplace = document.querySelector("#entity-library-replace");
+const entityLibraryDelete = document.querySelector("#entity-library-delete");
+const entityLibraryBack = document.querySelector("#entity-library-back");
+const entityLibraryUsages = document.querySelector("#entity-library-usages");
+const entityLibraryLogicalReferences = document.querySelector("#entity-library-logical-references");
+const entityLibraryDescriptorOwnerType = document.querySelector("#entity-library-descriptor-owner-type");
+const entityLibraryDescriptorOwner = document.querySelector("#entity-library-descriptor-owner");
+const entityLibraryDescriptorType = document.querySelector("#entity-library-descriptor-type");
+const entityLibraryDescriptorText = document.querySelector("#entity-library-descriptor-text");
+const entityLibraryDescriptorSave = document.querySelector("#entity-library-descriptor-save");
+let entityLibrarySelectedAsset = null;
+let entityLibraryMetadata = { entities: [], variants: [], sets: [] };
+let entityLibraryPageOffset = 0;
+let entityLibraryTotal = 0;
+let entityLibraryCurrentView = "search";
+let entityLibraryMergePreview = null;
+let entityLibraryOrganizerSelectedId = "";
+let entityLibrarySavedSnapshot = "";
+const ENTITY_LIBRARY_PAGE_SIZE = 10;
+const entityLibraryOrganizer = document.querySelector("#entity-library-organizer");
+const entityLibrarySearchForm = document.querySelector("#entity-library-search-form");
+const entityLibraryClearFilters = document.querySelector("#entity-library-clear-filters");
+const entityLibraryActiveFilterCount = document.querySelector("#entity-library-active-filter-count");
+const entityLibraryImportDialog = document.querySelector("#entity-library-import-dialog");
+const entityLibraryImportDialogContent = document.querySelector("#entity-library-import-dialog-content");
+const entityLibraryImportPreview = document.querySelector("#entity-library-import-preview");
+const entityLibraryMergeDialog = document.querySelector("#entity-library-merge-dialog");
+const entityLibraryMergeContent = document.querySelector("#entity-library-merge-content");
+const entityLibraryMergeConfirm = document.querySelector("#entity-library-merge-confirm");
 const imageCatalogSearch = document.querySelector("#image-catalog-search");
 const imageCatalogSource = document.querySelector("#image-catalog-source");
 const imageCatalogCategory = document.querySelector("#image-catalog-category");
@@ -881,9 +1074,14 @@ async function fetchJson(url, options = {}) {
     fetchOptions.signal = state.pageController.signal;
   }
   setBusy(busyTarget, true);
+  const requestUniverse = state.universeId;
   try {
+    const headers = new Headers(fetchOptions.headers || {});
+    if (requestUniverse) headers.set("X-Zet-Universe", requestUniverse);
+    fetchOptions.headers = headers;
     const response = await fetch(url, fetchOptions);
     if (bindToPage && pageGeneration !== state.pageGeneration) throw new RequestCancelledError();
+    if (requestUniverse && requestUniverse !== state.universeId) throw new RequestCancelledError();
     if (!response.ok) {
       let detail = `${response.status} ${response.statusText}`;
       try {
@@ -904,6 +1102,7 @@ async function fetchJson(url, options = {}) {
     }
     const payload = await response.json();
     if (bindToPage && pageGeneration !== state.pageGeneration) throw new RequestCancelledError();
+    if (requestUniverse && requestUniverse !== state.universeId) throw new RequestCancelledError();
     return payload;
   } catch (error) {
     if (fetchOptions.signal?.aborted || isRequestCancellation(error)) throw new RequestCancelledError();
@@ -915,6 +1114,7 @@ async function fetchJson(url, options = {}) {
 
 function fileUrl(path, cacheKey = "") {
   const params = new URLSearchParams({ path });
+  if (state.universeId) params.set("universe_id", state.universeId);
   if (cacheKey) {
     params.set("v", cacheKey);
   }
@@ -957,6 +1157,579 @@ function showMessageElement(container, message, kind = "info") {
   container.setAttribute("role", kind === "error" ? "alert" : "status");
   container.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
   container.setAttribute("aria-atomic", "true");
+}
+
+function setImageGenerationMode(mode) {
+  imageGenerationMode = mode;
+  const editing = mode === "img2img";
+  imageGenerationTxt2img.setAttribute("aria-pressed", String(!editing));
+  imageGenerationImg2img.setAttribute("aria-pressed", String(editing));
+  imageGenerationTxt2img.classList.toggle("primary-action", !editing);
+  imageGenerationImg2img.classList.toggle("primary-action", editing);
+  imageGenerationReferenceSlotsElement.hidden = !editing;
+}
+
+function renderImageGenerationReferenceSlots() {
+  imageGenerationReferenceList.replaceChildren();
+  for (let index = 0; index < IMAGE_GENERATION_REFERENCE_COUNT; index += 1) {
+    const reference = imageGenerationReferenceSlots[index] || {label: "", data: ""};
+    const slot = document.createElement("div");
+    slot.className = "image-generation-reference-slot";
+    if (index === 0) slot.id = "image-generation-reference-field";
+    const label = document.createElement("label");
+    label.textContent = `Prompt label · Image ${index + 1}`;
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.maxLength = 120;
+    labelInput.placeholder = index === 0 ? "e.g. the character's face" : "e.g. the blue embroidered coat";
+    labelInput.value = reference.label || "";
+    labelInput.setAttribute("aria-label", `Prompt label for reference image ${index + 1}`);
+    labelInput.addEventListener("input", () => {
+      imageGenerationReferenceSlots[index].label = labelInput.value;
+      saveImageGenerationState();
+    });
+    label.append(labelInput);
+    const controls = document.createElement("div");
+    controls.className = "image-generation-reference-controls";
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/png,image/jpeg,image/webp";
+    if (index === 0) fileInput.id = "image-generation-reference";
+    fileInput.setAttribute("aria-label", `Choose reference image ${index + 1}`);
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files[0];
+      if (!file || !file.type.startsWith("image/")) return;
+      try {
+        imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
+        imageGenerationReferenceSlots[index].data = await readImageGenerationReference(file);
+        renderImageGenerationReferenceSlots();
+        await saveImageGenerationReferences();
+        saveImageGenerationState();
+      } catch (error) {
+        showMessageElement(imageGenerationMessage, error.message || "Unable to save the reference image.", "error");
+      }
+    });
+    controls.append(fileInput);
+    if (reference.data) {
+      const preview = document.createElement("img");
+      preview.src = reference.data;
+      preview.alt = `Reference image ${index + 1}: ${reference.label || "unlabeled"}`;
+      preview.className = "image-generation-reference-thumb";
+      controls.append(preview);
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.textContent = "Remove";
+      clear.addEventListener("click", async () => {
+        imageGenerationReferenceSlots[index].data = "";
+        renderImageGenerationReferenceSlots();
+        await saveImageGenerationReferences();
+        saveImageGenerationState();
+      });
+      controls.append(clear);
+    } else {
+      const paste = document.createElement("div");
+      paste.className = "paste-zone image-generation-reference-paste";
+      paste.tabIndex = 0;
+      paste.setAttribute("role", "button");
+      paste.setAttribute("aria-label", `Paste reference image ${index + 1}`);
+      paste.textContent = "Click to select, then press Ctrl+V to paste";
+      paste.addEventListener("click", () => paste.focus());
+      paste.addEventListener("paste", async (event) => {
+        const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
+        const file = imageItem?.getAsFile();
+        if (!file) return;
+        event.preventDefault();
+        try {
+          imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
+          imageGenerationReferenceSlots[index].data = await readImageGenerationReference(file);
+          renderImageGenerationReferenceSlots();
+          await saveImageGenerationReferences();
+          saveImageGenerationState();
+        } catch (error) {
+          showMessageElement(imageGenerationMessage, error.message || "Unable to save the reference image.", "error");
+        }
+      });
+      controls.append(paste);
+    }
+    slot.append(label, controls);
+    imageGenerationReferenceList.append(slot);
+  }
+}
+
+function saveImageGenerationState() {
+  try {
+    window.localStorage.setItem(IMAGE_GENERATION_STORAGE_KEY, JSON.stringify({
+      mode: imageGenerationMode,
+      prompt: imageGenerationPrompt.value,
+      negativePrompt: imageGenerationNegative.value,
+      width: imageGenerationWidth.value,
+      height: imageGenerationHeight.value,
+      referenceLabels: imageGenerationReferenceSlots.map((reference) => reference.label),
+      slots: imageGenerationSlots,
+      selectedSlot: imageGenerationSelectedSlot,
+      jobIds: imageGenerationJobIds,
+      sourceAssetId: imageGenerationSource.dataset.assetId || "",
+      sourceChecksum: imageGenerationSource.dataset.checksum || "",
+    }));
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, "Unable to save Image Generation state in this browser.", "warning");
+  }
+}
+
+function openImageGenerationDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open("zet-image-generation", 1);
+    request.addEventListener("upgradeneeded", () => request.result.createObjectStore("state"), { once: true });
+    request.addEventListener("success", () => resolve(request.result), { once: true });
+    request.addEventListener("error", () => reject(request.error), { once: true });
+  });
+}
+
+async function saveImageGenerationReferences() {
+  const database = await openImageGenerationDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction("state", "readwrite");
+    const store = transaction.objectStore("state");
+    imageGenerationReferenceSlots.forEach((reference, index) => {
+      const key = `reference-${index}`;
+      if (reference.data) store.put(reference.data, key);
+      else store.delete(key);
+    });
+    store.delete("reference");
+    transaction.addEventListener("complete", resolve, { once: true });
+    transaction.addEventListener("error", () => reject(transaction.error), { once: true });
+  });
+  database.close();
+}
+
+async function restoreImageGenerationInputs() {
+  let saved = null;
+  try {
+    saved = JSON.parse(window.localStorage.getItem(IMAGE_GENERATION_STORAGE_KEY) || "null");
+  } catch {
+    window.localStorage.removeItem(IMAGE_GENERATION_STORAGE_KEY);
+    return;
+  }
+  if (saved && typeof saved === "object") {
+    imageGenerationPrompt.value = saved.prompt || "";
+    imageGenerationNegative.value = saved.negativePrompt || "";
+    if (saved.width) imageGenerationWidth.value = saved.width;
+    if (saved.height) imageGenerationHeight.value = saved.height;
+    if (Array.isArray(saved.referenceLabels)) {
+      imageGenerationReferenceSlots.forEach((reference, index) => { reference.label = saved.referenceLabels[index] || ""; });
+    } else if (saved.referenceName) {
+      imageGenerationReferenceSlots[0].label = saved.referenceName;
+    }
+    if (Array.isArray(saved.slots) && saved.slots.length === IMAGE_GENERATION_SLOT_COUNT) {
+      imageGenerationSlots = saved.slots;
+      imageGenerationSelectedSlot = Number.isInteger(saved.selectedSlot) ? saved.selectedSlot : -1;
+      imageGenerationJobIds = Array.isArray(saved.jobIds) ? saved.jobIds : [];
+    } else if (saved.requestId) {
+      imageGenerationSlots = Array.from({length: IMAGE_GENERATION_SLOT_COUNT}, (_, index) =>
+        index < 4 ? {requestId: saved.requestId, index} : null);
+      imageGenerationJobIds = [saved.requestId];
+    }
+    imageGenerationSource.dataset.assetId = saved.sourceAssetId || "";
+    imageGenerationSource.dataset.checksum = saved.sourceChecksum || "";
+    imageGenerationSource.hidden = !saved.sourceAssetId;
+    if (saved.sourceAssetId) imageGenerationSource.textContent = "Updating an image from the Image Inventory";
+    setImageGenerationMode(saved.mode === "img2img" ? "img2img" : "txt2img");
+  }
+  try {
+    const database = await openImageGenerationDatabase();
+    const store = database.transaction("state", "readonly").objectStore("state");
+    imageGenerationReferenceSlots = await Promise.all(imageGenerationReferenceSlots.map((reference, index) => new Promise((resolve, reject) => {
+      const request = store.get(`reference-${index}`);
+      request.addEventListener("success", () => resolve({...reference, data: request.result || ""}), { once: true });
+      request.addEventListener("error", () => reject(request.error), { once: true });
+    })));
+    if (!imageGenerationReferenceSlots.some((reference) => reference.data)) {
+      const legacy = await new Promise((resolve, reject) => {
+        const request = store.get("reference");
+        request.addEventListener("success", () => resolve(request.result || ""), { once: true });
+        request.addEventListener("error", () => reject(request.error), { once: true });
+      });
+      if (legacy) imageGenerationReferenceSlots[0].data = legacy;
+    }
+    database.close();
+    renderImageGenerationReferenceSlots();
+  } catch {
+    showMessageElement(imageGenerationMessage, "Unable to restore the saved reference image in this browser.", "warning");
+  }
+}
+
+async function restoreImageGenerationJob() {
+  renderImageGenerationStatus();
+  await Promise.all(imageGenerationJobIds.map((requestId) => pollImageGeneration(requestId)));
+}
+
+function readImageGenerationReference(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")), { once: true });
+    reader.addEventListener("error", () => reject(new Error("Unable to read the reference image.")), { once: true });
+    reader.readAsDataURL(file);
+  });
+}
+
+function imageGenerationDimensionFromSource(value) {
+  const dimension = Number(value);
+  if (!Number.isFinite(dimension) || dimension <= 0) return null;
+  return Math.min(4096, Math.max(256, Math.round(dimension / 32) * 32));
+}
+
+async function modifyEntityLibraryImageWithGenerator() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
+  try {
+    const response = await fetch(fileUrl(asset.image_path, asset.checksum));
+    if (!response.ok) throw new Error("Unable to read the selected inventory image.");
+    const blob = await response.blob();
+    const data = await readImageGenerationReference(new File([blob], asset.file_name, { type: asset.mime_type }));
+    await runGuardedTransition(async () => {
+      imageGenerationSlots = Array(IMAGE_GENERATION_SLOT_COUNT).fill(null);
+      imageGenerationSelectedSlot = -1;
+      imageGenerationJobIds = [];
+      imageGenerationJobs.clear();
+      imageGenerationReview.close();
+      renderImageGenerationStatus();
+      imageGenerationSource.textContent = "Updating " + (asset.label || asset.file_name);
+      imageGenerationSource.hidden = false;
+      imageGenerationSource.dataset.assetId = asset.asset_id;
+      imageGenerationSource.dataset.checksum = asset.checksum;
+      imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
+      imageGenerationReferenceSlots[0] = {label: "source image", data};
+      renderImageGenerationReferenceSlots();
+      imageGenerationPrompt.value = asset.prompt || "";
+      imageGenerationNegative.value = asset.negative_prompt || "";
+      const sourceWidth = imageGenerationDimensionFromSource(asset.width);
+      const sourceHeight = imageGenerationDimensionFromSource(asset.height);
+      if (sourceWidth) imageGenerationWidth.value = sourceWidth;
+      if (sourceHeight) imageGenerationHeight.value = sourceHeight;
+      setImageGenerationMode("img2img");
+      saveImageGenerationState();
+      await saveImageGenerationReferences();
+      await activatePage("image-generation", { skipAutosave: true });
+    });
+  } catch (error) {
+    entityLibraryModifyStatus.textContent = error.message;
+  }
+}
+
+function imageGenerationResult(slotIndex) {
+  const assignment = imageGenerationSlots[slotIndex];
+  const job = assignment && imageGenerationJobs.get(assignment.requestId);
+  const image = job?.images?.find((item) => item.index === assignment.index);
+  return image ? {assignment, job, image} : null;
+}
+
+function imageGenerationReviewableSlots() {
+  return imageGenerationSlots.map((_, index) => index).filter((index) => imageGenerationResult(index));
+}
+
+function renderImageGenerationReview() {
+  if (!imageGenerationReview.open) return;
+  const slots = imageGenerationReviewableSlots();
+  if (!slots.includes(imageGenerationReviewIndex)) { imageGenerationReview.close(); return; }
+  const {job, image} = imageGenerationResult(imageGenerationReviewIndex);
+  const position = slots.indexOf(imageGenerationReviewIndex);
+  imageGenerationReviewImage.src = image.url;
+  imageGenerationReviewImage.alt = `Generated image in slot ${imageGenerationReviewIndex + 1}`;
+  imageGenerationReviewCount.textContent = `Slot ${imageGenerationReviewIndex + 1} · ${position + 1} of ${slots.length}`;
+  imageGenerationReviewPrompt.textContent = job.prompt || "";
+  imageGenerationReviewNegative.textContent = job.negative_prompt || "";
+  imageGenerationReviewPrevious.disabled = position === 0;
+  imageGenerationReviewNext.disabled = position === slots.length - 1;
+  imageGenerationReviewSelect.textContent = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect" : "Select";
+  imageGenerationReviewRetry.disabled = imageGenerationPending || !imageGenerationTerminalStatuses.has(job.status);
+  imageGenerationReviewClear.disabled = imageGenerationReviewRetry.disabled;
+}
+
+function openImageGenerationReview(slotIndex) {
+  imageGenerationReviewIndex = slotIndex;
+  if (!imageGenerationReview.open) imageGenerationReview.showModal();
+  renderImageGenerationReview();
+}
+
+async function openImageGenerationImportDialog() {
+  const result = imageGenerationResult(imageGenerationSelectedSlot);
+  if (!result) return;
+  const {assignment, job, image} = result;
+  entityLibraryImportGeneration = { requestId: assignment.requestId, index: assignment.index };
+  state.entityLibraryImportBlob = null;
+  entityLibraryFile.value = "";
+  entityLibraryNewLabel.value = (job.prompt || "").trim().slice(0, 80) || "Generated image";
+  entityLibraryGeneratedProvenance.value = "Image Generation job " + assignment.requestId + ", result " + (assignment.index + 1);
+  entityLibraryGenerationPrompts.hidden = false;
+  entityLibraryImportPrompt.textContent = job.prompt || "";
+  entityLibraryImportNegativePrompt.textContent = job.negative_prompt || "";
+  entityLibraryPaste.textContent = "Using selected Image Generation result";
+  entityLibraryImportStatus.textContent = "";
+  entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
+  entityLibraryImportPreview.src = image.url;
+  entityLibraryImportPreview.hidden = false;
+  await activatePage("auxiliary-resources", { skipAutosave: true });
+  entityLibraryImportDialog.showModal();
+}
+
+async function generateEntityImagePrompt() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset) return;
+  entityLibraryGeneratePrompt.disabled = true;
+  entityLibraryPromptStatus.textContent = "Analyzing image…";
+  try {
+    const started = await fetchJson("/api/entity-library/assets/" + encodeURIComponent(asset.asset_id) + "/generate-prompt", { method: "POST" });
+    let job = started;
+    while (job.status === "RUNNING") {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      job = await fetchJson("/api/entity-library/prompt-generation/" + encodeURIComponent(started.job_id));
+    }
+    if (job.status !== "COMPLETE") throw new Error(job.error || "Image prompt generation failed.");
+    if (entityLibrarySelectedAsset?.asset_id !== asset.asset_id) {
+      throw new Error("The selected image changed during analysis. Reopen Generate Prompt for the current image.");
+    }
+    if (!entityLibraryEditPrompt.value.trim()) entityLibraryEditPrompt.value = job.draft.prompt || "";
+    if (!entityLibraryEditNegativePrompt.value.trim()) entityLibraryEditNegativePrompt.value = job.draft.negative_prompt || "";
+    entityLibraryPromptStatus.textContent = "Draft added to empty prompt fields. Save image to keep it.";
+  } catch (error) {
+    entityLibraryPromptStatus.textContent = error.message;
+  } finally {
+    entityLibraryGeneratePrompt.disabled = Boolean(entityLibraryEditPrompt.value.trim() && entityLibraryEditNegativePrompt.value.trim());
+  }
+}
+
+async function generateEntityIdentity() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset) return;
+  const previousText = entityLibraryEditIdentity.value;
+  entityLibraryGenerateIdentity.disabled = true;
+  entityLibraryIdentityStatus.textContent = "Analyzing image with Luna…";
+  try {
+    const started = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}/generate-identity`, { method: "POST" });
+    let job = started;
+    while (job.status === "RUNNING") {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      job = await fetchJson(`/api/entity-library/prompt-generation/${encodeURIComponent(started.job_id)}`);
+    }
+    if (job.status !== "COMPLETE") throw new Error(job.error || "Identity generation failed.");
+    if (entityLibrarySelectedAsset?.asset_id !== asset.asset_id) return;
+    if (entityLibraryEditIdentity.value !== previousText) {
+      entityLibraryIdentityStatus.textContent = `The field changed during analysis. Luna's draft: ${job.draft.identity}`;
+      return;
+    }
+    entityLibraryEditIdentity.value = job.draft.identity;
+    entityLibraryIdentityStatus.textContent = "Identity draft added. Save image to keep it.";
+  } catch (error) {
+    if (entityLibrarySelectedAsset?.asset_id === asset.asset_id) entityLibraryIdentityStatus.textContent = error.message;
+  } finally {
+    if (entityLibrarySelectedAsset?.asset_id === asset.asset_id) entityLibraryGenerateIdentity.disabled = asset.status === "archived";
+  }
+}
+
+const imageGenerationTerminalStatuses = new Set(["COMPLETE", "PARTIAL", "FAILED", "ERROR"]);
+const imageGenerationPolling = new Set();
+
+function renderImageGenerationStatus() {
+  const busy = imageGenerationPending || imageGenerationJobIds.some((id) => {
+    const job = imageGenerationJobs.get(id);
+    return !job || !imageGenerationTerminalStatuses.has(job.status);
+  });
+  imageGenerationSubmit.disabled = busy;
+  imageGenerationFill.disabled = busy || !imageGenerationJobIds.length || !imageGenerationSlots.some((assignment, index) =>
+    !imageGenerationResult(index) && (!assignment || imageGenerationTerminalStatuses.has(imageGenerationJobs.get(assignment.requestId)?.status)));
+  imageGenerationClear.disabled = busy || !imageGenerationJobIds.length;
+  const completed = imageGenerationReviewableSlots().length;
+  imageGenerationProgress.textContent = `${completed} of ${IMAGE_GENERATION_SLOT_COUNT} slots filled`;
+  if (!imageGenerationSource.dataset.assetId) {
+    const sourceJob = [...imageGenerationJobs.values()].find((job) => job.source_asset_id);
+    if (sourceJob) {
+      imageGenerationSource.dataset.assetId = sourceJob.source_asset_id;
+      imageGenerationSource.dataset.checksum = sourceJob.source_checksum || "";
+      imageGenerationSource.textContent = "Updating an image from the Image Inventory";
+      imageGenerationSource.hidden = false;
+    }
+  }
+  const selected = imageGenerationResult(imageGenerationSelectedSlot);
+  imageGenerationReviewImport.disabled = !selected;
+  imageGenerationReviewUpdate.hidden = !imageGenerationSource.dataset.assetId;
+  imageGenerationReviewUpdate.disabled = !selected || !selected.job.source_asset_id;
+  imageGenerationResultsGrid.replaceChildren();
+  for (let index = 0; index < IMAGE_GENERATION_SLOT_COUNT; index += 1) {
+    const result = imageGenerationResult(index);
+    const assignment = imageGenerationSlots[index];
+    const job = assignment && imageGenerationJobs.get(assignment.requestId);
+    const card = document.createElement("figure");
+    card.className = `image-generation-result${index === imageGenerationSelectedSlot ? " is-selected" : ""}`;
+    const title = document.createElement("figcaption");
+    title.textContent = `Slot ${index + 1}${index === imageGenerationSelectedSlot ? " · Selected" : ""}`;
+    card.append(title);
+    if (result) {
+      const preview = document.createElement("button");
+      preview.type = "button";
+      preview.className = "image-generation-result-preview";
+      preview.setAttribute("aria-label", `Review slot ${index + 1}`);
+      preview.addEventListener("click", () => openImageGenerationReview(index));
+      const image = document.createElement("img");
+      image.src = result.image.url;
+      image.alt = `Generated image in slot ${index + 1}`;
+      image.loading = "lazy";
+      preview.append(image);
+      card.append(preview);
+      const controls = document.createElement("div");
+      controls.className = "button-row compact";
+      const review = document.createElement("button");
+      review.type = "button";
+      review.textContent = "Review";
+      review.addEventListener("click", () => openImageGenerationReview(index));
+      const download = document.createElement("a");
+      download.href = `${result.image.url}?download=true`;
+      download.download = `zet-image-slot-${index + 1}`;
+      download.textContent = "Download";
+      controls.append(review, download);
+      card.append(controls);
+    } else {
+      const status = document.createElement("p");
+      status.textContent = assignment ? (job && imageGenerationTerminalStatuses.has(job.status) ? "Failed" : job?.status || "Loading") : "Empty";
+      card.append(status);
+    }
+    imageGenerationResultsGrid.append(card);
+  }
+  renderImageGenerationReview();
+}
+
+async function pollImageGeneration(requestId) {
+  if (!imageGenerationJobIds.includes(requestId) || imageGenerationPolling.has(requestId)) return;
+  imageGenerationPolling.add(requestId);
+  try {
+    const payload = await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { bindToPage: false });
+    if (!imageGenerationJobIds.includes(requestId)) return;
+    imageGenerationJobs.set(requestId, payload);
+    if (payload.error) showMessageElement(imageGenerationMessage, payload.error, payload.completed ? "warning" : "error");
+    renderImageGenerationStatus();
+    if (!imageGenerationTerminalStatuses.has(payload.status)) setTimeout(() => pollImageGeneration(requestId), 1400);
+  } catch (error) {
+    if (imageGenerationJobIds.includes(requestId)) {
+      showMessageElement(imageGenerationMessage, `Unable to check AI_Proxy job: ${error.message}`, "error");
+      setTimeout(() => pollImageGeneration(requestId), 4000);
+    }
+  } finally {
+    imageGenerationPolling.delete(requestId);
+  }
+}
+
+async function submitImageGenerationForSlots(slotIndexes) {
+  if (imageGenerationPending || !slotIndexes.length) return;
+  const previousResults = slotIndexes.map((slot) => imageGenerationResult(slot)).filter(Boolean);
+  const references = imageGenerationMode === "img2img"
+    ? imageGenerationReferenceSlots.map((reference, index) => ({...reference, index})).filter((reference) => reference.data)
+    : [];
+  if (imageGenerationMode === "img2img") {
+    if (!references.length) {
+      showMessageElement(imageGenerationMessage, "Choose at least one reference image for img2img.", "error");
+      return;
+    }
+    const unlabeled = references.find((reference) => !reference.label.trim());
+    if (unlabeled) {
+      showMessageElement(imageGenerationMessage, `Enter a prompt label for reference image ${unlabeled.index + 1}.`, "error");
+      return;
+    }
+  }
+  imageGenerationPending = true;
+  renderImageGenerationStatus();
+  showMessageElement(imageGenerationMessage, "Staging images through AI_Proxy…", "info");
+  try {
+    const payload = await fetchJson("/api/image-generation/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: imageGenerationMode,
+        prompt: imageGenerationPrompt.value,
+        negative_prompt: imageGenerationNegative.value,
+        width: Number(imageGenerationWidth.value),
+        height: Number(imageGenerationHeight.value),
+        count: slotIndexes.length,
+        reference_images: references.map(({label, data}) => ({label: label.trim(), image: data})),
+        ...(references.length === 1 ? {reference_image: references[0].data} : {}),
+        source_asset_id: imageGenerationSource.dataset.assetId || "",
+        source_checksum: imageGenerationSource.dataset.checksum || "",
+      }),
+      bindToPage: false,
+    });
+    slotIndexes.forEach((slot, index) => { imageGenerationSlots[slot] = {requestId: payload.request_id, index}; });
+    if (slotIndexes.includes(imageGenerationSelectedSlot)) imageGenerationSelectedSlot = -1;
+    imageGenerationJobIds.push(payload.request_id);
+    imageGenerationJobs.set(payload.request_id, payload);
+    saveImageGenerationState();
+    showMessageElement(imageGenerationMessage, "", "info");
+    if (!imageGenerationTerminalStatuses.has(payload.status)) setTimeout(() => pollImageGeneration(payload.request_id), 900);
+    for (const previous of previousResults) {
+      try {
+        const updated = await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(previous.assignment.requestId)}/images/${previous.assignment.index}`, {
+          method: "DELETE", bindToPage: false,
+        });
+        imageGenerationJobs.set(previous.assignment.requestId, updated);
+      } catch (error) {
+        showMessageElement(imageGenerationMessage, `Previous slot image could not be cleared: ${error.message}`, "warning");
+      }
+    }
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  } finally {
+    imageGenerationPending = false;
+    renderImageGenerationStatus();
+  }
+}
+
+function submitImageGeneration(event) {
+  event.preventDefault();
+  void submitImageGenerationForSlots([0, 1, 2, 3]);
+}
+
+async function clearImageGenerationResults() {
+  if (imageGenerationPending || !imageGenerationJobIds.length) return;
+  imageGenerationPending = true;
+  renderImageGenerationStatus();
+  try {
+    for (const requestId of imageGenerationJobIds) {
+      await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(requestId)}`, { method: "DELETE", bindToPage: false });
+    }
+    imageGenerationSlots = Array(IMAGE_GENERATION_SLOT_COUNT).fill(null);
+    imageGenerationSelectedSlot = -1;
+    imageGenerationJobIds = [];
+    imageGenerationJobs.clear();
+    window.localStorage.removeItem(IMAGE_GENERATION_STORAGE_KEY);
+    imageGenerationReview.close();
+    showMessageElement(imageGenerationMessage, "Results cleared.", "success");
+    imageGenerationForm.reset();
+    imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
+    renderImageGenerationReferenceSlots();
+    await saveImageGenerationReferences();
+    imageGenerationSource.hidden = true;
+    imageGenerationSource.dataset.assetId = "";
+    imageGenerationSource.dataset.checksum = "";
+    setImageGenerationMode("txt2img");
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  } finally {
+    imageGenerationPending = false;
+    renderImageGenerationStatus();
+  }
+}
+
+async function loadImageGenerationOptions() {
+  if (!imageGenerationOptionsLoaded) {
+    try {
+      const payload = await fetchJson("/api/image-generation/options", { bindToPage: false });
+      imageGenerationModel.textContent = `${payload.model} · ${payload.checkpoint}`;
+      imageGenerationWidth.value = payload.default_width || 1024;
+      imageGenerationHeight.value = payload.default_height || 1024;
+      imageGenerationOptionsLoaded = true;
+      await restoreImageGenerationInputs();
+    } catch (error) {
+      showMessageElement(imageGenerationMessage, `Unable to load generation settings: ${error.message}`, "error");
+    }
+  }
+  await restoreImageGenerationJob();
 }
 
 function showActionMessage(message, kind = "info") {
@@ -1225,7 +1998,9 @@ function builderOptions(name) {
 }
 
 function builderOptionHtml(name, selected = "") {
-  return builderOptions(name).map((value) => `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
+  const options = builderOptions(name);
+  const values = name === "aspect_ratio" && selected && !options.includes(selected) ? [...options, selected] : options;
+  return values.map((value) => `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
 }
 
 const SCENE_BUILDER_HELP = {
@@ -1255,16 +2030,16 @@ const SCENE_BUILDER_HELP = {
   "placements[].position_within_cell": "Position inside the grid cell, or None to suppress placement output for this element.",
   "placements[].depth": "Depth layer: foreground, midground, background, or distant background.",
   "placements[].world_position": "Location within the scene, such as \"at the edge of the pit\" or \"inside the doorway.\"",
-  "placements[].pose.summary": "Concise pose summary.",
+  "placements[].pose.summary": "Describe the visible body pose or action in the finished frame; don't repeat screen position, gaze, expression, or story history.",
   "placements[].pose.gaze_target_element_id": "Element ID that this element is looking at.",
   "placements[].pose.expression": "Facial expression or visible emotional state.",
   "setup.composition.focal_point": "The person, action, or visual relationship viewers should notice first.",
   "setup.composition.left_to_right": "Order the important visible elements as the viewer should encounter them from the left side of the image to the right.",
-  "setup.composition.composition_notes": "Optional brief instruction about framing, overlap, spacing, or a major visual relationship not captured by placement fields.",
+  "setup.composition.composition_notes": "Use only for shared framing, spacing, overlap, or visual constraints not captured by subject and interaction fields.",
   "placements[].motion.state": "Whether this element is still or visibly moving in the scene.",
   "placements[].motion.direction_screen": "The direction the element is visibly moving within the finished image.",
   "placements[].motion.cue": "A short visual description showing movement, such as trailing hair, a lifted foot, flying fabric, falling debris, or a blurred limb.",
-  "placements[].placement_notes": "Prompt-visible instructions that supplement this element's position, pose, and action.",
+  "placements[].placement_notes": "Use only for a distinct visible staging constraint absent from position, pose, gaze, expression, and interaction fields. Describe the final frame, not how the subject arrived there.",
   "interactions[].subject_element_id": "Element initiating or owning the interaction.",
   "interactions[].action": "Action relationship, such as offers, attacks, protects, reaches toward, blocks, watches, or mutual eye contact.",
   "interactions[].target_element_id": "Element receiving or targeted by the interaction.",
@@ -1570,16 +2345,14 @@ function renderProductionWorkSummary() {
     badge.hidden = analysisPending === 0;
     badge.title = `${analysisPending} prompt analysis task(s) running`;
   }
-  for (const menu of [characterProductionMenu, storyProductionMenu]) {
-    const waitingAreas = [project.prompt_available, project.render_waiting, project.image_review_waiting]
+  for (const menu of [characterProductionMenu, storyProductionMenu].filter(Boolean)) {
+    const waitingAreas = [project.prompt_available]
       .filter((count) => Number(count || 0) > 0).length;
     menu.options[0].textContent = waitingAreas ? `Production · ${waitingAreas} waiting ▾` : "Production ▾";
     const labels = {
       "prompt-review": menu === storyProductionMenu ? "Prompt / Analysis" : "Prompts",
-      "render-console": menu === storyProductionMenu ? "Render Console" : "Render",
-      "render-review": "Image Review",
     };
-    for (const [value, key] of [["prompt-review", "prompt_available"], ["render-console", "render_waiting"], ["render-review", "image_review_waiting"]]) {
+    for (const [value, key] of [["prompt-review", "prompt_available"]]) {
       const item = Array.from(menu.options).find((option) => option.value === value);
       if (item) item.textContent = `${labels[value]}${Number(project[key] || 0) ? ` · ${project[key]}` : ""}`;
     }
@@ -1702,12 +2475,12 @@ function loadStoredWorkspacePreferences() {
     const data = JSON.parse(raw);
     const pages = data?.pages || {};
     return {
-      workspace: ["character", "local", "story"].includes(data?.workspace) ? data.workspace : "character",
+      workspace: data?.workspace === "story" ? "story" : "character",
       pages: {
-        character: CHARACTER_PAGES.has(pages.character) || PRODUCTION_PAGES.has(pages.character)
-          ? pages.character
+        character: CHARACTER_PAGES.has(canonicalDashboardPage(pages.character)) || LOCAL_PAGES.has(pages.character) || PRODUCTION_PAGES.has(pages.character)
+          ? canonicalDashboardPage(pages.character)
           : "onboarding",
-        local: LOCAL_PAGES.has(pages.local) ? pages.local : "local-overview",
+        local: "onboarding",
         story: STORY_PAGES.has(pages.story) || PRODUCTION_PAGES.has(pages.story)
           ? pages.story
           : "scenes",
@@ -1730,10 +2503,24 @@ function saveWorkspacePreferences() {
 }
 
 function pageWorkspace(page) {
+  if (page === "local-batch-status") return null;
+  if (["universes", "universe-create", "universe-settings"].includes(page)) return null;
   if (CHARACTER_PAGES.has(page)) return "character";
-  if (LOCAL_PAGES.has(page)) return "local";
+  if (LOCAL_PAGES.has(page)) return "character";
   if (STORY_PAGES.has(page)) return "story";
   return null;
+}
+
+function canonicalDashboardPage(page) {
+  return ({
+    "local-overview": "onboarding", assets: "local-batch-status", manifest: "local-batch-status",
+    "scene-appearances": "local-batch-status", expressions: "local-batch-status",
+    "local-identity-keys": "identity-keys", "local-turnarounds": "turnarounds",
+    "local-costumes": "costumes", "local-comparison": "phase-comparison",
+    "local-scene-appearances": "local-batch-status", "local-expressions": "local-batch-status",
+    "local-image-review": "local-batch-status",
+    "render-console": "scene-batches", "render-review": "scene-batches",
+  })[page] || page;
 }
 
 function renderHeaderStoryContext() {
@@ -1752,27 +2539,18 @@ function renderHeaderStoryContext() {
 
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["onboarding", "Overview"], ["assets", "Assets"], ["identity-keys", "Identity Keys"],
-    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["scene-appearances", "Scene Appearances"], ["expressions", "Expressions"],
-    ["phase-comparison", "Phase Comparison"], ["manifest", "Manifest"], ["prompt-review", "Prompts"],
-    ["render-console", "Render"], ["local-image-review", "Local Images"], ["render-review", "Image Review"],
+    ["onboarding", "Overview"], ["local-body-reference", "Assets"], ["identity-keys", "Identity Keys"],
+    ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
   ],
   story: [
     ["stories", "Overview"], ["scenes", "Scenes"], ["scene-builder", "Scene Builder"],
-    ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
-    ["render-console", "Render Console"], ["local-image-review", "Local Variants"], ["render-review", "Image Review"],
-  ],
-  local: [
-    ["local-overview", "Overview"], ["local-batch-status", "Batch Status"], ["local-body-reference", "Body-Reference"],
-    ["local-head-image", "Head-Image"], ["local-character-assembly", "Character-Assembly"],
-    ["local-costume-dressing", "Costume-Dressing"], ["local-identity-keys", "Identity Keys"],
-    ["local-turnarounds", "Turnarounds"], ["local-costumes", "Costumes"],
-    ["local-scene-appearances", "Scene Appearances"], ["local-expressions", "Expressions"],
-    ["local-comparison", "Comparison"],
+    ["scene-batches", "Scene Renders"], ["zine", "Zines"], ["prompt-review", "Prompt / Analysis"],
   ],
 };
 
 const RESPONSIVE_TOOL_PAGES = [
+  ["local-batch-status", "Batches"],
+  ["image-generation", "Image Generation"],
   ["auxiliary-resources", "Image Inventory"], ["template-editor", "Template Editor"], ["ai-controls", "AI Queue"],
   ["pipeline-controls", "Pipeline Controls"],
   ["help", "Template Instruction Manuals"],
@@ -1801,14 +2579,14 @@ function syncResponsiveChrome() {
 
 function applyWorkspaceChrome() {
   const storyActive = state.workspace === "story";
-  const localActive = state.workspace === "local";
-  workspaceCharacter.setAttribute("aria-pressed", !storyActive && !localActive ? "true" : "false");
-  workspaceLocal.setAttribute("aria-pressed", localActive ? "true" : "false");
+  const localActive = false;
+  workspaceCharacter.setAttribute("aria-pressed", !storyActive ? "true" : "false");
+  workspaceLocal?.setAttribute("aria-pressed", "false");
   workspaceStory.setAttribute("aria-pressed", storyActive ? "true" : "false");
   characterContext.hidden = storyActive;
   storyContext.hidden = !storyActive;
-  characterNavigation.hidden = storyActive || localActive;
-  localNavigation.hidden = !localActive;
+  characterNavigation.hidden = storyActive;
+  localNavigation.hidden = true;
   storyNavigation.hidden = !storyActive;
   headerFitmentPreview.hidden = storyActive || !headerFitmentPreview.getAttribute("src");
   for (const item of newMenu.querySelectorAll("[data-workspace-item]")) {
@@ -2074,8 +2852,36 @@ function saveStoredAssetFilters() {
   window.localStorage.setItem(HIDE_BASE_IMAGES_STORAGE_KEY, state.assetFilters.hideBaseImages ? "true" : "false");
 }
 
+function updateStartupRecoveryStatus(recovery) {
+  const status = String(recovery?.status || "complete");
+  startupRecoveryStatus.dataset.status = status;
+  startupRecoveryStatus.textContent = status === "running"
+    ? (recovery.message || "Restoring saved image review jobs…")
+    : status === "error" ? `Image review recovery needs attention: ${recovery.message || "unknown error"}` : "";
+  startupRecoveryStatus.hidden = !["running", "error"].includes(status);
+  if (status === "running") {
+    if (!startupRecoveryTimer) {
+      startupRecoveryTimer = window.setTimeout(() => void pollStartupRecoveryStatus(), 5000);
+    }
+  } else if (startupRecoveryTimer) {
+    window.clearTimeout(startupRecoveryTimer);
+    startupRecoveryTimer = null;
+  }
+}
+
+async function pollStartupRecoveryStatus() {
+  startupRecoveryTimer = null;
+  try {
+    const health = await fetchJson("/api/health");
+    updateStartupRecoveryStatus(health.recovery);
+  } catch {
+    updateStartupRecoveryStatus({ status: "running", message: "Checking saved image review jobs…" });
+  }
+}
+
 async function loadContext() {
   const payload = await fetchJson("/api/context");
+  updateStartupRecoveryStatus(payload.recovery);
   const stored = loadStoredContext();
   state.characters = payload.characters || [];
   state.phasesByCharacter = payload.phases_by_character || {};
@@ -2141,6 +2947,10 @@ function selectedOnboardingStatus() {
 function selectedPhaseReady() {
   const status = selectedOnboardingStatus();
   return !status || status.complete;
+}
+
+function selectedLocalPhaseReady() {
+  return Boolean(selectedOnboardingStatus()?.template_ready);
 }
 
 function showOnboardingMessage(message, kind = "info") {
@@ -2212,7 +3022,6 @@ function renderOnboarding() {
     const page = button.dataset.page || "";
     button.disabled = !ready && page !== "phase-comparison";
   }
-  characterProductionMenu.disabled = !ready;
   onboardingStatus.textContent = isDraft ? "New character — not created yet" : ready ? "Ready for character production" : "Setup incomplete";
   const characterName = isDraft ? onboardingCharacter.value.trim() : status?.character_name || state.character || "";
   const phaseName = isDraft ? onboardingPhase.value.trim() : state.phase || "";
@@ -2455,9 +3264,13 @@ function browserRouteUrl() {
   const params = new URLSearchParams();
   const page = activePageName();
   if (page) params.set("page", page);
+  if (page === "scene-batches") {
+    const batch = new URLSearchParams(window.location.search).get("batch");
+    if (batch) params.set("batch", batch);
+  }
   if (LOCAL_ASSET_PAGES.has(page)) {
     const currentParams = new URLSearchParams(window.location.search);
-    for (const key of ["local_batch", "local_costume"]) {
+    for (const key of ["character", "phase", "local_batch", "local_costume"]) {
       const value = currentParams.get(key);
       if (value) params.set(key, value);
     }
@@ -2874,8 +3687,14 @@ function builderTargetIsDirty(targetId = state.activeBuilderRenderTarget || "mai
   if (!state.savedBaselines.sceneBuilder) return false;
   if (targetId === "main") return sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder;
   builderSyncControls();
-  return JSON.stringify(builderSubsceneFromData(state.sceneBuilder, targetId))
-    !== JSON.stringify(builderSubsceneFromData(savedSceneBuilderData(), targetId));
+  const baseline = savedSceneBuilderData();
+  return JSON.stringify({
+    subscene: builderSubsceneFromData(state.sceneBuilder, targetId),
+    dialogue: builderDialogueRowsForTarget(state.sceneBuilder, targetId),
+  }) !== JSON.stringify({
+    subscene: builderSubsceneFromData(baseline, targetId),
+    dialogue: builderDialogueRowsForTarget(baseline, targetId),
+  });
 }
 
 function replaceBuilderSubscene(data, targetId, subscene) {
@@ -2947,6 +3766,14 @@ function updateDirtyIndicators() {
 }
 
 function editorGuardForPage(page = activePageName()) {
+  if (page === "universe-settings" && universeSettingsArtStyle.value !== state.savedUniverseArtStyle) {
+    return {
+      name: "Universe settings",
+      autosave: false,
+      save: saveUniverseSettings,
+      discard: () => { universeSettingsArtStyle.value = state.savedUniverseArtStyle; },
+    };
+  }
   if (page === "stories" && state.storyDetail && storySnapshot() !== state.savedBaselines.story) {
     return {
       name: "story",
@@ -2961,10 +3788,18 @@ function editorGuardForPage(page = activePageName()) {
       discard: () => { state.savedBaselines.scene = sceneSnapshot(); },
     };
   }
+  if (page === "auxiliary-resources" && entityLibraryCurrentView === "detail" && entityLibrarySelectedAsset
+    && entityLibraryEditorSnapshot() !== entityLibrarySavedSnapshot) {
+    return {
+      name: "image details",
+      save: async () => { await saveEntityLibraryAsset(); return true; },
+      discard: () => applyEntityLibraryEditorSnapshot(JSON.parse(entityLibrarySavedSnapshot || "{}")),
+    };
+  }
   if (page === "scene-builder" && state.sceneBuilder && sceneBuilderSnapshot() !== state.savedBaselines.sceneBuilder) {
     return {
       name: "Scene Builder",
-      save: async () => Boolean(await saveSceneBuilder()),
+      save: async () => Boolean(await saveSceneBuilder({ fullScene: true })),
       discard: () => { state.savedBaselines.sceneBuilder = sceneBuilderSnapshot(); },
     };
   }
@@ -3125,17 +3960,29 @@ async function openTemplateManual(manualId) {
 }
 
 async function activatePage(page, options = {}) {
+  const retiredPage = ["render-console", "render-review"].includes(page);
+  const retiredRoute = new URLSearchParams(window.location.search);
+  page = canonicalDashboardPage(page);
+  if (PRODUCTION_PAGES.has(page) && state.workspace !== "story") {
+    state.workspace = "story";
+    applyWorkspaceChrome();
+    if (!state.stories.length) await loadStories();
+  }
   state.navigationRequest += 1;
+  const hasRequestedLocalBatch = LOCAL_ASSET_PAGES.has(page)
+    && Boolean(new URLSearchParams(window.location.search).get("local_batch"));
+  const phaseReady = LOCAL_ASSET_PAGES.has(page) ? selectedLocalPhaseReady() : selectedPhaseReady();
   if (
-    !selectedPhaseReady()
+    !phaseReady
+    && !hasRequestedLocalBatch
     && ((state.workspace === "character"
       && ((CHARACTER_PAGES.has(page) && !["onboarding", "phase-comparison"].includes(page)) || PRODUCTION_PAGES.has(page)))
       || LOCAL_ASSET_PAGES.has(page))
   ) {
-    page = state.workspace === "local" ? "local-overview" : "onboarding";
+    page = "onboarding";
   }
   if (!options.skipAutosave && !(await saveBeforePageNavigation(page))) {
-    characterProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
+    if (characterProductionMenu) characterProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
     storyProductionMenu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
     return false;
   }
@@ -3144,12 +3991,15 @@ async function activatePage(page, options = {}) {
   for (const button of document.querySelectorAll(".tab")) {
     button.classList.toggle("active", button.dataset.page === page);
   }
-  characterProductionMenu.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "character");
+  if (characterProductionMenu) characterProductionMenu.classList.toggle("active", false);
   storyProductionMenu.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "story");
-  characterProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "character" ? page : "";
+  if (characterProductionMenu) characterProductionMenu.value = "";
   storyProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "story" ? page : "";
   document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding" || page === "local-overview");
-  document.querySelector("#assets-page").classList.toggle("active", page === "assets");
+  document.querySelector("#universes-page").classList.toggle("active", page === "universes");
+  document.querySelector("#universe-create-page").classList.toggle("active", page === "universe-create");
+  document.querySelector("#universe-settings-page").classList.toggle("active", page === "universe-settings");
+  document.querySelector("#assets-page").classList.toggle("active", false);
   document.querySelector("#manifest-page").classList.toggle("active", page === "manifest");
   document.querySelector("#prompt-review-page").classList.toggle("active", page === "prompt-review");
   document.querySelector("#render-review-page").classList.toggle("active", page === "render-review");
@@ -3163,9 +4013,11 @@ async function activatePage(page, options = {}) {
   document.querySelector("#stories-page").classList.toggle("active", page === "stories");
   document.querySelector("#scenes-page").classList.toggle("active", page === "scenes");
   document.querySelector("#scene-candidates-page").classList.toggle("active", page === "scene-candidates");
+  document.querySelector("#scene-batches-page").classList.toggle("active", page === "scene-batches");
   document.querySelector("#zine-page").classList.toggle("active", page === "zine");
   document.querySelector("#scene-builder-page").classList.toggle("active", page === "scene-builder");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
+  document.querySelector("#image-generation-page").classList.toggle("active", page === "image-generation");
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#pipeline-inspection-page").classList.toggle("active", page === "pipeline-inspection");
@@ -3176,7 +4028,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#local-pipeline-page").classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
   document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview" && page !== "local-batch-status");
   document.querySelector("#local-batch-status-page").classList.toggle("active", page === "local-batch-status");
-  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page) || page === "local-batch-status");
+  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
   if (LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
       "local-body-reference": "Body-Reference",
@@ -3210,6 +4062,10 @@ async function activatePage(page, options = {}) {
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
   try {
+  if (page === "image-generation") {
+    setImageGenerationMode(imageGenerationMode);
+    await loadImageGenerationOptions();
+  }
   if (page === "prompt-review") {
     await loadPromptReviewTasks(options.preferredAskId || null);
   }
@@ -3226,14 +4082,7 @@ async function activatePage(page, options = {}) {
     await loadIdentityKeys();
   }
   if (page === "auxiliary-resources") {
-    await loadImageCatalogOrganization();
-    await loadImageCatalogReferenceSets();
-    if (options.preferredCatalogId) {
-      await loadImageCatalog();
-      selectImageCatalogItem(options.preferredCatalogId);
-    } else if (!state.imageCatalogLoaded) {
-      renderImageCatalogIdle();
-    }
+    await loadEntityLibraryInventory();
   }
   if (page === "phase-comparison") {
     initializePhaseComparisonControls();
@@ -3253,6 +4102,12 @@ async function activatePage(page, options = {}) {
   }
   if (page === "scenes") {
     await loadScenesPage();
+  }
+  if (page === "scene-batches") {
+    await window.SceneBatches.open({story: state.selectedStorySlug, scene: state.selectedSceneSlug, retiredPage,
+      publicationReview: retiredRoute.get("publication_review") === "1",
+      retiredAskId: options.preferredAskId || retiredRoute.get("ask_id") || "",
+      retiredTarget: options.renderTargetId || retiredRoute.get("render_target_id") || "main"});
   }
   if (page === "scene-candidates") {
     await loadSceneCandidates();
@@ -3287,6 +4142,18 @@ async function activatePage(page, options = {}) {
     renderOnboarding();
     await loadWorkspaceSummary();
   }
+  if (page === "universes") await loadUniverseList();
+  if (page === "universe-settings") {
+    try {
+      await loadUniverseSettings(options.universeId || state.universeId);
+    } catch (error) {
+      setUniverseMessage("universe-settings-message", error.message, "error");
+    }
+  }
+  if (page === "universe-create") {
+    universeCreateForm.reset();
+    setUniverseMessage("universe-create-message", "", "");
+  }
   if (page === "help") {
     await loadTemplateManuals();
   }
@@ -3301,7 +4168,7 @@ async function activatePage(page, options = {}) {
 }
 
 function setupTabs() {
-  for (const menu of [characterProductionMenu, storyProductionMenu]) {
+  for (const menu of [characterProductionMenu, storyProductionMenu].filter(Boolean)) {
     menu.addEventListener("change", async () => {
       const page = menu.value;
       if (!page) return;
@@ -3312,13 +4179,17 @@ function setupTabs() {
   for (const button of document.querySelectorAll("button.tab")) {
     button.addEventListener("click", async () => {
       if (!button.dataset.page) return;
+      closeNewMenu();
       if (button.dataset.page === "identity-keys") {
         state.identityKeyMode = "list";
       }
       closeToolbarSettingsMenu();
       closeHelpMenu();
       try {
-        const changed = await runGuardedTransition(() => activatePage(button.dataset.page, { skipAutosave: true }));
+        const changed = await runGuardedTransition(() => activatePage(button.dataset.page, {
+          skipAutosave: true,
+          universeId: button.dataset.universeId || "",
+        }));
         if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || button.dataset.page === "local-batch-status")) {
           localAssetsMenu.hidden = true;
           localAssetsButton.setAttribute("aria-expanded", "false");
@@ -3410,13 +4281,30 @@ async function loadIdentityKeys() {
     return;
   }
   identityKeyStatus.textContent = "Loading Identity Keys...";
-  const payload = await fetchJson(`/api/identity-keys?${currentQuery().toString()}`);
+  const [payload, sourcePayload] = await Promise.all([
+    fetchJson(`/api/identity-keys?${currentQuery().toString()}`),
+    fetchJson(`/api/local-asset-sources?${currentQuery().toString()}`),
+  ]);
   state.identityKeys = payload.identity_keys || [];
+  state.localAssetSources = sourcePayload.sources || [];
+  renderIdentityKeySources();
   renderIdentityKeyTable();
   identityKeyStatus.textContent = `${state.identityKeys.length} Identity Key(s)`;
   if (state.identityKeyMode === "list") {
     clearIdentityKeyUpdate();
   }
+}
+
+function renderIdentityKeySources(selected = identityKeySource.value) {
+  const options = [option("", "Select a locked local image")];
+  for (const item of state.localAssetSources) {
+    const label = [item.pipeline, item.view, item.costume].filter(Boolean).join(" · ");
+    options.push(option(item.source_key, label));
+  }
+  identityKeySource.replaceChildren(...options);
+  identityKeySource.value = state.localAssetSources.some((item) => item.source_key === selected) ? selected : "";
+  state.identityKeySourceLocalKey = identityKeySource.value || null;
+  state.identityKeySourceAssetId = null;
 }
 
 function renderIdentityKeyTable() {
@@ -3469,6 +4357,7 @@ function renderIdentityKeyTable() {
 function clearIdentityKeyUpdate() {
   state.selectedIdentityKeyId = null;
   state.identityKeySourceAssetId = null;
+  state.identityKeySourceLocalKey = null;
   state.identityKeyPreview = null;
   identityKeyTitle.textContent = "Select or create an Identity Key";
   identityKeyLabel.value = "";
@@ -3481,8 +4370,10 @@ function clearIdentityKeyUpdate() {
 
 function renderIdentityKeyUpdate(item) {
   state.identityKeyMode = "update";
-  state.identityKeySourceAssetId = Number(item.source_asset_id || 0);
-  identityKeyTitle.textContent = item.identity_key_id ? `Identity Key | ${item.label}` : `New Identity Key | Asset ${item.source_asset_id}`;
+  state.identityKeySourceLocalKey = item.source_local_key || null;
+  const source = state.localAssetSources.find((candidate) => candidate.source_key === state.identityKeySourceLocalKey);
+  identityKeySource.value = source?.source_key || "";
+  identityKeyTitle.textContent = item.identity_key_id ? `Identity Key | ${item.label}` : `New Identity Key | ${item.label || "Local source"}`;
   identityKeyLabel.value = item.label || "";
   identityKeyPercent.value = item.crop_percent || 100;
   renderReviewImage(
@@ -3502,8 +4393,8 @@ function renderIdentityKeyUpdate(item) {
     "Identity Key crop",
     item.updated_at || Date.now().toString(),
   );
-  identityKeyCreatePreview.disabled = !state.identityKeySourceAssetId;
-  identityKeySave.disabled = !state.identityKeySourceAssetId;
+  identityKeyCreatePreview.disabled = !source;
+  identityKeySave.disabled = !source;
 }
 
 async function selectIdentityKey(identityKeyId) {
@@ -3513,14 +4404,16 @@ async function selectIdentityKey(identityKeyId) {
   }
   state.selectedIdentityKeyId = identityKeyId;
   state.identityKeySourceAssetId = item.source_asset_id;
+  state.identityKeySourceLocalKey = item.source_local_key || null;
+  identityKeySource.value = state.identityKeySourceLocalKey || "";
   state.identityKeyPreview = null;
   renderIdentityKeyTable();
   renderIdentityKeyUpdate(item);
 }
 
 async function createIdentityKeyPreview() {
-  const sourceAssetId = state.identityKeySourceAssetId;
-  if (!sourceAssetId) {
+  const sourceLocalKey = state.identityKeySourceLocalKey;
+  if (!sourceLocalKey) {
     return;
   }
   showIdentityKeyMessage("Creating Identity Key preview...");
@@ -3530,7 +4423,7 @@ async function createIdentityKeyPreview() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source_asset_id: sourceAssetId,
+        source_local_key: sourceLocalKey,
         identity_key_id: state.selectedIdentityKeyId,
         label: identityKeyLabel.value || "",
         crop_percent: Number(identityKeyPercent.value || 0),
@@ -3540,7 +4433,7 @@ async function createIdentityKeyPreview() {
     const item = state.selectedIdentityKeyId
       ? state.identityKeys.find((key) => key.identity_key_id === state.selectedIdentityKeyId)
       : {
-          source_asset_id: sourceAssetId,
+          source_local_key: sourceLocalKey,
           source_image_path: payload.preview?.source_image_path,
           label: identityKeyLabel.value || "",
           crop_percent: Number(identityKeyPercent.value || 0),
@@ -3550,13 +4443,13 @@ async function createIdentityKeyPreview() {
   } catch (error) {
     showIdentityKeyMessage(error.message, "error");
   } finally {
-    identityKeyCreatePreview.disabled = !state.identityKeySourceAssetId;
+    identityKeyCreatePreview.disabled = !state.identityKeySourceLocalKey;
   }
 }
 
 async function saveIdentityKey() {
-  const sourceAssetId = state.identityKeySourceAssetId;
-  if (!sourceAssetId) {
+  const sourceLocalKey = state.identityKeySourceLocalKey;
+  if (!sourceLocalKey) {
     return;
   }
   showIdentityKeyMessage("Saving Identity Key...");
@@ -3566,7 +4459,7 @@ async function saveIdentityKey() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source_asset_id: sourceAssetId,
+        source_local_key: sourceLocalKey,
         identity_key_id: state.selectedIdentityKeyId,
         label: identityKeyLabel.value || "",
         crop_percent: Number(identityKeyPercent.value || 0),
@@ -3581,7 +4474,7 @@ async function saveIdentityKey() {
   } catch (error) {
     showIdentityKeyMessage(error.message, "error");
   } finally {
-    identityKeySave.disabled = !state.identityKeySourceAssetId;
+    identityKeySave.disabled = !state.identityKeySourceLocalKey;
   }
 }
 
@@ -3624,7 +4517,7 @@ async function loadCostumes() {
 function renderCostumeTable() {
   costumeTableBody.replaceChildren();
   if (!state.costumes.length) {
-    renderEmptyRow(costumeTableBody, 4, "No costumes exist for this character and phase.");
+    renderEmptyRow(costumeTableBody, 3, "No costumes exist for this character and phase.");
     return;
   }
   for (const costume of state.costumes) {
@@ -3633,8 +4526,6 @@ function renderCostumeTable() {
     row.classList.toggle("selected", costume.slug === state.selectedCostumeSlug);
     const nameCell = document.createElement("td");
     nameCell.textContent = costume.name || "";
-    const countCell = document.createElement("td");
-    countCell.textContent = costume.asset_count ?? 0;
     const pathCell = document.createElement("td");
     pathCell.textContent = basename(costume.path || "");
     pathCell.title = costume.path || "";
@@ -3652,7 +4543,7 @@ function renderCostumeTable() {
       }
     });
     actionCell.append(openButton);
-    row.append(nameCell, countCell, pathCell, actionCell);
+    row.append(nameCell, pathCell, actionCell);
     makeSelectableRow(row, costume.name || costume.slug, costume.slug === state.selectedCostumeSlug, () => selectCostume(costume.slug));
     costumeTableBody.append(row);
   }
@@ -3690,6 +4581,7 @@ function renderCostumeEditor() {
   costumeCreate.textContent = isUpdate ? "Update Costume" : "Save Costume";
   costumeTemplateFileWrap.hidden = isUpdate;
   costumePreviewSection.hidden = !isUpdate;
+  costumeDelete.hidden = !isUpdate;
   if (isUpdate) {
     renderReviewImage(
       costumePreview,
@@ -3699,6 +4591,29 @@ function renderCostumeEditor() {
       "Locked costume turnaround",
       costume.path || costume.name || "",
     );
+  }
+}
+
+async function deleteSelectedCostume() {
+  const costume = selectedCostume();
+  if (!costume || !state.character || !state.phase) return;
+  if (!window.confirm(`Move ${costume.name} and all of its templates and character assets to the library deleted folder?`)) return;
+  costumeDelete.disabled = true;
+  showCostumeMessage("Moving costume to deleted storage...");
+  try {
+    const payload = await fetchJson(`/api/costumes/${encodeURIComponent(costume.slug)}?${currentQuery().toString()}`, { method: "DELETE" });
+    state.costumes = payload.costumes || [];
+    state.selectedCostumeSlug = null;
+    costumeName.value = "";
+    costumeTemplateFile.value = "";
+    renderCostumeTable();
+    renderCostumeEditor();
+    showCostumeMessage(payload.message || "Costume moved to deleted storage.");
+    await loadAssets();
+  } catch (error) {
+    showCostumeMessage(error.message, "error");
+  } finally {
+    costumeDelete.disabled = false;
   }
 }
 
@@ -3749,6 +4664,300 @@ async function saveCostume() {
     costumeCreate.disabled = false;
   }
 }
+
+function showCostumeWizardMessage(message, kind = "info") {
+  costumeWizardMessage.hidden = !message;
+  costumeWizardMessage.textContent = message || "";
+  costumeWizardMessage.className = `action-message ${kind}`.trim();
+}
+
+function setCostumeWizardSession(session) {
+  state.costumeWizard = session;
+  costumeWizardContext.textContent = `${session.character} / ${session.phase} · ${session.status || "Draft"}`;
+  costumeWizardIntake.hidden = Boolean(session.markdown || session.session_id);
+  costumeWizardWorkspace.hidden = !session.session_id;
+  costumeWizardMarkdown.value = session.markdown || "";
+  const draftReview = [session.draft_review || "", ...(session.refinements || []).map((item) => `Suggested refinement: ${item}`)]
+    .filter(Boolean).join("\n\n");
+  costumeWizardReview.hidden = !draftReview;
+  costumeWizardReview.textContent = draftReview;
+  const errors = session.validation_errors || [];
+  costumeWizardErrors.hidden = !errors.length;
+  costumeWizardErrors.textContent = errors.join("\n");
+  costumeWizardQuestions.replaceChildren();
+  const questions = session.questions || [];
+  questions.forEach((question, index) => {
+    const label = document.createElement("label");
+    label.textContent = question;
+    const input = document.createElement("textarea");
+    input.rows = 2;
+    input.dataset.questionIndex = String(index);
+    label.append(input);
+    costumeWizardQuestions.append(label);
+  });
+  costumeWizardAnswer.hidden = !questions.length;
+  costumeWizardGenerate.hidden = !(session.status === "FAILED" && !session.markdown);
+  const running = session.job?.status === "RUNNING";
+  costumeWizardGenerate.disabled = running;
+  costumeWizardTestResult.replaceChildren();
+  const renders = session.test_renders || [];
+  costumeWizardTestResult.hidden = !renders.length;
+  renders.forEach((render, index) => {
+    const card = document.createElement("article");
+    const heading = document.createElement("strong");
+    heading.textContent = `Front test ${index + 1}${render.revision_id === session.revision_id ? " · current draft" : " · earlier draft"}`;
+    const image = document.createElement("img");
+    image.src = `${render.image_url}?v=${encodeURIComponent(render.render_id)}`;
+    image.alt = `Costume Wizard front test render ${index + 1}`;
+    const review = document.createElement("p");
+    review.textContent = render.review || "The test render is ready for review.";
+    card.append(heading, image, review);
+    if ((render.refinements || []).length) {
+      const suggestions = document.createElement("p");
+      suggestions.textContent = `Suggested refinements:\n${render.refinements.map((item) => `• ${item}`).join("\n")}`;
+      card.append(suggestions);
+    }
+    costumeWizardTestResult.append(card);
+  });
+  costumeWizardMarkdown.disabled = running;
+  costumeWizardCreate.disabled = running;
+  costumeWizardAnswer.disabled = running;
+  costumeWizardSave.disabled = running || !session.markdown;
+  costumeWizardTest.disabled = running || !session.markdown;
+  costumeWizardAccept.disabled = running || !session.markdown || errors.length > 0;
+  costumeWizardRefine.disabled = running || !session.markdown;
+  costumeWizardAbandon.disabled = session.status === "ACCEPTED" || session.status === "ABANDONED";
+  if (running) {
+    showCostumeWizardMessage(`${session.job?.kind === "render" ? "Rendering and reviewing" : "Analyzing references and drafting"}…`);
+    scheduleCostumeWizardPoll(session.session_id);
+  } else if (session.job?.status === "FAILED") {
+    showCostumeWizardMessage(session.job.error || "The wizard task failed. Review the draft and retry.", "error");
+  } else if (session.status === "NEEDS_INPUT") {
+    showCostumeWizardMessage("Answer the questions below to continue drafting.");
+  } else if (session.markdown && !errors.length) {
+    showCostumeWizardMessage("Draft is ready. Save, test, or accept this revision.");
+  }
+}
+
+function scheduleCostumeWizardPoll(sessionId) {
+  clearTimeout(costumeWizardPollTimer);
+  costumeWizardPollTimer = setTimeout(async () => {
+    try {
+      const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(sessionId)}`);
+      setCostumeWizardSession(payload.session);
+    } catch (error) {
+      showCostumeWizardMessage(error.message, "error");
+    }
+  }, 1800);
+}
+
+async function loadCostumeWizardSessions() {
+  const params = currentQuery();
+  const payload = await fetchJson(`/api/costume-wizard?${params.toString()}`);
+  costumeWizardResume.replaceChildren(option("", "New costume draft"));
+  for (const session of payload.sessions || []) {
+    costumeWizardResume.append(option(session.session_id, `${session.name} · ${session.status}`));
+  }
+}
+
+function clearCostumeWizardIntake() {
+  costumeWizardName.value = "";
+  costumeWizardExtra.value = "";
+  for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
+    slot.querySelector(".costume-wizard-file").value = "";
+    slot.querySelector(".costume-wizard-caption").value = "";
+    slot.querySelector(".costume-wizard-preview").removeAttribute("src");
+    slot.querySelector(".costume-wizard-preview").hidden = true;
+  }
+  state.costumeWizard = null;
+  costumeWizardWorkspace.hidden = true;
+  costumeWizardIntake.hidden = false;
+}
+
+async function openCostumeWizard() {
+  clearCostumeWizardIntake();
+  costumeWizardContext.textContent = `${state.character || ""} / ${state.phase || ""}`;
+  showCostumeWizardMessage("");
+  costumeWizardDialog.showModal();
+  try {
+    await loadCostumeWizardSessions();
+  } catch (error) {
+    showCostumeWizardMessage(error.message, "error");
+  }
+}
+
+async function resumeCostumeWizard() {
+  const sessionId = costumeWizardResume.value;
+  if (!sessionId) return;
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(sessionId)}`);
+    costumeWizardIntake.hidden = true;
+    costumeWizardName.value = payload.session.name || "";
+    setCostumeWizardSession(payload.session);
+  } catch (error) {
+    showCostumeWizardMessage(error.message, "error");
+  }
+}
+
+async function createCostumeWizardDraft() {
+  const name = costumeWizardName.value.trim();
+  if (!name) return showCostumeWizardMessage("Costume name is required.", "error");
+  const form = new FormData();
+  form.set("name", name);
+  form.set("extra_info", costumeWizardExtra.value);
+  let count = 0;
+  for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
+    const file = slot.querySelector(".costume-wizard-file").files?.[0];
+    const caption = slot.querySelector(".costume-wizard-caption").value.trim();
+    if (file) {
+      count += 1;
+      if (!caption) return showCostumeWizardMessage(`Describe what reference image ${slot.dataset.slot} conveys.`, "error");
+      form.set(`image_${slot.dataset.slot}`, file, file.name);
+      form.set(`caption_${slot.dataset.slot}`, caption);
+    }
+  }
+  if (!count) return showCostumeWizardMessage("Add at least one reference image.", "error");
+  costumeWizardCreate.disabled = true;
+  try {
+    const params = currentQuery();
+    const payload = await fetchJson(`/api/costume-wizard?${params.toString()}`, { method: "POST", body: form });
+    costumeWizardIntake.hidden = true;
+    costumeWizardName.value = payload.session.name || name;
+    setCostumeWizardSession(payload.session);
+    await loadCostumeWizardSessions();
+  } catch (error) {
+    showCostumeWizardMessage(error.message, "error");
+    costumeWizardCreate.disabled = false;
+  }
+}
+
+async function submitCostumeWizardAnswers() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  const answers = Array.from(costumeWizardQuestions.querySelectorAll("textarea[data-question-index]"))
+    .map((input) => ({ question: session.questions[Number(input.dataset.questionIndex)], answer: input.value.trim() }));
+  if (answers.some((item) => !item.answer)) return showCostumeWizardMessage("Answer each question to continue.", "error");
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/answers`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }),
+    });
+    setCostumeWizardSession(payload.session);
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function retryCostumeWizardDraft() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/generate`, { method: "POST" });
+    setCostumeWizardSession(payload.session);
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function saveCostumeWizardDraft() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/draft`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: session.revision_id, markdown: costumeWizardMarkdown.value }),
+    });
+    setCostumeWizardSession(payload.session);
+    showCostumeWizardMessage("Draft saved.");
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function testCostumeWizardDraft() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    if (costumeWizardMarkdown.value !== session.markdown) await saveCostumeWizardDraft();
+    const current = state.costumeWizard;
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(current.session_id)}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: current.revision_id }),
+    });
+    setCostumeWizardSession(payload.session);
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function applyCostumeWizardRefinements() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/refine`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: session.revision_id, instructions: costumeWizardRefinement.value }),
+    });
+    setCostumeWizardSession(payload.session);
+    costumeWizardRefinement.value = "";
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function acceptCostumeWizardDraft() {
+  const session = state.costumeWizard;
+  if (!session) return;
+  try {
+    if (costumeWizardMarkdown.value !== session.markdown) await saveCostumeWizardDraft();
+    const current = state.costumeWizard;
+    const payload = await fetchJson(`/api/costume-wizard/${encodeURIComponent(current.session_id)}/accept`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision_id: current.revision_id }),
+    });
+    state.costumes = payload.costumes || state.costumes;
+    state.selectedCostumeSlug = payload.costume?.slug || null;
+    renderCostumeTable();
+    renderCostumeEditor();
+    costumeWizardDialog.close();
+    showCostumeMessage(payload.message || "Costume accepted.");
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+async function abandonCostumeWizard() {
+  const session = state.costumeWizard;
+  if (!session) { costumeWizardDialog.close(); return; }
+  try {
+    await fetchJson(`/api/costume-wizard/${encodeURIComponent(session.session_id)}/abandon`, { method: "POST" });
+    clearTimeout(costumeWizardPollTimer);
+    costumeWizardDialog.close();
+    showCostumeMessage("Costume Wizard draft abandoned.");
+  } catch (error) { showCostumeWizardMessage(error.message, "error"); }
+}
+
+for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
+  const fileInput = slot.querySelector(".costume-wizard-file");
+  const pasteZone = slot.querySelector(".costume-wizard-paste");
+  const preview = slot.querySelector(".costume-wizard-preview");
+  const showPreview = (file) => {
+    if (!file) return;
+    preview.src = URL.createObjectURL(file);
+    preview.hidden = false;
+  };
+  fileInput.addEventListener("change", () => showPreview(fileInput.files?.[0]));
+  pasteZone.addEventListener("click", () => pasteZone.focus());
+  pasteZone.addEventListener("paste", (event) => {
+    const item = Array.from(event.clipboardData?.items || []).find((entry) => entry.type.startsWith("image/"));
+    const file = item?.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([file], `pasted-costume-${slot.dataset.slot}.png`, { type: file.type || "image/png" }));
+    fileInput.files = transfer.files;
+    showPreview(fileInput.files[0]);
+  });
+}
+
+costumeWizardOpen.addEventListener("click", openCostumeWizard);
+costumeWizardClose.addEventListener("click", () => { clearTimeout(costumeWizardPollTimer); costumeWizardDialog.close(); });
+costumeWizardResumeButton.addEventListener("click", resumeCostumeWizard);
+costumeWizardCreate.addEventListener("click", createCostumeWizardDraft);
+costumeWizardGenerate.addEventListener("click", retryCostumeWizardDraft);
+costumeWizardAnswer.addEventListener("click", submitCostumeWizardAnswers);
+costumeWizardSave.addEventListener("click", saveCostumeWizardDraft);
+costumeWizardTest.addEventListener("click", testCostumeWizardDraft);
+costumeWizardRefine.addEventListener("click", applyCostumeWizardRefinements);
+costumeWizardAccept.addEventListener("click", acceptCostumeWizardDraft);
+costumeWizardAbandon.addEventListener("click", abandonCostumeWizard);
 
 function sceneAppearanceReferenceLines(references) {
   return (references || []).map((item) => `${item.role || ""} | ${item.label || ""} | ${item.tag || ""}`).join("\n");
@@ -4837,6 +6046,8 @@ async function selectStoryScene(storySlug, sceneSlug = null, options = {}) {
       });
     } else if (activePageName() === "scene-builder" && nextScene) {
       await openSceneBuilder(options.renderTargetId || state.activeBuilderRenderTarget || "main");
+    } else if (activePageName() === "scene-batches") {
+      await window.SceneBatches.open({story: nextStory, scene: nextScene});
     } else if (PRODUCTION_PAGES.has(activePageName())) {
       await reloadActiveProductionPage();
     }
@@ -5041,27 +6252,7 @@ async function deleteScene() {
 }
 
 async function stageSceneRender() {
-  if (!state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
-    showSceneMessage("Wait for the requested scene to finish loading before staging a render.", "error");
-    return;
-  }
-  sceneStageRender.disabled = true;
-  sceneSave.disabled = true;
-  sceneBuilderOpen.disabled = true;
-  showSceneMessage("Staging scene render...");
-  try {
-    const payload = await fetchJson(
-      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/stage-render`,
-      { method: "POST" },
-    );
-    const askId = payload.task?.ask_id || null;
-    showSceneMessage(payload.message || "Scene render staged.");
-    await activatePage("render-console", { skipAutosave: true, preferredAskId: askId });
-  } catch (error) {
-    showSceneMessage(error.message, "error");
-  } finally {
-    updateSceneContextControls();
-  }
+  await activatePage("scene-batches");
 }
 
 function toggleSceneImage() {
@@ -5448,16 +6639,35 @@ function builderSelectedElement() {
 }
 
 async function restartZetFromToolbar() {
+  const returnUrl = window.location.href;
   toolbarRestartZet.disabled = true;
   toolbarRestartZet.textContent = "…";
   toolbarRestartZet.title = "Restarting Zet…";
+  toolbarRestartZet.setAttribute("aria-label", "Restarting Zet; waiting for server readiness");
   try {
     await fetchJson("/api/processes/restart-zet", { method: "POST" });
-    window.setTimeout(() => window.location.reload(), 2200);
+    const deadline = Date.now() + 120000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 800));
+      try {
+        const response = await fetch("/api/health", { cache: "no-store" });
+        if (response.ok) {
+          const health = await response.json();
+          if (health.ready && health.catalog_reconciliation?.running) {
+            toolbarRestartZet.title = "Zet is available; catalog reconciliation is still running…";
+          } else if (health.ready) {
+            window.location.replace(returnUrl);
+            return;
+          }
+        }
+      } catch { /* The listener is still restarting. */ }
+    }
+    throw new Error("Zet has not reported ready yet. Retry the page after startup finishes.");
   } catch (error) {
     toolbarRestartZet.disabled = false;
     toolbarRestartZet.textContent = "♻";
     toolbarRestartZet.title = error.message;
+    toolbarRestartZet.setAttribute("aria-label", "Restart Zet");
   }
 }
 
@@ -5554,31 +6764,6 @@ function builderElementIsEditable(element) {
   return state.activeBuilderRenderTarget === "main" || element?.subscene_id === state.activeBuilderRenderTarget;
 }
 
-function builderMainRenderBlocker() {
-  if (state.activeBuilderRenderTarget !== "main") return "";
-  return builderTargetRenderBlocker("main");
-}
-
-function builderTargetRenderBlocker(targetId = state.activeBuilderRenderTarget || "main") {
-  const enabled = new Set(builderTargetChildren(targetId).filter((item) => item.enabled).map((item) => item.id));
-  const blocked = (state.sceneBuilderRenderTargets || []).find(
-    (item) => enabled.has(item.render_target_id) && !item.locked_exists,
-  );
-  return blocked ? `${blocked.render_target_label}: ${blocked.stale_reason || "A current locked image is required."}` : "";
-}
-
-function builderTargetStaleWarning(targetId = state.activeBuilderRenderTarget || "main") {
-  const enabled = new Set(builderTargetChildren(targetId).filter((item) => item.enabled).map((item) => item.id));
-  const stale = (state.sceneBuilderRenderTargets || []).find(
-    (item) => enabled.has(item.render_target_id) && item.locked_exists && !item.locked_current,
-  );
-  return stale ? `${stale.render_target_label}: ${stale.stale_reason || "The locked image may be out of date."}` : "";
-}
-
-function builderAllowsStaleDependencies(targetId = state.activeBuilderRenderTarget || "main") {
-  return state.builderAllowStaleTarget === targetId;
-}
-
 function builderElementOptions(selected = "") {
   const activeSubscene = builderActiveSubscene();
   const elements = (state.sceneBuilder?.scene_elements || []).filter(
@@ -5588,6 +6773,65 @@ function builderElementOptions(selected = "") {
     const value = element.id || "";
     return `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(element.display_name || value)}</option>`;
   }).join("");
+}
+
+function builderAllElementOptions(selected = "") {
+  return `<option value=""></option>` + (state.sceneBuilder?.scene_elements || []).map((element) => {
+    const value = element.id || "";
+    return `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(element.display_name || value)}</option>`;
+  }).join("");
+}
+
+function builderDialogueTarget(dialogue) {
+  return dialogue?.subscene_id || "main";
+}
+
+function builderDialogueRowsForTarget(data, targetId) {
+  return (data?.dialogue || []).map((item, index) => ({ item, index }))
+    .filter(({ item }) => targetId === "main" || builderDialogueTarget(item) === targetId);
+}
+
+function builderDialogueChanges(current, baseline) {
+  const now = current?.dialogue || [];
+  const before = baseline?.dialogue || [];
+  const key = (item) => JSON.stringify(item);
+  const rows = Array.from({ length: before.length + 1 }, () => Array(now.length + 1).fill(0));
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    for (let j = now.length - 1; j >= 0; j -= 1) {
+      rows[i][j] = key(before[i]) === key(now[j])
+        ? rows[i + 1][j + 1] + 1
+        : Math.max(rows[i + 1][j], rows[i][j + 1]);
+    }
+  }
+  const matchedBefore = new Set();
+  const matchedNow = new Set();
+  let i = 0;
+  let j = 0;
+  while (i < before.length && j < now.length) {
+    if (key(before[i]) === key(now[j])) {
+      matchedBefore.add(i); matchedNow.add(j); i += 1; j += 1;
+    } else if (rows[i + 1][j] >= rows[i][j + 1]) i += 1;
+    else j += 1;
+  }
+  const remainingBefore = before.map((_, index) => index).filter((index) => !matchedBefore.has(index));
+  const remainingNow = now.map((_, index) => index).filter((index) => !matchedNow.has(index));
+  const upserts = [];
+  remainingNow.forEach((currentIndex, offset) => {
+    const originalIndex = remainingBefore[offset];
+    upserts.push({ index: originalIndex ?? before.length + currentIndex - remainingNow[0], dialogue: now[currentIndex] });
+  });
+  return {
+    upserts,
+    delete_indices: remainingBefore.slice(remainingNow.length),
+  };
+}
+
+function builderDialogueTargetOptions(selected = "main") {
+  const main = `<option value=""${selected === "main" ? " selected" : ""}>Full Scene</option>`;
+  const targets = (state.sceneBuilder?.subscenes || []).map((item) =>
+    `<option value="${escapeHtml(item.id)}"${selected === item.id ? " selected" : ""}>${escapeHtml(item.name || item.id)}</option>`
+  ).join("");
+  return main + targets;
 }
 
 function builderElementLabel(elementId) {
@@ -5622,7 +6866,9 @@ function builderSyncControls() {
   for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-field]")) {
     setPathValue(state.sceneBuilder, control.dataset.builderField, control.type === "number" ? Number(control.value || 0) : control.value);
   }
+  const changedDialogueSpeakers = new Set();
   const element = builderSelectedElement();
+  const previousElementSubscene = element?.subscene_id || "";
   if (element) {
     for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-element-field]")) {
       const field = control.dataset.builderElementField;
@@ -5650,10 +6896,28 @@ function builderSyncControls() {
         }
       }
     }
+    if (element.subscene_id !== previousElementSubscene) {
+      for (const dialogue of state.sceneBuilder.dialogue || []) {
+        if (dialogue.speaker_element_id === element.id) {
+          dialogue.subscene_id = element.subscene_id || "";
+          changedDialogueSpeakers.add(dialogue);
+        }
+      }
+    }
     for (const control of sceneBuilderPanel.querySelectorAll("[data-builder-reference-field]")) {
       const reference = (element.reference_images || [])[Number(control.dataset.builderReferenceIndex)];
       if (!reference) continue;
       const field = control.dataset.builderReferenceField;
+      if (field === "label" && control.readOnly) continue;
+      if (field === "primary_prompt_source") {
+        reference[field] = control.checked;
+        if (control.checked) {
+          (element.reference_images || []).forEach((other, otherIndex) => {
+            if (otherIndex !== Number(control.dataset.builderReferenceIndex)) other.primary_prompt_source = false;
+          });
+        }
+        continue;
+      }
       reference[field] = ["roles", "preserve", "change", "ignore"].includes(field)
         ? control.value.split(",").map((value) => value.trim()).filter(Boolean)
         : control.value;
@@ -5673,12 +6937,21 @@ function builderSyncControls() {
     const dialogue = state.sceneBuilder.dialogue[Number(control.dataset.builderDialogue)];
     if (dialogue) {
       const field = control.dataset.builderDialogueField;
+      if (field === "speaker_element_id" && dialogue[field] !== control.value) {
+        changedDialogueSpeakers.add(dialogue);
+      }
+      if (field === "subscene_id" && !control.value && !Object.hasOwn(dialogue, field)) continue;
+      if (field === "panel_placement" && control.value === "auto" && !Object.hasOwn(dialogue, field)) continue;
       if (field === "max_lines") {
         dialogue[field] = Number(control.value || 0);
       } else {
         dialogue[field] = control.value;
       }
     }
+  }
+  for (const dialogue of changedDialogueSpeakers) {
+    const speaker = (state.sceneBuilder.scene_elements || []).find((item) => item.id === dialogue.speaker_element_id);
+    dialogue.subscene_id = speaker?.subscene_id || "";
   }
   const placement = builderSelectedPlacement();
   if (placement) {
@@ -5731,7 +7004,11 @@ function builderApplyChange(event) {
     changedElement.costume = "";
     changedElement.reference_images = [];
   }
-  if (event?.target?.id === "builder-composition-element" || event?.target?.matches("input, textarea") || changedField === "subscene_id") {
+  if (event?.target?.id === "builder-composition-element" || event?.target?.matches("input, textarea")) {
+    return;
+  }
+  if (changedField === "subscene_id") {
+    renderSceneBuilder();
     return;
   }
   renderSceneBuilder();
@@ -5773,7 +7050,7 @@ function builderAuxCategoryForResourceType(resourceType) {
 
 function builderElementTypeForResourceType(resourceType) {
   if (resourceType === "Place") return "Backdrop";
-  if (resourceType === "Object" || resourceType === "Scene-Only") return "Prop";
+  if (resourceType === "Object" || resourceType === "Scene-Only" || resourceType === "Subscene") return "Prop";
   return "Character";
 }
 
@@ -5782,6 +7059,7 @@ function builderUpdateElementModalSections() {
   builderElementCharacterSection.hidden = resourceType !== "Character";
   builderElementAuxSection.hidden = !builderAuxCategoryForResourceType(resourceType);
   builderElementSceneSection.hidden = resourceType !== "Scene-Only";
+  builderElementSubsceneSection.hidden = resourceType !== "Subscene";
 }
 
 async function builderLoadElementCostumes() {
@@ -5865,12 +7143,18 @@ async function createBuilderElementAuxResource() {
 }
 
 async function openBuilderElementDialog() {
-  setSelectOptionsWithLabels(builderElementResourceType, (state.sceneBuilderOptions.resource_type || []).map((item) => ({ value: item.value, label: item.label })));
+  setSelectOptionsWithLabels(builderElementResourceType, [
+    ...(state.sceneBuilderOptions.resource_type || []).map((item) => ({ value: item.value, label: item.label })),
+    { value: "Subscene", label: "Subscene" },
+  ]);
   builderElementResourceType.value = "Character";
-  setSelectOptions(builderElementCharacter, state.characters || []);
-  builderElementCharacter.value = state.character || state.characters[0] || "";
+  setSelectOptionsWithLabels(builderElementCharacter, [
+    { value: "", label: "(No linked character)" },
+    ...(state.characters || []).map((name) => ({ value: name, label: name })),
+  ]);
+  builderElementCharacter.value = "";
   setSelectOptions(builderElementPhase, state.phasesByCharacter[builderElementCharacter.value] || []);
-  builderElementPhase.value = state.phase || builderElementPhase.options[0]?.value || "";
+  builderElementPhase.value = "";
   builderElementSceneName.value = "";
   closeBuilderElementAuxForm();
   builderUpdateElementModalSections();
@@ -5880,29 +7164,28 @@ async function openBuilderElementDialog() {
   builderElementResourceType.focus();
 }
 
-function builderAddElementFromDialog() {
+async function builderAddElementFromDialog() {
   const index = (state.sceneBuilder.scene_elements || []).length + 1;
   const resourceType = builderElementResourceType.value || "Character";
+  const isSubscene = resourceType === "Subscene";
   const category = builderAuxCategoryForResourceType(resourceType);
   const resource = category ? (state.builderElementAuxResources[category] || []).find((item) => item.resource_id === builderElementAux.value) : null;
-  const displayName = resourceType === "Character"
-    ? builderElementCharacter.value
-    : resourceType === "Scene-Only"
-      ? builderElementSceneName.value.trim()
-      : resource?.label || "";
+  const displayName = builderElementSceneName.value.trim() || (resourceType === "Character" ? builderElementCharacter.value : resource?.label || "");
   if (!displayName) {
     showSceneBuilderMessage("Display name is required.", "error");
+    builderElementSceneName.focus();
+    builderElementSceneName.reportValidity();
     return;
   }
   const baseId = self.crypto?.randomUUID ? `${builderNormalizeId(displayName)}_${self.crypto.randomUUID().slice(0, 8)}` : `${builderNormalizeId(displayName)}_${Date.now()}`;
   const element = {
     id: index === 1 ? builderNormalizeId(displayName) : baseId,
     display_name: displayName,
-    resource_type: resourceType,
+    resource_type: isSubscene ? "Scene-Only" : resourceType,
     element_type: builderElementTypeForResourceType(resourceType),
     character: resourceType === "Character" ? builderElementCharacter.value : "",
-    phase: resourceType === "Character" ? builderElementPhase.value : "",
-    costume: resourceType === "Character" ? builderElementCostume.value : "",
+    phase: resourceType === "Character" && builderElementCharacter.value ? builderElementPhase.value : "",
+    costume: resourceType === "Character" && builderElementCharacter.value ? builderElementCostume.value : "",
     aux_category: category,
     reference_set_id: resource?.resource_id || "",
     reference_images: [],
@@ -5912,11 +7195,16 @@ function builderAddElementFromDialog() {
     subscene_id: state.activeBuilderRenderTarget === "main" ? "" : state.activeBuilderRenderTarget,
   };
   state.sceneBuilder.scene_elements.push(element);
-  state.sceneBuilder.placements.push(builderCreatePlacementForElement(element));
+  const placement = builderCreatePlacementForElement(element);
+  if (isSubscene) placement.position_within_cell = "center";
+  state.sceneBuilder.placements.push(placement);
   state.selectedBuilderElementId = element.id;
   state.selectedBuilderPlacementId = builderPlacementForElement(element.id)?.id || null;
   builderElementModal.close();
   renderSceneBuilder();
+  if (isSubscene) {
+    if (await saveSceneBuilder({ fullScene: true })) await enableSelectedElementSubscene(element.id);
+  }
 }
 
 function builderRemoveSelectedElement() {
@@ -5970,9 +7258,11 @@ function builderAddDialogue() {
   state.sceneBuilder.dialogue.push({
     id: `dialogue_${Date.now()}`,
     speaker_element_id: selectedElement?.id || "",
+    subscene_id: selectedElement?.subscene_id || "",
     text: "",
     target_element_id: "",
     pointer_target: "speaker mouth",
+    panel_placement: "auto",
     max_lines: 3,
     notes: "",
   });
@@ -5984,6 +7274,13 @@ function builderDeleteDialogue(index) {
   renderSceneBuilder();
 }
 
+function builderReferenceIdentity(reference) {
+  if (reference?.tag) return reference.tag;
+  if (reference?.asset_id) return `{{LIB:ASSET:${reference.asset_id}}}`;
+  if (reference?.reference_key) return `{{LIB:REF:${reference.reference_key}}}`;
+  return "";
+}
+
 function builderRenderElements() {
   const activeSubscene = builderActiveSubscene();
   const visibleElements = (state.sceneBuilder.scene_elements || []).filter(
@@ -5993,7 +7290,7 @@ function builderRenderElements() {
     const placement = builderPlacementForElement(element.id);
     const position = placement?.position_within_cell || "—";
     const depth = position === "None" ? "None" : placement?.depth || "—";
-    const referenceTags = (element.reference_images || []).map((item) => item.tag).filter(Boolean);
+    const referenceTags = (element.reference_images || []).map(builderReferenceIdentity).filter(Boolean);
     const linkedReferenceCount = referenceTags.filter((tag) => (state.sceneBuilderReferences || []).some((item) => item.tag === tag)).length;
     const referenceKnown = Boolean(referenceTags.length && linkedReferenceCount === referenceTags.length);
     const referenceStatus = !referenceTags.length ? "No references" : referenceKnown ? `${referenceTags.length} reference(s) linked` : `${linkedReferenceCount}/${referenceTags.length} references linked`;
@@ -6012,7 +7309,7 @@ function builderRenderElements() {
           <span class="eyebrow">Build the cast</span>
           <h4>Scene Elements</h4>
         </div>
-        <button type="button" class="primary-action" data-builder-action="add-element">Add Element</button>
+        ${activeSubscene ? "" : '<button type="button" class="primary-action" data-builder-action="add-element">Add Element</button>'}
       </div>
       ${activeSubscene ? `<label class="builder-context-toggle"><input type="checkbox" data-builder-action="toggle-context-elements"${state.showBuilderContextElements ? " checked" : ""}> Show other elements as context</label>` : ""}
       <div class="scene-builder-element-list">${rows || "<p>No elements have been added yet.</p>"}</div>
@@ -6033,6 +7330,7 @@ function builderRenderSubsceneElementsSummary() {
     <span class="eyebrow">Subscene contents</span>
     <h4>Elements rendered in ${escapeHtml(activeSubscene?.name || activeSubscene?.id || "this subscene")}</h4>
     <p>Element identity, placement, membership, and interactions are full-scene values. Edit them from Full Scene.</p>
+    <button type="button" data-builder-action="select-render-target" data-render-target-id="main">Edit elements in Full Scene</button>
     <ul class="scene-builder-subscene-element-summary">${rows || "<li>No elements are assigned to this subscene.</li>"}</ul>
   </div>`;
 }
@@ -6044,21 +7342,24 @@ function builderRenderElementEditor() {
   }
   element.reference_images = element.reference_images || [];
   const referenceEditors = element.reference_images.map((imageReference, index) => {
-    const referenceTag = imageReference.tag || "";
+    const referenceTag = builderReferenceIdentity(imageReference);
     const reference = (state.sceneBuilderReferences || []).find((item) => item.tag === referenceTag);
+    const libraryReference = !imageReference.tag && (imageReference.asset_id || imageReference.reference_key);
     const referenceThumbnail = reference?.thumbnail_path
       ? `<span class="scene-builder-reference-preview"><img class="scene-builder-reference-thumbnail fullscreen-image-trigger" src="${fileUrl(reference.thumbnail_path)}" alt="${escapeHtml(reference.label || referenceTag)}" data-story-slug="${escapeHtml(reference.story_slug || "")}" data-scene-slug="${escapeHtml(reference.scene_slug || "")}" data-candidate-pending="${reference.candidate_pending ? "true" : "false"}">${reference.candidate_pending ? `<a class="candidate-pending-overlay" href="${sceneImageReviewUrl(reference.story_slug, reference.scene_slug)}">Candidate Image Pending</a>` : ""}</span>`
       : "";
     return `<div class="scene-builder-reference-field full" data-builder-reference-row="${index}">
       ${referenceThumbnail}
       <div>
-        <label>${builderCaption(`Reference ${index + 1} tag`, "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(referenceTag)}" data-builder-reference-field="tag" data-builder-reference-index="${index}"><button type="button" data-builder-action="pick-image-tag" data-builder-reference-index="${index}">Search</button>${reference?.catalog_id ? `<button type="button" data-builder-action="open-catalog-item" data-catalog-id="${escapeHtml(reference.catalog_id)}">Edit metadata</button>` : ""}</span></label>
+        <label>${builderCaption(libraryReference ? `Reference ${index + 1} image` : `Reference ${index + 1} tag`, libraryReference ? "scene_elements[].reference_images[].asset_id" : "scene_elements[].reference_images[].tag")}<span class="inline-field"><input value="${escapeHtml(libraryReference ? (reference?.label || referenceTag) : referenceTag)}" data-builder-reference-field="${libraryReference ? "label" : "tag"}" data-builder-reference-index="${index}"${libraryReference ? " readonly" : ""}><button type="button" data-builder-action="pick-image-tag" data-builder-reference-index="${index}">Search</button>${reference?.catalog_id ? `<button type="button" data-builder-action="open-catalog-item" data-catalog-id="${escapeHtml(reference.catalog_id)}">Edit metadata</button>` : ""}</span></label>
         <label>Roles (comma-separated)<input value="${escapeHtml((imageReference.roles || []).join(", "))}" data-builder-reference-field="roles" data-builder-reference-index="${index}"></label>
+        <label class="checkbox-field"><input type="checkbox" data-builder-reference-field="primary_prompt_source" data-builder-reference-index="${index}"${imageReference.primary_prompt_source ? " checked" : ""}> Use as primary prompt source</label>
         <label>Preserve (comma-separated)<input value="${escapeHtml((imageReference.preserve || []).join(", "))}" data-builder-reference-field="preserve" data-builder-reference-index="${index}"></label>
         <label>Change (comma-separated)<input value="${escapeHtml((imageReference.change || []).join(", "))}" data-builder-reference-field="change" data-builder-reference-index="${index}"></label>
         <label>Ignore (comma-separated)<input value="${escapeHtml((imageReference.ignore || []).join(", "))}" data-builder-reference-field="ignore" data-builder-reference-index="${index}"></label>
         <label>Notes<textarea data-builder-reference-field="notes" data-builder-reference-index="${index}">${escapeHtml(imageReference.notes || "")}</textarea></label>
         ${reference ? `<small>${escapeHtml(reference.semantic_category || reference.kind || "")} · ${escapeHtml(String(reference.description_status || "").replaceAll("_", " "))}</small>` : ""}
+        ${(element.resolved_source_sections?.reference_warnings || []).map((warning) => `<small class="action-message warning">${escapeHtml(warning)}</small>`).join("")}
         <span class="button-row compact"><button type="button" data-builder-action="reference-up" data-builder-reference-index="${index}"${index === 0 ? " disabled" : ""}>Up</button><button type="button" data-builder-action="reference-down" data-builder-reference-index="${index}"${index === element.reference_images.length - 1 ? " disabled" : ""}>Down</button><button type="button" data-builder-action="reference-remove" data-builder-reference-index="${index}">Remove</button></span>
       </div>
     </div>`;
@@ -6118,6 +7419,7 @@ function builderRenderPlacementEditor() {
 }
 
 function builderRenderElementWorkspace() {
+  if (builderActiveSubscene()) return builderRenderSubsceneElementsSummary();
   const element = builderSelectedElement();
   if (!element) {
     return `<div class="scene-builder-card scene-builder-element-workspace"><h4>Element workspace</h4>${builderRenderElementEditor()}</div>`;
@@ -6138,6 +7440,7 @@ function builderRenderElementWorkspace() {
         <details class="scene-builder-element-menu">
           <summary aria-label="Selected element actions" title="Selected element actions">•••</summary>
           <div class="scene-builder-menu-panel">
+            ${builderSubsceneForAnchor(element.id) ? "" : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(element.id)}">Create subscene from this element</button>`}
             <button type="button" data-builder-action="duplicate-element">Duplicate</button>
             <button type="button" class="danger-action" data-builder-action="delete-element">Delete</button>
           </div>
@@ -6158,15 +7461,26 @@ function builderRenderElementWorkspace() {
 }
 
 function builderRenderDialogueEditor() {
-  const rows = (state.sceneBuilder.dialogue || []).map((dialogue, index) => `
+  const activeSubscene = builderActiveSubscene();
+  const targetId = activeSubscene?.id || "main";
+  const rows = builderDialogueRowsForTarget(state.sceneBuilder, targetId).map(({ item: dialogue, index }) => `
     <div class="scene-builder-dialogue-entry">
       <div class="review-header">
         <h4>Dialogue ${index + 1}</h4>
+        ${!activeSubscene && builderDialogueTarget(dialogue) !== "main" ? `<span${builderSubsceneStyle(dialogue.subscene_id)}>${escapeHtml((state.sceneBuilder.subscenes || []).find((item) => item.id === dialogue.subscene_id)?.name || dialogue.subscene_id)}</span>` : ""}
         <button type="button" data-builder-action="delete-dialogue" data-builder-dialogue-index="${index}">Delete</button>
       </div>
       <div class="scene-builder-fields">
-        <label>${builderCaption("(Speaker) ... says exactly: [text]", "dialogue[].speaker_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="speaker_element_id">${builderElementOptions(dialogue.speaker_element_id || "")}</select></label>
-        <label>${builderCaption("(Target) Dialogue is directed toward ...", "dialogue[].target_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="target_element_id">${builderElementOptions(dialogue.target_element_id || "")}</select></label>
+        <label>${builderCaption("(Speaker) ... says exactly: [text]", "dialogue[].speaker_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="speaker_element_id">${builderAllElementOptions(dialogue.speaker_element_id || "")}</select></label>
+        <label>${builderCaption("(Target) Dialogue is directed toward ...", "dialogue[].target_element_id")}<select data-builder-dialogue="${index}" data-builder-dialogue-field="target_element_id">${builderAllElementOptions(dialogue.target_element_id || "")}</select></label>
+        <label>Render in<select data-builder-dialogue="${index}" data-builder-dialogue-field="subscene_id">${builderDialogueTargetOptions(builderDialogueTarget(dialogue))}</select><small>Moving the speaker later resets this assignment.</small></label>
+        <label>Panel placement<select data-builder-dialogue="${index}" data-builder-dialogue-field="panel_placement">
+          <option value="auto"${!dialogue.panel_placement || dialogue.panel_placement === "auto" ? " selected" : ""}>Automatic</option>
+          <option value="left"${dialogue.panel_placement === "left" ? " selected" : ""}>Left of speaker</option>
+          <option value="right"${dialogue.panel_placement === "right" ? " selected" : ""}>Right of speaker</option>
+          <option value="above"${dialogue.panel_placement === "above" ? " selected" : ""}>Above speaker</option>
+          <option value="below"${dialogue.panel_placement === "below" ? " selected" : ""}>Below speaker</option>
+        </select></label>
         <label class="full">${builderCaption("(Text) Speaker says exactly: \"...\"", "dialogue[].text")}<textarea data-builder-dialogue="${index}" data-builder-dialogue-field="text">${escapeHtml(dialogue.text || "")}</textarea></label>
         <label>${builderCaption("(Pointer target) Aim dialogue-panel pointer at ...", "dialogue[].pointer_target")}<input value="${escapeHtml(dialogue.pointer_target || "")}" data-builder-dialogue="${index}" data-builder-dialogue-field="pointer_target"></label>
         <label>${builderCaption("(Max lines) Wrap dialogue in no more than ... lines.", "dialogue[].max_lines")}<input type="number" min="1" value="${escapeHtml(dialogue.max_lines || 3)}" data-builder-dialogue="${index}" data-builder-dialogue-field="max_lines"></label>
@@ -6180,6 +7494,7 @@ function builderRenderDialogueEditor() {
         <h4>Dialogue</h4>
         <button type="button" data-builder-action="add-dialogue">Add Dialogue</button>
       </div>
+      ${activeSubscene ? `<p>Dialogue assigned to ${escapeHtml(activeSubscene.name || activeSubscene.id)}.</p>` : "<p>Dialogue assigned to subscenes is labeled here.</p>"}
       ${rows || "<p>No dialogue entries.</p>"}
     </div>
   `;
@@ -6217,6 +7532,10 @@ function builderRenderComposition() {
         <ol class="full">${ordered || "<li>No elements selected.</li>"}</ol>
         ${builderField("setup.composition.composition_notes", "(Composition notes) Rendered as a bullet: ...", "", true, "textarea")}
       </div>
+    </div>
+    <div class="scene-builder-card scene-layout-launch-card">
+      <div><h4>3D Layout</h4><p>Place scene elements in feet and inches, set independent body and head facing, and inspect the fixed render camera.</p></div>
+      <button type="button" class="primary-action" data-layout-open>Open 3D Layout</button>
     </div>
   `;
 }
@@ -6279,11 +7598,8 @@ function builderRenderMoreMenu() {
     ? "view-analysis"
     : "analyze-prompt";
   const activeSubscene = builderActiveSubscene();
-  const staleWarning = builderTargetStaleWarning();
-  const renderDisabled = Boolean(builderTargetRenderBlocker())
-    || Boolean(staleWarning) && !builderAllowsStaleDependencies()
-    || activeSubscene?.enabled === false;
-  const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
+  const renderDisabled = !sceneDocumentMatches();
+  const renderLabel = "Open Scene Renders";
   const saveLabel = activeSubscene ? "Save Subscene" : "Save Full Scene";
   return `
     <details class="scene-builder-more">
@@ -6293,10 +7609,9 @@ function builderRenderMoreMenu() {
         ${activeSubscene ? '<button type="button" class="builder-responsive-action" data-builder-action="cancel-subscene">Cancel Subscene Edits</button>' : ""}
         <button type="button" class="builder-responsive-action primary-action" data-builder-action="render"${renderDisabled ? " disabled" : ""}>${escapeHtml(renderLabel)}</button>
         <button type="button" data-builder-action="continue-from">Continue From…</button>
-        <button type="button" data-builder-action="${analysisAction}">Prompt Analysis</button>
+        <button type="button" data-builder-action="open-page" data-builder-page="scene-batches">Scene Render Slots</button>
         <button type="button" data-builder-action="open-page" data-builder-page="scenes">Scene Management</button>
-        <button type="button" data-builder-action="open-page" data-builder-page="local-image-review">Local Variants</button>
-        <button type="button" data-builder-action="open-page" data-builder-page="render-review">Candidate Review</button>
+        <button type="button" data-builder-action="open-page" data-builder-page="local-batch-status">Local Assets</button>
         ${builderRenderTechnicalDetails()}
       </div>
     </details>
@@ -6717,7 +8032,7 @@ async function applySceneBuilderInterview() {
 function builderRenderTargetControls() {
   const subscenes = state.sceneBuilder.subscenes || [];
   const background = subscenes.find((item) => item.id === "background");
-  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""} ${item.id === "main" ? "" : "subscene-target"}" aria-label="${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}"${builderSubsceneStyle(item)}>${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)}${item.enabled === false ? " (off)" : ""}</button>`;
+  const targetButton = (item, depth) => `<button type="button" class="${state.activeBuilderRenderTarget === item.id ? "selected" : ""} ${item.id === "main" ? "" : "subscene-target"}" aria-label="${escapeHtml(item.name)} · ${item.kind === "element" ? "element" : item.id === "main" ? "full scene" : "background"}${item.enabled === false ? " (off)" : ""}" data-builder-action="select-render-target" data-render-target-id="${escapeHtml(item.id)}" data-target-depth="${depth}"${builderSubsceneStyle(item)}>${depth ? `${"↳ ".repeat(depth)}` : ""}${escapeHtml(item.name)} <small>${item.id === "main" ? "Full Scene" : item.kind === "element" ? "Element" : "Background"}</small>${item.enabled === false ? " (off)" : ""}</button>`;
   const renderChildren = (parentId, seen = new Set()) => builderTargetChildren(parentId).map((item) => {
     if (seen.has(item.id)) return "";
     const nextSeen = new Set(seen);
@@ -6738,7 +8053,7 @@ function builderRenderTargetControls() {
       ? `<button type="button" data-builder-action="disable-subscene" data-render-target-id="${escapeHtml(activeSubscene.id)}">Turn off element sub-render</button>`
       : `<button type="button" data-builder-action="enable-element-subscene" data-element-id="${escapeHtml(activeSubscene.anchor_element_id || "")}">Turn on element sub-render</button>`
     : "";
-  return `<div class="scene-builder-target-bar"><div class="button-row compact scene-builder-target-tree" role="tablist" aria-label="Render target">${tabs}</div>${breadcrumbs ? `<small class="scene-builder-target-breadcrumb">Full Scene › ${breadcrumbs}</small>` : ""}<div class="button-row compact"><button type="button" data-builder-action="add-subscene">Add Sub-Scene</button>${toggle}${elementToggle}</div></div>`;
+  return `<div class="scene-builder-target-bar"><div class="button-row compact scene-builder-target-tree" role="tablist" aria-label="Render target">${tabs}</div>${breadcrumbs ? `<small class="scene-builder-target-breadcrumb">Full Scene › ${breadcrumbs}</small>` : ""}<div class="button-row compact"><button type="button" data-builder-action="add-subscene">Add background sub-render</button>${toggle}${elementToggle}</div></div>`;
 }
 
 async function selectSceneBuilderTarget(targetId) {
@@ -6772,32 +8087,14 @@ async function selectSceneBuilderTarget(targetId) {
 function builderRenderTargetStatus() {
   const subscene = builderActiveSubscene();
   const status = builderActiveTargetStatus();
-  const blocker = builderTargetRenderBlocker();
-  const staleWarning = builderTargetStaleWarning();
-  if (!subscene && !blocker && !staleWarning) return "";
-  if (blocker) {
-    return `<div class="action-message info"><strong>${escapeHtml(subscene?.name || "Full Scene")} render blocked.</strong> ${escapeHtml(blocker)} Render and accept that direct dependency first.</div>`;
-  }
-  if (staleWarning) {
-    const accepted = builderAllowsStaleDependencies();
-    return `<div class="action-message info"><strong>${escapeHtml(subscene?.name || "Full Scene")} dependency warning.</strong> ${escapeHtml(staleWarning)}
-      ${accepted
-        ? "The current locked image will be used for this render."
-        : `<button type="button" data-builder-action="allow-stale-dependencies">Use locked image anyway</button>`}
-    </div>`;
-  }
+  if (!subscene) return "";
   const image = status?.locked_exists && status.locked_image_path
     ? `<img class="scene-builder-target-thumbnail fullscreen-image-trigger" src="${fileUrl(status.locked_image_path)}" alt="${escapeHtml(subscene.name)} locked image">`
     : "";
-  const relock = status?.locked_exists && !status.locked_current
-    ? `<button type="button" data-builder-action="relock-current-image">Re-lock current image</button>`
-    : "";
   const tag = `{{SCENE_RENDER:${state.selectedStorySlug}:${state.selectedSceneSlug}:${subscene.id}}}`;
   return `<div class="scene-builder-card scene-builder-target-status">
-    ${image}<div><strong>${status?.locked_current ? "Locked and current" : status?.locked_exists ? "Locked but stale" : "No locked image"}</strong>
-    <p>${escapeHtml(status?.stale_reason || (subscene.kind === "element" ? "Accepted image is automatically linked to its parent element." : "Accepted image is automatically linked to the Full Scene."))}</p>
-    <p>Relevant edits invalidate the accepted ${subscene.kind === "element" ? "element reference" : "background"} and require it to be rendered and locked again.</p>
-    ${relock}
+    ${image}<div><strong>${status?.locked_exists ? "Previously rendered image" : "No previous image"}</strong>
+    <p>${subscene.kind === "element" ? "This target can be used as an image reference in its parent render." : "This target can be used in the Full Scene render."}</p>
     <code>${escapeHtml(tag)}</code></div>
   </div>`;
 }
@@ -6815,7 +8112,6 @@ async function relockCurrentSceneBuilderImage() {
     state.sceneBuilderRenderTargets = (state.sceneBuilderRenderTargets || []).map((item) =>
       item.render_target_id === review?.render_target_id ? review : item
     );
-    state.builderAllowStaleTarget = "";
     renderSceneBuilder();
     showSceneBuilderMessage(payload.message || "Current image re-locked.", "success");
   } catch (error) {
@@ -6838,6 +8134,9 @@ function builderRenderSubsceneSettings() {
     const composition = targetSetup.composition || {};
     const targetEnvironment = targetSetup.environment || {};
     const anchor = (state.sceneBuilder.scene_elements || []).find((item) => item.id === subscene.anchor_element_id) || {};
+    const members = (state.sceneBuilder.scene_elements || []).filter((item) => item.subscene_id === subscene.id);
+    const placement = (state.sceneBuilder.placements || []).find((item) => item.scene_element_id === anchor.id) || {};
+    const parent = (state.sceneBuilder.subscenes || []).find((item) => item.id === anchor.subscene_id);
     const environmentField = (key, label) => {
       const policy = targetEnvironment[key] || { mode: "inherit", value: "" };
       return `<div class="full scene-builder-inheritance-field"><label>${escapeHtml(label)} mode<select data-builder-element-subscene-field="environment.${key}.mode"><option value="inherit"${policy.mode === "inherit" ? " selected" : ""}>Inherit from parent</option><option value="override"${policy.mode === "override" ? " selected" : ""}>Override</option><option value="omit"${policy.mode === "omit" ? " selected" : ""}>Omit</option></select></label><label>${escapeHtml(label)} value<input value="${escapeHtml(policy.value || "")}" data-builder-element-subscene-field="environment.${key}.value"${policy.mode === "override" ? "" : " disabled"}></label></div>`;
@@ -6845,6 +8144,8 @@ function builderRenderSubsceneSettings() {
     return `<div class="scene-builder-card">
       <h4>${escapeHtml(subscene.name)} element reference</h4>
       <p><strong>Target element:</strong> ${escapeHtml(anchor.display_name || anchor.id || subscene.anchor_element_id)}</p>
+      <p><strong>Members:</strong> ${escapeHtml(members.map((item) => item.display_name || item.id).join(", ") || "No elements assigned")}</p>
+      <p><strong>Inherited placement:</strong> ${escapeHtml([placement.position_within_cell, placement.depth, parent?.name || (anchor.subscene_id ? anchor.subscene_id : "Full Scene")].filter(Boolean).join(" · ") || "Set on the parent scene")}</p>
       <p>${escapeHtml(anchor.element_visual_override || anchor.fallback_visual_description || "The target element's description and references define the overall subject.")}</p>
       <div class="scene-builder-fields">
         <label class="full">Sub-scene name<input value="${escapeHtml(subscene.name || "")}" data-builder-subscene-name></label>
@@ -6862,8 +8163,10 @@ function builderRenderSubsceneSettings() {
       </div>
     </div>`;
   }
+  const members = (state.sceneBuilder.scene_elements || []).filter((item) => item.subscene_id === subscene.id);
   return `<div class="scene-builder-card">
     <h4>${escapeHtml(subscene.name)} prompt</h4>
+    <p><strong>Members:</strong> ${escapeHtml(members.map((item) => item.display_name || item.id).join(", ") || "No elements assigned")}</p>
     <p>Canvas, art style, location, lighting, mood, and atmosphere are inherited from Full Scene. Edit those universal values there; changing them invalidates this lock.</p>
     <dl><dt>Canvas</dt><dd>${escapeHtml(setup.canvas?.orientation || "landscape")} ${escapeHtml(setup.canvas?.aspect_ratio || "16:9")}</dd><dt>Location</dt><dd>${escapeHtml(environment.location || "—")}</dd><dt>Lighting</dt><dd>${escapeHtml(environment.lighting || "—")}</dd></dl>
     <div class="scene-builder-fields">
@@ -6885,14 +8188,9 @@ function renderSceneBuilder() {
   const scene = state.sceneBuilder.scene || {};
   const importedCandidate = state.sceneBuilder.source_provenance?.source_type === "scene_candidate_markdown";
   const activeSubscene = builderActiveSubscene();
-  const renderBlocker = builderTargetRenderBlocker();
-  const staleWarning = builderTargetStaleWarning();
   const contextReady = sceneDocumentMatches();
-  const renderDisabled = !contextReady
-    || Boolean(renderBlocker)
-    || Boolean(staleWarning) && !builderAllowsStaleDependencies()
-    || activeSubscene?.enabled === false;
-  const renderLabel = activeSubscene ? `Render ${activeSubscene.name || activeSubscene.id}` : "Render Full Scene";
+  const renderDisabled = !contextReady;
+  const renderLabel = "Open Scene Renders";
   const activeTargetLabel = activeSubscene ? `Subscene: ${activeSubscene.name || activeSubscene.id}` : "Full Scene";
   state.sceneBuilderRendering = true;
   sceneBuilderPanel.innerHTML = `
@@ -6927,7 +8225,7 @@ function renderSceneBuilder() {
           <h3>${escapeHtml(scene.name || scene.slug || "Untitled scene")}</h3>
           <p>${escapeHtml(scene.story_beat || "No story beat set.")}</p>
           <p class="status-text">Return to Full Scene to edit shared scene values.</p>
-        </div>${builderRenderSubsceneSettings()}` : `<div class="scene-builder-card scene-builder-story-beat">
+        </div><div class="scene-builder-card scene-layout-launch-card"><div><h4>3D Layout</h4><p>Arrange the members of this subscene at their measured sizes and set its independent camera.</p></div><button type="button" class="primary-action" data-layout-open>Open 3D Layout</button></div>${builderRenderSubsceneSettings()}` : `<div class="scene-builder-card scene-builder-story-beat">
           <span class="eyebrow">Scene foundation</span>
           <h3>Story Beat</h3>
           <div class="scene-builder-fields">
@@ -6950,7 +8248,7 @@ function renderSceneBuilder() {
       </section>
       ${builderPhoneSectionToggle("dialogue", "Dialogue")}
       <section id="builder-panel-dialogue" class="scene-builder-section scene-builder-relationships" data-builder-section-panel="dialogue" aria-label="Dialogue and relationships">
-        ${activeSubscene ? `<div class="scene-builder-card"><h4>Dialogue and interactions</h4><p>These are shared full-scene values. Return to Full Scene to edit them.</p></div>` : `${builderRenderDialogueEditor()}${builderRenderInteractions()}`}
+        ${builderRenderDialogueEditor()}${builderRenderInteractions()}
       </section>
       ${builderPhoneSectionToggle("environment", "Environment")}
       <section id="builder-panel-environment" class="scene-builder-section scene-builder-environment" data-builder-section-panel="environment" aria-label="Environment">
@@ -7020,9 +8318,7 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
   updateSceneBuilderNavigation();
   showSceneBuilderMessage("Loading Scene Builder...");
   try {
-    await loadSceneImageReferences();
-    if (!selectionMatches()) return;
-    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/builder`, {
+    const payload = await fetchJson(`/api/stories/${encodeURIComponent(storySlug)}/scenes/${encodeURIComponent(sceneSlug)}/builder?include_references=false`, {
       signal: selection.controller.signal,
     });
     if (!selectionMatches()) return;
@@ -7043,26 +8339,37 @@ async function openSceneBuilder(preferredRenderTargetId = "main") {
     state.sceneBuilderRenderTargets = document.render_targets || [];
     state.sceneBuilderReadiness = document.readiness || null;
     state.sceneBuilderOptions = payload.options || {};
-    state.sceneBuilderReferences = payload.references || [];
+    state.sceneBuilderReferences = [];
     state.activeBuilderRenderTarget = preferredRenderTargetId === "main"
       || (state.sceneBuilder.subscenes || []).some((item) => item.id === preferredRenderTargetId)
       ? preferredRenderTargetId
       : "main";
-    await loadScenePromptAnalysis(state.activeBuilderRenderTarget, { signal: selection.controller.signal });
-    if (!selectionMatches()) return;
     state.selectedBuilderPlacementId = state.sceneBuilder.placements?.[0]?.id || null;
     state.selectedBuilderElementId = state.sceneBuilder.placements?.[0]?.scene_element_id || state.sceneBuilder.scene_elements?.[0]?.id || null;
     state.builderResponsiveSection = "elements";
-    state.builderAllowStaleTarget = "";
     state.sceneBuilderOpen = true;
-    await builderLoadSelectedElementCostumes(builderSelectedElement(), { signal: selection.controller.signal });
-    if (!selectionMatches()) return;
     state.loadedBuilderContext = loadedBuilderContext;
     renderSceneBuilder();
     state.savedBaselines.sceneBuilder = sceneBuilderSnapshot();
     updateDirtyIndicators();
     updateSceneBuilderNavigation();
-    showSceneBuilderMessage(state.sceneBuilder._migrated_from_schema_version ? "This scene used an older Scene Builder schema and has been migrated to v2. Save to update the JSON file." : "Scene Builder loaded.", "success");
+    showSceneBuilderMessage("Scene Builder loaded. Loading image references and analysis…", "info");
+    void Promise.allSettled([
+      fetchJson("/api/scene-image-picker", { signal: selection.controller.signal }),
+      loadScenePromptAnalysis(state.activeBuilderRenderTarget, { signal: selection.controller.signal }),
+      builderLoadSelectedElementCostumes(builderSelectedElement(), { signal: selection.controller.signal }),
+    ]).then((results) => {
+      if (!selectionMatches()) return;
+      const [references] = results;
+      if (references.status === "fulfilled") state.sceneBuilderReferences = references.value.rows || [];
+      renderSceneBuilder();
+      const failed = results.some((result) => result.status === "rejected");
+      showSceneBuilderMessage(failed
+        ? "Scene Builder is ready; some secondary data could not be loaded."
+        : state.sceneBuilder._migrated_from_schema_version
+          ? "This scene used an older Scene Builder schema and has been migrated to v2. Save to update the JSON file."
+          : "Scene Builder loaded.", failed ? "info" : "success");
+    });
   } catch (error) {
     showSceneBuilderMessage(error.message, "error");
   } finally {
@@ -7081,14 +8388,15 @@ async function activateSceneBuilderPage() {
   });
 }
 
-async function saveSceneBuilder() {
+async function saveSceneBuilder({ fullScene = false } = {}) {
   if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
     showSceneBuilderMessage("Wait for the requested scene to finish loading before saving.", "error");
     return;
   }
   builderSyncControls();
   const targetId = state.activeBuilderRenderTarget || "main";
-  const activeSubscene = builderActiveSubscene();
+  const activeSubscene = fullScene ? null : builderActiveSubscene();
+  const baselineData = savedSceneBuilderData();
   try {
     const endpoint = activeSubscene
       ? `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/builder/subscenes/${encodeURIComponent(targetId)}`
@@ -7096,7 +8404,11 @@ async function saveSceneBuilder() {
     const payload = await fetchJson(endpoint, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(activeSubscene || state.sceneBuilder),
+      body: JSON.stringify(activeSubscene ? {
+        subscene: activeSubscene,
+        expected_revision: state.sceneBuilder._revision || 0,
+        dialogue_changes: builderDialogueChanges(state.sceneBuilder, baselineData),
+      } : state.sceneBuilder),
     });
     if (activeSubscene) {
       const persistedData = payload.document?.data;
@@ -7104,6 +8416,7 @@ async function saveSceneBuilder() {
       replaceBuilderSubscene(state.sceneBuilder, targetId, persistedSubscene);
       const baseline = savedSceneBuilderData();
       replaceBuilderSubscene(baseline, targetId, persistedSubscene);
+      baseline.dialogue = JSON.parse(JSON.stringify(persistedData?.dialogue || baseline.dialogue || []));
       if (persistedData && Object.hasOwn(persistedData, "_revision")) {
         state.sceneBuilder._revision = persistedData._revision;
         baseline._revision = persistedData._revision;
@@ -7277,26 +8590,8 @@ async function disableSceneSubscene(targetId) {
 }
 
 async function renderSceneBuilderScene() {
-  if (!state.sceneBuilder || !state.selectedStorySlug || !state.selectedSceneSlug || !sceneDocumentMatches()) {
-    showSceneBuilderMessage("Wait for the requested scene to finish loading before rendering.", "error");
-    return;
-  }
-  if (!requireSavedSceneBuilder("staging a render")) return;
-  const targetId = state.activeBuilderRenderTarget || "main";
-  const params = new URLSearchParams();
-  if (builderAllowsStaleDependencies(targetId)) params.set("allow_stale_dependencies", "true");
-  const query = params.size ? `?${params.toString()}` : "";
-  showSceneBuilderMessage(`Staging ${targetId === "main" ? "full-scene" : targetId} render...`, "info");
-  try {
-    const payload = await fetchJson(
-      `/api/stories/${encodeURIComponent(state.selectedStorySlug)}/scenes/${encodeURIComponent(state.selectedSceneSlug)}/render-targets/${encodeURIComponent(targetId)}/stage-render${query}`,
-      { method: "POST" },
-    );
-    const askId = payload.task?.ask_id || null;
-    await activatePage("render-console", { skipAutosave: true, preferredAskId: askId });
-  } catch (error) {
-    showSceneBuilderMessage(error.message, "error");
-  }
+  if (!requireSavedSceneBuilder("opening Scene Renders")) return;
+  await activatePage("scene-batches");
 }
 
 async function analyzeScenePrompt() {
@@ -7382,7 +8677,6 @@ sceneBuilderPanel.addEventListener("input", () => {
   if (!state.sceneBuilder || state.sceneBuilderRendering) {
     return;
   }
-  state.builderAllowStaleTarget = "";
   builderSyncControls();
   updateDirtyIndicators();
 });
@@ -7503,11 +8797,6 @@ sceneBuilderPanel.addEventListener("click", (event) => {
     if (action === "save") saveSceneBuilder();
     if (action === "cancel-subscene") cancelSceneBuilderSubsceneEdits();
     if (action === "export") exportSceneBuilderMarkdown();
-    if (action === "allow-stale-dependencies") {
-      state.builderAllowStaleTarget = state.activeBuilderRenderTarget || "main";
-      renderSceneBuilder();
-    }
-    if (action === "relock-current-image") relockCurrentSceneBuilderImage();
     if (action === "render") renderSceneBuilderScene();
     if (action === "analyze-prompt") analyzeScenePrompt();
     if (action === "view-analysis") viewScenePromptAnalysis();
@@ -7531,6 +8820,27 @@ sceneCandidateRefresh.addEventListener("click", loadSceneCandidates);
 async function loadImagePickerReferences(picker) {
   picker.status.textContent = "Loading references...";
   const params = new URLSearchParams();
+  if (picker.library) {
+    if (picker.search.value.trim()) params.set("q", picker.search.value.trim());
+    if (builderImagePickerEntity.value) params.set("entity_id", builderImagePickerEntity.value);
+    if (builderImagePickerVariant.value) params.set("variant_id", builderImagePickerVariant.value);
+    if (builderImagePickerSet.value) params.set("set_id", builderImagePickerSet.value);
+    if (builderImagePickerFacet.value) {
+      const [namespace, value] = builderImagePickerFacet.value.split("\u0000");
+      params.set("facet_namespace", namespace || "");
+      params.set("facet_value", value || "");
+    }
+    try {
+      const payload = await fetchJson(`/api/entity-library/picker?${params.toString()}`);
+      picker.setRows(payload.assets || []);
+      renderImagePickerTable(picker);
+      picker.status.textContent = `${picker.rows().length} approved image(s)`;
+    } catch (error) {
+      picker.status.textContent = "Load failed.";
+      picker.onError(error);
+    }
+    return;
+  }
   if (picker.character.value) {
     params.set("character", picker.character.value);
   }
@@ -7575,6 +8885,31 @@ function renderImagePickerTable(picker) {
   for (const item of rows) {
     const row = document.createElement("tr");
     const labelCell = document.createElement("td");
+    if (picker.library) {
+      const thumb = document.createElement("img");
+      thumb.className = "aux-resource-thumb";
+      thumb.src = fileUrl(item.thumbnail_path || item.image_path);
+      thumb.alt = item.label || "Reference image";
+      const title = document.createElement("span");
+      const entityNames = (item.entities || []).map((entity) => [entity.name, entity.variant_name].filter(Boolean).join(" · ")).join(", ");
+      title.textContent = `${item.label || entityNames || item.origin} · ${item.width || "?"}×${item.height || "?"}${item.descriptor_ready ? " · prompt ready" : " · prompt text missing"}`;
+      labelCell.append(thumb, title);
+      const actionCell = document.createElement("td");
+      if (item.logical_reference) {
+        const logicalButton = document.createElement("button");
+        logicalButton.type = "button";
+        logicalButton.textContent = `Use ${item.logical_reference.reference_key}`;
+        logicalButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          picker.onSelect(item, "logical");
+        });
+        actionCell.append(logicalButton);
+      }
+      row.append(labelCell, actionCell);
+      makeSelectableRow(row, item.file_name || "image asset", false, () => picker.onSelect(item, builderImagePickerMode.value || "asset"));
+      picker.tableBody.append(row);
+      continue;
+    }
     if (picker.labelOnly && item.thumbnail_path) {
       const thumb = document.createElement("img");
       thumb.className = "aux-resource-thumb";
@@ -7614,7 +8949,9 @@ const sceneImagePicker = {
   onError: (error) => showSceneMessage(error.message, "error"),
 };
 
+let quickCharacterLibrarySelection = null;
 const builderImagePicker = {
+  library: true,
   labelOnly: true,
   character: builderImagePickerCharacter,
   search: builderImagePickerSearch,
@@ -7626,34 +8963,89 @@ const builderImagePicker = {
   tableBody: builderImagePickerTableBody,
   rows: () => state.builderImagePickerReferences,
   setRows: (rows) => { state.builderImagePickerReferences = rows; },
-  onSelect: async (item) => {
+  onSelect: async (item, mode = "asset") => {
+    if (quickCharacterLibrarySelection) {
+      const select = quickCharacterLibrarySelection;
+      quickCharacterLibrarySelection = null;
+      builderImagePickerModal.close();
+      await select(item);
+      return;
+    }
     const element = builderSelectedElement();
     if (!element) {
       return;
     }
-    await copyText(item.tag || "", `Copied ${item.tag || "tag"}.`);
+    if (mode === "logical" && !item.logical_reference?.reference_key) {
+      showSceneBuilderMessage("This image has no active preferred reference key.", "error");
+      return;
+    }
     element.reference_images = element.reference_images || [];
     const index = Number(state.builderReferenceIndex || 0);
     element.reference_images[index] = element.reference_images[index] || { roles: ["visual reference"], ignore: ["source pose", "source background", "source framing"], notes: "" };
-    element.reference_images[index].tag = item.tag || "";
-    if (!element.reference_images[index].roles?.length) {
-      element.reference_images[index].roles = item.default_reference_roles?.length
-        ? [...item.default_reference_roles]
-        : ["visual reference"];
-    }
+    const selectedReference = element.reference_images[index];
+    delete selectedReference.tag;
+    delete selectedReference.asset_id;
+    delete selectedReference.reference_key;
+    selectedReference[mode === "logical" ? "reference_key" : "asset_id"] = mode === "logical"
+      ? item.logical_reference?.reference_key || ""
+      : item.asset_id || "";
+    selectedReference.set_id = builderImagePickerSet.value || item.logical_reference?.set_id || "";
+    selectedReference.primary_prompt_source = !element.reference_images.some((reference, refIndex) => refIndex !== index && reference.primary_prompt_source);
+    const referenceTag = mode === "logical"
+      ? `{{LIB:REF:${item.logical_reference.reference_key}}}`
+      : `{{LIB:ASSET:${item.asset_id}}}`;
     state.sceneBuilderReferences = [
-      ...(state.sceneBuilderReferences || []).filter((reference) => reference.tag !== item.tag),
-      item,
+      ...(state.sceneBuilderReferences || []).filter((reference) => reference.tag !== referenceTag),
+      { ...item, tag: referenceTag, label: item.label || item.file_name, kind: "entity-library" },
     ];
+    if (!element.reference_images[index].roles?.length) {
+      element.reference_images[index].roles = ["visual reference"];
+    }
     builderImagePickerModal.close();
     renderSceneBuilder();
-    showSceneBuilderMessage(`Selected ${item.tag || "image tag"}.`, "success");
+    showSceneBuilderMessage(`Selected ${item.file_name || "image"}.`, "success");
   },
   onError: (error) => showSceneBuilderMessage(error.message, "error"),
 };
 
 async function loadSceneImageReferences() {
   await loadImagePickerReferences(sceneImagePicker);
+}
+
+async function loadEntityLibraryPickerFilters(element = null) {
+  const [entityPayload, variantPayload, setPayload, facetPayload] = await Promise.all([
+    fetchJson("/api/entity-library/entities"), fetchJson("/api/entity-library/variants"),
+    fetchJson("/api/entity-library/sets"), fetchJson("/api/entity-library/facets"),
+  ]);
+  const entities = entityPayload.entities || [];
+  setSelectOptionsWithLabels(builderImagePickerEntity, [
+    { value: "", label: "All entities" },
+    ...entities.map((item) => ({ value: item.entity_id, label: `${item.name} · ${item.entity_type}` })),
+  ]);
+  const entityQuery = String(element?.character || element?.display_name || "").trim().toLowerCase();
+  builderImagePickerEntity.value = "";
+  builderImagePickerVariant.value = "";
+  builderImagePickerSet.value = "";
+  builderImagePickerFacet.value = "";
+  const matchingEntity = entities.find((item) => item.name.toLowerCase() === entityQuery);
+  builderImagePickerEntity.value = matchingEntity?.entity_id || "";
+  const variants = (variantPayload.variants || []).filter((item) => !builderImagePickerEntity.value || item.entity_id === builderImagePickerEntity.value);
+  setSelectOptionsWithLabels(builderImagePickerVariant, [
+    { value: "", label: "All variants" },
+    ...variants.map((item) => ({ value: item.variant_id, label: `${item.name} · ${item.variant_type}` })),
+  ]);
+  setSelectOptionsWithLabels(builderImagePickerSet, [
+    { value: "", label: "All reference sets" },
+    ...(setPayload.sets || []).map((item) => ({ value: item.set_id, label: item.name })),
+  ]);
+  const facets = facetPayload.facets || [];
+  const options = [...new Map(facets.map((item) => [`${item.namespace}\u0000${item.value}`, item])).values()];
+  setSelectOptionsWithLabels(builderImagePickerFacet, [
+    { value: "", label: "All facets" },
+    ...options.map((item) => ({ value: `${item.namespace}\u0000${item.value}`, label: `${item.namespace}: ${item.value}` })),
+  ]);
+  const phaseQuery = String(element?.phase || "").trim().toLowerCase();
+  builderImagePickerVariant.value = variants.find((item) => item.name.toLowerCase() === phaseQuery)?.variant_id || "";
 }
 
 function openBuilderImagePicker(referenceIndex = 0) {
@@ -7666,10 +9058,14 @@ function openBuilderImagePicker(referenceIndex = 0) {
   builderImagePickerSearch.value = element.resource_type === "Character"
     ? [element.character || element.display_name, element.phase, element.costume].filter(Boolean).join(" ")
     : element.display_name || "";
+  builderImagePickerMode.value = element.resource_type === "Character" && element.costume ? "logical" : "asset";
   state.builderImagePickerSearch = builderImagePickerSearch.value;
   builderImagePickerModal.showModal();
   builderImagePickerSearch.focus();
-  loadImagePickerReferences(builderImagePicker);
+  loadEntityLibraryPickerFilters(element).then(() => loadImagePickerReferences(builderImagePicker)).catch((error) => {
+    builderImagePickerStatus.textContent = "Filter options failed to load.";
+    showSceneBuilderMessage(error.message, "error");
+  });
 }
 
 function selectedImageCatalogItem() {
@@ -7889,6 +9285,652 @@ function selectImageCatalogItem(catalogId) {
 function syncImageCatalogOverrideControls() {
   imageCatalogIdentityText.disabled = imageCatalogIdentityMode.value !== "override";
   imageCatalogCostumeText.disabled = imageCatalogCostumeMode.value !== "override";
+}
+
+async function loadEntityLibraryInventory() {
+  const [entitiesPayload, variantsPayload, setsPayload, facetsPayload] = await Promise.all([
+    fetchJson("/api/entity-library/entities"), fetchJson("/api/entity-library/variants"),
+    fetchJson("/api/entity-library/sets"), fetchJson("/api/entity-library/facets"),
+  ]);
+  const entities = entitiesPayload.entities || [];
+  const variants = variantsPayload.variants || [];
+  const sets = setsPayload.sets || [];
+  const facets = facetsPayload.facets || [];
+  entityLibraryMetadata = { entities, variants, sets, facets };
+  setSelectOptionsWithLabels(entityLibraryGeneratedEntity, [
+    { value: "", label: "General image import" }, ...entities.map((item) => ({ value: item.entity_id, label: `${item.name} · ${item.entity_type}` })),
+  ]);
+  setSelectOptionsWithLabels(entityLibraryFilterEntity, [
+    { value: "", label: "All entities" }, ...entities.map((item) => ({ value: item.entity_id, label: item.name })),
+  ]);
+  const entityTypes = [...new Set(entities.map((item) => item.entity_type))].sort();
+  setSelectOptionsWithLabels(entityLibraryFilterType, [
+    { value: "", label: "All types" }, ...entityTypes.map((value) => ({ value, label: value })),
+  ]);
+  setSelectOptionsWithLabels(entityLibraryFilterVariant, [
+    { value: "", label: "All variants" }, ...variants.map((item) => ({ value: item.variant_id, label: `${item.name} · ${item.variant_type}` })),
+  ]);
+  setSelectOptionsWithLabels(entityLibraryFilterSet, [
+    { value: "", label: "All sets" }, ...sets.map((item) => ({ value: item.set_id, label: item.name })),
+  ]);
+  const selectedSetId = entityLibrarySetSelect.value;
+  setSelectOptionsWithLabels(entityLibrarySetSelect, [
+    { value: "", label: "Create a new set" },
+    ...sets.map((item) => ({ value: item.set_id, label: `${item.name} (${item.assets?.length || 0})` })),
+  ]);
+  entityLibrarySetSelect.value = sets.some((item) => item.set_id === selectedSetId) ? selectedSetId : "";
+  syncEntityLibrarySetEditor();
+  const facetChoices = [...new Map(facets.map((item) => [`${item.namespace}\u0000${item.value}`, item])).values()];
+  setSelectOptionsWithLabels(entityLibraryFilterFacet, [
+    { value: "", label: "All facets" }, ...facetChoices.map((item) => ({ value: `${item.namespace}\u0000${item.value}`, label: `${item.namespace}: ${item.value}` })),
+  ]);
+  setSelectOptionsWithLabels(entityLibraryEditEntities, entities.map((item) => ({ value: item.entity_id, label: `${item.name} · ${item.entity_type}` })));
+  const entityOptions = entities.map((item) => ({ value: item.entity_id, label: item.name }));
+  for (const select of [entityLibraryVariantEntity, entityLibraryRelationSource, entityLibraryRelationTarget]) {
+    setSelectOptionsWithLabels(select, [{ value: "", label: "Choose entity" }, ...entityOptions]);
+  }
+  updateEntityLibraryDescriptorOwners();
+  setSelectOptionsWithLabels(entityLibraryEditSets, sets.map((item) => ({ value: item.set_id, label: item.name })));
+    await searchEntityLibrary(true);
+  const usagePayload = await fetchJson("/api/entity-library/usages");
+  const usageReport = usagePayload.report || {};
+  if (usageReport.missing?.length || usageReport.stale) {
+    entityLibraryUsages.replaceChildren();
+    for (const item of usageReport.missing || []) {
+      const row = document.createElement("li");
+      row.textContent = `Missing ${item.asset_id || item.reference_key} · ${item.consumer_id} · ${item.locator}`;
+      entityLibraryUsages.append(row);
+    }
+    if (usageReport.stale) {
+      const row = document.createElement("li");
+      row.textContent = `${usageReport.stale} stale usage record(s) are retained for review.`;
+      entityLibraryUsages.append(row);
+    }
+  }
+}
+
+async function searchEntityLibrary(preserveOffset = false) {
+  if (!preserveOffset) entityLibraryPageOffset = 0;
+  const params = new URLSearchParams();
+  const values = {
+    q: entityLibrarySearch.value.trim(), entity_id: entityLibraryFilterEntity.value,
+    entity_type: entityLibraryFilterType.value, variant_id: entityLibraryFilterVariant.value,
+    set_id: entityLibraryFilterSet.value, status: entityLibraryFilterStatus.value,
+    origin: entityLibraryFilterOrigin.value, include_obsolete: entityLibraryIncludeObsolete.checked ? "true" : "",
+  };
+  if (entityLibraryFilterFacet.value) {
+    const [facet_namespace, facet_value] = entityLibraryFilterFacet.value.split("\u0000");
+    values.facet_namespace = facet_namespace;
+    values.facet_value = facet_value;
+  }
+  for (const [key, value] of Object.entries(values)) if (value) params.set(key, value);
+  const activeFilters = Object.entries(values).filter(([key, value]) => key !== "q" && key !== "facet_value" && value);
+  entityLibraryActiveFilterCount.textContent = activeFilters.length ? ` · ${activeFilters.length} active` : "";
+  const chipContainer = document.querySelector("#entity-library-filter-chips");
+  chipContainer.replaceChildren();
+  const filterControls = { entity_id: entityLibraryFilterEntity, entity_type: entityLibraryFilterType, variant_id: entityLibraryFilterVariant, set_id: entityLibraryFilterSet, facet_namespace: entityLibraryFilterFacet, facet_value: entityLibraryFilterFacet, status: entityLibraryFilterStatus, origin: entityLibraryFilterOrigin, include_obsolete: entityLibraryIncludeObsolete };
+  const chipLabels = new Map();
+  if (entityLibraryFilterFacet.value) chipLabels.set("facet_namespace", entityLibraryFilterFacet.selectedOptions[0]?.textContent || entityLibraryFilterFacet.value.replace("\u0000", ":"));
+  for (const [key, value] of activeFilters) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "inventory-filter-chip";
+    const control = filterControls[key];
+    chip.textContent = `${chipLabels.get(key) || control?.selectedOptions?.[0]?.textContent || (key === "include_obsolete" ? "Include obsolete images" : value)} ×`;
+    chip.addEventListener("click", () => {
+      if (key === "include_obsolete") control.checked = false;
+      else if (control) control.value = "";
+      searchEntityLibrary();
+    });
+    chipContainer.append(chip);
+  }
+  params.set("offset", String(entityLibraryPageOffset));
+  params.set("limit", String(ENTITY_LIBRARY_PAGE_SIZE));
+  entityLibraryCount.textContent = "Searching…";
+  let payload;
+  try {
+    payload = await fetchJson(`/api/entity-library/assets?${params.toString()}`);
+  } catch (error) {
+    entityLibraryResults.replaceChildren();
+    entityLibraryCount.textContent = error.message || "Search failed. Try again.";
+    entityLibraryCount.classList.add("inventory-error");
+    entityLibraryPrevious.disabled = true;
+    entityLibraryNext.disabled = true;
+    return;
+  }
+  entityLibraryCount.classList.remove("inventory-error");
+  const assets = payload.assets || [];
+  entityLibraryTotal = Number(payload.total || 0);
+  if (!assets.length && entityLibraryPageOffset > 0 && entityLibraryPageOffset >= entityLibraryTotal) {
+    entityLibraryPageOffset = Math.max(0, Math.floor((entityLibraryTotal - 1) / ENTITY_LIBRARY_PAGE_SIZE) * ENTITY_LIBRARY_PAGE_SIZE);
+    return searchEntityLibrary(true);
+  }
+  entityLibraryResults.replaceChildren();
+  for (const asset of assets) {
+    const card = document.createElement("article");
+    card.className = "image-catalog-card";
+    const imageButton = document.createElement("button");
+    imageButton.type = "button";
+    imageButton.className = "inventory-card-image";
+    imageButton.setAttribute("aria-label", `Preview ${asset.label || asset.file_name || "library image"}`);
+    const img = document.createElement("img");
+    img.src = fileUrl(asset.thumbnail_path || asset.image_path);
+    img.alt = asset.label || "Library image";
+    img.title = "Open full-size image";
+    imageButton.addEventListener("click", () => {
+      openFullscreenImage(fileUrl(asset.image_path), asset.label || asset.file_name || "Library image");
+    });
+    imageButton.append(img);
+    const title = document.createElement("strong");
+    title.textContent = asset.label || asset.file_name;
+    const detail = document.createElement("span");
+    detail.className = "inventory-card-subject";
+    detail.textContent = [(asset.entities || []).map((item) => [item.name, item.variant_name].filter(Boolean).join(" · ")).join(", "), asset.origin].filter(Boolean).join(" · ") || "No subject linked";
+    const badge = document.createElement("span");
+    badge.className = `inventory-status inventory-status-${asset.status}`;
+    badge.textContent = asset.status;
+    const tag = asset.logical_reference?.reference_key
+      ? `{{LIB:REF:${asset.logical_reference.reference_key}}}`
+      : `{{LIB:ASSET:${asset.asset_id}}}`;
+    const tagText = document.createElement("code");
+    tagText.className = "inventory-card-tag";
+    tagText.textContent = tag;
+    tagText.title = tag;
+    const actions = document.createElement("div");
+    actions.className = "inventory-card-actions";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "primary-action inventory-copy-tag";
+    copy.textContent = "Copy tag";
+    copy.addEventListener("click", async () => {
+      try {
+        await writeClipboardText(tag);
+        copy.textContent = "Copied";
+        copy.classList.add("inventory-copied");
+        window.setTimeout(() => { copy.textContent = "Copy tag"; copy.classList.remove("inventory-copied"); }, 1600);
+      } catch {
+        window.prompt("Copy this image tag:", tag);
+      }
+    });
+    const details = document.createElement("button");
+    details.type = "button";
+    details.className = "secondary-action";
+    details.textContent = "Details";
+    details.addEventListener("click", () => selectEntityLibraryAsset(asset.asset_id));
+    actions.append(copy, details);
+    card.append(imageButton, title, detail, badge, tagText, actions);
+    entityLibraryResults.append(card);
+  }
+  const first = entityLibraryTotal ? entityLibraryPageOffset + 1 : 0;
+  const last = Math.min(entityLibraryPageOffset + assets.length, entityLibraryTotal);
+  entityLibraryCount.textContent = entityLibraryTotal ? `${entityLibraryTotal} image${entityLibraryTotal === 1 ? "" : "s"} · showing ${first}–${last}` : "No images match these filters. Try another search.";
+  entityLibraryPageStatus.textContent = `Page ${entityLibraryTotal ? Math.floor(entityLibraryPageOffset / ENTITY_LIBRARY_PAGE_SIZE) + 1 : 1}`;
+  entityLibraryPrevious.disabled = entityLibraryPageOffset === 0;
+  entityLibraryNext.disabled = entityLibraryPageOffset + assets.length >= entityLibraryTotal;
+}
+
+function updateEntityLibraryDescriptorOwners() {
+  const ownerType = entityLibraryDescriptorOwnerType.value;
+  const source = ownerType === "entity" ? entityLibraryMetadata.entities
+    : ownerType === "variant" ? entityLibraryMetadata.variants
+      : entityLibraryMetadata.sets;
+  setSelectOptionsWithLabels(entityLibraryDescriptorOwner, [
+    { value: "", label: "Choose owner" },
+    ...source.map((item) => ({
+      value: item.entity_id || item.variant_id || item.set_id,
+      label: `${item.name || item.label}${item.variant_type ? ` · ${item.variant_type}` : ""}`,
+    })),
+  ]);
+}
+
+function activateInventoryView(view) {
+  entityLibraryCurrentView = view;
+  document.querySelectorAll("[data-inventory-view]").forEach((button) => {
+    const active = button.dataset.inventoryView === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+  });
+  document.querySelector("#entity-library-search-view").hidden = view !== "search";
+  document.querySelector("#entity-library-detail-view").hidden = view !== "detail";
+  document.querySelector("#entity-library-organizer-view").hidden = !["entities", "variants", "sets", "facets"].includes(view);
+  if (["entities", "variants", "sets", "facets"].includes(view)) renderEntityLibraryOrganizer(view);
+}
+
+function entityLibraryRowsFor(kind) {
+  return kind === "entities" ? entityLibraryMetadata.entities
+    : kind === "variants" ? entityLibraryMetadata.variants
+      : kind === "sets" ? entityLibraryMetadata.sets : entityLibraryMetadata.facets;
+}
+
+const entityLibraryOrganizationLabels = {
+  entities: ["Entities", "Entities are people, places, creatures, and objects represented by your images."],
+  variants: ["Variants", "Variants describe a form, stage, or version of an entity."],
+  sets: ["Reference sets", "Reference sets group images for a shared subject or purpose."],
+  facets: ["Facets", "Facets are reusable, structured labels such as view:front."],
+};
+
+function organizerId(kind, item) {
+  return item.entity_id || item.variant_id || item.set_id || item.facet_id;
+}
+
+function organizerTitle(kind, item) {
+  return kind === "facets" ? `${item.namespace}:${item.value}`
+    : item.name || item.label || item.value;
+}
+
+function renderEntityLibraryOrganizer(kind, selectedId = "") {
+  entityLibraryOrganizerSelectedId = selectedId;
+  const rows = entityLibraryRowsFor(kind) || [];
+  const heading = entityLibraryOrganizationLabels[kind];
+  const singular = ({ entities: "entity", variants: "variant", sets: "set", facets: "facet" })[kind];
+  const query = (entityLibraryOrganizer.querySelector("#inventory-organizer-search")?.value || "").trim().toLowerCase();
+  const filtered = rows.filter((item) => `${organizerTitle(kind, item)} ${item.entity_type || ""} ${item.entity_name || ""}`.toLowerCase().includes(query));
+  const selected = selectedId ? rows.find((item) => organizerId(kind, item) === selectedId) : null;
+  entityLibraryOrganizer.innerHTML = `
+    <header class="inventory-section-heading"><div><h2>${escapeHtml(heading[0])}</h2><p>${escapeHtml(heading[1])}</p></div><button class="primary-action" data-organizer-action="new">Add ${singular}</button></header>
+    <div class="inventory-organizer-layout">
+      <section class="control-panel inventory-organization-list"><label>Find ${escapeHtml(kind)}<input id="inventory-organizer-search" type="search" value="${escapeHtml(query)}" placeholder="Filter this list"></label>
+      <p class="status-text">${rows.length} ${kind}</p>
+      <div role="list">${filtered.map((item) => `<button type="button" role="listitem" class="inventory-organization-row${selected && organizerId(kind, item) === selectedId ? " selected" : ""}" data-organizer-action="select" data-id="${escapeHtml(organizerId(kind, item))}"><strong>${escapeHtml(organizerTitle(kind, item))}</strong><span>${escapeHtml(kind === "entities" ? item.entity_type : kind === "variants" ? `${item.entity_name} · ${item.variant_type}` : kind === "sets" ? item.set_type : item.controlled ? "Controlled" : "Free-form")}</span><small>${Number(item.image_count ?? item.usage_count ?? 0)} images</small></button>`).join("") || '<p class="status-text">No matches. Create the first item with “Add”.</p>'}</div></section>
+      <section class="control-panel inventory-organization-detail" id="inventory-organization-detail">${selected ? renderOrganizationRecord(singular, selected) : '<p class="status-text">Choose an item to review its details and available actions.</p>'}</section>
+    </div>`;
+  entityLibraryOrganizer.querySelector("#inventory-organizer-search")?.addEventListener("input", () => {
+    const value = entityLibraryOrganizer.querySelector("#inventory-organizer-search").value;
+    renderEntityLibraryOrganizer(kind, selectedId);
+    const input = entityLibraryOrganizer.querySelector("#inventory-organizer-search");
+    input.focus(); input.setSelectionRange(value.length, value.length);
+  });
+  entityLibraryOrganizer.querySelector("[name=member_search]")?.addEventListener("input", (event) => renderInventorySetMatches(event.target.value));
+  if (kind === "entities" && selected) {
+    fetchJson(`/api/entity-library/relations?entity_id=${encodeURIComponent(selectedId)}`).then((payload) => {
+      const list = entityLibraryOrganizer.querySelector("#inventory-relationships-list");
+      if (!list) return;
+      list.innerHTML = `<ul>${(payload.relations || []).map((relation) => `<li>${escapeHtml(relation.source_name)} ${escapeHtml(relation.relation_type.replaceAll("_", " "))} ${escapeHtml(relation.target_name)} <button type="button" data-organizer-action="remove-relation" data-source="${escapeHtml(relation.source_entity_id)}" data-target="${escapeHtml(relation.target_entity_id)}" data-type="${escapeHtml(relation.relation_type)}">Remove</button></li>`).join("") || "<li>No relationships yet.</li>"}</ul>`;
+    }).catch(() => {});
+  }
+}
+
+function renderOrganizationRecord(kind, item, creating = false) {
+  const plural = ({ entity: "entities", variant: "variants", set: "sets", facet: "facets" })[kind];
+  const id = organizerId(kind, item) || "";
+  const readOnlyType = !creating && kind === "entity" ? `<label>Type<input value="${escapeHtml(item.entity_type || "character")}" disabled></label>`
+    : !creating && kind === "variant" ? `<label>Type<input value="${escapeHtml(item.variant_type || "form")}" disabled></label><label>Owner<input value="${escapeHtml(item.entity_name || "")}" disabled></label>` : "";
+  const formFields = kind === "facet"
+    ? `<label>Namespace<input name="namespace" value="${escapeHtml(item.namespace || "view")}" ${creating ? "" : "disabled"} required></label><label>Value<input name="value" value="${escapeHtml(item.value || "")}" required></label>`
+    : `<label>Name<input name="name" value="${escapeHtml(item.name || "")}" required></label>${readOnlyType}<label>Description<input name="description" value="${escapeHtml(item.description || "")}"></label>${kind === "set" ? `<label>Purpose<input name="set_type" value="${escapeHtml(item.set_type || "general")}" required></label><label>Related entity<select name="entity_id"><option value="">No owner</option>${entityLibraryMetadata.entities.map((entity) => `<option value="${escapeHtml(entity.entity_id)}"${entity.entity_id === item.entity_id ? " selected" : ""}>${escapeHtml(entity.name)}</option>`).join("")}</select></label>` : ""}${creating && kind === "variant" ? `<label>Owner<select name="entity_id" required>${entityLibraryMetadata.entities.map((entity) => `<option value="${escapeHtml(entity.entity_id)}">${escapeHtml(entity.name)}</option>`).join("")}</select></label><label>Variant type<select name="variant_type"><option value="life_stage">Life stage</option><option value="form">Form</option><option value="state">State</option><option value="version">Version</option></select></label>` : ""}${creating && kind === "entity" ? `<label>Type<select name="entity_type">${["character", "person", "creature", "group", "location", "structure", "prop", "costume", "symbol"].map((type) => `<option value="${type}">${type}</option>`).join("")}</select></label>` : ""}`;
+  const descriptors = ["human_description", "prompt_identity", "prompt_costume", "prompt_object", "prompt_background", "negative_guidance", "selection_notes"];
+  const currentDescriptor = (item.descriptors || [])[0];
+  const descriptorHTML = ["entity", "variant", "set"].includes(kind) && !creating
+    ? `<details class="inventory-subsection"><summary>Shared prompt descriptors</summary><label>Descriptor<select name="descriptor_type">${descriptors.map((type) => `<option value="${type}"${type === currentDescriptor?.descriptor_type ? " selected" : ""}>${type.replaceAll("_", " ")}</option>`).join("")}</select></label><label>Text<textarea name="descriptor_text">${escapeHtml(currentDescriptor?.text || "")}</textarea></label><button type="button" data-organizer-action="save-descriptor">Save descriptor</button><ul>${(item.descriptors || []).map((d) => `<li>${escapeHtml(d.descriptor_type.replaceAll("_", " "))}</li>`).join("")}</ul></details>` : "";
+  const relationshipHTML = kind === "entity" && !creating
+    ? `<details class="inventory-subsection"><summary>Relationships</summary><div id="inventory-relationships-list"></div><label>Link to<select name="relation_target"><option value="">Choose entity</option>${entityLibraryMetadata.entities.filter((entity) => entity.entity_id !== id).map((entity) => `<option value="${escapeHtml(entity.entity_id)}">${escapeHtml(entity.name)} · ${escapeHtml(entity.entity_type)}</option>`).join("")}</select></label><label>Relationship<select name="relation_type"><option value="part_of">Part of</option><option value="variant_of">Variant of</option><option value="associated_with">Associated with</option></select></label><button type="button" data-organizer-action="add-relation">Link entities</button></details>` : "";
+  const setMembers = kind === "set" && !creating ? `<details class="inventory-subsection"><summary>Images in this set (${item.assets?.length || 0})</summary><ul>${(item.assets || []).map((asset) => `<li>${escapeHtml(asset.label || asset.file_name)} <button type="button" data-organizer-action="remove-member" data-asset-id="${escapeHtml(asset.asset_id)}">Remove</button></li>`).join("")}</ul><label>Find an image to add<input name="member_search" type="search" placeholder="Search image labels"></label><div id="inventory-set-image-matches"></div></details>` : "";
+  return `<button type="button" class="text-action" data-organizer-action="list">← Back to ${escapeHtml(plural)}</button><form id="inventory-record-form" data-kind="${kind}" data-id="${escapeHtml(id)}"><h2>${creating ? `New ${kind}` : escapeHtml(organizerTitle(plural, item))}</h2>${formFields}<div class="button-row"><button class="primary-action" type="submit">${creating ? "Create" : "Save changes"}</button>${!creating ? `<button type="button" data-organizer-action="view-images">View images (${Number(item.image_count ?? item.usage_count ?? 0)})</button><button type="button" data-organizer-action="merge">Merge into…</button><button type="button" class="danger-action" data-organizer-action="delete">${kind === "set" ? "Delete set" : "Delete if unused"}</button>` : ""}</div></form>${descriptorHTML}${relationshipHTML}${setMembers}<div id="inventory-record-message" class="status-text" role="status"></div>`;
+}
+
+async function inventoryFilteredSearch(overrides = {}) {
+  for (const [key, value] of Object.entries(overrides)) {
+    const control = document.querySelector(`#entity-library-filter-${key}`);
+    if (control) control.value = value;
+  }
+  activateInventoryView("search");
+  await searchEntityLibrary();
+}
+
+async function previewOrganizationMerge(kind, sourceId) {
+  const rows = entityLibraryRowsFor(kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets");
+  const source = rows.find((item) => organizerId(kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets", item) === sourceId);
+  const candidates = rows.filter((item) => {
+    if (organizerId(kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets", item) === sourceId) return false;
+    if (kind === "entity") return item.entity_type === source?.entity_type;
+    if (kind === "variant") return item.entity_id === source?.entity_id && item.variant_type === source?.variant_type;
+    if (kind === "facet") return item.namespace === source?.namespace;
+    return true;
+  });
+  if (!candidates.length) return;
+  const listKind = kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets";
+  entityLibraryMergeContent.innerHTML = `<p>Choose the record that should keep its ID and image tags.</p><label>Keep<select id="inventory-merge-target">${candidates.map((item) => `<option value="${escapeHtml(organizerId(listKind, item))}">${escapeHtml(organizerTitle(listKind, item))}</option>`).join("")}</select></label><button id="inventory-merge-preview" type="button" class="secondary-action">Preview merge</button>`;
+  entityLibraryMergeConfirm.disabled = true;
+  entityLibraryMergeConfirm.onclick = null;
+  entityLibraryMergeDialog.showModal();
+  entityLibraryMergeContent.querySelector("#inventory-merge-preview").addEventListener("click", async () => {
+    const targetId = entityLibraryMergeContent.querySelector("#inventory-merge-target").value;
+    try {
+      const result = await fetchJson(`/api/entity-library/merges/${kind}/preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_id: sourceId, target_id: targetId }) });
+      entityLibraryMergePreview = result.preview;
+      renderOrganizationMergePreview(kind, sourceId, targetId, result.preview);
+    } catch (error) { window.alert(error.message); }
+  });
+}
+
+function renderOrganizationMergePreview(kind, sourceId, targetId, preview) {
+  entityLibraryMergeContent.innerHTML = `<p>Merge <strong>${escapeHtml(preview.source.name || `${preview.source.namespace}:${preview.source.value}`)}</strong> into <strong>${escapeHtml(preview.target.name || `${preview.target.namespace}:${preview.target.value}`)}</strong>. ${preview.image_count} image or organization record(s) will be retained under the target.</p>${preview.conflicts.length ? preview.conflicts.map((conflict) => `<fieldset class="inventory-merge-conflict"><legend>${escapeHtml(conflict.label)}</legend><label><input type="radio" name="${escapeHtml(conflict.key)}" value="target"> Keep target: <span>${escapeHtml(String(conflict.target))}</span></label><label><input type="radio" name="${escapeHtml(conflict.key)}" value="source"> Use source: <span>${escapeHtml(String(conflict.source))}</span></label></fieldset>`).join("") : "<p>No conflicting values. The merge can be applied safely.</p>"}`;
+  entityLibraryMergeConfirm.disabled = preview.conflicts.length > 0;
+  entityLibraryMergeConfirm.onclick = async () => {
+    const resolutions = {};
+    for (const conflict of preview.conflicts) {
+      const choice = entityLibraryMergeContent.querySelector(`input[name="${CSS.escape(conflict.key)}"]:checked`);
+      if (!choice) return;
+      resolutions[conflict.key] = choice.value;
+    }
+    entityLibraryMergeConfirm.disabled = true;
+    try {
+      await fetchJson(`/api/entity-library/merges/${kind}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_id: sourceId, target_id: targetId, token: preview.token, resolutions }) });
+      entityLibraryMergeDialog.close();
+      await loadEntityLibraryInventory();
+      const page = kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets";
+      activateInventoryView(page);
+    } catch (error) { window.alert(error.message); entityLibraryMergeConfirm.disabled = false; }
+  };
+  entityLibraryMergeContent.onchange = () => {
+    entityLibraryMergeConfirm.disabled = preview.conflicts.some((conflict) => !entityLibraryMergeContent.querySelector(`input[name="${CSS.escape(conflict.key)}"]:checked`));
+  };
+}
+
+async function handleOrganizationAction(event) {
+  const button = event.target.closest("[data-organizer-action]");
+  if (!button) return;
+  const action = button.dataset.organizerAction;
+  const form = button.closest("#inventory-record-form");
+  const kindPlural = entityLibraryCurrentView;
+  const kind = ({ entities: "entity", variants: "variant", sets: "set", facets: "facet" })[kindPlural];
+  const id = form?.dataset.id || button.dataset.id || entityLibraryOrganizerSelectedId;
+  const detailMessage = entityLibraryOrganizer.querySelector("#inventory-record-message");
+  const report = (message) => { if (detailMessage) detailMessage.textContent = message; else window.alert(message); };
+  try {
+    if (action === "select") return renderEntityLibraryOrganizer(kindPlural, id);
+    if (action === "list") return renderEntityLibraryOrganizer(kindPlural);
+    if (action === "new") {
+      renderEntityLibraryOrganizer(kindPlural);
+      entityLibraryOrganizer.querySelector("#inventory-organization-detail").innerHTML = renderOrganizationRecord(kind, {}, true);
+      return;
+    }
+    if (action === "view-images") {
+      const filters = kind === "entity" ? { entity: id } : kind === "variant" ? { variant: id } : kind === "set" ? { set: id } : { facet: `${entityLibraryMetadata.facets.find((item) => item.facet_id === id)?.namespace}\u0000${entityLibraryMetadata.facets.find((item) => item.facet_id === id)?.value}` };
+      return await inventoryFilteredSearch(filters);
+    }
+    if (action === "delete") {
+      if (!window.confirm("Delete this organization record? Its images will be kept.")) return;
+      const url = `/api/entity-library/${kindPlural}/${encodeURIComponent(id)}`;
+      await fetchJson(url, { method: "DELETE" });
+      await loadEntityLibraryInventory(); return activateInventoryView(kindPlural);
+    }
+    if (action === "merge") return previewOrganizationMerge(kind, id);
+    if (action === "save-descriptor") {
+      await fetchJson("/api/entity-library/descriptors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ owner_type: kind, owner_id: id, descriptor_type: form.elements.descriptor_type.value, text: form.elements.descriptor_text.value }) });
+      await loadEntityLibraryInventory(); return renderEntityLibraryOrganizer(kindPlural, id);
+    }
+    if (action === "add-relation") {
+      if (!form.elements.relation_target.value) return;
+      await fetchJson("/api/entity-library/relations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_entity_id: id, target_entity_id: form.elements.relation_target.value, relation_type: form.elements.relation_type.value }) });
+      report("Relationship added."); return;
+    }
+    if (action === "remove-relation") {
+      const params = new URLSearchParams({ source_entity_id: button.dataset.source, target_entity_id: button.dataset.target, relation_type: button.dataset.type });
+      await fetchJson(`/api/entity-library/relations?${params}`, { method: "DELETE" });
+      return loadEntityLibraryInventory().then(() => renderEntityLibraryOrganizer(kindPlural, id));
+    }
+    if (action === "remove-member") {
+      await fetchJson(`/api/entity-library/sets/${encodeURIComponent(id)}/assets/${encodeURIComponent(button.dataset.assetId)}`, { method: "DELETE" });
+      return loadEntityLibraryInventory().then(() => renderEntityLibraryOrganizer(kindPlural, id));
+    }
+    if (action === "add-member-image") {
+      await fetchJson(`/api/entity-library/sets/${encodeURIComponent(id)}/assets/${encodeURIComponent(button.dataset.assetId)}`, { method: "POST" });
+      return loadEntityLibraryInventory().then(() => renderEntityLibraryOrganizer(kindPlural, id));
+    }
+  } catch (error) { report(error.message); }
+}
+
+async function saveOrganizationRecord(event) {
+  event.preventDefault();
+  const form = event.target;
+  if (!form.matches("#inventory-record-form")) return;
+  const kind = form.dataset.kind;
+  const id = form.dataset.id;
+  const data = Object.fromEntries(new FormData(form));
+  try {
+    if (!id) {
+      if (kind === "entity") await fetchJson("/api/entity-library/entities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      else if (kind === "variant") await fetchJson(`/api/entity-library/entities/${encodeURIComponent(data.entity_id)}/variants`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      else if (kind === "set") await fetchJson("/api/entity-library/sets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      else await fetchJson("/api/entity-library/facets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    } else {
+      const url = `/api/entity-library/${kind === "set" ? "sets" : `${kind}s`}/${encodeURIComponent(id)}`;
+      await fetchJson(url, { method: kind === "set" ? "PUT" : "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    }
+    await loadEntityLibraryInventory();
+    renderEntityLibraryOrganizer(kind === "entity" ? "entities" : kind === "variant" ? "variants" : kind === "set" ? "sets" : "facets");
+  } catch (error) {
+    const message = entityLibraryOrganizer.querySelector("#inventory-record-message");
+    if (message) message.textContent = error.message; else window.alert(error.message);
+  }
+}
+
+async function renderInventorySetMatches(query) {
+  const target = entityLibraryOrganizer.querySelector("#inventory-set-image-matches");
+  const form = entityLibraryOrganizer.querySelector("#inventory-record-form");
+  if (!target || !form || !query.trim()) { if (target) target.replaceChildren(); return; }
+  try {
+    const params = new URLSearchParams({ q: query.trim(), limit: "10" });
+    const payload = await fetchJson(`/api/entity-library/assets?${params}`);
+    target.replaceChildren();
+    for (const asset of payload.assets || []) {
+      if (form.closest("#inventory-organization-detail") && !asset.sets?.some((set) => set.set_id === form.dataset.id)) {
+        const button = document.createElement("button"); button.type = "button"; button.textContent = `Add ${asset.label || asset.file_name}`; button.dataset.organizerAction = "add-member-image"; button.dataset.assetId = asset.asset_id; target.append(button);
+      }
+    }
+  } catch { target.textContent = "Could not search images."; }
+}
+
+function syncEntityLibrarySetEditor() {
+  const selected = entityLibraryMetadata.sets.find((item) => item.set_id === entityLibrarySetSelect.value);
+  entityLibrarySetName.value = selected?.name || "";
+  entityLibrarySetType.value = selected?.set_type || "";
+  entityLibrarySetCreate.hidden = Boolean(selected);
+  entityLibrarySetSave.disabled = !selected;
+  entityLibrarySetDelete.disabled = !selected;
+  entityLibrarySetSave.textContent = "Save set";
+}
+
+async function saveEntityLibrarySet() {
+  const setId = entityLibrarySetSelect.value;
+  if (!setId || !entityLibrarySetName.value.trim()) return;
+  try {
+    await fetchJson(`/api/entity-library/sets/${encodeURIComponent(setId)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: entityLibrarySetName.value, set_type: entityLibrarySetType.value || "general" }),
+    });
+    await loadEntityLibraryInventory();
+    entityLibrarySetSelect.value = setId;
+    syncEntityLibrarySetEditor();
+    showAuxResourceMessage("Reference set saved.", "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+async function deleteEntityLibrarySet() {
+  const selected = entityLibraryMetadata.sets.find((item) => item.set_id === entityLibrarySetSelect.value);
+  if (!selected) return;
+  const count = selected.assets?.length || 0;
+  const confirmation = count
+    ? `Delete ${selected.name}? Its ${count} image link(s) will be removed; the images will stay in the library.`
+    : `Delete the empty reference set ${selected.name}?`;
+  if (!window.confirm(confirmation)) return;
+  try {
+    await fetchJson(`/api/entity-library/sets/${encodeURIComponent(selected.set_id)}`, { method: "DELETE" });
+    entityLibrarySetSelect.value = "";
+    await loadEntityLibraryInventory();
+    showAuxResourceMessage(`Deleted ${selected.name}.`, "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+  }
+}
+
+function entityLibraryEditorSnapshot() {
+  return JSON.stringify({
+    asset_id: entityLibrarySelectedAsset?.asset_id || "",
+    label: entityLibraryEditLabel.value,
+    notes: entityLibraryEditNotes.value,
+    status: entityLibraryEditStatus.value,
+    entities: Array.from(entityLibraryEditEntities.selectedOptions, (item) => item.value),
+    sets: Array.from(entityLibraryEditSets.selectedOptions, (item) => item.value),
+    facets: entityLibraryEditFacets.value,
+    tags: entityLibraryEditTags.value,
+    identity: entityLibraryEditIdentity.value,
+    costume: entityLibraryEditCostume.value,
+    prompt: entityLibraryEditPrompt.value,
+    negative_prompt: entityLibraryEditNegativePrompt.value,
+    reference: entityLibraryEditReference.value,
+  });
+}
+
+function applyEntityLibraryEditorSnapshot(snapshot) {
+  if (!snapshot.asset_id || snapshot.asset_id !== entityLibrarySelectedAsset?.asset_id) return;
+  entityLibraryEditLabel.value = snapshot.label;
+  entityLibraryEditNotes.value = snapshot.notes;
+  entityLibraryEditStatus.value = snapshot.status;
+  for (const optionItem of entityLibraryEditEntities.options) optionItem.selected = snapshot.entities.includes(optionItem.value);
+  for (const optionItem of entityLibraryEditSets.options) optionItem.selected = snapshot.sets.includes(optionItem.value);
+  entityLibraryEditFacets.value = snapshot.facets;
+  entityLibraryEditTags.value = snapshot.tags;
+  entityLibraryEditIdentity.value = snapshot.identity;
+  entityLibraryEditCostume.value = snapshot.costume;
+  entityLibraryEditPrompt.value = snapshot.prompt;
+  entityLibraryEditNegativePrompt.value = snapshot.negative_prompt;
+  entityLibraryEditReference.value = snapshot.reference;
+}
+
+async function selectEntityLibraryAsset(assetId) {
+  const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(assetId)}`);
+  entityLibrarySelectedAsset = payload.asset;
+  activateInventoryView("detail");
+  const asset = entityLibrarySelectedAsset;
+  entityLibraryEditorTitle.textContent = asset.label || asset.file_name;
+  entityLibraryPreview.src = fileUrl(asset.image_path);
+  entityLibraryPreview.hidden = false;
+  entityLibraryEditLabel.disabled = false;
+  entityLibraryEditPrompt.disabled = false;
+  entityLibraryEditNegativePrompt.disabled = false;
+  entityLibraryEditNotes.disabled = false;
+  entityLibraryEditStatus.disabled = false;
+  entityLibraryEditEntities.disabled = false;
+  entityLibraryEditSets.disabled = false;
+  entityLibraryEditFacets.disabled = false;
+  entityLibraryEditTags.disabled = false;
+  entityLibraryEditIdentity.disabled = false;
+  entityLibraryEditCostume.disabled = false;
+  entityLibraryEditReference.disabled = false;
+  entityLibrarySave.disabled = false;
+  entityLibraryDelete.disabled = asset.status === "archived";
+  entityLibraryReplacementFile.disabled = false;
+  entityLibraryReplace.disabled = false;
+  entityLibraryModifyGenerated.hidden = asset.origin === "pipeline" || asset.status === "archived";
+  entityLibraryGeneratePrompt.disabled = asset.status === "archived" || Boolean(asset.prompt && asset.negative_prompt);
+  entityLibraryGenerateIdentity.disabled = asset.status === "archived";
+  entityLibraryPromptStatus.textContent = "";
+  entityLibraryIdentityStatus.textContent = "";
+  entityLibraryModifyStatus.textContent = "";
+  entityLibraryEditLabel.value = asset.label || "";
+  entityLibraryEditPrompt.value = asset.prompt || "";
+  entityLibraryEditNegativePrompt.value = asset.negative_prompt || "";
+  entityLibraryEditNotes.value = asset.notes || "";
+  entityLibraryEditStatus.value = asset.status;
+  const entityIds = (asset.entities || []).map((item) => item.entity_id);
+  const setIds = (asset.sets || []).map((item) => item.set_id);
+  for (const optionItem of entityLibraryEditEntities.options) optionItem.selected = entityIds.includes(optionItem.value);
+  for (const optionItem of entityLibraryEditSets.options) optionItem.selected = setIds.includes(optionItem.value);
+  entityLibraryEditFacets.value = (asset.facets || []).map((item) => `${item.namespace}:${item.value}`).join(", ");
+  entityLibraryEditTags.value = (asset.tags || []).join(", ");
+  entityLibraryEditIdentity.value = (asset.descriptors || []).find((item) => item.descriptor_type === "prompt_identity")?.text || "";
+  entityLibraryEditCostume.value = (asset.descriptors || []).find((item) => item.descriptor_type === "prompt_costume")?.text || "";
+  entityLibraryEditReference.value = asset.logical_reference?.reference_key || "";
+  entityLibraryLogicalReferences.replaceChildren();
+  for (const reference of asset.logical_references || []) {
+    const row = document.createElement("li");
+    const tag = document.createElement("code");
+    tag.textContent = `{{LIB:REF:${reference.reference_key}}}`;
+    const status = document.createElement("span");
+    status.textContent = ` · ${reference.status}`;
+    row.append(tag, status);
+    entityLibraryLogicalReferences.append(row);
+  }
+  if (!asset.logical_references?.length) {
+    const row = document.createElement("li");
+    row.textContent = "No logical references.";
+    entityLibraryLogicalReferences.append(row);
+  }
+  entityLibraryUsages.replaceChildren();
+  for (const usage of asset.usages || []) {
+    const row = document.createElement("li");
+    row.textContent = `${usage.consumer_type}: ${usage.consumer_id} · ${usage.locator}`;
+    entityLibraryUsages.append(row);
+  }
+  if (!asset.usages?.length) {
+    const row = document.createElement("li");
+    row.textContent = "No current consumers.";
+    entityLibraryUsages.append(row);
+  }
+  entityLibrarySavedSnapshot = entityLibraryEditorSnapshot();
+}
+
+async function deleteEntityLibraryAsset() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset || asset.status === "archived") return;
+  if (!window.confirm(`Archive ${asset.label || asset.file_name} from the image inventory? Its logical references will be deactivated. Current consumers must be updated first.`)) return;
+  entityLibraryDelete.disabled = true;
+  try {
+    await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, { method: "DELETE" });
+    entityLibrarySelectedAsset = null;
+    entityLibraryEditorTitle.textContent = "Select an image";
+    entityLibraryPreview.hidden = true;
+    entityLibraryBack.hidden = true;
+    document.querySelector(".entity-library-layout").classList.remove("metadata-mode");
+    await loadEntityLibraryInventory();
+    showAuxResourceMessage("Image deleted from the inventory.", "success");
+  } catch (error) {
+    showAuxResourceMessage(error.message, "error");
+    entityLibraryDelete.disabled = false;
+  }
+}
+
+async function saveEntityLibraryAsset() {
+  const asset = entityLibrarySelectedAsset;
+  if (!asset) return;
+  const facets = entityLibraryEditFacets.value.split(",").map((entry) => entry.trim()).filter(Boolean).map((entry) => {
+    const split = entry.indexOf(":");
+    return { namespace: split < 0 ? "tag" : entry.slice(0, split).trim(), value: split < 0 ? entry : entry.slice(split + 1).trim(), controlled: split >= 0 };
+  });
+  const existingEntityLinks = new Map((asset.entities || []).map((item) => [item.entity_id, item]));
+  const entityLinks = [...entityLibraryEditEntities.selectedOptions].map((optionItem) => ({
+    entity_id: optionItem.value,
+    role: existingEntityLinks.get(optionItem.value)?.role || "depicted_subject",
+    variant_id: existingEntityLinks.get(optionItem.value)?.variant_id || null,
+  }));
+  const setIds = [...entityLibraryEditSets.selectedOptions].map((optionItem) => optionItem.value);
+  const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label: entityLibraryEditLabel.value, notes: entityLibraryEditNotes.value, status: entityLibraryEditStatus.value, prompt: entityLibraryEditPrompt.value, negative_prompt: entityLibraryEditNegativePrompt.value, entity_links: entityLinks, set_ids: setIds, facets, tags: entityLibraryEditTags.value.split(",").map((tag) => tag.trim()).filter(Boolean) }),
+  });
+  entityLibrarySelectedAsset = payload.asset;
+  for (const [descriptor_type, text] of [["prompt_identity", entityLibraryEditIdentity.value], ["prompt_costume", entityLibraryEditCostume.value]]) {
+    await fetchJson("/api/entity-library/descriptors", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ owner_type: "asset", owner_id: asset.asset_id, descriptor_type, text }),
+    });
+  }
+  const referenceKey = entityLibraryEditReference.value.trim();
+  if (referenceKey) {
+    const existing = (await fetchJson("/api/entity-library/logical-references")).references || [];
+    const previous = existing.find((item) => item.reference_key === referenceKey);
+    await fetchJson(previous
+      ? `/api/entity-library/logical-references/${encodeURIComponent(referenceKey)}`
+      : "/api/entity-library/logical-references", {
+      method: previous ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reference_key: referenceKey, label: entityLibraryEditLabel.value, asset_id: asset.asset_id, set_id: previous?.set_id || setIds[0] || null, status: "active" }),
+    });
+  }
+  await selectEntityLibraryAsset(asset.asset_id);
 }
 
 async function loadImageCatalog() {
@@ -9039,8 +11081,9 @@ async function writeClipboardText(value) {
   document.body.append(textarea);
   textarea.focus();
   textarea.select();
-  document.execCommand("copy");
+  const copied = document.execCommand("copy");
   textarea.remove();
+  if (!copied) throw new Error("Clipboard access is unavailable.");
 }
 
 async function copyText(value, label = "Copied.") {
@@ -10018,12 +12061,9 @@ async function openPipelineInspectionFolder() {
 }
 
 async function loadPipelineControls() {
-  if (!state.character || !state.phase) {
-    pipelineControlsStatus.textContent = "No character/phase selected.";
-    return;
-  }
   pipelineControlsStatus.textContent = "Loading pipeline controls...";
-  const payload = await fetchJson(`/api/pipeline-controls?${currentQuery().toString()}`);
+  const params = activePageName() === "local-image-config" ? new URLSearchParams() : currentQuery();
+  const payload = await fetchJson(`/api/pipeline-controls?${params.toString()}`);
   renderPipelineControls(payload);
 }
 
@@ -10031,17 +12071,10 @@ function renderPipelineControls(payload) {
   state.pipelineControls = payload;
   const automation = payload.automation || {};
   const profiles = payload.render_profiles || {};
-  const stableProfile = automation.stable_matrix_profile || automation.local_render_preset || "body-reference-preview";
-  const comfyProfile = automation.comfyui_profile || "comfyui-core-preview";
-  setSelectOptions(settingLocalRenderPreset, profiles.stable_matrix?.length ? profiles.stable_matrix : [stableProfile]);
+  const comfyProfile = automation.comfyui_profile || "comfyui-qwen-image-2-1-scene";
   setSelectOptions(settingComfyuiProfile, profiles.comfyui?.length ? profiles.comfyui : [comfyProfile]);
-  settingLocalRenderBackend.value = automation.local_render_backend || "stable_matrix";
-  settingLocalRenderPreset.value = stableProfile;
+  settingLocalRenderBackend.value = "comfyui";
   settingComfyuiProfile.value = comfyProfile;
-  settingLocalRenderForgeCouple.checked = (automation.stable_matrix_use_forge_couple ?? automation.local_render_use_forge_couple) !== false;
-  setLocalRenderCheckpointValue(automation.stable_matrix_checkpoint || automation.local_render_checkpoint || "");
-  settingLocalRenderPositiveGlobals.value = automation.stable_matrix_positive_prompt_globals || automation.local_render_positive_prompt_globals || "";
-  settingLocalRenderNegativeGlobals.value = automation.stable_matrix_negative_prompt_globals || automation.local_render_negative_prompt_globals || "";
   setComfyuiCheckpointValue(automation.comfyui_checkpoint || "");
   settingComfyuiServerUrl.value = automation.comfyui_server_url || "http://127.0.0.1:8188";
   settingComfyuiPositiveGlobals.value = automation.comfyui_positive_prompt_globals || "";
@@ -10062,6 +12095,9 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(settingPromptCondenseModel, automation.prompt_condense_model || "");
   setOllamaModelValue(settingAiPromptAnalysisModel, automation.ai_prompt_analysis_model || "");
   setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
+  setOllamaModelValue(settingImagePromptGenerationModel, automation.ai_image_prompt_generation_model || "image-analysis:latest");
+  setOllamaModelValue(settingCostumeWizardModel, automation.ai_costume_wizard_model || "codex:gpt-6-luna");
+  setOllamaModelValue(settingQuickCharacterWizardModel, automation.ai_quick_character_wizard_model || "codex:gpt-6-luna");
   setOllamaModelValue(settingAiSceneBuilderModel, automation.ai_scene_builder_model || "");
   setOllamaModelValue(settingLocalBodyReferenceFaceGateModel, automation.local_body_reference_face_gate_model || "");
   setOllamaModelValue(settingLocalBodyReferenceReviewModel, automation.local_body_reference_review_model || "");
@@ -10094,6 +12130,9 @@ const ollamaModelControls = () => [
   settingPromptCondenseModel,
   settingAiPromptAnalysisModel,
   settingAiImageDescriptionModel,
+  settingImagePromptGenerationModel,
+  settingCostumeWizardModel,
+  settingQuickCharacterWizardModel,
   settingAiSceneBuilderModel,
   settingLocalBodyReferenceFaceGateModel,
   settingLocalBodyReferenceReviewModel,
@@ -10154,12 +12193,23 @@ function setOllamaModelValue(control, value) {
   control.value = model;
 }
 
-async function refreshOllamaModelOptions() {
+async function refreshOllamaModelOptions(refresh = false) {
   const current = new Map(ollamaModelControls().map((control) => [control, control.value]));
+  const addCodexPromptModels = (control) => {
+    for (const model of ["gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"]) {
+      if (!Array.from(control.options).some((option) => option.value === "codex:" + model)) {
+        control.add(new Option("Codex · " + model, "codex:" + model));
+      }
+    }
+  };
   try {
-    const payload = await fetchJson("/api/ai-controls/ollama-models");
+    const payload = await fetchJson(refresh
+      ? "/api/ai-controls/ollama-models/refresh"
+      : "/api/ai-controls/ollama-models", { method: refresh ? "POST" : "GET" });
     for (const control of ollamaModelControls()) {
-      setSelectOptions(control, payload.models || []);
+      setSelectOptions(control, control === settingImagePromptGenerationModel
+        ? (payload.vision_models || []) : (payload.models || []));
+      if ([settingImagePromptGenerationModel, settingCostumeWizardModel, settingQuickCharacterWizardModel].includes(control)) addCodexPromptModels(control);
       setOllamaModelValue(control, current.get(control));
     }
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
@@ -10167,6 +12217,12 @@ async function refreshOllamaModelOptions() {
       `Loaded ${(payload.models || []).length} Ollama model(s); ${(payload.vision_models || []).length} report vision capability.`,
     );
   } catch (error) {
+    addCodexPromptModels(settingImagePromptGenerationModel);
+    addCodexPromptModels(settingCostumeWizardModel);
+    addCodexPromptModels(settingQuickCharacterWizardModel);
+    setOllamaModelValue(settingImagePromptGenerationModel, current.get(settingImagePromptGenerationModel));
+    setOllamaModelValue(settingCostumeWizardModel, current.get(settingCostumeWizardModel));
+    setOllamaModelValue(settingQuickCharacterWizardModel, current.get(settingQuickCharacterWizardModel));
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
     showMessage(error.message, "error");
   }
@@ -10197,7 +12253,7 @@ function setComfyuiCheckpointValue(value) {
 
 function syncLocalRenderBackendPanels() {
   const useComfyui = settingLocalRenderBackend.value === "comfyui";
-  stableMatrixSettings.hidden = useComfyui;
+  stableMatrixSettings.hidden = true;
   comfyuiSettings.hidden = !useComfyui;
 }
 
@@ -10224,7 +12280,7 @@ async function refreshComfyuiCheckpointOptions() {
   showLocalImageConfigMessage("Refreshing ComfyUI models...");
   try {
     const params = new URLSearchParams({
-      preset: settingComfyuiProfile.value || "comfyui-core-preview",
+      preset: settingComfyuiProfile.value || "comfyui-qwen-image-2-1-scene",
       backend: "comfyui",
     });
     const payload = await fetchJson(`/api/local-image/checkpoints?${params.toString()}`);
@@ -10244,16 +12300,6 @@ async function refreshComfyuiCheckpointOptions() {
 function automationPayloadFromForm() {
   return {
     local_render_backend: settingLocalRenderBackend.value,
-    local_render_preset: settingLocalRenderPreset.value,
-    local_render_positive_prompt_globals: settingLocalRenderPositiveGlobals.value,
-    local_render_negative_prompt_globals: settingLocalRenderNegativeGlobals.value,
-    local_render_use_forge_couple: settingLocalRenderForgeCouple.checked,
-    local_render_checkpoint: settingLocalRenderCheckpoint.value,
-    stable_matrix_profile: settingLocalRenderPreset.value,
-    stable_matrix_positive_prompt_globals: settingLocalRenderPositiveGlobals.value,
-    stable_matrix_negative_prompt_globals: settingLocalRenderNegativeGlobals.value,
-    stable_matrix_use_forge_couple: settingLocalRenderForgeCouple.checked,
-    stable_matrix_checkpoint: settingLocalRenderCheckpoint.value,
     comfyui_profile: settingComfyuiProfile.value,
     comfyui_server_url: settingComfyuiServerUrl.value,
     comfyui_checkpoint: settingComfyuiCheckpoint.value,
@@ -10273,6 +12319,9 @@ function automationPayloadFromForm() {
     prompt_condense_model: settingPromptCondenseModel.value,
     ai_prompt_analysis_model: settingAiPromptAnalysisModel.value,
     ai_image_description_model: settingAiImageDescriptionModel.value,
+    ai_image_prompt_generation_model: settingImagePromptGenerationModel.value,
+    ai_costume_wizard_model: settingCostumeWizardModel.value,
+    ai_quick_character_wizard_model: settingQuickCharacterWizardModel.value,
     ai_scene_builder_model: settingAiSceneBuilderModel.value,
     local_body_reference_face_gate_model: settingLocalBodyReferenceFaceGateModel.value,
     local_body_reference_review_model: settingLocalBodyReferenceReviewModel.value,
@@ -10290,7 +12339,8 @@ async function saveAutomationSettings(event) {
       : showAiControlsMessage;
   showMessage("Saving...");
   try {
-    const payload = await fetchJson(`/api/pipeline-controls/automation?${currentQuery().toString()}`, {
+    const params = activePageName() === "local-image-config" ? new URLSearchParams() : currentQuery();
+    const payload = await fetchJson(`/api/pipeline-controls/automation?${params.toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(automationPayloadFromForm()),
@@ -10540,6 +12590,7 @@ function renderRenderConsoleDetail(detail) {
   renderConsoleClearLocalTest.disabled = !localPrompt.latest_local_test_render;
   renderRenderConsoleLocalTestRender(localPrompt.latest_local_test_render);
   renderConsoleReferenceFiles(detail.reference_files || []);
+  renderRenderConsoleQwenWarnings(localPrompt.qwen_warnings || []);
   updateRenderConsoleNavigation();
 }
 
@@ -10558,6 +12609,16 @@ function applyRenderConsoleLocalProfile() {
     ? localPrompt.qwen_error : supported ? "Local prompt: READY" : "Local prompt: DISABLED";
   renderConsoleLocalStatus.textContent = [message, localRenderState ? `Local render: ${localRenderState}` : ""]
     .filter(Boolean).join(" | ");
+}
+
+function renderRenderConsoleQwenWarnings(warnings) {
+  renderConsoleQwenWarnings.replaceChildren();
+  for (const warning of warnings || []) {
+    const item = document.createElement("li");
+    item.textContent = `${warning.field || "Scene Builder"}: ${warning.message || "Review this prompt instruction."}`;
+    renderConsoleQwenWarnings.append(item);
+  }
+  renderConsoleQwenWarnings.hidden = !renderConsoleQwenWarnings.childElementCount;
 }
 
 function renderRenderConsoleLocalTestRender(path) {
@@ -11205,7 +13266,11 @@ function renderManifestTaskTable() {
     const row = document.createElement("tr");
     row.dataset.assetId = task.asset_id;
     row.classList.toggle("selected", task.asset_id === state.selectedManifestAssetId);
-    for (const value of [task.asset_id, task.pipeline, task.body_view, task.ai_proxy_status?.pending ? "AI Proxy pending" : "Ready"]) {
+    const proxyJob = task.ai_proxy_status?.jobs?.[0];
+    const proxyLabel = proxyJob
+      ? `${proxyJob.display_state || proxyJob.state}${proxyJob.trusted_worker_backend ? ` · ${proxyJob.trusted_worker_backend}` : ""}${proxyJob.diagnostic ? ` · ${proxyJob.diagnostic}` : ""}`
+      : "Ready";
+    for (const value of [task.asset_id, task.pipeline, task.body_view, proxyLabel]) {
       const cell = document.createElement("td");
       cell.textContent = value ?? "";
       row.append(cell);
@@ -11523,12 +13588,30 @@ phaseSelect.addEventListener("change", async () => {
   await loadWorkspaceSummary();
 });
 
+deletePhaseButton.addEventListener("click", async () => {
+  if (!state.character || !state.phase) return;
+  if (!window.confirm(`Move ${state.character} / ${state.phase} and all templates and character assets to the library deleted folder?`)) return;
+  deletePhaseButton.disabled = true;
+  showActionMessage("Moving phase to deleted storage...");
+  try {
+    const payload = await fetchJson(`/api/character-phase?${currentQuery().toString()}`, { method: "DELETE" });
+    state.phase = null;
+    await refreshCurrentContext();
+    if (document.querySelector("#costumes-page").classList.contains("active") && state.phase) await loadCostumes();
+    showActionMessage(payload.message || "Character phase moved to deleted storage.");
+  } catch (error) {
+    showActionMessage(error.message, "error");
+  } finally {
+    deletePhaseButton.disabled = false;
+  }
+});
+
 for (const button of actionButtons) {
   button.addEventListener("click", () => runAssetAction(button.dataset.action));
 }
 
 workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
-workspaceLocal.addEventListener("click", () => switchWorkspace("local"));
+workspaceLocal?.addEventListener("click", () => switchWorkspace("local"));
 workspaceStory.addEventListener("click", () => switchWorkspace("story"));
 const localRunAllButton = document.querySelector("#local-run-all-remaining");
 const localRunAllStatus = document.querySelector("#local-run-all-status");
@@ -11790,7 +13873,15 @@ identityKeyShowList.addEventListener("click", () => {
 });
 identityKeyCreatePreview.addEventListener("click", createIdentityKeyPreview);
 identityKeySave.addEventListener("click", saveIdentityKey);
+identityKeySource.addEventListener("change", () => {
+  state.identityKeySourceLocalKey = identityKeySource.value || null;
+  state.identityKeySourceAssetId = null;
+  state.identityKeyPreview = null;
+  identityKeyCreatePreview.disabled = !state.identityKeySourceLocalKey;
+  identityKeySave.disabled = !state.identityKeySourceLocalKey;
+});
 costumeAddNew.addEventListener("click", clearCostumeForm);
+costumeDelete.addEventListener("click", deleteSelectedCostume);
 costumeCreate.addEventListener("click", saveCostume);
 sceneAppearanceAddNew.addEventListener("click", clearSceneAppearanceForm);
 sceneAppearanceSave.addEventListener("click", saveSceneAppearance);
@@ -11914,6 +14005,266 @@ scenePickerSearch.addEventListener("input", () => {
 });
 scenePickerRefresh.addEventListener("click", loadSceneImageReferences);
 builderImagePickerCharacter.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+builderImagePickerEntity.addEventListener("change", async () => {
+  const payload = await fetchJson(`/api/entity-library/variants?entity_id=${encodeURIComponent(builderImagePickerEntity.value)}`);
+  setSelectOptionsWithLabels(builderImagePickerVariant, [
+    { value: "", label: "All variants" },
+    ...(payload.variants || []).map((item) => ({ value: item.variant_id, label: `${item.name} · ${item.variant_type}` })),
+  ]);
+  await loadImagePickerReferences(builderImagePicker);
+});
+for (const control of [builderImagePickerVariant, builderImagePickerSet, builderImagePickerFacet]) {
+  control.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+}
+builderImagePickerMode.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
+entityLibrarySearchForm.addEventListener("submit", (event) => { event.preventDefault(); searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }); });
+entityLibraryPrevious.addEventListener("click", () => {
+  entityLibraryPageOffset = Math.max(0, entityLibraryPageOffset - ENTITY_LIBRARY_PAGE_SIZE);
+  searchEntityLibrary(true).catch((error) => { entityLibraryCount.textContent = error.message; });
+});
+entityLibraryNext.addEventListener("click", () => {
+  entityLibraryPageOffset += ENTITY_LIBRARY_PAGE_SIZE;
+  searchEntityLibrary(true).catch((error) => { entityLibraryCount.textContent = error.message; });
+});
+for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entityLibraryFilterVariant, entityLibraryFilterSet, entityLibraryFilterFacet, entityLibraryFilterStatus, entityLibraryFilterOrigin, entityLibraryIncludeObsolete]) {
+  control.addEventListener("change", () => searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; }));
+}
+entityLibrarySearch.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") searchEntityLibrary().catch((error) => { entityLibraryCount.textContent = error.message; });
+});
+entityLibraryClearFilters.addEventListener("click", () => {
+  entityLibrarySearch.value = "";
+  for (const control of [entityLibraryFilterEntity, entityLibraryFilterType, entityLibraryFilterVariant, entityLibraryFilterSet, entityLibraryFilterFacet, entityLibraryFilterStatus, entityLibraryFilterOrigin]) control.value = "";
+  entityLibraryIncludeObsolete.checked = false;
+  entityLibraryFilterFacet.value = "";
+  entityLibraryPageOffset = 0;
+  searchEntityLibrary();
+});
+document.querySelectorAll("[data-inventory-view]").forEach((button) => button.addEventListener("click", async () => {
+  if (entityLibraryCurrentView === "detail" && !(await guardCurrentEditor())) return;
+  activateInventoryView(button.dataset.inventoryView);
+}));
+entityLibraryOrganizer.addEventListener("click", handleOrganizationAction);
+entityLibraryOrganizer.addEventListener("submit", saveOrganizationRecord);
+document.querySelector("#entity-library-open-import").addEventListener("click", () => entityLibraryImportDialog.showModal());
+document.querySelector("#entity-library-close-import").addEventListener("click", () => entityLibraryImportDialog.close());
+entityLibraryImportDialog.addEventListener("close", () => {
+  entityLibraryImportGeneration = null;
+  entityLibraryGenerationPrompts.hidden = true;
+  entityLibraryImportPreview.hidden = true;
+  entityLibraryImportPreview.removeAttribute("src");
+});
+document.querySelector("#entity-library-merge-cancel").addEventListener("click", () => entityLibraryMergeDialog.close());
+entityLibraryMergeDialog.addEventListener("click", (event) => { if (event.target === entityLibraryMergeDialog) entityLibraryMergeDialog.close(); });
+const importPanel = document.querySelector(".entity-library-sidebar > section");
+if (importPanel) {
+  importPanel.classList.add("inventory-import-panel");
+  entityLibraryImportDialogContent.prepend(importPanel);
+  const heading = document.createElement("h2"); heading.textContent = "Add an image to the library"; importPanel.prepend(heading);
+}
+entityLibraryFile.addEventListener("change", () => {
+  state.entityLibraryImportBlob = null;
+  entityLibraryPaste.textContent = entityLibraryFile.files?.[0]?.name || "Or click here and paste an image";
+  entityLibraryImport.disabled = !entityLibraryImportGeneration && !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
+});
+entityLibraryNewLabel.addEventListener("input", () => {
+  entityLibraryImport.disabled = !entityLibraryImportGeneration && !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob) || !entityLibraryNewLabel.value.trim();
+});
+entityLibraryImport.addEventListener("click", async () => {
+  const file = state.entityLibraryImportBlob || entityLibraryFile.files?.[0];
+  const label = entityLibraryNewLabel.value.trim();
+  if ((!file && !entityLibraryImportGeneration) || !label) return;
+  entityLibraryImport.disabled = true;
+  entityLibraryImportStatus.textContent = "Adding image…";
+  try {
+    if (entityLibraryImportGeneration) {
+      const { requestId, index } = entityLibraryImportGeneration;
+      const payload = await fetchJson("/api/image-generation/jobs/" + encodeURIComponent(requestId) + "/images/" + index + "/import", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label, entity_id: entityLibraryGeneratedEntity.value,
+          reference_role: entityLibraryGeneratedRole.value, provenance: entityLibraryGeneratedProvenance.value.trim() }),
+      });
+      entityLibraryImportGeneration = null;
+      entityLibraryImportDialog.close();
+      entityLibraryFile.value = "";
+      state.entityLibraryImportBlob = null;
+      entityLibraryPaste.textContent = "Or click here and paste an image";
+      entityLibraryNewLabel.value = "";
+      entityLibraryGeneratedProvenance.value = "";
+      entityLibraryGenerationPrompts.hidden = true;
+      entityLibraryImportStatus.textContent = payload.duplicate ? "This generated image is already in the library." : "Image added.";
+      await activatePage("auxiliary-resources", { skipAutosave: true });
+      await loadEntityLibraryInventory();
+      if (payload.asset?.asset_id) await selectEntityLibraryAsset(payload.asset.asset_id);
+      return;
+    }
+    const generated = Boolean(entityLibraryGeneratedEntity.value);
+    entityLibraryGenerationPrompts.hidden = true;
+    const endpoint = generated ? "/api/entity-library/assets/generated" : "/api/entity-library/assets";
+    const query = new URLSearchParams({ label });
+    if (generated) {
+      query.set("entity_id", entityLibraryGeneratedEntity.value);
+      query.set("reference_role", entityLibraryGeneratedRole.value);
+      query.set("provenance", entityLibraryGeneratedProvenance.value.trim());
+    }
+    const response = await fetch(`${endpoint}?${query}`, {
+      method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Could not add the image.");
+    entityLibraryFile.value = "";
+    state.entityLibraryImportBlob = null;
+    entityLibraryPaste.textContent = "Or click here and paste an image";
+    entityLibraryNewLabel.value = "";
+    entityLibraryGeneratedProvenance.value = "";
+    entityLibraryImportStatus.textContent = payload.message || "Image added.";
+    await loadEntityLibraryInventory();
+    if (payload.asset?.asset_id) await selectEntityLibraryAsset(payload.asset.asset_id);
+  } catch (error) {
+    entityLibraryImportStatus.textContent = error.message;
+  } finally {
+    entityLibraryImport.disabled = (!entityLibraryImportGeneration && !(entityLibraryFile.files?.[0] || state.entityLibraryImportBlob)) || !entityLibraryNewLabel.value.trim();
+  }
+});
+entityLibraryEntityCreate.addEventListener("click", async () => {
+  try {
+    await fetchJson("/api/entity-library/entities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: entityLibraryEntityName.value, entity_type: entityLibraryEntityType.value }) });
+    entityLibraryEntityName.value = "";
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibrarySetCreate.addEventListener("click", async () => {
+  try {
+    const payload = await fetchJson("/api/entity-library/sets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: entityLibrarySetName.value, set_type: entityLibrarySetType.value || "general" }) });
+    entityLibrarySetName.value = "";
+    entityLibrarySetType.value = "";
+    await loadEntityLibraryInventory();
+    entityLibrarySetSelect.value = payload.set?.set_id || "";
+    syncEntityLibrarySetEditor();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibrarySetSelect.addEventListener("change", syncEntityLibrarySetEditor);
+entityLibrarySetSave.addEventListener("click", saveEntityLibrarySet);
+entityLibrarySetDelete.addEventListener("click", deleteEntityLibrarySet);
+entityLibraryVariantCreate.addEventListener("click", async () => {
+  if (!entityLibraryVariantEntity.value || !entityLibraryVariantName.value.trim()) return;
+  try {
+    await fetchJson(`/api/entity-library/entities/${encodeURIComponent(entityLibraryVariantEntity.value)}/variants`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: entityLibraryVariantName.value, variant_type: entityLibraryVariantType.value }),
+    });
+    entityLibraryVariantName.value = "";
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibraryRelationCreate.addEventListener("click", async () => {
+  if (!entityLibraryRelationSource.value || !entityLibraryRelationTarget.value) return;
+  try {
+    await fetchJson("/api/entity-library/relations", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_entity_id: entityLibraryRelationSource.value, target_entity_id: entityLibraryRelationTarget.value, relation_type: entityLibraryRelationType.value }),
+    });
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibraryDescriptorOwnerType.addEventListener("change", updateEntityLibraryDescriptorOwners);
+entityLibraryDescriptorSave.addEventListener("click", async () => {
+  if (!entityLibraryDescriptorOwner.value || !entityLibraryDescriptorText.value.trim()) return;
+  try {
+    await fetchJson("/api/entity-library/descriptors", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        owner_type: entityLibraryDescriptorOwnerType.value,
+        owner_id: entityLibraryDescriptorOwner.value,
+        descriptor_type: entityLibraryDescriptorType.value,
+        text: entityLibraryDescriptorText.value,
+      }),
+    });
+    entityLibraryDescriptorText.value = "";
+    await loadEntityLibraryInventory();
+  } catch (error) { window.alert(error.message); }
+});
+entityLibrarySave.addEventListener("click", async () => {
+  entityLibrarySave.disabled = true;
+  try {
+    await saveEntityLibraryAsset();
+  } catch (error) {
+    window.alert(error.message);
+  } finally {
+    entityLibrarySave.disabled = !entityLibrarySelectedAsset;
+  }
+});
+entityLibraryDelete.addEventListener("click", deleteEntityLibraryAsset);
+entityLibraryReplacementFile.addEventListener("change", () => {
+  state.entityLibraryReplacementBlob = null;
+  entityLibraryReplacementPaste.textContent = entityLibraryReplacementFile.files?.[0]?.name || "Or click here and paste a replacement image";
+  entityLibraryReplace.disabled = !entityLibrarySelectedAsset || !(entityLibraryReplacementFile.files?.[0] || state.entityLibraryReplacementBlob);
+});
+entityLibraryReplace.addEventListener("click", async () => {
+  const file = state.entityLibraryReplacementBlob || entityLibraryReplacementFile.files?.[0];
+  if (!file || !entityLibrarySelectedAsset) return;
+  entityLibraryReplace.disabled = true;
+  try {
+    const response = await fetch(`/api/entity-library/assets/${encodeURIComponent(entityLibrarySelectedAsset.asset_id)}/image`, {
+      method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file,
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Could not replace the image.");
+    entityLibraryReplacementFile.value = "";
+    state.entityLibraryReplacementBlob = null;
+    entityLibraryReplacementPaste.textContent = "Or click here and paste a replacement image";
+    await loadEntityLibraryInventory();
+    await selectEntityLibraryAsset(payload.asset.asset_id);
+  } catch (error) {
+    window.alert(error.message);
+  } finally {
+    entityLibraryReplace.disabled = !entityLibrarySelectedAsset || !(entityLibraryReplacementFile.files?.[0] || state.entityLibraryReplacementBlob);
+  }
+});
+for (const [zone, kind] of [[entityLibraryPaste, "import"], [entityLibraryReplacementPaste, "replacement"]]) {
+  zone.addEventListener("paste", (event) => {
+    const blob = imageBlobFromPasteEvent(event);
+    if (!blob) return;
+    event.preventDefault();
+    if (kind === "import") {
+      state.entityLibraryImportBlob = blob;
+      entityLibraryFile.value = "";
+      entityLibraryPaste.textContent = `${blob.name || "Pasted image"} ready`;
+      entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
+    } else {
+      state.entityLibraryReplacementBlob = blob;
+      entityLibraryReplacementFile.value = "";
+      entityLibraryReplacementPaste.textContent = `${blob.name || "Pasted image"} ready`;
+      entityLibraryReplace.disabled = !entityLibrarySelectedAsset;
+    }
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.classList.remove("drag-over");
+    const blob = event.dataTransfer?.files?.[0];
+    if (!blob?.type.startsWith("image/")) return;
+    if (kind === "import") {
+      state.entityLibraryImportBlob = blob;
+      entityLibraryFile.value = "";
+      entityLibraryPaste.textContent = `${blob.name || "Image"} ready`;
+      entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
+    } else {
+      state.entityLibraryReplacementBlob = blob;
+      entityLibraryReplacementFile.value = "";
+      entityLibraryReplacementPaste.textContent = `${blob.name || "Image"} ready`;
+      entityLibraryReplace.disabled = !entityLibrarySelectedAsset;
+    }
+  });
+}
+entityLibraryBack.addEventListener("click", async () => {
+  if (!(await guardCurrentEditor())) return;
+  activateInventoryView("search");
+});
 builderImagePickerIncludeBase.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
 builderImagePickerSource.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
 builderImagePickerCategory.addEventListener("change", () => loadImagePickerReferences(builderImagePicker));
@@ -12111,7 +14462,7 @@ for (const control of document.querySelectorAll('[form="automation-form"]')) {
   control.addEventListener("change", updateDirtyIndicators);
 }
 refreshLocalRenderCheckpoints.addEventListener("click", refreshLocalRenderCheckpointOptions);
-refreshOllamaModels.addEventListener("click", refreshOllamaModelOptions);
+refreshOllamaModels.addEventListener("click", () => refreshOllamaModelOptions(true));
 settingLocalRenderPreset.addEventListener("change", refreshLocalRenderCheckpointOptions);
 refreshComfyuiCheckpoints.addEventListener("click", refreshComfyuiCheckpointOptions);
 settingComfyuiProfile.addEventListener("change", refreshComfyuiCheckpointOptions);
@@ -12188,6 +14539,92 @@ imageCatalogBulkClear.addEventListener("click", () => {
   state.selectedImageCatalogIds = [];
   renderImageCatalog();
 });
+entityLibraryModifyGenerated.addEventListener("click", modifyEntityLibraryImageWithGenerator);
+entityLibraryGeneratePrompt.addEventListener("click", generateEntityImagePrompt);
+entityLibraryGenerateIdentity.addEventListener("click", generateEntityIdentity);
+imageGenerationReviewPrevious.addEventListener("click", () => {
+  const slots = imageGenerationReviewableSlots();
+  imageGenerationReviewIndex = slots[Math.max(0, slots.indexOf(imageGenerationReviewIndex) - 1)];
+  renderImageGenerationReview();
+});
+imageGenerationReviewNext.addEventListener("click", () => {
+  const slots = imageGenerationReviewableSlots();
+  imageGenerationReviewIndex = slots[Math.min(slots.length - 1, slots.indexOf(imageGenerationReviewIndex) + 1)];
+  renderImageGenerationReview();
+});
+imageGenerationReviewClose.addEventListener("click", () => imageGenerationReview.close());
+imageGenerationReviewSelect.addEventListener("click", () => {
+  imageGenerationSelectedSlot = imageGenerationSelectedSlot === imageGenerationReviewIndex ? -1 : imageGenerationReviewIndex;
+  saveImageGenerationState();
+  renderImageGenerationStatus();
+});
+imageGenerationReviewRetry.addEventListener("click", () => {
+  const slot = imageGenerationReviewIndex;
+  imageGenerationReview.close();
+  void submitImageGenerationForSlots([slot]);
+});
+imageGenerationReviewClear.addEventListener("click", async () => {
+  const current = imageGenerationResult(imageGenerationReviewIndex);
+  if (!current) return;
+  const slots = imageGenerationReviewableSlots();
+  const position = slots.indexOf(imageGenerationReviewIndex);
+  imageGenerationPending = true;
+  renderImageGenerationStatus();
+  try {
+    const updated = await fetchJson(`/api/image-generation/jobs/${encodeURIComponent(current.assignment.requestId)}/images/${current.assignment.index}`, {
+      method: "DELETE", bindToPage: false,
+    });
+    imageGenerationJobs.set(current.assignment.requestId, updated);
+    const slot = imageGenerationReviewIndex;
+    imageGenerationSlots[slot] = null;
+    if (imageGenerationSelectedSlot === slot) imageGenerationSelectedSlot = -1;
+    const next = slots[position + 1] ?? slots[position - 1];
+    imageGenerationReviewIndex = next ?? -1;
+    saveImageGenerationState();
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  } finally {
+    imageGenerationPending = false;
+    renderImageGenerationStatus();
+  }
+});
+imageGenerationReviewImport.addEventListener("click", openImageGenerationImportDialog);
+imageGenerationReviewUpdate.addEventListener("click", async () => {
+  const selected = imageGenerationResult(imageGenerationSelectedSlot);
+  if (!selected?.job.source_asset_id) return;
+  imageGenerationReviewUpdate.disabled = true;
+  try {
+    const result = await fetchJson("/api/image-generation/jobs/" + encodeURIComponent(selected.assignment.requestId) + "/images/" + selected.assignment.index + "/apply", { method: "POST" });
+    await activatePage("auxiliary-resources", { skipAutosave: true });
+    await selectEntityLibraryAsset(result.asset.asset_id);
+    showAuxResourceMessage("Image updated in the inventory.", "success");
+  } catch (error) {
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  } finally {
+    imageGenerationReviewUpdate.disabled = false;
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (!imageGenerationReview.open || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || "")) return;
+  if (event.key === "ArrowLeft" && !imageGenerationReviewPrevious.disabled) imageGenerationReviewPrevious.click();
+  if (event.key === "ArrowRight" && !imageGenerationReviewNext.disabled) imageGenerationReviewNext.click();
+});
+imageGenerationTxt2img.addEventListener("click", () => { setImageGenerationMode("txt2img"); saveImageGenerationState(); });
+imageGenerationImg2img.addEventListener("click", () => { setImageGenerationMode("img2img"); saveImageGenerationState(); });
+imageGenerationForm.addEventListener("submit", submitImageGeneration);
+imageGenerationFill.addEventListener("click", () => {
+  const slots = imageGenerationSlots.map((assignment, index) => ({assignment, index}))
+    .filter(({assignment, index}) => !imageGenerationResult(index)
+      && (!assignment || imageGenerationTerminalStatuses.has(imageGenerationJobs.get(assignment.requestId)?.status)))
+    .map(({index}) => index);
+  void submitImageGenerationForSlots(slots);
+});
+imageGenerationClear.addEventListener("click", clearImageGenerationResults);
+renderImageGenerationReferenceSlots();
+for (const input of [imageGenerationPrompt, imageGenerationNegative, imageGenerationWidth, imageGenerationHeight]) {
+  input.addEventListener("input", saveImageGenerationState);
+  input.addEventListener("change", saveImageGenerationState);
+}
 localImageReviewPrev.addEventListener("click", () => {
   selectAdjacentAssetTask(state.localImageReviewTasks, state.selectedLocalImageReviewAskId, -1, selectLocalImageReviewTask);
 });
@@ -12309,6 +14746,7 @@ async function main() {
   });
   sourceEditorText.placeholder = "Open an editable source from Prompt Inspection.";
   setupTabs();
+  await loadUniverses();
   const startupLoad = beginPageLoad(null);
   loadStoredAssetFilters();
   try {
@@ -12323,6 +14761,8 @@ async function main() {
     await loadContext();
     if (!pageLoadIsCurrent(startupLoad)) return;
     const initialRouteParams = new URLSearchParams(window.location.search);
+    const isLocalBatchRoute = Boolean(initialRouteParams.get("local_batch"))
+      && LOCAL_ASSET_PAGES.has(initialRouteParams.get("page"));
     const routeCharacter = initialRouteParams.get("character");
     const routePhase = initialRouteParams.get("phase");
     if (routeCharacter && state.characters.includes(routeCharacter)) {
@@ -12333,7 +14773,14 @@ async function main() {
       updatePhaseSelect();
       saveStoredContext();
     }
-    await loadAssets();
+    if (!isLocalBatchRoute) {
+      try {
+        await loadAssets();
+      } catch (error) {
+        if (isRequestCancellation(error)) throw error;
+        assetStatus.textContent = error.message;
+      }
+    }
     if (!pageLoadIsCurrent(startupLoad)) return;
     await loadStories(state.selectedStorySlug);
     if (!pageLoadIsCurrent(startupLoad)) return;
@@ -12382,6 +14829,164 @@ async function main() {
   }
 }
 
+function setUniverseMessage(id, message, kind = "info") {
+  const target = document.getElementById(id);
+  if (!target) return;
+  target.textContent = message;
+  target.className = `action-message ${kind}`.trim();
+  target.hidden = !message;
+}
+
+async function loadUniverses() {
+  const response = await fetch("/api/universes");
+  if (!response.ok) throw new Error(`Unable to load universes (${response.status}).`);
+  const payload = await response.json();
+  state.universeId = payload.selected_universe_id || "";
+  state.universes = payload.universes || [];
+  universeSelect.replaceChildren(...state.universes.map((universe) => {
+    const option = document.createElement("option");
+    option.value = universe.universe_id;
+    option.textContent = universe.name;
+    return option;
+  }));
+  universeSelect.value = state.universeId;
+}
+
+async function loadUniverseList() {
+  await loadUniverses();
+  const list = document.querySelector("#universe-list");
+  list.replaceChildren();
+  for (const universe of state.universes) {
+    const row = document.createElement("article");
+    row.className = "universe-list-row";
+    const details = document.createElement("div");
+    const title = document.createElement("h2");
+    title.textContent = universe.name;
+    const style = document.createElement("p");
+    style.textContent = universe.canonical_art_style || "No canonical art style set.";
+    details.append(title, style);
+    const actions = document.createElement("div");
+    actions.className = "button-row compact";
+    const settings = document.createElement("button");
+    settings.type = "button";
+    settings.textContent = "Settings";
+    settings.className = "tab";
+    settings.dataset.page = "universe-settings";
+    settings.dataset.universeId = universe.universe_id;
+    settings.addEventListener("click", () => runGuardedTransition(() => activatePage("universe-settings", {
+      skipAutosave: true,
+      universeId: universe.universe_id,
+    })));
+    actions.append(settings);
+    if (universe.universe_id !== state.universeId) {
+      const select = document.createElement("button");
+      select.type = "button";
+      select.textContent = "Select Universe";
+      select.addEventListener("click", () => selectUniverse(universe.universe_id));
+      actions.append(select);
+    } else {
+      const selected = document.createElement("span");
+      selected.textContent = "Selected";
+      actions.append(selected);
+    }
+    row.append(details, actions);
+    list.append(row);
+  }
+  if (!state.universes.length) list.textContent = "No universes yet.";
+}
+
+async function loadUniverseSettings(universeId) {
+  const response = await fetch(`/api/universes/${encodeURIComponent(universeId)}`);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.detail || "Unable to load universe settings.");
+  const universe = payload.universe;
+  state.universeSettingsId = universe.universe_id;
+  state.savedUniverseArtStyle = universe.canonical_art_style || "";
+  universeSettingsArtStyle.value = state.savedUniverseArtStyle;
+  document.querySelector("#universe-settings-title").textContent = `${universe.name} Settings`;
+  document.querySelector("#universe-settings-select").hidden = universe.universe_id === state.universeId;
+  setUniverseMessage("universe-settings-message", "", "");
+}
+
+async function saveUniverseSettings() {
+  const response = await fetch(`/api/universes/${encodeURIComponent(state.universeSettingsId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ canonical_art_style: universeSettingsArtStyle.value }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    setUniverseMessage("universe-settings-message", payload.detail || "Unable to save universe settings.", "error");
+    return false;
+  }
+  state.savedUniverseArtStyle = payload.universe.canonical_art_style || "";
+  setUniverseMessage("universe-settings-message", "Settings saved.", "success");
+  return true;
+}
+
+async function selectUniverse(universeId) {
+  const response = await fetch("/api/universes/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Zet-Universe": state.universeId },
+    body: JSON.stringify({ universe_id: universeId }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    setUniverseMessage("universes-message", payload.detail || "Unable to select universe.", "error");
+    return;
+  }
+  window.location.reload();
+}
+
+universeCreateForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = universeCreateForm.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const response = await fetch("/api/universes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.querySelector("#universe-create-name").value,
+        canonical_art_style: document.querySelector("#universe-create-art-style").value,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "Unable to create universe.");
+    await loadUniverses();
+    state.universeSettingsId = payload.universe.universe_id;
+    await activatePage("universe-settings", { skipAutosave: true, universeId: state.universeSettingsId });
+  } catch (error) {
+    setUniverseMessage("universe-create-message", error.message, "error");
+  } finally {
+    submit.disabled = false;
+  }
+});
+
+universeSettingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveUniverseSettings();
+});
+
+document.querySelector("#universe-settings-select").addEventListener("click", () => {
+  void runGuardedTransition(() => selectUniverse(state.universeSettingsId));
+});
+
+universeSelect.addEventListener("change", async () => {
+  const nextUniverseId = universeSelect.value;
+  if (!nextUniverseId || nextUniverseId === state.universeId) return;
+  universeSelect.disabled = true;
+  try {
+    const changed = await runGuardedTransition(() => selectUniverse(nextUniverseId));
+    if (!changed) universeSelect.value = state.universeId;
+  } catch (error) {
+    universeSelect.value = state.universeId;
+    showActionMessage(`Unable to change universe: ${error.message}`, "error");
+  } finally {
+    universeSelect.disabled = false;
+  }
+});
+
 window.addEventListener("popstate", () => {
   void (async () => {
     const params = new URLSearchParams(window.location.search);
@@ -12417,3 +15022,97 @@ document.addEventListener("visibilitychange", () => {
 });
 
 main();
+
+window.zetSceneLayout = {
+  drafts: new Map(),
+  current() {
+    const activeTarget = state.activeBuilderRenderTarget || "main";
+    const definition = (state.sceneBuilder?.subscenes || []).find((item) => item.id === activeTarget);
+    return {
+      storySlug: state.selectedStorySlug,
+      sceneSlug: state.selectedSceneSlug,
+      data: state.sceneBuilder,
+      activeTarget,
+      layout: this.drafts.get(activeTarget) || (activeTarget === "main" ? state.sceneBuilder?.layout_3d : definition?.layout_3d),
+    };
+  },
+  setLayout(layout) {
+    if (!state.sceneBuilder) return;
+    const targetId = state.activeBuilderRenderTarget || "main";
+    this.drafts.set(targetId, layout);
+    if (targetId === "main") state.sceneBuilder.layout_3d = layout;
+    else {
+      const definition = (state.sceneBuilder.subscenes || []).find((item) => item.id === targetId);
+      if (definition) definition.layout_3d = layout;
+    }
+    updateDirtyIndicators();
+  },
+  setActiveTarget(targetId) {
+    state.activeBuilderRenderTarget = targetId || "main";
+    updateDirtyIndicators();
+  },
+  async save() {
+    const session = this.current();
+    const targetId = session.activeTarget || "main";
+    const response = await fetch(`/api/stories/${encodeURIComponent(session.storySlug)}/scenes/${encodeURIComponent(session.sceneSlug)}/builder/3d-layout?target_id=${encodeURIComponent(targetId)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout_3d: this.drafts.get(targetId) || session.layout || state.sceneBuilder.layout_3d, expected_revision: state.sceneBuilder._revision || 0 }),
+    });
+    const payload = await response.json();
+    if (!response.ok) { showSceneBuilderMessage(payload.detail || "Unable to save 3D layout.", "error"); return false; }
+    const saved = payload.document?.data;
+    if (saved) {
+      state.sceneBuilder._revision = saved._revision;
+      const baseline = savedSceneBuilderData() || {};
+      baseline._revision = saved._revision;
+      const definition = (state.sceneBuilder.subscenes || []).find((item) => item.id === targetId);
+      if (targetId === "main") {
+        state.sceneBuilder.layout_3d = this.drafts.get(targetId);
+        baseline.layout_3d = saved.layout_3d;
+        for (const savedDefinition of saved.subscenes || []) {
+          const baseDefinition = (baseline.subscenes || []).find((item) => item.id === savedDefinition.id);
+          if (baseDefinition) baseDefinition.layout_3d = savedDefinition.layout_3d;
+          const currentDefinition = (state.sceneBuilder.subscenes || []).find((item) => item.id === savedDefinition.id);
+          if (currentDefinition) currentDefinition.layout_3d = savedDefinition.layout_3d;
+        }
+      } else if (definition) {
+        definition.layout_3d = this.drafts.get(targetId);
+        const baseDefinition = (baseline.subscenes || []).find((item) => item.id === targetId);
+        if (baseDefinition) baseDefinition.layout_3d = definition.layout_3d;
+      }
+      this.drafts.delete(targetId);
+      state.savedBaselines.sceneBuilder = JSON.stringify(baseline);
+    }
+    updateDirtyIndicators();
+    showSceneBuilderMessage(payload.message || "3D layout saved.", "success");
+    return true;
+  },
+  isEditingFullScene() {
+    return !builderActiveSubscene();
+  },
+};
+
+// A narrow dashboard bridge keeps wizard presentation in its own module.
+window.zetQuickCharacterWizard = {
+  fetchJson,
+  selectedAsset: () => entityLibrarySelectedAsset,
+  universe: () => state.universeId,
+  fileUrl,
+  refreshLibrary: loadEntityLibraryInventory,
+  openAsset: selectEntityLibraryAsset,
+  openSet: async (setId) => { await loadEntityLibraryInventory(); activateInventoryView("sets"); renderEntityLibraryOrganizer("sets", setId); },
+  openLibraryPicker: async (onSelect) => {
+    quickCharacterLibrarySelection = onSelect;
+    // Its usual Scene Builder page may be hidden while the library is active.
+    const parent = builderImagePickerModal.parentNode;
+    const next = builderImagePickerModal.nextSibling;
+    document.body.append(builderImagePickerModal);
+    builderImagePickerModal.addEventListener("close", () => parent.insertBefore(builderImagePickerModal, next), { once: true });
+    builderImagePickerSearch.value = "";
+    builderImagePickerMode.value = "asset";
+    builderImagePickerModal.showModal();
+    await loadEntityLibraryPickerFilters();
+    await loadImagePickerReferences(builderImagePicker);
+  },
+};
+builderImagePickerModal.addEventListener("close", () => { quickCharacterLibrarySelection = null; });

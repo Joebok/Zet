@@ -66,6 +66,11 @@ class SceneDocumentService:
         normalized.pop("render_settings", None)
         story.scene_render_target_service.normalize(normalized)
         normalized["placements"] = story._normalized_placements(normalized)
+        if "layout_3d" in normalized:
+            target_layouts = story.scene_layout_service.normalize_targets(normalized)
+            normalized["layout_3d"] = target_layouts["targets"]["main"]
+            for definition in normalized.get("subscenes") or []:
+                definition["layout_3d"] = target_layouts["targets"].get(str(definition.get("id") or ""), {})
         suppressed_element_ids = {
             str(item.get("scene_element_id") or "")
             for item in normalized["placements"]

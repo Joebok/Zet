@@ -19,7 +19,7 @@ def create_pipeline_controls_router(
     router = APIRouter(prefix="/api/pipeline-controls")
 
     @router.get("")
-    def pipeline_controls(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+    def pipeline_controls(character: str = Query(""), phase: str = Query("")) -> dict[str, Any]:
         try:
             return payload_for(get_app(), character, phase)
         except Exception as exc:
@@ -28,8 +28,8 @@ def create_pipeline_controls_router(
     @router.post("/automation")
     def save_automation(
         payload: dict[str, Any] = Body(...),
-        character: str = Query(...),
-        phase: str = Query(...),
+        character: str = Query(""),
+        phase: str = Query(""),
     ) -> dict[str, Any]:
         zet_app = get_app()
         try:

@@ -64,11 +64,33 @@ class LocalImagePipelineWorkflowService:
         if name == "resume":
             return self.adapter.resume(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.resume(run_id)
         if name == "rerun_batch":
-            result = self.adapter.rerun(run_id, costume, refresh_sources=bool(args.get("refresh_sources", True))) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun(run_id)
+            recompile = bool(args.get("recompile", False))
+            if self.pipeline == "costume-dressing":
+                result = self.adapter.rerun(run_id, costume,
+                                            refresh_sources=bool(args.get("refresh_sources", True)) or recompile,
+                                            recompile=recompile)
+            elif self.pipeline == "character-assembly":
+                result = self.adapter.rerun(run_id, costume,
+                                            refresh_sources=bool(args.get("refresh_sources", True)) or recompile)
+            elif self.pipeline == "body-reference":
+                result = self.adapter.rerun(run_id, recompile=recompile)
+            else:
+                result = self.adapter.rerun(run_id)
             self.prompt_improvement.reset_after_rerender(run_id, set(result.get("views") or []), costume)
             return self.prompt_improvement.detail(run_id, costume)
         if name == "rerun_view":
-            result = self.adapter.rerun_view(run_id, view, costume, refresh_sources=bool(args.get("refresh_sources", True))) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rerun_view(run_id, view)
+            recompile = bool(args.get("recompile", False))
+            if self.pipeline == "costume-dressing":
+                result = self.adapter.rerun_view(run_id, view, costume,
+                                                 refresh_sources=bool(args.get("refresh_sources", True)) or recompile,
+                                                 recompile=recompile)
+            elif self.pipeline == "character-assembly":
+                result = self.adapter.rerun_view(run_id, view, costume,
+                                                 refresh_sources=bool(args.get("refresh_sources", True)) or recompile)
+            elif self.pipeline == "body-reference":
+                result = self.adapter.rerun_view(run_id, view, recompile=recompile)
+            else:
+                result = self.adapter.rerun_view(run_id, view)
             self.prompt_improvement.reset_after_rerender(run_id, {view.upper()}, costume)
             return self.prompt_improvement.detail(run_id, costume)
         if name == "rerun_failed":

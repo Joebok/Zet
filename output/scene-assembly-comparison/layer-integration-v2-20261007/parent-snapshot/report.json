@@ -1,0 +1,1417 @@
+{
+  "run_id": "13efb6d06b56cbe4",
+  "generated_at": "2026-10-07T03:54:01.524589+00:00",
+  "scenes": {
+    "Chapter-01-Standing-in-Wonder": {
+      "arm_counts": {
+        "A_original": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "B_corrected": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "C_layers": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        }
+      },
+      "native_ratings": {
+        "A_original": {
+          "cast_and_identity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "B_corrected": {
+          "cast_and_identity": {
+            "pass": 2,
+            "fail": 5,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 7,
+            "fail": 0,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "C_layers": {
+          "cast_and_identity": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 7,
+            "fail": 0,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 0,
+            "fail": 7,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 1,
+            "fail": 7,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        }
+      },
+      "lettered_ratings": {
+        "A_original": {
+          "cast_and_identity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "B_corrected": {
+          "cast_and_identity": {
+            "pass": 2,
+            "fail": 5,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 7,
+            "fail": 0,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 7,
+            "fail": 1,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "C_layers": {
+          "cast_and_identity": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 7,
+            "fail": 0,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 0,
+            "fail": 7,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 1,
+            "fail": 7,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        }
+      },
+      "paired_disagreements": {
+        "A_original vs B_corrected": {
+          "cast_and_identity": 5,
+          "pose_and_expression": 0,
+          "props_and_source_retention": 0,
+          "facing_and_gaze": 0,
+          "scale_depth_and_grounding": 4,
+          "background_continuity": 3,
+          "native_dialogue": 3,
+          "integration_quality": 3,
+          "narrative_readability": 2,
+          "authored_requirements": 2
+        },
+        "B_corrected vs C_layers": {
+          "cast_and_identity": 2,
+          "pose_and_expression": 0,
+          "props_and_source_retention": 0,
+          "facing_and_gaze": 0,
+          "scale_depth_and_grounding": 6,
+          "background_continuity": 5,
+          "native_dialogue": 3,
+          "integration_quality": 4,
+          "narrative_readability": 6,
+          "authored_requirements": 6
+        },
+        "A_original vs C_layers": {
+          "cast_and_identity": 8,
+          "pose_and_expression": 0,
+          "props_and_source_retention": 0,
+          "facing_and_gaze": 0,
+          "scale_depth_and_grounding": 6,
+          "background_continuity": 7,
+          "native_dialogue": 0,
+          "integration_quality": 7,
+          "narrative_readability": 8,
+          "authored_requirements": 4
+        }
+      },
+      "success_counts": {
+        "A_original": {
+          "native_dialogue_success": "8/8",
+          "native_finished_scene_success": "6/8",
+          "lettered_finished_scene_success": "6/8"
+        },
+        "B_corrected": {
+          "native_dialogue_success": "5/8",
+          "native_finished_scene_success": "0/8",
+          "lettered_finished_scene_success": "0/8"
+        },
+        "C_layers": {
+          "native_dialogue_success": "8/8",
+          "native_finished_scene_success": "0/8",
+          "lettered_finished_scene_success": "0/8"
+        }
+      },
+      "mean_render_seconds": {
+        "A_original": 81.44,
+        "B_corrected": 78.14,
+        "C_layers": 94.27
+      }
+    },
+    "Chapter-02-At-the-Arch": {
+      "arm_counts": {
+        "A_original": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "B_corrected": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "C_layers": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        }
+      },
+      "native_ratings": {
+        "A_original": {
+          "cast_and_identity": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 2,
+            "fail": 4,
+            "unassessable": 2,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 6,
+            "fail": 0,
+            "unassessable": 2,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 3,
+            "fail": 3,
+            "unassessable": 2,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 3,
+            "fail": 5,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 3,
+            "fail": 5,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "B_corrected": {
+          "cast_and_identity": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 3,
+            "fail": 5,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "C_layers": {
+          "cast_and_identity": {
+            "pass": 1,
+            "fail": 7,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 5,
+            "fail": 2,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 1,
+            "fail": 7,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 3,
+            "fail": 5,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        }
+      },
+      "lettered_ratings": {
+        "A_original": {
+          "cast_and_identity": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 2,
+            "fail": 4,
+            "unassessable": 2,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 6,
+            "fail": 0,
+            "unassessable": 2,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 3,
+            "fail": 3,
+            "unassessable": 2,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 3,
+            "fail": 5,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 3,
+            "fail": 5,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "B_corrected": {
+          "cast_and_identity": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 4,
+            "fail": 3,
+            "unassessable": 1,
+            "unreviewed": 0
+          }
+        },
+        "C_layers": {
+          "cast_and_identity": {
+            "pass": 1,
+            "fail": 7,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 5,
+            "fail": 2,
+            "unassessable": 1,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 1,
+            "fail": 7,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 5,
+            "fail": 3,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 3,
+            "fail": 5,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 2,
+            "fail": 6,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        }
+      },
+      "paired_disagreements": {
+        "A_original vs B_corrected": {
+          "cast_and_identity": 2,
+          "pose_and_expression": 2,
+          "props_and_source_retention": 1,
+          "facing_and_gaze": 4,
+          "scale_depth_and_grounding": 0,
+          "background_continuity": 3,
+          "native_dialogue": 5,
+          "integration_quality": 3,
+          "narrative_readability": 2,
+          "authored_requirements": 4
+        },
+        "B_corrected vs C_layers": {
+          "cast_and_identity": 5,
+          "pose_and_expression": 3,
+          "props_and_source_retention": 2,
+          "facing_and_gaze": 1,
+          "scale_depth_and_grounding": 7,
+          "background_continuity": 5,
+          "native_dialogue": 1,
+          "integration_quality": 4,
+          "narrative_readability": 0,
+          "authored_requirements": 2
+        },
+        "A_original vs C_layers": {
+          "cast_and_identity": 3,
+          "pose_and_expression": 4,
+          "props_and_source_retention": 0,
+          "facing_and_gaze": 3,
+          "scale_depth_and_grounding": 7,
+          "background_continuity": 8,
+          "native_dialogue": 4,
+          "integration_quality": 5,
+          "narrative_readability": 2,
+          "authored_requirements": 2
+        }
+      },
+      "success_counts": {
+        "A_original": {
+          "native_dialogue_success": "4/8",
+          "native_finished_scene_success": "1/8",
+          "lettered_finished_scene_success": "1/8"
+        },
+        "B_corrected": {
+          "native_dialogue_success": "3/8",
+          "native_finished_scene_success": "1/8",
+          "lettered_finished_scene_success": "1/8"
+        },
+        "C_layers": {
+          "native_dialogue_success": "4/8",
+          "native_finished_scene_success": "0/8",
+          "lettered_finished_scene_success": "0/8"
+        }
+      },
+      "mean_render_seconds": {
+        "A_original": 101.15,
+        "B_corrected": 96.51,
+        "C_layers": 114.05
+      }
+    },
+    "Chapter-03-Collision": {
+      "arm_counts": {
+        "A_original": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "B_corrected": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        },
+        "C_layers": {
+          "1101": "COMPLETE",
+          "1102": "COMPLETE",
+          "1103": "COMPLETE",
+          "1104": "COMPLETE",
+          "1105": "COMPLETE",
+          "1106": "COMPLETE",
+          "1107": "COMPLETE",
+          "1108": "COMPLETE"
+        }
+      },
+      "native_ratings": {
+        "A_original": {
+          "cast_and_identity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 7,
+            "fail": 1,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 2,
+            "fail": 6,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 2,
+            "fail": 6,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 2,
+            "fail": 6,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "B_corrected": {
+          "cast_and_identity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 1,
+            "fail": 7,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "C_layers": {
+          "cast_and_identity": {
+            "pass": 7,
+            "fail": 1,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "native_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        }
+      },
+      "lettered_ratings": {
+        "A_original": {
+          "cast_and_identity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 7,
+            "fail": 1,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 2,
+            "fail": 6,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 6,
+            "fail": 2,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 2,
+            "fail": 6,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "B_corrected": {
+          "cast_and_identity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 1,
+            "fail": 7,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 4,
+            "fail": 4,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        },
+        "C_layers": {
+          "cast_and_identity": {
+            "pass": 7,
+            "fail": 1,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "pose_and_expression": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "props_and_source_retention": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "facing_and_gaze": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "scale_depth_and_grounding": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "background_continuity": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "integration_quality": {
+            "pass": 0,
+            "fail": 8,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "narrative_readability": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "authored_requirements": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          },
+          "lettered_dialogue": {
+            "pass": 8,
+            "fail": 0,
+            "unassessable": 0,
+            "unreviewed": 0
+          }
+        }
+      },
+      "paired_disagreements": {
+        "A_original vs B_corrected": {
+          "cast_and_identity": 0,
+          "pose_and_expression": 2,
+          "props_and_source_retention": 4,
+          "facing_and_gaze": 1,
+          "scale_depth_and_grounding": 3,
+          "background_continuity": 0,
+          "native_dialogue": 6,
+          "integration_quality": 0,
+          "narrative_readability": 2,
+          "authored_requirements": 6
+        },
+        "B_corrected vs C_layers": {
+          "cast_and_identity": 1,
+          "pose_and_expression": 0,
+          "props_and_source_retention": 0,
+          "facing_and_gaze": 0,
+          "scale_depth_and_grounding": 7,
+          "background_continuity": 0,
+          "native_dialogue": 0,
+          "integration_quality": 8,
+          "narrative_readability": 0,
+          "authored_requirements": 4
+        },
+        "A_original vs C_layers": {
+          "cast_and_identity": 1,
+          "pose_and_expression": 2,
+          "props_and_source_retention": 4,
+          "facing_and_gaze": 1,
+          "scale_depth_and_grounding": 6,
+          "background_continuity": 0,
+          "native_dialogue": 6,
+          "integration_quality": 8,
+          "narrative_readability": 2,
+          "authored_requirements": 6
+        }
+      },
+      "success_counts": {
+        "A_original": {
+          "native_dialogue_success": "2/8",
+          "native_finished_scene_success": "0/8",
+          "lettered_finished_scene_success": "0/8"
+        },
+        "B_corrected": {
+          "native_dialogue_success": "8/8",
+          "native_finished_scene_success": "1/8",
+          "lettered_finished_scene_success": "1/8"
+        },
+        "C_layers": {
+          "native_dialogue_success": "8/8",
+          "native_finished_scene_success": "0/8",
+          "lettered_finished_scene_success": "0/8"
+        }
+      },
+      "mean_render_seconds": {
+        "A_original": 80.91,
+        "B_corrected": 80.76,
+        "C_layers": 98.56
+      }
+    }
+  },
+  "recommendation": "Corrected deterministic prompts show a useful Chapter 03 signal: their net criterion-pass-count change versus the original prompt across identity, pose, scale, native dialogue, and authored requirements is +9. Keep testing prompt/compiler corrections before considering a migration."
+}

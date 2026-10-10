@@ -49,7 +49,7 @@ def rank_images_with_luna(
                    str(schema_path), "--output-last-message", str(output_path)]
         for image in [*(reference_image_paths or []), *image_paths]:
             command.extend(["--image", str(image)])
-        result = runner(command, input=prompt, capture_output=True, text=True,
+        result = runner(command, input=prompt, capture_output=True, text=True, encoding="utf-8",
                         timeout=timeout, check=False, **({"env": environment} if environment is not None else {}))
         if result.returncode:
             raise ValueError((result.stderr or result.stdout or "Luna ranking failed")[-2000:])

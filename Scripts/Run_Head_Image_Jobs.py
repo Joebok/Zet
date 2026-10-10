@@ -37,6 +37,12 @@ from zet.services.pipeline_compiler_support import (
     template_path_for_job,
     validate_reference,
     view_instruction,
+    universe_art_style,
+)
+from zet.services.view_conditioning_service import (
+    ViewConditioningError,
+    ViewContext,
+    condition_section,
 )
 
 
@@ -60,7 +66,7 @@ def _source_reference(references: list[dict]) -> dict | None:
     return sources[0]
 
 
-def _local_source_rules(rules: str) -> str:
+def _local_source_rules(rules: str, *, apply_phase_changes: bool = True) -> str:
     """Make legacy optional-source wording direct when a source is present."""
     lines = []
     for line in rules.splitlines():
@@ -68,13 +74,17 @@ def _local_source_rules(rules: str) -> str:
             continue
         line = line.replace("Optional source-image contract:", "Source-image contract:")
         line = line.replace("When a source image is supplied, use it as", "Use the source image as")
+        if not apply_phase_changes and "target-phase Character.md controls explicitly described phase traits" in line:
+            line = "* Preserve the source's visible age, facial presentation, hairstyle, and other appearance without applying target-phase changes."
+        elif not apply_phase_changes and "this target phase does not explicitly change" in line:
+            line = "* Preserve every identity-defining trait visible in the source image."
         lines.append(line)
     return "\n".join(lines)
 
 
 def compile_head_image_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
-    pipeline_mode: str = "traditional",
+    pipeline_mode: str = "traditional", universe_root: str | Path | None = None,
 ) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
@@ -89,7 +99,10 @@ def compile_head_image_job(
         bundle = {**bundle, "legacy_static_prompt_template": ""}
     view_token = normalize_view(project_root, raw_view)
     view_data = load_view_data(project_root, view_token)
-    template_path = template_path_for_job(project_root, job, character, phase)
+    template_path = template_path_for_job(
+        project_root, job, character, phase,
+        universe_root=universe_root if pipeline_mode == "local" else None,
+    )
     output_dir = output_dir_for_job(project_root, job, character, phase, view_token)
     expected_output = job_get(job, "Expected Output", "expected_output") or f"Head-Image_{view_data['output_name_fragment']}.png"
 
@@ -103,33 +116,50 @@ def compile_head_image_job(
     else:
         if len(source_references) > 1:
             raise TemplateCompileError("INVALID_REFERENCE", "Local Head-Image accepts at most one source image.")
-        if view_token != "FRONT" and not source_references:
+        if (view_token != "FRONT" and view_token not in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}
+                and not source_references):
             raise TemplateCompileError("MISSING_REFERENCE", "Local non-front Head-Image views require the selected FRONT anchor.")
         for source_reference in source_references:
             validate_reference(source_reference, "head_image_source", project_root)
+    apply_phase_change = (
+        job.get("Apply Phase Change", job.get("apply_phase_change", False)) is True
+        and bool(source_references)
+    )
+    reference_as_is = bool(source_references) and not apply_phase_change
     sections, section_sources = load_body_reference_section_data(project_root, template_path)
     if pipeline_mode == "local" and not source_references:
         for name in ("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS", "HEAD_IMAGE_SOURCE_INSTRUCTIONS", "HEAD_IMAGE_SOURCE_RULES"):
             sections[name] = ""
     elif pipeline_mode == "local":
-        sections["HEAD_IMAGE_SOURCE_RULES"] = _local_source_rules(sections.get("HEAD_IMAGE_SOURCE_RULES", ""))
+        sections["HEAD_IMAGE_SOURCE_RULES"] = _local_source_rules(
+            sections.get("HEAD_IMAGE_SOURCE_RULES", ""), apply_phase_changes=apply_phase_change,
+        )
     local_phase_changes = ""
+    local_phase_changes_source = None
     if pipeline_mode == "local":
-        local_phase_changes = str(
-            sections.get("HEAD_IMAGE_LOCAL_PHASE_CHANGES") or sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or ""
-        ).strip()
-        if view_token != "FRONT":
-            local_phase_changes = ""
+        phase_section = "HEAD_IMAGE_LOCAL_PHASE_CHANGES"
+        phase_text = str(sections.get(phase_section) or "").strip()
+        if not phase_text:
+            phase_section = "HEAD_IMAGE_TRANSFORM_INSTRUCTIONS"
+            phase_text = str(sections.get(phase_section) or "").strip()
+        if apply_phase_change and view_token == "FRONT" and phase_text:
+            try:
+                local_phase_changes, local_phase_changes_source, _ = condition_section(
+                    phase_text,
+                    phase_section,
+                    section_sources.get(phase_section, {}),
+                    ViewContext(head_view=view_token),
+                )
+            except ViewConditioningError as exc:
+                raise TemplateCompileError(exc.code, str(exc)) from exc
         sections["HEAD_IMAGE_TRANSFORM_INSTRUCTIONS"] = ""
-        if view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
-            sections["HEAD_DESCRIPTION_FACTS"] = ""
     elif str(sections.get("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS") or "").strip():
         for name in (
             "HEAD_IMAGE_SOURCE_INSTRUCTIONS",
             "HEAD_DESCRIPTION_FACTS",
-            f"HEAD_DESCRIPTION_VIEW_{view_token}",
+            "HEAD_DESCRIPTION_VIEW_OVERRIDES",
             "HAIR_DESCRIPTION_FACTS",
-            f"HAIR_DESCRIPTION_VIEW_{view_token}",
+            "HAIR_DESCRIPTION_VIEW_OVERRIDES",
             "HEAD_IMAGE_SOURCE_RULES",
             "HEAD_IMAGE_CHARACTER_REQUIREMENTS",
         ):
@@ -146,8 +176,9 @@ def compile_head_image_job(
         references, render_mode=render_mode
     )
     contract_values["LOCAL_RENDER_MODE"] = render_mode
-    local_style = str(template_metadata(template_path).get("CANONICAL_ART_STYLE") or "").rstrip(". ")
-    if view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
+    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
+    local_style = str(universe_style or template_metadata(template_path).get("CANONICAL_ART_STYLE") or "").rstrip(". ")
+    if not universe_style and view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
         local_style = re.sub(
             r" with anime-influenced facial proportions(?:,\s*(?:and\s+)?|\s+and\s+)large expressive eyes",
             "",
@@ -155,18 +186,32 @@ def compile_head_image_job(
         )
         local_style = local_style.replace(", and refined linework", " with refined linework")
         local_style = local_style.replace(", refined linework, and ", " with refined linework and ")
-    if source_references and view_token != "FRONT":
+    if source_references and view_token != "FRONT" and not reference_as_is:
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
             "Use Image 1, the selected FRONT render, as the identity and appearance anchor."
         )
+    elif source_references and view_token != "FRONT":
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
+            "Use Image 1, the selected FRONT render, as the identity and appearance anchor. Preserve its visible age, facial presentation, and hairstyle without applying target-phase changes."
+        )
     elif source_references:
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = (
-            "Use Image 1 as the identity and appearance reference."
+            "Use Image 1 as the identity and appearance reference. Apply only the selected target-phase changes while preserving the same person's identity."
+            if apply_phase_change else
+            "Use Image 1 as the identity and appearance reference. Preserve its visible age, facial presentation, and hairstyle without applying target-phase changes."
         )
     elif pipeline_mode == "local":
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = "Build the character from the identifying details below."
     else:
         contract_values["LOCAL_REFERENCE_GUIDANCE"] = ""
+    if pipeline_mode == "local" and source_references and view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] += (
+            " Use the reference to match hair color, length, texture, volume, and asymmetry."
+            " The requested rear camera angle controls orientation and visibility: rotate the whole head,"
+            " hair, and attached ears together in three dimensions. Reconstruct the surfaces seen from behind;"
+            " features facing the front in Image 1 become hidden at this angle."
+            " Use the rear-view details below for surfaces and accessories hidden in Image 1."
+        )
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -194,10 +239,10 @@ def compile_head_image_job(
         "LOCAL_PHASE_CHANGES": local_phase_changes,
         "LOCAL_VISIBLE_CHARACTER_FACTS": "\n\n".join(
             value for value in (
-                sections.get("HEAD_DESCRIPTION_FACTS", "") if view_token == "FRONT" else "",
-                sections.get(f"HEAD_DESCRIPTION_VIEW_{view_token}", ""),
-                sections.get("HAIR_DESCRIPTION_FACTS", "") if view_token == "FRONT" else "",
-                sections.get(f"HAIR_DESCRIPTION_VIEW_{view_token}", ""),
+                selection.sections.get("HEAD_DESCRIPTION_FACTS", "") if not reference_as_is else "",
+                selection.sections.get("HEAD_DESCRIPTION_VIEW_OVERRIDES", ""),
+                selection.sections.get("HAIR_DESCRIPTION_FACTS", "") if not reference_as_is else "",
+                selection.sections.get("HAIR_DESCRIPTION_VIEW_OVERRIDES", ""),
             ) if str(value or "").strip()
         ),
         "LOCAL_STYLE_INSTRUCTION": local_style,
@@ -215,7 +260,11 @@ def compile_head_image_job(
         "VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Head-Image view instruction", "json_pointer": f"/views/{view_token}/head_instructions/{task}", "editable": True},
         "LOCAL_VIEW_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Local head-image view instruction", "json_pointer": f"/views/{view_token}/local_head_image_instruction", "editable": True},
         "LOCAL_GAZE_INSTRUCTION": {"source_kind": "config_view_instruction", "source_path": str(config_path), "source_label": "Local head-image gaze instruction", "json_pointer": f"/views/{view_token}/local_head_image_gaze", "editable": True},
+        **({"LOCAL_STYLE_INSTRUCTION": {**universe_sources["CANONICAL_ART_STYLE"], "source_label": "Universe Canonical Art Style"}}
+           if universe_style else {}),
     }
+    if local_phase_changes_source is not None:
+        metadata_sources["LOCAL_PHASE_CHANGES"] = local_phase_changes_source
     gaze_review_items = {
         "FRONT": "- [ ] The eyes look forward with the face.",
         "FRONT_LEFT_3_4": "- [ ] Any visible eyes follow the turned face and nose direction without looking toward the viewer.",

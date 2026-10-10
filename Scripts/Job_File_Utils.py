@@ -36,10 +36,12 @@ def select_prompt_sections(
     *,
     prompt_variant: str = "generation",
     pipeline_mode: str = "traditional",
+    body_view: str | None = None,
+    head_view: str | None = None,
 ):
     return PromptTemplateService(project_root).select_sections(
         bundle, all_sections, section_sources, view_token, prompt_variant=prompt_variant,
-        pipeline_mode=pipeline_mode,
+        pipeline_mode=pipeline_mode, body_view=body_view, head_view=head_view,
     )
 
 

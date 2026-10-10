@@ -28,6 +28,14 @@ class SceneRenderCompilerTests(unittest.TestCase):
     def _prompt(self, scene):
         return final_image_prompt_text(self._ir(scene))
 
+    def test_absent_source_paths_are_null_for_file_proxy_validation(self):
+        source = self._ir({"scene": {"source_path": ""}})["source"]
+        self.assertIsNone(source["scene_json_path"])
+        self.assertIsNone(source["story_settings_path"])
+        source = self._ir({"scene": {"source_path": "scene.json", "story_settings_path": "story.json"}})["source"]
+        self.assertEqual(source["scene_json_path"], "scene.json")
+        self.assertEqual(source["story_settings_path"], "story.json")
+
     def test_scene_analysis_prompt_preserves_scene_facts_and_filters_generation_text(self):
         ir = self._ir({"scene": {"story_beat": "A raven lands beside the traveler."}})
         generation = final_image_prompt_text(ir)
@@ -86,6 +94,50 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertEqual("kneeling with one hand raised", placement["pose"]["summary"])
         self.assertNotIn("visual_scale", placement)
         self.assertNotIn("left_arm_action", placement["pose"])
+
+    def test_measured_projection_replaces_legacy_order_depth_and_position_notes(self):
+        ir = {
+            "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
+            "elements": [{"id": "boy", "display_name": "Schoolboy", "element_type": "Character",
+                          "element_visual_override": "Standing on the left side, holding the pouch."}],
+            "placements": [{"scene_element_id": "boy", "position_within_cell": "left", "depth": "foreground",
+                            "world_position": "closest to camera on the left", "placement_notes": "Standing in the back row.",
+                            "pose": {"summary": "Facing away from the camera, raising his left hand"}}],
+            "composition": {"left_to_right": ["other", "boy"], "composition_notes": "Schoolboy on the left in the back row."},
+            "layout_projection": {"subjects": [{"element_id": "boy", "screen": {"x": .72, "y": .5, "width": .12,
+                                                                           "height": .4, "feet": {"x": .72, "y": .7}},
+                                                     "camera_facing": "front three-quarter", "head_facing": "front",
+                                                     "physical_height": "5 ft 7 in", "depth_m": 8}]},
+        }
+        prompt = final_image_prompt_text(ir)
+        self.assertIn("feet anchored 72.0%", prompt)
+        self.assertIn("holding the pouch", prompt)
+        self.assertIn("raising his left hand", prompt)
+        self.assertNotIn("closest to camera", prompt)
+        self.assertNotIn("back row", prompt)
+        self.assertNotIn("Facing away from the camera", prompt)
+
+    def test_none_placement_is_suppressed_from_general_prompt(self):
+        prompt = final_image_prompt_text({
+            "elements": [{"id": "hidden", "display_name": "Hidden person", "element_type": "Character"}],
+            "placements": [{"scene_element_id": "hidden", "position_within_cell": "none"}],
+        })
+        self.assertNotIn("Hidden person", prompt)
+
+    def test_measured_background_extensions_and_join_use_shared_frame_contract(self):
+        prompt = final_image_prompt_text({
+            "canvas": {"orientation": "landscape", "aspect_ratio": "16:9"},
+            "layout_projection": {
+                "subjects": [{"element_id": "subject"}],
+                "background": {"image_placement": {"left": -.165, "top": 0, "width": 1.33, "height": .777},
+                               "extension_regions": [{"left": 0, "top": 0, "width": .165, "height": .777},
+                                                     {"left": .835, "top": 0, "width": .165, "height": .777}]},
+                "ground": {"enabled": True, "surface": "Sunlit stone", "join_y": .777},
+            },
+        })
+        self.assertIn("occupying 133.0% of frame width", prompt)
+        self.assertIn("left, right extension areas", prompt)
+        self.assertIn("77.7% of frame height", prompt)
 
 
     def test_tail_template_validation_names_missing_section(self):
@@ -190,6 +242,21 @@ class SceneRenderCompilerTests(unittest.TestCase):
         self.assertNotIn("{'subject_element_id'", prompt)
         self.assertNotIn("Valindia_38f52dd6", prompt)
         self.assertNotIn("Tsaeytte_12345678", prompt)
+
+    def test_explicit_dialogue_panel_placement_and_external_target_are_compiled(self):
+        for placement, direction in (("left", "to the left"), ("right", "to the right"),
+                                     ("above", "above"), ("below", "below")):
+            prompt = self._prompt({
+                "scene_elements": [{"id": "speaker", "display_name": "Kaeldor"}],
+                "dialogue": [{"speaker_element_id": "speaker", "speaker_name": "Kaeldor",
+                              "speaker_context": "Kaeldor and the Schoolboys", "target_name": "Tsaeytte",
+                              "target_context": "Tsaeytte and Valindia", "panel_placement": placement,
+                              "text": "Sorry."}],
+            })
+            self.assertIn(f"Place the dialogue panel {direction} of Kaeldor", prompt)
+            self.assertIn("Tsaeytte is in the separate Tsaeytte and Valindia image", prompt)
+            self.assertIn("do not add a second copy of the speaker", prompt)
+            self.assertEqual(1, prompt.count('Kaeldor says exactly: "Sorry."'))
 
     def test_reference_instructions_require_an_image_and_match_element_type(self):
         scene = {

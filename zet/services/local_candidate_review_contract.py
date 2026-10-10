@@ -33,7 +33,8 @@ def adjust_candidate_ranking(
     if target < 0 or target >= len(order):
         return ranking
     adjusted = dict(ranking)
-    adjusted.setdefault("luna_ordered_candidate_ids", list(order))
+    if not adjusted.get("luna_ordered_candidate_ids"):
+        adjusted["luna_ordered_candidate_ids"] = list(order)
     order[index], order[target] = order[target], order[index]
     entries = {entry["candidate_id"]: entry for entry in ranking.get("entries") or []}
     adjusted["ordered_candidate_ids"] = order

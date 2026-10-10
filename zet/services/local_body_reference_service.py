@@ -41,20 +41,19 @@ DEFAULT_VIEWS = (
     "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK",
 )
 CANONICAL_VIEW_DEFINITIONS = {
-    "FRONT": "Direct frontal view. Subject faces the camera squarely; left/right sides are approximately symmetrical.",
-    "FRONT_LEFT_3_4": "Frontal three-quarter view showing more of the subject's anatomical LEFT side. Subject's left side is nearer the camera. Nose/face points toward IMAGE_LEFT.",
-    "FRONT_RIGHT_3_4": "Frontal three-quarter view showing more of the subject's anatomical RIGHT side. Subject's right side is nearer the camera. Nose/face points toward IMAGE_RIGHT.",
-    "LEFT_PROFILE": "Exact profile showing the subject's anatomical LEFT side. Nose/face points toward IMAGE_LEFT.",
-    "RIGHT_PROFILE": "Exact profile showing the subject's anatomical RIGHT side. Nose/face points toward IMAGE_RIGHT.",
-    "BACK_LEFT_3_4": "Rear three-quarter view showing more of the subject's anatomical LEFT side. Subject's left side is nearer the camera. Head/body point away and toward IMAGE_LEFT.",
-    "BACK_RIGHT_3_4": "Rear three-quarter view showing more of the subject's anatomical RIGHT side. Subject's right side is nearer the camera. Head/body point away and toward IMAGE_RIGHT.",
-    "BACK": "Direct rear view. Subject faces directly away from the camera; left/right sides are approximately symmetrical.",
+    "FRONT": "Direct frontal view. Subject faces the camera squarely; both sides are approximately symmetrical.",
+    "FRONT_LEFT_3_4": "Frontal three-quarter view. The near side appears on IMAGE_RIGHT, and the face points toward IMAGE_LEFT.",
+    "FRONT_RIGHT_3_4": "Frontal three-quarter view. The near side appears on IMAGE_LEFT, and the face points toward IMAGE_RIGHT.",
+    "LEFT_PROFILE": "Exact profile showing the near side. Nose/face points toward IMAGE_LEFT.",
+    "RIGHT_PROFILE": "Exact profile showing the near side. Nose/face points toward IMAGE_RIGHT.",
+    "BACK_LEFT_3_4": "Rear three-quarter view. The near side appears on IMAGE_LEFT; head and body point away and toward IMAGE_LEFT.",
+    "BACK_RIGHT_3_4": "Rear three-quarter view. The near side appears on IMAGE_RIGHT; head and body point away and toward IMAGE_RIGHT.",
+    "BACK": "Direct rear view. Subject faces directly away from the camera; both sides are approximately symmetrical.",
 }
 ORIENTATION_VIEW_DEFINITIONS = {
     "FRONT": (
         "- This is a direct frontal view.\n"
         "- The face and torso point straight toward the camera.\n"
-        "- The subject's anatomical LEFT side appears on IMAGE_RIGHT, and the anatomical RIGHT side appears on IMAGE_LEFT.\n"
         "- Both sides of the front of the torso are visible and approximately symmetrical.\n"
         "- It must not be essentially a three-quarter view, profile, or rear view."
     ),
@@ -62,7 +61,7 @@ ORIENTATION_VIEW_DEFINITIONS = {
         "- This is a frontal three-quarter view.\n"
         "- The face and torso point diagonally toward IMAGE_LEFT.\n"
         "- The near side of the body appears on IMAGE_RIGHT.\n"
-        "- That near side is the subject's anatomical LEFT side.\n"
+        "- The near side appears on IMAGE_RIGHT; the far side appears on IMAGE_LEFT.\n"
         "- Both the front and side of the torso are clearly visible.\n"
         "- It must not be essentially FRONT or LEFT PROFILE."
     ),
@@ -70,21 +69,21 @@ ORIENTATION_VIEW_DEFINITIONS = {
         "- This is a frontal three-quarter view.\n"
         "- The face and torso point diagonally toward IMAGE_RIGHT.\n"
         "- The near side of the body appears on IMAGE_LEFT.\n"
-        "- That near side is the subject's anatomical RIGHT side.\n"
+        "- The near side appears on IMAGE_LEFT; the far side appears on IMAGE_RIGHT.\n"
         "- Both the front and side of the torso are clearly visible.\n"
         "- It must not be essentially FRONT or RIGHT PROFILE."
     ),
     "LEFT_PROFILE": (
         "- This is an exact side profile.\n"
         "- The face and torso point toward IMAGE_LEFT.\n"
-        "- The visible side is the subject's anatomical LEFT side.\n"
+        "- Show the near side in profile.\n"
         "- The front and back of the torso are not clearly visible.\n"
         "- It must not be essentially FRONT_LEFT_3_4 or BACK_LEFT_3_4."
     ),
     "RIGHT_PROFILE": (
         "- This is an exact side profile.\n"
         "- The face and torso point toward IMAGE_RIGHT.\n"
-        "- The visible side is the subject's anatomical RIGHT side.\n"
+        "- Show the near side in profile.\n"
         "- The front and back of the torso are not clearly visible.\n"
         "- It must not be essentially FRONT_RIGHT_3_4 or BACK_RIGHT_3_4."
     ),
@@ -92,7 +91,7 @@ ORIENTATION_VIEW_DEFINITIONS = {
         "- This is a rear three-quarter view.\n"
         "- The head and torso point away from the camera and diagonally toward IMAGE_LEFT.\n"
         "- The near side of the body appears on IMAGE_LEFT.\n"
-        "- That near side is the subject's anatomical LEFT side.\n"
+        "- The near side appears on IMAGE_LEFT; the far side appears on IMAGE_RIGHT.\n"
         "- Both the back and side of the torso are clearly visible.\n"
         "- It must not be essentially BACK or LEFT PROFILE."
     ),
@@ -100,14 +99,13 @@ ORIENTATION_VIEW_DEFINITIONS = {
         "- This is a rear three-quarter view.\n"
         "- The head and torso point away from the camera and diagonally toward IMAGE_RIGHT.\n"
         "- The near side of the body appears on IMAGE_RIGHT.\n"
-        "- That near side is the subject's anatomical RIGHT side.\n"
+        "- The near side appears on IMAGE_RIGHT; the far side appears on IMAGE_LEFT.\n"
         "- Both the back and side of the torso are clearly visible.\n"
         "- It must not be essentially BACK or RIGHT PROFILE."
     ),
     "BACK": (
         "- This is a direct rear view.\n"
         "- The head and torso point straight away from the camera.\n"
-        "- The subject's anatomical LEFT side appears on IMAGE_LEFT, and the anatomical RIGHT side appears on IMAGE_RIGHT.\n"
         "- Both sides of the back of the torso are visible and approximately symmetrical.\n"
         "- It must not be essentially a three-quarter view, profile, or frontal view."
     ),
@@ -183,9 +181,24 @@ Do not explain your reasoning."""
         self.app = app
         self.project_root = Path(project_root).resolve()
         self.library_root = Path(app.config.base_library_path).resolve()
-        self.runs_root = self.library_root / "Experiments" / "Character-Pipeline"
+        self.runs_root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
         self.asset_store = LocalAssetStoreService(self.library_root)
+        self._runner_lock = threading.Lock()
         self._migrate_legacy_runs()
+
+    def _active_key(self, run_id: str) -> str:
+        return f"{self.library_root}::{run_id}"
+
+    def _is_active(self, run_id: str) -> bool:
+        key = self._active_key(run_id)
+        return key in self._active_runs or (not hasattr(self.app.config, "universe_id") and run_id in self._active_runs)
+
+    def _ask_belongs_to_run(self, ask: dict[str, Any], run: dict[str, Any]) -> bool:
+        configured = str(getattr(self.app.config, "universe_id", "Moonsea"))
+        legacy = bool(getattr(self.app.config, "universe_is_legacy", True))
+        owner = str(ask.get("universe_id") or ("Moonsea" if legacy else "")).strip()
+        run_owner = str(run.get("universe_id") or ("Moonsea" if legacy else "")).strip()
+        return bool(owner) and owner == configured and run_owner == owner
 
     def _migrate_legacy_runs(self) -> None:
         """Upgrade stored run and queued-job identifiers to Local Body-Reference."""
@@ -270,7 +283,7 @@ Do not explain your reasoning."""
     def _runner_is_active(self, run_id: str) -> bool:
         """Return whether a live process still owns this run's durable lock."""
         with self._active_runs_lock:
-            if run_id in self._active_runs:
+            if self._is_active(run_id):
                 return True
         try:
             with file_lock(self._root(run_id) / "runner.lock", timeout=0):
@@ -293,6 +306,10 @@ Do not explain your reasoning."""
         phase = str(payload.get("phase") or "").strip()
         if not character or not phase:
             raise LocalBodyReferenceError("Character and phase are required.")
+        status_loader = getattr(self.app, "character_onboarding_status", None)
+        status = status_loader(character, phase) if callable(status_loader) else None
+        if status is not None and not status.template_ready:
+            raise LocalBodyReferenceError("A valid Character.md is required before local Body-Reference can run: " + "; ".join(status.validation_errors))
         views = self._views()
         if len(views) != 8:
             raise LocalBodyReferenceError(f"Expected eight configured Body-Reference views; found {len(views)}.")
@@ -329,7 +346,10 @@ Do not explain your reasoning."""
             "Output Directory": str(output),
         }
         try:
-            result = compile_body_reference_job(job, self.project_root)
+            result = compile_body_reference_job(
+                job, self.project_root, pipeline_mode="local",
+                universe_root=self.app.config.base_library_path,
+            )
             analysis = self._compile_analysis_view(root, character, phase, view)
         except Exception as exc:
             raise LocalBodyReferenceError(f"Could not compile Body-Reference prompt for {view}: {exc}") from exc
@@ -362,7 +382,10 @@ Do not explain your reasoning."""
             "Body View": view,
             "Output Directory": str(output),
         }
-        result = compile_body_reference_job(job, self.project_root, prompt_variant="analysis")
+        result = compile_body_reference_job(
+            job, self.project_root, prompt_variant="analysis", pipeline_mode="local",
+            universe_root=self.app.config.base_library_path,
+        )
         prompt_path = Path(str(result["final_prompt"]))
         if not prompt_path.is_file():
             raise LocalBodyReferenceError(f"Compiled analysis prompt is missing for {view}: {prompt_path}")
@@ -479,6 +502,7 @@ Do not explain your reasoning."""
                     seed_index += 1
         spec = {
             "schema_version": 2, "review_version": 2, "kind": "local_body_reference", "run_id": run_id,
+            "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
             "batch_name": "",
             "created_at": self._now(), "status": "QUEUED", "character": plan["character"],
             "phase": plan["phase"], "views": plan["views"], "front_view": FRONT_VIEW,
@@ -773,7 +797,33 @@ Do not explain your reasoning."""
                 })
         return jobs
 
-    def rerun(self, run_id: str) -> dict[str, Any]:
+    def _refresh_compiled_prompts(self, run_id: str, views: set[str]) -> None:
+        root = self._root(run_id).resolve()
+        spec_path = root / "spec.json"
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        snapshots = {str(item.get("view") or ""): item for item in spec.get("prompt_snapshots") or []}
+        for index, view in enumerate(spec.get("views") or [], start=1):
+            if view not in views:
+                continue
+            snapshot = snapshots.get(view)
+            if snapshot is None:
+                raise LocalBodyReferenceError(f"No saved prompt for view {view}.")
+            refreshed = self._compile_view(root, str(spec["character"]), str(spec["phase"]), view, index)
+            snapshot.update(refreshed)
+            for candidate in spec.get("candidates") or []:
+                if candidate.get("view") != view:
+                    continue
+                prompt = refreshed["qwen_prompt"]
+                if candidate.get("method") == METHOD_FRONT_CONDITIONED:
+                    prompt = self._qwen_prompt(refreshed["manual_prompt"], view, anchor=True)
+                candidate["prompt"] = prompt
+                candidate["prompt_sha256"] = hashlib.sha256(prompt.encode()).hexdigest()
+        spec["source_snapshot_sha256"] = hashlib.sha256(
+            json.dumps(spec["prompt_snapshots"], sort_keys=True).encode()
+        ).hexdigest()
+        self._write(spec_path, spec)
+
+    def rerun(self, run_id: str, *, recompile: bool = False) -> dict[str, Any]:
         """Clear the current batch's generated candidates and reviews, then restart FRONT."""
         run = self.detail(run_id)
         if run.get("status") in ACTIVE_RUN_STATUSES or run.get("interrupted"):
@@ -781,6 +831,8 @@ Do not explain your reasoning."""
         if self._runner_is_active(run_id):
             raise LocalBodyReferenceError("Wait for this batch to finish before starting a fresh run.")
         views = set(run.get("views", []))
+        if recompile:
+            self._refresh_compiled_prompts(run_id, views)
         for view in views:
             self.asset_store.assert_batch_change_allowed(
                 run["character"], run["phase"], "Body-Reference", view
@@ -813,7 +865,7 @@ Do not explain your reasoning."""
         result.update(status="RUNNING", interrupted=False, error="")
         return result
 
-    def rerun_view(self, run_id: str, view: str) -> dict[str, Any]:
+    def rerun_view(self, run_id: str, view: str, *, recompile: bool = False) -> dict[str, Any]:
         """Replace the selected view's images and reviews in the existing batch."""
         run = self.detail(run_id)
         view = str(view or "").upper()
@@ -830,6 +882,8 @@ Do not explain your reasoning."""
         root = self._root(run_id).resolve()
         affected_views = (set(run.get("views", []))
                           if view == FRONT_VIEW and int(run.get("review_version") or 1) >= 2 else {view})
+        if recompile:
+            self._refresh_compiled_prompts(run_id, affected_views)
         for affected_view in affected_views:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", affected_view)
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
@@ -1398,6 +1452,7 @@ Do not explain your reasoning."""
         output = self._root(run_id) / "analyses" / candidate_id / f"local_{stamp}.json"
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+            "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
             "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_ANALYSIS",
             "worker_type": "ollama_generate", "ollama_model": model or str(
                 getattr(self.app.config, "local_body_reference_review_model", "image-analysis:latest")
@@ -1441,6 +1496,10 @@ Do not explain your reasoning."""
 
     def _proxy_answer(self, ask_id: str) -> tuple[str, dict[str, Any]]:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
+        receipt = paths.lifecycle.read_receipt(ask_id)
+        if receipt:
+            return "HARVESTED", {"ask_id": ask_id, "status": receipt.get("answer_status", receipt.get("status", "")),
+                                  "error_message": receipt.get("error_message", "")}
         roots = (("QUEUED", paths.ask_root()), ("RUNNING", paths.running_root()),
                  ("ANSWERED", paths.answer_root()))
         for status, root in roots:
@@ -1471,7 +1530,8 @@ Do not explain your reasoning."""
             answer = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise LocalBodyReferenceError(f"Invalid AI Proxy answer {ask_id}: {exc}") from exc
-        if ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id:
+        if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
+                or not self._ask_belongs_to_run(ask, self.detail(run_id))):
             raise LocalBodyReferenceError("AI Proxy answer ID does not match the queued job.")
         source_id = str(ask.get("source_ask_id") or "")
         render_source = re.fullmatch(rf"(?:Local)?BodyReference_{re.escape(run_id)}_{re.escape(candidate_id)}_\d+", source_id)
@@ -1594,6 +1654,7 @@ Do not explain your reasoning."""
         run = self.detail(run_id)
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+            "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
             "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_FACE_GATE",
             "worker_type": "ollama_generate", "ollama_model": model, "ollama_think": True,
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": ["head_crop.png"],
@@ -1694,6 +1755,7 @@ Do not explain your reasoning."""
                     or "image-analysis-alt:latest")
         manifest = {
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
+            "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
             "pipeline": "Local-Body-Reference", "pipeline_stage": f"BODY_REFERENCE_{definition.key.upper()}_GATE",
             "worker_type": "ollama_generate", "ollama_model": model, "ollama_think": True,
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in images],
@@ -2560,7 +2622,7 @@ Do not explain your reasoning."""
     def _execute_run_locked(self, run_id: str, *, views: set[str] | None = None,
                             candidate_ids: set[str] | None = None, render_only: bool = False) -> None:
         with self._active_runs_lock:
-            self._active_runs.add(run_id)
+            self._active_runs.add(self._active_key(run_id))
         try:
             initial_state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
             if initial_state.get("status") == "CANCELLED" or initial_state.get("stop_requested"):
@@ -2660,7 +2722,7 @@ Do not explain your reasoning."""
             self._run_update(run_id, status="ERROR", review_only=False, error=str(exc))
         finally:
             with self._active_runs_lock:
-                self._active_runs.discard(run_id)
+                self._active_runs.discard(self._active_key(run_id))
     def queue_render_candidate(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)

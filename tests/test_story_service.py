@@ -90,6 +90,82 @@ class FakeTurnaroundRepository:
 
 class StoryServiceTests(unittest.TestCase):
 
+    def test_library_reference_survives_missing_legacy_auxiliary_resource(self):
+        from unittest.mock import Mock
+        from zet.repositories.auxiliary_resource_repository import AuxiliaryResourceRepositoryError
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+            service.auxiliary_resource_repository.get_resource = Mock(
+                side_effect=AuxiliaryResourceRepositoryError("Auxiliary resource old-arch not found.")
+            )
+            service.story_reference_service.entity_library_service = SimpleNamespace(
+                get_asset=lambda requested_id: {"asset_id": requested_id, "checksum": "sha256:arch"},
+                effective_descriptors=lambda requested_id, set_id: [
+                    {"descriptor_type": "prompt_background", "text": "An ornate academy archway."}
+                ],
+            )
+            sections = service._element_source_sections({
+                "resource_type": "Place", "aux_resource_id": "old-arch",
+                "reference_images": [{"asset_id": "arch-image", "primary_prompt_source": True}],
+            })
+            self.assertEqual("An ornate academy archway.", sections["identity_preservation_core"])
+            self.assertEqual("arch-image", sections["library_asset_id"])
+            self.assertEqual(
+                ["Optional legacy auxiliary fallback is unavailable: Auxiliary resource old-arch not found."],
+                sections["reference_warnings"],
+            )
+
+            with self.assertRaises(AuxiliaryResourceRepositoryError):
+                service._element_source_sections({"resource_type": "Place", "aux_resource_id": "old-arch"})
+
+    def test_entity_library_reference_supplies_prompt_descriptors(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+            asset_id = "8f1d20de-dcc8-4d25-9f82-6c9c1b86120a"
+            service.story_reference_service.entity_library_service = SimpleNamespace(
+                get_asset=lambda requested_id: {"asset_id": requested_id, "checksum": "sha256:test"},
+                effective_descriptors=lambda requested_id, set_id: [
+                    {"descriptor_type": "prompt_identity", "text": "Silver feathers and amber eyes."},
+                    {"descriptor_type": "prompt_costume", "text": "Wears a blue mantle."},
+                ],
+            )
+
+            sections = service._element_source_sections({
+                "display_name": "Morrow",
+                "resource_type": "Creature",
+                "reference_images": [{"asset_id": asset_id, "primary_prompt_source": True}],
+            })
+
+            self.assertEqual("Silver feathers and amber eyes.", sections["identity_preservation_core"])
+            self.assertEqual("Wears a blue mantle.", sections["identity_preservation_costume"])
+            self.assertEqual(asset_id, sections["library_asset_id"])
+            self.assertEqual("sha256:test", sections["library_checksum"])
+
+    def test_non_character_visual_override_allows_library_image_without_descriptor(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir))
+            service.story_reference_service.entity_library_service = SimpleNamespace(
+                get_asset=lambda requested_id: {"asset_id": requested_id, "checksum": "sha256:arch"},
+                effective_descriptors=lambda requested_id, set_id: [],
+            )
+            element = {
+                "id": "arch", "display_name": "Archway", "resource_type": "Scene-Only",
+                "element_type": "Backdrop", "element_visual_override": "An ornate stone archway with bronze gates.",
+                "reference_images": [{"asset_id": "arch-image", "primary_prompt_source": True}],
+            }
+            scene = {"scene_elements": [element]}
+            service._resolve_scene_element_sources(scene)
+            self.assertEqual(scene["scene_elements"][0]["resolved_source_sections"]["library_asset_id"], "arch-image")
+
+            element["element_visual_override"] = ""
+            with self.assertRaisesRegex(StoryServiceError, "needs prompt identity or object description"):
+                service._resolve_scene_element_sources(scene)
+            element["element_type"] = "Character"
+            element["element_visual_override"] = "Walking through the archway."
+            with self.assertRaisesRegex(StoryServiceError, "needs prompt identity or object description"):
+                service._resolve_scene_element_sources(scene)
+
     def test_legacy_aux_and_new_image_tags_resolve_through_the_catalog(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -796,16 +872,16 @@ ink wash
             changed = service.load_scene_builder_data("Demo", "Opening").data
             next(item for item in changed["placements"] if item["scene_element_id"] == "hall")["world_position"] = "far wall"
             service.save_scene_builder_data("Demo", "Opening", changed)
-            with self.assertRaisesRegex(StoryServiceError, "out of date"):
-                service.stage_scene_render("Demo", "Opening")
+            updated_main = service.stage_scene_render("Demo", "Opening")
+            self.assertEqual("main", updated_main.render_target_id)
             stale_override_task = service.stage_scene_render(
                 "Demo", "Opening", allow_stale_dependencies=True
             )
             self.assertEqual("main", stale_override_task.render_target_id)
             refreshed_metadata = json.loads(target_paths["metadata"].read_text(encoding="utf-8"))
             refreshed_hash = service.story_render_service._compile("Demo", "Opening", "background")[-1]
-            self.assertEqual(refreshed_hash, refreshed_metadata["render_input_hash"])
-            self.assertTrue(
+            self.assertNotEqual(refreshed_hash, refreshed_metadata["render_input_hash"])
+            self.assertFalse(
                 service.scene_render_target_service.freshness(
                     "Demo", "Opening", "background", refreshed_hash
                 )["locked_current"]
@@ -845,6 +921,114 @@ ink wash
             self.assertEqual("Detail", document.data["subscenes"][1]["name"])
             with self.assertRaisesRegex(StoryServiceError, "does not match"):
                 service.save_scene_builder_subscene_data("Demo", "Opening", "background", {"id": "detail"})
+
+    def test_dialogue_follows_speaker_moves_but_keeps_manual_target_until_next_move(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene_elements"] = [
+                {"id": "speaker", "display_name": "Speaker", "element_type": "Character", "subscene_id": "voice"},
+                {"id": "listener", "display_name": "Listener", "element_type": "Character", "subscene_id": "listener_view"},
+            ]
+            data["subscenes"] = [
+                {"id": "voice", "name": "Voice", "kind": "background", "enabled": True},
+                {"id": "listener_view", "name": "Listener View", "kind": "background", "enabled": True},
+            ]
+            data["dialogue"] = [{"id": "line", "speaker_element_id": "speaker", "target_element_id": "listener", "subscene_id": "voice", "text": "Hello."}]
+            service.save_scene_builder_data("Demo", "Opening", data)
+
+            changed = service.load_scene_builder_data("Demo", "Opening").data
+            changed["scene_elements"][0]["subscene_id"] = ""
+            saved = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual("", saved.data["dialogue"][0]["subscene_id"])
+
+            changed = saved.data
+            changed["dialogue"][0]["subscene_id"] = "listener_view"
+            manual = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual("listener_view", manual.data["dialogue"][0]["subscene_id"])
+
+            changed = manual.data
+            changed["scene_elements"][0]["subscene_id"] = "voice"
+            moved = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual("voice", moved.data["dialogue"][0]["subscene_id"])
+
+            changed = moved.data
+            changed["dialogue"][0]["speaker_element_id"] = "listener"
+            changed_speaker = service.save_scene_builder_data("Demo", "Opening", changed)
+            self.assertEqual("listener_view", changed_speaker.data["dialogue"][0]["subscene_id"])
+
+    def test_scoped_subscene_save_updates_dialogue_and_rejects_stale_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene"]["story_beat"] = "Preserve draft context."
+            data["scene_elements"] = [{"id": "speaker", "display_name": "Speaker", "element_type": "Character", "subscene_id": "voice"}]
+            data["subscenes"] = [{"id": "voice", "name": "Voice", "kind": "background", "enabled": True}]
+            data["dialogue"] = [
+                {"id": "one", "speaker_element_id": "speaker", "subscene_id": "voice", "text": "Old text."},
+                {"id": "two", "speaker_element_id": "speaker", "subscene_id": "voice", "text": "Keep this line."},
+                {"id": "three", "speaker_element_id": "speaker", "subscene_id": "voice", "text": "Keep this too."},
+            ]
+            service.save_scene_builder_data("Demo", "Opening", data)
+            loaded = service.load_scene_builder_data("Demo", "Opening").data
+            old_revision = loaded["_revision"]
+            subscene = copy.deepcopy(loaded["subscenes"][0])
+            subscene["name"] = "Voice Detail"
+            changed_line = copy.deepcopy(loaded["dialogue"][0])
+            changed_line["text"] = "Updated text."
+
+            saved = service.save_scene_builder_subscene_data("Demo", "Opening", "voice", {
+                "subscene": subscene,
+                "expected_revision": old_revision,
+                "dialogue_changes": {"upserts": [{"index": 0, "dialogue": changed_line}], "delete_indices": [1]},
+            })
+            self.assertEqual("Updated text.", saved.data["dialogue"][0]["text"])
+            self.assertEqual("Keep this too.", saved.data["dialogue"][1]["text"])
+            self.assertEqual("Preserve draft context.", saved.data["scene"]["story_beat"])
+            with self.assertRaisesRegex(StoryServiceError, "changed since it was loaded"):
+                service.save_scene_builder_subscene_data("Demo", "Opening", "voice", {
+                    "subscene": subscene,
+                    "expected_revision": old_revision,
+                    "dialogue_changes": {"upserts": [], "delete_indices": []},
+                })
+
+    def test_subscene_projection_routes_dialogue_and_keeps_external_listener_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            story_dir = root / "Stories" / "Demo"
+            story_dir.mkdir(parents=True)
+            (story_dir / "Demo.md").write_text("Title: `[Demo]`\n", encoding="utf-8")
+            (story_dir / "Opening.md").write_text("Scene: `[Opening]`\n", encoding="utf-8")
+            service = self._service(root)
+            data = service.create_default_scene_builder_data("Demo", "Opening")
+            data["scene_elements"] = [
+                {"id": "speaker", "display_name": "Speaker", "element_type": "Character", "subscene_id": "voice"},
+                {"id": "listener", "display_name": "Listener", "element_type": "Character", "subscene_id": "other"},
+            ]
+            data["subscenes"] = [
+                {"id": "voice", "name": "Voice View", "kind": "background", "enabled": True},
+                {"id": "other", "name": "Other View", "kind": "background", "enabled": True},
+            ]
+            data["dialogue"] = [{"id": "line", "speaker_element_id": "speaker", "target_element_id": "listener", "subscene_id": "voice", "text": "Hello."}]
+            targets = service.scene_render_target_service
+            voice = targets.project_subscene(data, "voice")
+            main = targets.project_main(data, {})
+            self.assertEqual(["line"], [item["id"] for item in voice["dialogue"]])
+            self.assertEqual("Other View", voice["dialogue"][0]["target_context"])
+            self.assertEqual([], main["dialogue"])
+            data["dialogue"][0]["subscene_id"] = "other"
+            with self.assertRaisesRegex(StoryServiceError, "speaker .* is not visible"):
+                targets.project_subscene(data, "other")
 
     def test_create_subscene_adds_an_assignable_colored_render_target(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -983,15 +1167,15 @@ ink wash
             changed = service.load_scene_builder_data("Demo", "Opening").data
             next(item for item in changed["scene_elements"] if item["id"] == "rescued_adult")["fallback_visual_description"] = "a rescued traveler wrapped in a torn cloak"
             service.save_scene_builder_data("Demo", "Opening", changed)
-            with self.assertRaisesRegex(StoryServiceError, "not current"):
-                service.stage_scene_render("Demo", "Opening")
+            updated_main = service.stage_scene_render("Demo", "Opening")
+            self.assertEqual("main", updated_main.render_target_id)
 
             leaf_task = service.stage_scene_render("Demo", "Opening", travelers_target_id)
             leaf_manifest = json.loads((Path(leaf_task.ask_path) / "ask_manifest.json").read_text(encoding="utf-8"))
             leaf_paths["locked"].write_bytes(b"travelers-v2")
             leaf_paths["metadata"].write_text(json.dumps({"render_input_hash": leaf_manifest["render_input_hash"]}), encoding="utf-8")
-            with self.assertRaisesRegex(StoryServiceError, "The party.*out of date"):
-                service.stage_scene_render("Demo", "Opening")
+            refreshed_party_parent = service.stage_scene_render("Demo", "Opening")
+            self.assertEqual("main", refreshed_party_parent.render_target_id)
 
     def test_element_subscene_graph_rejects_cycles_and_depth_four(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

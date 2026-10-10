@@ -162,7 +162,7 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             metadata = json.loads(paths["metadata"].read_text(encoding="utf-8"))
             self.assertEqual("hash-2", metadata["render_input_hash"])
 
-    def test_promote_accepts_candidate_against_current_render_inputs(self):
+    def test_promote_preserves_candidate_render_provenance(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             story_service = _StoryService(root)
@@ -188,9 +188,9 @@ class SceneImageReviewServiceTests(unittest.TestCase):
             self.assertTrue(updated.locked_exists)
             metadata_path = service.target_service.review_paths("story", "scene", "main")["metadata"]
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            self.assertEqual("current-hash", metadata["render_input_hash"])
-            self.assertTrue(compile_calls[0][1]["allow_stale_dependencies"])
-            self.assertTrue(compile_calls[0][1]["accept_stale_dependencies"])
+            self.assertEqual("stale-hash", metadata["render_input_hash"])
+            self.assertEqual(1, len(compile_calls))  # Status may inspect freshness after promotion.
+            self.assertEqual("stale-hash", metadata["render_input_hash"])
 
 
 if __name__ == "__main__":

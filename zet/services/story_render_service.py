@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 from datetime import datetime
 import json
 import re
@@ -18,6 +19,7 @@ from zet.services.chatgpt_prompt_contract import (
     write_prompt_diagnostics,
 )
 from zet.services.scene_render_compiler import (
+    _reference_tag,
     compile_scene_render_ir,
     final_image_prompt_text,
     local_render_brief,
@@ -26,6 +28,8 @@ from zet.services.scene_render_compiler import (
 )
 from zet.services.scene_prompt_sections import load_final_image_prompt_sections
 from zet.services.scene_render_target_service import MAIN_RENDER_TARGET
+from zet.services.scene_background_service import SceneBackgroundService
+from zet.services.pipeline_compiler_support import with_universe_art_style
 
 
 class StoryRenderService:
@@ -62,21 +66,144 @@ class StoryRenderService:
         default_prompt_sections: dict[str, str],
         *,
         allow_incomplete_reference_descriptions: bool = False,
+        resolved_references: list[dict] | None = None,
+        element_sources: dict | None = None,
     ) -> tuple[list[dict], dict, str]:
         story = self.story
-        references = self.reference_service.resolve_scene_references("\n" + json.dumps(projected))
+        projected = copy.deepcopy(projected)
+        references = copy.deepcopy(resolved_references if resolved_references is not None else
+                      self.reference_service.resolve_scene_references("\n" + json.dumps(projected)))
+        layout = projected.get("layout_3d") if isinstance(projected.get("layout_3d"), dict) else None
+        render_target = projected.get("_render_target") if isinstance(projected.get("_render_target"), dict) else {}
+        target_id = str(render_target.get("id") or "main")
+        definition = story.scene_render_target_service.definition(projected, target_id)
+        guided = bool(layout and (target_id == "main" or (definition or {}).get("kind") in {"background", "element"}))
+        if guided:
+            service = story.scene_layout_service
+            source_elements = {item["id"]: item for item in [*(projected.get("scene_elements") or []),
+                              *(projected.get("_layout_source_elements") or [])]}
+            layout_elements = service._target_elements(projected, target_id)
+            if target_id == "main":
+                # Main workspaces have no backdrop pawn, but may infer their
+                # background source from the complete scene document.
+                by_id = {str(item.get("id") or ""): item for item in layout_elements}
+                background_sources = projected.get("_layout_source_elements") or projected.get("scene_elements") or []
+                for item in background_sources:
+                    if item.get("element_type") == "Backdrop":
+                        by_id[str(item.get("id") or "")] = item
+                layout_elements = list(by_id.values())
+            layout = service.normalize(layout, layout_elements, scene=projected)
+            if target_id != "main":
+                layout["background"] = None
+                layout["ground"] = {"enabled": False, "surface": "Ground surface matching the setting"}
+                for camera in layout["cameras"]:
+                    camera["background_framing"] = {"center": [.5, .5], "zoom": 1.0}
+                    camera["ground_distance_m"] = 10.0
+            composition_scene = copy.deepcopy(projected)
+            composition_scene["scene_elements"] = list(source_elements.values())
+            composition = service.compose_targets(composition_scene, target_id)
+            composition["groups_workspace"] = target_id
+            placements_by_element = {
+                str(item.get("scene_element_id") or ""): item
+                for item in projected.get("placements") or []
+                if str(item.get("position_within_cell") or "").casefold() == "none"
+            }
+            hidden_ids = set(placements_by_element)
+            for group in composition.get("groups") or []:
+                if group.get("anchor_element_id") in hidden_ids:
+                    hidden_ids.update(
+                        str(item.get("id") or "") for item in source_elements.values()
+                        if str(item.get("subscene_id") or "") == str(group.get("target_id") or "")
+                    )
+            visible_pawns = [pawn for pawn in composition["pawns"] if pawn["element_id"] not in hidden_ids]
+            visible_composition = {**composition, "pawns": visible_pawns}
+            layout = {**layout, "pawns": visible_pawns}
+            projected["layout_3d"] = layout
+            canvas = (projected.get("setup") or {}).get("canvas") or {}
+            preset_path = story._project_config_path("Local_Render_Presets.json")
+            try:
+                presets = json.loads(preset_path.read_text(encoding="utf-8"))
+                budget = int(presets.get("comfyui-qwen-image-2-1-scene", {}).get("pixel_budget", 1_048_576))
+            except (OSError, ValueError, TypeError):
+                budget = 1_048_576
+            width, height = service.output_size(str(canvas.get("aspect_ratio") or "16:9"), budget)
+            backgrounds = SceneBackgroundService(self.reference_service, story.scene_render_target_service)
+            # Parent framing is only applied at assembly, never to background generation itself.
+            background = backgrounds.resolve(projected, layout, width=width, height=height,
+                                             resolved_references=references) if target_id == "main" else None
+            if not layout["pawns"] and target_id == "main" and background is None:
+                empty_groups = service.empty_group_warnings(composition, projected.get("subscenes") or [])
+                detail = " " + " ".join(empty_groups) if empty_groups else ""
+                raise self.error_type("The 3D layout has no members or background visible in this render target." + detail)
+            scene_slug = story.safe_slug(str(projected.get("scene", {}).get("slug") or "scene"))
+            story_slug = story.safe_slug(str(projected.get("scene", {}).get("_story_slug") or "story"))
+            artifact_root = story.scene_render_target_service.pipeline_path(story_slug, scene_slug, target_id)
+            if background:
+                layout["background"] = copy.deepcopy(background["projection"]["source"])
+                tag = background["projection"]["source_tag"]
+                background_ids = {item["id"] for item in projected.get("subscenes") or [] if item.get("kind") == "background"}
+                projected["_render_inputs"] = [item for item in projected.get("_render_inputs") or []
+                                               if item.get("target_id") not in background_ids or item.get("tag") == tag]
+                digest = hashlib.sha256(background["png_bytes"]).hexdigest()
+                backdrop_path = artifact_root / f"Background_3D_{digest}.png"
+                backdrop_path.parent.mkdir(parents=True, exist_ok=True)
+                if not backdrop_path.exists():
+                    backdrop_path.write_bytes(background["png_bytes"])
+                references = [{**item, "path": str(backdrop_path), "sha256": digest} if item.get("tag") == tag else item
+                              for item in references]
+                matched = any(_reference_tag(reference) == tag for element in projected.get("scene_elements") or []
+                              for reference in element.get("reference_images") or [])
+                matched = matched or any(item.get("tag") == tag for item in projected.get("_render_inputs") or [])
+                if not matched:
+                    projected.setdefault("_render_inputs", []).append({"tag": tag, "label": background["label"],
+                        "prompt_role": "background_reference", "target_id": "background",
+                        "preserve": ["the selected background crop, framing, and image proportions"],
+                        "ignore": [], "notes": "Use this already framed background without reframing it."})
+            guidance_elements = [source_elements[item["element_id"]] for item in composition["pawns"] if item["element_id"] in source_elements]
+            generated = service.guidance_reference(layout, guidance_elements, width=width, height=height,
+                                                  aspect=backgrounds.aspect(projected), background=background)
+            service.aggregate_group_projection(generated["projection"], visible_composition, list(source_elements.values()))
+            projected["_layout_projection"] = generated["projection"]
+            path = artifact_root / f"Layout_3D_{generated['sha256']}.png"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp.png")
+            temporary.write_bytes(generated["png_bytes"])
+            temporary.replace(path)
+            layout_reference = {
+                "tag": f"{{{{SCENE_LAYOUT:{story_slug}:{scene_slug}:{target_id}}}}}",
+                "path": str(path), "label": "3D scene layout", "roles": ["layout reference"],
+                "prompt_role": "layout_reference", "applies_to_element_id": "",
+                "preserve": ["the camera framing and each subject's projected position and relative size",
+                             *(["the selected background crop and framing"] if background else [])],
+                "change": ["replace every gray pawn with its assigned scene element"],
+                "ignore": ["pawn shapes, gray colors, proxy anatomy, and the preview ground color"],
+                "notes": "This image is composition guidance only; preserve the measured spatial arrangement.",
+                "layout_projection": generated["projection"], "sha256": generated["sha256"],
+            }
+            references.append(layout_reference)
+            projected.setdefault("_render_inputs", []).append({
+                key: layout_reference[key] for key in ("tag", "label", "prompt_role", "preserve", "change", "ignore", "notes")
+            })
         ir = compile_scene_render_ir(
             projected,
             story_settings,
             {
                 "references": references,
-                "element_sources": story._resolve_scene_element_sources(
+                "element_sources": element_sources if element_sources is not None else story._resolve_scene_element_sources(
                     projected,
                     allow_incomplete_descriptions=allow_incomplete_reference_descriptions,
                 ),
             },
             default_prompt_sections,
         )
+        if guided:
+            projection = next(item for item in references if item.get("prompt_role") == "layout_reference")["layout_projection"]
+            ir["layout_projection"] = projection
+            projected_by_id = {item["element_id"]: item for item in projection["subjects"]}
+            for placement in ir.get("placements") or []:
+                spatial = projected_by_id.get(str(placement.get("scene_element_id") or ""))
+                if spatial:
+                    placement["layout_projection"] = spatial
         references_by_tag = {
             str(reference.get("tag") or "").strip(): reference
             for reference in references
@@ -90,7 +217,33 @@ class StoryRenderService:
                 raise self.error_type(f"Unresolved scene image input: {tag or '<blank>'}")
             ordered_references.append(reference)
         references = enrich_reference_files(ordered_references, ir["image_inputs"])
+        if guided and len(references) > 10:
+            raise self.error_type("3D layout guidance needs one Qwen reference slot; remove a scene reference before guided rendering.")
         return references, ir, story.scene_render_target_service.input_hash(ir, story_settings, references)
+
+    def compile_batch_target(self, scene: dict, settings: dict, sections: dict, references: list[dict],
+                             target_id: str, selected_sources: dict[str, dict]) -> dict:
+        """Compile frozen batch inputs without publishing selected prerequisites."""
+        from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
+        targets = self.story.scene_render_target_service
+        targets.assert_valid_graph(scene)
+        required = targets.direct_dependencies(scene, target_id)
+        missing = [item["id"] for item in required if item["id"] not in selected_sources]
+        if missing:
+            raise self.error_type("Select prerequisite images first: " + ", ".join(missing))
+        statuses = {key: {"locked_image_path": value["path"], "locked_current": True}
+                    for key, value in selected_sources.items()}
+        projected = (targets.project_main(scene, statuses) if target_id == MAIN_RENDER_TARGET else
+                     targets.project_subscene(scene, target_id))
+        bindings = {item["tag"]: dict(item) for item in references}
+        for key, value in selected_sources.items():
+            tag = targets.image_tag(scene["scene"]["_story_slug"], scene["scene"]["slug"], key)
+            bindings[tag] = {**value, "tag": tag, "label": targets.target_label(scene, key), "kind": "scene-render"}
+        sources = {str(item.get("id")): item.get("resolved_source_sections") or {}
+                   for item in projected.get("scene_elements") or []}
+        refs, ir, fingerprint = self._compile_projected(
+            projected, settings, sections, resolved_references=list(bindings.values()), element_sources=sources)
+        return {"ir": ir, "references": refs, "prompt": compile_qwen_scene_prompt(ir), "render_input_hash": fingerprint}
 
     def _compile(
         self,
@@ -133,29 +286,14 @@ class StoryRenderService:
             statuses: dict[str, dict] = {}
             for definition in story.scene_render_target_service.direct_dependencies(normalized_scene, current_target_id):
                 subscene_id = str(definition.get("id") or "")
-                _, _, _, current_hash = compile_target(subscene_id)
-                freshness = story.scene_render_target_service.freshness(
-                    safe_story_slug, safe_scene_slug, subscene_id, current_hash
-                )
                 paths = story.scene_render_target_service.review_paths(safe_story_slug, safe_scene_slug, subscene_id)
-                statuses[subscene_id] = {**freshness, "locked_image_path": str(paths["locked"])}
-                if not freshness["locked_current"] and not (
-                    allow_stale_dependencies and freshness["locked_exists"]
-                ):
+                if not paths["locked"].is_file():
                     raise self.error_type(
                         f"Cannot render {story.scene_render_target_service.target_label(normalized_scene, current_target_id)}: "
-                        f"{definition.get('name') or subscene_id} is not current. "
-                        f"{freshness['stale_reason']} Render and lock that subscene first."
+                        f"No locked image exists for {definition.get('name') or subscene_id}. Render it first."
                     )
-                if (
-                    accept_stale_dependencies
-                    and freshness["locked_exists"]
-                    and not freshness["locked_current"]
-                ):
-                    story.scene_render_target_service.accept_locked_current(
-                        safe_story_slug, safe_scene_slug, subscene_id, current_hash
-                    )
-                    statuses[subscene_id].update(locked_current=True, stale_reason="")
+                statuses[subscene_id] = {"locked_exists": True, "locked_current": True,
+                                         "locked_image_path": str(paths["locked"])}
             projected = (
                 story.scene_render_target_service.project_main(normalized_scene, statuses)
                 if current_target_id == MAIN_RENDER_TARGET
@@ -274,13 +412,15 @@ class StoryRenderService:
         pipeline_path.mkdir(parents=True, exist_ok=True)
         final_prompt_path = pipeline_path / "Final_Image_Prompt.md"
         warnings = story.validate_scene_builder_data(normalized_scene)
-        brief = local_render_brief(ir, {
+        local_ir = with_universe_art_style(ir, story.path_service.config.base_library_path)
+        brief = local_render_brief(local_ir, {
             "strict_primary_subject_count": getattr(story.path_service.config, "local_render_strict_primary_subject_count", True),
             "forge_couple_debug_base_pass": getattr(story.path_service.config, "local_render_forge_couple_debug_base_pass", True),
         })
         story._write_json(pipeline_path / "Scene_Render_Validation.json", {"errors": [], "warnings": warnings})
         final_prompt_path.write_text(prompt, encoding="utf-8")
         story._write_json(pipeline_path / "Scene_Render_IR.json", ir)
+        story._write_json(pipeline_path / "Scene_Local_Render_IR.json", local_ir)
         write_prompt_diagnostics(
             pipeline_path / "Prompt_Compile_Diagnostics.json",
             prompt,
@@ -294,7 +434,7 @@ class StoryRenderService:
         (pipeline_path / "Local_Render_Prompt.md").write_text(local_render_prompt_text(brief), encoding="utf-8")
         artifacts = [
             "Scene_Render_IR.json", "Final_Image_Prompt.md", "Final_Image_Prompt_V1.md",
-            "Prompt_Compile_Diagnostics.json", "Local_Render_Brief.json", "Local_Render_Prompt.md",
+            "Scene_Local_Render_IR.json", "Prompt_Compile_Diagnostics.json", "Local_Render_Brief.json", "Local_Render_Prompt.md",
         ]
         if getattr(story.path_service.config, "local_render_layout_backend", "forge_couple_basic") == "forge_couple_basic":
             (pipeline_path / "Local_Render_Forge_Couple_Prompt.md").write_text(local_render_forge_couple_prompt_text(brief), encoding="utf-8")
