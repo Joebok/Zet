@@ -5511,3 +5511,16 @@ dd {
 #quick-character-wizard-dialog .qc-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
 #quick-character-wizard-dialog .qc-selected { border: 2px solid var(--accent, #7389d8); }
 @media (max-width: 760px) { #quick-character-wizard-dialog .qc-grid { grid-template-columns: 1fr; } }
+
+/* Shared task capture; independent of the active workspace. */
+.task-capture-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; border-radius: 10px; }
+.task-capture-dialog::backdrop { background: rgb(15 30 38 / 60%); }
+.task-capture-header, .task-capture-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+.task-capture-header h2 { margin: 0; }
+.task-capture-dialog label { display: grid; gap: 4px; margin: 10px 0; }
+.task-capture-dialog input, .task-capture-dialog select, .task-capture-dialog textarea { width: 100%; box-sizing: border-box; }
+.task-capture-dialog textarea { min-height: 0; height: auto; resize: vertical; }
+.task-capture-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font-size: 12px; }
+.task-capture-dialog fieldset { margin: 12px 0; }
+.task-capture-dialog [hidden] { display: none; }
+.task-capture-dialog #task-capture-status { overflow-wrap: anywhere; }
