@@ -4,6 +4,7 @@ import platform
 from pathlib import Path
 import tomllib
 from zet.services.local_render_policy import configured_qwen_profile, configured_qwen_checkpoint, SCENE_PROFILE
+from zet.services.task_service import TaskServiceError, validate_kanban_settings
 
 
 class ConfigServiceError(Exception):
@@ -73,6 +74,9 @@ class Config:
     universe_id: str = "Moonsea"
     universe_is_legacy: bool = True
     library_container_path: str = ""
+    kanban_base_url: str = "http://127.0.0.1:8000"
+    kanban_project_id: str = ""
+    kanban_timeout_seconds: float = 5.0
 
 
 class ConfigService:
@@ -193,6 +197,15 @@ class ConfigService:
         except tomllib.TOMLDecodeError as exc:
             raise ConfigServiceError(f"Config file is invalid TOML at {path}: {exc}") from exc
         try:
+            kanban = payload.get("Kanban", {})
+            if not isinstance(kanban, dict) or set(kanban) - {"BaseURL", "ProjectID", "TimeoutSeconds"}:
+                raise ConfigServiceError("Kanban settings must be a table containing BaseURL, ProjectID, and TimeoutSeconds only.")
+            try:
+                kanban_url, kanban_project, kanban_timeout = validate_kanban_settings(
+                    kanban.get("BaseURL", "http://127.0.0.1:8000"), kanban.get("ProjectID", ""), kanban.get("TimeoutSeconds", 5.0),
+                )
+            except TaskServiceError as exc:
+                raise ConfigServiceError(str(exc)) from exc
             base_folders = ConfigService._base_folders_for_platform(payload)
             prompt_condense = ConfigService._prompt_condense_config(payload)
             ai_models = ConfigService._ai_models_config(payload)
@@ -264,6 +277,9 @@ class ConfigService:
                 ),
                 ai_prompt_analysis_auto_queue_on_render=bool(ai_prompt_analysis.get("AutoQueueOnRender", False)),
                 scene_candidate_sources=ConfigService._scene_candidate_sources(payload),
+                kanban_base_url=kanban_url,
+                kanban_project_id=kanban_project,
+                kanban_timeout_seconds=kanban_timeout,
             )
         except ConfigServiceError:
             raise
