@@ -1,3 +1,9 @@
+[Kanban]
+BaseURL = "http://127.0.0.1:8000"
+# Register Zet_v5 on the Kanban board, then set its project-xxxxxxxx identifier here.
+ProjectID = ""
+TimeoutSeconds = 5.0
+
 [BaseFolders]
 BaseLibraryPath = "Zet_Library_v5/"
 BaseCharacterPath = "Characters/"

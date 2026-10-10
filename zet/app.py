@@ -25,6 +25,7 @@ from zet.services.ai_answer_harvester import AIAnswerHarvester
 from zet.services.character_onboarding_service import CharacterOnboardingService
 from zet.services.character_source_service import CharacterSourceService
 from zet.services.config_service import ConfigService
+from zet.services.task_service import TaskService
 from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeServiceError, CostumeUpdateResult
 from zet.services.costume_wizard_service import CostumeWizardService
 from zet.services.quick_character_wizard_service import QuickCharacterWizardService
@@ -178,6 +179,8 @@ class ZetApp:
     ):
         self.config = config
         self.config_path = Path(config_path)
+        self.task_service = TaskService(config.kanban_base_url, config.kanban_project_id, config.kanban_timeout_seconds,
+                                        project_root=Path(__file__).resolve().parents[1])
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service
@@ -256,6 +259,9 @@ class ZetApp:
             pipeline_repository,
         )
         self.pipeline_inspection_service = PipelineInspectionService(config.base_pipeline_path, asset_repository, path_service)
+
+    def create_task(self, payload: dict) -> dict:
+        return self.task_service.create_task(payload)
 
     def list_pipeline_inspections(self) -> list[dict]:
         return self.pipeline_inspection_service.list_pipelines()
