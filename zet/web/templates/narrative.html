@@ -6,7 +6,7 @@
   <title>Narrative Scenes · Zet</title>
   <link rel="icon" href="/img/favicon_io/favicon.ico">
   <link rel="stylesheet" href="/static/zet.css">
-  <link rel="stylesheet" href="/static/narrative.css">
+  <link rel="stylesheet" href="/static/narrative.css?v=20261010-task-context">
 </head>
 <body class="narrative-app">
   <header class="narrative-header">
@@ -14,10 +14,13 @@
     <strong>Narrative Scenes</strong>
     <label>Universe <select id="narrative-universe" aria-label="Universe"></select></label>
     <a id="narrative-home" href="/narrative">Stories</a>
+    <button id="toolbar-create-task" type="button">Create task</button>
+    <a id="toolbar-open-board" target="_blank" rel="noopener" hidden>Open board</a>
     <span id="narrative-model"></span>
   </header>
   <nav id="narrative-breadcrumb" aria-label="Breadcrumb"></nav>
   <p id="narrative-message" role="status" aria-live="polite"></p>
+  <p id="task-context-notice" class="action-message" role="status" aria-live="polite" hidden></p>
   <main id="narrative-root" aria-label="Narrative workspace"></main>
   <dialog id="story-dialog" aria-label="New Story">
     <h2>New Story</h2>
@@ -41,9 +44,12 @@
         <button id="narrative-review-prev" class="review-nav" type="button" aria-label="Previous candidate">‹</button>
         <section id="narrative-review-panel"></section>
         <button id="narrative-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
+        <div class="local-pipeline-review-view-navigation"><button id="narrative-review-task" type="button">Create task</button></div>
       </div>
     </div>
   </dialog>
-  <script type="module" src="/static/narrative.js"></script>
+  <!-- TASK_CAPTURE_FORM -->
+  <script src="/static/task_capture.js?v=20261010-story-context"></script>
+  <script type="module" src="/static/narrative.js?v=20261010-task-context"></script>
 </body>
 </html>

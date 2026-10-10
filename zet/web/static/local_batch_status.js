@@ -64,7 +64,7 @@
     appendField(fields, "Costume", batch.costume);
     appendField(fields, "Current view", batch.current_view);
     card.append(title, fields);
-    if (pipelinePages[batch.pipeline]) {
+    if (pipelinePages[batch.pipeline] || batch.pipeline === "scene") {
       const report = document.createElement("button");
       report.type = "button";
       report.textContent = "Create task";
@@ -167,6 +167,11 @@
         for (const name of ["character", "phase", "costume"]) {
           if (batch[name]) selections[name] = { state: selection.state, id: batch[name], label: batch[name] };
         }
+      }
+      if (batch?.pipeline === "scene") {
+        selections.pipeline = {state:selection.state,id:"scene",label:batch.pipeline_label || "Scene"};
+        if (batch.story_slug) selections.story = {state:selection.state,id:batch.story_slug,label:batch.story_slug};
+        if (batch.scene_slug) selections.scene = {state:selection.state,id:batch.scene_slug,label:batch.scene_slug};
       }
       return { selections, parameters };
     },

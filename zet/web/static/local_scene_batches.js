@@ -12,6 +12,8 @@ window.SceneBatches = (() => {
   let publicationReview = null, publicationDecisions = {};
   let context = null, run = null, pending = false, timer = null, version = 0;
   let reviewKey = null;
+  const taskRoute = new URLSearchParams(location.search);
+  let restoreApplied = false, taskLoadState = "loading", requestedBatch = "";
   const node = (tag, text, className = "") => {
     const element = document.createElement(tag);
     if (text != null) element.textContent = text;
@@ -19,10 +21,15 @@ window.SceneBatches = (() => {
     return element;
   };
   const base = () => `/api/stories/${encodeURIComponent(context.story)}/scenes/${encodeURIComponent(context.scene)}/local-batches`;
-  const route = (target, suffix) => `${base()}/${run.run_id}/targets/${encodeURIComponent(target)}/${suffix}`;
+  const route = (target, suffix) => {
+    const url = new URL(`${base()}/${run.run_id}/targets/${encodeURIComponent(target)}/${suffix}`,location.origin);
+    url.searchParams.set("universe_id",document.querySelector("#universe-select").value);
+    return url.pathname+url.search;
+  };
   async function request(url, payload, method = payload === undefined ? "GET" : "POST") {
     const options = payload === undefined ? (method === "GET" ? {} : {method})
       : {method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)};
+    options.headers = {...options.headers, "X-Zet-Universe": document.querySelector("#universe-select").value};
     const response = await fetch(url, options);
     const value = await response.json();
     if (!response.ok) throw new Error(typeof value.detail === "string" ? value.detail
@@ -245,7 +252,11 @@ window.SceneBatches = (() => {
       const sources = node("div", null, "local-pipeline-sources");
       (group.next_reference_images || group.reference_images || []).forEach((reference, index) => {
         const figure = node("figure"), caption = `Image ${reference.image_index || index + 1} — ${reference.prompt_role || reference.role || "reference"}: ${reference.label || reference.tag}`;
-        const image = node("img"); image.src = `${route(target, `next-references/${index}`)}?sha256=${encodeURIComponent(reference.sha256 || "")}`; image.alt = caption; image.loading = "lazy";
+        const image = node("img");
+        const imageUrl = new URL(route(target, `next-references/${index}`),location.origin);
+        imageUrl.searchParams.set("sha256",reference.sha256 || "");
+        image.src = imageUrl.pathname+imageUrl.search;
+        image.alt = caption; image.loading = "lazy";
         figure.append(node("figcaption", caption), image); sources.append(figure);
       });
       section.append(sources);
@@ -323,19 +334,33 @@ window.SceneBatches = (() => {
       if (reviewDialog.open) reviewDialog.close();
     }
     context = nextContext;
+    const restoring = !restoreApplied && taskRoute.get("task_context") === "1" && taskRoute.get("page") === "scene-batches";
+    taskLoadState = "loading";
+    requestedBatch = restoring ? taskRoute.get("batch") || "" : "";
     document.querySelector("#scene-batch-context").textContent = `${context.story} / ${context.scene}`;
     message.textContent = "Loading saved scene render state…";
     try {
       const listed = await request(base());
       if (expectedVersion !== version) return;
-      const current = listed.batches?.[0];
-      run = current ? await request(`${base()}/${current.run_id}`) : await request(base(), {});
+      const current = restoring && requestedBatch ? listed.batches?.find(item=>item.run_id===requestedBatch) : listed.batches?.[0];
+      const loadedRun = current ? await request(`${base()}/${current.run_id}`) : restoring ? null : await request(base(), {});
       if (expectedVersion !== version) return;
+      run = loadedRun;
+      taskLoadState = run ? "selected" : "unavailable";
+      if (restoring) {
+        restoreApplied = true;
+        if (!run) window.ZetTaskCapture.notice(`Recorded scene batch "${requestedBatch}" is unavailable. No batch was created.`);
+      }
       message.textContent = "Each target has eight slots. Clearing or retrying a slot replaces its image.";
       render();
+      if (restoring && run && taskRoute.get("task_candidate")) {
+        const candidate = reviewCandidates().find(item=>item.target===taskRoute.get("task_target") && item.candidate.candidate_id===taskRoute.get("task_candidate"));
+        if (candidate) openReview(candidate.target,candidate.candidate.candidate_id);
+        else window.ZetTaskCapture.notice("The recorded scene render candidate is unavailable. The batch is open.");
+      }
       scheduleRefresh();
-      if (nextContext.publicationReview && run.status === "READY_TO_PUBLISH") await openPublicationReview();
-    } catch (error) { message.textContent = error.message; run = null; render(); }
+      if (nextContext.publicationReview && run?.status === "READY_TO_PUBLISH") await openPublicationReview();
+    } catch (error) { if (expectedVersion !== version) return; message.textContent = error.message; run = null; taskLoadState = "unavailable"; render(); }
   }
   document.querySelector("#scene-batch-start").addEventListener("click", () => void perform("start"));
   document.querySelector("#scene-batch-stop").addEventListener("click", () => void perform("stop"));
@@ -344,11 +369,32 @@ window.SceneBatches = (() => {
   publicationSubmit.addEventListener("click", submitPublicationReview);
   document.querySelector("#scene-batch-refresh").addEventListener("click", () => void refresh(true));
   document.querySelector("#scene-batch-review-close").addEventListener("click", () => reviewDialog.close());
+  document.querySelector("#scene-batch-review-task").addEventListener("click",()=>void window.ZetTaskCapture.open());
   document.querySelector("#scene-batch-review-prev").addEventListener("click", () => navigateReview(-1));
   document.querySelector("#scene-batch-review-next").addEventListener("click", () => navigateReview(1));
   document.querySelector("#scene-batch-review-select").addEventListener("click", () => reviewAction("select"));
   document.querySelector("#scene-batch-review-retry").addEventListener("click", () => reviewAction("retry"));
   document.querySelector("#scene-batch-review-clear").addEventListener("click", () => reviewAction("clear"));
   document.addEventListener("visibilitychange", () => scheduleRefresh(0));
-  return {open};
+  return {open, taskContext() {
+    const id = taskLoadState === "selected" ? run?.run_id : requestedBatch || run?.run_id;
+    const selections = {};
+    const parameters = {};
+    if (id) {
+      const selection = {state:taskLoadState,id,label:run?.run_id===id ? run.batch_name || id : id};
+      selections.batch = {...selection}; selections.run = {...selection}; parameters.batch = id;
+    } else {
+      selections.run = {state:taskLoadState === "selected" ? "absent" : taskLoadState};
+      selections.batch = {...selections.run};
+    }
+    if (reviewDialog.open && taskLoadState === "selected") {
+      const item = reviewCandidates().find(item=>candidateKey(item.target,item.candidate.candidate_id)===reviewKey);
+      if (item) {
+        selections.render_target = {state:"selected",id:item.target,label:item.label || item.target};
+        selections.candidate = {state:"selected",id:item.candidate.candidate_id,label:`Slot ${item.candidate.slot || item.candidate.candidate_id}`};
+        parameters.task_target = item.target; parameters.task_candidate = item.candidate.candidate_id;
+      }
+    }
+    return {selections,parameters};
+  }};
 })();

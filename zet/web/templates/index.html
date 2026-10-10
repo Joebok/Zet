@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261010-local-task-context">
+  <link rel="stylesheet" href="/static/zet.css?v=20261010-story-task-context">
 </head>
 <body>
   <header class="app-header">
@@ -1178,6 +1178,7 @@
           <div class="scene-batch-review-heading">
             <h2 id="scene-batch-review-title">Review scene candidate</h2>
             <button id="scene-batch-review-close" type="button">Close</button>
+            <button id="scene-batch-review-task" type="button">Create task</button>
           </div>
           <div id="scene-batch-review-details"></div>
           <div class="button-row compact scene-batch-review-actions">
@@ -2321,32 +2322,7 @@ Add prompt language here.
         <textarea id="asset-note-text" readonly></textarea>
       </form>
     </dialog>
-    <dialog id="task-capture-dialog" class="task-capture-dialog" aria-labelledby="task-capture-heading">
-      <form id="task-capture-form">
-        <div class="task-capture-header">
-          <h2 id="task-capture-heading">Create task</h2>
-          <button id="task-capture-close" type="button" aria-label="Close task form">Close</button>
-        </div>
-        <p>A local draft is kept until creation succeeds. Context stays frozen until you refresh it.</p>
-        <label>Type<select id="task-capture-type"><option value="bug">Bug</option><option value="improvement">Improvement</option><option value="feature">Feature</option></select></label>
-        <label>Title<input id="task-capture-title" required maxlength="240"></label>
-        <label>Description<textarea id="task-capture-description" maxlength="20000" rows="3"></textarea></label>
-        <fieldset id="task-capture-bug-details"><legend>Bug details (optional)</legend>
-          <label>Expected behavior<textarea id="task-capture-expected" maxlength="10000" rows="2"></textarea></label>
-          <label>Actual behavior<textarea id="task-capture-actual" maxlength="10000" rows="2"></textarea></label>
-          <label>Reproduction steps<textarea id="task-capture-reproduction" maxlength="10000" rows="2"></textarea></label>
-        </fieldset>
-        <details open><summary>Captured context</summary><pre id="task-capture-context"></pre></details>
-        <p id="task-capture-status" role="status" aria-live="polite"></p>
-        <div class="task-capture-actions">
-          <button id="task-capture-refresh" type="button">Refresh context</button>
-          <button id="task-capture-new" type="button">Discard draft</button>
-          <button id="task-capture-submit" class="primary-action" type="submit">Create task</button>
-          <a id="task-capture-ticket" target="_blank" rel="noopener" hidden>Open task</a>
-        </div>
-      </form>
-    </dialog>
-
+    <!-- TASK_CAPTURE_FORM -->
     <dialog id="todo-dialog" class="todo-dialog">
       <form id="todo-form" method="dialog">
         <div class="review-header">
@@ -2434,11 +2410,11 @@ Add prompt language here.
     </div>
   </dialog>
   <script src="/static/task_capture.js?v=20261010-local-context"></script>
-  <script src="/static/zet.js?v=20261010-local-task-context"></script>
+  <script src="/static/zet.js?v=20261010-story-task-context"></script>
   <script src="/static/quick_character_wizard.js?v=20261009"></script>
   <script src="/static/local_asset_pipeline.js?v=20261010-task-context"></script>
-  <script src="/static/local_scene_batches.js?v=20261005-publication-review"></script>
-  <script src="/static/local_batch_status.js?v=20261010-task-context"></script>
+  <script src="/static/local_scene_batches.js?v=20261010-task-context"></script>
+  <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
   <script type="module" src="/static/scene_layout.js?v=20261007-free-backdrop"></script>
 </body>
 </html>

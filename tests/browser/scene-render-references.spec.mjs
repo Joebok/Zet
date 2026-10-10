@@ -39,12 +39,15 @@ test("scene reference previews change URL when a subscene selection changes", as
     has: page.getByRole("heading", { name: "Full Scene", exact: true }),
   });
   const reference = fullScene.locator(".local-pipeline-sources img");
-  await expect(reference).toHaveAttribute("src", /next-references\/0\?sha256=first-image-hash$/);
+  await expect.poll(async()=>new URL(await reference.getAttribute("src"),page.url()).searchParams.get("sha256")).toBe("first-image-hash");
+  const initialUrl=new URL(await reference.getAttribute("src"),page.url());
+  expect(initialUrl.pathname).toMatch(/next-references\/0$/);
+  expect(initialUrl.searchParams.get("universe_id")).toBe("Moonsea");
   await expect.poll(() => reference.evaluate(image => image.complete && image.naturalWidth > 0)).toBeTruthy();
   const background = page.locator("#scene-batch-groups > section").filter({
     has: page.getByRole("heading", { name: "Background", exact: true }),
   });
   await background.getByRole("button", { name: "Select", exact: true }).click();
-  await expect(reference).toHaveAttribute("src", /next-references\/0\?sha256=second-image-hash$/);
+  await expect.poll(async()=>new URL(await reference.getAttribute("src"),page.url()).searchParams.get("sha256")).toBe("second-image-hash");
   await expect.poll(() => reference.evaluate(image => image.complete && image.naturalWidth > 0)).toBeTruthy();
 });
