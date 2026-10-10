@@ -15021,6 +15021,29 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// Main-dashboard context is an allowlist, never a copy of application state.
+window.ZetTaskCapture.registerProvider(() => {
+  const page = activePageName() || "onboarding";
+  const selections = {};
+  const source = new URL("/", window.location.origin);
+  source.searchParams.set("page", page);
+  if (state.universeId) source.searchParams.set("universe_id", state.universeId);
+  if (CHARACTER_PAGES.has(page)) {
+    const selection = (id, available, select) => {
+      if (!id) return { state: document.body.dataset.dashboardReady === "true" ? "absent" : "loading" };
+      return { state: available ? "selected" : "unavailable", id,
+        label: select.value === id ? select.selectedOptions[0]?.textContent || id : id };
+    };
+    selections.character = selection(state.character, state.characters.includes(state.character), characterSelect);
+    selections.phase = selection(state.phase, (state.phasesByCharacter[state.character] || []).includes(state.phase), phaseSelect);
+    if (state.character) source.searchParams.set("character", state.character);
+    if (state.phase) source.searchParams.set("phase", state.phase);
+  }
+  return { page_id: page,
+    page_name: document.querySelector(`#${page}-page h1`)?.textContent?.trim() || page,
+    source_url: source.href, universe_id: state.universeId || null, selections };
+});
+
 main();
 
 window.zetSceneLayout = {

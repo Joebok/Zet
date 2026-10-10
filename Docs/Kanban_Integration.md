@@ -1,9 +1,36 @@
-# Kanban task forwarding (packet 04)
+# Kanban task forwarding and capture (packets 04–05)
 
 Zet now exposes task forwarding through `ZetApp.create_task(payload)` and
 `POST /api/tasks`. Kanban owns its board files, intake validation, and request-ID
-receipts. Zet never reads or writes those files. The dashboard Create task form,
-context providers, attachments, and removal of To Do are later packets.
+receipts. Zet never reads or writes those files. Specialized workspace context
+providers, attachments, and removal of To Do are later
+packets. The main dashboard now has Create task and Open board toolbar actions.
+
+## Dashboard capture (packet 05)
+
+Create task opens a compact Bug, Improvement, or Feature report with a context
+preview. Bug details are optional. The page, universe, timestamp, running revision,
+and relevant character/phase IDs and labels come from an explicit dashboard
+provider. Global tools exclude stale character selections. Local pipeline, story,
+auxiliary page, and attachment providers arrive in packets 06–08; those specialized
+selections are not captured yet. Arbitrary URL parameters, prompts, source
+documents, and application state are not copied. Navigation links include the
+recorded page and supported context parameters; fuller restoration is packet 06–08.
+
+Context freezes when the form opens, including while configuration is loading.
+Refresh context replaces it explicitly before delivery. Closing the form keeps the
+draft. One draft per browser origin is saved in localStorage and survives reloads.
+This includes the user-entered brief; use this feature in a trusted browser profile.
+If browser storage fails, the form reports that only the open tab retains the draft.
+
+The first delivery attempt locks the entire report and project mapping. Retry
+submission sends the identical body and request ID, even after reload or changes
+elsewhere on the dashboard. Failure or an invalid receipt retains the draft. Success
+clears it and provides Open task. Discard draft explicitly starts a new request;
+after uncertain delivery it warns that the original ticket may already exist.
+Only one submission can run at a time. The form remains available while Kanban is
+offline or unconfigured; configure the registered project ID before submitting.
+The existing markdown To Do editor remains until replacement coverage in packet 09.
 
 ## Configuration
 
