@@ -10,6 +10,7 @@
   let draft = null;
   let busy = false;
   let storageError = false;
+  let unreadableDraft = false;
   let metadata = null;
   let metadataRequest = null;
   let generation = 0;
@@ -29,8 +30,14 @@
   }
 
   function restore() {
+    let raw;
     try {
-      const raw = localStorage.getItem(key);
+      raw = localStorage.getItem(key);
+    } catch {
+      storageError = true;
+      return; // A fresh report can still be retained in this tab.
+    }
+    try {
       if (!raw) return;
       const value = JSON.parse(raw);
       if (value.version !== 1 || !value.report?.request_id || !value.report?.context ||
@@ -39,9 +46,10 @@
         throw new Error("Invalid draft");
       }
       draft = value;
+      unreadableDraft = false;
     } catch {
       // Do not silently overwrite an unreadable saved report.
-      storageError = true;
+      unreadableDraft = true;
       message("The saved draft could not be read. Discard it explicitly to start a new report.");
     }
   }
@@ -119,7 +127,7 @@
     el("ticket").hidden = true;
     restore();
     dialog.showModal();
-    if (!draft && !storageError) {
+    if (!draft && !unreadableDraft) {
       await capture();
     } else {
       render();
@@ -200,6 +208,7 @@
       ? "Delivery may already have created a ticket. Discarding and submitting a new report can create a duplicate. Discard this draft?"
       : "Discard this local draft and start a new report?")) return;
     draft = null;
+    unreadableDraft = false;
     ++generation;
     save();
     el("ticket").hidden = true;

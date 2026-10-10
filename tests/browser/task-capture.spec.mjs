@@ -215,3 +215,38 @@ test("explicit discard after uncertain delivery creates a fresh request ID", asy
   const newId = await page.evaluate(() => JSON.parse(localStorage.getItem("zet.task-draft.v1")).report.request_id);
   expect(newId).not.toBe(oldId);
 });
+
+test("blocked browser storage allows an in-memory report with a clear warning", async ({ page }) => {
+  await page.addInitScript(() => {
+    const get = Storage.prototype.getItem;
+    const set = Storage.prototype.setItem;
+    Storage.prototype.getItem = function (key) {
+      if (key === "zet.task-draft.v1") throw new Error("Storage blocked");
+      return get.call(this, key);
+    };
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "zet.task-draft.v1") throw new Error("Storage blocked");
+      return set.call(this, key, value);
+    };
+  });
+  await setup(page);
+  await expect(page.locator("#task-capture-status")).toContainText("keep this tab open");
+  await page.locator("#task-capture-title").fill("In-memory report");
+  await page.locator("#task-capture-close").click();
+  await page.locator("#toolbar-create-task").click();
+  await expect(page.locator("#task-capture-title")).toHaveValue("In-memory report");
+});
+
+test("a damaged saved draft requires explicit discard before replacement", async ({ page }) => {
+  await page.route("**/api/tasks/config", (route) => route.fulfill({ json: metadata }));
+  await page.goto("/?page=onboarding");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.evaluate(() => localStorage.setItem("zet.task-draft.v1", "damaged report"));
+  await page.locator("#toolbar-create-task").click();
+  await expect(page.locator("#task-capture-status")).toContainText("could not be read");
+  await expect(page.locator("#task-capture-submit")).toBeDisabled();
+  expect(await page.evaluate(() => localStorage.getItem("zet.task-draft.v1"))).toBe("damaged report");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#task-capture-new").click();
+  await expect(page.locator("#task-capture-submit")).toBeEnabled();
+});

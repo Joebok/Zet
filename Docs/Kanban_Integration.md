@@ -106,7 +106,8 @@ Zet does not retry automatically. A changed project mapping or report can cause
 ## Delivery
 
 Packet 03 is merged in [Kanban PR #4](https://github.com/Joebok/Zet_Kanban/pull/4).
-This packet targets Zet's active dashboard branch
+Packet 04 is merged in [Zet PR #31](https://github.com/Joebok/Zet/pull/31).
+Packets 04–05 target Zet's active dashboard branch
 `V5-Re-Alignment-to-Local-Image-Generation`, as selected by the user, rather than
 including its unrelated development history in a PR against main. No live board
 reset, task creation, agent execution, or library changes are part of validation.
