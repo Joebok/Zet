@@ -3970,7 +3970,8 @@ async function activatePage(page, options = {}) {
   }
   state.navigationRequest += 1;
   const hasRequestedLocalBatch = LOCAL_ASSET_PAGES.has(page)
-    && Boolean(new URLSearchParams(window.location.search).get("local_batch"));
+    && (Boolean(new URLSearchParams(window.location.search).get("local_batch"))
+      || new URLSearchParams(window.location.search).get("task_context") === "1");
   const phaseReady = LOCAL_ASSET_PAGES.has(page) ? selectedLocalPhaseReady() : selectedPhaseReady();
   if (
     !phaseReady
@@ -14765,6 +14766,13 @@ async function main() {
       && LOCAL_ASSET_PAGES.has(initialRouteParams.get("page"));
     const routeCharacter = initialRouteParams.get("character");
     const routePhase = initialRouteParams.get("phase");
+    if (initialRouteParams.get("task_context") === "1") {
+      if (routeCharacter && !state.characters.includes(routeCharacter)) {
+        window.ZetTaskCapture.notice(`Recorded character "${routeCharacter}" is unavailable. Showing the current available selection.`);
+      } else if (routePhase && !(state.phasesByCharacter[routeCharacter || state.character] || []).includes(routePhase)) {
+        window.ZetTaskCapture.notice(`Recorded phase "${routePhase}" is unavailable. Showing an available phase.`);
+      }
+    }
     if (routeCharacter && state.characters.includes(routeCharacter)) {
       state.character = routeCharacter;
       const routePhases = state.phasesByCharacter[routeCharacter] || [];
@@ -14841,6 +14849,12 @@ async function loadUniverses() {
   const response = await fetch("/api/universes");
   if (!response.ok) throw new Error(`Unable to load universes (${response.status}).`);
   const payload = await response.json();
+  const requested = new URLSearchParams(window.location.search).get("task_universe");
+  if (requested && (payload.universes || []).some((item) => item.universe_id === requested)) {
+    payload.selected_universe_id = requested;
+  } else if (requested) {
+    window.ZetTaskCapture.notice(`Recorded universe "${requested}" is unavailable. Showing the current universe.`);
+  }
   state.universeId = payload.selected_universe_id || "";
   state.universes = payload.universes || [];
   universeSelect.replaceChildren(...state.universes.map((universe) => {
@@ -15027,8 +15041,9 @@ window.ZetTaskCapture.registerProvider(() => {
   const selections = {};
   const source = new URL("/", window.location.origin);
   source.searchParams.set("page", page);
-  if (state.universeId) source.searchParams.set("universe_id", state.universeId);
-  if (CHARACTER_PAGES.has(page)) {
+  source.searchParams.set("task_context", "1");
+  if (state.universeId) source.searchParams.set("task_universe", state.universeId);
+  if (CHARACTER_PAGES.has(page) || LOCAL_ASSET_PAGES.has(page)) {
     const selection = (id, available, select) => {
       if (!id) return { state: document.body.dataset.dashboardReady === "true" ? "absent" : "loading" };
       return { state: available ? "selected" : "unavailable", id,
@@ -15039,8 +15054,15 @@ window.ZetTaskCapture.registerProvider(() => {
     if (state.character) source.searchParams.set("character", state.character);
     if (state.phase) source.searchParams.set("phase", state.phase);
   }
+  const local = LOCAL_ASSET_PAGES.has(page) ? window.ZetLocalAssetPipeline?.taskContext(page)
+    : page === "local-batch-status" ? window.ZetLocalBatchStatus?.taskContext() : null;
+  if (local) {
+    Object.assign(selections, local.selections);
+    for (const [key, value] of Object.entries(local.parameters)) source.searchParams.set(key, value);
+  }
   return { page_id: page,
-    page_name: document.querySelector(`#${page}-page h1`)?.textContent?.trim() || page,
+    page_name: LOCAL_ASSET_PAGES.has(page) ? document.querySelector("#local-pipeline-title").textContent.trim()
+      : document.querySelector(`#${page}-page h1`)?.textContent?.trim() || page,
     source_url: source.href, universe_id: state.universeId || null, selections };
 });
 

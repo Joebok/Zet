@@ -215,6 +215,13 @@
     void capture();
   });
   document.querySelector("#toolbar-create-task").addEventListener("click", () => void open());
-  window.ZetTaskCapture = { registerProvider: (callback) => { provider = callback; }, open };
+  const notices = new Set();
+  window.ZetTaskCapture = { registerProvider: (callback) => { provider = callback; }, open,
+    notice(text) {
+      notices.add(text);
+      const banner = document.querySelector("#task-context-notice");
+      banner.textContent = [...notices].join(" ");
+      banner.hidden = false;
+    } };
   void configuration().catch(() => { /* Opening the form surfaces configuration failures. */ });
 })();

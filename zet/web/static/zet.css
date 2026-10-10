@@ -5524,3 +5524,4 @@ dd {
 .task-capture-dialog fieldset { margin: 12px 0; }
 .task-capture-dialog [hidden] { display: none; }
 .task-capture-dialog #task-capture-status { overflow-wrap: anywhere; }
+.batch-status-card[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
