@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from zet.app import ZetApp
@@ -68,6 +69,17 @@ NegativePromptGlobals = "comfy negative"
         encoding="utf-8",
     )
     app = ZetApp.from_config(config)
+    # Checkpoint Lab exercises the offline compiler directly, independently of
+    # production-profile normalization performed while loading application config.
+    app.config = replace(
+        app.config,
+        comfyui_checkpoint="comfy.safetensors",
+        comfyui_positive_prompt_globals="comfy global",
+        comfyui_negative_prompt_globals="comfy negative",
+        local_render_checkpoint="stable.safetensors",
+        local_render_positive_prompt_globals="stable global",
+        local_render_negative_prompt_globals="stable negative",
+    )
     return app, CheckpointLabService(app, PROJECT_ROOT), image
 
 

@@ -52,6 +52,15 @@ class ProcessServiceTests(unittest.TestCase):
             self.assertIn("run_zet_web.bat", popen.call_args_list[0].args[0])
             self.assertIn("run_auto_harvest.bat", popen.call_args_list[1].args[0])
 
+    def test_status_refresh_reuses_a_recent_process_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = ProcessService(Path(temp_dir))
+            with patch.object(service, "list_processes", return_value=[]) as list_processes:
+                first = service.statuses()
+                second = service.statuses()
+            self.assertEqual(first, second)
+            list_processes.assert_called_once_with()
+
 
 
 if __name__ == "__main__":

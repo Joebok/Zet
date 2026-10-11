@@ -1009,10 +1009,6 @@ def create_app(
     app.state.recovery_statuses = {}
     app.state.recovery_threads = {}
     current_universe = ContextVar(f"zet_universe_{id(app)}", default=None)
-    # Start reconciliation in the background so it cannot hold HTTP startup hostage.
-    if validate_catalog_on_create:
-        app.state.zet_app.library_index_reconciler.start()
-
     def _schedule_recovery(zet_app: ZetApp) -> None:
         universe_id = zet_app.universe_id
         with app.state.recovery_lock:

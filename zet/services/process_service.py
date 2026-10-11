@@ -6,6 +6,8 @@ import platform
 import signal
 import subprocess
 import sys
+import time
+from threading import Lock
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,6 +55,8 @@ class ManagedProcessStatus:
 class ProcessService:
     def __init__(self, project_root: Path):
         self.project_root = project_root.resolve()
+        self._statuses_cache: tuple[float, list[ManagedProcessStatus]] | None = None
+        self._statuses_cache_lock = Lock()
 
     def specs(self) -> list[ManagedProcessSpec]:
         return [
@@ -142,22 +146,31 @@ class ProcessService:
         return all(term.lower() in text for term in spec.match_terms)
 
     def statuses(self) -> list[ManagedProcessStatus]:
-        processes = self.list_processes()
-        statuses: list[ManagedProcessStatus] = []
-        for spec in self.specs():
-            matches = [process for process in processes if self._matches(process, spec)]
-            statuses.append(
-                ManagedProcessStatus(
-                    process_id=spec.process_id,
-                    label=spec.label,
-                    running=bool(matches),
-                    duplicate_count=max(0, len(matches) - 1),
-                    manageable=spec.manageable,
-                    pids=[process.pid for process in matches],
-                    command_lines=[process.command_line for process in matches],
+        with self._statuses_cache_lock:
+            now = time.monotonic()
+            if self._statuses_cache and now - self._statuses_cache[0] < 2.0:
+                return list(self._statuses_cache[1])
+            processes = self.list_processes()
+            statuses: list[ManagedProcessStatus] = []
+            for spec in self.specs():
+                matches = [process for process in processes if self._matches(process, spec)]
+                statuses.append(
+                    ManagedProcessStatus(
+                        process_id=spec.process_id,
+                        label=spec.label,
+                        running=bool(matches),
+                        duplicate_count=max(0, len(matches) - 1),
+                        manageable=spec.manageable,
+                        pids=[process.pid for process in matches],
+                        command_lines=[process.command_line for process in matches],
+                    )
                 )
-            )
+            self._statuses_cache = (now, statuses)
         return statuses
+
+    def _invalidate_statuses(self) -> None:
+        with self._statuses_cache_lock:
+            self._statuses_cache = None
 
     def _spec_by_id(self, process_id: str) -> ManagedProcessSpec:
         for spec in self.specs():
@@ -187,6 +200,7 @@ class ProcessService:
             )
         else:
             subprocess.Popen(spec.command, cwd=str(spec.cwd), env=env, shell=True)
+        self._invalidate_statuses()
         if process_id == "zet_web":
             self.start_if_stopped("auto_harvest")
 
@@ -207,6 +221,7 @@ class ProcessService:
                 subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, text=True)
             else:
                 os.kill(process.pid, signal.SIGTERM)
+        self._invalidate_statuses()
         return len(matches)
 
     def restart(self, process_id: str) -> int:

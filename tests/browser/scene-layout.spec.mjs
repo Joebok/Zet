@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { restorePristineProjectState, restorePristineScene } from "./scene-fixtures.mjs";
 
 const scene = "/api/stories/Alpha-Story/scenes/Opening-Scene";
+
+test.beforeEach(async ({ page }) => {
+  await restorePristineProjectState();
+  await restorePristineScene(page, "Alpha-Story", "Opening-Scene");
+});
 
 async function observeLayoutScene(page) {
   await page.evaluate(async () => {

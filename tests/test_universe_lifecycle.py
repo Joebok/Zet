@@ -44,7 +44,8 @@ def test_migration_moves_library_imports_aux_images_and_can_roll_back(tmp_path):
     (container / "Characters" / "Morrow").mkdir(parents=True)
     (container / "Stories").mkdir()
     EntityLibraryRepository(container / "catalog.sqlite3").initialize()
-    candidate = container / "Experiments" / "Character-Pipeline" / "Morrow" / "Adult" / "run"
+    batch_id = "20261010_120000_123456"
+    candidate = container / "Experiments" / "Character-Pipeline" / "Morrow" / "Adult" / batch_id
     candidate.mkdir(parents=True)
     (candidate / "candidate.png").write_bytes(b"candidate")
     selected_image = candidate / "candidate.png"
@@ -52,11 +53,11 @@ def test_migration_moves_library_imports_aux_images_and_can_roll_back(tmp_path):
     legacy_store = container / "Experiments" / "Character-Pipeline" / "Morrow" / "Adult" / "local_assets.json"
     legacy_store.write_text(json.dumps({"schema_version": 1, "character": "Morrow", "phase": "Adult", "assets": {
         "body-reference:FRONT": {"pipeline": "Body-Reference", "view": "FRONT", "candidate_id": "F-001",
-                                  "batch_id": "run", "image_path": str(selected_image), "image_sha256": selected_hash,
+                                  "batch_id": batch_id, "image_path": str(selected_image), "image_sha256": selected_hash,
                                   "locked": True, "locked_image_path": str(selected_image), "dependencies": [], "stale": False}
     }}))
-    (candidate.parent / "spec.json").write_text(json.dumps({
-        "run_id": "run", "image_path": str(candidate / "candidate.png"),
+    (candidate / "spec.json").write_text(json.dumps({
+        "run_id": batch_id, "character": "Morrow", "phase": "Adult", "image_path": str(candidate / "candidate.png"),
         "prompt_path": str(candidate.parent / "prompt.md"),
     }))
     resource_images = container / "AuxiliaryResources" / "Images" / "morrow"
@@ -85,9 +86,9 @@ def test_migration_moves_library_imports_aux_images_and_can_roll_back(tmp_path):
     assert service.dry_run()["status"] == "ready"
     assert service.apply()["status"] == "verified"
     moonsea = container / "Moonsea"
-    assert (moonsea / "PipelineCandidates" / "Character-Pipeline" / "Morrow" / "Adult" / "run" / "candidate.png").is_file()
-    migrated_spec = json.loads((moonsea / "PipelineCandidates" / "Character-Pipeline" / "Morrow" / "Adult" / "spec.json").read_text())
-    assert migrated_spec["image_path"] == str(moonsea / "PipelineCandidates" / "Character-Pipeline" / "Morrow" / "Adult" / "run" / "candidate.png")
+    assert (moonsea / "PipelineCandidates" / "Character-Pipeline" / "Morrow" / "Adult" / batch_id / "candidate.png").is_file()
+    migrated_spec = json.loads((moonsea / "PipelineCandidates" / "Character-Pipeline" / "Morrow" / "Adult" / batch_id / "spec.json").read_text())
+    assert migrated_spec["image_path"] == str(moonsea / "PipelineCandidates" / "Character-Pipeline" / "Morrow" / "Adult" / batch_id / "candidate.png")
     store_path = moonsea / "_state" / "LocalAssets" / "Morrow" / "Adult" / "local_assets.json"
     locked = json.loads(store_path.read_text())["assets"]["body-reference:FRONT"]
     assert locked["entity_library_asset_id"]
@@ -113,7 +114,7 @@ def test_migration_moves_library_imports_aux_images_and_can_roll_back(tmp_path):
     assert "PipelineCandidates/Character-Pipeline/Morrow/Adult/local_assets.json" in migration_journal["path_rewrites"]
 
     assert service.rollback()["status"] == "rolled_back"
-    assert (container / "Experiments" / "Character-Pipeline" / "Morrow" / "Adult" / "run" / "candidate.png").is_file()
+    assert (container / "Experiments" / "Character-Pipeline" / "Morrow" / "Adult" / batch_id / "candidate.png").is_file()
     assert json.loads(legacy_store.read_text())["assets"]["body-reference:FRONT"]["image_path"] == str(selected_image)
     assert old_inventory.is_file()
     assert not (container / "images").exists()

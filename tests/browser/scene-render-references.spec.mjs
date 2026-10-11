@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { restorePristineProjectState } from "./scene-fixtures.mjs";
+
+test.beforeEach(restorePristineProjectState);
 
 test("scene reference previews change URL when a subscene selection changes", async ({ page }) => {
   const base = "/api/stories/Alpha-Story/scenes/Opening-Scene/local-batches";

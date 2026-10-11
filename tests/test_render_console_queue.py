@@ -14,6 +14,13 @@ from zet.services.manual_render_submission_service import ManualRenderSubmission
 from tests.support.image_fixture import png_bytes
 
 
+def _write_render_presets(root: Path) -> None:
+    preset_path = root / "Config" / "Local_Render_Presets.json"
+    preset_path.parent.mkdir(parents=True, exist_ok=True)
+    source = Path(__file__).resolve().parents[1] / "Config" / "Local_Render_Presets.json"
+    preset_path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+
 class RenderConsoleQueueTests(unittest.TestCase):
 
     def test_answer_publication_retries_transient_directory_lock(self) -> None:
@@ -217,6 +224,13 @@ BaseCharacterPath = "Characters"
 BaseAssetPath = "Assets"
 BasePipelinePath = "Pipelines"
 BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
+
+[LocalRender]
+Backend = "comfyui"
+
+[ComfyUI]
+Profile = "comfyui-qwen-image-2-1-scene"
+Checkpoint = "qwen_image_2.1_int8_convrot.safetensors"
 """.lstrip(),
                 encoding="utf-8",
             )
@@ -231,18 +245,18 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
                 {"ask_id": source_ask_id, "worker_type": "manual_chatgpt_render", "reference_files": [{"path": "ref.png"}], "aspect_ratio": "16:9"},
                 prompt_path,
                 workspace,
-                checkpoint="override-model.safetensors",
+                checkpoint="qwen_image_2.1_int8_convrot.safetensors",
             )
 
             manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
             job = json.loads((ask_path / "job.json").read_text(encoding="utf-8"))
             self.assertEqual("local_image_render", manifest["worker_type"])
-            self.assertEqual("image:stable_matrix:override-model.safetensors", job["resource_key"])
+            self.assertEqual("image:comfyui:qwen_image_2.1_int8_convrot.safetensors", job["resource_key"])
             self.assertEqual("local_test_render", manifest["task_type"])
             self.assertEqual(source_ask_id, manifest["source_ask_id"])
             self.assertLessEqual(len(job["job_id"]), 128)
             self.assertEqual(ask_path.name, job["job_id"])
-            self.assertEqual("override-model.safetensors", manifest["checkpoint"])
+            self.assertEqual("qwen_image_2.1_int8_convrot.safetensors", manifest["checkpoint"])
             self.assertEqual("16:9", manifest["aspect_ratio"])
             route = app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.load_route(ask_path.name)
             self.assertEqual(str((workspace / "Local_Test_Renders").resolve()), route["target_output_dir"])
@@ -265,13 +279,12 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
                 encoding="utf-8",
             )
             (answer_path / manifest["expected_output"]).write_bytes(b"local image")
-            (answer_path / "Stable_Matrix_API_Call.json").write_text('{"prompt": "local"}\n', encoding="utf-8")
             (answer_path / "LOCAL_RENDER_METADATA.json").write_text(
                 json.dumps(
                     {
-                        "image_generation": "stable_matrix",
-                        "render_profile": "body-reference-preview",
-                        "checkpoint": "model.safetensors",
+                        "image_generation": "comfyui",
+                        "render_profile": "comfyui-qwen-image-2-1-scene",
+                        "checkpoint": "qwen_image_2.1_int8_convrot.safetensors",
                     }
                 ),
                 encoding="utf-8",
@@ -291,24 +304,21 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
             self.assertEqual("LOCAL_TEST_RENDER_APPLIED", results[0].status)
             self.assertEqual(b"local image", (workspace / "Local_Test_Renders" / manifest["expected_output"]).read_bytes())
-            self.assertEqual(
-                '{"prompt": "local"}',
-                (workspace / "Local_Test_Renders" / "Stable_Matrix_API_Call.json").read_text(encoding="utf-8").strip(),
-            )
             metadata = json.loads(
                 (workspace / "Local_Test_Renders" / Path(manifest["expected_output"]).with_suffix(".json")).read_text(
                     encoding="utf-8"
                 )
             )
-            self.assertEqual("stable_matrix", metadata["image_generation"])
-            self.assertEqual("body-reference-preview", metadata["render_profile"])
-            self.assertEqual("model.safetensors", metadata["checkpoint"])
+            self.assertEqual("comfyui", metadata["image_generation"])
+            self.assertEqual("comfyui-qwen-image-2-1-scene", metadata["render_profile"])
+            self.assertEqual("qwen_image_2.1_int8_convrot.safetensors", metadata["checkpoint"])
 
 
 
-    def test_stage_scene_local_render_ask_adds_forge_layout_for_multiple_subjects(self) -> None:
+    def test_stage_scene_local_render_ask_uses_registered_qwen_profile_for_multiple_subjects(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            _write_render_presets(root)
             config_path = root / "config.toml"
             config_path.write_text(
                 f"""
@@ -320,7 +330,11 @@ BasePipelinePath = "Pipelines"
 BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 
 [LocalRender]
-LayoutBackend = "forge_couple_basic"
+Backend = "comfyui"
+
+[ComfyUI]
+Profile = "comfyui-qwen-image-2-1-scene"
+Checkpoint = "qwen_image_2.1_int8_convrot.safetensors"
 """.lstrip(),
                 encoding="utf-8",
             )
@@ -342,21 +356,27 @@ LayoutBackend = "forge_couple_basic"
                 ),
                 encoding="utf-8",
             )
+            (workspace / "Scene_Render_IR.json").write_text(json.dumps({
+                "canvas": {"aspect_ratio": "16:9"}, "scene": {"story_beat": "Two friends meet"},
+                "image_inputs": [],
+            }), encoding="utf-8")
             app = ZetApp.from_config(config_path)
 
-            ask_path = app.stage_scene_local_render_ask({"ask_id": "Ask_Scene_Test"}, workspace)
+            with patch("zet.services.ai_proxy_service.validate_scene_render_ir"):
+                ask_path = app.stage_scene_local_render_ask({"ask_id": "Ask_Scene_Test"}, workspace)
 
             manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual("16:9", manifest["aspect_ratio"])
-            self.assertEqual("Local_Render_Prompt.md", manifest["prompt_file"])
-            self.assertEqual("forge_couple_basic", manifest["render_layout"]["backend"])
-            self.assertEqual(["global", "left", "right"], manifest["render_layout"]["prompt_lines"])
+            self.assertEqual("Qwen_Image_2_1_Prompt.md", manifest["prompt_file"])
+            self.assertEqual("comfyui-qwen-image-2-1-scene", manifest["render_preset"])
+            self.assertNotIn("render_layout", manifest)
 
 
 
     def test_stage_scene_comfyui_render_ask_copies_canonical_ir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            _write_render_presets(root)
             config_path = root / "config.toml"
             config_path.write_text(
                 f"""
@@ -371,8 +391,8 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 Backend = "comfyui"
 
 [ComfyUI]
-Profile = "comfyui-core-preview"
-Checkpoint = "model.safetensors"
+Profile = "comfyui-qwen-image-2-1-scene"
+Checkpoint = "qwen_image_2.1_int8_convrot.safetensors"
 """.lstrip(),
                 encoding="utf-8",
             )
@@ -393,8 +413,8 @@ Checkpoint = "model.safetensors"
             ask_path = app.stage_scene_local_render_ask({"ask_id": "Ask_Scene_Comfy"}, workspace)
 
             manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual("comfyui-core-preview", manifest["render_preset"])
-            self.assertEqual("core_txt2img_scene_preview", manifest["workflow_kind"])
+            self.assertEqual("comfyui-qwen-image-2-1-scene", manifest["render_preset"])
+            self.assertEqual("qwen_image_21_scene_preview", manifest["workflow_kind"])
             self.assertEqual("Scene_Render_IR.json", manifest["scene_render_ir_file"])
             self.assertNotIn("render_layout", manifest)
             self.assertEqual(
@@ -405,15 +425,7 @@ Checkpoint = "model.safetensors"
     def test_qwen_scene_ask_snapshots_edited_prompt_without_local_prompt_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "Config").mkdir()
-            (root / "Config" / "Local_Render_Presets.json").write_text(json.dumps({
-                "comfyui-ipadapter-preview": {"backend": "comfyui", "workflow_kind": "ipadapter_scene_preview"},
-                "comfyui-qwen-image-2-1-scene": {
-                    "backend": "comfyui", "workflow_kind": "qwen_image_21_scene_preview",
-                    "diffusion_model": "qwen.safetensors",
-                    "text_encoder": "encoder.safetensors", "vae": "vae.safetensors",
-                },
-            }), encoding="utf-8")
+            _write_render_presets(root)
             config_path = root / "config.toml"
             config_path.write_text(f'''
 [BaseFolders]
@@ -427,8 +439,8 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
 Backend = "comfyui"
 
 [ComfyUI]
-Profile = "comfyui-ipadapter-preview"
-Checkpoint = "sdxl.safetensors"
+Profile = "comfyui-qwen-image-2-1-scene"
+Checkpoint = "qwen_image_2.1_int8_convrot.safetensors"
 '''.lstrip(), encoding="utf-8")
             workspace = root / "Stories" / "FirstDay"
             workspace.mkdir(parents=True)
@@ -451,7 +463,7 @@ Checkpoint = "sdxl.safetensors"
             manifest = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual("Qwen_Image_2_1_Prompt.md", manifest["prompt_file"])
             self.assertEqual("comfyui-qwen-image-2-1-scene", manifest["render_preset"])
-            self.assertEqual("qwen.safetensors", manifest["checkpoint"])
+            self.assertEqual("qwen_image_2.1_int8_convrot.safetensors", manifest["checkpoint"])
             self.assertEqual("qwen_image_21_scene_preview", manifest["workflow_kind"])
             self.assertEqual("Edited natural-language scene.",
                              (ask_path / manifest["prompt_file"]).read_text(encoding="utf-8"))

@@ -61,7 +61,7 @@ class LocalRunAllRemainingServiceTests(unittest.TestCase):
             app = SimpleNamespace(config=SimpleNamespace(
                 base_library_path=str(library), base_character_path=str(library / "Characters"),
             ))
-            workspace = (library / "Experiments" / "Character-Pipeline" / "Tsaeytte" / "Adult"
+            workspace = (library / "PipelineCandidates" / "Character-Pipeline" / "Tsaeytte" / "Adult"
                          / "Costume-Dressing" / "Canonical_Adventure_Gear")
             for run_id in run_ids:
                 run_root = workspace / run_id
@@ -159,7 +159,7 @@ class LocalRunAllRemainingServiceTests(unittest.TestCase):
 
             self.assertTrue(service.status(campaign_id)["batches"][0]["front_selection_ready"])
 
-    def test_proxy_failure_does_not_retry_or_block_other_candidates_in_batch(self):
+    def test_failed_proxy_candidate_is_explicitly_retried_and_other_candidates_continue(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root)))
@@ -178,34 +178,46 @@ class LocalRunAllRemainingServiceTests(unittest.TestCase):
                         "image_path": str(failed_image)},
                        {"candidate_id": "F-002", "view": "FRONT", "status": "PENDING", "ask_id": "",
                         "image_path": str(ready_image)},
+                       {"candidate_id": "F-003", "view": "FRONT", "status": "RUNNING", "ask_id": "active-job",
+                        "image_path": str(root / "active.png")},
                    ]}
             class Adapter:
+                def __init__(self):
+                    self.retried = []
+
                 def detail(self, *_args, **_kwargs):
                     return run
 
                 def _run_update(self, *_args, **_kwargs):
                     pass
 
-                def _proxy_answer(self, _ask_id):
+                def _proxy_answer(self, ask_id):
+                    if ask_id == "active-job":
+                        return "RUNNING", {"status": "RUNNING"}
                     return "ANSWERED", {"status": "ERROR", "error_message": "proxy failed"}
 
                 def _candidate_update(self, _run_id, candidate_id, changes):
                     next(item for item in run["candidates"] if item["candidate_id"] == candidate_id).update(changes)
 
-                def retry_candidate(self, *_args, **_kwargs):
-                    raise AssertionError("A failed proxy ask must not be retried in this campaign.")
+                def retry_candidate(self, _run_id, candidate_id, **_kwargs):
+                    self.retried.append(candidate_id)
+                    self._candidate_update(_run_id, candidate_id, {"status": "PENDING", "render_error": ""})
 
                 def execute_run(self, _run_id, *, candidate_ids, **_kwargs):
                     self.submitted = candidate_ids
                     ready_image.write_bytes(b"rendered")
+                    self._candidate_update(_run_id, "F-001", {"status": "FAILED", "render_error": "retry failed"})
                     next(item for item in run["candidates"] if item["candidate_id"] == "F-002").update(
                         status="COMPLETE", image_path=str(ready_image))
 
             adapter = Adapter()
             with patch.object(service, "_adapter", return_value=adapter):
                 service._run_batch(campaign_id, 0, {"pipeline": "body-reference", "run_id": "run-1"})
-            self.assertEqual({"F-002"}, adapter.submitted)
+            self.assertEqual(["F-001"], adapter.retried)
+            self.assertEqual({"F-001", "F-002", "F-003"}, adapter.submitted)
+            self.assertEqual("RUNNING", next(item for item in run["candidates"]
+                                               if item["candidate_id"] == "F-003")["status"])
             self.assertTrue(ready_image.is_file())
             saved = service.status(campaign_id)["batches"][0]
             self.assertEqual("FAILED", saved["result"])
-            self.assertIn("proxy failed", saved["error"])
+            self.assertIn("retry failed", saved["error"])

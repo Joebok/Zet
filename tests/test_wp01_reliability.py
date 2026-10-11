@@ -90,7 +90,7 @@ class WP01ReliabilityTests(unittest.TestCase):
             self.assertGreaterEqual(counts["scene_document_loads"], 1)
             self.assertGreaterEqual(counts["render_compiles"], 1)
             self.assertGreaterEqual(counts["file_reads"], 1)
-            self.assertGreaterEqual(counts["archive_traversals"], 1)
+            self.assertEqual(0, counts.get("archive_traversals", 0))
 
             endpoint_metrics = PerformanceInstrumentation()
             response = TestClient(create_app(fixture.config_path, performance=endpoint_metrics)).get("/api/stories")

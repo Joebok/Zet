@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { restorePristineProjectState } from "./scene-fixtures.mjs";
+
+test.beforeEach(restorePristineProjectState);
 
 for (const decision of ["promote", "keep-current"]) {
   test(`scene batch publication compares existing locks and applies ${decision}`, async ({ page }) => {

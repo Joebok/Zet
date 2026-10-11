@@ -55,12 +55,6 @@ def test_universe_service_settings_are_safe_persistent_and_selection_stays_put(t
 
 def test_universe_api_creates_reads_updates_and_does_not_select_new_universe(tmp_path):
     config_path = write_project_fixture(tmp_path)
-    config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace(
-            "[BaseFolders]\n", f"[BaseFolders]\nBaseLibraryPath = \"{tmp_path.as_posix()}\"\n"
-        ),
-        encoding="utf-8",
-    )
     with TestClient(create_app(config_path, validate_catalog_on_create=False)) as client:
         created = client.post("/api/universes", json={"name": "Eberron", "canonical_art_style": STYLE})
         assert created.status_code == 200, created.text

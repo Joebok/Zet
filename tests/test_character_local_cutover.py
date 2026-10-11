@@ -35,7 +35,7 @@ class CharacterLocalCutoverTests(unittest.TestCase):
         image.save(self.image_path)
         self.record = {
             "pipeline": "Body-Reference", "view": "FRONT", "qualifier": "",
-            "batch_id": "batch-1", "candidate_id": "candidate-1", "locked": True, "stale": False,
+            "batch_id": "20261010_120000_123456", "candidate_id": "candidate-1", "locked": True, "stale": False,
             "image_sha256": hashlib.sha256(self.image_path.read_bytes()).hexdigest(),
             "locked_image_path": str(self.image_path),
         }
@@ -44,6 +44,10 @@ class CharacterLocalCutoverTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _write_store(self):
+        batch = self.store.root / "Test" / "Adult" / self.record["batch_id"]
+        batch.mkdir(parents=True, exist_ok=True)
+        (batch / "spec.json").write_text(json.dumps({"run_id": self.record["batch_id"],
+                                                       "character": "Test", "phase": "Adult"}), encoding="utf-8")
         path = self.store.workspace_path("Test", "Adult")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"assets": {"body-reference:FRONT": self.record}}), encoding="utf-8")
@@ -80,11 +84,15 @@ class CharacterLocalCutoverTests(unittest.TestCase):
                 "pipeline": "Body-Reference", "view": view, "qualifier": "", "locked": True,
                 "stale": False, "locked_image_path": str(self.image_path),
                 "image_sha256": hashlib.sha256(self.image_path.read_bytes()).hexdigest(),
-                "batch_id": f"{view}-batch", "candidate_id": f"{view}-candidate",
+                "batch_id": "20261010_120000_123456", "candidate_id": f"{view}-candidate",
             }
 
         for phase, records in (("Adult", {"body-reference:FRONT": record("FRONT")} ),
                                ("YoungAdult", {"body-reference:BACK": record("BACK")})):
+            batch = self.store.root / "Test" / phase / "20261010_120000_123456"
+            batch.mkdir(parents=True, exist_ok=True)
+            (batch / "spec.json").write_text(json.dumps({"run_id": "20261010_120000_123456",
+                                                           "character": "Test", "phase": phase}), encoding="utf-8")
             path = self.store.workspace_path("Test", phase)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({"assets": records}), encoding="utf-8")

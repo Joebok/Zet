@@ -101,6 +101,7 @@ class TurnaroundServiceTests(unittest.TestCase):
         (root / "Pipelines").mkdir()
         (root / "Queue").mkdir()
         records = []
+        batch_id = "20261010_120000_123456"
         for index, view in enumerate(VIEWS, start=1):
             output = f"Body-Reference_{view}.png"
             if include_images:
@@ -135,7 +136,7 @@ class TurnaroundServiceTests(unittest.TestCase):
                 local_view = view.upper().replace("-", "_")
                 local_assets[f"body-reference:{local_view}"] = {
                     "pipeline": "Body-Reference", "view": local_view, "qualifier": "",
-                    "candidate_id": f"candidate-{local_view}", "batch_id": "test-batch",
+                    "candidate_id": f"candidate-{local_view}", "batch_id": batch_id,
                     "image_path": str(image_path), "locked_image_path": str(image_path),
                     "image_sha256": hashlib.sha256(image_path.read_bytes()).hexdigest(),
                     "selected": True, "locked": True, "stale": False, "dependencies": [],
@@ -143,6 +144,10 @@ class TurnaroundServiceTests(unittest.TestCase):
             local_store = root / "_state" / "LocalAssets" / "Test" / "Adult" / "local_assets.json"
             local_store.parent.mkdir(parents=True)
             local_store.write_text(json.dumps({"assets": local_assets}, indent=2), encoding="utf-8")
+            batch = root / "PipelineCandidates" / "Character-Pipeline" / "Test" / "Adult" / batch_id
+            batch.mkdir(parents=True)
+            (batch / "spec.json").write_text(json.dumps({"run_id": batch_id, "character": "Test",
+                                                          "phase": "Adult"}), encoding="utf-8")
         (character_dir / "Pipelines.json").write_text(
             json.dumps(
                 {

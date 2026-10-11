@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -107,12 +108,14 @@ class WP11IndexedDashboardTests(unittest.TestCase):
             self.assertEqual(
                 responses[1].json()["total"], summary.json()["current"]["image_review_waiting"]
             )
-            self.assertEqual(responses[1].json()["generation"], summary.json()["generation"])
+            self.assertEqual(responses[0].json()["generation"], summary.json()["generation"])
             self.assertEqual(422, client.get("/api/image-catalog", params={"limit": 201}).status_code)
 
     def test_history_backfill_is_explicit_resumable_and_does_not_scan_on_reads(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            machine_index = root.parent / f"{root.name}-machine-index"
+            self.addCleanup(shutil.rmtree, machine_index, ignore_errors=True)
             config_path = write_project_fixture(root)
             archive = root / "Queue" / "Zet_File_Proxy_State" / "Archive" / "Harvested" / "2026-09-01"
             for number in (1, 2, 3):
@@ -128,7 +131,7 @@ class WP11IndexedDashboardTests(unittest.TestCase):
                     "harvested_at": f"2026-09-0{number}T12:00:00",
                 }), encoding="utf-8")
             service = LibraryIndexService(
-                ConfigService.load(config_path), index_root=root / "machine-index",
+                ConfigService.load(config_path), index_root=machine_index,
                 project_root=root,
             )
             service.reconcile()

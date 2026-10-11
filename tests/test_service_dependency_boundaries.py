@@ -13,7 +13,7 @@ from zet.services.worker_service import WorkerService
 
 class WorkerServiceBoundaryTests(unittest.TestCase):
     def test_run_named_worker_builds_context_and_invokes_worker(self):
-        asset = Asset(1, "Test", "Adult", "Body-Reference", "Front")
+        asset = Asset(1, "Test", "Adult", "Story", "Front")
         context = object()
         run = Mock(return_value=WorkerResult(success=True, message="done"))
         service = WorkerService(Mock(), Mock(), Mock())

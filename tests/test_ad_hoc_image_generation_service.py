@@ -21,7 +21,7 @@ from zet.web.app import create_app
 
 
 def _service(tmp_path: Path) -> tuple[AdHocImageGenerationService, Path]:
-    config_path = write_project_fixture(tmp_path, library_root=True)
+    config_path = write_project_fixture(tmp_path)
     app = ZetApp.from_config(config_path, validate_catalog=False)
     service = AdHocImageGenerationService(app, Path(__file__).resolve().parents[1])
     return service, config_path
@@ -122,19 +122,36 @@ def test_inventory_generation_binds_source_and_carries_prompts_into_import_and_u
     ask = json.loads((service.proxy_paths.ask_root() / child["ask_id"] / "ask_manifest.json").read_text(encoding="utf-8"))
     assert ask["render_preset"] == expected_preset
     assert bool(ask["reference_files"]) is (mode == "img2img")
+    if mode == "img2img":
+        assert ask["reference_files"][0]["label"] == "source image"
+        staged_prompt, staged_negative = split_labeled_prompt(
+            (service.proxy_paths.ask_root() / child["ask_id"] / ask["prompt_file"]).read_text(encoding="utf-8")
+        )
+        expected_staged_prompt = (
+            "Night version of the house\n\n"
+            "Reference image labels (images are supplied in this order):\n"
+            "Image 1: source image"
+        )
+        assert staged_prompt == " ".join(expected_staged_prompt.split())
+        assert staged_negative == "text"
     assert result["source_asset_id"] == source["asset_id"]
+    assert result["prompt"] == "Night version of the house"
     job["images"].append((png_bytes() + b"new render", "image/png"))
     service._save_job(job)
 
-    imported = service.import_into_library(result["request_id"], 0, {"label": "Night house"})
+    restarted = AdHocImageGenerationService(
+        ZetApp.from_config(_config_path, validate_catalog=False), Path(__file__).resolve().parents[1],
+    )
+    assert restarted.library_result(result["request_id"], 0)[2]["prompt"] == "Night version of the house"
+    imported = restarted.import_into_library(result["request_id"], 0, {"label": "Night house"})
     assert imported["asset"]["prompt"] == "Night version of the house"
     assert imported["asset"]["negative_prompt"] == "text"
 
-    updated = service.apply_to_source(result["request_id"], 0)
+    updated = restarted.apply_to_source(result["request_id"], 0)
     assert updated["asset_id"] == source["asset_id"]
     assert updated["prompt"] == "Night version of the house"
     assert updated["negative_prompt"] == "text"
-    assert service.status(result["request_id"])["source_asset_id"] == source["asset_id"]
+    assert restarted.status(result["request_id"])["source_asset_id"] == source["asset_id"]
 
 
 def test_inventory_generation_rejects_unrelated_reference_bytes(tmp_path: Path) -> None:

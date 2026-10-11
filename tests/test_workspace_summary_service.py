@@ -90,7 +90,8 @@ class WorkspaceSummaryServiceTests(unittest.TestCase):
         self.assertEqual(summary.locked_count, 1)
         self.assertEqual(summary.candidate_count, 1)
         self.assertEqual(summary.recommended_scene_slug, "closing")
-        self.assertEqual(summary.recommended_destination, "render-review")
+        self.assertEqual(summary.recommended_destination, "scene-batches")
+        self.assertEqual(summary.recommended_action, "Open Scene Batches")
         self.assertEqual([scene.image_state for scene in summary.scenes], ["Locked", "Candidate ready"])
 
 

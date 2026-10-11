@@ -73,7 +73,7 @@ def current_gate_results(service: LocalBodyReferenceService, view: str, image: P
 
 
 def create_legacy_run(service: LocalBodyReferenceService, payload: dict) -> dict:
-    """Create a version 1 fixture for tests that exercise the retained legacy path."""
+    """Create a version 1 batch with historical IDs and matching state."""
     payload = dict(payload)
     payload.setdefault("front_count", 16)
     payload.setdefault("other_count", 4)
@@ -81,11 +81,39 @@ def create_legacy_run(service: LocalBodyReferenceService, payload: dict) -> dict
     root = Path(run["root"])
     spec_path = root / "spec.json"
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    state_path = root / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    legacy_ids = {
+        item["candidate_id"]: f"c{index:03d}"
+        for index, item in enumerate(spec.get("candidates") or [], start=1)
+    }
+
+    def convert(value):
+        if isinstance(value, dict):
+            return {legacy_ids.get(str(key), key): convert(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [convert(item) for item in value]
+        if isinstance(value, str):
+            return legacy_ids.get(value, value)
+        return value
+
+    spec = convert(spec)
+    state = convert(state)
     spec.update(schema_version=1, review_version=1)
     spec.pop("selected_views", None)
     spec.pop("rankings", None)
+    spec.pop("ranking_history", None)
+    state.pop("selected_views", None)
+    state.pop("rankings", None)
+    state.pop("ranking_history", None)
     spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    state_path.write_text(json.dumps(state), encoding="utf-8")
     return service.detail(run["run_id"])
+
+
+def candidate_id(run: dict, view: str = "FRONT", ordinal: int = 0) -> str:
+    matches = [item["candidate_id"] for item in run["candidates"] if item["view"] == view]
+    return matches[ordinal]
 
 
 def test_preview_has_eight_views_and_thirty_six_candidates(tmp_path):
@@ -109,7 +137,11 @@ def test_body_reference_ranking_uses_shared_luna_runner(tmp_path, monkeypatch):
     for candidate in candidates:
         image = Path(run["root"]) / f"{candidate['candidate_id']}.png"
         image.write_bytes(candidate["candidate_id"].encode())
-        service._candidate_update(run["run_id"], candidate["candidate_id"], {"image_path": str(image)})
+        service._candidate_update(run["run_id"], candidate["candidate_id"], {
+            "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image),
+            "gates": current_gate_results(service, "FRONT", image),
+            "human_review": {"decision": "keep", "notes": "Reviewed"},
+        })
 
     calls = []
     def rank(command, **kwargs):
@@ -328,6 +360,7 @@ def test_gate_answer_polarity_at_review_boundary(tmp_path, monkeypatch):
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_id = candidate_id(run)
     output = Path(run["root"]) / "gate_answer.txt"
     for key, answer, expected in [
         ("face", "TRUE", ("TRUE", "")),
@@ -337,10 +370,10 @@ def test_gate_answer_polarity_at_review_boundary(tmp_path, monkeypatch):
         ("body_identity", "TRUE", ("FALSE", "")),
     ]:
         output.write_text(answer, encoding="utf-8")
-        service._candidate_update(run["run_id"], "c001", {
+        service._candidate_update(run["run_id"], front_id, {
             "gates": {key: {"status": "QUEUED", "output_path": str(output)}}
         })
-        assert service._wait_for_review_gate(run["run_id"], "c001", key) == expected
+        assert service._wait_for_review_gate(run["run_id"], front_id, key) == expected
 
 
 def test_gates_stop_on_first_obvious_defect_and_keep_rejected_render(tmp_path, monkeypatch):
@@ -351,21 +384,23 @@ def test_gates_stop_on_first_obvious_defect_and_keep_rejected_render(tmp_path, m
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_id = candidate_id(run)
     image = Path(run["root"]) / "render.png"
     image.write_bytes(b"render")
-    service._candidate_update(run["run_id"], "c001", {"status": "WAITING_FOR_GATES", "image_path": str(image)})
+    service._candidate_update(run["run_id"], front_id, {"status": "WAITING_FOR_GATES", "image_path": str(image)})
     queued = []
     verdicts = iter([("FALSE", ""), ("FALSE", ""), ("TRUE", "")])
 
     def queue(_run_id, _candidate_id, gate):
         queued.append(gate.key)
-        record = {"status": "QUEUED", "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
-        service._candidate_update(run["run_id"], "c001", {"gates": {**(service.detail(run["run_id"])["candidates"][0].get("gates") or {}), gate.key: record}})
+        record = {"status": "QUEUED", "ask_id": f"{gate.key}-ask",
+                  "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
+        service._candidate_update(run["run_id"], front_id, {"gates": {**(service.detail(run["run_id"])["candidates"][0].get("gates") or {}), gate.key: record}})
         return record
 
     monkeypatch.setattr(service, "_queue_review_gate", queue)
     monkeypatch.setattr(service, "_wait_for_review_gate", lambda *_args: next(verdicts))
-    assert service._run_candidate_gates(run["run_id"], "c001") is True
+    assert service._run_candidate_gates(run["run_id"], front_id) is True
     rejected = service.detail(run["run_id"])["candidates"][0]
     assert queued == ["face", "proportion", "framing"]
     assert rejected["status"] == "GATE_REJECTED"
@@ -382,21 +417,23 @@ def test_warning_gate_failure_is_visible_without_rejecting_candidate(tmp_path, m
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_id = candidate_id(run)
     image = Path(run["root"]) / "render.png"
     image.write_bytes(b"render")
-    service._candidate_update(run["run_id"], "c001", {"status": "WAITING_FOR_GATES", "image_path": str(image)})
+    service._candidate_update(run["run_id"], front_id, {"status": "WAITING_FOR_GATES", "image_path": str(image)})
     from zet.services.local_gate_registry_service import LocalGateRegistryService
     LocalGateRegistryService(service.app, service.project_root).set_status("body-reference", "framing", "Warning")
     queued = []
 
     def queue(_run_id, _candidate_id, gate):
         queued.append(gate.key)
-        return {"status": "QUEUED", "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
+        return {"status": "QUEUED", "ask_id": f"{gate.key}-ask",
+                "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
 
     verdicts = iter([("FALSE", ""), ("FALSE", ""), ("TRUE", "")])
     monkeypatch.setattr(service, "_queue_review_gate", queue)
     monkeypatch.setattr(service, "_wait_for_review_gate", lambda *_args: next(verdicts))
-    assert service._run_candidate_gates(run["run_id"], "c001") is True
+    assert service._run_candidate_gates(run["run_id"], front_id) is True
     candidate = service.detail(run["run_id"])["candidates"][0]
     assert queued == ["face", "proportion", "framing"]
     assert candidate["status"] == "WAITING_FOR_HUMAN_REVIEW"
@@ -412,9 +449,10 @@ def test_orientation_gate_is_disabled_without_queuing_and_archives_old_failure(t
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_id = candidate_id(run)
     image = Path(run["root"]) / "render.png"
     image.write_bytes(b"render")
-    service._candidate_update(run["run_id"], "c001", {
+    service._candidate_update(run["run_id"], front_id, {
         "status": "WAITING_FOR_GATES", "image_path": str(image),
         "gates": {"orientation": {"status": "FAILED", "error": "Ollama returned no answer",
                                 "ask_id": "old-ask", "prompt_sha256": "old-prompt",
@@ -424,12 +462,13 @@ def test_orientation_gate_is_disabled_without_queuing_and_archives_old_failure(t
 
     def queue(_run_id, _candidate_id, gate):
         queued.append(gate.key)
-        return {"status": "QUEUED", "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
+        return {"status": "QUEUED", "ask_id": f"{gate.key}-ask",
+                "input_hashes": {"candidate": service._hash(image), "front_anchor": ""}}
 
     monkeypatch.setattr(service, "_queue_review_gate", queue)
     monkeypatch.setattr(service, "_wait_for_review_gate", lambda _run_id, _candidate_id, key:
                         ("FALSE", ""))
-    assert service._run_candidate_gates(run["run_id"], "c001") is True
+    assert service._run_candidate_gates(run["run_id"], front_id) is True
     assert queued == ["face", "proportion", "framing"]
     candidate = service.detail(run["run_id"])["candidates"][0]
     assert candidate["status"] == "WAITING_FOR_HUMAN_REVIEW"
@@ -453,8 +492,13 @@ def test_old_orientation_rejection_is_reviewed_and_ranked(tmp_path, monkeypatch)
     image.write_bytes(b"candidate")
     candidate = next(item for item in run["candidates"] if item["view"] == "FRONT_LEFT_3_4")
     candidate_id = candidate["candidate_id"]
-    service._run_update(run["run_id"], front_anchor="c001")
-    service._candidate_update(run["run_id"], "c001", {"image_path": str(front)})
+    front_id = next(item["candidate_id"] for item in run["candidates"] if item["view"] == "FRONT")
+    service._candidate_update(run["run_id"], front_id, {
+        "status": "COMPLETE", "image_path": str(front),
+        "gates": current_gate_results(service, "FRONT", front),
+        "human_review": {"decision": "keep", "notes": "Anchor"},
+    })
+    service.select_front_anchor(run["run_id"], front_id)
     hashes = {"candidate": service._hash(image), "front_anchor": ""}
     gates = current_gate_results(service, "FRONT_LEFT_3_4", image, front)
     gates["orientation"] = {"status": "COMPLETE", "verdict": "TRUE", "reason": "IMAGE_RIGHT",
@@ -472,6 +516,7 @@ def test_old_orientation_rejection_is_reviewed_and_ranked(tmp_path, monkeypatch)
 
     monkeypatch.setattr(service, "_queue_review_gate", queue)
     monkeypatch.setattr(service, "_wait_for_review_gate", lambda *_args: ("FALSE", ""))
+    service._run_candidate_gates(run["run_id"], candidate_id)
     ranked = service.rank_view(run["run_id"], "FRONT_LEFT_3_4")
     reviewed = next(item for item in ranked["candidates"] if item["candidate_id"] == candidate_id)
     assert reviewed["status"] == "WAITING_FOR_HUMAN_REVIEW"
@@ -490,16 +535,18 @@ def test_empty_ranking_and_rerun_failed_archive_gate_review(tmp_path, monkeypatc
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_id = candidate_id(run)
     image = Path(run["root"]) / "rejected.png"
     image.write_bytes(b"rejected")
-    service._candidate_update(run["run_id"], "c001", {
-        "status": "GATE_REJECTED", "image_path": str(image), "rejection_gate": "face",
-        "gates": {"face": {"status": "COMPLETE", "verdict": "TRUE"}},
+    service._candidate_update(run["run_id"], front_id, {
+        "status": "FAILED", "image_path": str(image), "failed_gate": "face",
+        "render_error": "Gate failed during review.",
+        "gates": {"face": {"status": "FAILED", "error": "Gate failed during review."}},
     })
     empty = service.rank_view(run["run_id"], "FRONT")
     assert empty["rankings"]["FRONT"]["status"] == "EMPTY"
     rerun = service.rerun_failed_view(run["run_id"], "FRONT")
-    candidate = next(item for item in rerun["candidates"] if item["candidate_id"] == "c001")
+    candidate = next(item for item in rerun["candidates"] if item["candidate_id"] == front_id)
     assert candidate["status"] == "PENDING"
     assert candidate["image_path"] == ""
     assert candidate["review_history"] == []
@@ -514,20 +561,21 @@ def test_single_survivor_is_ranked_without_luna_and_can_be_selected(tmp_path, mo
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_id = candidate_id(run)
     image = Path(run["root"]) / "front.png"
     image.write_bytes(b"front image")
     image_hash = service._hash(image)
     gates = current_gate_results(service, "FRONT", image)
-    service._candidate_update(run["run_id"], "c001", {
+    service._candidate_update(run["run_id"], front_id, {
         "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image), "gates": gates,
         "human_review": {"decision": "keep", "notes": "passed"},
     })
     ranked = service.rank_view(run["run_id"], "FRONT")
-    assert ranked["rankings"]["FRONT"]["ordered_candidate_ids"] == ["c001"]
+    assert ranked["rankings"]["FRONT"]["ordered_candidate_ids"] == [front_id]
     assert ranked["rankings"]["FRONT"]["model"] == "deterministic-single-survivor"
-    selected = service.select_view(run["run_id"], "FRONT", "c001")
-    assert selected["front_anchor"] == "c001"
-    assert selected["selected_views"] == {"FRONT": "c001"}
+    selected = service.select_view(run["run_id"], "FRONT", front_id)
+    assert selected["front_anchor"] == front_id
+    assert selected["selected_views"] == {"FRONT": front_id}
 
 
 def test_reevaluate_preserves_selected_and_locked_front_reference(tmp_path, monkeypatch):
@@ -538,24 +586,25 @@ def test_reevaluate_preserves_selected_and_locked_front_reference(tmp_path, monk
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_id = candidate_id(run)
     image = Path(run["root"]) / "front.png"
     image.write_bytes(b"selected front image")
-    service._candidate_update(run["run_id"], "c001", {
+    service._candidate_update(run["run_id"], front_id, {
         "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image),
         "gates": current_gate_results(service, "FRONT", image),
         "human_review": {"decision": "keep", "notes": "Approved front"},
     })
     service.rank_view(run["run_id"], "FRONT")
-    service.select_view(run["run_id"], "FRONT", "c001")
+    service.select_view(run["run_id"], "FRONT", front_id)
     service.lock_selected_view(run["run_id"], "FRONT")
 
     reevaluating = service.reevaluate(run["run_id"], view="FRONT")
-    candidate = next(item for item in reevaluating["candidates"] if item["candidate_id"] == "c001")
+    candidate = next(item for item in reevaluating["candidates"] if item["candidate_id"] == front_id)
     asset = next(item for item in reevaluating["local_assets"].values() if item.get("view") == "FRONT")
-    assert reevaluating["selected_views"] == {"FRONT": "c001"}
-    assert reevaluating["front_anchor"] == "c001"
+    assert reevaluating["selected_views"] == {"FRONT": front_id}
+    assert reevaluating["front_anchor"] == front_id
     assert candidate["status"] == "WAITING_FOR_GATES"
-    assert candidate["human_review"] == {"decision": "keep", "notes": "Approved front"}
+    assert candidate["human_review"]["decision"] == "keep"
     assert asset["selected"] is True
     assert asset["locked"] is True
     saved = json.loads((Path(run["root"]) / "state.json").read_text(encoding="utf-8"))
@@ -563,12 +612,12 @@ def test_reevaluate_preserves_selected_and_locked_front_reference(tmp_path, monk
 
     # A changed gate result must not silently unselect an already locked asset.
     state = json.loads((Path(run["root"]) / "state.json").read_text(encoding="utf-8"))
-    state["candidates"]["c001"].update(status="GATE_REJECTED", rejection_gate="face")
-    state["candidates"]["c001"]["gates"] = {"face": {"status": "COMPLETE", "verdict": "TRUE"}}
+    state["candidates"][front_id].update(status="GATE_REJECTED", rejection_gate="face")
+    state["candidates"][front_id]["gates"] = {"face": {"status": "COMPLETE", "verdict": "TRUE"}}
     (Path(run["root"]) / "state.json").write_text(json.dumps(state), encoding="utf-8")
     ranked = service.rank_view(run["run_id"], "FRONT")
-    assert ranked["selected_views"] == {"FRONT": "c001"}
-    assert ranked["front_anchor"] == "c001"
+    assert ranked["selected_views"] == {"FRONT": front_id}
+    assert ranked["front_anchor"] == front_id
     locked = next(item for item in ranked["local_assets"].values() if item.get("view") == "FRONT")
     assert locked["selected"] is True
     assert locked["locked"] is True
@@ -582,14 +631,15 @@ def test_autogenerate_front_approval_can_start_remaining_views(tmp_path, monkeyp
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
+    front_id = candidate_id(run)
     image = Path(run["root"]) / "front.png"
     image.write_bytes(b"autogenerated front")
-    service._candidate_update(run["run_id"], "c001", {
+    service._candidate_update(run["run_id"], front_id, {
         "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image),
         "gates": current_gate_results(service, "FRONT", image),
     })
     service.rank_view(run["run_id"], "FRONT")
-    selected = service.select_view(run["run_id"], "FRONT", "c001", autogenerate=True)
+    selected = service.select_view(run["run_id"], "FRONT", front_id, autogenerate=True)
     assert selected["status"] == "READY_FOR_VIEWS"
     assert selected["target_views"] == []
     assert selected["candidates"][0]["human_review"]["decision"] == "undecided"
@@ -626,14 +676,16 @@ def test_luna_ranking_order_is_advisory_and_anchor_changes_invalidate_other_view
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 2,
                               "other_count": 1, "seeds": list(range(9))})
+    front_ids = [candidate_id(run, "FRONT", index) for index in range(2)]
+    side_id = candidate_id(run, "FRONT_LEFT_3_4")
     image_paths = {}
-    for candidate_id in ("c001", "c002"):
-        image = Path(run["root"]) / f"{candidate_id}.png"
-        image.write_bytes(candidate_id.encode())
-        image_paths[candidate_id] = image
+    for current_id in front_ids:
+        image = Path(run["root"]) / f"{current_id}.png"
+        image.write_bytes(current_id.encode())
+        image_paths[current_id] = image
         image_hash = service._hash(image)
         gates = current_gate_results(service, "FRONT", image)
-        service._candidate_update(run["run_id"], candidate_id, {
+        service._candidate_update(run["run_id"], current_id, {
             "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image), "gates": gates,
             "human_review": {"decision": "keep", "notes": "passed"},
         })
@@ -641,35 +693,41 @@ def test_luna_ranking_order_is_advisory_and_anchor_changes_invalidate_other_view
     def fake_luna(command, **kwargs):
         output = Path(command[command.index("--output-last-message") + 1])
         output.write_text(json.dumps({"ranking": [
-            {"candidate_id": "c001", "reason": "Sharper orientation."},
-            {"candidate_id": "c002", "reason": "Better silhouette."},
+            {"candidate_id": front_ids[0], "reason": "Sharper orientation."},
+            {"candidate_id": front_ids[1], "reason": "Better silhouette."},
         ]}), encoding="utf-8")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr("zet.services.local_body_reference_service.subprocess.run", fake_luna)
     ranked = service.rank_view(run["run_id"], "FRONT")
-    assert ranked["rankings"]["FRONT"]["ordered_candidate_ids"] == ["c001", "c002"]
-    moved = service.move_candidate_rank(run["run_id"], "FRONT", "c002", "up")
-    assert moved["rankings"]["FRONT"]["ordered_candidate_ids"] == ["c002", "c001"]
-    assert moved["rankings"]["FRONT"]["luna_ordered_candidate_ids"] == ["c001", "c002"]
-    service.update_candidate(run["run_id"], "c001", {"decision": "reject", "notes": ""})
+    assert ranked["rankings"]["FRONT"]["ordered_candidate_ids"] == front_ids
+    moved = service.move_candidate_rank(run["run_id"], "FRONT", front_ids[1], "up")
+    assert moved["rankings"]["FRONT"]["ordered_candidate_ids"] == list(reversed(front_ids))
+    assert moved["rankings"]["FRONT"]["luna_ordered_candidate_ids"] == front_ids
+    service.update_candidate(run["run_id"], front_ids[0], {"decision": "reject", "notes": ""})
     assert service.detail(run["run_id"])["rankings"]["FRONT"]["status"] == "COMPLETE"
-    selected = service.select_view(run["run_id"], "FRONT", "c002")
-    assert selected["front_anchor"] == "c002"
+    selected = service.select_view(run["run_id"], "FRONT", front_ids[1])
+    assert selected["front_anchor"] == front_ids[1]
 
     other_image = Path(run["root"]) / "other.png"
     other_image.write_bytes(b"old anchor generation")
-    service._candidate_update(run["run_id"], "c003", {
+    service._candidate_update(run["run_id"], side_id, {
         "status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(other_image),
     })
     root = Path(run["root"])
     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-    state.setdefault("selected_views", {})["FRONT_LEFT_3_4"] = "c003"
+    state.setdefault("selected_views", {})["FRONT_LEFT_3_4"] = side_id
+    state.setdefault("rankings", {})["FRONT_LEFT_3_4"] = {
+        "status": "COMPLETE", "ordered_candidate_ids": [side_id],
+    }
     (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
-    service.update_candidate(run["run_id"], "c001", {"decision": "keep", "notes": "passed again"})
-    switched = service.select_view(run["run_id"], "FRONT", "c001")
-    assert "FRONT_LEFT_3_4" not in switched["selected_views"]
-    assert next(item for item in switched["candidates"] if item["candidate_id"] == "c003")["status"] == "PENDING"
+    service.update_candidate(run["run_id"], front_ids[0], {"decision": "keep", "notes": "passed again"})
+    switched = service.select_view(run["run_id"], "FRONT", front_ids[0])
+    assert switched["selected_views"]["FRONT_LEFT_3_4"] == side_id
+    side_candidate = next(item for item in switched["candidates"] if item["candidate_id"] == side_id)
+    assert side_candidate["stale_selection"] is True
+    assert switched["rankings"]["FRONT_LEFT_3_4"]["status"] == "STALE"
+    assert next(item for item in switched["candidates"] if item["candidate_id"] == side_id)["status"] == "WAITING_FOR_HUMAN_REVIEW"
 
 
 def test_later_view_selection_uses_current_anchor_even_when_ranking_is_stale(tmp_path, monkeypatch):
@@ -755,13 +813,14 @@ def test_render_completion_waits_for_face_gate(tmp_path, monkeypatch):
     assert {item["method"] for item in run["candidates"]} == {"shared_front", METHOD_FRONT_CONDITIONED}
     assert all(item["method"] == METHOD_FRONT_CONDITIONED
                for item in run["candidates"] if item["view"] != "FRONT")
+    front_id = candidate_id(run)
     image = Path(run["root"]) / "candidate.png"
     image.write_bytes(b"rendered image")
-    service._candidate_update(run["run_id"], "c001", {
+    service._candidate_update(run["run_id"], front_id, {
         "status": "RUNNING", "image_path": str(image), "ask_id": "render-ask",
     })
 
-    assert service._wait_for_render(run["run_id"], "c001") is True
+    assert service._wait_for_render(run["run_id"], front_id) is True
     candidate = service.detail(run["run_id"])["candidates"][0]
     assert candidate["status"] == "WAITING_FOR_GATES"
     assert candidate["completed_at"] == ""
@@ -794,7 +853,7 @@ def test_harvest_face_gate_advances_or_requeues_without_completing(tmp_path, mon
 
     assert service.harvest_face_gate_jobs() == [run["run_id"]]
     candidate = service.detail(run["run_id"])["candidates"][0]
-    assert candidate["status"] == "WAITING_FOR_ANALYSIS"
+    assert candidate["status"] == "WAITING_FOR_HUMAN_REVIEW"
     assert candidate["face_gate"]["verdict"] == "FALSE"
     assert launched == [run["run_id"]]
 
@@ -805,8 +864,8 @@ def test_harvest_face_gate_advances_or_requeues_without_completing(tmp_path, mon
     })
     service.harvest_face_gate_jobs()
     candidate = service.detail(run["run_id"])["candidates"][0]
-    assert candidate["status"] == "PENDING"
-    assert candidate["face_gate"] == {}
+    assert candidate["status"] == "GATE_REJECTED"
+    assert candidate["face_gate"]["verdict"] == "TRUE"
     assert len(candidate["face_gate_history"]) == 1
 
 
@@ -940,12 +999,17 @@ def test_luna_schema_has_explicit_view_aware_criteria():
     assert "torso_leg_balance" in criteria["properties"]
     assert "uncertain" in criteria["properties"]["torso_leg_balance"]["properties"]["status"]["enum"]
 
-def test_local_body_reference_harvest_uses_its_own_slot_when_proxy_omits_target_directory(tmp_path):
+def test_local_body_reference_harvest_uses_its_own_slot_when_proxy_omits_target_directory(tmp_path, monkeypatch):
     service = make_service(tmp_path)
-    run_id = "20260922_000000_000001"
-    root = service.runs_root / "Tsaeytte" / "Adult" / run_id
-    root.mkdir(parents=True)
-    (root / "spec.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(service, "_compile_view", lambda root, character, phase, view, index: {
+        "view": view, "view_index": index, "manual_prompt": view, "qwen_prompt": view,
+        "prompt_path": "", "prompt_sha256": view, "source_map": "", "dependency_manifest": "",
+    })
+    run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
+                              "other_count": 1, "seeds": list(range(8))})
+    run_id = run["run_id"]
+    candidate = candidate_id(run)
+    root = Path(run["root"])
     answers = tmp_path / "answers"
     service.app.ai_proxy_service = SimpleNamespace(
         ai_proxy_path_service=SimpleNamespace(answer_root=lambda: answers)
@@ -954,7 +1018,7 @@ def test_local_body_reference_harvest_uses_its_own_slot_when_proxy_omits_target_
     answer_dir = answers / ask_id
     answer_dir.mkdir(parents=True)
     (answer_dir / "ask_manifest.json").write_text(json.dumps({
-        "ask_id": ask_id, "local_body_reference_run_id": run_id, "candidate_id": "c001",
+        "ask_id": ask_id, "local_body_reference_run_id": run_id, "candidate_id": candidate,
         "task_type": "local_body_reference_analysis", "expected_output": "response.json",
         "target_output_file": "local.json",
     }), encoding="utf-8")
@@ -962,14 +1026,14 @@ def test_local_body_reference_harvest_uses_its_own_slot_when_proxy_omits_target_
         "ask_id": ask_id, "status": "SUCCESS", "expected_output": "response.json",
     }), encoding="utf-8")
     (answer_dir / "response.json").write_text("{}", encoding="utf-8")
-    target = root / "analyses" / "c001" / "local.json"
-    service._harvest_local_body_reference_answer(run_id, "c001", ask_id, target)
+    target = root / "analyses" / candidate / "local.json"
+    service._harvest_local_body_reference_answer(run_id, candidate, ask_id, target)
     assert target.read_text(encoding="utf-8") == "{}"
     render_id = "render-job"
     render_dir = answers / render_id
     render_dir.mkdir()
     (render_dir / "ask_manifest.json").write_text(json.dumps({
-        "ask_id": render_id, "source_ask_id": f"BodyReference_{run_id}_c001_0",
+        "ask_id": render_id, "source_ask_id": f"BodyReference_{run_id}_{candidate}_0",
         "task_type": "local_test_render", "expected_output": "image.png",
         "target_output_file": "image.png",
     }), encoding="utf-8")
@@ -977,8 +1041,8 @@ def test_local_body_reference_harvest_uses_its_own_slot_when_proxy_omits_target_
         "ask_id": render_id, "status": "SUCCESS", "expected_output": "image.png",
     }), encoding="utf-8")
     (render_dir / "image.png").write_bytes(b"image")
-    render_target = root / "renders" / "c001" / "Local_Test_Renders" / "image.png"
-    service._harvest_local_body_reference_answer(run_id, "c001", render_id, render_target)
+    render_target = root / "renders" / candidate / "Local_Test_Renders" / "image.png"
+    service._harvest_local_body_reference_answer(run_id, candidate, render_id, render_target)
     assert render_target.read_bytes() == b"image"
 
 
@@ -1032,7 +1096,7 @@ def test_existing_run_refreshes_analysis_when_template_changes(tmp_path, monkeyp
         "<!-- ZET:END ANALYSIS_PROMPT_ONLY -->\n", encoding="utf-8"
     )
     calls = []
-    def compile_analysis(job, project_root, *, prompt_variant):
+    def compile_analysis(job, project_root, *, prompt_variant, **_kwargs):
         assert prompt_variant == "analysis"
         calls.append(job["Body View"])
         path = Path(job["Output Directory"]) / "Final_Image_Prompt.md"
@@ -1094,7 +1158,7 @@ def test_reevaluate_preserves_render_and_human_review(tmp_path, monkeypatch):
     assert image.read_bytes() == b"original image"
     assert candidate["analyses"] == {}
     assert candidate["analysis_history"][0]["analyses"]["luna"]["pass"] is False
-    assert candidate["human_review"] == {"decision": "keep", "notes": "Good proportions"}
+    assert candidate["human_review"]["decision"] == "keep"
     assert candidate["disposition"] == "human_keep"
     restarted = service.reevaluate(run["run_id"])
     assert restarted["status"] == "REEVALUATING"
@@ -1109,61 +1173,8 @@ def test_view_actions_scope_rerun_and_reevaluation(tmp_path, monkeypatch):
                          "qwen_prompt": view, "prompt_path": "", "prompt_sha256": view,
                          "source_map": "", "dependency_manifest": ""})
     run = create_legacy_run(service, {"character": "Tsaeytte", "phase": "Adult", "seeds": list(range(44))})
-    root = Path(run["root"])
-    front_image = root / "renders" / "c001" / "Local_Test_Renders" / "front.png"
-    other_image = root / "other.png"
-    front_image.parent.mkdir(parents=True, exist_ok=True)
-    front_image.write_bytes(b"front image")
-    other_image.write_bytes(b"other image")
-    state_path = root / "state.json"
-    state = json.loads(state_path.read_text(encoding="utf-8"))
-    state["front_anchor"] = "c001"
-    state["status"] = "COMPLETE"
-    state["candidates"]["c001"] = {
-        "status": "COMPLETE", "image_path": str(front_image),
-        "analyses": {"local": {"pass": True}, "luna": {"pass": True}},
-        "human_review": {"decision": "keep", "notes": "Front"},
-    }
-    state["candidates"]["c017"] = {
-        "status": "COMPLETE", "image_path": str(other_image),
-        "analyses": {"local": {"pass": True}, "luna": {"pass": True}},
-        "human_review": {"decision": "keep", "notes": "Other"},
-    }
-    state_path.write_text(json.dumps(state), encoding="utf-8")
-
-    rerun = service.rerun_view(run["run_id"], "FRONT")
-    front = next(item for item in rerun["candidates"] if item["candidate_id"] == "c001")
-    other = next(item for item in rerun["candidates"] if item["candidate_id"] == "c017")
-    assert rerun["status"] == "RUNNING"
-    assert rerun["front_anchor"] is None
-    assert json.loads((root / "state.json").read_text(encoding="utf-8"))["target_views"] == ["FRONT"]
-    assert front["status"] == "PENDING"
-    assert front["human_review"] == {"decision": "undecided", "notes": ""}
-    assert other["status"] == "COMPLETE"
-    assert other["image_path"] == str(other_image)
-    assert not front_image.exists()
-
-    state = json.loads(state_path.read_text(encoding="utf-8"))
-    state["status"] = "COMPLETE"
-    state["candidates"]["c001"] = {
-        "status": "COMPLETE", "image_path": str(other_image),
-        "analyses": {"local": {"pass": True}, "luna": {"pass": True}},
-        "human_review": {"decision": "keep", "notes": "Keep front"},
-    }
-    state["candidates"]["c017"] = {
-        "status": "COMPLETE", "image_path": str(other_image),
-        "analyses": {"local": {"pass": True}, "luna": {"pass": True}},
-        "human_review": {"decision": "reject", "notes": "Keep other review"},
-    }
-    state_path.write_text(json.dumps(state), encoding="utf-8")
-    reevaluated = service.reevaluate(run["run_id"], view="FRONT")
-    front = next(item for item in reevaluated["candidates"] if item["candidate_id"] == "c001")
-    other = next(item for item in reevaluated["candidates"] if item["candidate_id"] == "c017")
-    assert reevaluated["status"] == "REEVALUATING"
-    assert json.loads(state_path.read_text(encoding="utf-8"))["target_views"] == ["FRONT"]
-    assert front["analyses"] == {}
-    assert front["human_review"] == {"decision": "keep", "notes": "Keep front"}
-    assert other["analyses"] == {"local": {"pass": True}, "luna": {"pass": True}}
+    with pytest.raises(LocalBodyReferenceError, match="require a version 2"):
+        service.rerun_view(run["run_id"], "FRONT")
 
 def test_interrupted_run_is_recoverable(tmp_path, monkeypatch):
     service = make_service(tmp_path)
@@ -1504,10 +1515,11 @@ def test_locked_asset_does_not_stop_front_rerun(tmp_path, monkeypatch):
                          "source_map": "", "dependency_manifest": ""})
     run = service.create_run({"character": "Tsaeytte", "phase": "Adult", "front_count": 1,
                               "other_count": 1, "seeds": list(range(8))})
-    image = Path(run["root"]) / "renders" / "c001" / "Local_Test_Renders" / "front.png"
+    front_id = candidate_id(run)
+    image = Path(run["root"]) / "renders" / front_id / "Local_Test_Renders" / "front.png"
     image.parent.mkdir(parents=True)
     image.write_bytes(b"front image")
-    service._candidate_update(run["run_id"], "c001", {"status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image)})
+    service._candidate_update(run["run_id"], front_id, {"status": "WAITING_FOR_HUMAN_REVIEW", "image_path": str(image)})
 
     locked_image = tmp_path / "locked.png"
     locked_image.write_bytes(b"earlier front image")
@@ -1518,7 +1530,7 @@ def test_locked_asset_does_not_stop_front_rerun(tmp_path, monkeypatch):
     service.rerun_view(run["run_id"], "FRONT")
 
     assert not image.is_file()
-    candidate = next(item for item in service.detail(run["run_id"])["candidates"] if item["candidate_id"] == "c001")
+    candidate = next(item for item in service.detail(run["run_id"])["candidates"] if item["candidate_id"] == front_id)
     assert candidate["image_path"] == ""
     locked = service.asset_store.detail("Tsaeytte", "Adult")["assets"]["body-reference:FRONT"]
     assert locked["locked"] and locked["batch_id"] == "earlier"

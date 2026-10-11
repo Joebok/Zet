@@ -7,6 +7,7 @@ from zet.render_console.queue import RenderConsoleQueue
 from zet.repositories.asset_repository import AssetRepositoryError
 from zet.services.discovery_context import DiscoveryContext
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
+from zet.services.pipeline_retirement import is_retired_character_pipeline
 from zet.services.summary_cache import SummaryCache
 
 
@@ -39,6 +40,7 @@ class ProductionWorkSummaryService:
                     asset
                     for asset in assets
                     if asset.pipeline_stage == "RENDER_REVIEW" and asset.actor == "HUMAN_AGENT"
+                    and not is_retired_character_pipeline(asset.pipeline)
                 )
         return rows
 

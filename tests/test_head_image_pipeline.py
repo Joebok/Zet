@@ -322,7 +322,25 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_local_phase_changes_are_compact_and_traditional_transform_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            template = Path(r"C:\Users\Joe\Projects\Zet_Library\Characters\Tsaeytte\Elder\Character.md")
+            character_dir = root / "Library" / "Characters" / "Tsaeytte" / "Elder"
+            character_dir.mkdir(parents=True)
+            template = character_dir / "Character.md"
+            template_text = (PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md").read_text(encoding="utf-8")
+
+            def replace_section(name: str, content: str) -> None:
+                nonlocal template_text
+                begin = f"<!-- ZET:BEGIN {name} -->"
+                end = f"<!-- ZET:END {name} -->"
+                start = template_text.index(begin) + len(begin)
+                finish = template_text.index(end, start)
+                template_text = template_text[:start] + "\n" + content + "\n" + template_text[finish:]
+
+            replace_section("HEAD_IMAGE_LOCAL_PHASE_CHANGES",
+                            "* [head:all] Show Tsaeytte as the same person in her Elder phase, with luminous silver hair.")
+            replace_section("HEAD_IMAGE_TRANSFORM_INSTRUCTIONS",
+                            "The primary goal of this task is successful age transformation. "
+                            "The final face must read as Elder Tsaeytte.")
+            template.write_text(template_text, encoding="utf-8")
             source = root / "source.png"
             source.write_bytes(b"source")
             reference = [{"role": "head_image_source", "path": str(source)}]
@@ -341,7 +359,7 @@ class HeadImageCompilerTests(unittest.TestCase):
                                           pipeline_mode="local")
             rear_prompt = Path(rear["final_prompt"]).read_text(encoding="utf-8")
             self.assertNotIn("large expressive eyes", rear_prompt)
-            self.assertIn("Painterly semi-realistic fantasy illustration", rear_prompt)
+            self.assertIn("Painterly semi-realistic, anime-influenced facial proportions", rear_prompt)
 
             traditional = compile_head_image_job({**job, "Output Directory": str(root / "traditional")}, PROJECT_ROOT)
             traditional_prompt = Path(traditional["final_prompt"]).read_text(encoding="utf-8")
@@ -466,12 +484,12 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_local_head_workspace_starts_with_front_candidates_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            characters = root / "Characters" / "Test" / "Adult"
+            characters = root / "Library" / "Characters" / "Test" / "Adult"
             characters.mkdir(parents=True)
             shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
-                                                         base_character_path=str(root / "Characters")))
+                                                         base_character_path=str(root / "Library" / "Characters")))
             service = LocalHeadImageService(app, PROJECT_ROOT)
             run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
                                       "other_count": 1, "seeds": list(range(8))})
@@ -488,12 +506,12 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_local_head_run_summaries_include_selected_views_for_source_batch_choices(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            characters = root / "Characters" / "Test" / "Adult"
+            characters = root / "Library" / "Characters" / "Test" / "Adult"
             characters.mkdir(parents=True)
             shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
-                                                         base_character_path=str(root / "Characters")))
+                                                         base_character_path=str(root / "Library" / "Characters")))
             service = LocalHeadImageService(app, PROJECT_ROOT)
             run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
                                       "other_count": 1, "seeds": list(range(8))})
@@ -510,12 +528,12 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_saved_render_survives_transient_state_replace_access_denied(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            characters = root / "Characters" / "Test" / "Adult"
+            characters = root / "Library" / "Characters" / "Test" / "Adult"
             characters.mkdir(parents=True)
             shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
-                                                         base_character_path=str(root / "Characters"),
+                                                         base_character_path=str(root / "Library" / "Characters"),
                                                          comfyui_poll_seconds=0.01))
             service = LocalHeadImageService(app, PROJECT_ROOT)
             run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
@@ -552,12 +570,12 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_old_ranking_and_missing_gates_do_not_block_human_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            characters = root / "Characters" / "Test" / "Adult"
+            characters = root / "Library" / "Characters" / "Test" / "Adult"
             characters.mkdir(parents=True)
             shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
-                                                         base_character_path=str(root / "Characters")))
+                                                         base_character_path=str(root / "Library" / "Characters")))
             service = LocalHeadImageService(app, PROJECT_ROOT)
             run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
                                       "other_count": 1, "seeds": list(range(8))})
@@ -585,12 +603,12 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_autogenerate_selects_and_locks_ranked_front_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            characters = root / "Characters" / "Test" / "Adult"
+            characters = root / "Library" / "Characters" / "Test" / "Adult"
             characters.mkdir(parents=True)
             shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
-                                                         base_character_path=str(root / "Characters")))
+                                                         base_character_path=str(root / "Library" / "Characters")))
             service = LocalHeadImageService(app, PROJECT_ROOT)
             run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
                                       "other_count": 1, "seeds": list(range(8))})
@@ -623,12 +641,12 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_proceed_needs_front_image_but_not_front_review_or_ranking(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            characters = root / "Characters" / "Test" / "Adult"
+            characters = root / "Library" / "Characters" / "Test" / "Adult"
             characters.mkdir(parents=True)
             shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
-                                                         base_character_path=str(root / "Characters")))
+                                                         base_character_path=str(root / "Library" / "Characters")))
             service = LocalHeadImageService(app, PROJECT_ROOT)
             run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 1,
                                       "other_count": 1, "seeds": list(range(8))})
@@ -647,12 +665,12 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_local_head_renders_view_before_gates_then_ranks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            characters = root / "Characters" / "Test" / "Adult"
+            characters = root / "Library" / "Characters" / "Test" / "Adult"
             characters.mkdir(parents=True)
             shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
-                                                         base_character_path=str(root / "Characters")))
+                                                         base_character_path=str(root / "Library" / "Characters")))
             service = LocalHeadImageService(app, PROJECT_ROOT)
             run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 2,
                                       "other_count": 1, "seeds": list(range(9))})
@@ -695,12 +713,12 @@ class HeadImageCompilerTests(unittest.TestCase):
     def test_local_head_ranking_closes_temporary_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            characters = root / "Characters" / "Test" / "Adult"
+            characters = root / "Library" / "Characters" / "Test" / "Adult"
             characters.mkdir(parents=True)
             shared_template = PROJECT_ROOT / "Shared_Library" / "Characters" / "_Shared" / "Character_Template.md"
             (characters / "Character.md").write_text(shared_template.read_text(encoding="utf-8"), encoding="utf-8")
             app = SimpleNamespace(config=SimpleNamespace(base_library_path=str(root / "Library"),
-                                                         base_character_path=str(root / "Characters")))
+                                                         base_character_path=str(root / "Library" / "Characters")))
             service = LocalHeadImageService(app, PROJECT_ROOT)
             run = service.create_run({"character": "Test", "phase": "Adult", "front_count": 2,
                                       "other_count": 1, "seeds": list(range(9))})
@@ -866,10 +884,11 @@ BaseAIQueuePath = "{(root / 'Queue').as_posix()}"
             detail = client.get("/api/head-image-manifest/1", params=query)
             source_path = detail.json()["source_options"][0]["path"]
             saved = client.post("/api/head-image-manifest/1/source", params=query, json={"source_path": source_path, "apply_all": True})
-            self.assertEqual(saved.status_code, 200)
-            self.assertEqual(saved.json()["selected_source"]["source_phase"], "Adult")
+            self.assertEqual(saved.status_code, 400)
+            self.assertIn("Traditional Head-Image generation is retired", saved.json()["detail"])
             remaining = client.get("/api/head-image-manifest/2", params=query)
             self.assertEqual(remaining.json()["reference_files"], [])
+            client.close()
 
 
 class HeadImageFoundationTests(unittest.TestCase):

@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { restorePristineProjectState } from "./scene-fixtures.mjs";
+
+test.beforeEach(restorePristineProjectState);
 
 test("costume wizard validates image captions and opens a resumable draft", async ({ page }) => {
   const pageErrors = [];

@@ -7,6 +7,8 @@ import zipfile
 from PIL import Image
 
 from zet.services.file_proxy_client import FileProxyClient
+from zet.services.ai_queue_lifecycle_service import AIQueueLifecycleService
+from zet.services.config_service import Config
 from zet.services.gate_test_rig_service import GateTestRigService
 from zet.services.local_gate_registry_service import LocalGatePipeline, LocalGateRegistryService
 from zet.services.candidate_review_contract import ReviewGate
@@ -19,7 +21,12 @@ def make_service(tmp_path):
     client = FileProxyClient(queue)
     paths = SimpleNamespace(file_proxy_client=client, ask_root=lambda: client.ask_root,
                             running_root=lambda: client.running_root, answer_root=lambda: client.answer_root,
-                            harvested_archive_root=lambda: queue / "Zet_File_Proxy_State" / "Archive" / "Harvested")
+                            harvested_archive_root=lambda: queue / "Zet_File_Proxy_State" / "Archive" / "Harvested",
+                            lifecycle=AIQueueLifecycleService(Config(base_library_path=str(library),
+                                                                      base_character_path=str(library / "Characters"),
+                                                                      base_asset_path=str(library / "Assets"),
+                                                                      base_pipeline_path=str(library / "Pipelines"),
+                                                                      base_ai_queue_path=str(queue))))
     app.ai_proxy_service = SimpleNamespace(ai_proxy_path_service=paths)
     return GateTestRigService(app, tmp_path), app, client
 

@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { restorePristineProjectState } from "./scene-fixtures.mjs";
+
+test.beforeEach(restorePristineProjectState);
 
 test("costume batch displays saved render errors with expandable details", async ({ page }) => {
   const message = "Qwen Image 2.1 supports at most ten reference images; received 11.\nMissing reference: <image4>";

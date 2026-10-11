@@ -1,4 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { restorePristineProjectState, restorePristineScene } from "./scene-fixtures.mjs";
+
+test.beforeEach(async ({ page }) => {
+  await restorePristineProjectState();
+  await restorePristineScene(page, "Alpha-Story", "Opening-Scene");
+});
 import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -28,59 +34,41 @@ test("scene batches keep authoring context, checkpoints, references, publication
   await expect(page.locator("#scene-builder-page")).toHaveClass(/active/);
   await page.locator("[data-builder-action=render]").first().click();
   await expect(page.locator("#scene-batches-page")).toHaveClass(/active/);
-  await expect(page.locator("#scene-batch-plan input")).toHaveCount(3);
-  await page.getByText("New batch candidate counts", {exact: true}).click();
-  for (const input of await page.locator("#scene-batch-plan input").all()) {
-    await expect(input).toHaveValue("4");
-    await input.fill("1");
-  }
-  await page.locator("#scene-batch-name").fill("Browser scene study");
-  let releaseCreation;
-  const creationReady = new Promise(resolve => { releaseCreation = resolve; });
-  await page.route("**/local-batches", async route => {
-    if (route.request().method() === "POST") await creationReady;
-    await route.continue();
-  });
-  await page.locator("#scene-batch-new").click();
-  await expect(page.locator("#scene-batch-new")).toBeDisabled();
-  await expect(page.locator("#scene-batch-message")).toHaveText("Creating scene batch…");
-  releaseCreation();
-  await expect(page.locator("#scene-batch-status")).toContainText("Browser scene study");
-  const runId = new URL(page.url()).searchParams.get("batch");
+  await expect(page.locator("#scene-batch-groups > section")).toHaveCount(3);
+  const listed = await (await page.request.get(batches)).json();
+  const runId = listed.batches[0].run_id;
   expect(runId).toMatch(/^[a-f0-9]{32}$/);
-  await page.reload();
-  await expect(page.locator("#scene-batch-name")).toHaveValue("Browser scene study");
+  await expect(page.locator("#scene-batch-status")).toContainText("QUEUED");
   const fullScene = page.locator("#scene-batch-groups > section").filter({has: page.getByRole("heading", {name: "Full Scene", exact: true})});
-  await expect(fullScene.getByRole("button", {name: "Render", exact: true})).toBeDisabled();
+  await expect(fullScene.getByRole("button", {name: "Render First 4", exact: true})).toBeDisabled();
   for (const [target, label] of [["background", "Background"], ["traveler_view", "Traveler View"], ["main", "Full Scene"]]) {
     await page.locator("#scene-batch-start").click();
     const section = page.locator("#scene-batch-groups > section").filter({has: page.getByRole("heading", {name: label, exact: true})});
     await expect(section).toContainText("QUEUED");
     await expect(section.getByRole("link", {name: "Image prompt", exact: true})).toBeVisible();
     const run = await (await page.request.get(`${batches}/${runId}`)).json();
-    const candidate = run.groups[target].candidates[0];
+    const activeCandidates = run.groups[target].active_candidates;
+    expect(activeCandidates).toHaveLength(8);
+    const candidate = activeCandidates[0];
     const ask = path.join(fixtureRoot, "Queue/File_Proxy/Ask/zet", candidate.ask_id);
     const answer = path.join(fixtureRoot, "Queue/File_Proxy/Answer/zet", candidate.ask_id);
     expect(answer.startsWith(fixtureRoot + path.sep)).toBeTruthy();
+    const askManifest = JSON.parse(await readFile(path.join(ask, "ask_manifest.json"), "utf8"));
     await mkdir(answer, {recursive: true});
     await copyFile(path.join(ask, "ask_manifest.json"), path.join(answer, "ask_manifest.json"));
-    await copyFile(path.join(fixtureRoot, "Stories/Alpha-Story/Opening-Scene.png"), path.join(answer, "render.png"));
-    await writeFile(path.join(answer, "answer_manifest.json"), JSON.stringify({ask_id: candidate.ask_id, status: "SUCCESS", expected_output: "render.png"}));
-    await expect.poll(async () => (await (await page.request.get(`${batches}/${runId}`)).json()).rankings[target]?.status).toBe("COMPLETE");
+    await copyFile(path.join(fixtureRoot, "Stories/Alpha-Story/Opening-Scene.png"), path.join(answer, askManifest.expected_output));
+    await writeFile(path.join(answer, "answer_manifest.json"), JSON.stringify({ask_id: candidate.ask_id, status: "SUCCESS", expected_output: askManifest.expected_output}));
+    await expect.poll(async () => {
+      const refreshed = await (await page.request.get(`${batches}/${runId}`)).json();
+      return refreshed.groups[target].active_candidates.find(item => item.candidate_id === candidate.candidate_id)?.status;
+    }).toBe("COMPLETE");
+    await page.reload();
+    await expect(page.locator("#scene-batches-page")).toHaveClass(/active/);
     await page.locator("#scene-batch-refresh").click();
-    await expect(section.getByRole("button", {name: "Select", exact: true})).toBeEnabled();
+    const candidateCard = section.locator("article").nth(candidate.slot - 1);
+    await expect(candidateCard.getByRole("button", {name: "Select", exact: true})).toBeEnabled();
     expect((await (await page.request.get(`${batches}/${runId}`)).json()).selected_views[target]).toBeUndefined();
     if (target === "main") {
-      let releaseReview;
-      const reviewReady = new Promise(resolve => { releaseReview = resolve; });
-      await page.route("**/actions/review", async route => { await reviewReady; await route.continue(); });
-      const review = section.getByRole("combobox", {name: `${candidate.candidate_id} human review`, exact: true});
-      await review.selectOption("keep");
-      await expect(review).toBeDisabled();
-      await expect(section.getByRole("button", {name: "Select", exact: true})).toBeDisabled();
-      releaseReview();
-      await expect(review).toBeEnabled();
-      await expect(review).toHaveValue("keep");
       await expect(section.locator(".local-pipeline-sources img")).toHaveCount(2);
       await expect(section.locator("figcaption").first()).toContainText("Image 1");
       await expect(section.locator("figcaption").nth(1)).toContainText("Image 2");
@@ -88,11 +76,17 @@ test("scene batches keep authoring context, checkpoints, references, publication
         await expect.poll(() => image.evaluate(node => node.complete && node.naturalWidth > 0)).toBeTruthy();
       }
     }
-    await section.getByRole("button", {name: "Select", exact: true}).click();
+    await candidateCard.getByRole("button", {name: "Select", exact: true}).click();
     await expect(section).toContainText("Selected");
   }
   await expect(page.locator("#scene-batch-publish")).toBeEnabled();
   await page.locator("#scene-batch-publish").click();
+  const publicationDialog = page.locator("#scene-batch-publication-dialog");
+  await expect(publicationDialog).toBeVisible();
+  const decisions = publicationDialog.locator("[aria-label$='publication decision']");
+  await expect(decisions).toHaveCount(3);
+  for (const decision of await decisions.all()) await decision.selectOption("promote");
+  await publicationDialog.getByRole("button", {name: "Apply review decisions", exact: true}).click();
   await expect(page.locator("#scene-batch-status")).toContainText("COMPLETE");
   const provenance = JSON.parse(await readFile(path.join(fixtureRoot, "Pipelines/Stories/Alpha-Story/Opening-Scene/Locked_Render.render.json"), "utf8"));
   expect(provenance.batch_id).toBe(runId);

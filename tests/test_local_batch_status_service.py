@@ -117,7 +117,7 @@ class LocalBatchStatusServiceTests(unittest.TestCase):
             app = SimpleNamespace(config=SimpleNamespace(
                 base_library_path=str(library), base_character_path=str(library / "Characters"),
             ))
-            workspace = (library / "Experiments" / "Character-Pipeline" / "Tsaeytte" / "Adult"
+            workspace = (library / "PipelineCandidates" / "Character-Pipeline" / "Tsaeytte" / "Adult"
                          / "Costume-Dressing" / "Canonical_Adventure_Gear")
             for run_id in run_ids:
                 run_root = workspace / run_id

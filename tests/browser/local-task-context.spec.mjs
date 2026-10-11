@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { restorePristineProjectState } from "./scene-fixtures.mjs";
+
+test.beforeEach(restorePristineProjectState);
 
 const pipelines = ["body-reference", "head-image", "character-assembly", "costume-dressing"];
 const config = { configured: true, project_id: "project-aaaaaaaa", board_url: "http://127.0.0.1:8000/", zet_revision: "a".repeat(40) };

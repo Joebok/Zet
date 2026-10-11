@@ -378,7 +378,7 @@ def test_entity_library_api_import_filter_and_detail(tmp_path):
     config_path = write_project_fixture(tmp_path)
     config_path.write_text(
         config_path.read_text(encoding="utf-8").replace(
-            "[BaseFolders]\n", f'[BaseFolders]\nBaseLibraryPath = "{root.as_posix()}"\n'
+            f'BaseLibraryPath = "{tmp_path.as_posix()}"', f'BaseLibraryPath = "{root.as_posix()}"'
         ), encoding="utf-8",
     )
     with TestClient(create_app(config_path)) as client:

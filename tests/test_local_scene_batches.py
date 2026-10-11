@@ -25,7 +25,7 @@ def stable_scene_ranking(monkeypatch):
 
 @pytest.fixture
 def batches(tmp_path):
-    app = ZetApp.from_config(write_project_fixture(tmp_path, library_root=True), validate_catalog=False)
+    app = ZetApp.from_config(write_project_fixture(tmp_path), validate_catalog=False)
     for path, text in [(app.path_service.shared_story_template_path(), "Title: Story\n"),
                        (app.path_service.shared_scene_template_path(), "Title: Scene\n")]:
         path.parent.mkdir(parents=True, exist_ok=True)

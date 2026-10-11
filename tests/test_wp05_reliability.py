@@ -213,6 +213,7 @@ class ManualRenderPublicationReliabilityTests(unittest.TestCase):
         self.assertEqual(200, recovered.status_code, recovered.text)
         self.assertTrue(ready.is_dir())
         self.assertFalse(staging.exists())
+        client.close()
 
 
 if __name__ == "__main__":

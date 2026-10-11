@@ -33,13 +33,6 @@ class WebAppTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
-            config_path.write_text(
-                config_path.read_text(encoding="utf-8").replace(
-                    "[BaseFolders]\n",
-                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
-                ),
-                encoding="utf-8",
-            )
             with TestClient(create_app(config_path)) as client:
                 page = client.get("/")
                 self.assertEqual(200, page.status_code)
@@ -60,13 +53,6 @@ class WebAppTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
-            config_path.write_text(
-                config_path.read_text(encoding="utf-8").replace(
-                    "[BaseFolders]\n",
-                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
-                ),
-                encoding="utf-8",
-            )
             client = TestClient(create_app(config_path))
             page = client.get("/gate-test-rig")
             self.assertEqual(200, page.status_code)
@@ -95,13 +81,6 @@ class WebAppTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
-            config_path.write_text(
-                config_path.read_text(encoding="utf-8").replace(
-                    "[BaseFolders]\n",
-                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
-                ),
-                encoding="utf-8",
-            )
             views = [
                 "Front", "Front-Left-3-4", "Left-Profile", "Back-Left-3-4",
                 "Back", "Back-Right-3-4", "Right-Profile", "Front-Right-3-4",
@@ -164,13 +143,6 @@ class WebAppTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
-            config_path.write_text(
-                config_path.read_text(encoding="utf-8").replace(
-                    "[BaseFolders]\n",
-                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
-                ),
-                encoding="utf-8",
-            )
             client = TestClient(create_app(config_path))
 
             created_set = client.post("/api/image-catalog/reference-sets", json={"label": "Props", "identity_text": "shared prop"})
@@ -202,37 +174,24 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(200, deleted.status_code, deleted.text)
             self.assertTrue(list((root / "ImageCatalog" / "_trash").glob("*.jpg")))
 
-    def test_ai_controls_loads_recent_live_and_archived_harvests_separately(self):
+    def test_ai_controls_loads_recent_receipt_backed_harvests(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
-            live = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Live"
-            archived = root / "Queue" / "Zet_File_Proxy_State" / "Archive" / "Harvested" / "2026-08-24" / "Ask_Archived"
-            for path, ask_id, harvested_at, status, error_type, error_message in (
-                (live, "Ask_Live", "2026-08-25T12:00:00", "SUCCESS", "", ""),
-                (archived, "Ask_Archived", "2026-08-24T12:00:00", "BLOCKED", "MODEL_FAILURE", "Ollama timed out."),
-            ):
-                path.mkdir(parents=True)
-                (path / "harvest_manifest.json").write_text(json.dumps({
-                    "ask_id": ask_id,
-                    "asset_id": 1,
-                    "status": status,
-                    "message": f"{ask_id} harvested.",
-                    "harvested_at": harvested_at,
-                }), encoding="utf-8")
-                (path / "ask_manifest.json").write_text(json.dumps({
-                    "ask_id": ask_id,
-                    "task_type": "prompt_condense",
-                }), encoding="utf-8")
-                (path / "answer_manifest.json").write_text(json.dumps({
-                    "ask_id": ask_id,
-                    "asset_id": 1,
-                    "status": "ERROR" if error_message else "SUCCESS",
-                    "error_type": error_type,
-                    "error_message": error_message,
-                }), encoding="utf-8")
-
-            client = TestClient(create_app(config_path))
+            app = create_app(config_path, validate_catalog_on_create=False)
+            lifecycle = app.state.zet_app.ai_proxy_service.ai_proxy_path_service.lifecycle
+            lifecycle.write_receipt("Ask_Live", {
+                "ask_id": "Ask_Live", "task_type": "prompt_condense", "asset_id": 1,
+                "status": "SUCCESS", "harvested_at": "2026-08-25T12:00:00",
+                "message": "Ask_Live harvested.",
+            })
+            lifecycle.write_receipt("Ask_Archived", {
+                "ask_id": "Ask_Archived", "task_type": "prompt_condense", "asset_id": 1,
+                "status": "BLOCKED", "harvested_at": "2026-08-24T12:00:00",
+                "error_message": "MODEL_FAILURE: Ollama timed out.",
+            })
+            app.state.zet_app.library_index_service.rebuild(backfill_history=False)
+            client = TestClient(app)
             with patch("zet.app.ZetApp.codex_jobs", return_value=[{
                 "run_id": "20260922_120000_000001", "candidate_id": "c001",
                 "character": "Test", "phase": "Adult", "view": "FRONT",
@@ -243,8 +202,6 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(200, response.status_code)
             self.assertEqual("PENDING", response.json()["codex_jobs"][0]["status"])
             self.assertNotIn("recent_harvests", response.json())
-            backfill = client.post("/api/library-index/history-backfill")
-            self.assertEqual(200, backfill.status_code)
             history = client.get("/api/ai-controls/recent-harvests", params={"limit": 2})
             self.assertEqual(200, history.status_code)
             recent = history.json()["items"]
@@ -395,18 +352,12 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(200, metrics.status_code)
             self.assertEqual(1, metrics.json()["classified_count"])
             self.assertEqual(1, metrics.json()["refined_count"])
+            client.close()
 
     def test_render_console_uses_renamed_scene_and_subscene_labels(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
-            config_path.write_text(
-                config_path.read_text(encoding="utf-8").replace(
-                    "[BaseFolders]\n",
-                    f'[BaseFolders]\nBaseLibraryPath = "{root.as_posix()}"\n',
-                ),
-                encoding="utf-8",
-            )
             story_dir = root / "Stories" / "Arcane-Tales"
             story_dir.mkdir(parents=True)
             (story_dir / "Arcane-Tales.md").write_text("Title: `[Arcane Tales]`\n", encoding="utf-8")
@@ -443,6 +394,7 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual("Background subscene: Celestial Backdrop", task["display_subtext"])
             detail = client.get("/api/render-console/tasks/Ask_Story_Background").json()
             self.assertEqual("Wild Magic Surge", detail["task"]["scene_title"])
+            client.close()
 
     def test_ir_scene_defaults_to_qwen_in_render_console_with_legacy_profile_configured(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -475,7 +427,7 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual(200, response.status_code, response.text)
             local = response.json()["local_prompt"]
             self.assertEqual("comfyui-qwen-image-2-1-scene", local["default_local_profile"])
-            self.assertEqual("comfyui-ipadapter-preview", local["configured_local_profile"])
+            self.assertEqual("comfyui-qwen-image-2-1-scene", local["configured_local_profile"])
             self.assertTrue(local["qwen_supports_local_test_render"])
             self.assertIn("Tsaeytte enters the arch", local["qwen_prompt"])
             with patch("zet.app.ZetApp.stage_scene_local_render_ask", return_value=root / "queued") as stage:
@@ -484,21 +436,15 @@ class WebAppTests(unittest.TestCase):
             self.assertEqual("comfyui-qwen-image-2-1-scene", stage.call_args.kwargs["render_profile"])
             with patch("zet.app.ZetApp.stage_scene_local_render_ask", return_value=root / "queued") as stage:
                 queued = client.post("/api/render-console/tasks/Ask_Qwen_Default/local-test-render",
-                                     json={"render_profile": "comfyui-ipadapter-preview"})
+                                     json={"render_profile": "comfyui-qwen-image-2-1-scene"})
             self.assertEqual(200, queued.status_code, queued.text)
-            self.assertEqual("comfyui-ipadapter-preview", stage.call_args.kwargs["render_profile"])
+            self.assertEqual("comfyui-qwen-image-2-1-scene", stage.call_args.kwargs["render_profile"])
+            client.close()
 
     def test_story_management_api_renames_reorders_and_moves(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             config_path = write_project_fixture(root)
-            config_path.write_text(
-                config_path.read_text(encoding="utf-8").replace(
-                    "[BaseFolders]\n",
-                    f"[BaseFolders]\nBaseLibraryPath = \"{root.as_posix()}\"\n",
-                ),
-                encoding="utf-8",
-            )
             for story_slug in ("Alpha", "Beta"):
                 folder = root / "Stories" / story_slug
                 folder.mkdir(parents=True)

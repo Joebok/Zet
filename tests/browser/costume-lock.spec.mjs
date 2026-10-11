@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { restorePristineProjectState } from "./scene-fixtures.mjs";
+
+test.beforeEach(restorePristineProjectState);
 
 for (const costume of ["Canonical Adventure Gear", "School Outfit"]) {
   test(`costume lock displays correctly for ${costume}`, async ({ page }) => {

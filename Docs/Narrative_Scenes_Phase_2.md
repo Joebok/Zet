@@ -6,7 +6,7 @@ selector and the same two-column authoring/generation layout.
 
 ## Assemble a scene
 
-**Continue interview** and **Write prompt** work before adding sources. They
+**Continue interview** and **Write Prompt** work before adding sources. They
 snapshot the text inputs and any pinned source layers without preparing cutouts.
 Image generation and composite previews require one visible base backdrop.
 
@@ -32,8 +32,9 @@ Image generation and composite previews require one visible base backdrop.
 7. **Refresh raw composite** shows the backend composition on the same page.
    Its PNG can be downloaded without an image-generation job.
 8. In **Prompt and generation**, choose **Assembly mode** (described below).
-   Write a prompt, generate one or four candidates, or render the
-   visible edited prompt. Select and optionally lock the preferred final image.
+   Use **Write Prompt** to create text, then **Render 1** or **Render 4** to
+   submit the visible prompt exactly as entered. Select and optionally lock the
+   preferred final image.
 
 Sources are pinned and copied into the assembly. Changing a source's selection
 does not change the assembly; **Use current selection** explicitly updates it.
@@ -66,7 +67,7 @@ Reference candidates show their mode and source summary without a raw-composite
 comparison link. Retrying a failed assembly image reuses its frozen prompt,
 sources, dimensions, mode and seed even after the current assembly changes.
 
-Switching modes preserves the prompt text but requires **Write prompt** or a
+Switching modes preserves the prompt text but requires **Write Prompt** or a
 manual edit before rendering a prompt from the previous mode. Choosing a previous
 prompt restores its recorded mode. In-flight jobs keep their original mode and
 cannot replace the active prompt after a mode switch. Interviews and prompt
@@ -90,13 +91,11 @@ continue through AI_Proxy. No provider silently substitutes another model.
 - **Re-run last interview** uses that run's original inputs and direction, with
   the newly selected interview model. Both responses and expandable drafts remain
   in the history.
-- **Write prompt** uses current inputs and the prompt model.
-- **Re-run last prompt** repeats the last prompt request's original inputs with
-  the newly selected prompt model. It does not generate images.
-- **Previous prompt outputs** lets you preview earlier outputs and explicitly
-  choose **Use this prompt**.
-- **Generate from inputs** writes a fresh prompt and queues images. **Render
-  edited prompt** sends visible text unchanged and invokes no text LLM.
+- **Write Prompt** uses current inputs and the prompt model.
+- **Previous prompt outputs** lets you preview earlier outputs. Copy a prior
+  output into the prompt editor if you want to revise and render from it.
+- **Render 1** and **Render 4** send the visible prompt unchanged and invoke no
+  text LLM. Write a fresh prompt first when the current wording needs revision.
 
 Each text job records its requested model before dispatch. Interview responses,
 prompt outputs, and image candidates retain their original model labels after

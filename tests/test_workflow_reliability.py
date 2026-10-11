@@ -65,41 +65,30 @@ class WorkflowReliabilityTests(unittest.TestCase):
             self.assertEqual([False, True], sorted(executor.map(save, ["first", "second"])))
 
     def test_recompile_publishes_new_prompt_and_reference_bundle(self):
-        self.enterContext(patch.object(self.app.ai_proxy_service, "_render_backend", return_value="manual_chatgpt"))
         old = write_manual_render_ask(self.root)
-        reference = self.root / "reference.png"
-        reference.write_bytes(png_bytes())
-        result = WorkerResult(True, "compiled", reference_files=[{"path": str(reference), "role": "subject_reference"}])
-        with patch.object(self.app.prompt_review_service.worker_service, "run_named_worker", return_value=result):
+        with self.assertRaisesRegex(ValueError, "Traditional Body-Reference generation is retired"):
             self.app.recompile_prompt_review("Test", "Adult", 1)
-        tasks = self.queue.list_tasks()
-        self.assertEqual(1, len(tasks))
-        self.assertNotEqual(old.name, tasks[0].ask_id)
-        self.assertEqual(str(reference), tasks[0].manifest["reference_files"][0]["source_path"])
+        self.assertEqual([old.name], [item.ask_id for item in self.queue.list_tasks()])
         self.assertTrue(old.is_dir())
 
     def test_failed_staging_restores_previous_active_attempt(self):
-        self.enterContext(patch.object(self.app.ai_proxy_service, "_render_backend", return_value="manual_chatgpt"))
         before = self.app.asset_repository.get_asset("Test", "Adult", 1)
-        with patch.object(self.app.ai_proxy_service, "_publish_ask_folder", side_effect=OSError("publish failure")):
-            with self.assertRaises(OSError):
-                self.app.ai_proxy_service.stage_current_ai_ask("Test", "Adult", 1)
+        with self.assertRaisesRegex(ValueError, "Traditional Body-Reference generation is retired"):
+            self.app.ai_proxy_service.stage_current_ai_ask("Test", "Adult", 1)
         after = self.app.asset_repository.get_asset("Test", "Adult", 1)
         self.assertEqual(before.active_attempt_id, after.active_attempt_id)
         self.assertEqual(before.ai_state, after.ai_state)
 
-    def test_receipt_failure_replays_without_advancing_twice(self):
+    def test_retired_answer_is_rejected_without_advancing_twice(self):
         answer = self.answer()
         harvester = self.app.asset_service.ai_answer_harvester
-        with patch.object(harvester, "_write_harvest_manifest", side_effect=OSError("receipt unavailable")):
-            with self.assertRaises(OSError):
-                harvester.apply_answer_folder(answer)
+        first_result = harvester.apply_answer_folder(answer)
         first = self.app.asset_repository.get_asset("Test", "Adult", 1)
-        self.assertEqual("RENDER_REVIEW", first.pipeline_stage)
-        self.assertEqual("APPLIED", harvester.apply_answer_folder(answer).status)
+        self.assertEqual("RETIRED", first_result.status)
+        self.assertEqual("RENDER", first.pipeline_stage)
+        self.assertEqual("ALREADY_RETIRED", harvester.apply_answer_folder(answer).status)
         current = self.app.asset_repository.get_asset("Test", "Adult", 1)
         self.assertEqual(first.revision, current.revision)
-        self.assertEqual("ALREADY_APPLIED", harvester.apply_answer_folder(answer).status)
 
     def test_failed_answer_does_not_stop_later_harvest(self):
         good = self.answer()
@@ -109,7 +98,8 @@ class WorkflowReliabilityTests(unittest.TestCase):
         write_json_atomic(bad / "answer_manifest.json", {})
         results = self.app.asset_service.ai_answer_harvester.harvest_once()
         self.assertIn("HARVEST_FAILED", [result.status for result in results])
-        self.assertIn("APPLIED", [result.status for result in results])
+        self.assertIn("RETIRED", [result.status for result in results])
+        self.assertEqual("RENDER", self.app.asset_repository.get_asset("Test", "Adult", 1).pipeline_stage)
         self.assertTrue((bad / "harvest_error.json").is_file())
 
     def test_failed_publication_keeps_original_task_and_allows_retry(self):

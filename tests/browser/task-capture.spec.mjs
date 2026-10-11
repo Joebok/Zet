@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { restorePristineProjectState } from "./scene-fixtures.mjs";
+
+test.beforeEach(restorePristineProjectState);
 
 const metadata = { configured: true, project_id: "project-aaaaaaaa", board_url: "http://127.0.0.1:8000/",
   report_context_version: 1, zet_revision: "a".repeat(40) };

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import uvicorn
@@ -12,13 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from support.project_fixture import write_manual_render_ask, write_project_fixture
-from zet.app import ZetApp
-from zet.services.character_onboarding_service import CharacterOnboardingService
-from zet.services.source_editor_service import SourceEditorService
-import zet.web.app as web_app_module
-from zet.web.app import create_app
-
-
 project_root = Path(__file__).resolve().parents[2]
 root = (project_root / "test-results" / "dashboard-browser-project").resolve()
 if root.exists():
@@ -28,20 +23,36 @@ if root.exists():
 root.mkdir(parents=True)
 
 
+config_path = write_project_fixture(root, stage="RENDER", actor="AI_AGENT")
+write_manual_render_ask(root)
+
+_original_cwd = Path.cwd()
+try:
+    os.chdir(root)
+    from zet.app import ZetApp
+    from zet.services.character_onboarding_service import CharacterOnboardingService
+    from zet.repositories.library_index_repository import LibraryIndexRepository
+    from zet.services.source_editor_service import SourceEditorService
+    import zet.services.ai_queue_lifecycle_service as queue_lifecycle_module
+    machine_index_root = Path(tempfile.gettempdir()) / "zet-dashboard-browser-machine-index"
+    shutil.rmtree(machine_index_root, ignore_errors=True)
+    queue_lifecycle_module.queue_local_state_root = lambda _queue, _producer=None: root / ".ai-queue-state"
+    LibraryIndexRepository.default_index_root = staticmethod(
+        lambda: machine_index_root
+    )
+    import zet.web.app as web_app_module
+    from zet.web.app import create_app
+    web_app_module.app.state.config_path = str(config_path)
+finally:
+    os.chdir(_original_cwd)
+
+
 class BrowserTestSourceEditorService(SourceEditorService):
     def __init__(self, zet_app, project_root):
         super().__init__(zet_app, root)
 
 
 web_app_module.SourceEditorService = BrowserTestSourceEditorService
-config_path = write_project_fixture(root, stage="RENDER", actor="AI_AGENT")
-write_manual_render_ask(root)
-
-config_text = config_path.read_text(encoding="utf-8").replace(
-    "[BaseFolders]\n",
-    f'[BaseFolders]\nBaseLibraryPath = "{root.as_posix()}"\n',
-)
-config_path.write_text(config_text, encoding="utf-8")
 
 auxiliary_template = root / "Shared_Library" / "AuxiliaryResources" / "_Shared" / "AuxResource_Template.md"
 auxiliary_template.parent.mkdir(parents=True, exist_ok=True)
@@ -171,6 +182,12 @@ for story_slug in ("Alpha-Story", "Beta-Story", "Gamma-Story"):
             zet_app.story_service.create_default_scene_builder_data(story_slug, scene_slug),
         )
 
+pristine_scene_root = root / ".pristine-scenes"
+for source in stories_root.glob("*/*.scene.json"):
+    target = pristine_scene_root / source.relative_to(stories_root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+
 scene_candidate = zet_app.path_service.scene_candidate_image_path("Alpha-Story", "Closing-Scene")
 scene_candidate.parent.mkdir(parents=True, exist_ok=True)
 Image.new("RGB", (800, 600), "blue").save(scene_candidate)
@@ -207,26 +224,18 @@ zine_dir.mkdir(parents=True, exist_ok=True)
 )
 Image.new("RGB", (1320, 1020), "white").save(zine_dir / "Browser-Zine.png")
 
-answer_dir = root / "Queue" / "Manual_Render_Queue" / "Answer" / "Ask_Harvested"
-answer_dir.mkdir(parents=True, exist_ok=True)
-(answer_dir / "harvest_manifest.json").write_text(
-    json.dumps({
+zet_app.ai_queue_lifecycle_service.write_receipt(
+    "Ask_Harvested",
+    {
         "ask_id": "Ask_Harvested",
         "asset_id": 1,
         "status": "SUCCESS",
+        "task_type": "prompt_condense",
         "message": "Recent browser-test job completed.",
         "harvested_at": "2026-08-25T12:00:00",
-    }) + "\n",
-    encoding="utf-8",
+    },
 )
-(answer_dir / "ask_manifest.json").write_text(
-    json.dumps({"ask_id": "Ask_Harvested", "task_type": "prompt_condense"}) + "\n",
-    encoding="utf-8",
-)
-(answer_dir / "answer_manifest.json").write_text(
-    json.dumps({"ask_id": "Ask_Harvested", "asset_id": 1, "status": "SUCCESS"}) + "\n",
-    encoding="utf-8",
-)
+zet_app.library_index_service.reconcile()
 
 # Narrative assembly fixtures retain visible silhouettes and have exact final dimensions.
 narrative_images = root / "narrative-images"
@@ -238,6 +247,16 @@ Image.new("RGB", (512, 256), "blue").save(narrative_images / "backdrop.png")
 Image.new("RGB", (256, 256), "green").save(narrative_images / "proposal.png")
 
 app = create_app(config_path)
+
+pristine_project_root = root / ".pristine-project"
+for source in root.iterdir():
+    if source.name in {".pristine-project", ".pristine-scenes"}:
+        continue
+    target = pristine_project_root / source.name
+    if source.is_dir():
+        shutil.copytree(source, target)
+    else:
+        shutil.copy2(source, target)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")

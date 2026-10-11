@@ -76,8 +76,8 @@ class AdHocImageGenerationService:
         mode = str(payload.get("mode") or "txt2img").strip().lower()
         if mode not in {"txt2img", "img2img"}:
             raise AdHocImageGenerationError("Choose txt2img or img2img.")
-        prompt = str(payload.get("prompt") or "").strip()
-        if not prompt:
+        user_prompt = str(payload.get("prompt") or "").strip()
+        if not user_prompt:
             raise AdHocImageGenerationError("Enter a prompt before generating.")
         source_asset_id = str(payload.get("source_asset_id") or "").strip()
         source_checksum = str(payload.get("source_checksum") or "").strip()
@@ -165,12 +165,9 @@ class AdHocImageGenerationService:
         workspace = self.workspace_root / request_id
         workspace.mkdir(parents=True, exist_ok=False)
         prompt_path = workspace / "Final_Image_Prompt.md"
+        references = []
+        render_prompt = user_prompt
         try:
-            prompt_path.write_text(
-                f"Prompt: {prompt}\nNegative: {str(payload.get('negative_prompt') or '').strip()}\n",
-                encoding="utf-8",
-            )
-            references = []
             if reference_images:
                 label_lines = ["Reference image labels (images are supplied in this order):"]
                 for index, reference in enumerate(reference_images, start=1):
@@ -181,7 +178,11 @@ class AdHocImageGenerationService:
                         "version": 1, "type": "reference_file", "role": reference["label"],
                         "label": reference["label"], "path": str(reference_path), "image_index": index,
                     })
-                prompt = prompt + "\n\n" + "\n".join(label_lines)
+                render_prompt += "\n\n" + "\n".join(label_lines)
+            prompt_path.write_text(
+                f"Prompt: {render_prompt}\nNegative: {str(payload.get('negative_prompt') or '').strip()}\n",
+                encoding="utf-8",
+            )
         except Exception:
             shutil.rmtree(workspace, ignore_errors=True)
             raise
@@ -219,7 +220,7 @@ class AdHocImageGenerationService:
                     "QUEUED" if children else "ERROR", f"Only {len(children)} of {count} images could be queued: {exc}",
                 )
                 job["failures"] = count - len(children)
-                job.update(self._request_details(payload, width, height, prompt))
+                job.update(self._request_details(payload, width, height, user_prompt))
                 self._jobs[request_id] = job
                 self._save_job(job)
             if not children:
@@ -230,7 +231,7 @@ class AdHocImageGenerationService:
             self._jobs[request_id] = self._new_job(
                 request_id, mode, count, workspace, children, prompt_path, "QUEUED", "",
             )
-            self._jobs[request_id].update(self._request_details(payload, width, height, prompt))
+            self._jobs[request_id].update(self._request_details(payload, width, height, user_prompt))
             self._save_job(self._jobs[request_id])
         return self.status(request_id)
 

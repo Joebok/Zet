@@ -18,7 +18,7 @@ from zet.web.narrative_router import create_narrative_router
 
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
-    app = ZetApp.from_config(write_project_fixture(tmp_path, library_root=True), validate_catalog=False)
+    app = ZetApp.from_config(write_project_fixture(tmp_path), validate_catalog=False)
     def forbidden(*args, **kwargs):
         raise AssertionError("Legacy scene workflow called")
     for name in ("create_story", "create_scene", "load_scene_builder", "stage_scene_render"):

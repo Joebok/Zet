@@ -20,7 +20,7 @@ class ModelResponse:
 
 
 def _asset(tmp_path, *, prompt="", negative_prompt=""):
-    config_path = write_project_fixture(tmp_path, library_root=True)
+    config_path = write_project_fixture(tmp_path)
     app = ZetApp.from_config(config_path, validate_catalog=False)
     asset = app.entity_library_import("Prompt analysis", "image/png", png_bytes(),
                                       prompt=prompt, negative_prompt=negative_prompt)

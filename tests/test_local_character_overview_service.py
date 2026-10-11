@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,8 +29,12 @@ def test_overview_shows_locked_costume_front_and_idle_placeholder(tmp_path: Path
     store = LocalAssetStoreService(app.config.base_library_path)
     source = tmp_path / "dressing.png"
     source.write_bytes(b"front image")
+    batch_id = "20261010_120000_123456"
+    batch = store.root / "Mira" / "Adult" / "Costume-Dressing" / "Blue_Coat" / batch_id
+    batch.mkdir(parents=True)
+    (batch / "spec.json").write_text('{"run_id":"20261010_120000_123456","character":"Mira","phase":"Adult"}')
     store.record_selection("Mira", "Adult", "Costume-Dressing", "FRONT", candidate_id="c001",
-                           image_path=source, batch_id="run", qualifier="Blue_Coat")
+                           image_path=source, batch_id=batch_id, qualifier="Blue_Coat")
     store.lock("Mira", "Adult", "Costume-Dressing", "FRONT", "Blue_Coat")
     service = LocalCharacterOverviewService(app, tmp_path)
 
@@ -176,7 +181,16 @@ def test_autogenerate_walks_all_pipeline_fronts_with_stubbed_batches(tmp_path: P
                     upstreams.append("Head-Image")
                 for name in upstreams:
                     assert store.locked_assets("Mira", "Adult", pipeline=name)
-            run_id = f"{self.pipeline}-{len(self.runs)}"
+            run_id = "20261010_120000_123456"
+            pipeline_dir = {
+                "body-reference": store.root / "Mira" / "Adult" / run_id,
+                "head-image": store.root / "Mira" / "Adult" / "Head-Image" / run_id,
+                "character-assembly": store.root / "Mira" / "Adult" / "Character-Assembly" / run_id,
+                "costume-dressing": store.root / "Mira" / "Adult" / "Costume-Dressing" / "Blue_Coat" / run_id,
+            }[self.pipeline]
+            pipeline_dir.mkdir(parents=True, exist_ok=True)
+            (pipeline_dir / "spec.json").write_text(json.dumps({"run_id": run_id, "character": "Mira",
+                                                                  "phase": "Adult"}), encoding="utf-8")
             image = tmp_path / f"{run_id}.png"
             image.write_bytes(run_id.encode())
             candidate = {"candidate_id": "c001", "view": "FRONT", "image_path": str(image),
