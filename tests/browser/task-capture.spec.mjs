@@ -253,3 +253,40 @@ test("a damaged saved draft requires explicit discard before replacement", async
   await page.locator("#task-capture-new").click();
   await expect(page.locator("#task-capture-submit")).toBeEnabled();
 });
+
+test("task capture replaces the markdown editor and Help explains retained drafts", async ({ page }) => {
+  const legacyRequests = [];
+  page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/todo") legacyRequests.push(request.url()); });
+  await setup(page, "help");
+  await expect(page.locator("#toolbar-todo-button, #todo-dialog, #todo-form")).toHaveCount(0);
+  await expect(page.locator("#toolbar-open-board")).toHaveAttribute("href", metadata.board_url);
+  await page.locator("#task-capture-title").fill("Use the board");
+  await page.locator("#task-capture-close").click();
+  await expect(page.locator("#task-capture-help")).toContainText("Create task");
+  await expect(page.locator("#task-capture-help")).toContainText("retry the saved report");
+  await page.locator("#toolbar-create-task").click();
+  await expect(page.locator("#task-capture-title")).toHaveValue("Use the board");
+  expect(legacyRequests).toEqual([]);
+});
+
+test("the unrelated asset To Do Only filter still hides locked assets", async ({ page }) => {
+  await setup(page);
+  await page.locator("#task-capture-close").click();
+  await expect(page.locator("#asset-filter-todo")).toHaveCount(1);
+  const results = await page.evaluate(() => {
+    state.assets = [{asset_id:1,asset_state:"LOCKED",pipeline:"Costume-Dressing"},
+      {asset_id:2,asset_state:"IN_PROGRESS",pipeline:"Costume-Dressing"},
+      {asset_id:3,asset_state:"NEW",pipeline:"Costume-Dressing"}];
+    state.selectedAssetId = null;
+    state.assetFilters = {todoOnly:false,hideBaseImages:false,pipeline:""};
+    const checkbox = document.querySelector("#asset-filter-todo");
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change", {bubbles:true}));
+    const pending = filteredAssets().map(asset=>asset.asset_id);
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event("change", {bubbles:true}));
+    return {pending,all:filteredAssets().map(asset=>asset.asset_id)};
+  });
+  expect(results.pending).toEqual([2,3]);
+  expect(results.all).toEqual([1,2,3]);
+});

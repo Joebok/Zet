@@ -1,9 +1,9 @@
-# Kanban task forwarding and capture (packets 04–08)
+# Kanban task forwarding and capture (packets 04–09)
 
 Zet now exposes task forwarding through `ZetApp.create_task(payload)` and
 `POST /api/tasks`. Kanban owns its board files, intake validation, and request-ID
 receipts. Zet never reads or writes those files. Auxiliary-page context and
-screenshots are available in packet 08; removal of To Do follows in packet 09. The main dashboard now has Create task and Open board toolbar actions.
+screenshots are available in packet 08. Packet 09 retires the markdown To Do editor. The main dashboard now has Create task and Open board toolbar actions.
 
 ## Dashboard capture (packet 05)
 
@@ -29,7 +29,7 @@ clears it and provides Open task. Discard draft explicitly starts a new request;
 after uncertain delivery it warns that the original ticket may already exist.
 Only one submission can run at a time. The form remains available while Kanban is
 offline or unconfigured; configure the registered project ID before submitting.
-The existing markdown To Do editor remains until replacement coverage in packet 09.
+The markdown To Do editor is retired. Use Create task and Open board in the toolbar.
 
 ## Local context and Return to Zet (packet 06)
 
@@ -78,7 +78,7 @@ available fallback or a readable unavailable workspace. Loading snapshots retain
 requested identifiers. The shared form does not save Narrative editor content.
 Scene-batch task links use GET requests and never initialize a missing batch,
 including when a missing scene causes a fallback. Existing explicit workflow
-actions retain their behavior. Markdown To Do retirement is packet 09.
+actions retain their behavior.
 
 ## Auxiliary pages and screenshots (packet 08)
 
@@ -121,6 +121,18 @@ same report and attachment references. Upload failure prevents intake submission
 Nothing is discarded automatically on error. Success clears the local draft.
 This requires Kanban packet 08A, merged in
 [PR #5](https://github.com/Joebok/Zet_Kanban/pull/5).
+
+## Markdown To Do retirement (packet 09)
+
+Create task and Open board replace the old Tools → To Do action. The markdown
+dialog, its autosave/submit handlers, GET/POST `/api/todo` routes, and ZetApp
+markdown editing methods have been removed. Calls to the retired routes return
+404. `Docs/ToDo.md` remains untouched; reports are not automatically migrated
+from that historical document. The unrelated asset **To Do Only** filter retains
+its existing behavior of hiding locked assets.
+
+The Help page explains task capture, frozen context, optional screenshots, draft
+retention, retries, and Return to Zet. Existing template manual navigation remains.
 
 ## Configuration
 
@@ -201,7 +213,8 @@ Packet 04 is merged in [Zet PR #31](https://github.com/Joebok/Zet/pull/31).
 Packet 05 is merged in [Zet PR #33](https://github.com/Joebok/Zet/pull/33).
 Packet 06 is merged in [Zet PR #35](https://github.com/Joebok/Zet/pull/35).
 Packet 07 is merged in [Zet PR #36](https://github.com/Joebok/Zet/pull/36).
-Packets 04–08 target Zet's active dashboard branch
+Packet 08B is merged in [Zet PR #37](https://github.com/Joebok/Zet/pull/37).
+Packets 04–09 target Zet's active dashboard branch
 `V5-Re-Alignment-to-Local-Image-Generation`, as selected by the user, rather than
 including its unrelated development history in a PR against main. No live board
 reset, task creation, agent execution, or library changes are part of validation.

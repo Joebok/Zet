@@ -553,26 +553,12 @@ test("WP03 invalid scene selections fall back to the canonical first scene", asy
   await expect(page.locator("#scene-editor-title")).toHaveText(scenes[0].title);
 });
 
-test("WP03 To Do and Template Instruction Manuals open and report load failures", async ({ page }) => {
+test("WP03 Template Instruction Manuals open and report load failures", async ({ page }) => {
   await openPage(page, "local-batch-status");
-  await page.locator("#toolbar-settings-button").click();
-  await page.locator("#toolbar-todo-button").click();
-  await expect(page.locator("#todo-dialog")).toBeVisible();
-  await page.locator("#todo-dialog").evaluate((dialog) => dialog.close());
-
   await page.locator("#help-menu-button").click();
   await page.locator("#help-menu button[data-page='help']").click();
   await expect(page.locator("#help-page")).toHaveClass(/active/);
   await expect(page.locator("#help-status")).not.toHaveText("");
-
-  await page.route("**/api/todo", (route) => route.fulfill({
-    status: 500,
-    contentType: "application/json",
-    body: '{"detail":"Seeded To Do failure"}',
-  }));
-  await page.locator("#toolbar-settings-button").click();
-  await page.locator("#toolbar-todo-button").click();
-  await expect(page.locator("#action-message")).toContainText("Unable to open To Do: Seeded To Do failure");
 
   await page.evaluate(() => { state.templateManuals = []; });
   await page.route("**/api/help/template-manuals", (route) => route.fulfill({

@@ -193,6 +193,9 @@ def test_zet_app_exposes_forwarding_and_dashboard_installs_router(tmp_path):
     app = create_app(config_path, validate_catalog_on_create=False)
     client = TestClient(app)
     assert isinstance(app.state.zet_app, ZetApp)
+    assert "/api/todo" not in {getattr(route, "path", None) for route in app.routes}
+    assert client.get("/api/todo").status_code == 404
+    assert client.post("/api/todo", json={"text": "Retired editor"}).status_code == 404
     assert client.get("/api/tasks/config").json()["project_id"] == PROJECT_ID
     with patch.object(app.state.zet_app.task_service._opener, "open", return_value=Reply()) as sent:
         assert client.post("/api/tasks", json=payload()).json()["task_id"] == RECEIPT["task_id"]
