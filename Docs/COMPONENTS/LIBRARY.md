@@ -1,0 +1,30 @@
+# Library, universes, and discovery
+
+This component owns library service interactions. [DATA_MODEL](../DATA_MODEL.md) owns store layouts and identifiers; [INVARIANTS](../INVARIANTS.md) owns isolation/integrity contracts.
+
+## Entry points and responsibilities
+
+- [UniverseService](../../zet/services/universe_service.py): discover/select/create universes and bind configuration. [ZetApp.from_config](../../zet/app.py) constructs the bound services. [create_app](../../zet/web/app.py) caches per-universe apps and binds requests through header/query context.
+- [EntityLibraryService](../../zet/services/entity_library_service.py) and [EntityLibraryRepository](../../zet/repositories/entity_library_repository.py): authoritative images, entities/variants, reference sets, descriptors/facets/tags, stable logical references, usage, merge/archive/replace workflows. [LibraryDeletionService](../../zet/services/library_deletion_service.py) coordinates removal with local workflow sources and the entity catalog.
+- [ImageCatalogService](../../zet/services/image_catalog_service.py) and [ImageCatalogRepository](../../zet/repositories/image_catalog_repository.py): a separate record-oriented catalog combining managed metadata and existing pipeline/story images. It remains wired into app/story reference services; entity SQLite has not replaced every catalog consumer.
+- [LibraryIndexService](../../zet/services/library_index_service.py)/`LibraryIndexReconciler` and [LibraryIndexRepository](../../zet/repositories/library_index_repository.py): derived local generations for dashboard paging, source payload reuse, errors, work/history, and compilation dependency fingerprints. `ZetApp._indexed_list_rows` supplies additional list rows; record catalog writes call `refresh_library_index`.
+
+## Inputs, outputs, and flow
+
+Configuration selects a library container; a universe descriptor binds the creative root. Imports/publications validate image bytes and store image metadata/relationships. Logical references provide durable consumer bindings. Story reference resolution combines entity and record/pipeline sources into [ImageReferenceRow](../../zet/models/story.py) data, including availability/reason and source identity. Local approved character images are published through [LocalAssetStoreService](../../zet/services/local_asset_store_service.py).
+
+Reconciliation scans authored/queue sources, fingerprints content, reuses cached parses, records malformed sources as errors, builds a generation, and publishes it for queries. HTTP results expose cursor/generation/freshness information; rebuilding a cache is different from migrating the record catalog or backing up entity SQLite.
+
+## Failure modes and extension points
+
+- Wrong universe/request context can target the wrong store; queue/results must remain owned by the bound universe.
+- Older or incomplete record catalogs fail validation with a migration instruction. Entity initialization can migrate an older database with a backup; it rejects a newer unsupported version.
+- Usage protection can block archive/replace/merge operations. Preserve logical-reference semantics and operation previews rather than bypassing protections with raw SQL/file deletion.
+- Derived index corruption or stale generations can affect discovery while authored files remain intact. Inspect error/freshness reporting before choosing an authorized rebuild; CLI scripts do not universally bind a universe through `ZetApp`.
+- Add new reusable library actions in focused services and expose them through existing app/router patterns. Add indexed discovery kinds through source scanning and list providers with pagination/freshness tests. Do not make candidates searchable approved images merely by adding them to a folder scan.
+
+## Tests and design evidence
+
+[test_entity_library_service.py](../../tests/test_entity_library_service.py) covers import, references, usage protection, merge previews, schema backup and generated-image metadata. [test_image_catalog_service.py](../../tests/test_image_catalog_service.py) and [test_wp08_catalog_migration.py](../../tests/test_wp08_catalog_migration.py) cover the record catalog. [test_wp09_library_index.py](../../tests/test_wp09_library_index.py), [test_wp10_library_index_reconciliation.py](../../tests/test_wp10_library_index_reconciliation.py), and [test_wp11_indexed_dashboard.py](../../tests/test_wp11_indexed_dashboard.py) cover derived discovery. Universe tests are [management](../../tests/test_universe_management.py) and [lifecycle](../../tests/test_universe_lifecycle.py).
+
+[ADR 0001](../DECISIONS/0001-library-authority-and-derived-index.md) records store boundaries. [Library Structure](../../Docs-Joe/Library%20Structure.md) is a preserved proposal, not a complete description of current implementation.

@@ -141,9 +141,12 @@ Open **Tools > AI Controls** and check the process state and Ask, Running, and A
 
 ## Documentation
 
+- [Docs/INDEX.md](Docs/INDEX.md) — agent knowledge base: architecture, implementation navigation, contracts, and validation
+- [plans/README.md](plans/README.md) — implementation plans and maintenance checkpoints
 - [Tutorial.md](Tutorial.md) — feature-oriented usage guide
-- [Docs/Local_Image_Generation.md](Docs/Local_Image_Generation.md) — local rendering configuration and operation
-- [Docs/Zet reliability, library scaling, and model qualification.md](Docs/Zet%20reliability,%20library%20scaling,%20and%20model%20qualification.md) — active reliability and scaling plan
+- [Docs/COMPONENTS/LOCAL_CHARACTERS.md](Docs/COMPONENTS/LOCAL_CHARACTERS.md) — current local character workflow and rendering boundaries
+- [Docs-Joe/archive/Local_Image_Generation.md](Docs-Joe/archive/Local_Image_Generation.md) — historical local rendering guidance
+- [Docs-Joe/archive/Zet reliability, library scaling, and model qualification.md](Docs-Joe/archive/Zet%20reliability,%20library%20scaling,%20and%20model%20qualification.md) — historical reliability and scaling plan
 
 ## Status
 

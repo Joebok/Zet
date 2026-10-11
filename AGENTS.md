@@ -1,5 +1,13 @@
 # Zet project instructions
 
+## Project and knowledge entry point
+
+Zet is a local creative-production dashboard for character references, illustrated scenes, and zines. FastAPI presents Python services over universe-scoped files and an entity image library; AI work is dispatched through filesystem queues or the Narrative Codex integration.
+
+- Before significant changes, consult [Docs/INDEX.md](Docs/INDEX.md), select the relevant documents, then inspect authoritative code and tests. Documentation is a navigation aid; investigate contradictions rather than assuming either old notes or filenames describe current behavior.
+- Start from [Docs/CODE_MAP.md](Docs/CODE_MAP.md) for implementation ownership and related tests. Do not read the entire knowledge base for every task or make speculative changes based on undocumented assumptions.
+- Essential commands from the repository root: `npm run test:e2e`; `git diff --check`. The approved testing baseline and live-check boundaries are in [Docs/Testing.md](Docs/Testing.md). Run the dashboard with `python3 -B -m zet.web.app --config config.toml --host 127.0.0.1 --port 8081` when authorized to use that library. Setup and command verification are in [Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md).
+
 ## Scope
 
 - Treat the request's goal, relevant context, constraints, and success criteria as the scope boundary.
@@ -25,6 +33,9 @@
 - Keep `zet/web` limited to FastAPI routes, presentation, browser interaction, and calls into backend services. Do not place file discovery, pipeline transitions, prompt review, render orchestration, or other reusable business logic there.
 - Expose new dashboard workflow actions through `ZetApp`, `AssetRef`, or a focused service before calling them from the web layer.
 - The Streamlit dashboard and standalone Render Console are retired; do not add functionality to them.
+- Preserve universe isolation, queue ownership and attempt fencing, locked-image integrity, serialization versions, and ordered image bindings; see [Docs/INVARIANTS.md](Docs/INVARIANTS.md).
+- Traditional character generation is retired. Active local character workflows reuse compilers but have independent run/selection storage. Narrative scenes are independent of Scene Builder. Follow the relevant component document before crossing these boundaries.
+- The entity library's `catalog.sqlite3` is authoritative; the machine-local library index is derived. Never treat their rebuild or migration procedures as interchangeable.
 
 ## Runtime and dependencies
 
@@ -47,6 +58,14 @@
 - Preserve existing style and behavior outside the requested change.
 - Prefer localized edits to rewrites; never duplicate unchanged code.
 - Run the smallest relevant existing tests or checks after editing. Report the command and result; if none can run, state why.
+
+## Planning and knowledge maintenance
+
+- Before substantial features, complex bug fixes, cross-component changes, or refactors, write or update a plan in `plans/active/` using [plans/README.md](plans/README.md). Break implementation into Luna sized work packets with files, dependencies, acceptance checks, and validation. Trivial edits do not require a formal plan. This does not authorize delegation or later refactoring phases.
+- Before implementation, identify affected architecture, component, data, invariant, workflow, and code-map documentation after inspecting code/tests.
+- During implementation, synchronize the active plan with progress; record discovered dependencies, constraints, deviations, and unresolved contradictions. Avoid unrelated documentation changes.
+- After implementation, update only affected knowledge. Update the code map when responsibilities or significant entry points move; add a short ADR for significant durable design choices using [Docs/DECISIONS/README.md](Docs/DECISIONS/README.md). Record observed validation, complete the plan, and move it to `plans/completed/` when done.
+- Documentation maintenance is part of significant code changes. Prefer source links and one primary owner per concept; mark uncertainty and untested commands explicitly. Do not duplicate complete schemas or invent historical rationale. Report any documentation that could not be verified or updated.
 
 ## Review and refactoring authority
 
