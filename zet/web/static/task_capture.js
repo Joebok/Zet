@@ -9,6 +9,7 @@
   let provider = null;
   let draft = null;
   let busy = false;
+  let readingImages = false;
   let storageError = false;
   let unreadableDraft = false;
   let metadata = null;
@@ -30,6 +31,7 @@
   }
 
   function restore() {
+    if (draft) return; // Preserve in-memory edits when browser storage failed.
     let raw;
     try {
       raw = localStorage.getItem(key);
@@ -45,6 +47,11 @@
           (value.delivery && JSON.stringify(value.delivery) !== JSON.stringify(value.report))) {
         throw new Error("Invalid draft");
       }
+      if (value.screenshots !== undefined && (!Array.isArray(value.screenshots) || value.screenshots.length > 4 ||
+          value.screenshots.some((item) => !item || typeof item.filename !== "string" ||
+            !["image/png", "image/jpeg", "image/webp"].includes(item.content_type) ||
+            typeof item.content_base64 !== "string" || item.content_base64.length > 4 * Math.ceil(5 * 1024 * 1024 / 3) ||
+            (item.attachment_id && !/^attachment-[0-9a-f]{32}$/.test(item.attachment_id))))) throw new Error("Invalid screenshots");
       draft = value;
       unreadableDraft = false;
     } catch {
@@ -81,7 +88,7 @@
   }
 
   function render() {
-    const locked = busy || Boolean(draft?.delivery);
+    const locked = busy || readingImages || Boolean(draft?.delivery);
     for (const [name, id] of Object.entries(fields)) {
       el(id).value = draft?.report[name] || (name === "type" ? "bug" : "");
       el(id).disabled = locked || !draft;
@@ -89,9 +96,89 @@
     el("bug-details").hidden = draft?.report.type !== "bug";
     el("context").textContent = draft ? JSON.stringify(draft.report.context, null, 2) : "";
     el("refresh").disabled = locked || !draft;
-    el("new").disabled = busy;
-    el("submit").disabled = busy || !draft || Boolean(draft.capturePending) || !metadata?.configured;
+    el("new").disabled = busy || readingImages;
+    el("files").disabled = locked || !draft;
+    el("paste").setAttribute("aria-disabled", String(locked || !draft));
+    renderScreenshots(locked);
+    el("submit").disabled = busy || readingImages || !draft || Boolean(draft.capturePending) || !metadata?.configured;
     el("submit").textContent = draft?.delivery ? "Retry submission" : "Create task";
+  }
+
+  function renderScreenshots(locked) {
+    el("screenshots").replaceChildren();
+    (draft?.screenshots || []).forEach((image, index) => {
+      const row = document.createElement("li");
+      const preview = document.createElement("img");
+      preview.src = `data:${image.content_type};base64,${image.content_base64}`;
+      preview.alt = image.filename;
+      const label = document.createElement("span");
+      label.textContent = image.filename + (image.attachment_id ? " · uploaded" : " · saved in draft");
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.disabled = locked;
+      remove.addEventListener("click", () => {
+        if (busy || readingImages || draft?.delivery) return;
+        draft.screenshots.splice(index, 1);
+        save();
+        render();
+        message("Screenshot removed from this draft.");
+      });
+      row.append(preview, label, remove);
+      el("screenshots").append(row);
+    });
+  }
+
+  async function addScreenshots(files) {
+    if (!draft || draft.delivery || busy || readingImages) return;
+    readingImages = true;
+    const current = draft;
+    render();
+    try {
+      const additions = [];
+      if ((draft.screenshots || []).length + files.length > 4) throw new Error("Choose at most four screenshots.");
+      for (const file of files) {
+        const suffixes = { "image/png": ["png"], "image/jpeg": ["jpg", "jpeg"], "image/webp": ["webp"] };
+        if (!suffixes[file.type]) throw new Error("Choose PNG, JPEG, or WebP screenshots.");
+        if (!file.size || file.size > 5 * 1024 * 1024) throw new Error("Each screenshot must contain an image of at most 5 MiB.");
+        const filename = file.name || `pasted-screenshot.${suffixes[file.type][0]}`;
+        if (filename.length > 240 || /[\\/\x00-\x1f\x7f]/.test(filename) ||
+            !suffixes[file.type].includes(filename.split(".").pop().toLowerCase())) throw new Error("Screenshot filename must match its image type.");
+        const encoded = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error("Could not read the screenshot."));
+          reader.readAsDataURL(file);
+        });
+        const image = { filename, content_type: file.type, content_base64: encoded.split(",", 2)[1] };
+        if ([...(draft.screenshots || []), ...additions].some((item) => item.filename === image.filename &&
+            item.content_type === image.content_type && item.content_base64 === image.content_base64)) throw new Error("This screenshot is already in the draft.");
+        additions.push(image);
+      }
+      if (draft !== current) return;
+      draft.screenshots = [...(draft.screenshots || []), ...additions];
+      save();
+      message("Screenshots saved with the local draft. Review them before submitting.");
+    } catch (error) { message(error.message); }
+    finally { readingImages = false; el("files").value = ""; render(); }
+  }
+
+  el("files").addEventListener("change", (event) => void addScreenshots([...event.target.files]));
+  form.addEventListener("paste", (event) => {
+    const files = [...(event.clipboardData?.items || [])].filter((item) => item.kind === "file").map((item) => item.getAsFile()).filter(Boolean);
+    if (files.length) { event.preventDefault(); void addScreenshots(files); }
+  });
+
+  async function postDraft(url, payload) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 65000);
+    try {
+      const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload), signal: controller.signal });
+      const receipt = await response.json();
+      if (!response.ok) throw new Error(typeof receipt.detail === "string" ? receipt.detail : `Delivery failed (${response.status}).`);
+      return { response, receipt };
+    } finally { clearTimeout(timer); }
   }
 
   async function capture() {
@@ -161,7 +248,7 @@
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (busy || !draft || draft.capturePending || !metadata?.configured) return;
+    if (busy || readingImages || !draft || draft.capturePending || !metadata?.configured) return;
     if (!draft.delivery) {
       // Hidden bug fields must not be sent for feature/improvement reports.
       if (draft.report.type !== "bug") {
@@ -174,13 +261,24 @@
     busy = true;
     render();
     message("Submitting the saved report…");
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 65000);
     try {
-      const response = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft.delivery), signal: controller.signal });
-      const receipt = await response.json();
-      if (!response.ok) throw new Error(typeof receipt.detail === "string" ? receipt.detail : `Task creation failed (${response.status}).`);
+      for (const screenshot of draft.screenshots || []) {
+        if (screenshot.attachment_id) continue;
+        message(`Uploading ${screenshot.filename}…`);
+        const { response, receipt } = await postDraft("/api/tasks/attachments", {
+          request_id: draft.delivery.request_id, project_id: draft.delivery.project_id,
+          filename: screenshot.filename, content_type: screenshot.content_type, content_base64: screenshot.content_base64,
+        });
+        if (![200, 201].includes(response.status) || !/^attachment-[0-9a-f]{32}$/.test(receipt.attachment_id) ||
+            typeof receipt.created !== "boolean" || receipt.created !== (response.status === 201) ||
+            receipt.filename !== screenshot.filename || receipt.content_type !== screenshot.content_type) throw new Error("Invalid screenshot receipt.");
+        screenshot.attachment_id = receipt.attachment_id;
+        save();
+      }
+      const report = JSON.parse(JSON.stringify(draft.delivery));
+      if (draft.screenshots?.length) report.attachment_ids = draft.screenshots.map((item) => item.attachment_id);
+      message("Submitting the saved report…");
+      const { response, receipt } = await postDraft("/api/tasks", report);
       const url = new URL(receipt.board_url);
       if (![200, 201].includes(response.status) || !/^task-[0-9a-f]{8}$/.test(receipt.task_id) ||
           typeof receipt.created !== "boolean" || receipt.created !== (response.status === 201) ||
@@ -195,14 +293,13 @@
     } catch (error) {
       message(`${error.name === "AbortError" ? "Task delivery timed out." : error.message} Draft retained. Retry with the same request ID.`);
     } finally {
-      clearTimeout(timer);
       busy = false;
       render();
     }
   });
 
   el("close").addEventListener("click", () => dialog.close());
-  el("refresh").addEventListener("click", () => { if (!busy && !draft?.delivery) void capture(); });
+  el("refresh").addEventListener("click", () => { if (!busy && !readingImages && !draft?.delivery) void capture(); });
   el("new").addEventListener("click", () => {
     if (!confirm(draft?.delivery
       ? "Delivery may already have created a ticket. Discarding and submitting a new report can create a duplicate. Discard this draft?"

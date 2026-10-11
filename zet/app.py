@@ -263,6 +263,9 @@ class ZetApp:
     def create_task(self, payload: dict) -> dict:
         return self.task_service.create_task(payload)
 
+    def upload_task_attachment(self, payload: dict) -> dict:
+        return self.task_service.upload_task_attachment(payload)
+
     def list_pipeline_inspections(self) -> list[dict]:
         return self.pipeline_inspection_service.list_pipelines()
 

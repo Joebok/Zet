@@ -1216,7 +1216,7 @@ def create_app(
 
     @app.get("/local-character-overview", response_class=HTMLResponse)
     def local_character_overview_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "local_character_overview.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "local_character_overview.html")
 
     @app.get("/api/local/character-overview")
     def local_character_overview() -> dict[str, Any]:
@@ -1257,11 +1257,11 @@ def create_app(
 
     @app.get("/gate-test-rig", response_class=HTMLResponse)
     def gate_test_rig_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "gate_test_rig.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "gate_test_rig.html")
 
     @app.get("/gate-test-data", response_class=HTMLResponse)
     def gate_test_data_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "gate_test_data.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "gate_test_data.html")
 
     @app.get("/api/local-gates/{pipeline}")
     def local_gate_catalog(pipeline: str) -> dict[str, Any]:

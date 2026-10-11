@@ -15171,11 +15171,22 @@ window.ZetTaskCapture.registerProvider(() => {
       if (batch) { Object.assign(selections,batch.selections); for (const [key,value] of Object.entries(batch.parameters)) source.searchParams.set(key,value); }
     }
   }
+  if (page === "image-generation") {
+    const slotIndex = imageGenerationReview.open ? imageGenerationReviewIndex : imageGenerationSelectedSlot;
+    const result = imageGenerationResult(slotIndex);
+    if (result) {
+      const requestId = result.assignment.requestId;
+      selections.run = {state:"selected",id:requestId,label:requestId};
+      selections.candidate = {state:"selected",id:`${requestId}:${result.assignment.index}`,label:`Result ${result.assignment.index + 1} · slot ${slotIndex + 1}`};
+    }
+  }
   return { page_id: page,
     page_name: LOCAL_ASSET_PAGES.has(page) ? document.querySelector("#local-pipeline-title").textContent.trim()
       : document.querySelector(`#${page}-page h1`)?.textContent?.trim() || page,
     source_url: source.href, universe_id: state.universeId || null, selections };
 });
+
+document.querySelector("#image-generation-review-task").addEventListener("click",()=>void window.ZetTaskCapture.open());
 
 main();
 

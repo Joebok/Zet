@@ -10,6 +10,7 @@
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
   <link rel="stylesheet" href="/static/zet.css?v=20261010-story-task-context">
+  <link rel="stylesheet" href="/static/task_capture.css?v=20261010-screenshots">
 </head>
 <body>
   <header class="app-header">
@@ -1976,7 +1977,7 @@
           <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
           <div class="button-row"><button id="image-generation-review-import" class="primary-action" type="button" disabled>Add to Image Inventory</button><button id="image-generation-review-update" type="button" hidden disabled>Update Image Inventory</button></div>
           <dialog id="image-generation-review" class="image-generation-review" aria-label="Image result review">
-            <div class="button-row compact"><button id="image-generation-review-close" type="button">Close</button></div>
+            <div class="button-row compact"><button id="image-generation-review-close" type="button">Close</button><button id="image-generation-review-task" type="button">Create task</button></div>
             <div class="button-row compact"><button id="image-generation-review-previous" type="button" disabled>Previous</button><span id="image-generation-review-count" class="status-text"></span><button id="image-generation-review-next" type="button" disabled>Next</button></div>
             <img id="image-generation-review-image" alt="Selected generated result">
             <p><strong>Prompt</strong><br><span id="image-generation-review-prompt"></span></p>
@@ -2409,7 +2410,7 @@ Add prompt language here.
       </div>
     </div>
   </dialog>
-  <script src="/static/task_capture.js?v=20261010-local-context"></script>
+  <script src="/static/task_capture.js?v=20261010-screenshots"></script>
   <script src="/static/zet.js?v=20261010-story-task-context"></script>
   <script src="/static/quick_character_wizard.js?v=20261009"></script>
   <script src="/static/local_asset_pipeline.js?v=20261010-task-context"></script>
