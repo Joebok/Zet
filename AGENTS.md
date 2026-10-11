@@ -8,6 +8,17 @@
 - Ask one concise question only when a material ambiguity or blocker cannot be resolved from the repository. Do not invent APIs or add unapproved placeholders.
 - Do not use subagents unless the user explicitly requests them.
 
+## Testing
+
+- Zet is a personal application run on one machine. Prefer a few representative end-to-end task tests over extensive unit coverage.
+- Reuse the approved end-to-end scenarios. Do not automatically add a test for every change or defect.
+- Get Joe's explicit approval before adding tests, introducing scenarios, or materially expanding coverage. State which user task the proposed test covers and why existing scenarios are insufficient.
+- Approval applies only to the named tests or scenarios. The current approved baseline is three fast end-to-end scenarios and one separately invoked live narrative pipeline check.
+- Repair existing tests when needed to preserve their approved purpose.
+- Do not add coverage targets, exhaustive permutations, snapshot suites, test frameworks, or dependencies without approval.
+- Exercise story and scene workflows through the Narrative Scenes dashboard, `/api/narrative`, and `NarrativeStories` storage. Do not add tests for the retiring Scene Builder or local scene-batch workflows.
+- Keep fast test runs isolated from the normal library, queue, machine indexes, and live model/render services. Run the optional live check only when Joe requests it.
+
 ## Architecture
 
 - Put reusable Zet behavior in `zet/services`, `zet/repositories`, `zet/models`, or pipeline scripts.

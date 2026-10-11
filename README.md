@@ -108,6 +108,19 @@ Zet can run without every optional integration, but automated queue processing a
 - In Zet, open **Tools > Image Config** to select the backend, render profile, checkpoint, and prompt globals.
 - Open **Tools > AI Controls** to configure harvesting, choose the final-render backend, and inspect service status.
 
+## Testing
+
+The fast Playwright suite runs three approved tasks against a disposable copy under `test-results/narrative-e2e`. It never uses the configured creative library or live models. The separate live Narrative Scenes check requires Joe's explicit request and ready AI Proxy/render services.
+
+```powershell
+npm run test:e2e
+npm run test:library
+# Only when explicitly requested and prerequisites are ready:
+npm run test:e2e:live
+```
+
+`npm run test:library` opens a separate dashboard at `http://127.0.0.1:8766/narrative` with its own inspection copy. See [Docs/Testing.md](Docs/Testing.md) for coverage boundaries and live-check requirements.
+
 ## Troubleshooting
 
 ### `No module named 'zet'`

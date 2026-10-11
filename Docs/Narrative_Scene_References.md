@@ -77,19 +77,4 @@ bindings continue to use the existing library lifecycle and availability checks.
 
 ## Validation
 
-Focused backend coverage is in `tests/test_narrative_references.py`. The Narrative
-browser suite covers cross-scene source picking, unchanged byte preservation,
-cropping, adaptation, import, interview and ordinary generation using fixture
-worker responses. These checks do not assess live model image quality.
-
-```powershell
-.venv\Scripts\python.exe -m pytest tests/test_narrative_repository.py tests/test_narrative_scene_service.py tests/test_narrative_generation.py tests/test_narrative_phase2.py tests/test_narrative_qwen.py tests/test_narrative_references.py -q
-npx playwright test tests/browser/narrative-scenes.spec.mjs --reporter=line
-node --check zet/web/static/narrative.js
-.venv\Scripts\python.exe -m ruff check zet/services/narrative_reference_service.py tests/test_narrative_references.py
-git diff --check
-```
-
-A disposable copy of the real Arrival backdrop also verified byte-identical
-unchanged reuse and a visually inspected 768 × 768 crop. The original Narrative
-Phase 1 Test records were not modified. No live adaptation jobs were submitted.
+The maintained library and Narrative authoring scenario in `npm run test:e2e` checks readable reference images and saved authoring data through the current Narrative workflow. See [Testing.md](Testing.md).

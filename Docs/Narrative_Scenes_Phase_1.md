@@ -73,32 +73,4 @@ worker answers. Those tests validate behavior, not Qwen image quality.
 
 ## Validation record
 
-The focused regression selection passed 84 Python tests:
-
-```powershell
-python3 -m pytest tests/test_narrative_repository.py tests/test_narrative_scene_service.py tests/test_narrative_generation.py tests/test_narrative_qwen.py tests/test_config_service.py tests/test_comfyui_render_service.py tests/test_file_proxy_producers.py tests/test_file_proxy_worker_contracts.py tests/test_entity_library_service.py tests/test_web_workflow_services.py -q
-```
-
-The two narrative browser tests and the existing universe smoke test passed:
-
-```powershell
-npx playwright test tests/browser/narrative-scenes.spec.mjs tests/browser/dashboard.spec.mjs --grep "narrative|backdrop|universe pages create" --reporter=line
-```
-
-The real acceptance story completed two candidates for each of its three
-subscenes and three backdrops. Six reviewed baseline images were selected and
-locked, and selection was verified with a fresh application instance. The
-arrival revision corrected the rolled parchment; the handoff remained readable.
-Backdrop regeneration verified that removing whole-scene actor context produces
-empty environments instead of leaking the scene's cast into the backdrop.
-
-Remaining visual limitations: the three-person exchange can reverse positions
-or assign a gesture to the wrong person despite correct prompt text. The
-`general:latest` alias also occasionally exhausted its response budget; explicit
-retries succeeded. These remain visible iteration issues, without approval gates.
-
-Two broader existing checks failed outside this change: the ad hoc image
-generation test expects a prompt without the reference labels already added by
-its HEAD service; the legacy scene startup browser test expects the obsolete
-"Open/Create Scene Batch" label instead of "Open Scene Renders". They were
-reported and left outside this implementation.
+The maintained Narrative Scenes end-to-end scenario is included in `npm run test:e2e`; it exercises the current Narrative workflow with prepared File Proxy answers. The separate real-render check is `npm run test:e2e:live` and runs only when Joe explicitly requests it. See [Testing.md](Testing.md).

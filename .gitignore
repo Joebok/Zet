@@ -1,6 +1,7 @@
 # Exclude all PNG/JPG/GIF/etc images except those in img/ directory
 **/*.png
 !**/img/**/*
+!tests/library/**/*.png
 **/*.jpg
 !**/img/**/*
 **/*.jpeg

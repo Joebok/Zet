@@ -1,10 +1,11 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./tests/browser",
+  testDir: "./tests/e2e",
+  testMatch: "fast.spec.mjs",
   workers: 1,
   outputDir: "./test-results/playwright",
-  timeout: 30_000,
+  timeout: 90_000,
   expect: {
     timeout: 8_000,
   },
@@ -15,7 +16,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "python3 -B tests/browser/run_test_server.py",
+    command: "python3 -B tests/e2e/server.py --mode fast",
     url: "http://127.0.0.1:8765/api/context",
     reuseExistingServer: false,
     timeout: 30_000,

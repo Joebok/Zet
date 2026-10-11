@@ -15,7 +15,7 @@ Codex selects the lowest `priority:<N>` value first, then the oldest eligible is
 | `codex-ready` | Approved for immediate implementation. |
 | `in-progress` | Claimed in an isolated `codex/issue-<number>-<slug>` worktree and branch. |
 | `needs-input` | Work is paused on one material decision. |
-| `needs-review` | Tests passed; the pull request is ready for human review. |
+| `needs-review` | The approved local end-to-end checks passed; the pull request is ready for human review. |
 
 Codex removes the previous workflow label when applying the next one. When a pull request is closed without merging, the person closing it removes `in-progress` or `needs-review` and restores `codex-ready`. Merging a pull request with `Closes #<number>` closes the issue.
 
