@@ -1450,14 +1450,6 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get("/api/todo")
-    def todo() -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            return {"text": zet_app.todo_text()}
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.get("/api/workspace-summary")
     def workspace_summary(
         character: str = Query(""),
@@ -1473,15 +1465,6 @@ def create_app(
                 else None,
                 "story": asdict(zet_app.story_workspace_summary(story_slug)),
             }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/todo")
-    def save_todo(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            zet_app.save_todo_text(str(payload.get("text") or ""))
-            return {"message": "To Do saved."}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

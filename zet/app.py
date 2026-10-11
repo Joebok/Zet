@@ -1632,18 +1632,6 @@ class ZetApp:
     def save_automation_settings(self, settings: AutomationSettings) -> None:
         self.pipeline_control_service.save_automation_settings(settings)
 
-    def todo_text(self) -> str:
-        path = Path(__file__).resolve().parents[1] / "Docs" / "ToDo.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if not path.exists():
-            path.write_text("", encoding="utf-8")
-        return path.read_text(encoding="utf-8")
-
-    def save_todo_text(self, text: str) -> None:
-        path = Path(__file__).resolve().parents[1] / "Docs" / "ToDo.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-
     def head_image_reference_context(self, character: str, phase: str, asset_id: int):
         return self.reference_service.head_image_context(character, phase, asset_id)
 

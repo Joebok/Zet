@@ -130,7 +130,6 @@
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
           <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
           <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
-          <button id="toolbar-todo-button" type="button">To Do</button>
         </div>
       </div>
       <div class="toolbar-menu">
@@ -923,6 +922,12 @@
         <div id="help-status" class="status-text"></div>
       </div>
       </details>
+      <section id="task-capture-help" class="control-panel">
+        <h2>Report bugs, improvements, and features</h2>
+        <p>Use <strong>Create task</strong> in the toolbar or an image review to send a report to Zet_Kanban. The form captures the page and relevant selections when it opens. Review the preview; use Refresh context explicitly to replace it.</p>
+        <p>Add optional screenshots by choosing files or pasting an image. Your draft stays local until creation succeeds; if the board is unavailable, retry the saved report. If browser storage fails, keep the tab open to retain the draft.</p>
+        <p><strong>Open board</strong> opens Zet_Kanban, where each ticket includes a Return to Zet link. Task capture replaces the markdown To Do editor. The asset <strong>To Do Only</strong> filter still hides locked assets.</p>
+      </section>
       <section class="control-panel template-manual-controls">
         <label>
           Manual
@@ -2324,15 +2329,6 @@ Add prompt language here.
       </form>
     </dialog>
     <!-- TASK_CAPTURE_FORM -->
-    <dialog id="todo-dialog" class="todo-dialog">
-      <form id="todo-form" method="dialog">
-        <div class="review-header">
-          <h2>To Do</h2>
-          <button id="todo-save" type="submit">Save</button>
-        </div>
-        <textarea id="todo-text" spellcheck="false"></textarea>
-      </form>
-    </dialog>
     <dialog id="prompt-analysis-dialog" class="prompt-analysis-dialog side-panel-dialog" aria-labelledby="prompt-analysis-title">
       <div class="prompt-analysis-dialog-content">
         <div class="review-header">
@@ -2411,7 +2407,7 @@ Add prompt language here.
     </div>
   </dialog>
   <script src="/static/task_capture.js?v=20261010-screenshots"></script>
-  <script src="/static/zet.js?v=20261010-story-task-context"></script>
+  <script src="/static/zet.js?v=20261010-retire-todo"></script>
   <script src="/static/quick_character_wizard.js?v=20261009"></script>
   <script src="/static/local_asset_pipeline.js?v=20261010-task-context"></script>
   <script src="/static/local_scene_batches.js?v=20261010-task-context"></script>

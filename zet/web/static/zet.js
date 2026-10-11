@@ -270,7 +270,6 @@ const newPhaseButton = document.querySelector("#new-phase");
 const newStoryButton = document.querySelector("#new-story");
 const newSceneButton = document.querySelector("#new-scene");
 const headerFitmentPreview = document.querySelector("#header-fitment-preview");
-const toolbarTodoButton = document.querySelector("#toolbar-todo-button");
 const toolbarRestartZet = document.querySelector("#toolbar-restart-zet");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
@@ -472,9 +471,6 @@ const confirmationDialog = document.querySelector("#confirmation-dialog");
 const confirmationTitle = document.querySelector("#confirmation-title");
 const confirmationMessage = document.querySelector("#confirmation-message");
 const confirmationConfirm = document.querySelector("#confirmation-confirm");
-const todoDialog = document.querySelector("#todo-dialog");
-const todoForm = document.querySelector("#todo-form");
-const todoText = document.querySelector("#todo-text");
 const promptAnalysisDialog = document.querySelector("#prompt-analysis-dialog");
 const promptAnalysisClose = document.querySelector("#prompt-analysis-close");
 const promptAnalysisFrame = document.querySelector("#prompt-analysis-frame");
@@ -4241,34 +4237,6 @@ function closeNewMenu(returnFocus = false) {
   newMenu.hidden = true;
   newMenuButton.setAttribute("aria-expanded", "false");
   if (returnFocus && wasOpen) newMenuButton.focus();
-}
-
-async function openTodoDialog() {
-  closeToolbarSettingsMenu();
-  try {
-    const payload = await fetchJson("/api/todo");
-    todoText.value = payload.text || "";
-    todoDialog.dataset.savedText = todoText.value;
-    todoDialog.showModal();
-  } catch (error) {
-    showActionMessage(`Unable to open To Do: ${error.message}`, "error");
-  }
-}
-
-async function persistTodo() {
-  if (todoText.value === (todoDialog.dataset.savedText || "")) return;
-  await fetchJson("/api/todo", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: todoText.value }),
-  });
-  todoDialog.dataset.savedText = todoText.value;
-}
-
-async function saveTodo(event) {
-  event.preventDefault();
-  await persistTodo();
-  todoDialog.close();
 }
 
 async function harvestAiFromToolbar() {
@@ -13816,7 +13784,6 @@ characterRecommendedAction.addEventListener("click", () => runGuardedTransition(
   await activatePage(destination, { skipAutosave: true });
   if (destination === "onboarding") characterSetupDetails.open = true;
 }));
-toolbarTodoButton.addEventListener("click", openTodoDialog);
 toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
 toolbarLocalCharacterOverview.addEventListener("click", () => {
   window.location.assign("/local-character-overview");
@@ -13856,17 +13823,6 @@ document.addEventListener("keydown", (event) => {
     closeToolbarSettingsMenu(true);
     closeHelpMenu(true);
     closeNewMenu(true);
-  }
-});
-todoForm.addEventListener("submit", saveTodo);
-todoDialog.addEventListener("close", () => {
-  persistTodo().catch((error) => {
-    console.error("Unable to save To Do text.", error);
-  });
-});
-todoDialog.addEventListener("click", (event) => {
-  if (event.target === todoDialog) {
-    todoDialog.close();
   }
 });
 promptAnalysisClose.addEventListener("click", closePromptAnalysisDialog);

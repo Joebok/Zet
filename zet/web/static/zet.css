@@ -4612,10 +4612,6 @@ dialog {
   width: min(1180px, calc(100vw - 32px));
 }
 
-.todo-dialog textarea {
-  min-height: 60vh;
-}
-
 .side-panel-dialog {
   border: 0;
   height: 100dvh;
