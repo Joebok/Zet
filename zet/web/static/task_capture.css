@@ -1,0 +1,23 @@
+/* Shared task capture; independent of the active workspace. */
+.task-capture-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; border-radius: 10px; }
+.task-capture-dialog::backdrop { background: rgb(15 30 38 / 60%); }
+.task-capture-header, .task-capture-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+.task-capture-header h2 { margin: 0; }
+.task-capture-dialog label { display: grid; gap: 4px; margin: 10px 0; }
+.task-capture-dialog input, .task-capture-dialog select, .task-capture-dialog textarea { width: 100%; box-sizing: border-box; }
+.task-capture-dialog textarea { min-height: 0; height: auto; resize: vertical; }
+.task-capture-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font-size: 12px; }
+.task-capture-dialog fieldset { margin: 12px 0; }
+.task-capture-dialog [hidden] { display: none; }
+.task-capture-dialog #task-capture-status { overflow-wrap: anywhere; }
+
+.auxiliary-task-page .task-capture-dialog { box-sizing: border-box; background: #fff; color: #202124; font: 15px system-ui, sans-serif; }
+.auxiliary-task-page .task-capture-dialog button, .auxiliary-task-page .task-capture-dialog input, .auxiliary-task-page .task-capture-dialog select, .auxiliary-task-page .task-capture-dialog textarea { font: inherit; padding: .5rem; border: 1px solid #b9c2d0; border-radius: 5px; }
+.auxiliary-task-page .task-capture-dialog button { background: #f5f7fb; color: #202124; cursor: pointer; }
+.task-capture-dialog button:disabled { opacity: .55; cursor: not-allowed; }
+#task-capture-paste { border: 1px dashed #8b95a5; padding: .6rem; border-radius: 5px; }
+#task-capture-screenshots { list-style: none; padding: 0; }
+#task-capture-screenshots li { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .5rem 0; overflow-wrap: anywhere; }
+#task-capture-screenshots img { width: 64px; height: 64px; aspect-ratio: auto; object-fit: contain; background: #f5f7fb; }
+#task-context-notice { overflow-wrap: anywhere; }
+.task-context-selected { outline: 2px solid #4598d4; outline-offset: 2px; }

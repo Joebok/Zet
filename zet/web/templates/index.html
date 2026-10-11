@@ -9,7 +9,8 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261009-quick-character-wizard">
+  <link rel="stylesheet" href="/static/zet.css?v=20261010-story-task-context">
+  <link rel="stylesheet" href="/static/task_capture.css?v=20261010-screenshots">
 </head>
 <body>
   <header class="app-header">
@@ -111,6 +112,8 @@
       </select>
     </div>
     <div class="toolbar-actions">
+      <button id="toolbar-create-task" class="navigation-action" type="button">Create task</button>
+      <a id="toolbar-open-board" class="tab navigation-action" target="_blank" rel="noopener" hidden>Open board</a>
       <button id="toolbar-restart-zet" class="toolbar-restart-button navigation-action" type="button" aria-label="Restart Zet" title="Restart Zet">♻</button>
       <button id="toolbar-batches" class="tab navigation-action" data-page="local-batch-status" type="button">Batches</button>
       <div class="toolbar-menu">
@@ -127,7 +130,6 @@
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
           <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
           <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
-          <button id="toolbar-todo-button" type="button">To Do</button>
         </div>
       </div>
       <div class="toolbar-menu">
@@ -140,6 +142,7 @@
   </nav>
 
   <main>
+    <p id="task-context-notice" class="action-message" role="status" aria-live="polite" hidden></p>
     <section id="universes-page" class="page">
       <div class="page-title-row"><h1>Universes</h1><button class="primary-action tab" type="button" data-page="universe-create">New Universe</button></div>
       <div id="universes-message" class="action-message" hidden></div>
@@ -319,6 +322,7 @@
           <section id="local-pipeline-review-panel"></section>
           <button id="local-pipeline-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
           <div class="local-pipeline-review-view-navigation">
+            <button id="local-pipeline-review-task" type="button">Create task</button>
             <button id="local-pipeline-review-prev-view" type="button">Prev View</button>
             <button id="local-pipeline-review-next-view" type="button">Next View</button>
           </div>
@@ -918,6 +922,12 @@
         <div id="help-status" class="status-text"></div>
       </div>
       </details>
+      <section id="task-capture-help" class="control-panel">
+        <h2>Report bugs, improvements, and features</h2>
+        <p>Use <strong>Create task</strong> in the toolbar or an image review to send a report to Zet_Kanban. The form captures the page and relevant selections when it opens. Review the preview; use Refresh context explicitly to replace it.</p>
+        <p>Add optional screenshots by choosing files or pasting an image. Your draft stays local until creation succeeds; if the board is unavailable, retry the saved report. If browser storage fails, keep the tab open to retain the draft.</p>
+        <p><strong>Open board</strong> opens Zet_Kanban, where captured tickets include a Return to Zet link. Task capture replaces the markdown To Do editor. The asset <strong>To Do Only</strong> filter still hides locked assets.</p>
+      </section>
       <section class="control-panel template-manual-controls">
         <label>
           Manual
@@ -1174,6 +1184,7 @@
           <div class="scene-batch-review-heading">
             <h2 id="scene-batch-review-title">Review scene candidate</h2>
             <button id="scene-batch-review-close" type="button">Close</button>
+            <button id="scene-batch-review-task" type="button">Create task</button>
           </div>
           <div id="scene-batch-review-details"></div>
           <div class="button-row compact scene-batch-review-actions">
@@ -1971,7 +1982,7 @@
           <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
           <div class="button-row"><button id="image-generation-review-import" class="primary-action" type="button" disabled>Add to Image Inventory</button><button id="image-generation-review-update" type="button" hidden disabled>Update Image Inventory</button></div>
           <dialog id="image-generation-review" class="image-generation-review" aria-label="Image result review">
-            <div class="button-row compact"><button id="image-generation-review-close" type="button">Close</button></div>
+            <div class="button-row compact"><button id="image-generation-review-close" type="button">Close</button><button id="image-generation-review-task" type="button">Create task</button></div>
             <div class="button-row compact"><button id="image-generation-review-previous" type="button" disabled>Previous</button><span id="image-generation-review-count" class="status-text"></span><button id="image-generation-review-next" type="button" disabled>Next</button></div>
             <img id="image-generation-review-image" alt="Selected generated result">
             <p><strong>Prompt</strong><br><span id="image-generation-review-prompt"></span></p>
@@ -2317,15 +2328,7 @@ Add prompt language here.
         <textarea id="asset-note-text" readonly></textarea>
       </form>
     </dialog>
-    <dialog id="todo-dialog" class="todo-dialog">
-      <form id="todo-form" method="dialog">
-        <div class="review-header">
-          <h2>To Do</h2>
-          <button id="todo-save" type="submit">Save</button>
-        </div>
-        <textarea id="todo-text" spellcheck="false"></textarea>
-      </form>
-    </dialog>
+    <!-- TASK_CAPTURE_FORM -->
     <dialog id="prompt-analysis-dialog" class="prompt-analysis-dialog side-panel-dialog" aria-labelledby="prompt-analysis-title">
       <div class="prompt-analysis-dialog-content">
         <div class="review-header">
@@ -2403,11 +2406,12 @@ Add prompt language here.
       </div>
     </div>
   </dialog>
-  <script src="/static/zet.js?v=20261009-config-context-free-model-settings-image-generation-paste-targets-quick-character-wizard"></script>
+  <script src="/static/task_capture.js?v=20261011-randomuuid-fallback"></script>
+  <script src="/static/zet.js?v=20261010-retire-todo"></script>
   <script src="/static/quick_character_wizard.js?v=20261009"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261001-costume-lock"></script>
-  <script src="/static/local_scene_batches.js?v=20261005-publication-review"></script>
-  <script src="/static/local_batch_status.js?v=20261005-scene-tiles"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261010-task-context"></script>
+  <script src="/static/local_scene_batches.js?v=20261010-task-context"></script>
+  <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
   <script type="module" src="/static/scene_layout.js?v=20261007-free-backdrop"></script>
 </body>
 </html>

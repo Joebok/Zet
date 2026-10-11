@@ -1,0 +1,21 @@
+{
+  "character": "Traveler",
+  "phase": "Adult",
+  "costume": "Test Travel Outfit",
+  "images": {
+    "forest_reference": "images/forest-reference.png",
+    "traveler_reference": "images/traveler-reference.png",
+    "prepared_backdrop": "responses/render-1344x768.png",
+    "prepared_subscene": "responses/render-1216x832.png"
+  },
+  "story": {
+    "title": "The Test Journey",
+    "brief": "A traveler reaches a quiet forest gate."
+  },
+  "scene": {
+    "title": "Forest Gate",
+    "intent": "The traveler arrives at the forest gate.",
+    "setting": "A quiet forest path",
+    "lighting": "Soft daylight"
+  }
+}

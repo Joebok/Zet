@@ -2,7 +2,7 @@ const root = document.querySelector('#narrative-root');
 const message = document.querySelector('#narrative-message');
 const params = new URLSearchParams(location.search);
 let universe = params.get('universe_id') || '';
-let route = {};
+let route = {story:params.get('story'),scene:params.get('scene'),target:params.get('target')};
 let detail = null;
 let dirty = new Set();
 let saveTimer = null;
@@ -20,6 +20,9 @@ let layerDrag = null;
 let brush = null;
 let reviewCandidate = null;
 let sourcePicker = null;
+let contextState = 'loading';
+let contextLabels = {};
+let candidateRestorePending = params.get('task_context') === '1';
 const active = new Set(['SUBMITTING', 'QUEUED', 'RUNNING', 'DISPATCHING']);
 const visualFields = ['setting', 'camera', 'perspective', 'lighting', 'style'];
 const targetFields = ['title', 'narrative', 'staging', 'physical_context', 'framing', 'width', 'height', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
@@ -70,6 +73,7 @@ async function loadModels() {
     const errorNode = document.querySelector('#narrative-model-error');
     if (errorNode) errorNode.textContent = '';
   } catch (error) { const errorNode = document.querySelector('#narrative-model-error'); if (base() === url && errorNode) errorNode.textContent = error.message; }
+  if (!detail || base() !== url) return;
   const list = document.querySelector('#narrative-model-options');
   if (list) list.innerHTML = [...new Set([modelOptions.model,...knownModels,...modelOptions.codex_models,detail.interview_model,detail.prompt_model])].filter(Boolean).map(name=>`<option value="${esc(name)}"></option>`).join('');
 }
@@ -111,6 +115,35 @@ async function navigate(next, push = true) {
 }
 
 async function loadPage() {
+  contextState = 'loading';
+  contextLabels = {};
+  detail = null;
+  try {
+    await loadPageContent();
+    contextState = 'selected';
+    const recorded = new URLSearchParams(location.search).get('task_candidate');
+    if (candidateRestorePending && recorded && route.target) {
+      candidateRestorePending = false;
+      if (detail?.candidates?.[recorded]?.image) {
+        reviewCandidate = recorded;
+        document.querySelector('#image-dialog').showModal();
+        renderImageReview();
+      } else window.ZetTaskCapture.notice(`Recorded candidate "${recorded}" is unavailable. The target is open.`);
+    }
+  } catch (error) {
+    contextState = 'unavailable';
+    if (new URLSearchParams(location.search).get('task_context') !== '1') throw error;
+    root.innerHTML = '<h1>Narrative selection unavailable</h1><p>Open the parent workspace to choose an available selection.</p>';
+    document.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})
+      + (route.story ? ' / '+link('Story',{story:route.story}) : '')
+      + (route.scene ? ' / '+link('Scene',{story:route.story,scene:route.scene}) : '');
+    window.ZetTaskCapture.notice('The recorded narrative selection could not be restored. '+error.message);
+    status(error.message,true);
+    document.body.dataset.narrativeReady = 'true';
+  }
+}
+
+async function loadPageContent() {
   document.querySelector('#image-dialog').close();
   reviewCandidate = null;
   clearTimeout(saveTimer);
@@ -135,6 +168,7 @@ async function loadPage() {
     document.querySelector('#narrative-breadcrumb').textContent = 'New narrative workflow';
   } else if (!route.scene) {
     detail = await api(base());
+    contextLabels.story = detail.title;
     root.innerHTML = `<h1>${esc(detail.title)}</h1><section class="narrative-card">${label('title',detail.title,false)}${label('brief',detail.brief)}
       <div class="narrative-actions"><button data-action="save">Save story</button><button class="danger" data-action="delete">Delete story</button></div></section>
       <section class="narrative-card"><h2>New scene</h2><form id="new-scene" class="narrative-inline"><input aria-label="Scene title" name="title" required placeholder="Scene title"><button class="primary">Create scene</button></form></section>
@@ -143,6 +177,7 @@ async function loadPage() {
   } else if (!route.target) {
     const [loaded, story] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}`)]);
     detail = loaded;
+    contextLabels = {story:story.title, scene:detail.title};
     root.innerHTML = `<h1>${esc(detail.title)}</h1><div class="narrative-editor"><section class="narrative-card"><h2>Shared scene direction</h2>
       ${label('title',detail.title,false)}${label('intent',detail.intent)}${visualFields.map(key=>label(key,detail[key])).join('')}${label('canvas',detail.canvas,false)}
       <div class="narrative-actions"><button data-action="save">Save scene</button><button class="danger" data-action="delete">Delete scene</button></div></section><div>
@@ -157,6 +192,7 @@ async function loadPage() {
   } else {
     const [loaded, targets, story] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets`), api(`/api/narrative/stories/${route.story}`)]);
     detail = loaded;
+    contextLabels = {story:story.title, scene:detail.scene_title, render_target:detail.title};
     renderTarget(targets);
     document.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story})+' / '+link(detail.scene_title,{story:route.story,scene:route.scene})+' / '+esc(detail.title);
   }
@@ -780,6 +816,7 @@ document.addEventListener('click',event=>{
 });
 
 document.addEventListener('submit',event=>{
+  if (event.target.id === 'task-capture-form') return;
   event.preventDefault();
   const form = event.target;
   if (form.id === 'library-search') { librarySearch().catch(error=>status(error.message,true)); return; }
@@ -823,6 +860,9 @@ window.addEventListener('beforeunload',event=>{ if(dirty.size) {event.preventDef
 
 async function initialize() {
   const universes = await api('/api/universes');
+  const recordedUniverse = params.get('task_universe');
+  if (recordedUniverse && universes.universes.some(item=>item.universe_id===recordedUniverse)) universe=recordedUniverse;
+  else if (recordedUniverse) window.ZetTaskCapture.notice(`Recorded universe "${recordedUniverse}" is unavailable. Showing the current universe.`);
   universe ||= universes.selected_universe_id;
   document.querySelector('#narrative-universe').innerHTML = universes.universes.map(item=>`<option value="${esc(item.universe_id)}" ${item.universe_id===universe ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
   const options = await api('/api/narrative/options');
@@ -831,4 +871,31 @@ async function initialize() {
   await loadPage();
   setInterval(poll,2000);
 }
-initialize().catch(error=>status(error.message,true));
+window.ZetTaskCapture.registerProvider(() => {
+  const selections = {};
+  const source = new URL('/narrative',location.origin);
+  source.searchParams.set('task_context','1');
+  if (universe) source.searchParams.set('task_universe',universe);
+  for (const name of ['story','scene']) {
+    if (route[name]) {
+      selections[name] = {state:contextState,id:route[name],label:contextLabels[name] || route[name]};
+      source.searchParams.set(name,route[name]);
+    }
+  }
+  if (route.target) {
+    selections.render_target = {state:contextState,id:route.target,label:contextLabels.render_target || route.target};
+    if (detail?.kind==='subscene') selections.subscene = {...selections.render_target};
+    source.searchParams.set('target',route.target);
+    const id = document.querySelector('#image-dialog').open ? reviewCandidate : detail?.selected_id
+      || new URLSearchParams(location.search).get('task_candidate');
+    if (id) {
+      const candidate = detail?.candidates?.[id];
+      selections.candidate = {state:contextState==='selected' ? candidate ? 'selected' : 'unavailable' : contextState,
+        id,label:candidate ? `Slot ${candidate.slot}` : id};
+      source.searchParams.set('task_candidate',id);
+    }
+  }
+  return {page_id:'narrative',page_name:'Narrative Scenes',source_url:source.href,universe_id:universe || null,selections};
+});
+document.querySelector('#narrative-review-task').addEventListener('click',()=>void window.ZetTaskCapture.open());
+initialize().catch(error=>{contextState='unavailable';status(error.message,true);});

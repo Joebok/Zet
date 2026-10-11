@@ -2,7 +2,9 @@
   "scripts": {
     "capture:ui": "node Scripts/capture-dashboard-ui.mjs",
     "build:three": "node Scripts/copy-three-runtime.mjs",
-    "test:dashboard": "playwright test"
+    "test:e2e": "playwright test --config playwright.config.mjs",
+    "test:e2e:live": "playwright test --config playwright.live.config.mjs",
+    "test:library": "python3 tests/e2e/server.py --open-library"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",

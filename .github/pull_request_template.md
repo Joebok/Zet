@@ -8,8 +8,8 @@ Closes #
 
 ## Verification
 
-- [ ] `python3 -m pytest -q`
-- [ ] `npm run test:dashboard`
+- [ ] `npm run test:e2e` (when relevant)
+- [ ] `npm run test:e2e:live` (only when explicitly requested and prerequisites are available)
 - [ ] Relevant manual checks completed
 
 ## UI evidence

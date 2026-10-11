@@ -4612,10 +4612,6 @@ dialog {
   width: min(1180px, calc(100vw - 32px));
 }
 
-.todo-dialog textarea {
-  min-height: 60vh;
-}
-
 .side-panel-dialog {
   border: 0;
   height: 100dvh;
@@ -5511,3 +5507,5 @@ dd {
 #quick-character-wizard-dialog .qc-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
 #quick-character-wizard-dialog .qc-selected { border: 2px solid var(--accent, #7389d8); }
 @media (max-width: 760px) { #quick-character-wizard-dialog .qc-grid { grid-template-columns: 1fr; } }
+
+.batch-status-card[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }

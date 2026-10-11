@@ -6,7 +6,7 @@ selector and the same two-column authoring/generation layout.
 
 ## Assemble a scene
 
-**Continue interview** and **Write prompt** work before adding sources. They
+**Continue interview** and **Write Prompt** work before adding sources. They
 snapshot the text inputs and any pinned source layers without preparing cutouts.
 Image generation and composite previews require one visible base backdrop.
 
@@ -32,8 +32,9 @@ Image generation and composite previews require one visible base backdrop.
 7. **Refresh raw composite** shows the backend composition on the same page.
    Its PNG can be downloaded without an image-generation job.
 8. In **Prompt and generation**, choose **Assembly mode** (described below).
-   Write a prompt, generate one or four candidates, or render the
-   visible edited prompt. Select and optionally lock the preferred final image.
+   Use **Write Prompt** to create text, then **Render 1** or **Render 4** to
+   submit the visible prompt exactly as entered. Select and optionally lock the
+   preferred final image.
 
 Sources are pinned and copied into the assembly. Changing a source's selection
 does not change the assembly; **Use current selection** explicitly updates it.
@@ -66,7 +67,7 @@ Reference candidates show their mode and source summary without a raw-composite
 comparison link. Retrying a failed assembly image reuses its frozen prompt,
 sources, dimensions, mode and seed even after the current assembly changes.
 
-Switching modes preserves the prompt text but requires **Write prompt** or a
+Switching modes preserves the prompt text but requires **Write Prompt** or a
 manual edit before rendering a prompt from the previous mode. Choosing a previous
 prompt restores its recorded mode. In-flight jobs keep their original mode and
 cannot replace the active prompt after a mode switch. Interviews and prompt
@@ -90,13 +91,11 @@ continue through AI_Proxy. No provider silently substitutes another model.
 - **Re-run last interview** uses that run's original inputs and direction, with
   the newly selected interview model. Both responses and expandable drafts remain
   in the history.
-- **Write prompt** uses current inputs and the prompt model.
-- **Re-run last prompt** repeats the last prompt request's original inputs with
-  the newly selected prompt model. It does not generate images.
-- **Previous prompt outputs** lets you preview earlier outputs and explicitly
-  choose **Use this prompt**.
-- **Generate from inputs** writes a fresh prompt and queues images. **Render
-  edited prompt** sends visible text unchanged and invokes no text LLM.
+- **Write Prompt** uses current inputs and the prompt model.
+- **Previous prompt outputs** lets you preview earlier outputs. Copy a prior
+  output into the prompt editor if you want to revise and render from it.
+- **Render 1** and **Render 4** send the visible prompt unchanged and invoke no
+  text LLM. Write a fresh prompt first when the current wording needs revision.
 
 Each text job records its requested model before dispatch. Interview responses,
 prompt outputs, and image candidates retain their original model labels after
@@ -110,34 +109,4 @@ cannot overwrite its result or newer user edits. Failures have an inline retry.
 
 ## Validation and visual limits
 
-Focused Python tests cover compatible records, independent model selection,
-request snapshots, reruns, output history, Codex execution/failure/recovery,
-source isolation and deletion, alpha/cutout corrections, backdrop fitting,
-placement, clipping, protected finishing, and protected candidate deletion.
-Browser tests cover the existing Phase 1 flow plus model switching/history and
-the assembly → placement/corrections → generation → selection/lock → download
-flow. Provider results are fixtures; these tests do not assess model quality.
-
-```powershell
-python3 -m pytest tests/test_narrative_repository.py tests/test_narrative_scene_service.py tests/test_narrative_generation.py tests/test_narrative_phase2.py tests/test_narrative_qwen.py tests/test_file_proxy_producers.py tests/test_file_proxy_worker_contracts.py tests/test_web_workflow_services.py -q
-npx playwright test tests/browser/narrative-scenes.spec.mjs tests/browser/dashboard.spec.mjs --grep "narrative|model selectors|final assembly|backdrop|universe pages create" --reporter=line
-```
-
-Recorded validation: **69 Python tests passed**, **6 browser tests passed**.
-`node --check zet/web/static/narrative.js` and `git diff --check` passed. The
-installed Codex CLI supports the schema/output and read-only execution flags.
-Repeated real-image composite previews were byte-identical after fixing the
-OpenCV extraction seed.
-
-Local visual checks assembled the selected images from the three **Narrative
-Phase 1 Test** scenes into separate copied records under
-`test-results/narrative-phase2-visual-check`. Original library records were not changed.
-Their previews retain recognizable subjects and props. Native Qwen RGBA images
-had near-opaque alpha noise, which Auto now treats as an extraction case.
-
-Hair edges, residual source flooring, and contact shadows still need visual
-review and sometimes keep/remove corrections. Protected source-floor pixels
-cannot be repaired by finishing; remove unwanted flooring in the cutout first.
-Source perspectives and poses must already fit the scene. Real Qwen finishing
-and live Codex/Ollama model output quality require review in the running workflow;
-no production generation jobs were submitted during automated validation.
+The maintained Narrative Scenes scenario in `npm run test:e2e` covers interview, prompt synthesis, candidate rendering and selection, assembly, failure/retry, and locking through the current Narrative interface. The optional live check is documented in [Testing.md](Testing.md). Prepared outputs validate workflow behavior, not artistic quality.

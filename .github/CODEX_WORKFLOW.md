@@ -15,7 +15,7 @@ Codex selects the lowest `priority:<N>` value first, then the oldest eligible is
 | `codex-ready` | Approved for immediate implementation. |
 | `in-progress` | Claimed in an isolated `codex/issue-<number>-<slug>` worktree and branch. |
 | `needs-input` | Work is paused on one material decision. |
-| `needs-review` | Tests passed; the pull request is ready for human review. |
+| `needs-review` | The approved local end-to-end checks passed; the pull request is ready for human review. |
 
 Codex removes the previous workflow label when applying the next one. When a pull request is closed without merging, the person closing it removes `in-progress` or `needs-review` and restores `codex-ready`. Merging a pull request with `Closes #<number>` closes the issue.
 
@@ -34,8 +34,8 @@ Answer in the Codex task, or answer on GitHub and return to the same task with `
 
 ## Delivery gate
 
-Codex opens a draft pull request early with `Closes #<number>`, runs the complete Python and browser suites, fixes failures, and performs a final review. Only then does it mark the pull request ready and replace `in-progress` with `needs-review`.
+Codex opens a draft pull request early with `Closes #<number>`, runs Zet's approved local baseline with `npm run test:e2e`, fixes failures, and performs a final review. Zet maintains exactly three fast end-to-end task scenarios; it has no routine Python unit-test suite. Retired test paths in existing tickets resolve to this baseline. The separate live narrative pipeline check runs only when Joe explicitly requests it. GitHub Actions do not gate local delivery. Only after validation and final review pass does Codex mark the pull request ready and replace `in-progress` with `needs-review`.
 
 The human reviewer owns merging.
 
-Only one issue may be in progress at a time. Do not run dashboard browser suites concurrently across worktrees because the local test server uses a fixed port and fixture directory.
+Only one issue may be in progress at a time.

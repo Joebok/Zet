@@ -46,6 +46,7 @@ from zet.web.local_scene_batch_router import create_local_scene_batch_router
 from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
 from zet.web.quick_character_wizard_router import create_quick_character_wizard_router
 from zet.web.narrative_router import create_narrative_router
+from zet.web.task_router import create_task_router, render_task_capture_page
 from zet.services.source_editor_service import SourceEditorService
 from zet.web.pipeline_controls_router import create_pipeline_controls_router
 from zet.web.pipeline_inspection_router import create_pipeline_inspection_router
@@ -1008,10 +1009,6 @@ def create_app(
     app.state.recovery_statuses = {}
     app.state.recovery_threads = {}
     current_universe = ContextVar(f"zet_universe_{id(app)}", default=None)
-    # Start reconciliation in the background so it cannot hold HTTP startup hostage.
-    if validate_catalog_on_create:
-        app.state.zet_app.library_index_reconciler.start()
-
     def _schedule_recovery(zet_app: ZetApp) -> None:
         universe_id = zet_app.universe_id
         with app.state.recovery_lock:
@@ -1178,10 +1175,12 @@ def create_app(
 
     app.include_router(create_quick_character_wizard_router(quick_character_wizard_service))
     app.include_router(create_narrative_router(lambda: _app(app.state.config_path)))
+    # A captured report belongs to its frozen universe, not the current UI selection.
+    app.include_router(create_task_router(lambda: app.state.zet_app))
 
     @app.get("/narrative", response_class=HTMLResponse)
     def narrative_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "narrative.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "narrative.html")
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -1197,7 +1196,7 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        return (PACKAGE_ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "index.html")
 
     @app.get("/local-body-reference")
     def local_body_reference_page() -> RedirectResponse:
@@ -1217,7 +1216,7 @@ def create_app(
 
     @app.get("/local-character-overview", response_class=HTMLResponse)
     def local_character_overview_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "local_character_overview.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "local_character_overview.html")
 
     @app.get("/api/local/character-overview")
     def local_character_overview() -> dict[str, Any]:
@@ -1258,11 +1257,11 @@ def create_app(
 
     @app.get("/gate-test-rig", response_class=HTMLResponse)
     def gate_test_rig_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "gate_test_rig.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "gate_test_rig.html")
 
     @app.get("/gate-test-data", response_class=HTMLResponse)
     def gate_test_data_page() -> str:
-        return (PACKAGE_ROOT / "templates" / "gate_test_data.html").read_text(encoding="utf-8")
+        return render_task_capture_page(PACKAGE_ROOT / "templates" / "gate_test_data.html")
 
     @app.get("/api/local-gates/{pipeline}")
     def local_gate_catalog(pipeline: str) -> dict[str, Any]:
@@ -1451,14 +1450,6 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get("/api/todo")
-    def todo() -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            return {"text": zet_app.todo_text()}
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     @app.get("/api/workspace-summary")
     def workspace_summary(
         character: str = Query(""),
@@ -1474,15 +1465,6 @@ def create_app(
                 else None,
                 "story": asdict(zet_app.story_workspace_summary(story_slug)),
             }
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/todo")
-    def save_todo(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
-        try:
-            zet_app.save_todo_text(str(payload.get("text") or ""))
-            return {"message": "To Do saved."}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

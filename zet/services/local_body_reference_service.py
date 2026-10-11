@@ -532,10 +532,11 @@ Do not explain your reasoning."""
     def detail(self, run_id: str, *, upgrade_legacy: bool = False) -> dict[str, Any]:
         root = self._root(run_id)
         value = json.loads((root / "spec.json").read_text(encoding="utf-8"))
-        state = json.loads((root / "state.json").read_text(encoding="utf-8")) if (root / "state.json").is_file() else {}
-        if upgrade_legacy and upgrade_legacy_review_v1(root, value, state, active=self._runner_is_active(run_id)):
-            value = json.loads((root / "spec.json").read_text(encoding="utf-8"))
-            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        with file_lock(root / "state.lock"):
+            state = json.loads((root / "state.json").read_text(encoding="utf-8")) if (root / "state.json").is_file() else {}
+            if upgrade_legacy and upgrade_legacy_review_v1(root, value, state, active=self._runner_is_active(run_id)):
+                value = json.loads((root / "spec.json").read_text(encoding="utf-8"))
+                state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         from zet.services.local_prompt_improvement_service import ensure_view_reviews
         value, state = ensure_view_reviews(root, value, state)
         candidates = {item["candidate_id"]: dict(item) for item in value.get("candidates", [])}
@@ -868,6 +869,8 @@ Do not explain your reasoning."""
     def rerun_view(self, run_id: str, view: str, *, recompile: bool = False) -> dict[str, Any]:
         """Replace the selected view's images and reviews in the existing batch."""
         run = self.detail(run_id)
+        if int(run.get("review_version") or 1) < 2:
+            raise LocalBodyReferenceError("View reruns require a version 2 Local Body-Reference batch.")
         view = str(view or "").upper()
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
@@ -2184,16 +2187,22 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("Per-view ranking is available for version 2 runs.")
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
-        evaluation_id = evaluation_id or str((run.get("evaluations") or {}).get(view, {}).get("evaluation_id") or "")
         active_evaluation = (run.get("evaluations") or {}).get(view) or {}
         if evaluation_id and (active_evaluation.get("evaluation_id") != evaluation_id
                               or active_evaluation.get("status") not in {"RUNNING", "STAGING"}):
             return run
+        if not evaluation_id and active_evaluation.get("status") in {"RUNNING", "STAGING"}:
+            evaluation_id = str(active_evaluation.get("evaluation_id") or "")
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
         anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
         if view != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):
             raise LocalBodyReferenceError("Select a completed front anchor before ranking other views.")
         survivors = [item for item in run["candidates"] if item.get("view") == view
+                     and (item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
+                          or item.get("human_review", {}).get("decision") == "keep")
+                     and (not item.get("rejection_gate")
+                          or item.get("human_review", {}).get("decision") == "keep")
+                     and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
         root = self._root(run_id)
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
@@ -2272,8 +2281,10 @@ Do not explain your reasoning."""
             if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
                 return
             latest = self.detail(run_id)
+            ranked_candidate_ids = set(current_hashes)
             hashes_now = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
                           for item in latest["candidates"] if item.get("view") == view
+                          and item["candidate_id"] in ranked_candidate_ids
                           and Path(str(item.get("image_path") or "")).is_file()}
             if hashes_now != current_hashes:
                 return
@@ -2301,8 +2312,10 @@ Do not explain your reasoning."""
             if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
                 return
             run = self.detail(run_id)
+            ranked_candidate_ids = set(input_hashes)
             current = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
                        for item in run["candidates"] if item.get("view") == view
+                       and item["candidate_id"] in ranked_candidate_ids
                        and Path(str(item.get("image_path") or "")).is_file()}
             if current != input_hashes:
                 return
@@ -2367,6 +2380,43 @@ Do not explain your reasoning."""
                     }
                 if state.get("selected_views", {}).get(view) == candidate.get("candidate_id"):
                     state["candidates"][candidate["candidate_id"]]["stale_selection"] = True
+
+    def _candidate_gates_current(self, run: dict[str, Any], candidate: dict[str, Any]) -> bool:
+        """Check that every current FRONT gate matches its policy and image inputs."""
+        image = Path(str(candidate.get("image_path") or ""))
+        if not image.is_file():
+            return False
+        from zet.services.local_gate_registry_service import LocalGateRegistryService
+
+        registry = LocalGateRegistryService(self.app, self.project_root)
+        records = candidate.get("gates") or {}
+        for definition in self.review_gates(str(candidate.get("view") or "")):
+            record = records.get(definition.key) or {}
+            policy = registry.status("body-reference", definition.key)
+            expected_hashes = {
+                "candidate": self._hash(image),
+                "front_anchor": "",
+            }
+            if definition.uses_anchor:
+                anchor = next(
+                    (item for item in run.get("candidates") or []
+                     if item.get("candidate_id") == run.get("front_anchor")),
+                    None,
+                )
+                anchor_image = Path(str((anchor or {}).get("image_path") or ""))
+                if not anchor_image.is_file():
+                    return False
+                expected_hashes["front_anchor"] = self._hash(anchor_image)
+            if policy == "Disabled":
+                if record.get("status") != "DISABLED":
+                    return False
+                continue
+            if (record.get("status") != "COMPLETE"
+                    or record.get("policy_status") != policy
+                    or record.get("input_hashes") != expected_hashes
+                    or record.get("prompt_sha256") != hashlib.sha256(definition.prompt.encode()).hexdigest()):
+                return False
+        return True
 
     @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
@@ -2653,6 +2703,14 @@ Do not explain your reasoning."""
                     self._withdraw_queued_asks(run_id)
                     self._run_update(run_id, status="CANCELLED", stop_requested=True)
                     return
+                if review_only and not render_only and not self.detail(run_id)["stop_requested"]:
+                    current = self.detail(run_id)
+                    review = (self._review_view_candidates_v2 if int(current.get("review_version") or 1) >= 2
+                              else self._review_view_candidates)
+                    if not review(run_id, view, target_candidate_ids):
+                        self._withdraw_queued_asks(run_id)
+                        self._run_update(run_id, status="CANCELLED", stop_requested=True)
+                        return
                 if not render_only and not review_only and not self.detail(run_id)["stop_requested"]:
                     try:
                         self.stage_view_evaluation(run_id, view, candidate_ids=target_candidate_ids)
