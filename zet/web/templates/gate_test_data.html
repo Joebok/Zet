@@ -4,7 +4,7 @@
 <body class="auxiliary-task-page"><header><h1>Review Gate Test Data</h1><nav><a href="/gate-test-rig">Gate Test Rig</a> · <a href="/">Dashboard</a> · <button id="toolbar-create-task" type="button">Create task</button> · <a id="toolbar-open-board" target="_blank" rel="noopener" hidden>Open board</a></nav></header><p id="task-context-notice" role="status" aria-live="polite" hidden></p><main>
 <section class="panel"><div class="row"><label>Pipeline<select id="pipeline"></select></label><label>Gate<select id="gate"></select></label><button id="refresh">Refresh</button><a href="/gate-test-rig">Add test data</a></div><p id="status" class="muted"></p></section><section id="cases" class="grid"></section>
 <!-- TASK_CAPTURE_FORM -->
-<script src="/static/task_capture.js?v=20261010-screenshots"></script>
+<script src="/static/task_capture.js?v=20261011-randomuuid-fallback"></script>
 <script src="/static/auxiliary_task_context.js?v=20261010"></script>
 <script>
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));let catalog=null,caseData=[],selectedCase='',ready=false,failed=false,initial=true,editorElement='';

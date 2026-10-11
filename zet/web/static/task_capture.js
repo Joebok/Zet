@@ -16,6 +16,20 @@
   let metadataRequest = null;
   let generation = 0;
 
+  function newRequestId() {
+    if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+    const bytes = new Uint8Array(16);
+    if (typeof globalThis.crypto?.getRandomValues === "function") {
+      globalThis.crypto.getRandomValues(bytes);
+    } else {
+      for (let index = 0; index < bytes.length; index++) bytes[index] = Math.floor(Math.random() * 256);
+    }
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
   function message(text) {
     el("status").textContent = text + (storageError ? " Browser storage is unavailable; keep this tab open to retain the draft." : "");
   }
@@ -53,6 +67,7 @@
             typeof item.content_base64 !== "string" || item.content_base64.length > 4 * Math.ceil(5 * 1024 * 1024 / 3) ||
             (item.attachment_id && !/^attachment-[0-9a-f]{32}$/.test(item.attachment_id))))) throw new Error("Invalid screenshots");
       draft = value;
+      if (!draft.delivery && typeof draft.report.allow_auto_plan_approval !== "boolean") draft.report.allow_auto_plan_approval = false;
       unreadableDraft = false;
     } catch {
       // Do not silently overwrite an unreadable saved report.
@@ -94,6 +109,8 @@
       el(id).disabled = locked || !draft;
     }
     el("bug-details").hidden = draft?.report.type !== "bug";
+    el("auto-plan-approval").checked = draft?.report.allow_auto_plan_approval === true;
+    el("auto-plan-approval").disabled = locked || !draft;
     el("context").textContent = draft ? JSON.stringify(draft.report.context, null, 2) : "";
     el("refresh").disabled = locked || !draft;
     el("new").disabled = busy || readingImages;
@@ -186,8 +203,8 @@
     const token = ++generation;
     const context = capturedContext();
     if (!draft) {
-      draft = { version: 1, report: { request_id: crypto.randomUUID(), type: "bug", title: "", description: "",
-        expected_behavior: "", actual_behavior: "", reproduction_steps: "", context } };
+      draft = { version: 1, report: { request_id: newRequestId(), type: "bug", title: "", description: "",
+        expected_behavior: "", actual_behavior: "", reproduction_steps: "", allow_auto_plan_approval: false, context } };
     } else {
       draft.report.context = context;
     }
@@ -244,6 +261,12 @@
     el("bug-details").hidden = draft.report.type !== "bug";
     save();
     if (storageError) message("Draft retained in this tab.");
+  });
+
+  el("auto-plan-approval").addEventListener("change", () => {
+    if (!draft || draft.delivery || busy) return;
+    draft.report.allow_auto_plan_approval = el("auto-plan-approval").checked;
+    save();
   });
 
   form.addEventListener("submit", async (event) => {

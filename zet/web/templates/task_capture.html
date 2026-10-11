@@ -8,6 +8,8 @@
         <label>Type<select id="task-capture-type"><option value="bug">Bug</option><option value="improvement">Improvement</option><option value="feature">Feature</option></select></label>
         <label>Title<input id="task-capture-title" required maxlength="240"></label>
         <label>Description<textarea id="task-capture-description" maxlength="20000" rows="3"></textarea></label>
+        <label class="task-capture-permission"><input id="task-capture-auto-plan-approval" type="checkbox"> Allow automatic plan approval</label>
+        <p>Automatically approve complete plans within this ticket’s requested scope. Merge permission is controlled separately.</p>
         <fieldset id="task-capture-bug-details"><legend>Bug details (optional)</legend>
           <label>Expected behavior<textarea id="task-capture-expected" maxlength="10000" rows="2"></textarea></label>
           <label>Actual behavior<textarea id="task-capture-actual" maxlength="10000" rows="2"></textarea></label>

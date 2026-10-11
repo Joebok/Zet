@@ -95,6 +95,16 @@ def test_frozen_payload_is_forwarded_once_with_configured_project_and_timeout():
     assert sender._opener.open.call_args.kwargs == {"timeout": 2.0}
 
 
+def test_auto_plan_approval_is_strict_and_forwarded_unchanged():
+    sender=service()
+    report=payload();report["allow_auto_plan_approval"]=True
+    sender.create_task(report)
+    assert json.loads(sender._opener.open.call_args.args[0].data)["allow_auto_plan_approval"] is True
+    report["allow_auto_plan_approval"]=1
+    with pytest.raises(TaskServiceError,match="must be a boolean"):
+        sender.create_task(report)
+
+
 def test_uncertain_delivery_retry_preserves_request_id_context_and_body():
     sender = service()
     sender._opener.open.side_effect = [URLError("offline"), Reply({**RECEIPT, "created": False}, status=200)]

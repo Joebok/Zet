@@ -38,6 +38,7 @@ test("task capture sends only explicit page context and links the created ticket
   await page.locator("#task-capture-submit").click();
   await expect(page.locator("#task-capture-ticket")).toHaveAttribute("href", receipt.board_url);
   expect(report.context).toEqual(snapshot);
+  expect(report.allow_auto_plan_approval).toBe(false);
   expect(report).toMatchObject({ title: "Wrong preview", project_id: metadata.project_id, expected_behavior: "Show new preview" });
   expect(await page.evaluate(() => localStorage.getItem("zet.task-draft.v1"))).toBeNull();
   await expect(page.locator("#toolbar-open-board")).toHaveAttribute("href", metadata.board_url);
@@ -67,6 +68,7 @@ test("failed delivery survives reload and retries the identical body and ID", as
   });
   await setup(page);
   await page.locator("#task-capture-title").fill("Retry safely");
+  await page.locator("#task-capture-auto-plan-approval").check();
   await page.locator("#task-capture-submit").click();
   await expect(page.locator("#task-capture-status")).toContainText("Draft retained");
   await expect(page.locator("#task-capture-title")).toBeDisabled();
@@ -75,10 +77,12 @@ test("failed delivery survives reload and retries the identical body and ID", as
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   await page.locator("#toolbar-create-task").click();
   await expect(page.locator("#task-capture-submit")).toHaveText("Retry submission");
+  await expect(page.locator("#task-capture-auto-plan-approval")).toBeChecked();
   await page.locator("#task-capture-submit").click();
   await expect(page.locator("#task-capture-ticket")).toBeVisible();
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toBe(attempts[0]);
+  expect(JSON.parse(attempts[0]).allow_auto_plan_approval).toBe(true);
 });
 
 test("unsent edits survive reload and non-bug reports omit bug detail contents", async ({ page }) => {

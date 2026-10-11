@@ -86,7 +86,7 @@ class TaskService:
 
     def create_task(self, payload: dict) -> dict:
         allowed = {"request_id", "project_id", "type", "title", "description", "expected_behavior",
-                   "actual_behavior", "reproduction_steps", "context", "attachment_ids"}
+                   "actual_behavior", "reproduction_steps", "context", "attachment_ids", "allow_auto_plan_approval"}
         if not isinstance(payload, dict) or set(payload) - allowed:
             raise TaskServiceError("Expected a report with supported intake fields.", 422)
         request_id = payload.get("request_id")
@@ -95,6 +95,8 @@ class TaskService:
             raise TaskServiceError("A stable request_id is required for task creation and retries.", 422)
         if not isinstance(payload.get("type"), str) or payload["type"] not in {"bug", "improvement", "feature"} or not isinstance(payload.get("title"), str) or not payload["title"].strip():
             raise TaskServiceError("A task type and non-empty title are required.", 422)
+        if "allow_auto_plan_approval" in payload and type(payload["allow_auto_plan_approval"]) is not bool:
+            raise TaskServiceError("allow_auto_plan_approval must be a boolean.", 422)
         context = payload.get("context")
         if not isinstance(context, dict) or type(context.get("version")) is not int or context["version"] != 1:
             raise TaskServiceError("A frozen context-v1 snapshot is required.", 422)
