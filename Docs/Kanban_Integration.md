@@ -1,10 +1,9 @@
-# Kanban task forwarding and capture (packets 04–07)
+# Kanban task forwarding and capture (packets 04–08)
 
 Zet now exposes task forwarding through `ZetApp.create_task(payload)` and
 `POST /api/tasks`. Kanban owns its board files, intake validation, and request-ID
-receipts. Zet never reads or writes those files. Auxiliary-page context
-providers, attachments, and removal of To Do are later
-packets. The main dashboard now has Create task and Open board toolbar actions.
+receipts. Zet never reads or writes those files. Auxiliary-page context and
+screenshots are available in packet 08; removal of To Do follows in packet 09. The main dashboard now has Create task and Open board toolbar actions.
 
 ## Dashboard capture (packet 05)
 
@@ -12,8 +11,8 @@ Create task opens a compact Bug, Improvement, or Feature report with a context
 preview. Bug details are optional. The page, universe, timestamp, running revision,
 and relevant character/phase IDs and labels come from an explicit dashboard
 provider. Global tools exclude stale character selections. Local pipeline capture
-and story restoration are described below; auxiliary page and attachment
-providers arrive in packet 08. Arbitrary URL parameters, prompts, source
+and story restoration are described below, alongside auxiliary-page capture and
+optional screenshot attachments. Arbitrary URL parameters, prompts, source
 documents, and application state are not copied. Navigation links include the
 recorded page and supported context parameters.
 
@@ -79,8 +78,49 @@ available fallback or a readable unavailable workspace. Loading snapshots retain
 requested identifiers. The shared form does not save Narrative editor content.
 Scene-batch task links use GET requests and never initialize a missing batch,
 including when a missing scene causes a fallback. Existing explicit workflow
-actions retain their behavior. Auxiliary pages, screenshots, and other image
-dialogs are packet 08; markdown To Do retirement is packet 09.
+actions retain their behavior. Markdown To Do retirement is packet 09.
+
+## Auxiliary pages and screenshots (packet 08)
+
+Local Character Overview, Gate Test Rig, and Gate Test Data have Create task and
+Open board in their headers. Overview slot buttons capture their own character,
+phase, costume, pipeline, and autogeneration job. Gate case/result buttons capture
+pipeline, gate, test case, and the displayed run when applicable. Supported editor
+fields identify the selected control without copying its contents. Labels and
+availability come from the existing backend overview/catalog/case/run responses.
+Return links restore and mark a slot or case, and reopen saved tests or recorded
+runs through read requests. Missing references produce a visible notice. Recorded
+universes bind API requests and image links without changing the global default.
+Return links never start a run, save a test, or generate an image.
+
+Image Generation review also has Create task, capturing its job and result IDs
+without prompts or pixels. Its return link opens Image Generation; job/result IDs
+are diagnostic context and do not restore another browser's local slot layout.
+The existing local pipeline, scene-batch, and Narrative review actions use the same
+screenshot form.
+
+Upload or paste up to four PNG, JPEG, or WebP screenshots (5 MiB each). Remove
+unwanted screenshots before the first submission. Images remain optional and are
+included only when the user selects or pastes them. The draft stores their bytes
+locally alongside the report. Browser quotas may be smaller than the combined
+image limit: a storage failure explicitly warns that only the open tab retains the
+latest draft. Keep that tab open to retry, or reduce screenshots before submission.
+Screenshots are never resized or silently substituted.
+
+First submission freezes the brief, project mapping, and screenshot list. Each
+image goes to `POST /api/tasks/attachments`, which forwards JSON to Kanban's
+`POST /api/v1/attachments`. Requests are bounded to 7 MiB and include the original
+project/request IDs, plain filename, fixed image MIME type, and `content_base64`.
+The service verifies the returned identifier, size, SHA-256, metadata, and creation
+status. Kanban performs image signature recognition and owns local storage.
+Only attachment IDs go in the intake report; raw images are not report context.
+
+Upload receipts are saved with the locked draft. Retry skips acknowledged uploads,
+replays uncertain uploads with identical bytes/binding, and retries intake with the
+same report and attachment references. Upload failure prevents intake submission.
+Nothing is discarded automatically on error. Success clears the local draft.
+This requires Kanban packet 08A, merged in
+[PR #5](https://github.com/Joebok/Zet_Kanban/pull/5).
 
 ## Configuration
 
@@ -121,14 +161,15 @@ Reading configuration performs no Kanban request.
 Submit a complete frozen context-v1 report compatible with Kanban's
 [intake contract](https://github.com/Joebok/Zet_Kanban/blob/main/docs/intake-contract.md).
 Supported top-level fields are request_id, project_id, type, title, description,
-expected_behavior, actual_behavior, reproduction_steps, and context. The producer
+expected_behavior, actual_behavior, reproduction_steps, context, and optional
+attachment_ids (up to four unique registered screenshot identifiers). The producer
 must supply a stable request ID and complete capture metadata before first delivery.
 Zet adds the configured project ID if omitted; a supplied ID must match it.
 
 Zet preserves the original request ID, timestamp, revision, selection IDs/labels,
 and report contents. It does not regenerate metadata, resolve current selections
 during retry, allocate new IDs, automatically register projects, or run agents.
-Later context providers prepare the snapshot before submission.
+Explicit page providers prepare the snapshot before submission.
 
 The service sends one JSON POST to the configured `/api/v1/intake` with its timeout.
 Ambient HTTP proxies and redirects are disabled. It verifies the returned task ID,
@@ -146,7 +187,7 @@ First creation returns HTTP 201; identical retries return 200 with `created:fals
 and the same ticket. The absolute board link uses the configured Kanban origin.
 An unconfigured mapping or failed connection returns 503; timeout returns 504;
 invalid receipts, redirects, or unexpected upstream responses return 502. Upstream
-400/404/409/422 statuses are preserved with a bounded validation message, without
+400/404/409/413/415/422 statuses are preserved with a bounded validation message, without
 echoing submitted values from validation errors.
 
 After uncertain delivery, retain the draft and retry the same frozen body and ID.
@@ -159,7 +200,8 @@ Packet 03 is merged in [Kanban PR #4](https://github.com/Joebok/Zet_Kanban/pull/
 Packet 04 is merged in [Zet PR #31](https://github.com/Joebok/Zet/pull/31).
 Packet 05 is merged in [Zet PR #33](https://github.com/Joebok/Zet/pull/33).
 Packet 06 is merged in [Zet PR #35](https://github.com/Joebok/Zet/pull/35).
-Packets 04–07 target Zet's active dashboard branch
+Packet 07 is merged in [Zet PR #36](https://github.com/Joebok/Zet/pull/36).
+Packets 04–08 target Zet's active dashboard branch
 `V5-Re-Alignment-to-Local-Image-Generation`, as selected by the user, rather than
 including its unrelated development history in a PR against main. No live board
 reset, task creation, agent execution, or library changes are part of validation.

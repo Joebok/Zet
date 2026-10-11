@@ -13,6 +13,12 @@
           <label>Actual behavior<textarea id="task-capture-actual" maxlength="10000" rows="2"></textarea></label>
           <label>Reproduction steps<textarea id="task-capture-reproduction" maxlength="10000" rows="2"></textarea></label>
         </fieldset>
+        <fieldset><legend>Screenshots (optional)</legend>
+          <p>Up to four PNG, JPEG, or WebP images, 5 MiB each. Paste an image here or choose files.</p>
+          <label>Choose screenshots<input id="task-capture-files" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
+          <div id="task-capture-paste" tabindex="0" role="group" aria-label="Paste screenshot">Click here and paste a screenshot</div>
+          <ul id="task-capture-screenshots"></ul>
+        </fieldset>
         <details open><summary>Captured context</summary><pre id="task-capture-context"></pre></details>
         <p id="task-capture-status" role="status" aria-live="polite"></p>
         <div class="task-capture-actions">

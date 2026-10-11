@@ -1,10 +1,14 @@
+import json
+
 from collections.abc import Callable
 from pathlib import Path
 
-from fastapi import APIRouter, Body, HTTPException, Response
+from fastapi import APIRouter, Body, HTTPException, Request, Response
 
 from zet.app import ZetApp
-from zet.services.task_service import TaskServiceError
+from starlette.concurrency import run_in_threadpool
+
+from zet.services.task_service import MAX_SCREENSHOT_REQUEST_BYTES, TaskServiceError
 
 
 def render_task_capture_page(path: Path) -> str:
@@ -25,6 +29,26 @@ def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:
     def create(response: Response, payload: dict = Body(...)):
         try:
             result = provider().create_task(payload)
+        except TaskServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        response.status_code = 201 if result["created"] else 200
+        return result
+
+    @router.post("/attachments", status_code=201)
+    async def upload(request: Request, response: Response):
+        if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+            raise HTTPException(415, "Screenshots require application/json.")
+        raw = bytearray()
+        async for chunk in request.stream():
+            if len(raw) + len(chunk) > MAX_SCREENSHOT_REQUEST_BYTES:
+                raise HTTPException(413, "Screenshot request exceeds 7 MiB.")
+            raw.extend(chunk)
+        try:
+            payload = json.loads(raw)
+        except ValueError as exc:
+            raise HTTPException(422, "Invalid screenshot JSON.") from exc
+        try:
+            result = await run_in_threadpool(provider().upload_task_attachment, payload)
         except TaskServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
         response.status_code = 201 if result["created"] else 200

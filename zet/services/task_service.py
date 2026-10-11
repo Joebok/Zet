@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 from http.client import HTTPException as HTTPTransportError
 import math
@@ -11,6 +13,11 @@ import subprocess
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+
+
+MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024
+MAX_SCREENSHOT_REQUEST_BYTES = 7 * 1024 * 1024
+ATTACHMENT_ID = r"attachment-[0-9a-f]{32}"
 
 
 class TaskServiceError(Exception):
@@ -79,7 +86,7 @@ class TaskService:
 
     def create_task(self, payload: dict) -> dict:
         allowed = {"request_id", "project_id", "type", "title", "description", "expected_behavior",
-                   "actual_behavior", "reproduction_steps", "context"}
+                   "actual_behavior", "reproduction_steps", "context", "attachment_ids"}
         if not isinstance(payload, dict) or set(payload) - allowed:
             raise TaskServiceError("Expected a report with supported intake fields.", 422)
         request_id = payload.get("request_id")
@@ -95,12 +102,61 @@ class TaskService:
             raise TaskServiceError("Register Zet on the Kanban board and set Kanban.ProjectID in config.toml.")
         if "project_id" in payload and payload["project_id"] != self.project_id:
             raise TaskServiceError("The report project does not match Kanban.ProjectID. Preserve the original mapping when retrying.", 409)
+        attachment_ids = payload.get("attachment_ids", [])
+        if (not isinstance(attachment_ids, list) or len(attachment_ids) > 4 or
+                any(not isinstance(item, str) or re.fullmatch(ATTACHMENT_ID, item) is None for item in attachment_ids) or
+                len(set(attachment_ids)) != len(attachment_ids)):
+            raise TaskServiceError("Use up to four unique screenshot attachment IDs.", 422)
         report = {**payload, "project_id": self.project_id}
+        status, receipt = self._post_json("/api/v1/intake", report)
+        if (not isinstance(receipt, dict) or not isinstance(receipt.get("task_id"), str) or
+                re.fullmatch(r"task-[0-9a-f]{8}", receipt["task_id"]) is None or
+                type(receipt.get("created")) is not bool or receipt["created"] != (status == 201) or
+                receipt.get("board_url") != f"/?task_id={receipt['task_id']}"):
+            raise TaskServiceError("Kanban returned an invalid intake receipt; keep the draft and retry.", 502)
+        return {"task_id": receipt["task_id"], "board_url": self.base_url + receipt["board_url"], "created": receipt["created"]}
+
+    def upload_task_attachment(self, payload: dict) -> dict:
+        allowed = {"request_id", "project_id", "filename", "content_type", "content_base64"}
+        if not isinstance(payload, dict) or set(payload) != allowed:
+            raise TaskServiceError("Expected a screenshot with project, request, filename, type, and content.", 422)
+        if not self.project_id:
+            raise TaskServiceError("Register Zet on Kanban and configure Kanban.ProjectID.")
+        if payload["project_id"] != self.project_id:
+            raise TaskServiceError("The screenshot project does not match Kanban.ProjectID. Preserve the original mapping when retrying.", 409)
+        request_id, name, mime, encoded = (payload[key] for key in ("request_id", "filename", "content_type", "content_base64"))
+        if (not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip() or len(request_id) > 128 or
+                any(ord(c) < 32 or ord(c) == 127 for c in request_id)):
+            raise TaskServiceError("A stable request_id is required for screenshot retries.", 422)
+        extensions = {"image/png": {".png"}, "image/jpeg": {".jpg", ".jpeg"}, "image/webp": {".webp"}}
+        if (not isinstance(name, str) or not name.strip() or len(name) > 240 or "/" in name or "\\" in name or
+                any(ord(c) < 32 or ord(c) == 127 for c in name) or not isinstance(mime, str) or
+                mime not in extensions or Path(name).suffix.lower() not in extensions[mime]):
+            raise TaskServiceError("Choose a PNG, JPEG, or WebP screenshot with a matching plain filename.", 422)
+        if not isinstance(encoded, str) or len(encoded) > 4 * ((MAX_SCREENSHOT_BYTES + 2) // 3):
+            raise TaskServiceError("Screenshots must be at most 5 MiB.", 413)
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except ValueError as exc:
+            raise TaskServiceError("The screenshot encoding is invalid.", 422) from exc
+        if not content or len(content) > MAX_SCREENSHOT_BYTES:
+            raise TaskServiceError("Screenshots must contain an image of at most 5 MiB.", 422 if not content else 413)
+        status, receipt = self._post_json("/api/v1/attachments", payload)
+        if (not isinstance(receipt, dict) or not isinstance(receipt.get("attachment_id"), str) or
+                re.fullmatch(ATTACHMENT_ID, receipt["attachment_id"]) is None or
+                type(receipt.get("created")) is not bool or receipt["created"] != (status == 201) or
+                receipt.get("filename") != name or receipt.get("content_type") != mime or
+                type(receipt.get("size_bytes")) is not int or receipt["size_bytes"] != len(content) or
+                receipt.get("sha256") != hashlib.sha256(content).hexdigest()):
+            raise TaskServiceError("Kanban returned an invalid screenshot receipt; keep the draft and retry.", 502)
+        return receipt
+
+    def _post_json(self, path: str, report: dict) -> tuple[int, dict]:
         try:
             body = json.dumps(report, allow_nan=False).encode("utf-8")
         except (TypeError, ValueError) as exc:
             raise TaskServiceError("The report must contain JSON values.", 422) from exc
-        request = Request(self.base_url + "/api/v1/intake", data=body,
+        request = Request(self.base_url + path, data=body,
                           headers={"Content-Type": "application/json", "Accept": "application/json"}, method="POST")
         try:
             with self._opener.open(request, timeout=self.timeout_seconds) as response:
@@ -108,7 +164,7 @@ class TaskService:
                 raw = response.read(65537)
         except HTTPError as exc:
             try:
-                if exc.code in {400, 404, 409, 422}:
+                if exc.code in {400, 404, 409, 413, 415, 422}:
                     raise TaskServiceError(self._error_detail(exc), exc.code) from exc
                 raise TaskServiceError("Kanban returned an unexpected HTTP response; keep the draft and retry.", 502) from exc
             finally:
@@ -119,14 +175,9 @@ class TaskService:
             timed_out = isinstance(getattr(exc, "reason", None), TimeoutError)
             raise TaskServiceError("Kanban is unavailable; keep the draft and retry with the same request_id.", 504 if timed_out else 503) from exc
         if len(raw) > 65536 or status not in {200, 201}:
-            raise TaskServiceError("Kanban returned an invalid intake response; keep the draft and retry.", 502)
+            raise TaskServiceError("Kanban returned an invalid delivery response; keep the draft and retry.", 502)
         try:
             receipt = json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as exc:
-            raise TaskServiceError("Kanban returned an invalid intake response; keep the draft and retry.", 502) from exc
-        if (not isinstance(receipt, dict) or not isinstance(receipt.get("task_id"), str) or
-                re.fullmatch(r"task-[0-9a-f]{8}", receipt["task_id"]) is None or
-                type(receipt.get("created")) is not bool or receipt["created"] != (status == 201) or
-                receipt.get("board_url") != f"/?task_id={receipt['task_id']}"):
-            raise TaskServiceError("Kanban returned an invalid intake receipt; keep the draft and retry.", 502)
-        return {"task_id": receipt["task_id"], "board_url": self.base_url + receipt["board_url"], "created": receipt["created"]}
+            raise TaskServiceError("Kanban returned an invalid delivery response; keep the draft and retry.", 502) from exc
+        return status, receipt
