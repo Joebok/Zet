@@ -2,6 +2,8 @@
 
 Use a written plan before changing code for substantial features, complex bug fixes, cross-component changes, or refactors. Trivial edits do not need a plan. Read [AGENTS.md](../AGENTS.md) and select relevant knowledge through [Docs/INDEX.md](../Docs/INDEX.md) first; verify the authoritative code and tests.
 
+Use [Docs/Testing.md](../Docs/Testing.md) to select verification: the approved baseline is three fast E2E scenarios, with a separate live Narrative check only when Joe requests it. Map acceptance checks to existing scenario assertions and name gaps. New tests/scenarios or material coverage expansion require explicit approval; do not add a test per packet or copy retired pytest/CI commands from old plans. Completed plans preserve results for their recorded revision and are not current run instructions.
+
 ## Location and existing workflow
 
 - Start `plans/active/<descriptive-slug>.md`; move it to `plans/completed/` after recording final results. Keep incomplete or blocked plans active.

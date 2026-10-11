@@ -10,7 +10,9 @@ Run commands from the repository root. [Testing](Testing.md) owns the approved t
 - Optional AI Proxy, Ollama, ComfyUI, and Narrative Codex subprocess tooling are needed only for corresponding live features. Fast E2E fixtures do not establish that those services/models are available.
 - If a needed dependency is missing, stop and ask for installation. Setup commands below describe existing workflows; they do not grant an agent installation permission.
 
-## Setup and execution — documented, not executed here
+## Setup and execution
+
+Only commands explicitly reported under Observed verification were executed successfully. Setup, inspection launch, vendor copying and the optional live check were not run during this documentation refresh.
 
 | Purpose | Command / source | Notes |
 | --- | --- | --- |
@@ -33,32 +35,11 @@ Fast browser tests use fixed port **8765**, one worker, and a disposable fixture
 
 **V5 recovery, verified on 2026-10-11:** `npm.cmd run test:e2e` passed all **3 scenarios in 21.5s**. No packages were installed and the optional live check was not run. The recovered application, testing, configuration, and workflow files match the source V5 tip. See the [recovery plan](../plans/completed/recover-v5-history.md).
 
+**Documentation refresh at `676e048`, verified on 2026-10-11:** `npm.cmd run test:e2e` completed the existing **3 fast scenarios successfully**. Playwright's `test-results/playwright/.last-run.json` reported `passed` with no failed tests. Python 3.14.6 and Node v24.18.1 were verified. No packages, tests, or scenarios were added; the inspection server and optional live check were not invoked.
+
 ### Historical verification before V5 recovery
 
-The commands and results below preserve the earlier documentation audit. These test files have since been retired; they are not current commands, coverage, or outstanding baseline failures.
-
-**Verified:** `python3 -c "import sys; assert sys.version_info.major == 3; print(sys.executable); print(sys.version)"` confirmed Python 3.14.6. Import discovery found `pytest`, `httpx`, `fastapi`, `PIL`, `numpy`, `cv2`, `markdown`, and `uvicorn` available. No packages were installed.
-
-**Executed; failed overall:**
-
-```powershell
-python3 -B -m pytest -q tests/test_config_service.py tests/test_repository_json_storage.py tests/test_local_asset_store_service.py tests/test_local_candidate_review_contract.py tests/test_character_local_cutover.py tests/test_entity_library_service.py tests/test_scene_spatial_contract.py tests/test_universe_management.py tests/test_file_proxy_client.py tests/test_narrative_repository.py
-```
-
-Result: **54 passed, 2 failed** in 8.66s. Failures in `CharacterLocalCutoverTests`:
-
-- `test_identity_keys_save_with_local_provenance_and_no_numeric_asset_id`
-- `test_phase_comparison_matches_local_views_and_keeps_missing_slots_empty`
-
-The fixtures supplied batch IDs such as `batch-1` or `FRONT-batch` without live batch specs. [LocalAssetStoreService._batch_exists](../zet/services/local_asset_store_service.py) rejected those IDs, so the source provider omitted the records. This was an observed fixture/contract mismatch in the now-retired suite.
-
-**Verified successful:**
-
-```powershell
-python3 -B -m pytest -q tests/test_chatgpt_prompt_contract.py tests/test_view_conditioning_service.py tests/test_scene_render_compiler.py tests/test_local_image_pipeline_policy.py tests/test_ai_queue_lifecycle_service.py tests/test_narrative_generation.py tests/test_narrative_phase2.py
-```
-
-Result: **131 passed, 12 subtests passed** in 24.73s. This covers contracts described here, not full-suite coverage or live rendering quality. Documentation link/path checks and final `git diff --check` results are recorded in the [completed knowledge-base plan](../plans/completed/agent-knowledge-base.md).
+The first documentation audit recorded 185 Python passes, 12 subtest passes and two cutover fixture failures across two selections. That suite is retired: these are **historical results, not outstanding failures in the approved E2E baseline**. The original commands/results can be recovered with `git show 676e048:Docs/DEVELOPMENT.md`; the [original completed plan](../plans/completed/agent-knowledge-base.md) preserves its audit outcome. Do not run or recreate deleted tests merely to reproduce that historical check.
 
 ## Debugging and failure triage
 
@@ -79,7 +60,7 @@ Useful artifacts include `Prompt_Source_Map.json`, `Prompt_Compile_Diagnostics.j
 ## Known knowledge gaps and future investigation
 
 - Live AI Proxy cross-machine synchronization, ComfyUI node/model compatibility, Ollama, Codex availability, and visual output quality were not tested. macOS launch was not exercised here.
-- The three fast scenarios passed after recovery. They do not establish exhaustive subsystem coverage or live rendering quality; the previous Python/browser suites are retired.
+- The three fast scenarios passed after recovery and again during this documentation refresh. They do not establish exhaustive subsystem coverage or live rendering quality; the previous Python/browser suites are retired.
 - Traditional/local generation, record/entity catalogs, and Scene Builder/Narrative coexist. Some README/design notes predate active policy. Investigate the relevant boundary before proposing retirement/migration; this task does not approve it.
 - Large facade/routes and callback-driven catalog/index integration warrant impact tracing for cross-component edits. No general refactor or architectural cleanup assessment was performed.
 - No repository-wide lint/type-check command is declared in package scripts or pyproject. Do not invent a required check or infer quality from existing cache directories.

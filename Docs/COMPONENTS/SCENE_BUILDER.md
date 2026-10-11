@@ -35,6 +35,6 @@ For new scene fields update defaults/normalization/validation, projection/IR, pr
 
 ## Tests and design evidence
 
-[test_story_service.py](../../tests/test_story_service.py), [test_scene_v4_migration.py](../../tests/test_scene_v4_migration.py), [test_scene_layout_service.py](../../tests/test_scene_layout_service.py), [test_scene_ground_layout.py](../../tests/test_scene_ground_layout.py), [test_scene_spatial_contract.py](../../tests/test_scene_spatial_contract.py), [test_scene_render_compiler.py](../../tests/test_scene_render_compiler.py), [test_scene_image_review_service.py](../../tests/test_scene_image_review_service.py), [test_scene_reference_picker.py](../../tests/test_scene_reference_picker.py), [test_local_scene_batches.py](../../tests/test_local_scene_batches.py).
+Scene Builder and local scene-batch workflows are retiring and have **no maintained test scenario**. Current scene/story validation uses the [Narrative component](NARRATIVE.md), `/api/narrative`, and `NarrativeStories` in S1/S3; it does not exercise this compiler/layout/review lifecycle. Inspect source when an authorized maintenance task touches this subsystem. Do not introduce tests for these retiring paths; see [Testing](../Testing.md).
 
 [Scene Compiler](../../Docs-Joe/Scene%20Compiler.md) is preserved design material; verify specific claims against current functions. [ADR 0002](../DECISIONS/0002-independent-narrative-workflow.md) records why agents must distinguish the two systems.

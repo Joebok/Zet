@@ -25,4 +25,6 @@ Trace library writes through their owning repository/service and index callbacks
 
 ## Related code and documentation
 
-[EntityLibraryRepository](../../zet/repositories/entity_library_repository.py), [ImageCatalogRepository](../../zet/repositories/image_catalog_repository.py), [LibraryIndexRepository](../../zet/repositories/library_index_repository.py), [LibraryIndexService](../../zet/services/library_index_service.py), [ZetApp.from_config](../../zet/app.py), [library component](../COMPONENTS/LIBRARY.md), [data model](../DATA_MODEL.md). Tests: [entity library](../../tests/test_entity_library_service.py), [index](../../tests/test_wp09_library_index.py), [reconciliation](../../tests/test_wp10_library_index_reconciliation.py).
+[EntityLibraryRepository](../../zet/repositories/entity_library_repository.py), [ImageCatalogRepository](../../zet/repositories/image_catalog_repository.py), [LibraryIndexRepository](../../zet/repositories/library_index_repository.py), [LibraryIndexService](../../zet/services/library_index_service.py), [ZetApp.from_config](../../zet/app.py), [library component](../COMPONENTS/LIBRARY.md), [data model](../DATA_MODEL.md).
+
+Verification update after V5 recovery: use [Testing](../Testing.md) for approved scenarios and explicit coverage gaps. The original dedicated Python tests were retired; their evidence is available with `git show 2d0e1a9:tests/<filename>.py`, not as current runnable checks.

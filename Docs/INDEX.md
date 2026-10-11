@@ -2,7 +2,7 @@
 
 Read [AGENTS.md](../AGENTS.md) first. Select only the documents relevant to the task, then verify their source and tests. This knowledge base describes implementation inspected on **2026-10-11**; newer code and observed tests may expose drift.
 
-The V5 history recovery on 2026-10-11 restored the approved three-scenario local E2E suite and retired the former Python and browser suites. [Testing](Testing.md) owns current validation and coverage policy. References to `tests/test_*.py`, `tests/browser`, and their earlier results elsewhere in this knowledge base are historical evidence, not runnable checks or current coverage claims.
+The V5 history recovery on 2026-10-11 restored the approved three-scenario local E2E suite and retired the former Python/browser suites and CI gates. [Testing](Testing.md) owns the exact S1–S3 scenarios, isolated fixture/reset behavior, optional live check, and coverage policy. Component/code-map verification now refers to that baseline and names uncovered contracts. Earlier results in completed plans and Git snapshots remain historical evidence, not current commands or outstanding failures.
 
 ## Task navigation
 
@@ -11,11 +11,12 @@ The V5 history recovery on 2026-10-11 restored the approved three-scenario local
 | Understand the system or add a subsystem | [Architecture](ARCHITECTURE.md) | [Code map](CODE_MAP.md), relevant component |
 | Find a feature, its callers, and regression tests | [Code map](CODE_MAP.md) | Matching component and source |
 | Change identifiers, storage, or configuration | [Data model](DATA_MODEL.md) | [Invariants](INVARIANTS.md), [library](COMPONENTS/LIBRARY.md) |
-| Change character or scene prompts | [Prompts](COMPONENTS/PROMPTS.md) | [Scene Builder](COMPONENTS/SCENE_BUILDER.md) or [Narrative](COMPONENTS/NARRATIVE.md) |
+| Change character or scene prompts | [Prompts](COMPONENTS/PROMPTS.md) | [Narrative](COMPONENTS/NARRATIVE.md); [Scene Builder](COMPONENTS/SCENE_BUILDER.md) only for its retiring structured workflow |
 | Change local character generation/review | [Local characters](COMPONENTS/LOCAL_CHARACTERS.md) | [Queues](COMPONENTS/QUEUES.md), invariants |
 | Debug jobs, restart recovery, or missing images | [Queues](COMPONENTS/QUEUES.md) | [Development](DEVELOPMENT.md), owning workflow |
 | Plan a substantial change/refactor | [Plan convention](../plans/README.md) | Architecture, relevant invariants, [decisions](DECISIONS/README.md) |
-| Select validation or troubleshoot setup | [Development](DEVELOPMENT.md) | Code-map test references |
+| Select validation, debug E2E, or inspect the seed | [Testing](Testing.md) | [Development](DEVELOPMENT.md), code-map scenario/gap references |
+| Report a dashboard task or restore captured context | [Kanban integration](Kanban_Integration.md) | Code-map task forwarding entry, config definitions |
 
 ## Document ownership
 
@@ -31,7 +32,7 @@ The V5 history recovery on 2026-10-11 restored the approved three-scenario local
 | [COMPONENTS/LIBRARY.md](COMPONENTS/LIBRARY.md) | Universe binding, authoritative images, derived discovery index | Library/reference/discovery work |
 | [COMPONENTS/LOCAL_CHARACTERS.md](COMPONENTS/LOCAL_CHARACTERS.md) | Candidate generation, gates, ranking, selection, publication | Character pipeline work |
 | [COMPONENTS/PROMPTS.md](COMPONENTS/PROMPTS.md) | Template compilation, view conditioning, attachment contracts | Prompt changes |
-| [COMPONENTS/SCENE_BUILDER.md](COMPONENTS/SCENE_BUILDER.md) | Structured scenes, targets, layout, render and review | Existing story/scene workflows |
+| [COMPONENTS/SCENE_BUILDER.md](COMPONENTS/SCENE_BUILDER.md) | Retiring structured scenes, targets, layout, render and review | Authorized maintenance of the structured workflow; no maintained scenario |
 | [COMPONENTS/NARRATIVE.md](COMPONENTS/NARRATIVE.md) | Independent narrative authoring, jobs, references and assembly | Narrative workflows |
 | [COMPONENTS/QUEUES.md](COMPONENTS/QUEUES.md) | File Proxy/manual protocol, harvesting, receipts, process recovery | Async work and integrations |
 | [DECISIONS/README.md](DECISIONS/README.md) | ADR convention and evidence-backed decision records | Significant design choices |

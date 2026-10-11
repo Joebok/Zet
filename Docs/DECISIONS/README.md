@@ -7,6 +7,7 @@ Record significant choices that affect future implementation: boundaries, persis
 | [0001 — Library authority and derived index](0001-library-authority-and-derived-index.md) | Which catalog is authoritative, and what can be rebuilt? | Current boundary; retrospective |
 | [0002 — Independent Narrative workflow](0002-independent-narrative-workflow.md) | Why must scene changes distinguish Narrative from Scene Builder? | Current boundary; retrospective |
 | [0003 — Local character production boundary](0003-local-character-production-boundary.md) | Which character workflow/renderer should receive new production behavior? | Current policy; retrospective |
+| [0004 — Approved local task testing baseline](0004-local-task-testing-baseline.md) | What validation is maintained, and when can coverage/live testing expand? | Current policy; reconstructed from recovered commits |
 
 These records were reconstructed on 2026-10-11 from cited code/tests and notes. They are not a claim to know the historical decision date or undocumented motivation. A significant future change should add a new ADR and mark superseded records with its link instead of silently changing history.
 

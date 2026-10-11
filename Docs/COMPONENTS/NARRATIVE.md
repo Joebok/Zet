@@ -13,7 +13,7 @@ Narrative provides prose-oriented authoring and generation independent of Scene 
 | [NarrativeProxyService](../../zet/services/narrative_proxy_service.py), [NarrativeCodexService](../../zet/services/narrative_codex_service.py) | Proxy text/image dispatch and durable Codex CLI text attempts; [narrative_qwen_workflow.py](../../zet/services/narrative_qwen_workflow.py) supplies image workflows |
 | [NarrativeReferenceService](../../zet/services/narrative_reference_service.py) | Pinned backdrop inputs, local reuse/crop actions and independent imported subscenes |
 | [NarrativeAssemblyService](../../zet/services/narrative_assembly_service.py) | Source/layer binding, editable extraction/cutouts, deterministic composition and frozen assembly snapshots |
-| [narrative_router.py](../../zet/web/narrative_router.py), [narrative.html](../../zet/web/templates/narrative.html) | HTTP/browser presentation and calls into Narrative services |
+| [narrative_router.py](../../zet/web/narrative_router.py), [narrative.html](../../zet/web/templates/narrative.html), [narrative.js](../../zet/web/static/narrative.js) | HTTP/browser presentation and calls into Narrative services; context capture integrates with shared [task_capture.js](../../zet/web/static/task_capture.js) |
 
 ## Data and job lifecycle
 
@@ -37,6 +37,6 @@ Add Narrative fields to model defaults, author patch/validation lists, prompt/jo
 
 ## Tests and design notes
 
-[test_narrative_repository.py](../../tests/test_narrative_repository.py), [test_narrative_scene_service.py](../../tests/test_narrative_scene_service.py), [test_narrative_generation.py](../../tests/test_narrative_generation.py), [test_narrative_phase2.py](../../tests/test_narrative_phase2.py), [test_narrative_references.py](../../tests/test_narrative_references.py), [test_narrative_qwen.py](../../tests/test_narrative_qwen.py). Generation fixtures deliberately forbid legacy story creation/loading/staging. Results verified here are in [DEVELOPMENT](../DEVELOPMENT.md).
+[fast.spec.mjs](../../tests/e2e/fast.spec.mjs) S1 saves/reloads story, scene and element authoring; S3 runs interview/synthesis, prepared backdrop/subscene renders, a failure/retry, source selection/locking and final assembly through persisted publication/display. The [live check](../../tests/e2e/live.spec.mjs) uses prepared prerequisites then real final-assembly synthesis/rendering. These scenarios do not exhaustively verify frozen-input rejection, protected deletion, source import or Codex restart branches. See [Testing](../Testing.md) for live opt-in and coverage approval and [DEVELOPMENT](../DEVELOPMENT.md) for results.
 
 [Narrative approach](../../Docs-Joe/Narrative_Scene_Approach.md), [phase 1](../../Docs-Joe/Narrative_Scenes_Phase_1.md), [phase 2](../../Docs-Joe/Narrative_Scenes_Phase_2.md), and [references](../../Docs-Joe/Narrative_Scene_References.md) preserve intent and specifications; check code before treating recommendations as implemented behavior.
