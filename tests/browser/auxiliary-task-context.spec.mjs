@@ -95,6 +95,7 @@ test("screenshots survive interrupted uploads and intake retries with the same r
   await page.locator("#task-capture-title").fill("Preview bug");
   await page.locator("#task-capture-files").setInputFiles(screenshot);
   await expect(page.locator("#task-capture-screenshots img")).toBeVisible();
+  await expect.poll(()=>page.locator("#task-capture-screenshots img").evaluate(image=>image.naturalWidth)).toBeGreaterThan(0);
   await page.locator("#task-capture-submit").click();
   await expect(page.locator("#task-capture-status")).toContainText("Upload timed out");
   expect(reports).toHaveLength(0);
@@ -122,6 +123,12 @@ test("paste adds optional screenshots and invalid files leave the draft editable
     node.dispatchEvent(new ClipboardEvent("paste",{bubbles:true,clipboardData:data}));
   },png.toString("base64"));
   await expect(page.locator("#task-capture-screenshots li")).toHaveCount(1);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.locator("#task-capture-dialog").evaluate(node=>{
+    const rect=node.getBoundingClientRect();return rect.left>=0&&rect.right<=innerWidth&&node.scrollWidth<=node.clientWidth;
+  })).toBe(true);
+  await page.locator("#task-capture-files").scrollIntoViewIfNeeded();
+  await page.screenshot({path:"test-results/auxiliary-task-capture-mobile.png"});
   await page.locator("#task-capture-files").setInputFiles({name:"unsafe.svg",mimeType:"image/svg+xml",buffer:Buffer.from("<svg/>")});
   await expect(page.locator("#task-capture-status")).toContainText("PNG, JPEG, or WebP");
   await expect(page.locator("#task-capture-screenshots li")).toHaveCount(1);
@@ -163,4 +170,34 @@ test("image generation review captures result identifiers without copying prompt
   expect(context).toMatchObject({page_id:"image-generation",selections:{run:{id:"report-job"},candidate:{id:"report-job:0"}}});
   expect(JSON.stringify(context)).not.toContain("SECRET");
   expect(JSON.stringify(context)).not.toContain("fixture.png");
+});
+
+test("gate context retains requested identifiers while loading and reports failed lookups",async({page})=>{
+  await setup(page);
+  let release;
+  const delayed=new Promise(resolve=>{release=resolve});
+  await page.route("**/api/gate-test-rig/catalog*",async route=>{await delayed;await route.fulfill({status:503,json:{detail:"Catalog unavailable"}})});
+  await page.goto("/gate-test-data?task_context=1&pipeline=body-reference&gate=orientation&case_id=case-1");
+  const context=await snapshot(page);
+  expect(context.selections).toMatchObject({pipeline:{state:"loading",id:"body-reference"},gate:{state:"loading",id:"orientation"},test_case:{state:"loading",id:"case-1"}});
+  release();
+  await expect(page.locator("#status")).toContainText("Catalog unavailable");
+  // A frozen snapshot remains unchanged until the user explicitly refreshes.
+  expect(JSON.parse(await page.locator("#task-capture-context").textContent())).toEqual(context);
+  await page.locator("#task-capture-refresh").click();
+  const failed=JSON.parse(await page.locator("#task-capture-context").textContent());
+  expect(failed.selections.pipeline).toMatchObject({state:"unavailable",id:"body-reference"});
+  expect(failed.selections.test_case).toMatchObject({state:"unavailable",id:"case-1"});
+});
+
+test("rerunning an opened saved test reports the displayed run rather than its old snapshot",async({page})=>{
+  await gateFixtures(page);
+  await page.goto("/gate-test-rig?task_context=1&test_id=test-1&case_id=case-1");
+  await expect(page.locator(".result.task-context-selected")).toBeVisible();
+  await page.evaluate(()=>{activeRunId="run-2";renderTest({...currentRecord,run_id:"run-2"})});
+  const context=await snapshot(page,".result [data-task-report]");
+  expect(context.selections.run.id).toBe("run-2");
+  const parameters=new URL(context.source_url).searchParams;
+  expect(parameters.get("run_id")).toBe("run-2");
+  expect(parameters.has("test_id")).toBe(false);
 });
