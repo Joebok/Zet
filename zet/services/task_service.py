@@ -141,15 +141,18 @@ class TaskService:
             raise TaskServiceError("The screenshot encoding is invalid.", 422) from exc
         if not content or len(content) > MAX_SCREENSHOT_BYTES:
             raise TaskServiceError("Screenshots must contain an image of at most 5 MiB.", 422 if not content else 413)
-        status, receipt = self._post_json("/api/v1/attachments", payload)
-        if (not isinstance(receipt, dict) or not isinstance(receipt.get("attachment_id"), str) or
-                re.fullmatch(ATTACHMENT_ID, receipt["attachment_id"]) is None or
+        upload = {key: value for key, value in payload.items() if key != "content_type"}
+        upload["media_type"] = mime
+        status, receipt = self._post_json("/api/v1/attachments", upload)
+        if (not isinstance(receipt, dict) or not isinstance(receipt.get("id"), str) or
+                re.fullmatch(ATTACHMENT_ID, receipt["id"]) is None or
                 type(receipt.get("created")) is not bool or receipt["created"] != (status == 201) or
-                receipt.get("filename") != name or receipt.get("content_type") != mime or
+                receipt.get("filename") != name or receipt.get("media_type") != mime or
                 type(receipt.get("size_bytes")) is not int or receipt["size_bytes"] != len(content) or
                 receipt.get("sha256") != hashlib.sha256(content).hexdigest()):
             raise TaskServiceError("Kanban returned an invalid screenshot receipt; keep the draft and retry.", 502)
-        return receipt
+        return {"attachment_id": receipt["id"], "filename": name, "content_type": mime,
+                "size_bytes": len(content), "sha256": receipt["sha256"], "created": receipt["created"]}
 
     def _post_json(self, path: str, report: dict) -> tuple[int, dict]:
         try:

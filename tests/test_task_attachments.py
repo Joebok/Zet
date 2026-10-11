@@ -24,7 +24,7 @@ def upload():
 
 def receipt(created=True):
     content = base64.b64decode(PNG)
-    return dict(attachment_id=ATTACHMENT_ID, filename="screen.png", content_type="image/png",
+    return dict(id=ATTACHMENT_ID, filename="screen.png", media_type="image/png",
                 size_bytes=len(content), sha256=hashlib.sha256(content).hexdigest(), created=created)
 
 
@@ -35,11 +35,16 @@ def test_upload_retries_preserve_bytes_binding_and_verified_receipt():
     with pytest.raises(TaskServiceError) as error:
         sender.upload_task_attachment(original)
     assert error.value.status_code == 503
-    assert sender.upload_task_attachment(original) == receipt(False)
+    assert sender.upload_task_attachment(original) == {
+        "attachment_id": ATTACHMENT_ID, "filename": "screen.png", "content_type": "image/png",
+        "size_bytes": receipt()["size_bytes"], "sha256": receipt()["sha256"], "created": False}
+    assert original == upload()
     requests = [call.args[0] for call in sender._opener.open.call_args_list]
     assert requests[0].full_url.endswith("/api/v1/attachments")
     assert requests[0].data == requests[1].data
-    assert json.loads(requests[0].data) == original == upload()
+    expected = {key: value for key, value in original.items() if key != "content_type"}
+    expected["media_type"] = "image/png"
+    assert json.loads(requests[0].data) == expected
 
 
 @pytest.mark.parametrize("change,status", [
@@ -58,7 +63,7 @@ def test_bad_uploads_are_rejected_without_contacting_kanban(change, status):
 
 
 @pytest.mark.parametrize("change", [dict(sha256="b" * 64), dict(size_bytes=True), dict(filename="other.png"),
-                                    dict(attachment_id="bad"), dict(created=False)])
+                                    dict(id="bad"), dict(media_type="image/jpeg"), dict(created=False)])
 def test_invalid_upload_receipt_does_not_claim_success(change):
     sender = service()
     sender._opener.open.return_value = Reply({**receipt(), **change})
@@ -83,7 +88,11 @@ def test_upload_router_bounds_stream_and_preserves_creation_replay_and_timeout()
     app.include_router(create_task_router(lambda: SimpleNamespace(upload_task_attachment=sender.upload_task_attachment)))
     client = TestClient(app)
     sender._opener.open.return_value = Reply(receipt())
-    assert client.post("/api/tasks/attachments", json=upload()).status_code == 201
+    created = client.post("/api/tasks/attachments", json=upload())
+    assert created.status_code == 201
+    assert created.json()["attachment_id"] == ATTACHMENT_ID
+    assert created.json()["content_type"] == "image/png"
+    assert "id" not in created.json() and "media_type" not in created.json()
     sender._opener.open.return_value = Reply(receipt(False), 200)
     assert client.post("/api/tasks/attachments", json=upload()).status_code == 200
     sender._opener.open.side_effect = TimeoutError()

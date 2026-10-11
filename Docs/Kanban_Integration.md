@@ -111,8 +111,9 @@ First submission freezes the brief, project mapping, and screenshot list. Each
 image goes to `POST /api/tasks/attachments`, which forwards JSON to Kanban's
 `POST /api/v1/attachments`. Requests are bounded to 7 MiB and include the original
 project/request IDs, plain filename, fixed image MIME type, and `content_base64`.
-The service verifies the returned identifier, size, SHA-256, metadata, and creation
-status. Kanban performs image signature recognition and owns local storage.
+Zet's browser-facing `content_type` field maps to Kanban's `media_type`; Kanban's
+receipt `id` maps back to Zet's `attachment_id`. The service verifies the returned
+identifier, size, SHA-256, metadata, and creation status. Kanban performs image signature recognition and owns local storage.
 Only attachment IDs go in the intake report; raw images are not report context.
 
 Upload receipts are saved with the locked draft. Retry skips acknowledged uploads,
