@@ -163,3 +163,10 @@ Human merge/production adoption and three-delivery final cutover remain open.
   only verified disposable fixture/bridge processes stopped and their owned
   bridge registry removed. Retained worktree, claims, evidence and all Kanban/live
   data remain. Primary chat stays open; Joe owns merge and production promotion.
+
+- Pickup repair on 2026-10-13: Joe merged #43/#41, but the pilot issue and local
+  review checkpoint remained open. [Repair plan](../completed/github-pickup-repair.md)
+  records completed-delivery reconciliation, actual queue polling on every run,
+  visible history, closed #42 and unchanged Luna/High scheduling. Disposable
+  coordination checks and all three E2E scenarios passed (23.3s). #44 remains
+  queued; its next scheduled delivery and the three-delivery cutover are unverified.
