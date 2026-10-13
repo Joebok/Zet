@@ -34,6 +34,9 @@
 .narrative-editor { display:grid; grid-template-columns:minmax(340px, .95fr) minmax(420px,1.25fr); gap:1.3rem; align-items:start; }
 .narrative-field { display:flex; flex-direction:column; gap:.35rem; margin-bottom:1rem; }
 .narrative-field input { width:100%; }
+.narrative-membership-list { display:grid; gap:.25rem; }
+.narrative-membership-row { display:flex; align-items:center; gap:.65rem; padding:.35rem .25rem; cursor:pointer; font-size:.95rem; }
+.narrative-membership-row input[type=checkbox] { flex:0 0 auto; margin:0; }
 .narrative-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-top:.75rem; }
 .narrative-inline { display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; }
 .narrative-muted { font-size:.9rem; color:var(--text-muted); }
