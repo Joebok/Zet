@@ -125,7 +125,7 @@ def main():
         else:
             result = worker.checkpoint(args.token, args.state, args.message_file.read_text(encoding="utf-8") if args.message_file else "", args.pr_number)
         print(json.dumps(result, ensure_ascii=False))
-        return 0
+        return 1 if args.action == "validate" and not result.get("passed") else 0
     except Exception as exc:
         if "store" in locals():
             store.put("status", "worker", {"checked_at": time.time(), "state": "error", "error": str(exc)[:300]})

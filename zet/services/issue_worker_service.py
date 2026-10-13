@@ -152,8 +152,13 @@ class IssueWorkerService:
             subprocess.run([str(python), "-c", "import sys; assert sys.version_info.major == 3"], check=True, timeout=10)
             env["ZET_TEST_PYTHON"] = str(python)
         with test_lock(self.store.root):
-            result = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
-                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            try:
+                result = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
+                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            except subprocess.TimeoutExpired as exc:
+                def decoded(value):
+                    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+                result = subprocess.CompletedProcess(command, 124, decoded(exc.stdout), decoded(exc.stderr) + "\nApproved baseline timed out; retained output follows.\n")
         diff = subprocess.run(["git", "diff", "--check"], cwd=root, capture_output=True, text=True)
         revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
         log = root / "test-results" / "issue-worker-validation.log"
