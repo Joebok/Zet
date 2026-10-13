@@ -43,7 +43,7 @@ class AdHocImageGenerationService:
     def __init__(self, zet_app, project_root: str | Path):
         self.zet_app = zet_app
         self.project_root = Path(project_root)
-        self.presets_path = self.project_root / "Config" / "Local_Render_Presets.json"
+        self.presets_path = zet_app.config.state_file(self.project_root, "Local_Render_Presets.json")
         self.proxy_paths = zet_app.ai_proxy_service.ai_proxy_path_service
         self.proxy_client = self.proxy_paths.file_proxy_client
         self.workspace_root = Path(tempfile.gettempdir()) / "zet-ad-hoc-image-generation"
@@ -162,7 +162,7 @@ class AdHocImageGenerationService:
             raise AdHocImageGenerationError("Local rendering supports only Qwen Image 2.1.")
         require_qwen_profile(self.project_root, str(payload.get("render_preset") or payload.get("profile") or preset_name),
                              str(payload.get("backend") or payload.get("image_generation") or "comfyui"),
-                             str(payload.get("checkpoint") or ""))
+                             str(payload.get("checkpoint") or ""), presets_path=self.presets_path)
         checkpoint = str(self.zet_app.config.comfyui_checkpoint or "").strip()
         if not checkpoint:
             checkpoint = str(self._preset(preset_name).get("diffusion_model") or "")

@@ -16,7 +16,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "python3 -B tests/e2e/server.py --mode fast",
+    command: `"${process.env.ZET_TEST_PYTHON || "python3"}" -B tests/e2e/server.py --mode fast`,
     url: "http://127.0.0.1:8765/api/context",
     reuseExistingServer: false,
     timeout: 30_000,

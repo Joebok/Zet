@@ -1,0 +1,10 @@
+# Issue work stays in its checkout plus the coordination directory; no production
+# releases, authored libraries, shared queue, or machine indexes are writable roots.
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = ["C:/Users/Joe/Projects/Zet_Runtime/state"]
+
+[shell_environment_policy.set]
+ZET_WORKER_MODE = "1"

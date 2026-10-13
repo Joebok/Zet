@@ -175,8 +175,15 @@ class ZetApp:
     ):
         self.config = config
         self.config_path = Path(config_path)
-        self.task_service = TaskService(config.kanban_base_url, config.kanban_project_id, config.kanban_timeout_seconds,
-                                        project_root=Path(__file__).resolve().parents[1])
+        from zet.services.runtime_state_service import workflow_root
+        self.task_service = TaskService(config.github_repository, config.github_timeout_seconds,
+                                        project_root=Path(__file__).resolve().parents[1], state_root=workflow_root(config))
+        from zet.services.codex_usage_service import CodexUsageService
+        from zet.services.task_status_service import TaskStatusService
+        self.codex_usage_service = CodexUsageService(self.task_service.store, config.codex_usage_reserve_percent)
+        self.task_status_service = TaskStatusService(self.task_service, self.codex_usage_service, config.codex_trusted_users)
+        from zet.services.worker_bridge_service import WorkerBridgeService
+        self.worker_bridge_service = WorkerBridgeService(self.task_service, self.codex_usage_service)
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service
@@ -239,7 +246,9 @@ class ZetApp:
         self.narrative_candidate_import_service = NarrativeCandidateImportService(self)
         self.workspace_summary_service.narrative = self.narrative_scene_service
         self.zine_service.narrative = self.narrative_scene_service
-        self.process_service = ProcessService(Path(__file__).resolve().parents[1])
+        self.process_service = ProcessService(Path(__file__).resolve().parents[1], config_path=self.config_path)
+        from zet.services.deployment_service import DeploymentService
+        self.deployment_service = DeploymentService(self)
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
             config,
@@ -272,7 +281,7 @@ class ZetApp:
     @classmethod
     def from_config(cls, config_path: str | Path, *, validate_catalog: bool = True, universe_id: str | None = None) -> "ZetApp":
         container_config = ConfigService.load(config_path)
-        universe_service = UniverseService(container_config.base_library_path, Path(config_path).resolve().parent / "Config" / "universe-selection.json")
+        universe_service = UniverseService(container_config.base_library_path, container_config.state_file(Path(config_path).resolve().parent, "universe-selection.json"))
         selected_id = universe_id or universe_service.selection()
         config = universe_service.bind_config(container_config, selected_id)
         path_service = PathService(config, Path(config_path).resolve().parent)

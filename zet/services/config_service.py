@@ -4,7 +4,9 @@ import platform
 from pathlib import Path
 import tomllib
 from zet.services.local_render_policy import configured_qwen_profile, configured_qwen_checkpoint, SCENE_PROFILE
-from zet.services.task_service import TaskServiceError, validate_kanban_settings
+from zet.services.task_report_service import validate_repository
+from zet.services.github_client import TaskServiceError
+from zet.services.runtime_state_service import state_file
 
 
 class ConfigServiceError(Exception):
@@ -74,9 +76,17 @@ class Config:
     universe_id: str = "Moonsea"
     universe_is_legacy: bool = True
     library_container_path: str = ""
-    kanban_base_url: str = "http://127.0.0.1:8000"
-    kanban_project_id: str = ""
-    kanban_timeout_seconds: float = 5.0
+    github_repository: str = ""
+    github_timeout_seconds: float = 20.0
+    task_state_path: str = ""
+    runtime_state_path: str = ""
+    runtime_root: str = ""
+    runtime_role: str = "local"
+    codex_usage_reserve_percent: float = 10.0
+    codex_trusted_users: tuple[str, ...] = ("Joebok",)
+
+    def state_file(self, project_root, filename: str) -> Path:
+        return state_file(self, project_root, filename)
 
 
 class ConfigService:
@@ -197,15 +207,26 @@ class ConfigService:
         except tomllib.TOMLDecodeError as exc:
             raise ConfigServiceError(f"Config file is invalid TOML at {path}: {exc}") from exc
         try:
-            kanban = payload.get("Kanban", {})
-            if not isinstance(kanban, dict) or set(kanban) - {"BaseURL", "ProjectID", "TimeoutSeconds"}:
-                raise ConfigServiceError("Kanban settings must be a table containing BaseURL, ProjectID, and TimeoutSeconds only.")
-            try:
-                kanban_url, kanban_project, kanban_timeout = validate_kanban_settings(
-                    kanban.get("BaseURL", "http://127.0.0.1:8000"), kanban.get("ProjectID", ""), kanban.get("TimeoutSeconds", 5.0),
-                )
-            except TaskServiceError as exc:
-                raise ConfigServiceError(str(exc)) from exc
+            github = payload.get("GitHub", {})
+            runtime = payload.get("Runtime", {})
+            if not isinstance(github, dict) or not isinstance(runtime, dict):
+                raise ConfigServiceError("GitHub and Runtime settings must be TOML tables.")
+            for name, settings in (("GitHub", github), ("Runtime", runtime)):
+                overrides = payload.get(name + "ByPlatform", {}).get(ConfigService._platform_name(), {})
+                if not isinstance(overrides, dict):
+                    raise ConfigServiceError(f"{name} platform settings must be a TOML table.")
+                settings.update(overrides)
+            github_repository = validate_repository(github.get("Repository", ""))
+            timeout = float(github.get("TimeoutSeconds", 20))
+            reserve = float(github.get("UsageReservePercent", 10))
+            if not 0 < timeout <= 60 or not 0 <= reserve <= 100:
+                raise ConfigServiceError("GitHub timeout must be 0–60 seconds and usage reserve 0–100 percent.")
+            role = runtime.get("Role", "local")
+            if role not in {"local", "development", "production"}:
+                raise ConfigServiceError("Runtime.Role must be local, development or production.")
+            trusted = github.get("TrustedUsers", ["Joebok"])
+            if not isinstance(trusted, list) or any(not isinstance(user, str) or not user.strip() for user in trusted):
+                raise ConfigServiceError("GitHub.TrustedUsers must be a list of GitHub account names.")
             base_folders = ConfigService._base_folders_for_platform(payload)
             prompt_condense = ConfigService._prompt_condense_config(payload)
             ai_models = ConfigService._ai_models_config(payload)
@@ -216,7 +237,25 @@ class ConfigService:
             ai_harvest = ConfigService._ai_harvest_config(payload)
             render = ConfigService._render_config(payload)
             ai_prompt_analysis = ConfigService._ai_prompt_analysis_config(payload)
+            preset_path = Path(ConfigService._normalize_path_value(runtime.get("StatePath", ""))) / "Local_Render_Presets.json" if runtime.get("StatePath") else None
             library_base = ConfigService._normalize_path_value(base_folders.get("BaseLibraryPath", ""))
+            for configured_state in (github.get("StatePath", ""), runtime.get("StatePath", "")):
+                if configured_state:
+                    state_root = Path(ConfigService._normalize_path_value(configured_state)).resolve()
+                    for authored_path in (library_base, base_folders.get("BaseAIQueuePath", "")):
+                        authored = Path(ConfigService._normalize_path_value(authored_path)).resolve()
+                        if state_root == authored or authored in state_root.parents:
+                            raise ConfigServiceError("Runtime/task state must be outside the creative library and queue.")
+            if os.environ.get("ZET_WORKER_MODE") == "1" and role != "development":
+                raise ConfigServiceError("Issue workers may load only a development fixture configuration, never production config.toml.")
+            if role == "development":
+                fixture_root = path.resolve().parent
+                for candidate in (library_base, base_folders.get("BaseAIQueuePath", "")):
+                    resolved = Path(ConfigService._normalize_path_value(candidate)).resolve()
+                    if fixture_root not in resolved.parents:
+                        raise ConfigServiceError("Development library and queue must be inside the fixture config directory.")
+                if ConfigService._scene_candidate_sources(payload):
+                    raise ConfigServiceError("Development fixtures cannot attach external candidate source documents.")
             return Config(
                 base_library_path=library_base,
                 base_character_path=ConfigService._resolve_base_folder(library_base, base_folders["BaseCharacterPath"]),
@@ -242,10 +281,10 @@ class ConfigService:
                 ),
                 local_render_auto_queue_after_condense=bool(local_render.get("AutoQueueAfterCondense", False)),
                 local_render_backend="comfyui",
-                local_render_preset=configured_qwen_profile(str(comfyui.get("Profile", SCENE_PROFILE))),
-                comfyui_profile=configured_qwen_profile(str(comfyui.get("Profile", SCENE_PROFILE))),
+                local_render_preset=configured_qwen_profile(str(comfyui.get("Profile", SCENE_PROFILE)), presets_path=preset_path),
+                comfyui_profile=configured_qwen_profile(str(comfyui.get("Profile", SCENE_PROFILE)), presets_path=preset_path),
                 comfyui_server_url=str(comfyui.get("ServerURL", "http://127.0.0.1:8188")),
-                comfyui_checkpoint=configured_qwen_checkpoint(str(comfyui.get("Checkpoint", ""))),
+                comfyui_checkpoint=configured_qwen_checkpoint(str(comfyui.get("Checkpoint", "")), presets_path=preset_path),
                 comfyui_positive_prompt_globals=str(comfyui.get("PositivePromptGlobals", "")),
                 comfyui_negative_prompt_globals=str(comfyui.get("NegativePromptGlobals", "")),
                 comfyui_poll_seconds=float(comfyui.get("PollSeconds", 1.0)),
@@ -277,12 +316,19 @@ class ConfigService:
                 ),
                 ai_prompt_analysis_auto_queue_on_render=bool(ai_prompt_analysis.get("AutoQueueOnRender", False)),
                 scene_candidate_sources=ConfigService._scene_candidate_sources(payload),
-                kanban_base_url=kanban_url,
-                kanban_project_id=kanban_project,
-                kanban_timeout_seconds=kanban_timeout,
+                github_repository=github_repository,
+                github_timeout_seconds=timeout,
+                task_state_path=ConfigService._normalize_path_value(github.get("StatePath", "")),
+                runtime_state_path=ConfigService._normalize_path_value(runtime.get("StatePath", "")),
+                runtime_root=ConfigService._normalize_path_value(runtime.get("Root", "")),
+                runtime_role=role,
+                codex_usage_reserve_percent=reserve,
+                codex_trusted_users=tuple(trusted),
             )
         except ConfigServiceError:
             raise
+        except TaskServiceError as exc:
+            raise ConfigServiceError(str(exc)) from exc
         except Exception as exc:
             raise ConfigServiceError(f"Config file is missing required BaseFolders entries: {path}") from exc
 

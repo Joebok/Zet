@@ -9,6 +9,7 @@ import socket
 
 def queue_local_state_root(queue_root: str | Path, producer: str | None = None) -> Path:
     queue = Path(queue_root).expanduser().resolve()
+    test_root = os.environ.get("ZET_TEST_QUEUE_STATE_ROOT")
     local = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_DATA_HOME")
     if local:
         base = Path(local)
@@ -17,4 +18,5 @@ def queue_local_state_root(queue_root: str | Path, producer: str | None = None) 
     key = hashlib.sha256(os.path.normcase(str(queue)).encode("utf-8")).hexdigest()[:20]
     host = producer or socket.gethostname()
     safe_host = "".join(char if char.isalnum() or char in "-_" else "_" for char in host)[:80]
-    return base / "Zet" / "AI_Queue" / key / (safe_host or "producer")
+    root = Path(test_root).resolve() if test_root else base / "Zet" / "AI_Queue"
+    return root / key / (safe_host or "producer")

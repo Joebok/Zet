@@ -96,3 +96,13 @@ are superseded without publishing into source or Narrative records.
 Eight-slot grids keep stable positions. Supplemental generation fills empty slots only; reserved prerequisites and failed renders are occupied. Replacement candidates/jobs have distinct identities, and changed character evaluations receive a new fence. Late results cannot fill another candidate's position. Selected and locked images require explicit protection transitions before slot replacement. Clear detaches membership while retaining historical artifacts; normal reruns still follow their existing explicit destructive behavior.
 
 Character slot changes hold the state lock and persist pending candidate IDs before background submission. An independent slot collector owns `slot_runner.lock`; it does not block unrelated slot actions on the batch runner. Existing batch runners exclude these independently managed additions. Empty capacity is not Run All Remaining work. Image Generation workspace assignments are universe-owned and server persisted; newly generated results return by child index, never completion order. Services own these transitions, browsers own only presentation/draft inputs. [ADR 0007](DECISIONS/0007-stable-render-slots.md) and [render_slot_service.py](../zet/services/render_slot_service.py) own the contract. Existing S2/S3 cover baseline compatibility; the separately approved disposable checks cover the reported slot issues. Full Body/Head generation and general restart recovery remain unverified by maintained scenarios.
+
+## GitHub capture and production promotion
+
+Frozen reports bind request IDs to repository/content hashes. Uncertain creation
+is reconciled without blind reposting. Screenshot bytes are validated and links
+pin evidence commits. Worker ownership is token fenced and never automatically
+stolen; original report/images remain acceptance inputs. Unknown quota pauses work.
+Production process/config identity and new-boot/revision health fence promotion.
+Authored-data migration gates differ from code rollback; no library/queue/catalog
+reset is implied. [GitHub task workflow](GitHub_Task_Workflow.md) owns details.

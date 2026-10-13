@@ -1,188 +1,173 @@
-"""Forward frozen dashboard reports to Kanban without owning its board files."""
-
+"""Publish frozen Zet reports as GitHub issues with durable delivery receipts."""
 from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
-from http.client import HTTPException as HTTPTransportError
-import math
 from pathlib import Path
 import re
 import subprocess
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+import time
+from urllib.parse import quote
+
+from PIL import Image
+
+from zet.repositories.task_workflow_repository import TaskWorkflowRepository
+from zet.services.github_client import GitHubClient, TaskServiceError
+from zet.services.task_report_service import format_report, marker, request_id, validate_report, validate_repository
 
 
 MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024
 MAX_SCREENSHOT_REQUEST_BYTES = 7 * 1024 * 1024
 ATTACHMENT_ID = r"attachment-[0-9a-f]{32}"
-
-
-class TaskServiceError(Exception):
-    def __init__(self, message: str, status_code: int = 503):
-        super().__init__(message)
-        self.status_code = status_code
-
-
-def validate_kanban_settings(base_url, project_id, timeout_seconds) -> tuple[str, str, float]:
-    if not isinstance(base_url, str) or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in base_url) or "\\" in base_url:
-        raise TaskServiceError("Kanban BaseURL must be an HTTP(S) origin without credentials or a path.")
-    try:
-        parsed = urlsplit(base_url)
-        port = parsed.port
-    except ValueError as exc:
-        raise TaskServiceError("Kanban BaseURL is invalid.") from exc
-    if (parsed.scheme not in {"http", "https"} or not parsed.hostname or port == 0 or
-            parsed.username is not None or parsed.password is not None or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
-        raise TaskServiceError("Kanban BaseURL must be an HTTP(S) origin without credentials or a path.")
-    if not isinstance(project_id, str) or (project_id and re.fullmatch(r"project-[0-9a-f]{8}", project_id) is None):
-        raise TaskServiceError("Kanban ProjectID must be empty or a registered project identifier.")
-    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 60:
-        raise TaskServiceError("Kanban TimeoutSeconds must be a finite number greater than zero and at most 60.")
-    return base_url.rstrip("/"), project_id, float(timeout_seconds)
-
-
-class _NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+EVIDENCE_BRANCH = "codex/issue-evidence"
 
 
 class TaskService:
-    def __init__(self, base_url: str, project_id: str, timeout_seconds: float = 5.0, *, project_root: Path):
-        self.base_url, self.project_id, self.timeout_seconds = validate_kanban_settings(base_url, project_id, timeout_seconds)
-        # Keep local reports off ambient HTTP proxies and do not follow redirects.
-        self._opener = build_opener(ProxyHandler({}), _NoRedirect())
+    def __init__(self, repository: str, timeout_seconds: float = 20, *, project_root: Path, state_root: Path, github=None):
+        self.repository = validate_repository(repository)
+        self.github = github or GitHubClient(repository, timeout_seconds)
+        self.store = TaskWorkflowRepository(state_root)
         self.zet_revision = self._revision(project_root)
 
     @staticmethod
-    def _revision(project_root: Path) -> str | None:
+    def _revision(project_root):
         try:
-            result = subprocess.run(["git", "-C", str(project_root), "rev-parse", "HEAD"],
-                                    capture_output=True, text=True, timeout=2, check=False)
+            result = subprocess.run(["git", "-C", str(project_root), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=2)
+            value = result.stdout.strip()
+            return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", value) else None
         except (OSError, subprocess.TimeoutExpired):
             return None
-        revision = result.stdout.strip()
-        return revision if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", revision) else None
 
-    def metadata(self) -> dict:
-        return {"configured": bool(self.project_id), "board_url": self.base_url + "/",
-                "project_id": self.project_id or None, "report_context_version": 1, "zet_revision": self.zet_revision}
+    def metadata(self):
+        return {"configured": bool(self.repository), "repository": self.repository,
+                "issues_url": f"https://github.com/{self.repository}/issues" if self.repository else None,
+                "report_context_version": 1, "zet_revision": self.zet_revision}
 
-    @staticmethod
-    def _error_detail(error: HTTPError) -> str:
-        try:
-            value = json.loads(error.read(65536).decode("utf-8"))
-        except (ValueError, OSError, HTTPTransportError):
-            return "Kanban rejected the report."
-        detail = value.get("detail") if isinstance(value, dict) else None
-        if isinstance(detail, str):
-            return detail[:1000] or "Kanban rejected the report."
-        if isinstance(detail, list):
-            messages = [item["msg"] for item in detail if isinstance(item, dict) and isinstance(item.get("msg"), str)]
-            return "; ".join(messages)[:1000] or "Kanban rejected the report."
-        return "Kanban rejected the report."
+    def require_configured(self):
+        if not self.repository:
+            raise TaskServiceError("Set GitHub.Repository on the Zet host. Your draft is retained.")
 
-    def create_task(self, payload: dict) -> dict:
-        allowed = {"request_id", "project_id", "type", "title", "description", "expected_behavior",
-                   "actual_behavior", "reproduction_steps", "context", "attachment_ids", "allow_auto_plan_approval"}
-        if not isinstance(payload, dict) or set(payload) - allowed:
-            raise TaskServiceError("Expected a report with supported intake fields.", 422)
-        request_id = payload.get("request_id")
-        if (not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip() or len(request_id) > 128 or
-                any(ord(c) < 32 or ord(c) == 127 for c in request_id)):
-            raise TaskServiceError("A stable request_id is required for task creation and retries.", 422)
-        if not isinstance(payload.get("type"), str) or payload["type"] not in {"bug", "improvement", "feature"} or not isinstance(payload.get("title"), str) or not payload["title"].strip():
-            raise TaskServiceError("A task type and non-empty title are required.", 422)
-        if "allow_auto_plan_approval" in payload and type(payload["allow_auto_plan_approval"]) is not bool:
-            raise TaskServiceError("allow_auto_plan_approval must be a boolean.", 422)
-        context = payload.get("context")
-        if not isinstance(context, dict) or type(context.get("version")) is not int or context["version"] != 1:
-            raise TaskServiceError("A frozen context-v1 snapshot is required.", 422)
-        if not self.project_id:
-            raise TaskServiceError("Register Zet on the Kanban board and set Kanban.ProjectID in config.toml.")
-        if "project_id" in payload and payload["project_id"] != self.project_id:
-            raise TaskServiceError("The report project does not match Kanban.ProjectID. Preserve the original mapping when retrying.", 409)
-        attachment_ids = payload.get("attachment_ids", [])
-        if (not isinstance(attachment_ids, list) or len(attachment_ids) > 4 or
-                any(not isinstance(item, str) or re.fullmatch(ATTACHMENT_ID, item) is None for item in attachment_ids) or
-                len(set(attachment_ids)) != len(attachment_ids)):
-            raise TaskServiceError("Use up to four unique screenshot attachment IDs.", 422)
-        report = {**payload, "project_id": self.project_id}
-        status, receipt = self._post_json("/api/v1/intake", report)
-        if (not isinstance(receipt, dict) or not isinstance(receipt.get("task_id"), str) or
-                re.fullmatch(r"task-[0-9a-f]{8}", receipt["task_id"]) is None or
-                type(receipt.get("created")) is not bool or receipt["created"] != (status == 201) or
-                receipt.get("board_url") != f"/?task_id={receipt['task_id']}"):
-            raise TaskServiceError("Kanban returned an invalid intake receipt; keep the draft and retry.", 502)
-        return {"task_id": receipt["task_id"], "board_url": self.base_url + receipt["board_url"], "created": receipt["created"]}
+    def _evidence(self, report):
+        result = []
+        for attachment_id in report["attachment_ids"]:
+            item = self.store.get("attachments", attachment_id)
+            if not item or item["repository"] != self.repository or item["request_id"] != report["request_id"]:
+                raise TaskServiceError("Screenshot receipt does not belong to this report.", 409)
+            result.append(item)
+        return result
 
-    def upload_task_attachment(self, payload: dict) -> dict:
-        allowed = {"request_id", "project_id", "filename", "content_type", "content_base64"}
-        if not isinstance(payload, dict) or set(payload) != allowed:
-            raise TaskServiceError("Expected a screenshot with project, request, filename, type, and content.", 422)
-        if not self.project_id:
-            raise TaskServiceError("Register Zet on Kanban and configure Kanban.ProjectID.")
-        if payload["project_id"] != self.project_id:
-            raise TaskServiceError("The screenshot project does not match Kanban.ProjectID. Preserve the original mapping when retrying.", 409)
-        request_id, name, mime, encoded = (payload[key] for key in ("request_id", "filename", "content_type", "content_base64"))
-        if (not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip() or len(request_id) > 128 or
-                any(ord(c) < 32 or ord(c) == 127 for c in request_id)):
-            raise TaskServiceError("A stable request_id is required for screenshot retries.", 422)
-        extensions = {"image/png": {".png"}, "image/jpeg": {".jpg", ".jpeg"}, "image/webp": {".webp"}}
-        if (not isinstance(name, str) or not name.strip() or len(name) > 240 or "/" in name or "\\" in name or
-                any(ord(c) < 32 or ord(c) == 127 for c in name) or not isinstance(mime, str) or
-                mime not in extensions or Path(name).suffix.lower() not in extensions[mime]):
-            raise TaskServiceError("Choose a PNG, JPEG, or WebP screenshot with a matching plain filename.", 422)
+    def preview(self, payload):
+        self.require_configured()
+        report = validate_report(payload, self.repository)
+        return {"body": format_report(report), "repository": self.repository}
+
+    def create_task(self, payload):
+        self.require_configured()
+        report = validate_report(payload, self.repository)
+        evidence = self._evidence(report)
+        body = format_report(report, evidence)
+        if len(body) > 60000:
+            raise TaskServiceError("The issue preview is too long; shorten this draft before submission.", 413)
+        digest = hashlib.sha256(json.dumps(report, sort_keys=True, allow_nan=False).encode()).hexdigest()
+        key = report["request_id"]
+        with self.store.transaction() as db:
+            existing = self.store.read(db, "captures", key)
+            if existing and (existing["hash"] != digest or existing["repository"] != self.repository):
+                raise TaskServiceError("This request ID is bound to a different frozen report or repository.", 409)
+            if existing and existing.get("receipt"):
+                return dict(existing["receipt"], created=False)
+            if existing and existing.get("uncertain"):
+                matches = [item for item in self.github.issues("all") if marker(report) in (item.get("body") or "")]
+                if len(matches) != 1:
+                    raise TaskServiceError("Delivery is still uncertain. No new issue was created; retain this draft and retry reconciliation.", 409)
+                issue = matches[0]
+                if issue.get("body") != body or issue.get("title") != report["title"]:
+                    raise TaskServiceError("The recovered GitHub issue was edited; inspect it before reconciling this frozen draft.", 409)
+                created = False
+            else:
+                # Commit BEFORE the external write. A crash can never cause a blind repost.
+                self.store.write(db, "captures", key, {"repository": self.repository, "hash": digest, "uncertain": True, "attempted_at": time.time()})
+                db.commit()
+                try:
+                    issue = self.github.repo_api("/issues", method="POST", payload={"title": report["title"], "body": body,
+                                                    "labels": ["bug" if report["type"] == "bug" else "enhancement"]})
+                except TaskServiceError as exc:
+                    if exc.status_code in {400, 401, 403, 404, 422}:
+                        db.execute("BEGIN IMMEDIATE")
+                        self.store.write(db, "captures", key, {"repository": self.repository, "hash": digest, "uncertain": False})
+                        db.commit()
+                    raise
+                created = True
+                db.execute("BEGIN IMMEDIATE")
+            number = issue.get("number") if isinstance(issue, dict) else None
+            if type(number) is not int or number < 1 or issue.get("html_url") != f"https://github.com/{self.repository}/issues/{number}":
+                raise TaskServiceError("GitHub returned an invalid issue receipt; reconcile the saved draft.", 502)
+            if report["start_codex"]:
+                self.github.repo_api(f"/issues/{number}/labels", method="POST", payload={"labels": ["codex-ready"]})
+            receipt = {"repository": self.repository, "issue_number": number, "issue_url": issue["html_url"], "created": created}
+            self.store.write(db, "captures", key, {"repository": self.repository, "hash": digest, "receipt": receipt})
+            return receipt
+
+    def upload_task_attachment(self, payload):
+        self.require_configured()
+        if not isinstance(payload, dict) or set(payload) != {"request_id", "repository", "filename", "content_type", "content_base64"}:
+            raise TaskServiceError("Expected request, repository, filename, image type and encoded screenshot.", 422)
+        request_id(payload["request_id"])
+        if payload["repository"] != self.repository:
+            raise TaskServiceError("Screenshot repository differs from its frozen draft.", 409)
+        name, mime, encoded = (payload[key] for key in ("filename", "content_type", "content_base64"))
+        types = {"image/png": ("PNG", {".png"}), "image/jpeg": ("JPEG", {".jpg", ".jpeg"}), "image/webp": ("WEBP", {".webp"})}
+        if not isinstance(name, str) or not name.strip() or len(name) > 240 or re.search(r"[\\/\x00-\x1f\x7f]", name) or not isinstance(mime, str) or mime not in types or Path(name).suffix.lower() not in types[mime][1]:
+            raise TaskServiceError("Choose PNG, JPEG or WebP with a matching plain filename.", 422)
         if not isinstance(encoded, str) or len(encoded) > 4 * ((MAX_SCREENSHOT_BYTES + 2) // 3):
             raise TaskServiceError("Screenshots must be at most 5 MiB.", 413)
         try:
             content = base64.b64decode(encoded, validate=True)
-        except ValueError as exc:
-            raise TaskServiceError("The screenshot encoding is invalid.", 422) from exc
-        if not content or len(content) > MAX_SCREENSHOT_BYTES:
-            raise TaskServiceError("Screenshots must contain an image of at most 5 MiB.", 422 if not content else 413)
-        upload = {key: value for key, value in payload.items() if key != "content_type"}
-        upload["media_type"] = mime
-        status, receipt = self._post_json("/api/v1/attachments", upload)
-        if (not isinstance(receipt, dict) or not isinstance(receipt.get("id"), str) or
-                re.fullmatch(ATTACHMENT_ID, receipt["id"]) is None or
-                type(receipt.get("created")) is not bool or receipt["created"] != (status == 201) or
-                receipt.get("filename") != name or receipt.get("media_type") != mime or
-                type(receipt.get("size_bytes")) is not int or receipt["size_bytes"] != len(content) or
-                receipt.get("sha256") != hashlib.sha256(content).hexdigest()):
-            raise TaskServiceError("Kanban returned an invalid screenshot receipt; keep the draft and retry.", 502)
-        return {"attachment_id": receipt["id"], "filename": name, "content_type": mime,
-                "size_bytes": len(content), "sha256": receipt["sha256"], "created": receipt["created"]}
-
-    def _post_json(self, path: str, report: dict) -> tuple[int, dict]:
-        try:
-            body = json.dumps(report, allow_nan=False).encode("utf-8")
-        except (TypeError, ValueError) as exc:
-            raise TaskServiceError("The report must contain JSON values.", 422) from exc
-        request = Request(self.base_url + path, data=body,
-                          headers={"Content-Type": "application/json", "Accept": "application/json"}, method="POST")
-        try:
-            with self._opener.open(request, timeout=self.timeout_seconds) as response:
-                status = response.status
-                raw = response.read(65537)
-        except HTTPError as exc:
+            if not content or len(content) > MAX_SCREENSHOT_BYTES:
+                raise ValueError()
+            with Image.open(io.BytesIO(content)) as image:
+                if image.format != types[mime][0]:
+                    raise ValueError()
+                image.verify()
+        except (ValueError, OSError, Image.DecompressionBombError) as exc:
+            raise TaskServiceError("Screenshot bytes must be a valid image matching its filename and MIME type.", 422) from exc
+        digest = hashlib.sha256(content).hexdigest()
+        identity = hashlib.sha256(f"{self.repository}:{payload['request_id']}:{name}:{digest}".encode()).hexdigest()[:32]
+        attachment_id = "attachment-" + identity
+        with self.store.transaction() as db:
+            receipt = self.store.read(db, "attachments", attachment_id)
+            if receipt:
+                return dict(receipt, created=False)
+            bound = [json.loads(row[0]) for row in db.execute("SELECT payload FROM records WHERE scope='attachments'")]
+            if sum(item["request_id"] == payload["request_id"] for item in bound) >= 4:
+                raise TaskServiceError("This report already has four staged screenshots.", 422)
+            branch = quote(EVIDENCE_BRANCH, safe="")
             try:
-                if exc.code in {400, 404, 409, 413, 415, 422}:
-                    raise TaskServiceError(self._error_detail(exc), exc.code) from exc
-                raise TaskServiceError("Kanban returned an unexpected HTTP response; keep the draft and retry.", 502) from exc
-            finally:
-                exc.close()
-        except TimeoutError as exc:
-            raise TaskServiceError("Kanban timed out; keep the draft and retry with the same request_id.", 504) from exc
-        except (URLError, OSError, HTTPTransportError) as exc:
-            timed_out = isinstance(getattr(exc, "reason", None), TimeoutError)
-            raise TaskServiceError("Kanban is unavailable; keep the draft and retry with the same request_id.", 504 if timed_out else 503) from exc
-        if len(raw) > 65536 or status not in {200, 201}:
-            raise TaskServiceError("Kanban returned an invalid delivery response; keep the draft and retry.", 502)
-        try:
-            receipt = json.loads(raw.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise TaskServiceError("Kanban returned an invalid delivery response; keep the draft and retry.", 502) from exc
-        return status, receipt
+                self.github.repo_api(f"/git/ref/heads/{branch}")
+            except TaskServiceError as exc:
+                if exc.status_code != 404:
+                    raise
+                repo = self.github.repo_api()
+                head = self.github.repo_api(f"/git/ref/heads/{quote(repo['default_branch'], safe='')}")
+                self.github.repo_api("/git/refs", method="POST", payload={"ref": f"refs/heads/{EVIDENCE_BRANCH}", "sha": head["object"]["sha"]})
+            path = f"captures/{payload['request_id']}/{digest}{Path(name).suffix.lower()}"
+            endpoint = f"/contents/{path}"
+            try:
+                existing = self.github.repo_api(endpoint + "?ref=" + branch)
+                uploaded = {"commit": {"sha": self.github.repo_api(f"/git/ref/heads/{branch}")["object"]["sha"]}, "content": existing}
+                blob_sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content).hexdigest()
+                if existing.get("sha") != blob_sha:
+                    raise TaskServiceError("Existing screenshot bytes do not match their content address.", 409)
+            except TaskServiceError as exc:
+                if exc.status_code != 404:
+                    raise
+                uploaded = self.github.repo_api(endpoint, method="PUT", payload={"message": f"Capture evidence {payload['request_id']}",
+                                                    "branch": EVIDENCE_BRANCH, "content": encoded})
+            sha = uploaded["commit"]["sha"]
+            receipt = {"attachment_id": attachment_id, "request_id": payload["request_id"], "repository": self.repository,
+                       "filename": name, "content_type": mime, "size_bytes": len(content), "sha256": digest,
+                       "url": f"https://raw.githubusercontent.com/{self.repository}/{sha}/{path}", "created": True}
+            self.store.write(db, "attachments", attachment_id, receipt)
+            return receipt

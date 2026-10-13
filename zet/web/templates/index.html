@@ -10,7 +10,7 @@
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
   <link rel="stylesheet" href="/static/zet.css?v=20261010-story-task-context">
-  <link rel="stylesheet" href="/static/task_capture.css?v=20261010-screenshots">
+  <link rel="stylesheet" href="/static/task_capture.css?v=20261013-github">
   <link rel="stylesheet" href="/static/narrative.css?v=retirement">
 </head>
 <body>
@@ -100,8 +100,9 @@
     </div>
     <div class="toolbar-actions">
       <button id="toolbar-create-task" class="navigation-action" type="button">Create task</button>
-      <a id="toolbar-open-board" class="tab navigation-action" target="_blank" rel="noopener" hidden>Open board</a>
+      <a id="toolbar-github-issues" class="tab navigation-action" target="_blank" rel="noopener" hidden>GitHub issues</a>
       <button id="toolbar-restart-zet" class="toolbar-restart-button navigation-action" type="button" aria-label="Restart Zet" title="Restart Zet">♻</button>
+      <button id="toolbar-task-attention" class="navigation-action" type="button" aria-haspopup="dialog">Tasks</button>
       <button id="toolbar-batches" class="tab navigation-action" data-page="local-batch-status" type="button">Batches</button>
       <div class="toolbar-menu">
         <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
@@ -913,9 +914,9 @@
       </details>
       <section id="task-capture-help" class="control-panel">
         <h2>Report bugs, improvements, and features</h2>
-        <p>Use <strong>Create task</strong> in the toolbar or an image review to send a report to Zet_Kanban. The form captures the page and relevant selections when it opens. Review the preview; use Refresh context explicitly to replace it.</p>
+        <p>Use <strong>Create task</strong> in the toolbar or an image review to create a public GitHub issue. The form captures the page and relevant selections when it opens. Review the preview; use Refresh context explicitly to replace it.</p>
         <p>Add optional screenshots by choosing files or pasting an image. Your draft stays local until creation succeeds; if the board is unavailable, retry the saved report. If browser storage fails, keep the tab open to retain the draft.</p>
-        <p><strong>Open board</strong> opens Zet_Kanban, where captured tickets include a Return to Zet link. Task capture replaces the markdown To Do editor. The asset <strong>To Do Only</strong> filter still hides locked assets.</p>
+        <p><strong>GitHub issues</strong> opens the issue queue. Captured reports include a Return to Zet link. Task capture replaces the markdown To Do editor. The asset <strong>To Do Only</strong> filter still hides locked assets.</p>
       </section>
       <section class="control-panel template-manual-controls">
         <label>
@@ -2086,11 +2087,12 @@ Add prompt language here.
   </main>
 
 
-  <script src="/static/task_capture.js?v=20261011-randomuuid-fallback"></script>
+  <script src="/static/task_capture.js?v=20261013-github"></script>
+  <script src="/static/task_attention.js?v=20261013-github"></script>
   <script src="/static/render_slots.js?v=20261012"></script>
-  <script src="/static/zet.js?v=20261012-slot-fixes"></script>
+  <script src="/static/zet.js?v=20261013-github"></script>
   <script src="/static/quick_character_wizard.js?v=20261009"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261012-slot-fixes"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261013-github"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
 
 </body>

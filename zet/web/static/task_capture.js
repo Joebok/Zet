@@ -5,7 +5,7 @@
   const form = document.querySelector("#task-capture-form");
   const el = (name) => document.querySelector(`#task-capture-${name}`);
   const fields = { type: "type", title: "title", description: "description",
-    expected_behavior: "expected", actual_behavior: "actual", reproduction_steps: "reproduction" };
+    expected_behavior: "expected", actual_behavior: "actual", reproduction_steps: "reproduction", success_criteria: "success" };
   let provider = null;
   let draft = null;
   let busy = false;
@@ -15,6 +15,10 @@
   let metadata = null;
   let metadataRequest = null;
   let generation = 0;
+  let selectedControl = null;
+  document.addEventListener("focusin", (event) => { if (!dialog.contains(event.target) && event.target.id && !event.target.id.startsWith("toolbar-")) selectedControl = event.target.id; });
+  let previewTimer = null;
+  let previewGeneration = 0;
 
   function newRequestId() {
     if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
@@ -56,8 +60,8 @@
     try {
       if (!raw) return;
       const value = JSON.parse(raw);
-      if (value.version !== 1 || !value.report?.request_id || !value.report?.context ||
-          !Object.keys(fields).every((name) => typeof value.report[name] === "string") ||
+      if (![1, 2].includes(value.version) || !value.report?.request_id || !value.report?.context ||
+          !Object.keys(fields).filter((name) => name !== "success_criteria").every((name) => typeof value.report[name] === "string") ||
           (value.delivery && JSON.stringify(value.delivery) !== JSON.stringify(value.report))) {
         throw new Error("Invalid draft");
       }
@@ -67,7 +71,7 @@
             typeof item.content_base64 !== "string" || item.content_base64.length > 4 * Math.ceil(5 * 1024 * 1024 / 3) ||
             (item.attachment_id && !/^attachment-[0-9a-f]{32}$/.test(item.attachment_id))))) throw new Error("Invalid screenshots");
       draft = value;
-      if (!draft.delivery && typeof draft.report.allow_auto_plan_approval !== "boolean") draft.report.allow_auto_plan_approval = false;
+      draft.legacy = value.version === 1;
       unreadableDraft = false;
     } catch {
       // Do not silently overwrite an unreadable saved report.
@@ -82,11 +86,11 @@
         const response = await fetch("/api/tasks/config");
         if (!response.ok) throw new Error("Unable to load task configuration. Close and reopen to retry.");
         metadata = await response.json();
-        const board = document.querySelector("#toolbar-open-board");
-        const url = new URL(metadata.board_url);
-        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Invalid board URL.");
-        board.href = url.href;
-        board.hidden = false;
+        const board = document.querySelector("#toolbar-github-issues");
+        if (!metadata.issues_url) { if (board) board.hidden = true; return metadata; }
+        const url = new URL(metadata.issues_url);
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Invalid GitHub issues URL.");
+        if (board) { board.href = url.href; board.hidden = false; }
         return metadata;
       })().finally(() => { metadataRequest = null; });
     }
@@ -99,26 +103,30 @@
       universe_id: null, selections: {},
     };
     return JSON.parse(JSON.stringify({ ...context, version: 1,
-      captured_at: new Date().toISOString(), zet_revision: metadata?.zet_revision || null }));
+      captured_at: new Date().toISOString(), zet_revision: metadata?.zet_revision || null,
+      viewport: { width: window.innerWidth, height: window.innerHeight, device_pixel_ratio: window.devicePixelRatio },
+      selected_control: selectedControl }));
   }
 
   function render() {
-    const locked = busy || readingImages || Boolean(draft?.delivery);
+    const locked = busy || readingImages || Boolean(draft?.delivery) || Boolean(draft?.legacy);
     for (const [name, id] of Object.entries(fields)) {
       el(id).value = draft?.report[name] || (name === "type" ? "bug" : "");
       el(id).disabled = locked || !draft;
     }
     el("bug-details").hidden = draft?.report.type !== "bug";
-    el("auto-plan-approval").checked = draft?.report.allow_auto_plan_approval === true;
-    el("auto-plan-approval").disabled = locked || !draft;
+    el("start-codex").checked = draft?.report.start_codex !== false;
+    el("start-codex").disabled = locked || !draft;
     el("context").textContent = draft ? JSON.stringify(draft.report.context, null, 2) : "";
     el("refresh").disabled = locked || !draft;
     el("new").disabled = busy || readingImages;
     el("files").disabled = locked || !draft;
     el("paste").setAttribute("aria-disabled", String(locked || !draft));
     renderScreenshots(locked);
-    el("submit").disabled = busy || readingImages || !draft || Boolean(draft.capturePending) || !metadata?.configured;
-    el("submit").textContent = draft?.delivery ? "Retry submission" : "Create task";
+    el("submit").disabled = busy || readingImages || !draft || Boolean(draft.capturePending) || !metadata?.configured || Boolean(draft?.legacy);
+    el("convert").hidden = !draft?.legacy;
+    el("submit").textContent = draft?.delivery ? "Retry submission" : draft?.report.start_codex === false ? "Save for later" : "Create task";
+    schedulePreview();
   }
 
   function renderScreenshots(locked) {
@@ -129,7 +137,7 @@
       preview.src = `data:${image.content_type};base64,${image.content_base64}`;
       preview.alt = image.filename;
       const label = document.createElement("span");
-      label.textContent = image.filename + (image.attachment_id ? " · uploaded" : " · saved in draft");
+      label.textContent = image.filename + (image.attachment_id ? " Ã‚Â· uploaded" : " Ã‚Â· saved in draft");
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "Remove";
@@ -186,6 +194,35 @@
     if (files.length) { event.preventDefault(); void addScreenshots(files); }
   });
 
+  function schedulePreview() {
+    clearTimeout(previewTimer);
+    const token = ++previewGeneration;
+    if (!draft || draft.legacy || !metadata?.configured) { el("preview").textContent = "Enter a title to preview the public GitHub issue."; return; }
+    previewTimer = setTimeout(async () => {
+      try {
+        const report = JSON.parse(JSON.stringify(draft.delivery || draft.report));
+        report.attachment_ids = [];
+        const response = await fetch("/api/tasks/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(report) });
+        const result = await response.json();
+        if (token !== previewGeneration) return;
+        el("preview").textContent = response.ok ? result.body : (typeof result.detail === "string" ? result.detail : "Preview unavailable.");
+      } catch { if (token === previewGeneration) el("preview").textContent = "Preview unavailable; your draft is retained."; }
+    }, 250);
+  }
+
+  el("convert").addEventListener("click", () => {
+    if (!draft?.legacy || !metadata?.repository) return;
+    if (!confirm(`Convert this draft to a public issue in ${metadata.repository}? An earlier Kanban delivery may already exist. The original draft will be backed up in this browser.`)) return;
+    try { localStorage.setItem(`zet.task-draft.kanban-backup.${draft.report.request_id}`, JSON.stringify(draft)); }
+    catch { message("Could not preserve the original Kanban draft. Free browser storage before converting."); return; }
+    draft = { version: 2, report: { ...draft.report, request_id: newRequestId(), repository: metadata.repository, success_criteria: "", start_codex: true },
+      screenshots: (draft.screenshots || []).map(({ attachment_id, ...image }) => image) };
+    delete draft.report.project_id;
+    delete draft.report.allow_auto_plan_approval;
+    save(); render();
+    message("Draft converted. Review the public issue preview before submitting.");
+  });
+
   async function postDraft(url, payload) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 65000);
@@ -203,8 +240,8 @@
     const token = ++generation;
     const context = capturedContext();
     if (!draft) {
-      draft = { version: 1, report: { request_id: newRequestId(), type: "bug", title: "", description: "",
-        expected_behavior: "", actual_behavior: "", reproduction_steps: "", allow_auto_plan_approval: false, context } };
+      draft = { version: 2, report: { request_id: newRequestId(), type: "bug", title: "", description: "",
+        expected_behavior: "", actual_behavior: "", reproduction_steps: "", success_criteria: "", start_codex: true, context } };
     } else {
       draft.report.context = context;
     }
@@ -215,11 +252,11 @@
       const config = await configuration();
       if (token !== generation || !draft || draft.delivery) return;
       draft.report.context.zet_revision = config.zet_revision;
-      if (config.project_id) draft.report.project_id = config.project_id;
+      if (config.repository) draft.report.repository = config.repository;
       draft.capturePending = false;
       save();
       message(config.configured ? "Draft saved locally. Review the captured context before creating the task."
-        : "Set Kanban.ProjectID in config.toml and restart Zet before submitting. Your draft is retained.");
+        : "Set GitHub.Repository on the Zet host before submitting. Your draft is retained.");
     } catch (error) {
       message(error.message);
     }
@@ -239,12 +276,12 @@
         const config = await configuration();
         if (draft?.capturePending) {
           draft.report.context.zet_revision = config.zet_revision;
-          if (config.project_id && !draft.report.project_id) draft.report.project_id = config.project_id;
+          if (config.repository && !draft.report.repository && !draft.legacy) draft.report.repository = config.repository;
           draft.capturePending = false;
           save();
         }
-        if (draft) message(!config.configured
-          ? "Set Kanban.ProjectID in config.toml and restart Zet before submitting. Your draft is retained."
+        if (draft) message(draft.legacy ? "This saved Kanban draft has not been sent to GitHub. Convert it explicitly below; its original copy will be retained." : !config.configured
+          ? "Set GitHub.Repository on the Zet host before submitting. Your draft is retained."
           : draft.delivery
           ? "Delivery was attempted. Retry sends the exact saved report; editing is locked to avoid duplicate tickets."
           : "Saved draft restored with its original context. Refresh context explicitly to replace it.");
@@ -260,36 +297,38 @@
     for (const [name, id] of Object.entries(fields)) draft.report[name] = el(id).value;
     el("bug-details").hidden = draft.report.type !== "bug";
     save();
+    schedulePreview();
     if (storageError) message("Draft retained in this tab.");
   });
 
-  el("auto-plan-approval").addEventListener("change", () => {
+  el("start-codex").addEventListener("change", () => {
     if (!draft || draft.delivery || busy) return;
-    draft.report.allow_auto_plan_approval = el("auto-plan-approval").checked;
+    draft.report.start_codex = el("start-codex").checked;
     save();
+    render();
   });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (busy || readingImages || !draft || draft.capturePending || !metadata?.configured) return;
+    if (busy || readingImages || !draft || draft.legacy || draft.capturePending || !metadata?.configured) return;
     if (!draft.delivery) {
       // Hidden bug fields must not be sent for feature/improvement reports.
       if (draft.report.type !== "bug") {
         for (const name of ["expected_behavior", "actual_behavior", "reproduction_steps"]) draft.report[name] = "";
       }
-      if (!draft.report.project_id) draft.report.project_id = metadata.project_id;
+      if (!draft.report.repository) draft.report.repository = metadata.repository;
       draft.delivery = JSON.parse(JSON.stringify(draft.report));
       save();
     }
     busy = true;
     render();
-    message("Submitting the saved report…");
+    message("Submitting the saved reportÃ¢â‚¬Â¦");
     try {
       for (const screenshot of draft.screenshots || []) {
         if (screenshot.attachment_id) continue;
-        message(`Uploading ${screenshot.filename}…`);
+        message(`Uploading ${screenshot.filename}Ã¢â‚¬Â¦`);
         const { response, receipt } = await postDraft("/api/tasks/attachments", {
-          request_id: draft.delivery.request_id, project_id: draft.delivery.project_id,
+          request_id: draft.delivery.request_id, repository: draft.delivery.repository,
           filename: screenshot.filename, content_type: screenshot.content_type, content_base64: screenshot.content_base64,
         });
         if (![200, 201].includes(response.status) || !/^attachment-[0-9a-f]{32}$/.test(receipt.attachment_id) ||
@@ -300,19 +339,18 @@
       }
       const report = JSON.parse(JSON.stringify(draft.delivery));
       if (draft.screenshots?.length) report.attachment_ids = draft.screenshots.map((item) => item.attachment_id);
-      message("Submitting the saved report…");
+      message("Submitting the saved reportÃ¢â‚¬Â¦");
       const { response, receipt } = await postDraft("/api/tasks", report);
-      const url = new URL(receipt.board_url);
-      if (![200, 201].includes(response.status) || !/^task-[0-9a-f]{8}$/.test(receipt.task_id) ||
+      const url = new URL(receipt.issue_url);
+      if (![200, 201].includes(response.status) || !Number.isInteger(receipt.issue_number) || receipt.issue_number < 1 || receipt.repository !== draft.delivery.repository ||
           typeof receipt.created !== "boolean" || receipt.created !== (response.status === 201) ||
-          url.origin !== new URL(metadata.board_url).origin || url.pathname !== "/" ||
-          url.search !== `?task_id=${receipt.task_id}` || url.hash || url.username || url.password) throw new Error("Invalid task receipt.");
+          url.origin !== "https://github.com" || url.pathname !== `/${receipt.repository}/issues/${receipt.issue_number}` || url.search || url.hash || url.username || url.password) throw new Error("Invalid task receipt.");
       draft = null;
       ++generation;
       save();
       el("ticket").href = url.href;
       el("ticket").hidden = false;
-      message(`Task ${receipt.task_id} created. Open task to view it on the board.`);
+      message(`GitHub issue #${receipt.issue_number} created. Open task to view it.`);
     } catch (error) {
       message(`${error.name === "AbortError" ? "Task delivery timed out." : error.message} Draft retained. Retry with the same request ID.`);
     } finally {

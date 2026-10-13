@@ -43,3 +43,4 @@ Authoritative paths, tests, relevant component and plan links.
 Link new ADRs here and from the owning component. A proposed decision or plan does not authorize unrequested implementation.
 
 | [0007 — Stable render slots](0007-stable-render-slots.md) | Who owns render positions, supplemental candidates, and Image Generation selection? | Accepted 2026-10-12 |
+| [0008 — GitHub tasks and production releases](0008-github-tasks-and-production-releases.md) | Who owns delivery, evidence, claims and promotion? | Accepted 2026-10-13 |

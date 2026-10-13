@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import signal
 import subprocess
 import sys
@@ -25,7 +26,7 @@ class ManagedProcessSpec:
     process_id: str
     label: str
     match_terms: tuple[str, ...]
-    command: str | None = None
+    command: tuple[str, ...] | None = None
     cwd: Path | None = None
     manageable: bool = True
 
@@ -53,8 +54,9 @@ class ManagedProcessStatus:
 
 
 class ProcessService:
-    def __init__(self, project_root: Path):
+    def __init__(self, project_root: Path, *, config_path: str | Path | None = None):
         self.project_root = project_root.resolve()
+        self.config_path = Path(config_path or self.project_root / "config.toml").resolve()
         self._statuses_cache: tuple[float, list[ManagedProcessStatus]] | None = None
         self._statuses_cache_lock = Lock()
 
@@ -64,14 +66,15 @@ class ProcessService:
                 process_id="zet_web",
                 label="Zet Web Dashboard",
                 match_terms=("zet.web.app",),
-                command="run_zet_web.bat",
+                command=(sys.executable, "-B", "-m", "zet.web.app", "--config", str(self.config_path),
+                         "--host", os.environ.get("ZET_WEB_HOST", "0.0.0.0"), "--port", os.environ.get("ZET_WEB_PORT", "8081")),
                 cwd=self.project_root,
             ),
             ManagedProcessSpec(
                 process_id="auto_harvest",
                 label="Auto Harvester",
                 match_terms=("zet.scripts.auto_harvest_ai_answers",),
-                command="run_auto_harvest.bat",
+                command=(sys.executable, "-B", "-m", "zet.scripts.auto_harvest_ai_answers", "--config", str(self.config_path)),
                 cwd=self.project_root,
             ),
         ]
@@ -143,7 +146,18 @@ class ProcessService:
 
     def _matches(self, process: ProcessInfo, spec: ManagedProcessSpec) -> bool:
         text = process.command_line.lower()
-        return all(term.lower() in text for term in spec.match_terms)
+        if not all(term.lower() in text for term in spec.match_terms):
+            return False
+        match = re.search(r'--config(?:\s+|=)(?:"([^"]+)"|([^\s]+))', process.command_line)
+        if not match:
+            return False
+        path = Path(match[1] or match[2])
+        if not path.is_absolute():
+            # Legacy relative launchers are identified by their root-specific interpreter.
+            if str(self.project_root).lower() not in text:
+                return False
+            path = self.project_root / path
+        return os.path.normcase(str(path.resolve())) == os.path.normcase(str(self.config_path))
 
     def statuses(self) -> list[ManagedProcessStatus]:
         with self._statuses_cache_lock:
@@ -191,15 +205,8 @@ class ProcessService:
         if env.get("PYTHONPATH"):
             python_paths.append(env["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(python_paths)
-        if platform.system() == "Windows":
-            subprocess.Popen(
-                ["cmd.exe", "/c", "call", spec.command],
-                cwd=str(spec.cwd),
-                env=env,
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
-            )
-        else:
-            subprocess.Popen(spec.command, cwd=str(spec.cwd), env=env, shell=True)
+        subprocess.Popen(spec.command, cwd=str(spec.cwd), env=env,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self._invalidate_statuses()
         if process_id == "zet_web":
             self.start_if_stopped("auto_harvest")
@@ -250,8 +257,8 @@ class ProcessService:
             "zet.scripts.restart_managed_process",
             "--cwd",
             str(spec.cwd),
-            "--command",
-            spec.command,
+            "--command-json",
+            json.dumps(spec.command),
         ]
         for process in matches:
             command.extend(["--pid", str(process.pid)])

@@ -16,7 +16,7 @@ The V5 history recovery on 2026-10-11 restored the approved three-scenario local
 | Debug jobs, restart recovery, or missing images | [Queues](COMPONENTS/QUEUES.md) | [Development](DEVELOPMENT.md), owning workflow |
 | Plan a substantial change/refactor | [Plan convention](../plans/README.md) | Architecture, relevant invariants, [decisions](DECISIONS/README.md) |
 | Select validation, debug E2E, or inspect the seed | [Testing](Testing.md) | [Development](DEVELOPMENT.md), code-map scenario/gap references |
-| Report a dashboard task or restore captured context | [Kanban integration](Kanban_Integration.md) | Code-map task forwarding entry, config definitions |
+| Report a dashboard task or restore captured context | [GitHub task workflow](GitHub_Task_Workflow.md) | Code-map task forwarding entry, config definitions |
 
 ## Document ownership
 
@@ -28,7 +28,7 @@ The V5 history recovery on 2026-10-11 restored the approved three-scenario local
 | [INVARIANTS.md](INVARIANTS.md) | Supported contracts, consequences, verification | Before changing a shared assumption |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Setup/run/check commands, observed results, debugging and gaps | Environment or validation work |
 | [Testing.md](Testing.md) | Approved fast scenarios, isolated fixtures, optional live check, coverage approval | Before selecting or changing tests |
-| [Kanban_Integration.md](Kanban_Integration.md) | Task forwarding, context capture/restoration, screenshot intake | Dashboard task reporting and Kanban integration |
+| [GitHub_Task_Workflow.md](GitHub_Task_Workflow.md) | GitHub capture/evidence, worker/limits/attention, deployment and restoration | Dashboard task reporting and Kanban integration |
 | [COMPONENTS/LIBRARY.md](COMPONENTS/LIBRARY.md) | Universe binding, authoritative images, derived discovery index | Library/reference/discovery work |
 | [COMPONENTS/LOCAL_CHARACTERS.md](COMPONENTS/LOCAL_CHARACTERS.md) | Candidate generation, gates, ranking, selection, publication | Character pipeline work |
 | [COMPONENTS/PROMPTS.md](COMPONENTS/PROMPTS.md) | Template compilation, view conditioning, attachment contracts | Prompt changes |

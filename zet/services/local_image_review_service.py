@@ -131,7 +131,7 @@ class LocalImageReviewService:
         backend = str(config.local_render_backend).strip().lower()
         preset = config.comfyui_profile if backend == "comfyui" else config.local_render_preset
         server_url = config.comfyui_server_url if backend == "comfyui" else ""
-        profiles_path = self.zet_app.config_path.resolve().parent / "Config" / "Local_Render_Presets.json"
+        profiles_path = config.state_file(self.zet_app.config_path.resolve().parent, "Local_Render_Presets.json")
         checkpoints = LocalRenderBackendService(profiles_path).list_checkpoints(
             preset,
             backend=backend,

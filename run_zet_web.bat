@@ -12,4 +12,4 @@ if defined ZET_WEB_PID (
   echo Close that process before starting another instance.
   exit /b 0
 )
-python -B -m zet.web.app --config config.toml --host 0.0.0.0 --port 8081
+"%~dp0.venv\Scripts\python.exe" -B -m zet.web.app --config "%~dp0config.toml" --host 0.0.0.0 --port 8081

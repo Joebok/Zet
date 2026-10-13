@@ -64,7 +64,7 @@ artifacts rather than Narrative/library source data. Saved pending workflows and
 their submission journal remain authoritative across settings changes. See
 [PROMPTS](COMPONENTS/PROMPTS.md).
 
-`[Kanban]` adds shared `BaseURL`, `ProjectID`, and `TimeoutSeconds`, validated by [task_service.py](../zet/services/task_service.py) and loaded into `Config.kanban_*`. Defaults are loopback port 8000, an empty project ID, and 5 seconds. An empty ID leaves forwarding unconfigured without blocking dashboard startup. This mapping is retained across universe binding; it is not another universe-owned catalog. [Kanban integration](Kanban_Integration.md) owns frozen context-v1 reports, screenshot fields, stable request IDs, retries and browser draft storage. Zet does not persist the Kanban board itself.
+`[GitHub]` configures the shared repository, CLI timeout, machine-local StatePath, usage reserve and trusted reply authors. `[Runtime]` configures role, deployment Root and persistent StatePath. Frozen reports bind request IDs to repository/content hashes in SQLite outside Git/library; screenshot links pin an evidence commit. Runtime releases keep their own config.runtime.toml beside code; mutable universe selection, renderer presets and model caches use explicit persistent state paths. [GitHub task workflow](GitHub_Task_Workflow.md) owns these interfaces. Kanban files are not migrated or deleted implicitly.
 
 Prompt task bundles, templates, section metadata, view text, and aliases are repository `Config/` assets. Shared character/costume Markdown uses compiler section markers and view directives; [PROMPTS](COMPONENTS/PROMPTS.md) owns their processing. Machine-local state and generated artifacts are not templates.
 

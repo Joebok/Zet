@@ -18,12 +18,25 @@ def render_task_capture_page(path: Path) -> str:
     )
 
 
-def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:
+def create_task_router(provider: Callable[[], ZetApp], worker_provider: Callable | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
     @router.get("/config")
     def configuration():
         return provider().task_service.metadata()
+
+    @router.get("/status")
+    def status():
+        zet_app = provider()
+        return {**zet_app.task_status_service.snapshot(), "deployment": zet_app.deployment_service.status()}
+
+    @router.post("/worker/{action}")
+    def worker_action(action: str, request: Request, payload: dict = Body(...)):
+        try:
+            bridge = worker_provider() if worker_provider else provider().worker_bridge_service
+            return bridge.execute(action, payload, request.headers.get("authorization", ""), request.client.host if request.client else "")
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(getattr(exc, "status_code", 503), str(exc)) from exc
 
     @router.post("", status_code=201)
     def create(response: Response, payload: dict = Body(...)):
@@ -33,6 +46,13 @@ def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
         response.status_code = 201 if result["created"] else 200
         return result
+
+    @router.post("/preview")
+    def preview(payload: dict = Body(...)):
+        try:
+            return provider().task_service.preview(payload)
+        except TaskServiceError as exc:
+            raise HTTPException(exc.status_code, str(exc)) from exc
 
     @router.post("/attachments", status_code=201)
     async def upload(request: Request, response: Response):

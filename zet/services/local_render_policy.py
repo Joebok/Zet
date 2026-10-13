@@ -19,18 +19,18 @@ def require_qwen_profile(project_root: str | Path, name: str, backend: str = "co
     return profile
 
 
-def configured_qwen_profile(name: str) -> str:
+def configured_qwen_profile(name: str, *, presets_path: Path | None = None) -> str:
     """Normalize obsolete saved configuration, without reinterpreting render jobs."""
     try:
-        require_qwen_profile(Path(__file__).resolve().parents[2], name)
+        require_qwen_profile(Path(__file__).resolve().parents[2], name, presets_path=presets_path)
     except (ValueError, OSError):
         return SCENE_PROFILE
     return name
 
 
-def configured_qwen_checkpoint(name: str) -> str:
+def configured_qwen_checkpoint(name: str, *, presets_path: Path | None = None) -> str:
     try:
-        require_qwen_profile(Path(__file__).resolve().parents[2], SCENE_PROFILE, checkpoint=name)
+        require_qwen_profile(Path(__file__).resolve().parents[2], SCENE_PROFILE, checkpoint=name, presets_path=presets_path)
     except (ValueError, OSError):
         return ""
     return name

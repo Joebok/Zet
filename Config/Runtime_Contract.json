@@ -1,0 +1,5 @@
+{
+  "deployment_contract": 1,
+  "requires_manual_migration": false,
+  "note": "Changes requiring incompatible authored-data migrations must change this contract and block automatic deployment. This declaration is not a library schema version."
+}

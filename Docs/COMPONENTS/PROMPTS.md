@@ -51,3 +51,11 @@ Common failures: missing required sections/source images, unresolved placeholder
 ## Maintained verification
 
 [fast.spec.mjs](../../tests/e2e/fast.spec.mjs) S2 compiles front Assembly/Dressing prompts; S3 exercises Narrative interview/synthesis and assembly packaging using prepared replies. This is not dedicated coverage for all markers, view domains, attachment permutations, structured-scene compilers or model wording quality. The [live check](../../tests/e2e/live.spec.mjs) exercises real Narrative final-assembly synthesis/rendering only when requested. See [Testing](../Testing.md) and [DEVELOPMENT](../DEVELOPMENT.md) for policy and observed results.
+
+## Runtime configuration binding
+
+Library_Paths reads ZET_CONFIG_PATH when the application/fixture supplies an active
+configuration, and uses its explicit persistent universe-selection path. This
+prevents code-relative config.toml from resolving production data during isolated
+worker checks or ignoring config.runtime.toml in a release. Standalone scripts
+retain their project-relative default when no active config is supplied.

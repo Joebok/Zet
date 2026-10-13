@@ -1,8 +1,17 @@
-[Kanban]
-BaseURL = "http://127.0.0.1:8000"
-# Register Zet_v5 on the Kanban board, then set its project-xxxxxxxx identifier here.
-ProjectID = "project-95f6d7a0"
-TimeoutSeconds = 5.0
+[GitHub]
+Repository = "Joebok/Zet"
+TimeoutSeconds = 20.0
+UsageReservePercent = 10.0
+TrustedUsers = ["Joebok"]
+
+[Runtime]
+Role = "local"
+
+[GitHubByPlatform.Windows]
+StatePath = "C:/Users/Joe/Projects/Zet_Runtime/state"
+
+[RuntimeByPlatform.Windows]
+Root = "C:/Users/Joe/Projects/Zet_Runtime"
 
 [BaseFolders]
 BaseLibraryPath = "Zet_Library_v5/"

@@ -21,9 +21,9 @@
     #candidate-paste,#anchor-paste,#source-paste { border:1px dashed #8b95a5; min-height:2.7rem; padding:.6rem; border-radius:5px; }
     @media(max-width:650px) { header { align-items:flex-start; flex-direction:column; } .result { grid-template-columns:1fr; } }
   </style>
-<link rel="stylesheet" href="/static/task_capture.css?v=20261010-screenshots"></head>
+<link rel="stylesheet" href="/static/task_capture.css?v=20261013-github"></head>
 <body class="auxiliary-task-page">
-  <header><div><h1>Gate Test Rig</h1><p class="muted">Run repeatable tests against curated local pipeline images.</p></div><nav><a href="/">Dashboard</a> · <a href="/local-body-reference">Body-Reference</a> · <a href="/local-head-image">Head-Image</a> · <a href="/gate-test-data">Review test data</a> · <button id="toolbar-create-task" type="button">Create task</button> · <a id="toolbar-open-board" target="_blank" rel="noopener" hidden>Open board</a></nav></header><p id="task-context-notice" role="status" aria-live="polite" hidden></p>
+  <header><div><h1>Gate Test Rig</h1><p class="muted">Run repeatable tests against curated local pipeline images.</p></div><nav><a href="/">Dashboard</a> · <a href="/local-body-reference">Body-Reference</a> · <a href="/local-head-image">Head-Image</a> · <a href="/gate-test-data">Review test data</a> · <button id="toolbar-create-task" type="button">Create task</button> · <a id="toolbar-github-issues" target="_blank" rel="noopener" hidden>GitHub issues</a></nav></header><p id="task-context-notice" role="status" aria-live="polite" hidden></p>
   <main>
     <section class="panel"><h2>Saved tests</h2><div class="row"><label>Saved test<select id="saved-test"><option value="">Choose saved test</option></select></label><button id="open-test" type="button">Open</button><button id="rename-test" type="button">Rename</button><button id="delete-test" class="danger" type="button">Delete</button><button id="refresh-tests" type="button">Refresh</button></div><p class="muted">Tests appear here after Save Test. Saving a rerun replaces that test’s snapshot.</p></section>
     <section class="panel"><div class="row"><button id="new-test" type="button">New Test</button><label>Local pipeline<select id="pipeline"><option value="">Choose pipeline</option></select></label><label>Gate<select id="gate" disabled><option value="">Choose gate</option></select></label></div><p id="case-summary" class="muted"></p><div id="cases" class="case-grid"></div></section>
@@ -34,7 +34,7 @@
     <section id="results"></section>
   </main>
   <!-- TASK_CAPTURE_FORM -->
-  <script src="/static/task_capture.js?v=20261011-randomuuid-fallback"></script>
+  <script src="/static/task_capture.js?v=20261013-github"></script>
   <script src="/static/auxiliary_task_context.js?v=20261010"></script>
   <script>
     const $ = (selector) => document.querySelector(selector), esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

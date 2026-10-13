@@ -8,8 +8,10 @@
         <label>Type<select id="task-capture-type"><option value="bug">Bug</option><option value="improvement">Improvement</option><option value="feature">Feature</option></select></label>
         <label>Title<input id="task-capture-title" required maxlength="240"></label>
         <label>Description<textarea id="task-capture-description" maxlength="20000" rows="3"></textarea></label>
-        <label class="task-capture-permission"><input id="task-capture-auto-plan-approval" type="checkbox"> Allow automatic plan approval</label>
-        <p>Automatically approve complete plans within this ticket’s requested scope. Merge permission is controlled separately.</p>
+        <label class="task-capture-permission"><input id="task-capture-start-codex" type="checkbox" checked> Start Codex work</label>
+        <p>Create a public GitHub issue and authorize implementation. Uncheck to save for later. You review and merge the PR.</p>
+        <p>Tasks stay queued on GitHub while the worker is unavailable and are picked up when it is available.</p>
+        <label>Success criteria (optional)<textarea id="task-capture-success" maxlength="10000" rows="2"></textarea></label>
         <fieldset id="task-capture-bug-details"><legend>Bug details (optional)</legend>
           <label>Expected behavior<textarea id="task-capture-expected" maxlength="10000" rows="2"></textarea></label>
           <label>Actual behavior<textarea id="task-capture-actual" maxlength="10000" rows="2"></textarea></label>
@@ -22,10 +24,12 @@
           <ul id="task-capture-screenshots"></ul>
         </fieldset>
         <details open><summary>Captured context</summary><pre id="task-capture-context"></pre></details>
+        <details open><summary>Public issue preview</summary><p>This issue text and the selected screenshots will be public. Permanent image URLs are added on submission.</p><pre id="task-capture-preview"></pre></details>
         <p id="task-capture-status" role="status" aria-live="polite"></p>
         <div class="task-capture-actions">
           <button id="task-capture-refresh" type="button">Refresh context</button>
           <button id="task-capture-new" type="button">Discard draft</button>
+          <button id="task-capture-convert" type="button" hidden>Convert Kanban draft</button>
           <button id="task-capture-submit" class="primary-action" type="submit">Create task</button>
           <a id="task-capture-ticket" target="_blank" rel="noopener" hidden>Open task</a>
         </div>

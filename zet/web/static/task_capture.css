@@ -5,6 +5,8 @@
 .task-capture-header h2 { margin: 0; }
 .task-capture-dialog label { display: grid; gap: 4px; margin: 10px 0; }
 .task-capture-dialog input, .task-capture-dialog select, .task-capture-dialog textarea { width: 100%; box-sizing: border-box; }
+.task-capture-dialog .task-capture-permission { display: flex; align-items: center; gap: 8px; }
+.task-capture-dialog .task-capture-permission input { width: auto; min-height: 0; margin: 0; }
 .task-capture-dialog textarea { min-height: 0; height: auto; resize: vertical; }
 .task-capture-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font-size: 12px; }
 .task-capture-dialog fieldset { margin: 12px 0; }
