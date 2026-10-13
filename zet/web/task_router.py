@@ -18,7 +18,7 @@ def render_task_capture_page(path: Path) -> str:
     )
 
 
-def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:
+def create_task_router(provider: Callable[[], ZetApp], worker_provider: Callable | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
     @router.get("/config")
@@ -33,7 +33,8 @@ def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:
     @router.post("/worker/{action}")
     def worker_action(action: str, request: Request, payload: dict = Body(...)):
         try:
-            return provider().worker_bridge_service.execute(action, payload, request.headers.get("authorization", ""), request.client.host if request.client else "")
+            bridge = worker_provider() if worker_provider else provider().worker_bridge_service
+            return bridge.execute(action, payload, request.headers.get("authorization", ""), request.client.host if request.client else "")
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(getattr(exc, "status_code", 503), str(exc)) from exc
 

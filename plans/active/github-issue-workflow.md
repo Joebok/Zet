@@ -98,3 +98,11 @@ Pending.
   executing agent-controlled Git hooks/config with host credentials. Normal pickup
   consequently requires the local Zet server as well as the PC/Codex app. The pilot
   uses a disposable normal-user bridge host, without loading a live ZetApp/library.
+
+- Third pilot verified/opened both real screenshots through the bridge, then paused
+  on protected Git metadata and missing Python packages. The manual test driver
+  had forced -a never, unlike Joe's saved on-request/automatic-review profile.
+  Retrying with that existing profile, a verified worktree-local environment, and
+  helper selection/bootstrap of declared main dependencies. No broad sandbox
+  permissions or production/library access were added.
+- Shared bridge/status lifecycle is now independent of default universe replacement.

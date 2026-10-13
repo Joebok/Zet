@@ -29,7 +29,10 @@ public screenshot URLs into ignored test-results and open them; compare supplied
 hashes. If essential evidence cannot be read, explain the missing evidence and ask
 one material question instead of guessing a visual fix.
 
-Prepare the existing disposable inspection fixture. Implement only the reported
+Prepare the existing disposable inspection fixture and worktree-local Python
+environment using the helper. Keep the saved automatic review profile for scoped
+Git metadata operations; never force approval_policy=never or grant production
+access to work around protected .git paths. Implement only the reported
 scope, without subagents, new dependencies, new permanent tests, real library/queue
 access, live models or rendering. Add a draft PR with Closes #N. Heartbeat the claim
 between stages. Recheck quota through the helper before further model-heavy work;

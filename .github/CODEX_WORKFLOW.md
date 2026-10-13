@@ -46,7 +46,9 @@ download images through the bridge when sandbox networking needs it. Open the ac
 link is a human navigation aid, not access to the live production library.
 
 Prepare an inspection fixture with `python3 -B -m
-zet.scripts.prepare_issue_workspace`. Use only the existing fixture server and
+zet.scripts.prepare_issue_workspace`. It restores declared main-branch Python
+dependencies into this worktree's .venv when needed; validation selects that verified
+interpreter. Changed dependency declarations require Joe's separate approval. Use only the existing fixture server and
 prepared answers for browser checks. Never load repository-root config.toml or
 launch production. Worker mode rejects non-development configuration. Production
 releases, creative libraries, shared queues and machine indexes are not writable
@@ -112,3 +114,8 @@ Stay quiet while idle or unchanged. Notify only when a PR is ready, a material
 question needs Joe, worker/authentication fails, or a deployment needs recovery.
 The dashboard displays cached questions, reviews, freshness, limits and merged
 updates. Questions/reviews are answered on GitHub; there is no v1 dashboard merge UI.
+
+Use the saved workspace-write/on-request automatic review profile for scoped Git
+metadata operations. Do not force -a never: protected .git paths need eligible
+operation review. Do not expand access to production data or disable the sandbox.
+See https://learn.chatgpt.com/docs/agent-approvals-security.

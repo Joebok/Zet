@@ -981,10 +981,10 @@ def create_app(
         )
         application.state.ollama_catalog_refresh_thread.start()
         application.state.image_generation_service.start()
-        application.state.zet_app.task_status_service.start()
+        application.state.task_status_service.start()
         if config.github_repository and config.runtime_role != "development":
             import os
-            application.state.zet_app.worker_bridge_service.publish(os.environ.get("ZET_WEB_PORT", "8081"), app.state.boot_id)
+            application.state.worker_bridge_service.publish(os.environ.get("ZET_WEB_PORT", "8081"), app.state.boot_id)
         for zet_app in application.state.universe_apps.values():
             zet_app.narrative_generation_service.start_background()
             zet_app.image_catalog_service.repository.load()
@@ -994,9 +994,9 @@ def create_app(
             yield
         finally:
             application.state.image_generation_service.stop()
-            application.state.zet_app.task_status_service.stop()
+            application.state.task_status_service.stop()
             if config.github_repository and config.runtime_role != "development":
-                application.state.zet_app.worker_bridge_service.close()
+                application.state.worker_bridge_service.close()
             for zet_app in application.state.universe_apps.values():
                 zet_app.narrative_generation_service.stop_background()
                 zet_app.library_index_reconciler.stop()
@@ -1009,6 +1009,8 @@ def create_app(
         cache_path=config.state_file(config_path.resolve().parent, "ollama-models-cache.json")
     )
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
+    app.state.task_status_service = app.state.zet_app.task_status_service
+    app.state.worker_bridge_service = app.state.zet_app.worker_bridge_service
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
     app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.zet_app.quick_character_wizard_service.generation_service = app.state.image_generation_service
@@ -1184,7 +1186,7 @@ def create_app(
     app.include_router(create_quick_character_wizard_router(quick_character_wizard_service))
     app.include_router(create_narrative_router(lambda: _app(app.state.config_path)))
     # A captured report belongs to its frozen universe, not the current UI selection.
-    app.include_router(create_task_router(lambda: app.state.zet_app))
+    app.include_router(create_task_router(lambda: app.state.zet_app, lambda: app.state.worker_bridge_service))
 
     @app.get("/narrative", response_class=HTMLResponse)
     def narrative_page(request: Request):
