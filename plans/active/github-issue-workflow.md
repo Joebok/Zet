@@ -86,3 +86,7 @@ Pending.
   styling; corrected in the parent feature before worker execution. Original issue
   capture remains unchanged; a supplemental screenshot/comment records the new
   pilot base. This is a setup correction, not a scope change to the queued-work task.
+
+- First real pilot correctly paused: nested Codex could not read account quota,
+  despite successful host/app reads. Added expiring host-reading reuse and explicit
+  native app-reading import; reserve/unknown guards remain. Repeating the pilot.

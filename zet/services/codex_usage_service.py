@@ -42,7 +42,7 @@ class CodexUsageService:
                 windows.append({"bucket": name, "window": kind, "remaining_percent": max(0, min(100, 100 - window["usedPercent"])),
                                 "resets_at": window.get("resetsAt"), "duration_minutes": window.get("windowDurationMins")})
         allowed = bool(windows) and value.get("ordinaryUsageAllowed") is not False and all(item["remaining_percent"] >= reserve for item in windows)
-        return {"checked_at": now, "known": bool(windows), "allowed": allowed, "reserve_percent": reserve,
+        return {"checked_at": now, "known": bool(windows), "allowed": allowed, "ordinary_usage_allowed": value.get("ordinaryUsageAllowed") is not False, "reserve_percent": reserve,
                 "windows": windows, "error": None if windows else "Codex did not return usage windows."}
 
     def read_account(self):
@@ -85,10 +85,18 @@ class CodexUsageService:
             process.stdout.close()
 
     def refresh(self):
+        cached = self.store.get("status", "usage", {})
+        if cached.get("known") and time.time() - cached.get("checked_at", 0) <= 300:
+            return dict(cached, reserve_percent=self.reserve, allowed=bool(cached["windows"]) and all(window["remaining_percent"] >= self.reserve for window in cached["windows"]) and cached.get("ordinary_usage_allowed", cached.get("allowed", False)))
         try:
             status = self.normalize(self.read_account(), self.reserve)
         except (OSError, RuntimeError, queue.Empty, ValueError) as exc:
             status = {"checked_at": time.time(), "known": False, "allowed": False, "windows": [],
                       "reserve_percent": self.reserve, "error": str(exc)[:300] or "Codex usage access timed out."}
+        self.store.put("status", "usage", status)
+        return status
+
+    def import_reading(self, value):
+        status = self.normalize(value, self.reserve)
         self.store.put("status", "usage", status)
         return status

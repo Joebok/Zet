@@ -22,7 +22,8 @@ def main():
     claim = sub.add_parser("claim")
     claim.add_argument("--worktree", type=Path, default=Path.cwd())
     sub.add_parser("status")
-    sub.add_parser("usage")
+    usage_command = sub.add_parser("usage")
+    usage_command.add_argument("--input-file", type=Path, help="Import a just-read Codex app usage-limits result; never an estimated quota.")
     validation = sub.add_parser("validate")
     validation.add_argument("--token", required=True)
     check = sub.add_parser("checkpoint")
@@ -49,7 +50,7 @@ def main():
                 raise ValueError("Pickup requires an isolated Git worktree, not the development checkout or production release.")
             result = worker.claim(args.worktree.resolve())
         elif args.action == "usage":
-            result = usage.refresh()
+            result = usage.import_reading(json.loads(args.input_file.read_text(encoding="utf-8"))) if args.input_file else usage.refresh()
         elif args.action == "status":
             result = {"claim": store.get("worker", args.repository), "worker": store.get("status", "worker"), "usage": store.get("status", "usage")}
         elif args.action == "recover":

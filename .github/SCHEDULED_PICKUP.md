@@ -10,6 +10,10 @@ usage reserve. Set ZET_WORKER_MODE=1 for all shell work. Do not construct ZetApp
 load repository config.toml to coordinate tasks. Use the helper's returned claim,
 issue, token, branch and retained worktree. If idle, busy, quota-limited or unchanged,
 exit quietly; never independently change labels to bypass a claim or quota guard.
+If quota is unknown, use the desktop app's read-only get_usage_limits tool and save
+its actual JSON reading to an ignored file. Import that reading with issue_worker
+usage --input-file before retrying claim. Never estimate capacity or replace a
+quota failure with allowed=true. Fresh host readings expire after five minutes.
 For an interrupted claim, report the retained work and needed recovery once.
 
 For new work, fetch origin/main and create the returned branch in the isolated

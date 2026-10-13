@@ -55,7 +55,9 @@ an operator to confirm the old worker stopped before inspecting/resuming retaine
 [CodexUsageService](../zet/services/codex_usage_service.py) reads account/rateLimits/read
 over stdio without a model turn. Applicable returned Codex windows show remaining
 percent/reset times. Unknown/stale quota pauses claims. The default reserve is 10%.
-Retained usage-wait work resumes when fresh capacity permits. No automatic purchases
+Fresh host readings expire after five minutes. A nested Codex sandbox may lack
+account access; native tasks can import the app usage-limits tool reading rather
+than bypass quota. Retained usage-wait work resumes when fresh capacity permits. No automatic purchases
 or earned-reset consumption occurs.
 
 [TaskStatusService](../zet/services/task_status_service.py) polls GitHub every minute

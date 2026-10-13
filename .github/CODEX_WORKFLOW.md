@@ -96,6 +96,10 @@ restart action after merging. Code and deployment failures never erase authored 
 
 Require fresh quota and at least the configured reserve (default 10%) in applicable
 Codex windows before new claims. Unknown quota pauses pickup. Check quota between
+The helper can use a host-side reading no older than five minutes. When its nested
+stdio reader lacks account access, use the desktop app's read-only usage-limits
+tool and import its actual JSON with `usage --input-file <path>`; do not estimate
+or force quota. Zet's background reader also publishes these fresh readings.
 major stages and checkpoint `usage-wait` when exhausted; it resumes after fresh
 quota is available. Never buy credits or consume reset
 credits automatically. Scheduled polling itself consumes some capacity.
