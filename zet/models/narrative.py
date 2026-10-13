@@ -13,6 +13,7 @@ class NarrativeStory:
     id: str = field(default_factory=new_id)
     brief: str = ""
     scene_ids: list[str] = field(default_factory=list)
+    source_provenance: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -21,6 +22,7 @@ class NarrativeElement:
     id: str = field(default_factory=new_id)
     kind: str = "subject"
     asset_id: str = ""
+    reference_key: str = ""
     appearance: str = ""
     reference_role: str = "appearance"
 
@@ -38,6 +40,9 @@ class NarrativeScene:
     canvas: str = "16:9"
     elements: list[dict] = field(default_factory=list)
     target_ids: list[str] = field(default_factory=list)
+    legacy_image: dict = field(default_factory=dict)
+    source_provenance: dict = field(default_factory=dict)
+    migration: dict = field(default_factory=dict)
 
 
 @dataclass

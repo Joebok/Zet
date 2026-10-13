@@ -20,7 +20,8 @@ Zet is a local creative-production dashboard for character references, illustrat
 
 - Zet is a personal application run on one machine. Prefer a few representative end-to-end task tests over extensive unit coverage.
 - Reuse the approved end-to-end scenarios. Do not automatically add a test for every change or defect.
-- Get Joe's explicit approval before adding tests, introducing scenarios, or materially expanding coverage. State which user task the proposed test covers and why existing scenarios are insufficient.
+- Get Joe's explicit approval before adding permanent tests, introducing scenarios, or materially expanding coverage. State which user task the proposed test covers and why existing scenarios are insufficient.
+- Disposable tests are allowed.
 - Approval applies only to the named tests or scenarios. The current approved baseline is three fast end-to-end scenarios and one separately invoked live narrative pipeline check.
 - Repair existing tests when needed to preserve their approved purpose.
 - Do not add coverage targets, exhaustive permutations, snapshot suites, test frameworks, or dependencies without approval.
@@ -51,7 +52,8 @@ Zet is a local creative-production dashboard for character references, illustrat
 
 ### Dependencies
 
-- If a required package is unavailable, stop, identify it, and ask for installation. Do not install, replace, or work around it without approval.
+- Install, restore, or update packages already declared by the project's lockfile when needed for the requested work or approved checks. Do not add, replace, or work around dependencies without Joe's approval.
+- The approved `npm run test:e2e` baseline may bootstrap its locked npm dependencies and required Playwright browser automatically through the repository setup script.
 
 ## Changes and validation
 

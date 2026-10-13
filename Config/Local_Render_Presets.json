@@ -226,6 +226,8 @@
     "qwen_cache_enabled": true,
     "qwen_cache_device": "cpu",
     "qwen_cache_dtype": "int8",
+    "reference_max_pixels": 1048576,
+    "reference_total_max_pixels": 6291456,
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-image-2-1-scene": {
@@ -295,6 +297,8 @@
     "qwen_cache_enabled": true,
     "qwen_cache_device": "cpu",
     "qwen_cache_dtype": "int8",
+    "reference_max_pixels": 1048576,
+    "reference_total_max_pixels": 6291456,
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-head-image-text": {
@@ -342,6 +346,8 @@
     "qwen_cache_enabled": true,
     "qwen_cache_device": "cpu",
     "qwen_cache_dtype": "int8",
+    "reference_max_pixels": 1048576,
+    "reference_total_max_pixels": 6291456,
     "output_subdir": "Local_Test_Renders"
   },
   "comfyui-qwen-local-character-edit": {
@@ -367,6 +373,8 @@
     "qwen_cache_enabled": true,
     "qwen_cache_device": "cpu",
     "qwen_cache_dtype": "int8",
+    "reference_max_pixels": 1048576,
+    "reference_total_max_pixels": 6291456,
     "output_subdir": "Local_Test_Renders"
   }
 }

@@ -43,6 +43,20 @@ def update_view_evaluation(run_root: Path, view: str, changes: dict[str, Any], *
     return saved[-1] if saved else None
 
 
+def finish_gate_collection(run_root: Path, view: str, evaluation_id: str) -> None:
+    """Finish a recovered collector only while its evaluation still owns the view."""
+    from zet.services.local_image_pipeline_policy import mutate_local_run_state
+
+    def finish(state):
+        evaluation = (state.get("evaluations") or {}).get(view) or {}
+        if evaluation.get("evaluation_id") != evaluation_id or evaluation.get("status") not in {"STAGING", "RUNNING"}:
+            return
+        evaluation["gates_status"] = "COMPLETE"
+        if evaluation.get("ranking_status") in {"COMPLETE", "FAILED", "EMPTY", "SKIPPED"}:
+            evaluation["status"] = "COMPLETE"
+    mutate_local_run_state(run_root, finish)
+
+
 class LocalImageEvaluationService:
     """Stage one immutable view evaluation, then collect gates and rank in parallel."""
 

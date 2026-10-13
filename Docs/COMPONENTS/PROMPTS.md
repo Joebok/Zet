@@ -21,9 +21,26 @@ Generation and analysis templates use `IMAGE_PROMPT_ONLY`/`ANALYSIS_PROMPT_ONLY`
 
 ## Scene and Narrative prompt paths
 
-[scene_render_compiler.py](../../zet/services/scene_render_compiler.py) functions `compile_scene_render_ir`, `final_image_prompt_text`, and `local_render_brief` consume normalized scene/settings/references and emit IR/text. [qwen_scene_prompt.py](../../zet/services/qwen_scene_prompt.py) provides `compile_qwen_scene_prompt` and analysis warnings. Measured placement wording comes from [scene_spatial_contract.py](../../zet/services/scene_spatial_contract.py), not conflicting author prose. Universe style is applied to a local IR copy for local scene compilation.
+The structured scene compiler, Qwen scene prompt compiler, measured spatial guidance and cleanup are preserved in the [offline archive](../../Archive/scene-builder/README.md). They are not active producers. Shared character helpers and the Narrative/Qwen prompt path no longer import that geometry/compiler.
 
 [narrative_prompt_service.py](../../zet/services/narrative_prompt_service.py) uses `llm_request` for structured interview/synthesis requests and `assemble_prompt` to combine coherent prose with deterministic image/reference bindings. It does not use the Scene Builder compiler as its authoring engine.
+
+Active Narrative and local-character Qwen Image 2.1 renders use
+[shared preparation service](../../zet/services/qwen_reference_preparation_service.py)
+to prepare private reference snapshots. Machine settings in
+`[ComfyUI.QwenImage21]` override the selected preset's per-reference and aggregate
+pixel budgets. The default limits are 1,048,576 pixels per image and 6,291,456 total;
+resizing preserves aspect ratio, alpha, reference order, and source bytes, aligns
+dimensions down to multiples of 32, and never enlarges. Prepared graphs set
+`TextEncodeQwenImage21.resolution=0`, so the encoder keeps the prepared reference
+size instead of scaling it to the output canvas. Output latent dimensions remain
+separate. Pending submissions recover their saved graph and prepared-image hashes;
+they do not pick up changed settings. See [NARRATIVE](NARRATIVE.md) and
+[DATA_MODEL](../DATA_MODEL.md) for settings and recovery details.
+The same machine table configures the Qwen prefix cache (`cache_device` accepts
+`auto`, `cpu`, `gpu`, or `off`; `cache_dtype` accepts `default`, `int8`, or
+`int4`). Metadata records configured placement/precision separately from whether
+ComfyUI inserted and ran the cache node.
 
 ## Shared contract, failure modes, extension points
 

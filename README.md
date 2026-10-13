@@ -157,3 +157,9 @@ Zet is a personal project under active development. Workflows and dashboard cont
 Zet is licensed under the [MIT License](LICENSE).
 
 Copyright &copy; 2026 Joe Schonbok.
+
+Story Telling now uses the mounted Narrative editor at `/?page=narrative`; existing
+`/narrative` links redirect there. Candidates import Adventure Log briefs as editable
+stubs. First Day/Phlan Adventures retain their previous final images as Legacy images
+on scene pages. Retired scene/3D code and recovery guidance are in the
+[offline archive](Archive/scene-builder/README.md).

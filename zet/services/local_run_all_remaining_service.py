@@ -78,6 +78,10 @@ class LocalRunAllRemainingService:
                 kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
                 try:
                     run = adapter.detail(run_id, **kwargs)
+                    state_path = Path(run["root"]) / "state.json"
+                    state = self._read(state_path)
+                    if not run.get("stop_requested") and (state.get("slot_render_ids") or state.get("slot_review_views")):
+                        LocalImagePipelineWorkflowService(self.app, self.project_root, pipeline).slots.start(run_id, kwargs.get("costume", ""))
                 except Exception:
                     continue
                 images = [Path(str(item.get("image_path") or "")) for item in run.get("candidates") or []]
@@ -154,6 +158,14 @@ class LocalRunAllRemainingService:
                 kwargs = {"costume": summary.get("costume") or ""} if pipeline in {"character-assembly", "costume-dressing"} else {}
                 try:
                     adapter.reconcile_review_jobs(run_id, **kwargs)
+                    run = adapter.detail(run_id, **kwargs)
+                    if (run.get("slot_version") == 1 and run.get("target_candidate_ids")
+                            and run.get("status") in {"QUEUED", "INTERRUPTED"}
+                            and not run.get("stop_requested")):
+                        from zet.services.local_character_overview_service import submit_local_pipeline_task
+                        submit_local_pipeline_task(adapter.execute_run, run_id,
+                            views=set(run.get("target_views") or []),
+                            candidate_ids=set(run["target_candidate_ids"]), **kwargs)
                 except Exception:
                     continue
         active_id = str(self._read(self.active_path).get("campaign_id") or "")

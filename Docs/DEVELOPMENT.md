@@ -8,7 +8,7 @@ Run commands from the repository root. [Testing](Testing.md) owns the approved t
 - Runtime packages are [requirements.txt](../requirements.txt): FastAPI, Markdown, NumPy, Pillow, Uvicorn, OpenCV. No routine Python unit-test suite or GitHub Actions test workflows remain after V5 recovery.
 - Browser tooling is [package.json](../package.json), [playwright.config.mjs](../playwright.config.mjs): Playwright/Chromium, Three.js, and Node. Python server rendering/templates and checked-in static files serve the normal dashboard.
 - Optional AI Proxy, Ollama, ComfyUI, and Narrative Codex subprocess tooling are needed only for corresponding live features. Fast E2E fixtures do not establish that those services/models are available.
-- If a needed dependency is missing, stop and ask for installation. Setup commands below describe existing workflows; they do not grant an agent installation permission.
+- Restore dependencies already declared by the project's lockfiles when needed. Ask Joe before adding, upgrading, replacing, or working around dependencies.
 
 ## Setup and execution
 
@@ -21,7 +21,7 @@ Only commands explicitly reported under Observed verification were executed succ
 | Windows launch | `.\run_zet_web.bat` | Activates `.venv`; refuses a duplicate 0.0.0.0:8081 listener; script uses its environment's `python`. |
 | macOS launch | `./run_zet_web.command` | zsh launcher checks port 8081 and executes `python3`; unlike the Windows launcher, it does not activate `.venv`, so select the environment first. |
 | Explicit local launch | `python3 -B -m zet.web.app --config config.toml --host 127.0.0.1 --port 8081` | Browser at localhost:8081. `Ctrl+C` stops it. App construction initializes stores/recovery; use an appropriate library, not an accidental live test target. |
-| Approved fast tests | `npm run test:e2e` | Three serial Playwright task scenarios against disposable fixtures; packages/browser installation requires approval. |
+| Approved fast tests | `npm run test:e2e` | Three serial Playwright task scenarios against disposable fixtures. The pretest setup restores locked npm packages and the matching Chromium browser when missing. |
 | Inspect test library | `npm run test:library` | Separate inspection copy on 127.0.0.1:8766; see [Testing](Testing.md). |
 | Optional live Narrative check | `npm run test:e2e:live` | Run only when Joe requests it, with the environment and prerequisites in [Testing](Testing.md). |
 | Three.js vendor update | `npm run build:three` | Copies runtime assets via [copy-three-runtime.mjs](../Scripts/copy-three-runtime.mjs); run only for relevant asset changes. |
@@ -64,3 +64,17 @@ Useful artifacts include `Prompt_Source_Map.json`, `Prompt_Compile_Diagnostics.j
 - Traditional/local generation, record/entity catalogs, and Scene Builder/Narrative coexist. Some README/design notes predate active policy. Investigate the relevant boundary before proposing retirement/migration; this task does not approve it.
 - Large facade/routes and callback-driven catalog/index integration warrant impact tracing for cross-component edits. No general refactor or architectural cleanup assessment was performed.
 - No repository-wide lint/type-check command is declared in package scripts or pyproject. Do not invent a required check or infer quality from existing cache directories.
+
+## Observed Narrative retirement validation (2026-10-12)
+
+`npm.cmd run test:e2e` passed the unchanged three fast scenarios in 23.9 seconds.
+Migration apply/verify and actual resume confirmed 2 stories, 28 scenes and 28 exact
+legacy image checksums; resume did not alter Narrative JSON. Source folders and the
+existing three-scene Narrative story matched the backup byte-for-byte. Disposable
+Candidates/source-review/usage/deletion checks and a read-only dashboard inspection
+passed. `git diff --check`, JavaScript syntax and active Python parsing passed.
+No live model/render check was run. [Completed plan](../plans/completed/narrative-scene-retirement.md)
+records commands/outcomes, backup and remaining stub review issues.
+
+## Render-slot implementation validation (2026-10-12)
+Approved `npm.cmd run test:e2e` passed all three fast scenarios after backend/recovery integration (24.8 seconds); S2 also passed independently. Default Windows `python3` resolves to an unusable WindowsApps alias on this host. Verified Python 3 at `C:/Python314/python.exe`; an ignored `test-results/runtime/python3.cmd` shim was placed first on the command's PATH for the harness. Python compilation, JS syntax checks for changed slot browser files, and `git diff --check` passed. Restricted-network Chromium bootstrap failed; the approved pinned setup/suite succeeded with sandbox escalation. No production dependencies or maintained tests were added, and no live renderer or normal creative library was used. Joe subsequently approved four disposable follow-up checks: costume batch-link restoration, card containment, current-prompt/Recompile behavior, and overlapping slot actions. They passed using prepared responses, including live arrivals during review with an unsaved human decision preserved, late cleared-answer fencing, and Image Generation containment at 1365/850/640 pixels. The final approved fast baseline also passed (3 tests, 23.0 seconds). Full Body/Head generation and general recovery remain outside maintained coverage. See [completed plan](../plans/completed/standard-render-slots.md).

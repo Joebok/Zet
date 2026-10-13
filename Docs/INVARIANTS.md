@@ -53,14 +53,19 @@ These are supported by implementation and repository instructions, with earlier 
 ## 9. Reference order, view domains, and schema gates are contracts
 
 - **Rule/why:** prompts, numbered image citations, `image_inputs`, and bundled bytes must share ordering. Render modes/roles and prompt schema are validated centrally. Body/head view conditioning is independent; anatomical left/right differs from screen left/right. Unsupported document/catalog versions fail rather than being guessed.
-- **Implementation/impact:** [chatgpt_prompt_contract.py](../zet/services/chatgpt_prompt_contract.py), [PromptTemplateService](../zet/services/prompt_template_service.py), [view_conditioning_service.py](../zet/services/view_conditioning_service.py), [SceneDocumentService](../zet/services/scene_document_service.py), [ImageCatalogRepository](../zet/repositories/image_catalog_repository.py); compilers, queue snapshots, render adapters.
+- **Implementation/impact:** [chatgpt_prompt_contract.py](../zet/services/chatgpt_prompt_contract.py), [PromptTemplateService](../zet/services/prompt_template_service.py), [view_conditioning_service.py](../zet/services/view_conditioning_service.py), [ImageCatalogRepository](../zet/repositories/image_catalog_repository.py); compilers, queue snapshots, render adapters.
 - **Verify:** S2/S3 exercise limited compilation/attachment packaging. View-tag permutations, unsupported schemas and exhaustive ordering validation have no dedicated scenario. Inspect compilers and both producer/consumer; do not sort references after compilation.
 
-## 10. Measured scene geometry controls staging
+Qwen Image 2.1 prepared references are job-local derivative snapshots: source bytes
+and ordering remain intact, dimensions only shrink to aligned sizes, and pending
+submission recovery verifies the saved workflow fingerprint and prepared-image
+hashes before resuming. Configuration changes apply only to new submissions.
 
-- **Rule/why:** when measured layout is present, projection facts control screen placement, size, facing, overlap, and ground contact. Contradictory authored spatial clauses are suppressed without stripping anatomical-side descriptions. Group images supply identity/costume/action while parent projection controls final placement. Layout v3 grouping converts coordinates across immediate parent frames while preserving world placement.
-- **Implementation/impact:** [scene_spatial_contract.py](../zet/services/scene_spatial_contract.py), [SceneLayoutService](../zet/services/scene_layout_service.py), general/Qwen scene compilers, background framing and browser layout controls.
-- **Verify:** No maintained scenario exercises retiring Scene Builder geometry or its compiler. Inspect projection/group conversion and spatial suppression in code; Narrative E2E results are not evidence of these geometry contracts.
+  ## 10. Legacy geometry is archived; migration preserves history
+
+- **Rule/why:** saved 3D layouts and their coordinate conventions remain historical; Narrative migration derives preliminary prose staging from reviewed final images. It never converts geometry or makes legacy outputs selected Narrative candidates.
+- **Implementation/impact:** [offline archive](../Archive/scene-builder/README.md), [NarrativeMigrationService](../zet/services/narrative_migration_service.py), Narrative records and entity image imports.
+- **Verify:** all 28 imported final-image checksums match their sources; each migrated scene has backdrop/subscene/assembly targets. Existing sources and other stories are preserved. No maintained scenario exercises archived geometry.
 
 ## 11. Narrative owns its records and frozen job inputs
 
@@ -73,3 +78,21 @@ These are supported by implementation and repository instructions, with earlier 
 - **Rule/why:** [require_qwen_profile](../zet/services/local_render_policy.py) accepts ComfyUI profiles with `model_family=qwen-image-2.1` and registered diffusion models. Historical Stable Matrix files are not production-policy exceptions. AGENTS says ComfyUI normally runs through AI Proxy; direct operation requires asking for ComfyUI Desktop.
 - **Implementation/impact:** [LocalRenderBackendService](../zet/services/local_render_backend_service.py), queue producers, ConfigService normalization, [Local_Render_Presets.json](../Config/Local_Render_Presets.json).
 - **Verify:** Inspect profile validation and producer/backend consumers. Fast tests use prepared images. The separately requested live check verifies configured Narrative final-assembly rendering; skipped or unrequested live checks establish no service/model availability.
+
+Narrative logical costume references resolve approved current exact-view images;
+unavailable/stale bindings remain review issues. Jobs freeze the resolved bytes and
+ordered references at submission. Legacy-image catalog blobs survive scene deletion.
+Candidate imports and migration resumes are idempotent; changed source briefs cannot
+silently overwrite authored inputs or selected/locked outputs. Retired owned answers
+are superseded without publishing into source or Narrative records.
+
+## 13. Image editor saves are atomic and preferred keys preserve aliases
+
+- **Rule/why:** One editor save updates image fields, organization, asset descriptors, and preferred reference together. A failed validation leaves the authored asset unchanged. A preferred-key change does not deactivate older keys that existing templates or scenes may use.
+- **Implementation/impact:** `EntityLibraryService.update_asset`, `assets.preferred_reference_key` in entity catalog schema 3, and `PATCH /api/entity-library/assets/{asset_id}`. Targeted detail reads do not synchronize pipeline images; inventory search and reconciliation own discovery.
+- **Verify:** Run disposable schema/backfill, collision, alias, rollback, and targeted-read diagnostics. The approved E2E suite does not cover inventory edit/save races or preference migration; obtain approval before adding that coverage.
+
+## 14. Render positions are independent of candidates and ranking
+Eight-slot grids keep stable positions. Supplemental generation fills empty slots only; reserved prerequisites and failed renders are occupied. Replacement candidates/jobs have distinct identities, and changed character evaluations receive a new fence. Late results cannot fill another candidate's position. Selected and locked images require explicit protection transitions before slot replacement. Clear detaches membership while retaining historical artifacts; normal reruns still follow their existing explicit destructive behavior.
+
+Character slot changes hold the state lock and persist pending candidate IDs before background submission. An independent slot collector owns `slot_runner.lock`; it does not block unrelated slot actions on the batch runner. Existing batch runners exclude these independently managed additions. Empty capacity is not Run All Remaining work. Image Generation workspace assignments are universe-owned and server persisted; newly generated results return by child index, never completion order. Services own these transitions, browsers own only presentation/draft inputs. [ADR 0007](DECISIONS/0007-stable-render-slots.md) and [render_slot_service.py](../zet/services/render_slot_service.py) own the contract. Existing S2/S3 cover baseline compatibility; the separately approved disposable checks cover the reported slot issues. Full Body/Head generation and general restart recovery remain unverified by maintained scenarios.

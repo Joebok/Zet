@@ -27,4 +27,25 @@ Reconciliation scans authored/queue sources, fingerprints content, reuses cached
 
 [Testing](../Testing.md#approved-fast-scenarios) owns current validation. S1 exercises source authoring and seeded Narrative image display; S2 consumes prerequisites and publishes local locks. Neither proves full entity import/merge/archive, usages, schema migration, universe lifecycle, or derived-index integrity/pagination. No dedicated catalog/index scenario remains; inspect source contracts and obtain approval before adding coverage.
 
-[ADR 0001](../DECISIONS/0001-library-authority-and-derived-index.md) records store boundaries. [Library Structure](../../Docs-Joe/Library%20Structure.md) is a preserved proposal, not a complete description of current implementation.
+[ADR 0001](../DECISIONS/0001-library-authority-and-derived-index.md) records store boundaries; [ADR 0006](../DECISIONS/0006-atomic-image-inventory-edits.md) records preferred-reference and atomic editor-save behavior. [Library Structure](../../Docs-Joe/Library%20Structure.md) is a preserved proposal, not a complete description of current implementation.
+
+## Narrative consumers and legacy imports
+
+Narrative scene/target JSON participates in entity usage discovery. Live element
+asset IDs, logical keys and legacy-image bindings protect catalog images; archived
+source documents in migration provenance are not live consumers. Authoring changes
+refresh usages. Phase/costume deletion checks Narrative consumers before moving files.
+
+Migration imports use `legacy_scene` and `legacy_reference` origins and stable origin
+keys; character pipeline reconciliation cannot obsolete them. Imports preserve bytes,
+checksums and provenance. Scene deletion removes its usage, not the historical image
+asset. The authoritative catalog is backed up before apply; the derived index remains
+rebuildable and is not a substitute for that backup. Five old managed-image records
+were found in old-library Git but their PNGs were absent from both working files and
+Git; they remain visible migration review issues.
+
+Image detail reads use targeted catalog queries. Search owns pipeline-image
+synchronization; entity, variant, set, and facet option reads do not independently
+repeat that scan. Editor PATCH saves metadata, organization, asset descriptors, and
+preferred reference together, then refreshes usages and the derived index once.
+Preference changes retain prior active keys so existing consumers continue to resolve.

@@ -19,6 +19,7 @@ from PIL import Image
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_render_policy import require_qwen_profile
 from zet.services.workflow_storage import validate_image
+from zet.services.image_generation_workspace_service import ImageGenerationWorkspace
 
 
 IMAGE_GENERATION_CONSUMER = "zet-image-generation"
@@ -52,6 +53,7 @@ class AdHocImageGenerationService:
         self.results_root.mkdir(parents=True, exist_ok=True)
         self._load_jobs()
         self.cleanup_abandoned()
+        self.slot_workspace = ImageGenerationWorkspace(self)
 
     def start(self) -> None:
         return None
@@ -72,7 +74,11 @@ class AdHocImageGenerationService:
             "max_references": IMAGE_GENERATION_MAX_REFERENCES,
         }
 
-    def submit(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None) -> dict[str, Any]:
+        with self._lock:
+            return self._submit(payload, request_id=request_id, seeds=seeds)
+
+    def _submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None) -> dict[str, Any]:
         mode = str(payload.get("mode") or "txt2img").strip().lower()
         if mode not in {"txt2img", "img2img"}:
             raise AdHocImageGenerationError("Choose txt2img or img2img.")
@@ -161,7 +167,7 @@ class AdHocImageGenerationService:
         if not checkpoint:
             checkpoint = str(self._preset(preset_name).get("diffusion_model") or "")
 
-        request_id = uuid4().hex
+        request_id = request_id or uuid4().hex
         workspace = self.workspace_root / request_id
         workspace.mkdir(parents=True, exist_ok=False)
         prompt_path = workspace / "Final_Image_Prompt.md"
@@ -188,13 +194,20 @@ class AdHocImageGenerationService:
             raise
 
         children = []
-        seeds: set[int] = set()
-        try:
-            for index in range(count):
+        used_seeds: set[int] = set()
+        for index in range(count):
+            seed = seeds[index] if seeds is not None else random.SystemRandom().randrange(0, 2**63 - 1)
+            while seed in used_seeds:
                 seed = random.SystemRandom().randrange(0, 2**63 - 1)
-                while seed in seeds:
-                    seed = random.SystemRandom().randrange(0, 2**63 - 1)
-                seeds.add(seed)
+            used_seeds.add(seed)
+            children.append({"ask_id": "", "index": index, "seed": seed, "status": "QUEUED"})
+        job = self._new_job(request_id, mode, count, workspace, children, prompt_path, "QUEUED", "")
+        job.update(self._request_details(payload, width, height, user_prompt))
+        self._jobs[request_id] = job
+        self._save_job(job)
+        try:
+            for child in children:
+                seed = child["seed"]
                 staged = self.zet_app.ai_proxy_service.stage_render_task_local_render_ask(
                     {"ask_id": f"adhoc_{request_id}", "ad_hoc_request_id": request_id},
                     prompt_path,
@@ -212,27 +225,19 @@ class AdHocImageGenerationService:
                     reference_files=references,
                     consumer=IMAGE_GENERATION_CONSUMER,
                 )
-                children.append({"ask_id": staged.name, "index": index})
-        except Exception as exc:
-            with self._lock:
-                job = self._new_job(
-                    request_id, mode, count, workspace, children, prompt_path,
-                    "QUEUED" if children else "ERROR", f"Only {len(children)} of {count} images could be queued: {exc}",
-                )
-                job["failures"] = count - len(children)
-                job.update(self._request_details(payload, width, height, user_prompt))
-                self._jobs[request_id] = job
+                child["ask_id"] = staged.name
                 self._save_job(job)
-            if not children:
+        except Exception as exc:
+            queued = sum(bool(child["ask_id"]) for child in children)
+            job["error"] = f"Only {queued} of {count} images could be queued: {exc}"
+            for child in children:
+                if not child["ask_id"]:
+                    child.update(done=True, status="FAILED", error=str(exc))
+                    job["failures"] += 1
+            if not queued:
+                job.update(status="ERROR", finished_at=time.time())
                 shutil.rmtree(workspace, ignore_errors=True)
-            return self.status(request_id)
-
-        with self._lock:
-            self._jobs[request_id] = self._new_job(
-                request_id, mode, count, workspace, children, prompt_path, "QUEUED", "",
-            )
-            self._jobs[request_id].update(self._request_details(payload, width, height, user_prompt))
-            self._save_job(self._jobs[request_id])
+        self._save_job(job)
         return self.status(request_id)
 
     def _new_job(self, request_id, mode, count, workspace, children, prompt_path, status, error):
@@ -249,7 +254,8 @@ class AdHocImageGenerationService:
             "prompt_path": prompt_path,
             "status": status,
             "error": error,
-            "images": [],
+            "images": [None] * count,
+            "image_slots_version": 1,
             "failures": 0,
             "created_at": time.time(),
             "finished_at": time.time() if status == "ERROR" else None,
@@ -258,6 +264,7 @@ class AdHocImageGenerationService:
     @staticmethod
     def _request_details(payload, width, height, prompt):
         return {
+            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "reference_images", "reference_image", "source_asset_id", "source_checksum") if key in payload},
             "prompt": prompt,
             "negative_prompt": str(payload.get("negative_prompt") or "").strip(),
             "width": width,
@@ -303,6 +310,9 @@ class AdHocImageGenerationService:
                 "negative_prompt": job.get("negative_prompt", ""),
                 "source_asset_id": job.get("source_asset_id", ""),
                 "source_checksum": job.get("source_checksum", ""),
+                "results": [{"index": index, "status": "COMPLETE" if index < len(job["images"]) and job["images"][index] is not None else next((child.get("status", "QUEUED") for child in job["children"] if child["index"] == index), "FAILED"),
+                             "error": next((child.get("error", "") for child in job["children"] if child["index"] == index), job.get("error", ""))}
+                            for index in range(job["count"])],
                 "images": [
                     {"index": index, "url": f"/api/image-generation/jobs/{request_id}/images/{index}"}
                     for index, image in enumerate(job["images"]) if image is not None
@@ -384,6 +394,11 @@ class AdHocImageGenerationService:
             if child.get("done"):
                 continue
             ask_id = child["ask_id"]
+            if not ask_id:
+                child.update(done=True, status="FAILED", error="Render submission was interrupted. Retry this slot.")
+                job["failures"] += 1
+                job["error"] = job["error"] or child["error"]
+                continue
             answer_path = self.proxy_paths.answer_root() / ask_id
             running_path = self.proxy_paths.running_root() / ask_id
             ask_path = self.proxy_paths.ask_root() / ask_id
@@ -415,8 +430,13 @@ class AdHocImageGenerationService:
                     validate_image(image_bytes)
                     with Image.open(BytesIO(image_bytes)) as image:
                         content_type = Image.MIME.get(image.format or "", "application/octet-stream")
-                    job["images"].append((image_bytes, content_type))
+                    if job.get("image_slots_version") == 1:
+                        job["images"][child["index"]] = (image_bytes, content_type)
+                    else:
+                        job["images"].append((image_bytes, content_type))
+                    child["status"] = "COMPLETE"
                 except Exception as exc:
+                    child.update(status="FAILED", error=str(exc))
                     job["failures"] += 1
                     if not job["error"]:
                         job["error"] = str(exc)
@@ -427,13 +447,14 @@ class AdHocImageGenerationService:
                     child["done"] = True
                     self._save_job(job)
             elif running_path.is_dir():
+                child["status"] = "RUNNING"
                 running += 1
             elif ask_path.is_dir():
-                pass
+                child["status"] = "QUEUED"
             else:
                 job["failures"] += 1
                 job["error"] = job["error"] or "AI_Proxy no longer has this queued image job."
-                child["done"] = True
+                child.update(done=True, status="FAILED", error=job["error"])
 
         if running or any(not child.get("done") for child in job["children"]):
             job["status"] = "RUNNING" if running else "QUEUED"
@@ -473,6 +494,8 @@ class AdHocImageGenerationService:
             "request_id", "mode", "prompt", "negative_prompt", "width", "height", "count",
             "children", "status", "error", "failures", "created_at", "finished_at",
         )}
+        record["render_payload"] = job.get("render_payload")
+        record["image_slots_version"] = job.get("image_slots_version", 0)
         record["source_asset_id"] = job.get("source_asset_id", "")
         record["source_checksum"] = job.get("source_checksum", "")
         record.update({"workspace": str(job["workspace"]), "prompt_path": str(job["prompt_path"]),

@@ -6,10 +6,8 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
-from zet.services.comfyui_prompt_compiler import append_prompt_globals, compile_scene_prompts
+from zet.services.comfyui_prompt_compiler import append_prompt_globals
 from zet.services.local_render_types import LocalRenderError
-from zet.services.scene_layout_planner import plan_scene_layout
-from zet.services.qwen_scene_prompt import compile_qwen_scene_prompt
 
 
 CORE_SCENE_WORKFLOW = "core_txt2img_scene_preview"
@@ -200,46 +198,6 @@ def _workflow(
     return workflow
 
 
-def _core_scene_compiler(
-    ir: dict[str, Any],
-    profile: dict[str, Any],
-    *,
-    checkpoint: str,
-    seed: int,
-    width: int,
-    height: int,
-    positive_prompt_globals: str,
-    negative_prompt_globals: str,
-    output_prefix: str,
-    **_kwargs: Any,
-) -> ComfyUICompilation:
-    prompts = compile_scene_prompts(
-        ir,
-        positive_prompt_globals=positive_prompt_globals,
-        negative_prompt_globals=negative_prompt_globals,
-    )
-    layout_plan = plan_scene_layout(ir, width, height)
-    workflow = _workflow(
-        global_prompt=prompts["global"],
-        negative_prompt=prompts["negative"],
-        region_records=prompts["region_records"],
-        layout_plan=layout_plan,
-        profile=profile,
-        checkpoint=checkpoint,
-        seed=seed,
-        width=width,
-        height=height,
-        output_prefix=output_prefix,
-    )
-    return ComfyUICompilation(
-        workflow=workflow,
-        prompts=prompts,
-        seed=seed,
-        width=width,
-        height=height,
-        workflow_kind=CORE_SCENE_WORKFLOW,
-        debug={"layout_plan": layout_plan, "references_used": []},
-    )
 
 
 def _reference_bindings(
@@ -296,125 +254,6 @@ def _reference_bindings(
     return bindings
 
 
-def _ipadapter_scene_compiler(
-    ir: dict[str, Any],
-    profile: dict[str, Any],
-    *,
-    checkpoint: str,
-    seed: int,
-    width: int,
-    height: int,
-    positive_prompt_globals: str,
-    negative_prompt_globals: str,
-    output_prefix: str,
-    reference_files: list[dict[str, Any]] | None = None,
-    available_node_types: set[str] | None = None,
-    **_kwargs: Any,
-) -> ComfyUICompilation:
-    required = {
-        "LoadImage",
-        "CLIPVisionLoader",
-        "IPAdapterModelLoader",
-        "IPAdapterAdvanced",
-    }
-    missing_nodes = sorted(required - (available_node_types or set()))
-    if missing_nodes:
-        raise LocalRenderError(
-            "ComfyUI IP-Adapter profile requires unavailable nodes: "
-            + ", ".join(missing_nodes)
-            + ". Install ComfyUI_IPAdapter_plus and configure its models."
-        )
-    bindings = _reference_bindings(ir, reference_files)
-    if not bindings:
-        raise LocalRenderError("ComfyUI IP-Adapter profile requires at least one resolved reference image.")
-    missing_files = [item["path"] for item in bindings if not Path(item["path"]).is_file()]
-    if missing_files:
-        raise LocalRenderError("ComfyUI reference image file is missing: " + missing_files[0])
-    ipadapter_model = str(profile.get("ipadapter_model") or "").strip()
-    clip_vision_model = str(profile.get("clip_vision_model") or "").strip()
-    if not ipadapter_model or not clip_vision_model:
-        raise LocalRenderError(
-            "ComfyUI IP-Adapter profile requires ipadapter_model and clip_vision_model settings."
-        )
-
-    prompts = compile_scene_prompts(
-        ir,
-        positive_prompt_globals=positive_prompt_globals,
-        negative_prompt_globals=negative_prompt_globals,
-    )
-    layout_plan = plan_scene_layout(ir, width, height)
-    nodes: dict[str, Any] = {
-        "5": {"class_type": "CLIPVisionLoader", "inputs": {"clip_name": clip_vision_model}},
-        "6": {"class_type": "IPAdapterModelLoader", "inputs": {"ipadapter_file": ipadapter_model}},
-    }
-    model: list[Any] = ["1", 0]
-    next_id = 20
-    applications: list[dict[str, Any]] = []
-    for index, binding in enumerate(bindings):
-        image_id = str(7 + index * 2)
-        adapter_id = str(8 + index * 2)
-        role_prefix = "backdrop" if binding["role"] == "backdrop" else "character"
-        default_weight = 0.20 if role_prefix == "backdrop" else 0.40
-        default_end_at = 0.55 if role_prefix == "backdrop" else 0.75
-        settings = {
-            "weight": float(profile.get(f"{role_prefix}_reference_weight", default_weight)),
-            "start_at": 0.0,
-            "end_at": float(profile.get(f"{role_prefix}_reference_end_at", default_end_at)),
-            "weight_type": str(profile.get("ipadapter_weight_type") or "linear"),
-            "combine_embeds": str(profile.get("ipadapter_combine_embeds") or "average"),
-            "embeds_scaling": str(profile.get("ipadapter_embeds_scaling") or "V only"),
-        }
-        nodes[image_id] = {
-            "class_type": "LoadImage",
-            "inputs": {"image": binding["comfyui_input_name"]},
-        }
-        nodes[adapter_id] = {
-            "class_type": "IPAdapterAdvanced",
-            "inputs": {
-                "model": model,
-                "ipadapter": ["6", 0],
-                "image": [image_id, 0],
-                "clip_vision": ["5", 0],
-                **settings,
-            },
-        }
-        applications.append(
-            {
-                "reference_element_id": binding["element_id"],
-                "staged_reference_file": binding["comfyui_input_name"],
-                **settings,
-            }
-        )
-        model = [adapter_id, 0]
-        next_id = max(next_id, int(adapter_id) + 1)
-    workflow = _workflow(
-        global_prompt=prompts["global"],
-        negative_prompt=prompts["negative"],
-        region_records=prompts["region_records"],
-        layout_plan=layout_plan,
-        profile=profile,
-        checkpoint=checkpoint,
-        seed=seed,
-        width=width,
-        height=height,
-        output_prefix=output_prefix,
-        model=model,
-        prefix_nodes=nodes,
-        next_id=next_id,
-    )
-    return ComfyUICompilation(
-        workflow=workflow,
-        prompts=prompts,
-        seed=seed,
-        width=width,
-        height=height,
-        workflow_kind=IPADAPTER_SCENE_WORKFLOW,
-        debug={
-            "layout_plan": layout_plan,
-            "references_used": bindings,
-            "ipadapter_applications": applications,
-        },
-    )
 
 
 def _core_prompt_compiler(
@@ -829,8 +668,11 @@ def _qwen_image_21_local_edit_compiler(
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": text_encoder, "type": "qwen_image"}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": vae_name}},
     }
-    encode: dict[str, Any] = {"clip": ["2", 0], "vae": ["3", 0], "prompt": positive_prompt,
-                               "negative_prompt": negative_prompt, "resolution": max(width, height)}
+    encode: dict[str, Any] = {
+        "clip": ["2", 0], "vae": ["3", 0], "prompt": positive_prompt,
+        "negative_prompt": negative_prompt,
+        "resolution": 0 if refs and profile.get("qwen_reference_resize_enabled") else max(width, height),
+    }
     bindings = []
     for index, reference in enumerate(refs, start=1):
         node_id = str(9 + index)
@@ -887,8 +729,11 @@ def _qwen_body_reference_prompt_compiler(
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": profile["text_encoder"], "type": "qwen_image"}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": profile["vae"]}},
     }
-    encode: dict[str, Any] = {"clip": ["2", 0], "vae": ["3", 0], "prompt": positive_prompt,
-                               "negative_prompt": negative_prompt, "resolution": max(width, height)}
+    encode: dict[str, Any] = {
+        "clip": ["2", 0], "vae": ["3", 0], "prompt": positive_prompt,
+        "negative_prompt": negative_prompt,
+        "resolution": 0 if refs and profile.get("qwen_reference_resize_enabled") else max(width, height),
+    }
     bindings = []
     if refs:
         ref = refs[0]
@@ -920,83 +765,10 @@ def _qwen_body_reference_edit_compiler(*args: Any, **kwargs: Any) -> ComfyUIComp
     return _qwen_body_reference_prompt_compiler(*args, **kwargs, workflow_kind=QWEN_BODY_REFERENCE_EDIT_WORKFLOW)
 
 
-def _qwen_image_21_scene_compiler(
-    ir: dict[str, Any], profile: dict[str, Any], *, checkpoint: str, seed: int,
-    width: int, height: int, output_prefix: str,
-    reference_files: list[dict[str, Any]] | None = None,
-    available_node_types: set[str] | None = None,
-    scene_prompt_override: str = "", **_kwargs: Any,
-) -> ComfyUICompilation:
-    required = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21",
-                "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"}
-    image_inputs = ir.get("image_inputs") or []
-    if image_inputs:
-        required.update({"LoadImage"})
-    missing = sorted(required - (available_node_types or set()))
-    if missing:
-        raise LocalRenderError("Qwen Image 2.1 requires unavailable ComfyUI nodes: " + ", ".join(missing))
-    if len(image_inputs) > 10:
-        raise LocalRenderError("Qwen Image 2.1 supports at most ten scene reference images.")
-    encoder = str(profile.get("text_encoder") or "").strip()
-    vae = str(profile.get("vae") or "").strip()
-    if not checkpoint or not encoder or not vae:
-        raise LocalRenderError("Qwen Image 2.1 requires a diffusion model, text encoder, and VAE.")
-    prompt = scene_prompt_override.strip() or compile_qwen_scene_prompt(ir)
-    if not prompt:
-        raise LocalRenderError("Qwen Image 2.1 scene prompt is empty.")
-    supplied = reference_files or []
-    indices = [int(item.get("image_index") or 0) if isinstance(item, dict)
-               and str(item.get("image_index") or "").isdigit() else 0 for item in supplied]
-    if supplied and sorted(indices) != list(range(1, len(image_inputs) + 1)):
-        raise LocalRenderError(
-            "Qwen Image 2.1 manual references do not match the scene IR image slots. Recompile the scene."
-        )
-    sources = {index: item for index, item in zip(indices, supplied)}
-    bindings = []
-    workflow: dict[str, Any] = {
-        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": checkpoint, "weight_dtype": "default"}},
-        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": encoder, "type": "qwen_image"}},
-        "3": {"class_type": "VAELoader", "inputs": {"vae_name": vae}},
-    }
-    encode_inputs: dict[str, Any] = {"clip": ["2", 0], "vae": ["3", 0], "prompt": prompt,
-                                     "negative_prompt": "", "resolution": int(profile.get("reference_resolution", 1024))}
-    for index, image_input in enumerate(image_inputs, start=1):
-        source = sources.get(index, image_input)
-        path = Path(str(source.get("path") or "")).expanduser()
-        if not path.is_file():
-            raise LocalRenderError(f"Qwen Image 2.1 scene reference {index} is missing: {path}")
-        input_name = str(source.get("comfyui_input_name") or "").strip()
-        if not input_name:
-            key = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:12]
-            input_name = f"Zet/{key}/{path.name}"
-        node_id = str(10 + index)
-        workflow[node_id] = {"class_type": "LoadImage", "inputs": {"image": input_name}}
-        encode_inputs[f"images.image_{index}"] = [node_id, 0]
-        bindings.append({**source, "path": str(path), "comfyui_input_name": input_name,
-                         "image_index": index})
-    workflow["4"] = {"class_type": "TextEncodeQwenImage21", "inputs": encode_inputs}
-    workflow["5"] = {"class_type": "EmptyLatentImage", "inputs": {
-        "width": width, "height": height, "batch_size": 1}}
-    workflow["6"] = {"class_type": "KSampler", "inputs": {
-        "seed": seed, "steps": int(profile.get("steps", 40)), "cfg": 1.0,
-        "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0,
-        "model": ["1", 0], "positive": ["4", 0], "negative": ["4", 1],
-        "latent_image": ["5", 0],
-    }}
-    workflow["7"] = {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["3", 0]}}
-    workflow["8"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": output_prefix, "images": ["7", 0]}}
-    cache = _apply_qwen_reference_cache(workflow, profile, len(bindings), available_node_types)
-    return ComfyUICompilation(workflow=workflow, prompts={"global": prompt, "negative": ""}, seed=seed,
-                              width=width, height=height, workflow_kind=QWEN_IMAGE_21_SCENE_WORKFLOW,
-                              debug={"references_used": bindings, "qwen_reference_cache": cache})
 
 
 def compile_scene_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> ComfyUICompilation:
-    compiler = _SCENE_COMPILERS.get(workflow_kind)
-    if compiler is None:
-        known = ", ".join(sorted(_SCENE_COMPILERS))
-        raise LocalRenderError(f"Unsupported ComfyUI scene workflow_kind {workflow_kind!r}. Available: {known}.")
-    return compiler(*args, **kwargs)
+    raise LocalRenderError("Scene Builder rendering is retired. Use the Narrative prompt workflow.")
 
 
 def compile_prompt_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> ComfyUICompilation:
@@ -1007,9 +779,6 @@ def compile_prompt_workflow(workflow_kind: str, *args: Any, **kwargs: Any) -> Co
     return compiler(*args, **kwargs)
 
 
-register_scene_compiler(CORE_SCENE_WORKFLOW, _core_scene_compiler)
-register_scene_compiler(IPADAPTER_SCENE_WORKFLOW, _ipadapter_scene_compiler)
-register_scene_compiler(QWEN_IMAGE_21_SCENE_WORKFLOW, _qwen_image_21_scene_compiler)
 register_prompt_compiler(CORE_PROMPT_WORKFLOW, _core_prompt_compiler)
 register_prompt_compiler(IMG2IMG_PROMPT_WORKFLOW, _img2img_prompt_compiler)
 register_prompt_compiler(CONTROLNET_PROMPT_WORKFLOW, _controlnet_prompt_compiler)

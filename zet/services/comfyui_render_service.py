@@ -20,7 +20,6 @@ from zet.services.comfyui_workflow_registry import (
     workflow_kind_for_profile,
 )
 from zet.services.local_render_types import LocalRenderError, LocalRenderUnavailable
-from zet.services.scene_render_compiler import validate_scene_render_ir
 from zet.services.atomic_file_service import write_json_atomic, write_bytes_atomic
 from zet.services.workflow_storage import file_lock, validate_image
 
@@ -70,39 +69,8 @@ def _resolved_seed(profile: dict[str, Any], seed: int | None) -> int:
     return int(value)
 
 
-def compile_ir_to_comfyui_workflow(
-    ir: dict[str, Any],
-    profile: dict[str, Any],
-    *,
-    checkpoint: str,
-    positive_prompt_globals: str = "",
-    negative_prompt_globals: str = "",
-    seed: int | None = None,
-    output_prefix: str = "Zet/Scene",
-    reference_files: list[dict[str, Any]] | None = None,
-    available_node_types: set[str] | None = None,
-    scene_prompt_override: str = "",
-) -> ComfyUICompilation:
-    if profile.get("workflow_kind") == "qwen_image_21_scene_preview" and len(ir.get("image_inputs") or []) > 10:
-        raise LocalRenderError("Qwen Image 2.1 supports at most ten scene reference images.")
-    validate_scene_render_ir(ir)
-    resolved_seed = _resolved_seed(profile, seed)
-    width, height = _render_size(ir, profile)
-    return compile_scene_workflow(
-        workflow_kind_for_profile(profile),
-        ir,
-        profile,
-        checkpoint=checkpoint,
-        seed=resolved_seed,
-        width=width,
-        height=height,
-        positive_prompt_globals=positive_prompt_globals,
-        negative_prompt_globals=negative_prompt_globals,
-        output_prefix=output_prefix,
-        reference_files=reference_files,
-        available_node_types=available_node_types,
-        scene_prompt_override=scene_prompt_override,
-    )
+def compile_ir_to_comfyui_workflow(*args, **kwargs):
+    raise LocalRenderError("Scene Builder IR rendering is retired. Use a supported prompt workflow.")
 
 
 def compile_prompt_to_comfyui_workflow(

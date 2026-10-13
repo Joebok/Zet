@@ -29,6 +29,7 @@ from zet.services.local_image_pipeline_policy import (
     gate_result_is_current, mutate_local_run_state, resume_cancelled_autogenerate_state, serialize_local_run_state,
     upgrade_legacy_review_v1, view_candidate_id,
 )
+from zet.services.render_slot_service import merge_candidates, render_count, slot_maps, frozen_input, verify_input
 from zet.services.workflow_storage import file_lock, supersede_task
 
 
@@ -313,8 +314,8 @@ Do not explain your reasoning."""
         views = self._views()
         if len(views) != 8:
             raise LocalBodyReferenceError(f"Expected eight configured Body-Reference views; found {len(views)}.")
-        front_count = int(payload.get("front_count") or PILOT_FRONT_COUNT)
-        other_count = int(payload.get("other_count") or PILOT_OTHER_COUNT)
+        front_count = render_count(payload.get("front_count"), PILOT_FRONT_COUNT)
+        other_count = render_count(payload.get("other_count"), PILOT_OTHER_COUNT)
         if front_count < 1 or other_count < 1:
             raise LocalBodyReferenceError("Candidate counts must be positive.")
         candidate_count = front_count + (len(views) - 1) * other_count
@@ -512,6 +513,7 @@ Do not explain your reasoning."""
             "source_snapshot_sha256": hashlib.sha256(json.dumps(prompts, sort_keys=True).encode()).hexdigest(),
             "front_anchor": None, "lineups": {}, "selected_views": {}, "rankings": {}, "created_by": "zet",
         }
+        spec["slots_by_view"] = slot_maps(spec)
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": spec["status"], "updated_at": self._now(),
                                             "stop_requested": False, "candidates": {}, "rankings": {},
@@ -539,10 +541,7 @@ Do not explain your reasoning."""
                 state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         from zet.services.local_prompt_improvement_service import ensure_view_reviews
         value, state = ensure_view_reviews(root, value, state)
-        candidates = {item["candidate_id"]: dict(item) for item in value.get("candidates", [])}
-        for candidate_id, update in (state.get("candidates") or {}).items():
-            if candidate_id in candidates:
-                candidates[candidate_id].update(update)
+        candidates = merge_candidates(value, state)
         stored_status = state.get("status") or value.get("status")
         interrupted = stored_status in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"} and not self._runner_is_active(run_id)
         value["status"] = "INTERRUPTED" if interrupted else stored_status
@@ -558,6 +557,13 @@ Do not explain your reasoning."""
         value["rankings"] = state.get("rankings") or value.get("rankings") or {}
         value["view_reviews"] = state.get("view_reviews") or {}
         value["evaluations"] = state.get("evaluations") or value.get("evaluations") or {}
+        value["slots_by_view"] = state.get("slots_by_view", value.get("slots_by_view", {}))
+        value["slot_version"] = state.get("slot_version", 0)
+        value["slot_work_pending"] = bool(state.get("slot_work_pending"))
+        value["slot_render_ids"] = state.get("slot_render_ids") or []
+        value["slot_review_views"] = state.get("slot_review_views") or []
+        value["slot_collection_error"] = state.get("slot_collection_error", "")
+        value["target_candidate_ids"] = state.get("target_candidate_ids") or []
         value["target_views"] = state.get("target_views") or []
         value["set_report"] = state.get("set_report") or {}
         if interrupted:
@@ -737,10 +743,7 @@ Do not explain your reasoning."""
                 status = str(state.get("status") or spec.get("status") or "UNKNOWN")
                 if status in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"} and not self._runner_is_active(run_id):
                     status = "INTERRUPTED"
-                candidates = {item["candidate_id"]: item for item in spec.get("candidates", [])}
-                for candidate_id, update in (state.get("candidates") or {}).items():
-                    if candidate_id in candidates:
-                        candidates[candidate_id].update(update)
+                candidates = merge_candidates(spec, state)
                 selected = state.get("selected_views") or spec.get("selected_views") or {}
                 counts: dict[str, int] = {}
                 for candidate in candidates.values():
@@ -754,7 +757,7 @@ Do not explain your reasoning."""
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
                     "created_at": spec.get("created_at", ""), "status": status,
-                    "candidate_count": int(spec.get("candidate_count") or len(candidates)),
+                    "candidate_count": len(candidates),
                     "complete_count": len(selected) if review_version >= 2 else counts.get("COMPLETE", 0),
                     "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
                     "source_run_id": spec.get("source_run_id", ""),
@@ -823,6 +826,20 @@ Do not explain your reasoning."""
             json.dumps(spec["prompt_snapshots"], sort_keys=True).encode()
         ).hexdigest()
         self._write(spec_path, spec)
+        def update_added(state):
+            for candidate in (state.get("added_candidates") or {}).values():
+                if candidate["candidate_id"] in (state.get("detached_candidates") or []):
+                    continue
+                view = candidate["view"]
+                if view not in views:
+                    continue
+                refreshed = snapshots[view]
+                prompt = refreshed["qwen_prompt"]
+                if candidate.get("method") == METHOD_FRONT_CONDITIONED:
+                    prompt = self._qwen_prompt(refreshed["manual_prompt"], view, anchor=True)
+                candidate.update(prompt=prompt, prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest())
+                state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(prompt=prompt, prompt_sha256=candidate["prompt_sha256"])
+        mutate_local_run_state(root, update_added)
 
     def rerun(self, run_id: str, *, recompile: bool = False) -> dict[str, Any]:
         """Clear the current batch's generated candidates and reviews, then restart FRONT."""
@@ -847,7 +864,7 @@ Do not explain your reasoning."""
         for candidate in run.get("candidates", []):
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
-                status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
                 render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
                 face_gate={}, face_gate_error="", disposition="pending",
@@ -900,7 +917,7 @@ Do not explain your reasoning."""
         for affected in affected_candidates:
             clear_candidate_artifacts(root, affected["candidate_id"], affected.get("image_path"))
             state.setdefault("candidates", {}).setdefault(affected["candidate_id"], {}).update(
-                status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
                 render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
                 disposition="pending", human_review={"decision": "undecided"},
@@ -981,7 +998,7 @@ Do not explain your reasoning."""
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
             update.update(
-                status="PENDING", seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="",
                 completed_at="", render_error="", analyses={}, analysis_history=[], review_history=[],
                 gate_history=[], gate_rejection_history=[], ranking_history=[], local_job={}, luna_status="",
@@ -1423,10 +1440,11 @@ Do not explain your reasoning."""
         run = self.detail(run_id)
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
-        candidate = next((item for item in run["candidates"] if item.get("view") == view and item.get("prompt")), None)
-        if not candidate:
-            raise LocalBodyReferenceError(f"No image prompt is saved for view {view}.")
-        return str(candidate["prompt"])
+        snapshot = next((item for item in run.get("prompt_snapshots") or [] if item["view"] == view), None)
+        path = Path(str((snapshot or {}).get("prompt_path") or ""))
+        if not path.is_file():
+            raise LocalBodyReferenceError(f"No current image prompt is saved for view {view}.")
+        return self._qwen_prompt(path.read_text(encoding="utf-8"), view, anchor=view != FRONT_VIEW)
 
     def queue_local_analysis(self, run_id: str, candidate_id: str, model: str = "") -> dict[str, Any]:
         run = self.detail(run_id)
@@ -1588,7 +1606,7 @@ Do not explain your reasoning."""
     def _render_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
         """Render candidates and queue face gates without blocking on AI Proxy."""
         run = self.detail(run_id)
-        candidates = [item for item in run["candidates"] if item.get("view") == view and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
+        candidates = [item for item in run["candidates"] if item.get("view") == view and not item.get("slot_managed") and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
 
         for candidate in candidates:
             if self.detail(run_id)["stop_requested"]:
@@ -1603,15 +1621,17 @@ Do not explain your reasoning."""
                 })
 
         for candidate in candidates:
-            current = next(item for item in self.detail(run_id)["candidates"]
-                           if item["candidate_id"] == candidate["candidate_id"])
+            current = next((item for item in self.detail(run_id)["candidates"]
+                           if item["candidate_id"] == candidate["candidate_id"]), None)
+            if current is None:
+                continue
             candidate_id = current["candidate_id"]
             if current.get("status") in {"QUEUED", "RUNNING"}:
                 try:
                     if not self._wait_for_render(run_id, candidate_id):
                         return False
-                    current = next(item for item in self.detail(run_id)["candidates"]
-                                   if item["candidate_id"] == candidate_id)
+                    current = next((item for item in self.detail(run_id)["candidates"]
+                                   if item["candidate_id"] == candidate_id), None)
                 except Exception as exc:
                     self._candidate_update(run_id, candidate_id, {"status": "FAILED", "render_error": str(exc)})
                     continue
@@ -2100,7 +2120,7 @@ Do not explain your reasoning."""
                 evaluation_id=evaluation_id), input_hashes=hashes)
 
     def reconcile_review_jobs(self, run_id: str) -> dict[str, Any]:
-        from zet.services.local_image_evaluation_service import local_image_evaluation_service
+        from zet.services.local_image_evaluation_service import local_image_evaluation_service, finish_gate_collection
         run = self.detail(run_id)
         for view, evaluation in (run.get("evaluations") or {}).items():
             if evaluation.get("status") not in {"RUNNING", "STAGING"}:
@@ -2110,13 +2130,18 @@ Do not explain your reasoning."""
                 continue
             candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
                           and item["candidate_id"] in (evaluation.get("input_hashes") or {})]
+            def collect(candidates=candidates, view=view, evaluation_id=evaluation_id):
+                if run.get("review_version", 1) >= 2:
+                    for item in candidates:
+                        self._collect_candidate_gates(run_id, item["candidate_id"], evaluation_id)
+                else:
+                    self._review_view_candidates(run_id, view, {item["candidate_id"] for item in candidates})
+                finish_gate_collection(self._root(run_id), view, evaluation_id)
             local_image_evaluation_service().reconcile_review_jobs(run_id, view, evaluation_id,
-                stage_gates=lambda: [self._stage_candidate_gates(run_id, item["candidate_id"])
+                stage_gates=lambda candidates=candidates: [self._stage_candidate_gates(run_id, item["candidate_id"])
                     for item in candidates] if run.get("review_version", 1) >= 2 else None,
-                collect_gates=lambda: [self._collect_candidate_gates(run_id, item["candidate_id"], evaluation_id)
-                    for item in candidates] if run.get("review_version", 1) >= 2 else
-                    self._review_view_candidates(run_id, view, set(evaluation.get("input_hashes") or {})),
-                rank=lambda: self.rank_view(run_id, view, evaluation_id=evaluation_id)
+                collect_gates=collect,
+                rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, evaluation_id=evaluation_id)
                     if run.get("review_version", 1) >= 2 else None)
         return self.detail(run_id)
 
@@ -2193,6 +2218,23 @@ Do not explain your reasoning."""
             return run
         if not evaluation_id and active_evaluation.get("status") in {"RUNNING", "STAGING"}:
             evaluation_id = str(active_evaluation.get("evaluation_id") or "")
+        if evaluation_id:
+            # Body ranking uses gate eligibility; compare supplemental candidates
+            # only after collection finishes, including on restart recovery.
+            from zet.services.local_image_evaluation_service import update_view_evaluation
+            deadline = time.monotonic() + 1860
+            while True:
+                run = self.detail(run_id)
+                active = (run.get("evaluations") or {}).get(view) or {}
+                if active.get("evaluation_id") != evaluation_id or active.get("status") not in {"STAGING", "RUNNING"} or run.get("stop_requested"):
+                    return run
+                if active.get("gates_status") == "COMPLETE":
+                    break
+                if time.monotonic() >= deadline:
+                    update_view_evaluation(self._root(run_id), view,
+                        {"ranking_status": "FAILED", "error": "Gate collection did not finish before ranking."}, evaluation_id=evaluation_id)
+                    return run
+                time.sleep(0.25)
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
         anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
         if view != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):
@@ -2613,10 +2655,14 @@ Do not explain your reasoning."""
         return True
 
     def _wait_for_render(self, run_id: str, candidate_id: str) -> bool:
-        candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
+        candidate = next((item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id), None)
+        if candidate is None:
+            return True
         image = Path(str(candidate.get("image_path") or ""))
         deadline = time.monotonic() + 1860
         while not image.is_file():
+            if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id)["candidates"]):
+                return True
             if self.detail(run_id)["stop_requested"]:
                 return False
             self._harvest_local_body_reference_answer(run_id, candidate_id, str(candidate.get("ask_id") or ""), image)
@@ -2686,7 +2732,7 @@ Do not explain your reasoning."""
                 saved_candidate_ids or None
             )
             if not review_only:
-                self._run_update(run_id, status="PREFLIGHT", error="")
+                self._run_update(run_id, status="PREFLIGHT", error="", slot_work_pending=False)
                 self._preflight()
             self._run_update(run_id, status="REEVALUATING" if review_only else "RUNNING")
             run = self.detail(run_id)
@@ -2713,7 +2759,7 @@ Do not explain your reasoning."""
                         return
                 if not render_only and not review_only and not self.detail(run_id)["stop_requested"]:
                     try:
-                        self.stage_view_evaluation(run_id, view, candidate_ids=target_candidate_ids)
+                        self.stage_view_evaluation(run_id, view)
                     except Exception as exc:
                         current = self.detail(run_id).get("review_errors") or {}
                         current[view] = str(exc)
@@ -2806,9 +2852,18 @@ Do not explain your reasoning."""
             references = [{"role": "body_reference_front_anchor", "path": str(anchor_path)}]
         root = self._root(run_id)
         candidate_dir = root / "renders" / candidate_id
+        saved_input = candidate.get("render_input")
+        if saved_input:
+            verify_input(saved_input)
+            references = saved_input["references"]
+            preset_name = saved_input["preset"]
+        else:
+            saved_input = frozen_input(candidate_dir / "inputs", candidate["prompt"], references, preset_name)
+        references = saved_input["references"]
+        self._candidate_update(run_id, candidate_id, {"render_input": saved_input})
         candidate_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = candidate_dir / "Qwen_Body_Reference_Prompt.md"
-        prompt_path.write_text(f"Positive Prompt:\n{candidate['prompt']}\n\nNegative Prompt:\n", encoding="utf-8")
+        prompt_path.write_text(f"Positive Prompt:\n{saved_input['prompt']}\n\nNegative Prompt:\n", encoding="utf-8")
         profile = LocalRenderBackendService(self.project_root / "Config" / "Local_Render_Presets.json").preset(preset_name)
         checkpoint = str(profile.get("diffusion_model") or "").strip()
         manifest = {"ask_id": f"LocalBodyReference_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}", "character": run["character"],

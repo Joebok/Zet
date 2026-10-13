@@ -1,7 +1,17 @@
-const root = document.querySelector('#narrative-root');
-const message = document.querySelector('#narrative-message');
+/** Mounted Narrative editor; all listeners and polling belong to this mount. */
+export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
+let disposed = false;
+let pollTimer = null;
+let restoreProvider = null;
+const events = new AbortController();
+function listen(target, type, callback, options = {}) {
+  target.addEventListener(type, callback, {...options, signal: events.signal});
+}
+const root = host.querySelector('#narrative-root');
+root.replaceChildren();
+const message = host.querySelector('#narrative-message');
 const params = new URLSearchParams(location.search);
-let universe = params.get('universe_id') || '';
+let universe = requestedUniverse || params.get('universe_id') || '';
 let route = {story:params.get('story'),scene:params.get('scene'),target:params.get('target')};
 let detail = null;
 let dirty = new Set();
@@ -33,11 +43,11 @@ const label = (key, value, textarea = true, name = title(key)) => `<label class=
   ? `<textarea data-field="${key}" id="narrative-${key}">${esc(value)}</textarea>`
   : `<input data-field="${key}" id="narrative-${key}" ${['width','height'].includes(key) ? 'type="number" step="32" min="256" max="4096"' : ''} value="${esc(value)}">`}</label>`;
 
-function status(text, error = false) { message.textContent = text; message.classList.toggle('error', error); }
+function status(text, error = false) { if (disposed) return; message.textContent = text; message.classList.toggle('error', error); }
 function href(next) {
   const query = new URLSearchParams({universe_id: universe});
   for (const [key, value] of Object.entries(next)) if (value) query.set(key, value);
-  return `/narrative?${query}`;
+  return `/?page=narrative&workspace=story&${query}`;
 }
 function link(text, next) { return `<a href="${esc(href(next))}" data-navigate>${esc(text)}</a>`; }
 function base() {
@@ -70,16 +80,16 @@ async function loadModels() {
     const result = await api('/api/ai-controls/ollama-models');
     if (base() !== url) return;
     knownModels = result.models || [];
-    const errorNode = document.querySelector('#narrative-model-error');
+    const errorNode = host.querySelector('#narrative-model-error');
     if (errorNode) errorNode.textContent = '';
-  } catch (error) { const errorNode = document.querySelector('#narrative-model-error'); if (base() === url && errorNode) errorNode.textContent = error.message; }
+  } catch (error) { const errorNode = host.querySelector('#narrative-model-error'); if (base() === url && errorNode) errorNode.textContent = error.message; }
   if (!detail || base() !== url) return;
-  const list = document.querySelector('#narrative-model-options');
+  const list = host.querySelector('#narrative-model-options');
   if (list) list.innerHTML = [...new Set([modelOptions.model,...knownModels,...modelOptions.codex_models,detail.interview_model,detail.prompt_model])].filter(Boolean).map(name=>`<option value="${esc(name)}"></option>`).join('');
 }
 
 async function api(url, method = 'GET', data) {
-  const response = await fetch(url, {method, headers: {'Content-Type':'application/json', 'x-zet-universe':universe},
+  const response = await fetch(url, {method, signal: events.signal, headers: {'Content-Type':'application/json', 'x-zet-universe':universe},
     ...(data !== undefined ? {body: JSON.stringify(data)} : {})});
   const result = await response.json();
   if (!response.ok) {
@@ -94,6 +104,7 @@ async function api(url, method = 'GET', data) {
 }
 
 async function action(callback) {
+  if (disposed) return;
   if (busy) return;
   busy = true;
   let actionError = '';
@@ -101,8 +112,9 @@ async function action(callback) {
   root.querySelectorAll('button, #narrative-target-select').forEach(control => { control.disabled = true; });
   try { await callback(); } catch (error) { actionError = error.message; status(error.message, true); }
   finally {
+    if (disposed) return;
     busy = false; root.querySelectorAll('button, #narrative-target-select').forEach(control => { control.disabled = false; }); if (route.target && detail) updateLive(); renderImageReview();
-    const reviewError = document.querySelector('#narrative-review-error');
+    const reviewError = host.querySelector('#narrative-review-error');
     if (reviewError) reviewError.textContent = actionError;
   }
 }
@@ -115,18 +127,23 @@ async function navigate(next, push = true) {
 }
 
 async function loadPage() {
+  if (disposed) return;
   contextState = 'loading';
+  document.body.dataset.narrativeReady = 'false';
+  root.replaceChildren();
   contextLabels = {};
   detail = null;
   try {
     await loadPageContent();
+    if (disposed) return;
+    await onContext?.({...route});
     contextState = 'selected';
     const recorded = new URLSearchParams(location.search).get('task_candidate');
     if (candidateRestorePending && recorded && route.target) {
       candidateRestorePending = false;
       if (detail?.candidates?.[recorded]?.image) {
         reviewCandidate = recorded;
-        document.querySelector('#image-dialog').showModal();
+        host.querySelector('#image-dialog').showModal();
         renderImageReview();
       } else window.ZetTaskCapture.notice(`Recorded candidate "${recorded}" is unavailable. The target is open.`);
     }
@@ -134,7 +151,7 @@ async function loadPage() {
     contextState = 'unavailable';
     if (new URLSearchParams(location.search).get('task_context') !== '1') throw error;
     root.innerHTML = '<h1>Narrative selection unavailable</h1><p>Open the parent workspace to choose an available selection.</p>';
-    document.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})
+    host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})
       + (route.story ? ' / '+link('Story',{story:route.story}) : '')
       + (route.scene ? ' / '+link('Scene',{story:route.story,scene:route.scene}) : '');
     window.ZetTaskCapture.notice('The recorded narrative selection could not be restored. '+error.message);
@@ -144,13 +161,13 @@ async function loadPage() {
 }
 
 async function loadPageContent() {
-  document.querySelector('#image-dialog').close();
+  host.querySelector('#image-dialog').close();
   reviewCandidate = null;
   clearTimeout(saveTimer);
   const query = new URLSearchParams(location.search);
   route = {story:query.get('story'), scene:query.get('scene'), target:query.get('target')};
   dirty = new Set(); slotSignature = ''; historySignature = ''; interviewReplies = 0;
-  document.querySelector('#narrative-home').href = href({});
+  host.querySelector('#narrative-home').href = href({});
   status('Loading…');
   if (!route.story) {
     detail = null;
@@ -165,22 +182,24 @@ async function loadPageContent() {
             ${assembly ? `<img class="narrative-story-thumbnail" src="${esc(image)}" alt="Selected final assembly for ${esc(scene.title)}" loading="lazy">` : `<span class="narrative-story-thumbnail narrative-story-placeholder" role="img" aria-label="No selected final assembly for ${esc(scene.title)}"></span>`}
             <span>${esc(scene.title)}</span></a>`;
         }).join('')}</div></article>`).join('')}</div>`;
-    document.querySelector('#narrative-breadcrumb').textContent = 'New narrative workflow';
+    host.querySelector('#narrative-breadcrumb').textContent = 'Stories';
   } else if (!route.scene) {
     detail = await api(base());
     contextLabels.story = detail.title;
     root.innerHTML = `<h1>${esc(detail.title)}</h1><section class="narrative-card">${label('title',detail.title,false)}${label('brief',detail.brief)}
       <div class="narrative-actions"><button data-action="save">Save story</button><button class="danger" data-action="delete">Delete story</button></div></section>
-      <section class="narrative-card"><h2>New scene</h2><form id="new-scene" class="narrative-inline"><input aria-label="Scene title" name="title" required placeholder="Scene title"><button class="primary">Create scene</button></form></section>
+      <section class="narrative-card"><h2>New scene</h2><form id="new-narrative-scene" class="narrative-inline"><input aria-label="Scene title" name="title" required placeholder="Scene title"><button class="primary">Create scene</button></form></section>
       <div class="narrative-grid">${detail.scenes.map(scene => `<article class="narrative-card"><h2>${link(scene.title,{story:route.story,scene:scene.id})}</h2><p>${esc(scene.intent)}</p></article>`).join('')}</div>`;
-    document.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{});
+    host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{});
   } else if (!route.target) {
     const [loaded, story] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}`)]);
     detail = loaded;
     contextLabels = {story:story.title, scene:detail.title};
     root.innerHTML = `<h1>${esc(detail.title)}</h1><div class="narrative-editor"><section class="narrative-card"><h2>Shared scene direction</h2>
       ${label('title',detail.title,false)}${label('intent',detail.intent)}${visualFields.map(key=>label(key,detail[key])).join('')}${label('canvas',detail.canvas,false)}
-      <div class="narrative-actions"><button data-action="save">Save scene</button><button class="danger" data-action="delete">Delete scene</button></div></section><div>
+      <div class="narrative-actions"><button data-action="save">Save scene</button><button class="danger" data-action="delete">Delete scene</button></div>
+      ${detail.migration?.kind ? `<div class="narrative-migration-note"><p>Migrated starting point — review inputs before generating.</p>${(detail.migration.review_issues || []).map(issue=>`<p>${esc(issue)}</p>`).join('')}</div>` : ''}
+      ${detail.legacy_image?.asset_id ? `<figure class="narrative-legacy-image"><figcaption>Legacy image</figcaption><a href="${esc(artifactUrl('legacy-image'))}" target="_blank" rel="noopener"><img src="${esc(artifactUrl('legacy-image'))}" alt="Legacy image for ${esc(detail.title)}" loading="lazy"></a></figure>` : ''}</section><div>
       <section class="narrative-card"><h2>Subscenes and backdrops</h2><form id="new-target" class="narrative-inline">
         <input aria-label="Target title" name="title" required placeholder="Title"><select name="kind" aria-label="Target kind"><option value="subscene">Subscene</option><option value="backdrop">Backdrop</option></select><button class="primary">Create and edit</button></form>
         ${detail.targets.some(target=>target.kind==='assembly') ? '' : '<button data-action="create-assembly">Create final assembly</button>'}
@@ -188,13 +207,13 @@ async function loadPageContent() {
         ${detail.targets.map(target=>`<article class="narrative-card narrative-target-card" data-target-id="${target.id}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${target.selected_id ? ' · Image selected' : ''}</p>
           ${target.selected_id ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(target.selected_id,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}</article>`).join('')}</section>
       <section class="narrative-card"><h2>Scene elements</h2><button data-action="new-element">Add element</button><div id="narrative-elements">${elementsHtml(detail.elements,false)}</div></section></div></div>`;
-    document.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
+    host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
   } else {
     const [loaded, targets, story] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets`), api(`/api/narrative/stories/${route.story}`)]);
     detail = loaded;
     contextLabels = {story:story.title, scene:detail.scene_title, render_target:detail.title};
     renderTarget(targets);
-    document.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story})+' / '+link(detail.scene_title,{story:route.story,scene:route.scene})+' / '+esc(detail.title);
+    host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story})+' / '+link(detail.scene_title,{story:route.story,scene:route.scene})+' / '+esc(detail.title);
   }
   document.body.dataset.narrativeReady = 'true';
   status('Ready');
@@ -202,7 +221,7 @@ async function loadPageContent() {
 
 function elementsHtml(elements, target) {
   return elements.map(element=>`<article class="narrative-reference">
-    ${element.asset_id ? `<img src="${esc(assetUrl(element.asset_id))}" alt="${esc(element.name)} reference">` : ''}
+    ${(element.reference?.asset_id || element.asset_id) ? `<img src="${esc(assetUrl(element.reference?.asset_id || element.asset_id))}" alt="${esc(element.name)} reference">` : ''}
     <div><h3>${esc(element.name)}</h3><p class="narrative-muted">${esc(element.kind)} · ${esc(element.reference_role)}</p><p>${esc(element.appearance)}</p>
       ${element.reference_error ? `<p class="error">${esc(element.reference_error)}</p>` : ''}
       <div class="narrative-actions"><button data-edit-element="${element.id}">Edit</button>
@@ -222,7 +241,7 @@ function layerField(layer, key, labelText, step = '.01') {
 }
 
 function renderLayers() {
-  const container = document.querySelector('#assembly-layers');
+  const container = host.querySelector('#assembly-layers');
   if (!container) return;
   container.innerHTML = detail.layers.map(layer=>{
     const source = detail.assembly_sources.find(item=>item.id===layer.target_id);
@@ -241,7 +260,7 @@ function renderLayers() {
 }
 
 function renderPlacement() {
-  const canvas = document.querySelector('#assembly-canvas');
+  const canvas = host.querySelector('#assembly-canvas');
   if (!canvas) return;
   canvas.style.aspectRatio = `${detail.width}/${detail.height}`;
   canvas.innerHTML = detail.layers.filter(layer=>layer.visible).sort((a,b)=>a.role==='base'?-1:b.role==='base'?1:a.z-b.z).map(layer=>layer.role==='base'
@@ -256,14 +275,14 @@ function layersChanged() {
 
 async function editMask(layerId) {
   await save();
-  const dialog = document.querySelector('#membership-dialog');
+  const dialog = host.querySelector('#membership-dialog');
   dialog.innerHTML = `<h2>Correct source cutout</h2><p>Paint over the original source. Green keeps pixels; red removes them.</p><div class="narrative-inline"><label>Brush<select id="mask-mode"><option value="keep">Keep</option><option value="remove">Remove</option></select></label><label>Radius<input id="mask-radius" type="number" value="0.02" min="0.001" max="0.5" step="0.005"></label></div><canvas id="mask-canvas" data-mask-source="${layerId}"></canvas><div class="narrative-actions"><button id="mask-apply">Save corrections</button><button id="mask-reset">Reset corrections</button><button data-close="membership-dialog">Close</button></div>`;
   dialog.showModal();
   await drawMask(layerId);
 }
 
 async function drawMask(layerId) {
-  const canvas = document.querySelector('#mask-canvas');
+  const canvas = host.querySelector('#mask-canvas');
   const image = new Image();
   image.src = artifactUrl(`layers/${layerId}/image`)+'&kind=overlay&revision='+Date.now();
   image.onerror = ()=>{ image.onerror=null; image.src=artifactUrl(`layers/${layerId}/image`)+'&kind=source'; };
@@ -276,7 +295,7 @@ function paintMask(event) {
   const canvas = event.target;
   const layer = detail.layers.find(item=>item.id===canvas.dataset.maskSource);
   const rect = canvas.getBoundingClientRect();
-  const stroke = {mode:document.querySelector('#mask-mode').value, radius:Number(document.querySelector('#mask-radius').value),
+  const stroke = {mode:host.querySelector('#mask-mode').value, radius:Number(host.querySelector('#mask-radius').value),
     x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),y:Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))};
   if (!Number.isFinite(stroke.radius)||stroke.radius<.001||stroke.radius>.5) return;
   layer.strokes.push(stroke);
@@ -285,7 +304,7 @@ function paintMask(event) {
   layersChanged();
 }
 
-document.addEventListener('pointerdown',event=>{
+listen(host,'pointerdown',event=>{
   if (event.target.matches('#mask-canvas')) {brush=event.pointerId;event.target.setPointerCapture(event.pointerId);paintMask(event);return;}
   const node=event.target.closest('[data-drag-layer]');
   if (!node) return;
@@ -293,10 +312,10 @@ document.addEventListener('pointerdown',event=>{
   layerDrag={node,layer,px:event.clientX,py:event.clientY,x:layer.x,y:layer.y,scale:layer.scale,resize:Boolean(event.target.dataset.resizeLayer),pointer:event.pointerId};
   node.setPointerCapture(event.pointerId);event.preventDefault();
 });
-document.addEventListener('pointermove',event=>{
+listen(host,'pointermove',event=>{
   if (brush===event.pointerId && event.target.matches('#mask-canvas')) {paintMask(event);return;}
   if (!layerDrag || layerDrag.pointer!==event.pointerId) return;
-  const drag=layerDrag, rect=document.querySelector('#assembly-canvas').getBoundingClientRect();
+  const drag=layerDrag, rect=host.querySelector('#assembly-canvas').getBoundingClientRect();
   if (drag.resize) drag.layer.scale=Math.max(.01,Math.min(4,drag.scale+(event.clientX-drag.px)/rect.width));
   else {drag.layer.x=Math.max(-2,Math.min(2,drag.x+(event.clientX-drag.px)/rect.width));drag.layer.y=Math.max(-2,Math.min(2,drag.y+(event.clientY-drag.py)/rect.height));}
   for (const key of ['x','y','scale']) drag.layer[key]=Math.round(drag.layer[key]*10000)/10000;
@@ -304,8 +323,8 @@ document.addEventListener('pointermove',event=>{
   for(const key of ['x','y','scale']) {const input=root.querySelector(`[data-layer="${drag.layer.id}"][data-layer-field="${key}"]`);input.value=drag.layer[key];}
   layersChanged();
 });
-document.addEventListener('pointerup',event=>{if (brush===event.pointerId) brush=null;if(layerDrag?.pointer===event.pointerId) layerDrag=null;});
-document.addEventListener('pointercancel',()=>{brush=null;layerDrag=null;});
+listen(host,'pointerup',event=>{if (brush===event.pointerId) brush=null;if(layerDrag?.pointer===event.pointerId) layerDrag=null;});
+listen(host,'pointercancel',()=>{brush=null;layerDrag=null;});
 
 function sourceTextHtml(source) {
   return `<details><summary>Source inputs and prompt</summary>
@@ -338,16 +357,16 @@ function sourcePanelHtml() {
 }
 
 function drawCropBox() {
-  const image = document.querySelector('#backdrop-source-image');
-  const box = document.querySelector('#backdrop-crop-box');
+  const image = host.querySelector('#backdrop-source-image');
+  const box = host.querySelector('#backdrop-crop-box');
   if (!image?.naturalWidth || !box) return;
-  const ratio = Number(document.querySelector('#narrative-width').value) / Number(document.querySelector('#narrative-height').value);
+  const ratio = Number(host.querySelector('#narrative-width').value) / Number(host.querySelector('#narrative-height').value);
   const imageRatio = image.naturalWidth / image.naturalHeight;
-  const zoom = Number(document.querySelector('#backdrop-crop-zoom').value);
+  const zoom = Number(host.querySelector('#backdrop-crop-zoom').value);
   const width = Math.min(1,ratio/imageRatio)/zoom;
   const height = width*imageRatio/ratio;
-  const x = Math.min(1-width/2,Math.max(width/2,Number(document.querySelector('#backdrop-crop-center_x').value)));
-  const y = Math.min(1-height/2,Math.max(height/2,Number(document.querySelector('#backdrop-crop-center_y').value)));
+  const x = Math.min(1-width/2,Math.max(width/2,Number(host.querySelector('#backdrop-crop-center_x').value)));
+  const y = Math.min(1-height/2,Math.max(height/2,Number(host.querySelector('#backdrop-crop-center_y').value)));
   Object.assign(box.style,{left:`${(x-width/2)*100}%`,top:`${(y-height/2)*100}%`,width:`${width*100}%`,height:`${height*100}%`});
 }
 
@@ -357,7 +376,7 @@ async function chooseNarrativeSource(kind, attach = false) {
   const destination = await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}`);
   sourcePicker = {kind,attach,sources:sources.filter(source=>source.scene_id!==route.scene || source.story_id!==route.story),elements:destination.elements};
   const stories = [...new Map(sourcePicker.sources.map(source=>[source.story_id,source.story_title])).entries()];
-  const dialog = document.querySelector('#narrative-source-dialog');
+  const dialog = host.querySelector('#narrative-source-dialog');
   dialog.innerHTML = `<h2>${kind==='backdrop'?'Reference backdrop':'Import subscene'}</h2><form id="narrative-source-form">
     <label class="narrative-field">Source story<select id="source-story">${stories.map(([id,name])=>`<option value="${id}" ${id===route.story?'selected':''}>${esc(name)}</option>`).join('')}</select></label>
     <label class="narrative-field">Source scene and target<select id="source-target"></select></label>
@@ -370,20 +389,20 @@ async function chooseNarrativeSource(kind, attach = false) {
 }
 
 async function populateSourceTargets() {
-  const story = document.querySelector('#source-story').value;
+  const story = host.querySelector('#source-story').value;
   const targets = sourcePicker.sources.filter(source=>source.story_id===story);
-  document.querySelector('#source-target').innerHTML = targets.map(source=>`<option value="${source.target_id}">${esc(source.scene_title)} · ${esc(source.title)}</option>`).join('');
+  host.querySelector('#source-target').innerHTML = targets.map(source=>`<option value="${source.target_id}">${esc(source.scene_title)} · ${esc(source.title)}</option>`).join('');
   await populateSourceCandidates();
 }
 
 function chosenSource() {
-  const source = sourcePicker.sources.find(source=>source.target_id===document.querySelector('#source-target').value);
-  return source ? {story_id:source.story_id,scene_id:source.scene_id,target_id:source.target_id,candidate_id:document.querySelector('#source-candidate').value || null} : null;
+  const source = sourcePicker.sources.find(source=>source.target_id===host.querySelector('#source-target').value);
+  return source ? {story_id:source.story_id,scene_id:source.scene_id,target_id:source.target_id,candidate_id:host.querySelector('#source-candidate').value || null} : null;
 }
 
 async function populateSourceCandidates() {
-  const source = sourcePicker.sources.find(source=>source.target_id===document.querySelector('#source-target').value);
-  document.querySelector('#source-candidate').innerHTML = '<option value="">'+(sourcePicker.kind==='subscene'?'Text only / no image needed':'Choose a completed candidate')+'</option>'+(source?.candidates||[]).map(candidate=>`<option value="${candidate.id}" ${candidate.id===source.selected_id?'selected':''}>Slot ${candidate.slot}${candidate.id===source.selected_id?' · Selected':''}</option>`).join('');
+  const source = sourcePicker.sources.find(source=>source.target_id===host.querySelector('#source-target').value);
+  host.querySelector('#source-candidate').innerHTML = '<option value="">'+(sourcePicker.kind==='subscene'?'Text only / no image needed':'Choose a completed candidate')+'</option>'+(source?.candidates||[]).map(candidate=>`<option value="${candidate.id}" ${candidate.id===source.selected_id?'selected':''}>Slot ${candidate.slot}${candidate.id===source.selected_id?' · Selected':''}</option>`).join('');
   await previewNarrativeSource();
 }
 
@@ -391,26 +410,26 @@ async function previewNarrativeSource() {
   const choice = chosenSource();
   const picker = sourcePicker;
   picker.preview = null;
-  document.querySelector('#source-preview').innerHTML = '';
-  document.querySelector('#source-picker-error').textContent = '';
-  document.querySelector('#source-apply').disabled = true;
-  if (!choice) {document.querySelector('#source-picker-error').textContent='No sources in another scene.';return;}
-  if (picker.kind==='backdrop' && !choice.candidate_id) {document.querySelector('#source-picker-error').textContent='Choose a completed source candidate.';return;}
+  host.querySelector('#source-preview').innerHTML = '';
+  host.querySelector('#source-picker-error').textContent = '';
+  host.querySelector('#source-apply').disabled = true;
+  if (!choice) {host.querySelector('#source-picker-error').textContent='No sources in another scene.';return;}
+  if (picker.kind==='backdrop' && !choice.candidate_id) {host.querySelector('#source-picker-error').textContent='Choose a completed source candidate.';return;}
   const request = JSON.stringify(choice);
   const preview = await api('/api/narrative/sources/preview','POST',choice);
   if (sourcePicker!==picker || request!==JSON.stringify(chosenSource())) return;
   picker.preview = preview;
-  document.querySelector('#source-preview').innerHTML = `${preview.candidate_id ? `<img class="narrative-source-preview" alt="Source candidate preview" src="/api/narrative/stories/${choice.story_id}/scenes/${choice.scene_id}/targets/${choice.target_id}/candidates/${preview.candidate_id}/image?universe_id=${encodeURIComponent(universe)}">` : ''}${sourceTextHtml(preview)}
+  host.querySelector('#source-preview').innerHTML = `${preview.candidate_id ? `<img class="narrative-source-preview" alt="Source candidate preview" src="/api/narrative/stories/${choice.story_id}/scenes/${choice.scene_id}/targets/${choice.target_id}/candidates/${preview.candidate_id}/image?universe_id=${encodeURIComponent(universe)}">` : ''}${sourceTextHtml(preview)}
     ${picker.kind==='subscene' ? `<h3>Imported elements</h3>${preview.current_inputs.elements.map(element=>`<label class="narrative-field">${esc(element.name)}<select data-source-element="${element.id}"><option value="">Create independent local copy</option>${picker.elements.map(local=>`<option value="${local.id}">Use existing: ${esc(local.name)}</option>`).join('')}</select></label>`).join('')}` : ''}`;
-  const name = document.querySelector('#source-title');
+  const name = host.querySelector('#source-title');
   if (name) name.value = preview.title;
-  document.querySelector('#source-apply').disabled = false;
+  host.querySelector('#source-apply').disabled = false;
 }
 
 function adaptationChanged() {
-  detail.backdrop_adaptation = {operation:document.querySelector('#backdrop-operation').value,
-    direction:document.querySelector('#backdrop-direction').value,expand_side:document.querySelector('#backdrop-expand-side').value,
-    crop:Object.fromEntries(['center_x','center_y','zoom'].map(key=>[key,Number(document.querySelector(`#backdrop-crop-${key}`).value)]))};
+  detail.backdrop_adaptation = {operation:host.querySelector('#backdrop-operation').value,
+    direction:host.querySelector('#backdrop-direction').value,expand_side:host.querySelector('#backdrop-expand-side').value,
+    crop:Object.fromEntries(['center_x','center_y','zoom'].map(key=>[key,Number(host.querySelector(`#backdrop-crop-${key}`).value)]))};
   dirty.add('backdrop_adaptation');
   clearTimeout(saveTimer);saveTimer=setTimeout(()=>save().catch(error=>status(error.message,true)),700);
   drawCropBox();
@@ -445,12 +464,13 @@ function renderTarget(targets) {
   updateLive();
   loadModels();
   if (assembly) renderLayers();
-  const sourceImage = document.querySelector('#backdrop-source-image');
-  if (sourceImage) { sourceImage.addEventListener('load',drawCropBox); drawCropBox(); }
+  const sourceImage = host.querySelector('#backdrop-source-image');
+  if (sourceImage) { listen(sourceImage,'load',drawCropBox); drawCropBox(); }
 }
 
 function updateLive() {
-  const history = document.querySelector('#narrative-interview');
+  if (disposed) return;
+  const history = host.querySelector('#narrative-interview');
   if (!history) return;
   const jobs = Object.values(detail.jobs);
   const signatureHistory = JSON.stringify([detail.interview, jobs.filter(job=>job.kind!=='image').map(job=>[job.id,job.status,job.result])]);
@@ -464,53 +484,53 @@ function updateLive() {
       const latest = history.lastElementChild;
       latest.classList.add('narrative-new-reply');
       history.scrollTop = latest.offsetTop;
-      const notice = document.querySelector('#narrative-interview-status');
+      const notice = host.querySelector('#narrative-interview-status');
       notice.textContent = 'New interview answer received — shown below.';
       notice.className = 'narrative-complete';
     }
-    const select = document.querySelector('#narrative-prompt-history');
+    const select = host.querySelector('#narrative-prompt-history');
     const value = select.value;
     select.innerHTML = '<option value="">Choose a previous prompt</option>'+jobs.filter(job=>['synthesize','generate'].includes(job.kind)&&typeof job.result==='string').map((job,index)=>`<option value="${job.id}">${index+1} · ${esc(modelName(job.provenance))}${detail.kind==='assembly' ? ' · '+assemblyModeName(job.detail.assembly_mode) : ''}</option>`).join('');
     select.value = value;
   }
-  document.querySelector('#narrative-prompt-origin').textContent = `${modelName(detail.prompt_provenance)}${detail.prompt_provenance?.edited || dirty.has('prompt') ? ' · Manually edited' : ''}`;
+  host.querySelector('#narrative-prompt-origin').textContent = `${modelName(detail.prompt_provenance)}${detail.prompt_provenance?.edited || dirty.has('prompt') ? ' · Manually edited' : ''}`;
   if (detail.kind === 'assembly') {
-    const mode = document.querySelector('#narrative-assembly_mode').value;
+    const mode = host.querySelector('#narrative-assembly_mode').value;
     const stale = !dirty.has('prompt') && (detail.prompt_provenance?.assembly_mode || 'finish_composite') !== mode;
-    document.querySelector('#narrative-assembly-help').textContent = mode === 'assemble_references'
+    host.querySelector('#narrative-assembly-help').textContent = mode === 'assemble_references'
       ? 'Qwen assembles original sources using placement and depth instructions. Cutout corrections affect the placement preview and composite finishing. Exact placement may vary. Up to ten visible sources.'
       : 'Qwen finishes the placed composite; seam and shadow blending preserves subject pixels.';
-    document.querySelector('#narrative-assembly-prompt-warning').textContent = stale && detail.prompt ? 'This prompt belongs to another assembly mode. Write or edit the prompt before rendering.' : '';
+    host.querySelector('#narrative-assembly-prompt-warning').textContent = stale && detail.prompt ? 'This prompt belongs to another assembly mode. Write or edit the prompt before rendering.' : '';
     for (const button of root.querySelectorAll('[data-action="render"]')) button.disabled = stale;
   }
-  for (const type of ['interview','prompt']) document.querySelector(`#narrative-${type}-effective`).textContent = `Next run: ${document.querySelector(`#narrative-${type}_model`).value || modelOptions.model}`;
+  for (const type of ['interview','prompt']) host.querySelector(`#narrative-${type}-effective`).textContent = `Next run: ${host.querySelector(`#narrative-${type}_model`).value || modelOptions.model}`;
   const working = jobs.filter(job=>active.has(job.status));
   const llmWorking = llmSubmitting || working.some(job=>job.kind !== 'image');
-  const prompt = document.querySelector('#narrative-prompt');
+  const prompt = host.querySelector('#narrative-prompt');
   if (llmWorking && document.activeElement === prompt) prompt.blur();
   prompt.disabled = llmWorking;
   prompt.setAttribute('aria-busy', String(llmWorking));
   const promptActions = ['interview','rerun_interview','synthesize','render'];
   for (const button of root.querySelectorAll('[data-action]')) {
-    if (promptActions.includes(button.dataset.action)) button.disabled = busy || llmWorking || (button.dataset.action === 'render' && detail.kind==='backdrop' && detail.source_snapshot?.image_file && ['crop','unchanged'].includes(detail.backdrop_adaptation?.operation)) || (button.dataset.action === 'render' && Boolean(document.querySelector('#narrative-assembly-prompt-warning')?.textContent));
+    if (promptActions.includes(button.dataset.action)) button.disabled = busy || llmWorking || (button.dataset.action === 'render' && detail.kind==='backdrop' && detail.source_snapshot?.image_file && ['crop','unchanged'].includes(detail.backdrop_adaptation?.operation)) || (button.dataset.action === 'render' && Boolean(host.querySelector('#narrative-assembly-prompt-warning')?.textContent));
   }
   const interviewJob = working.find(job=>job.kind === 'interview');
   if (interviewJob) {
-    const notice = document.querySelector('#narrative-interview-status');
+    const notice = host.querySelector('#narrative-interview-status');
     notice.textContent = `Interview ${interviewJob.status.toLowerCase()} · Waiting for an answer…`;
     notice.className = 'narrative-pending';
-  } else if (document.querySelector('#narrative-interview-status').className === 'narrative-pending') {
-    document.querySelector('#narrative-interview-status').textContent = '';
-    document.querySelector('#narrative-interview-status').className = '';
+  } else if (host.querySelector('#narrative-interview-status').className === 'narrative-pending') {
+    host.querySelector('#narrative-interview-status').textContent = '';
+    host.querySelector('#narrative-interview-status').className = '';
   }
   const lastAuthorJob = jobs.filter(job=>job.kind !== 'image').at(-1);
   const failures = lastAuthorJob?.status === 'FAILED' ? [lastAuthorJob] : [];
-  document.querySelector('#narrative-job-status').innerHTML = `<p class="${working.length || llmSubmitting ? 'narrative-pending' : 'narrative-muted'}">${working.length ? working.map(job=>`${esc(job.kind)}: ${esc(job.status.toLowerCase())}${job.kind !== 'image' ? ' · '+esc(job.model || 'Model not recorded') : ''}`).join(' · ') : llmSubmitting ? 'Submitting LLM request…' : 'Ready'}${llmWorking ? ' · Final prompt is unavailable until the LLM finishes.' : ''}</p>`+
+  host.querySelector('#narrative-job-status').innerHTML = `<p class="${working.length || llmSubmitting ? 'narrative-pending' : 'narrative-muted'}">${working.length ? working.map(job=>`${esc(job.kind)}: ${esc(job.status.toLowerCase())}${job.kind !== 'image' ? ' · '+esc(job.model || 'Model not recorded') : ''}`).join(' · ') : llmSubmitting ? 'Submitting LLM request…' : 'Ready'}${llmWorking ? ' · Final prompt is unavailable until the LLM finishes.' : ''}</p>`+
     failures.filter(job=>job.kind !== 'image').map(job=>`<div class="narrative-failure">${esc(modelName(job.provenance))} · ${esc(job.error)}${job.kind === 'interview' ? ` <button data-retry-job="${job.id}">Retry</button>` : ''}</div>`).join('');
   const signature = JSON.stringify([detail.slots,detail.candidates,detail.selected_id]);
   if (signature === slotSignature) return;
   slotSignature = signature;
-  document.querySelector('#narrative-slots').innerHTML = detail.slots.map((id,index)=>{
+  host.querySelector('#narrative-slots').innerHTML = detail.slots.map((id,index)=>{
     const candidate = id ? detail.candidates[id] : null;
     return `<article class="narrative-slot ${id && id === detail.selected_id ? 'selected' : ''}"><h3>Slot ${index+1}</h3>
       ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${esc(candidate?.status.toLowerCase() || 'Empty')}</div>`}
@@ -531,7 +551,8 @@ function reviewImages() {
 }
 
 function renderImageReview() {
-  const dialog = document.querySelector('#image-dialog');
+  if (disposed) return;
+  const dialog = host.querySelector('#image-dialog');
   if (!dialog.open) return;
   const images = reviewImages();
   if (!images.length) { dialog.close(); reviewCandidate = null; return; }
@@ -539,11 +560,11 @@ function renderImageReview() {
   const candidate = detail.candidates[reviewCandidate];
   const index = images.indexOf(reviewCandidate);
   const selected = reviewCandidate === detail.selected_id;
-  document.querySelector('#review-image').src = imageUrl(reviewCandidate);
-  document.querySelector('#review-image').alt = `Slot ${candidate.slot} candidate`;
-  document.querySelector('#narrative-review-prev').disabled = busy || index === 0;
-  document.querySelector('#narrative-review-next').disabled = busy || index === images.length - 1;
-  document.querySelector('#narrative-review-panel').innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot}</h2>
+  host.querySelector('#review-image').src = imageUrl(reviewCandidate);
+  host.querySelector('#review-image').alt = `Slot ${candidate.slot} candidate`;
+  host.querySelector('#narrative-review-prev').disabled = busy || index === 0;
+  host.querySelector('#narrative-review-next').disabled = busy || index === images.length - 1;
+  host.querySelector('#narrative-review-panel').innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot}</h2>
     <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
       <button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected ? 'disabled' : ''}>Select</button>
@@ -608,6 +629,7 @@ async function save() {
 }
 
 async function poll() {
+  if (disposed) return;
   if (!route.target || pollBusy || busy) return;
   pollBusy = true;
   const url = base();
@@ -622,7 +644,7 @@ async function poll() {
 async function start(actionName, count = 1, slot, retryJobId) {
   await save();
   status(actionName === 'render' ? 'Queueing images…' : 'Queueing illustrator…');
-  const direction = document.querySelector('#narrative-direction');
+  const direction = host.querySelector('#narrative-direction');
   const replay = actionName.startsWith('rerun_') ? Object.values(detail.jobs).filter(job=>actionName==='rerun_interview' ? job.kind==='interview' : ['synthesize','generate'].includes(job.kind)).at(-1) : null;
   if (actionName.startsWith('rerun_') && !replay) throw new Error('Run an interview or write a prompt first.');
   llmSubmitting = actionName !== 'render';
@@ -641,33 +663,33 @@ async function editElement(id) {
   await save();
   const scene = await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}`);
   elementDraft = id ? {...scene.elements.find(item=>item.id===id)} : {name:'',kind:'subject',asset_id:'',appearance:'',reference_role:'appearance'};
-  const dialog = document.querySelector('#element-dialog');
+  const dialog = host.querySelector('#element-dialog');
   dialog.innerHTML = `<h2>${id ? 'Edit' : 'New'} element</h2><form id="element-form">
     <label class="narrative-field">Name<input name="name" required value="${esc(elementDraft.name)}"></label>
     <label class="narrative-field">Type<select name="kind">${['subject','prop','environment'].map(kind=>`<option ${kind===elementDraft.kind ? 'selected' : ''}>${kind}</option>`).join('')}</select></label>
     <label class="narrative-field">Appearance notes<textarea name="appearance">${esc(elementDraft.appearance)}</textarea></label>
     <label class="narrative-field">Reference role<select name="reference_role">${['appearance','costume','object shape','environment','style'].map(role=>`<option ${role===elementDraft.reference_role ? 'selected' : ''}>${role}</option>`).join('')}</select></label>
-    <p id="element-reference-label">${elementDraft.asset_id ? 'Reference image attached' : 'Text only — no reference image'}</p>
+    <p id="element-reference-label">${elementDraft.reference_key ? 'Current reference: '+esc(elementDraft.reference_key) : elementDraft.asset_id ? 'Reference image attached' : 'Text only — no reference image'}</p>
     <div class="narrative-actions"><button type="button" id="choose-reference">Choose library image</button><button type="button" id="remove-reference">Remove reference</button></div>
     <div class="narrative-actions"><button class="primary">Save element</button><button type="button" data-close="element-dialog">Cancel</button></div></form>`;
   dialog.showModal();
 }
 
 async function librarySearch() {
-  const query = document.querySelector('#library-query').value;
+  const query = host.querySelector('#library-query').value;
   const assets = await api('/api/narrative/library?q='+encodeURIComponent(query));
-  document.querySelector('#library-results').innerHTML = assets.map(asset=>`<button type="button" data-library-asset="${esc(asset.asset_id)}" data-label="${esc(asset.label)}"><img src="${esc(assetUrl(asset.asset_id))}" alt="${esc(asset.label)}"><span>${esc(asset.label)}</span></button>`).join('') || '<p>No matching images.</p>';
+  host.querySelector('#library-results').innerHTML = assets.map(asset=>`<button type="button" data-library-asset="${esc(asset.asset_id)}" data-label="${esc(asset.label)}" data-reference-key="${esc(asset.reference_key || '')}"><img src="${esc(assetUrl(asset.asset_id))}" alt="${esc(asset.label)}"><span>${esc(asset.label)}</span></button>`).join('') || '<p>No matching images.</p>';
 }
 
 async function assignElements() {
   await save();
   const scene = await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}`);
-  const dialog = document.querySelector('#membership-dialog');
+  const dialog = host.querySelector('#membership-dialog');
   dialog.innerHTML = `<h2>Assign elements to ${esc(detail.title)}</h2><form id="membership-form">${scene.elements.map(element=>`<p><label><input type="checkbox" name="element" value="${element.id}" ${detail.element_ids.includes(element.id) ? 'checked' : ''}> ${esc(element.name)} · ${esc(element.kind)}</label></p>`).join('') || '<p>Create an element first.</p>'}<div class="narrative-actions"><button class="primary">Save assignments</button><button type="button" data-close="membership-dialog">Cancel</button></div></form>`;
   dialog.showModal();
 }
 
-document.addEventListener('input',event=>{
+listen(host,'input',event=>{
   if (event.target.dataset.adaptation || event.target.dataset.crop) { adaptationChanged();updateLive();return; }
   if (event.target.dataset.layerField) {
     const key=event.target.dataset.layerField;
@@ -683,11 +705,11 @@ document.addEventListener('input',event=>{
   if (['width','height'].includes(event.target.dataset.field)) drawCropBox();
 });
 
-document.addEventListener('change',event=>{
+listen(host,'change',event=>{
   if (event.target.id==='source-story') {populateSourceTargets().catch(error=>status(error.message,true));return;}
   if (event.target.id==='source-target') {populateSourceCandidates().catch(error=>status(error.message,true));return;}
   if (event.target.id==='source-candidate') {previewNarrativeSource().catch(error=>status(error.message,true));return;}
-  if (event.target.id==='narrative-prompt-history') {document.querySelector('#narrative-prompt-preview').textContent=detail.jobs[event.target.value]?.result||'';return;}
+  if (event.target.id==='narrative-prompt-history') {host.querySelector('#narrative-prompt-preview').textContent=detail.jobs[event.target.value]?.result||'';return;}
   if (event.target.dataset.layerField) {
     const layer=detail.layers.find(item=>item.id===event.target.dataset.layer),key=event.target.dataset.layerField;
     layer[key]=key==='visible'?event.target.checked:['candidate_id','role','fit','cutout'].includes(key)?event.target.value:Number(event.target.value);
@@ -703,7 +725,7 @@ document.addEventListener('change',event=>{
   });
 });
 
-document.addEventListener('click',event=>{
+listen(host,'click',event=>{
   const button = event.target.closest('button,a,img[data-review]');
   if (!button) return;
   if (button.dataset.copyPrompt) {
@@ -718,15 +740,15 @@ document.addEventListener('click',event=>{
   }
   if (button.dataset.close) { document.getElementById(button.dataset.close).close(); return; }
   if (button.id === 'new-story-button') {
-    document.querySelector('#new-story').reset();
-    document.querySelector('#story-dialog').showModal(); return;
+    host.querySelector('#new-story').reset();
+    host.querySelector('#story-dialog').showModal(); return;
   }
   if (button.matches('[data-navigate]') || button.id === 'narrative-home') {
     event.preventDefault(); action(()=>navigate(button.href)); return;
   }
   if (button.dataset.review) {
     reviewCandidate = button.dataset.review;
-    document.querySelector('#image-dialog').showModal(); renderImageReview(); return;
+    host.querySelector('#image-dialog').showModal(); renderImageReview(); return;
   }
   if (button.id === 'narrative-review-prev' || button.id === 'narrative-review-next') {
     const images = reviewImages();
@@ -735,24 +757,25 @@ document.addEventListener('click',event=>{
     return;
   }
   if (button.dataset.libraryAsset) {
-    elementDraft.asset_id = button.dataset.libraryAsset;
-    const form = document.querySelector('#element-form');
+    elementDraft.reference_key = button.dataset.referenceKey || '';
+    elementDraft.asset_id = elementDraft.reference_key ? '' : button.dataset.libraryAsset;
+    const form = host.querySelector('#element-form');
     if (!form.elements.name.value) form.elements.name.value = button.dataset.label;
-    document.querySelector('#element-reference-label').textContent = button.dataset.label;
-    document.querySelector('#library-dialog').close(); return;
+    host.querySelector('#element-reference-label').textContent = button.dataset.label + (elementDraft.reference_key ? ' · Current costume reference' : '');
+    host.querySelector('#library-dialog').close(); return;
   }
   if (button.id === 'choose-reference') {
-    const dialog = document.querySelector('#library-dialog');
+    const dialog = host.querySelector('#library-dialog');
     dialog.innerHTML = `<h2>Choose a reference image</h2><form id="library-search" class="narrative-inline"><input id="library-query" aria-label="Search library" placeholder="Character, costume, prop or place"><button>Search</button><button type="button" data-close="library-dialog">Close</button></form><div id="library-results" class="narrative-library-grid"></div>`;
     dialog.showModal(); librarySearch().catch(error=>status(error.message,true)); return;
   }
   if (button.id === 'remove-reference') {
-    elementDraft.asset_id = ''; document.querySelector('#element-reference-label').textContent = 'Text only — no reference image'; return;
+    elementDraft.asset_id = ''; elementDraft.reference_key = ''; host.querySelector('#element-reference-label').textContent = 'Text only — no reference image'; return;
   }
   if (!['editElement','removeElement','deleteElement','candidate','renderSlot','retryJob','action','currentSelection','maskLayer','removeLayer'].some(key=>button.dataset[key])&&!['mask-apply','mask-reset'].includes(button.id)) return;
   action(async()=>{
     if (button.id==='mask-apply'||button.id==='mask-reset') {
-      const id=document.querySelector('#mask-canvas').dataset.maskSource;
+      const id=host.querySelector('#mask-canvas').dataset.maskSource;
       if(button.id==='mask-reset') {detail.layers.find(item=>item.id===id).strokes=[];layersChanged();}
       await save();await drawMask(id);renderLayers();
     } else if (button.dataset.maskLayer) await editMask(button.dataset.maskLayer);
@@ -782,10 +805,10 @@ document.addEventListener('click',event=>{
           const request = {'refresh-backdrop':{action:'refresh'},'copy-source-current':{action:'copy_inputs',basis:'current'},'copy-source-generation':{action:'copy_inputs',basis:'generation'},'reuse-backdrop':{action:'reuse'},'crop-backdrop':{action:'crop'}}[button.dataset.action];
           await api(base()+'/backdrop-source','POST',request);await loadPage();break;
         }
-        case 'preview-crop': {await save();const image=document.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
+        case 'preview-crop': {await save();const image=host.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
         case 'create-assembly': {await save();const target=await api(base()+'/targets','POST',{title:'Final assembly',kind:'assembly'});await navigate({...route,target:target.id});break;}
         case 'add-layer': {
-          await save();const source=detail.assembly_sources.find(item=>item.id===document.querySelector('#assembly-source').value);
+          await save();const source=detail.assembly_sources.find(item=>item.id===host.querySelector('#assembly-source').value);
           if(!source?.candidates.length) throw new Error('Generate a completed source image first.');
           detail.layers.push({target_id:source.id,candidate_id:source.selected_id||source.candidates[0].id,role:source.kind==='backdrop'&&!detail.layers.some(layer=>layer.role==='base')?'base':'group',x:.1,y:.2,scale:.4,z:detail.layers.length});
           layersChanged();await save();renderLayers();break;
@@ -796,7 +819,7 @@ document.addEventListener('click',event=>{
           if(button.dataset.action==='download-composite') {
             const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='composite.png';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
           } else {
-            const image=document.querySelector('#assembly-raw');if(image.dataset.blob) URL.revokeObjectURL(image.dataset.blob);image.src=URL.createObjectURL(blob);image.dataset.blob=image.src;image.hidden=false;
+            const image=host.querySelector('#assembly-raw');if(image.dataset.blob) URL.revokeObjectURL(image.dataset.blob);image.src=URL.createObjectURL(blob);image.dataset.blob=image.src;image.hidden=false;
           }
           break;
         }
@@ -815,7 +838,7 @@ document.addEventListener('click',event=>{
   });
 });
 
-document.addEventListener('submit',event=>{
+listen(host,'submit',event=>{
   if (event.target.id === 'task-capture-form') return;
   event.preventDefault();
   const form = event.target;
@@ -829,34 +852,34 @@ document.addEventListener('submit',event=>{
         const source=chosenSource();
         if(sourcePicker.kind==='backdrop'&&!source.candidate_id) throw new Error('Choose a completed source candidate.');
         const result=sourcePicker.attach ? await api(base()+'/backdrop-source','POST',{action:'attach',source}) :
-          await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/references`,'POST',{source,title:document.querySelector('#source-title').value,
-            copy_visual_context:document.querySelector('#source-copy-context').checked,
+          await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/references`,'POST',{source,title:host.querySelector('#source-title').value,
+            copy_visual_context:host.querySelector('#source-copy-context').checked,
             element_mappings:Object.fromEntries([...form.querySelectorAll('[data-source-element]')].map(select=>[select.dataset.sourceElement,select.value]))});
-        document.querySelector('#narrative-source-dialog').close();sourcePicker=null;
+        host.querySelector('#narrative-source-dialog').close();sourcePicker=null;
         await navigate({...route,target:result.id});break;
       }
-      case 'new-story': { const story=await api('/api/narrative/stories','POST',fields); document.querySelector('#story-dialog').close(); await navigate({story:story.id}); break; }
-      case 'new-scene': { await save(); const scene=await api(base()+'/scenes','POST',fields); await navigate({...route,scene:scene.id}); break; }
+      case 'new-narrative-story': { const story=await api('/api/narrative/stories','POST',fields); host.querySelector('#story-dialog').close(); await navigate({story:story.id}); break; }
+      case 'new-narrative-scene': { await save(); const scene=await api(base()+'/scenes','POST',fields); await navigate({...route,scene:scene.id}); break; }
       case 'new-target': { await save(); const target=await api(base()+'/targets','POST',fields); await navigate({...route,target:target.id}); break; }
       case 'element-form': {
         const url = `/api/narrative/stories/${route.story}/scenes/${route.scene}/elements`;
-        const element=await api(url+(elementDraft.id ? '/'+elementDraft.id : ''),elementDraft.id ? 'PATCH' : 'POST',{...fields,asset_id:elementDraft.asset_id});
+        const element=await api(url+(elementDraft.id ? '/'+elementDraft.id : ''),elementDraft.id ? 'PATCH' : 'POST',{...fields,asset_id:elementDraft.asset_id,reference_key:elementDraft.asset_id ? '' : elementDraft.reference_key || ''});
         if (route.target && !detail.element_ids.includes(element.id)) await api(base(),'PATCH',{element_ids:[...detail.element_ids,element.id]});
-        document.querySelector('#element-dialog').close(); await loadPage(); break;
+        host.querySelector('#element-dialog').close(); await loadPage(); break;
       }
       case 'membership-form': {
         await api(base(),'PATCH',{element_ids:new FormData(form).getAll('element')});
-        document.querySelector('#membership-dialog').close(); await loadPage(); break;
+        host.querySelector('#membership-dialog').close(); await loadPage(); break;
       }
     }
   });
 });
 
-window.addEventListener('popstate',()=>{ action(async()=>{ await save(); await loadPage(); }); });
-document.querySelector('#narrative-universe').addEventListener('change',event=>action(async()=>{
+
+listen(host.querySelector('#narrative-universe'),'change',event=>action(async()=>{
   await save(); universe=event.target.value; await navigate({});
 }));
-window.addEventListener('beforeunload',event=>{ if(dirty.size) {event.preventDefault(); event.returnValue='';} });
+listen(window,'beforeunload',event=>{ if(dirty.size) {event.preventDefault(); event.returnValue='';} });
 
 async function initialize() {
   const universes = await api('/api/universes');
@@ -864,16 +887,16 @@ async function initialize() {
   if (recordedUniverse && universes.universes.some(item=>item.universe_id===recordedUniverse)) universe=recordedUniverse;
   else if (recordedUniverse) window.ZetTaskCapture.notice(`Recorded universe "${recordedUniverse}" is unavailable. Showing the current universe.`);
   universe ||= universes.selected_universe_id;
-  document.querySelector('#narrative-universe').innerHTML = universes.universes.map(item=>`<option value="${esc(item.universe_id)}" ${item.universe_id===universe ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
+  host.querySelector('#narrative-universe').innerHTML = universes.universes.map(item=>`<option value="${esc(item.universe_id)}" ${item.universe_id===universe ? 'selected' : ''}>${esc(item.name)}</option>`).join('');
   const options = await api('/api/narrative/options');
   modelOptions = options;
-  document.querySelector('#narrative-model').textContent = `${options.model} · ${options.renderer}`;
+  host.querySelector('#narrative-model').textContent = `${options.model} · ${options.renderer}`;
   await loadPage();
-  setInterval(poll,2000);
+  pollTimer = setInterval(poll,2000);
 }
-window.ZetTaskCapture.registerProvider(() => {
+restoreProvider = window.ZetTaskCapture.registerProvider(() => {
   const selections = {};
-  const source = new URL('/narrative',location.origin);
+  const source = new URL('/?page=narrative&workspace=story',location.origin);
   source.searchParams.set('task_context','1');
   if (universe) source.searchParams.set('task_universe',universe);
   for (const name of ['story','scene']) {
@@ -886,7 +909,7 @@ window.ZetTaskCapture.registerProvider(() => {
     selections.render_target = {state:contextState,id:route.target,label:contextLabels.render_target || route.target};
     if (detail?.kind==='subscene') selections.subscene = {...selections.render_target};
     source.searchParams.set('target',route.target);
-    const id = document.querySelector('#image-dialog').open ? reviewCandidate : detail?.selected_id
+    const id = host.querySelector('#image-dialog').open ? reviewCandidate : detail?.selected_id
       || new URLSearchParams(location.search).get('task_candidate');
     if (id) {
       const candidate = detail?.candidates?.[id];
@@ -897,5 +920,23 @@ window.ZetTaskCapture.registerProvider(() => {
   }
   return {page_id:'narrative',page_name:'Narrative Scenes',source_url:source.href,universe_id:universe || null,selections};
 });
-document.querySelector('#narrative-review-task').addEventListener('click',()=>void window.ZetTaskCapture.open());
-initialize().catch(error=>{contextState='unavailable';status(error.message,true);});
+listen(host.querySelector('#narrative-review-task'),'click',()=>void window.ZetTaskCapture.open());
+try {
+  await initialize();
+} catch (error) {
+  disposed = true; clearInterval(pollTimer); clearTimeout(saveTimer); events.abort(); restoreProvider?.();
+  throw error;
+}
+return {
+  async unmount() {
+    if (disposed) return;
+    await save();
+    disposed = true;
+    clearInterval(pollTimer); clearTimeout(saveTimer); events.abort();
+    restoreProvider?.();
+    for (const dialog of host.querySelectorAll('dialog[open]')) dialog.close();
+    for (const image of host.querySelectorAll('[data-blob]')) URL.revokeObjectURL(image.dataset.blob);
+  }
+};
+
+}

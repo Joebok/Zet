@@ -1,5 +1,6 @@
 """Authoring and image ownership for narrative scenes, independent of Scene Builder."""
 from dataclasses import asdict
+import json
 from pathlib import Path
 
 from zet.models.narrative import NarrativeElement, NarrativeScene, NarrativeStory, NarrativeTarget
@@ -25,6 +26,13 @@ class NarrativeSceneService:
         self.app = zet_app
         self.repository = NarrativeRepository(zet_app.config.base_library_path)
 
+    def persist(self, record, story: str, scene: str = "", target: str = "") -> dict:
+        data = self.repository.write(record, story, scene, target)
+        library = getattr(self.app, "entity_library_service", None)
+        if library is not None:
+            library.refresh_usages(self.app.config.base_library_path)
+        return data
+
     def stories(self) -> list[dict]:
         with self.repository.lock():
             stories = self.repository.stories()
@@ -43,7 +51,7 @@ class NarrativeSceneService:
     def create_story(self, data: dict) -> dict:
         with self.repository.lock():
             record = NarrativeStory(self._title(data), brief=str(data.get("brief") or ""))
-            return self.repository.write(record, record.id)
+            return self.persist(record, record.id)
 
     def story(self, story: str) -> dict:
         record = self.repository.read(story)
@@ -53,21 +61,50 @@ class NarrativeSceneService:
         with self.repository.lock():
             record = self.repository.read(story)
             self._patch(record, data, ("title", "brief"))
-            return self.repository.write(record, story)
+            return self.persist(record, story)
 
     def create_scene(self, story: str, data: dict) -> dict:
         with self.repository.lock():
             parent = self.repository.read(story)
             record = asdict(NarrativeScene(self._title(data)))
             self._patch(record, data, SCENE_FIELDS)
-            self.repository.write(record, story, record["id"])
+            self.persist(record, story, record["id"])
             parent["scene_ids"].append(record["id"])
-            self.repository.write(parent, story)
+            self.persist(parent, story)
             return record
 
     def scene(self, story: str, scene: str) -> dict:
         record = self.repository.read(story, scene)
+        record["elements"] = [self.element_detail(element) for element in record["elements"]]
         return {**record, "targets": self.list_targets(story, scene)}
+
+    def element_asset(self, element: dict) -> dict | None:
+        if element.get("reference_key"):
+            try:
+                asset = self.app.entity_library_service.resolve_reference(element["reference_key"])
+            except EntityLibraryServiceError as exc:
+                raise ValueError(str(exc)) from exc
+            if "costume-dressing" in element["reference_key"]:
+                root = Path(self.app.config.base_library_path) / "_state" / "LocalAssets"
+                for store in root.glob("*/*/local_assets.json"):
+                    records = json.loads(store.read_text(encoding="utf-8")).get("assets", {})
+                    if any(record.get("entity_library_asset_id") == asset["asset_id"] and record.get("stale")
+                           for record in records.values()):
+                        raise ValueError("Current costume reference is stale; choose an approved replacement.")
+            return self.library_asset(asset["asset_id"])
+        if element.get("asset_id"):
+            return self.library_asset(element["asset_id"])
+        return None
+
+    def element_detail(self, value: dict) -> dict:
+        element = {**value, "reference_key": value.get("reference_key", "")}
+        try:
+            asset = self.element_asset(element)
+            if asset:
+                element["reference"] = {"asset_id": asset["asset_id"], "label": asset.get("label") or element["name"]}
+        except (KeyError, ValueError, FileNotFoundError) as exc:
+            element["reference_error"] = str(exc)
+        return element
 
     def list_targets(self, story: str, scene: str) -> list[dict]:
         record = self.repository.read(story, scene)
@@ -79,7 +116,7 @@ class NarrativeSceneService:
         with self.repository.lock():
             record = self.repository.read(story, scene)
             self._patch(record, data, SCENE_FIELDS)
-            return self.repository.write(record, story, scene)
+            return self.persist(record, story, scene)
 
     def save_element(self, story: str, scene: str, data: dict, element_id: str = "") -> dict:
         with self.repository.lock():
@@ -91,12 +128,16 @@ class NarrativeSceneService:
             else:
                 element = asdict(NarrativeElement(str(data.get("name") or "New element")))
                 record["elements"].append(element)
-            self._patch(element, data, ("name", "kind", "asset_id", "appearance", "reference_role"))
+            element.setdefault("reference_key", "")
+            self._patch(element, data, ("name", "kind", "asset_id", "reference_key", "appearance", "reference_role"))
             if not element["name"].strip() or element["kind"] not in {"subject", "prop", "environment"}:
                 raise ValueError("An element needs a name and subject, prop, or environment type.")
+            if element["asset_id"] and element["reference_key"]:
+                raise ValueError("Choose either a library asset or a logical reference.")
+            # Unavailable logical bindings are retained in editable migration stubs.
             if element["asset_id"]:
                 self.library_asset(element["asset_id"])
-            self.repository.write(record, story, scene)
+            self.persist(record, story, scene)
             return element
 
     def delete_element(self, story: str, scene: str, element_id: str) -> None:
@@ -107,9 +148,9 @@ class NarrativeSceneService:
             for target_id in record["target_ids"]:
                 target = self.repository.read(story, scene, target_id)
                 target["element_ids"] = [item for item in target["element_ids"] if item != element_id]
-                self.repository.write(target, story, scene, target_id)
+                self.persist(target, story, scene, target_id)
             record["elements"] = [item for item in record["elements"] if item["id"] != element_id]
-            self.repository.write(record, story, scene)
+            self.persist(record, story, scene)
 
     def create_target(self, story: str, scene: str, data: dict) -> dict:
         with self.repository.lock():
@@ -135,9 +176,9 @@ class NarrativeSceneService:
                 record["layers"] = self.app.narrative_assembly_service.bind_layers(story, scene, record, [])
                 if record["prompt"]:
                     record["prompt_provenance"] = {"assembly_mode": record["assembly_mode"], "edited": True}
-            self.repository.write(record, story, scene, record["id"])
+            self.persist(record, story, scene, record["id"])
             parent["target_ids"].append(record["id"])
-            self.repository.write(parent, story, scene)
+            self.persist(parent, story, scene)
             return record
 
     def update_target(self, story: str, scene: str, target: str, data: dict) -> dict:
@@ -164,7 +205,7 @@ class NarrativeSceneService:
                     record["assembly_mode"] = job["detail"].get("assembly_mode", "finish_composite")
                     record["prompt_provenance"]["assembly_mode"] = record["assembly_mode"]
                 record["active_llm_job"] = None
-            return self.repository.write(record, story, scene, target)
+            return self.persist(record, story, scene, target)
 
     @staticmethod
     def _validate_target(record, parent):
@@ -202,13 +243,7 @@ class NarrativeSceneService:
         by_id = {item["id"]: item for item in parent["elements"]}
         elements = []
         for element_id in record["element_ids"]:
-            element = dict(by_id[element_id])
-            if element["asset_id"]:
-                try:
-                    asset = self.library_asset(element["asset_id"])
-                    element["reference"] = {"asset_id": asset["asset_id"], "label": asset.get("label") or element["name"]}
-                except (KeyError, ValueError, FileNotFoundError) as exc:
-                    element["reference_error"] = str(exc)
+            element = self.element_detail(by_id[element_id])
             elements.append(element)
         inherited = {key: parent[key] for key in VISUAL_FIELDS}
         effective = {key: record["visual_overrides"].get(key) or value for key, value in inherited.items()}
@@ -230,9 +265,10 @@ class NarrativeSceneService:
                                                              snapshot["destination_scene_id"], detail["id"])
             refs.append({"path": str(path), "label": snapshot["title"], "role": "backdrop source", "image_index": 1})
         for element in detail["elements"]:
-            if element["asset_id"]:
-                asset = self.library_asset(element["asset_id"])
-                refs.append({"path": asset["image_path"], "asset_id": element["asset_id"],
+            asset = self.element_asset(element)
+            if asset:
+                refs.append({"path": asset["image_path"], "asset_id": asset["asset_id"],
+                             "reference_key": element.get("reference_key", ""),
                              "label": element["name"], "role": element["reference_role"], "image_index": len(refs) + 1})
         if len(refs) > 10:
             raise ValueError("The renderer accepts up to ten reference images.")
@@ -248,8 +284,14 @@ class NarrativeSceneService:
         return asset
 
     def library_options(self, query: str = "") -> list[dict]:
-        assets = self.app.entity_library_service.list_assets(q=query)
+        library = self.app.entity_library_service
+        assets = library.search_picker(q=query)
+        keys = {}
+        for reference in library.list_logical_references():
+            if reference["status"] == "active" and "costume-dressing" in reference["reference_key"]:
+                keys.setdefault(reference["asset_id"], []).append(reference["reference_key"])
         return [{"asset_id": item["asset_id"], "label": item.get("label") or item["file_name"],
+                 "reference_key": keys[item["asset_id"]][0] if len(keys.get(item["asset_id"], [])) == 1 else "",
                  "entities": item.get("entities", [])} for item in assets[:100]]
 
     def protected_images(self, story: str, scene: str = "", target: str = "") -> list[dict]:
@@ -276,11 +318,50 @@ class NarrativeSceneService:
             if target:
                 parent = self.repository.read(story, scene)
                 parent["target_ids"].remove(target)
-                self.repository.write(parent, story, scene)
+                self.persist(parent, story, scene)
             elif scene:
                 parent = self.repository.read(story)
                 parent["scene_ids"].remove(scene)
-                self.repository.write(parent, story)
+                self.persist(parent, story)
+            self.app.entity_library_service.refresh_usages(self.app.config.base_library_path)
+
+    def legacy_location(self, story_slug: str, scene_slug: str = "") -> dict:
+        for story in self.repository.stories():
+            if story.get("source_provenance", {}).get("story_slug") != story_slug:
+                continue
+            if not scene_slug:
+                return {"story_id": story["id"]}
+            for scene_id in story["scene_ids"]:
+                scene = self.repository.read(story["id"], scene_id)
+                if scene.get("migration", {}).get("scene_slug") == scene_slug:
+                    return {"story_id": story["id"], "scene_id": scene_id}
+        raise KeyError("This legacy story or scene has not been migrated.")
+
+    def legacy_image(self, story: str, scene: str) -> dict:
+        binding = self.repository.read(story, scene).get("legacy_image") or {}
+        if not binding.get("asset_id"):
+            raise KeyError("This scene has no legacy image.")
+        return self.library_asset(binding["asset_id"])
+
+    def finished_sources(self, story: str = "") -> list[dict]:
+        """Selected final assemblies for discovery/print; legacy images stay separate."""
+        result = []
+        parents = [self.repository.read(story)] if story else self.repository.stories()
+        for parent in parents:
+            for scene_id in parent["scene_ids"]:
+                scene = self.repository.read(parent["id"], scene_id)
+                for target_id in scene["target_ids"]:
+                    target = self.repository.read(parent["id"], scene_id, target_id)
+                    candidate = target.get("candidates", {}).get(target.get("selected_id"))
+                    if target["kind"] != "assembly" or not candidate or not candidate.get("image"):
+                        continue
+                    path = self.repository.folder(parent["id"], scene_id, target_id) / candidate["image"]
+                    if path.is_file():
+                        result.append({"story_id": parent["id"], "scene_id": scene_id, "target_id": target_id,
+                            "candidate_id": candidate["id"], "title": scene["title"], "image_path": str(path),
+                            "locked": candidate.get("locked", False),
+                            "tag": f"{{{{NARRATIVE:{parent['id']}:{scene_id}:{target_id}:{candidate['id']}}}}}"})
+        return result
 
     @staticmethod
     def _title(data: dict) -> str:

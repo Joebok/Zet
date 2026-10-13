@@ -166,7 +166,8 @@ def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
                 f"Keep the composition unchanged. Canvas: {detail['width']} × {detail['height']} pixels.")
     prose = _bind_reference_names(prose, references)
     bindings = []
-    referenced_elements = [item for item in detail["elements"] if item["asset_id"]]
+    referenced_elements = [item for item in detail["elements"]
+                           if item.get("asset_id") or item.get("reference_key")]
     element_index = 0
     for index, reference in enumerate(references, 1):
         role = reference["role"]

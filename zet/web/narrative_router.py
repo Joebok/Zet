@@ -24,6 +24,29 @@ def create_narrative_router(app_provider):
     def generation():
         return app_provider().narrative_generation_service
 
+    def candidates():
+        return app_provider().narrative_candidate_import_service
+
+    @router.get("/candidate-sources")
+    def candidate_sources():
+        return call(candidates().list_sources)
+
+    @router.get("/candidates")
+    def candidate_list(source_key: str):
+        return call(candidates().list_candidates, source_key)
+
+    @router.post("/candidates/{source_key}/{candidate_id}/import")
+    def candidate_import(source_key: str, candidate_id: str, data: dict = Body(...)):
+        return call(candidates().import_candidate, source_key, candidate_id, data.get("story_id", ""))
+
+    @router.post("/candidates/{source_key}/{candidate_id}/passed")
+    def candidate_passed(source_key: str, candidate_id: str, data: dict = Body(...)):
+        return call(candidates().set_passed, source_key, candidate_id, bool(data.get("passed")))
+
+    @router.post("/candidates/{source_key}/{candidate_id}/review")
+    def candidate_review(source_key: str, candidate_id: str, data: dict = Body(...)):
+        return call(candidates().review, source_key, candidate_id, data.get("story_id", ""), data.get("scene_id", ""), bool(data.get("acknowledge")))
+
     def references():
         return app_provider().narrative_reference_service
 
@@ -55,6 +78,10 @@ def create_narrative_router(app_provider):
     def stories():
         return call(author().stories)
 
+    @router.get("/legacy-location")
+    def legacy_location(story_slug: str, scene_slug: str = ""):
+        return call(author().legacy_location, story_slug, scene_slug)
+
     @router.post("/stories")
     def create_story(data: dict = Body(...)):
         return call(author().create_story, data)
@@ -83,6 +110,10 @@ def create_narrative_router(app_provider):
     @router.patch("/stories/{story}/scenes/{scene}")
     def update_scene(story: str, scene: str, data: dict = Body(...)):
         return call(author().update_scene, story, scene, data)
+
+    @router.get("/stories/{story}/scenes/{scene}/legacy-image")
+    def legacy_image(story: str, scene: str):
+        return FileResponse(call(author().legacy_image, story, scene)["image_path"])
 
     @router.delete("/stories/{story}/scenes/{scene}")
     def delete_scene(story: str, scene: str, data: dict = Body(default={})):

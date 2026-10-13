@@ -9,6 +9,7 @@ from zet.services.local_character_asset_pipeline_service import LocalCharacterAs
 from zet.services.local_head_image_service import LocalHeadImageService
 from zet.services.local_image_pipeline_policy import local_image_pipeline_config, pipeline_page_config
 from zet.services.local_prompt_improvement_service import LocalPromptImprovementService
+from zet.services.render_slot_service import CharacterRenderSlots, RenderSlotConflict
 
 
 class LocalImageWorkflowError(ValueError):
@@ -31,6 +32,7 @@ class LocalImagePipelineWorkflowService:
         else:
             self.adapter = LocalCharacterAssetPipelineService(app, self.project_root, self.pipeline)
         self.prompt_improvement = LocalPromptImprovementService(self.adapter, self.pipeline, self.project_root)
+        self.slots = CharacterRenderSlots(self)
 
     def action(self, name: str, **args: Any) -> dict[str, Any] | list[dict[str, Any]]:
         """Call a stable action name while preserving adapter-specific render details."""
@@ -40,6 +42,10 @@ class LocalImagePipelineWorkflowService:
         costume = str(args.get("costume") or "")
         payload = args.get("payload") or {}
         direction = str(args.get("direction") or "")
+        if name in {"rerun_batch", "rerun_view", "rerun_failed", "reevaluate", "run_unstarted_views", "delete_batch"}:
+            current = self.prompt_improvement.detail(run_id, costume)
+            if current.get("slot_work_pending") or current.get("slot_render_ids"):
+                raise RenderSlotConflict("Wait for submitted slot renders to start and finish.")
         if name == "preview":
             return self.adapter.preview(payload)
         if name == "create":
@@ -47,7 +53,10 @@ class LocalImagePipelineWorkflowService:
             return self.prompt_improvement.detail(str(created.get("run_id") or ""), costume,
                                                   upgrade_legacy=True)
         if name == "detail":
-            return self.prompt_improvement.detail(run_id, costume, upgrade_legacy=True)
+            return self.slots.detail(self.prompt_improvement.detail(run_id, costume, upgrade_legacy=True))
+        if name in {"generate_slots", "clear_slot", "regenerate_slot", "retry_render_slot"}:
+            operation = {"generate_slots": "generate", "clear_slot": "clear", "regenerate_slot": "regenerate", "retry_render_slot": "retry"}[name]
+            return self.slots.change(run_id, view, operation, payload, costume)
         if name == "list":
             return self.adapter.list_run_summaries(str(args.get("character") or ""), str(args.get("phase") or ""), costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.list_run_summaries(str(args.get("character") or ""), str(args.get("phase") or ""))
         if name == "rename_batch":

@@ -14,12 +14,10 @@ from zet.services.summary_cache import SummaryCache
 class ProductionWorkSummaryService:
     """Summarize production work from one request-scoped discovered dataset."""
 
-    def __init__(self, config, asset_repository, scene_image_review_service, scene_prompt_analysis_service):
+    def __init__(self, config, asset_repository, story_service):
         self.config = config
         self.asset_repository = asset_repository
-        self.scene_image_review_service = scene_image_review_service
-        self.scene_prompt_analysis_service = scene_prompt_analysis_service
-        self.story_service = scene_image_review_service.story_service
+        self.story_service = story_service
 
     def list_asset_reviews(self, character: str = "", phase: str = "") -> list:
         rows = []
@@ -45,7 +43,8 @@ class ProductionWorkSummaryService:
         return rows
 
     def _manual_tasks(self) -> list:
-        return ManualRenderSubmissionService(RenderConsoleQueue(self.config)).list_tasks()
+        return [task for task in ManualRenderSubmissionService(RenderConsoleQueue(self.config)).list_tasks()
+                if not task.manifest.get("story_slug")]
 
     @staticmethod
     def _task_matches(task, *, character: str = "", phase: str = "", story_slug: str = "", scene_slug: str = "") -> bool:
@@ -102,12 +101,12 @@ class ProductionWorkSummaryService:
         }
 
     def _compute(self, workspace: str, character: str, phase: str, story_slug: str, scene_slug: str) -> dict:
-        context = DiscoveryContext(self.story_service, self.scene_image_review_service.path_service)
+        context = DiscoveryContext(self.story_service, self.story_service.path_service)
         dataset = {
             "manual_tasks": self._manual_tasks(),
             "asset_reviews": self.list_asset_reviews(),
-            "scene_reviews": self.scene_image_review_service.list_pending(discovery_context=context),
-            "analysis_pending": self.scene_prompt_analysis_service.pending_records(),
+            "scene_reviews": [],
+            "analysis_pending": [],
         }
         return {
             "scope": {

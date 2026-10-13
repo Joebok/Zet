@@ -39,6 +39,14 @@ class NarrativeRepository:
             from zet.models.narrative import NarrativeTarget
             for key, value in asdict(NarrativeTarget(record["title"], record["kind"])).items():
                 record.setdefault(key, value)
+        elif scene:
+            from zet.models.narrative import NarrativeScene
+            for key, value in asdict(NarrativeScene(record["title"])).items():
+                record.setdefault(key, value)
+            for element in record["elements"]:
+                element.setdefault("reference_key", "")
+        else:
+            record.setdefault("source_provenance", {})
         return record
 
     def write(self, record, story: str, scene: str = "", target: str = "") -> dict:

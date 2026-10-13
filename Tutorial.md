@@ -40,33 +40,29 @@ Compare local pipeline locks across two phases side by side. Choose the pipeline
 
 ## Story Telling
 
-### Story Overview
+### Stories and Narrative scenes
 
-Create, rename, edit, view, or delete a story. The overview provides a phone-style scene viewer and navigation through the finished sequence. Save story text as it changes; use the Git controls when the story is managed through its configured repository workflow.
+Open Stories in the Story Telling workspace. Create a story, add scenes, and edit
+shared setting, camera, lighting and style. Add named subjects, props and environment
+elements with reusable images from the library. Current costume references follow
+the preferred image for that exact character, phase, costume and view.
 
-### Scenes
+Create a backdrop and one or more subject subscenes. Develop their prose, staging,
+physical context and framing, then interview/synthesize/render deliberately. Select
+and lock useful source images before placing layers in the final assembly. Character
+candidate review stays inside its local Assets pipeline.
 
-Create and order scenes within the selected story. Edit the scene text, choose image references, open the structured builder, or stage the scene for rendering. Scenes can be renamed, moved to another story, or deleted.
+Candidates reads the configured Adventure Log index without changing it. Import a
+brief into a selected Narrative story, open any existing associated scene, or review
+changed source text. Acknowledgement preserves authored inputs and images. Imported
+briefs are starting points, not automatically working render pipelines.
 
-The image view shows the published scene image and any candidate awaiting review.
-
-### Scene Builder
-
-Use the Scene Builder to turn a scene into structured visual instructions. Add character, auxiliary-resource, or scene-only elements; describe composition and relationships; attach references; and continue from an earlier scene when visual continuity matters.
-
-Review the compiled result before staging a render. Prompt Inspection and the Render Console remain available for the final handoff and review cycle.
-
-### Prompts, Render, and Image Review
-
-These production pages operate on story scenes. Review scene prompts, stage manual or local scene renders, and approve or discard scene candidates here. Character candidate review remains inside each local Assets pipeline.
-
-### Auxiliary Images
-
-Store reusable non-character subjects such as locations, creatures, vehicles, or props. Organize resources by category, add one or more labeled images, and use the generated reference tag in scene content or the Scene Builder.
-
-### Scene Image Review
-
-The first accepted scene render becomes the published image. Later renders appear as candidates beside the published image. Promote a candidate to replace the published version, or discard it to keep the current image.
+First Day and Phlan Adventures migrated as 28 editable stubs. Each scene shows its
+previous Legacy image below Save scene / Delete scene. These images are preserved
+library assets, distinct from new selected final assemblies. Review missing references
+and image/prose differences before generation. Scene Builder, old Scene Renders and
+3D layout execution are retired; the [offline archive](Archive/scene-builder/README.md)
+preserves the layout implementation and source data for future work.
 
 ### Zines
 
@@ -108,9 +104,9 @@ Review project configuration and the stages, actors, workers, and asset counts f
 
 ## A typical story workflow
 
-1. Create a story and add scenes.
-2. Write each scene and select reusable references.
-3. Structure the visual composition in Scene Builder.
-4. Inspect and render the compiled prompt.
-5. Review and publish the scene image.
-6. Arrange finished scenes into a zine and generate the print layout.
+1. Create a Narrative story and add a scene, or import an Adventure Log candidate.
+2. Review the depicted moment, visible participants, continuity and exact dialogue.
+3. Bind current costume references and other approved library images.
+4. Develop backdrop and subject subscene inputs, then generate/select/lock their images.
+5. Place completed sources in the final assembly, synthesize/render and select the result.
+6. Use selected final assemblies as zine sources; legacy images remain separate history.

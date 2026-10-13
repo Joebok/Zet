@@ -1,31 +1,11 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Narrative Scenes · Zet</title>
-  <link rel="icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css">
-  <link rel="stylesheet" href="/static/narrative.css?v=20261010-task-context">
-  <link rel="stylesheet" href="/static/task_capture.css?v=20261010-screenshots">
-</head>
-<body class="narrative-app">
-  <header class="narrative-header">
-    <a href="/" class="dashboard-link">← Zet dashboard</a>
-    <strong>Narrative Scenes</strong>
-    <label>Universe <select id="narrative-universe" aria-label="Universe"></select></label>
-    <a id="narrative-home" href="/narrative">Stories</a>
-    <button id="toolbar-create-task" type="button">Create task</button>
-    <a id="toolbar-open-board" target="_blank" rel="noopener" hidden>Open board</a>
-    <span id="narrative-model"></span>
-  </header>
+<section id="narrative-page" class="page narrative-app">
+  <div class="narrative-header"><a id="narrative-home" href="/?page=narrative">Stories</a><span id="narrative-model"></span><select id="narrative-universe" aria-label="Narrative universe" hidden></select></div>
   <nav id="narrative-breadcrumb" aria-label="Breadcrumb"></nav>
   <p id="narrative-message" role="status" aria-live="polite"></p>
-  <p id="task-context-notice" class="action-message" role="status" aria-live="polite" hidden></p>
-  <main id="narrative-root" aria-label="Narrative workspace"></main>
+  <div id="narrative-root" aria-label="Narrative workspace"></div>
   <dialog id="story-dialog" aria-label="New Story">
     <h2>New Story</h2>
-    <form id="new-story">
+    <form id="new-narrative-story">
       <label class="narrative-field">Title<input name="title" required></label>
       <label class="narrative-field">Story brief<textarea name="brief"></textarea></label>
       <div class="narrative-actions"><button class="primary">Create story</button><button type="button" data-close="story-dialog">Cancel</button></div>
@@ -49,8 +29,5 @@
       </div>
     </div>
   </dialog>
-  <!-- TASK_CAPTURE_FORM -->
-  <script src="/static/task_capture.js?v=20261011-randomuuid-fallback"></script>
-  <script type="module" src="/static/narrative.js?v=20261010-task-context"></script>
-</body>
-</html>
+
+</section>

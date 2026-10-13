@@ -1,0 +1,7 @@
+{
+  "name": "three",
+  "version": "0.186.1",
+  "license": "MIT",
+  "runtime_dependency_removed": true,
+  "license_source": "https://raw.githubusercontent.com/mrdoob/three.js/r186/LICENSE"
+}

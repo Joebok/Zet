@@ -112,62 +112,19 @@ class WorkspaceSummaryService:
         )
 
     def story_summary(self, story_slug: str) -> StoryWorkspaceSummary:
-        story = next(
-            (record for record in self.story_service.list_stories() if record.slug == story_slug),
-            None,
-        )
-        if story is None:
+        author = getattr(self, "narrative", None)
+        if not author or not story_slug:
             return StoryWorkspaceSummary("", "No story selected", 0, 0, 0, 0)
+        try:
+            story = author.story(story_slug)
+        except KeyError:
+            return StoryWorkspaceSummary("", "No story selected", 0, 0, 0, 0)
+        finals = {s["scene_id"]: s for s in author.finished_sources(story_slug)}
         scenes = []
-        locked_count = 0
-        candidate_count = 0
-        for scene in self.story_service.list_scenes(story.slug):
-            locked_path = self.path_service.scene_locked_image_path(story.slug, scene.slug)
-            candidate_path = self.path_service.scene_candidate_image_path(story.slug, scene.slug)
-            candidate_exists = candidate_path.is_file()
-            locked_exists = locked_path.is_file()
-            if candidate_exists:
-                image_state = "Candidate ready"
-                image_path = str(candidate_path)
-                candidate_count += 1
-            elif locked_exists:
-                image_state = "Locked"
-                image_path = str(locked_path)
-            else:
-                image_state = "Not rendered"
-                image_path = ""
-            if locked_exists:
-                locked_count += 1
-            scenes.append(
-                StorySceneSummary(
-                    slug=scene.slug,
-                    title=scene.title,
-                    image_state=image_state,
-                    image_path=image_path,
-                    candidate_pending=candidate_exists,
-                )
-            )
-        recommended = next((scene for scene in scenes if scene.candidate_pending), None)
-        if recommended is not None:
-            destination, action = "scene-batches", "Open Scene Batches"
-        else:
-            recommended = next((scene for scene in scenes if scene.image_state == "Not rendered"), None)
-            if recommended is not None:
-                destination, action = "scene-builder", "Continue in Scene Builder"
-            elif scenes:
-                recommended = scenes[0]
-                destination, action = "scene-builder", "Continue in Scene Builder"
-            else:
-                destination, action = "scenes", "Add the first scene"
-        return StoryWorkspaceSummary(
-            story_slug=story.slug,
-            title=story.title,
-            scene_count=len(scenes),
-            locked_count=locked_count,
-            candidate_count=candidate_count,
-            unrendered_count=sum(1 for scene in scenes if scene.image_state == "Not rendered"),
-            scenes=scenes,
-            recommended_scene_slug=recommended.slug if recommended else "",
-            recommended_destination=destination,
-            recommended_action=action,
-        )
+        for scene in story["scenes"]:
+            source = finals.get(scene["id"])
+            state = "Locked" if source and source["locked"] else "Selected final assembly" if source else "Legacy image · stub" if scene.get("legacy_image") else "Not rendered"
+            scenes.append(StorySceneSummary(scene["id"], scene["title"], state, source["image_path"] if source else "", False))
+        return StoryWorkspaceSummary(story_slug, story["title"], len(scenes), sum(s["locked"] for s in finals.values()),
+            0, len(scenes) - len(finals), scenes=scenes, recommended_scene_slug=scenes[0].slug if scenes else "",
+            recommended_destination="narrative", recommended_action="Continue in Narrative Scenes")

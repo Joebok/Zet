@@ -15,7 +15,7 @@ class EntityLibraryRepositoryError(Exception):
 class EntityLibraryRepository:
     """Store the authoritative entity-centered image catalog in SQLite."""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, database_path: str | Path):
         self.database_path = Path(database_path).resolve()
@@ -79,7 +79,8 @@ class EntityLibraryRepository:
                     mime_type TEXT NOT NULL, width INTEGER, height INTEGER, origin TEXT NOT NULL,
                     origin_key TEXT UNIQUE, status TEXT NOT NULL DEFAULT 'approved', rating INTEGER,
                     notes TEXT NOT NULL DEFAULT '', prompt TEXT NOT NULL DEFAULT '',
-                    negative_prompt TEXT NOT NULL DEFAULT '', derived_from_asset_id TEXT REFERENCES assets(asset_id),
+                    negative_prompt TEXT NOT NULL DEFAULT '', preferred_reference_key TEXT,
+                    derived_from_asset_id TEXT REFERENCES assets(asset_id),
                     replacement_for_asset_id TEXT REFERENCES assets(asset_id), created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -154,7 +155,18 @@ class EntityLibraryRepository:
                 connection.execute("ALTER TABLE assets ADD COLUMN prompt TEXT NOT NULL DEFAULT ''")
             if "negative_prompt" not in columns:
                 connection.execute("ALTER TABLE assets ADD COLUMN negative_prompt TEXT NOT NULL DEFAULT ''")
+            if "preferred_reference_key" not in columns:
+                connection.execute("ALTER TABLE assets ADD COLUMN preferred_reference_key TEXT")
+            if version < 3:
+                connection.execute(
+                    """UPDATE assets SET preferred_reference_key=(
+                           SELECT reference_key FROM logical_references
+                           WHERE logical_references.asset_id=assets.asset_id AND status='active'
+                           ORDER BY reference_key LIMIT 1
+                       ) WHERE status='approved'"""
+                )
             connection.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
+            connection.commit()
             result = connection.execute("PRAGMA integrity_check").fetchone()[0]
             if result != "ok":
                 raise EntityLibraryRepositoryError(f"Image library integrity check failed: {result}")

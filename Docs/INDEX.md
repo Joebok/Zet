@@ -11,7 +11,7 @@ The V5 history recovery on 2026-10-11 restored the approved three-scenario local
 | Understand the system or add a subsystem | [Architecture](ARCHITECTURE.md) | [Code map](CODE_MAP.md), relevant component |
 | Find a feature, its callers, and regression tests | [Code map](CODE_MAP.md) | Matching component and source |
 | Change identifiers, storage, or configuration | [Data model](DATA_MODEL.md) | [Invariants](INVARIANTS.md), [library](COMPONENTS/LIBRARY.md) |
-| Change character or scene prompts | [Prompts](COMPONENTS/PROMPTS.md) | [Narrative](COMPONENTS/NARRATIVE.md); [Scene Builder](COMPONENTS/SCENE_BUILDER.md) only for its retiring structured workflow |
+| Change character or scene prompts | [Prompts](COMPONENTS/PROMPTS.md) | [Narrative](COMPONENTS/NARRATIVE.md); [Scene Builder](COMPONENTS/SCENE_BUILDER.md) for historical structured-workflow context |
 | Change local character generation/review | [Local characters](COMPONENTS/LOCAL_CHARACTERS.md) | [Queues](COMPONENTS/QUEUES.md), invariants |
 | Debug jobs, restart recovery, or missing images | [Queues](COMPONENTS/QUEUES.md) | [Development](DEVELOPMENT.md), owning workflow |
 | Plan a substantial change/refactor | [Plan convention](../plans/README.md) | Architecture, relevant invariants, [decisions](DECISIONS/README.md) |
@@ -32,7 +32,7 @@ The V5 history recovery on 2026-10-11 restored the approved three-scenario local
 | [COMPONENTS/LIBRARY.md](COMPONENTS/LIBRARY.md) | Universe binding, authoritative images, derived discovery index | Library/reference/discovery work |
 | [COMPONENTS/LOCAL_CHARACTERS.md](COMPONENTS/LOCAL_CHARACTERS.md) | Candidate generation, gates, ranking, selection, publication | Character pipeline work |
 | [COMPONENTS/PROMPTS.md](COMPONENTS/PROMPTS.md) | Template compilation, view conditioning, attachment contracts | Prompt changes |
-| [COMPONENTS/SCENE_BUILDER.md](COMPONENTS/SCENE_BUILDER.md) | Retiring structured scenes, targets, layout, render and review | Authorized maintenance of the structured workflow; no maintained scenario |
+| [COMPONENTS/SCENE_BUILDER.md](COMPONENTS/SCENE_BUILDER.md) | Retiring structured scenes, targets, layout, render and review | Retired workflow, migration history and offline geometry archive; no maintained scenario |
 | [COMPONENTS/NARRATIVE.md](COMPONENTS/NARRATIVE.md) | Independent narrative authoring, jobs, references and assembly | Narrative workflows |
 | [COMPONENTS/QUEUES.md](COMPONENTS/QUEUES.md) | File Proxy/manual protocol, harvesting, receipts, process recovery | Async work and integrations |
 | [DECISIONS/README.md](DECISIONS/README.md) | ADR convention and evidence-backed decision records | Significant design choices |

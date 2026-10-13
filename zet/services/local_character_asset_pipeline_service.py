@@ -31,6 +31,7 @@ from zet.services.local_image_pipeline_policy import (
     upgrade_legacy_review_v1, view_candidate_id,
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.render_slot_service import merge_candidates, render_count, slot_maps, frozen_input, verify_input
 from zet.services.workflow_storage import file_lock, supersede_task
 
 
@@ -290,7 +291,7 @@ class LocalCharacterAssetPipelineService:
                         "A valid costume template is required before local Costume-Dressing can run"
                         + (f": {details}" if details else ".")
                     )
-        front_count, other_count = int(payload.get("front_count") or 8), int(payload.get("other_count") or 4)
+        front_count, other_count = render_count(payload.get("front_count"), 8), render_count(payload.get("other_count"), 4)
         total = front_count + 7 * other_count
         if front_count < 1 or other_count < 1 or total > 256:
             raise LocalCharacterAssetPipelineError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
@@ -396,6 +397,7 @@ class LocalCharacterAssetPipelineService:
                 "use_front_anchor": plan["use_front_anchor"],
                 "costume_path": costume_path, "costume_sha256": self._hash(Path(costume_path)) if costume_path else "",
                 "candidates": candidates, "front_anchor": None, "selected_views": {}, "rankings": {}}
+        spec["slots_by_view"] = slot_maps(spec)
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": "QUEUED", "updated_at": self._now(),
                                            "stop_requested": False, "front_anchor": None, "views_started": False,
@@ -411,10 +413,7 @@ class LocalCharacterAssetPipelineService:
             spec, state = self._read(root / "spec.json"), self._read(root / "state.json")
         from zet.services.local_prompt_improvement_service import ensure_view_reviews
         spec, state = ensure_view_reviews(root, spec, state)
-        candidates = {item["candidate_id"]: dict(item) for item in spec.get("candidates", [])}
-        for cid, update in (state.get("candidates") or {}).items():
-            if cid in candidates:
-                candidates[cid].update(update)
+        candidates = merge_candidates(spec, state)
         if self.pipeline == "costume-dressing":
             references_by_view = {}
             for candidate in candidates.values():
@@ -510,7 +509,7 @@ class LocalCharacterAssetPipelineService:
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
                     "costume": spec.get("costume", ""), "created_at": spec.get("created_at", ""),
-                    "status": status, "candidate_count": int(spec.get("candidate_count") or len(spec.get("candidates") or [])),
+                    "status": status, "candidate_count": len(merge_candidates(spec, state)),
                     "selected_views": state.get("selected_views") or {},
                 })
             except (OSError, LocalCharacterAssetPipelineError, ValueError):
@@ -683,22 +682,30 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError(f"Unknown candidate: {candidate_id}")
         if candidate["view"] != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before generating other views.")
-        refs = self._references(run, candidate["view"])
-        compiled = self._compile(run, candidate["view"], refs)
         root = Path(run["root"])
         candidate_root = root / "renders" / candidate_id
+        candidate_root.mkdir(parents=True, exist_ok=True)
+        saved_input = candidate.get("render_input")
+        if saved_input:
+            verify_input(saved_input)
+        else:
+            refs = self._references(run, candidate["view"])
+            compiled = self._compile(run, candidate["view"], refs)
+            saved_input = frozen_input(candidate_root / "inputs", Path(compiled["final_prompt"]).read_text(encoding="utf-8"),
+                                       compiled.get("reference_files") or refs, self.definition["preset"])
+        self._update(run_id, candidate_id, costume=costume, render_input=saved_input)
         render_root = candidate_root / "Local_Test_Renders"
         target = render_root / f"{self.pipeline.replace('-', '')}_{candidate_id}_{candidate.get('retry_count', 0)}.png"
-        prompt_path = Path(compiled["final_prompt"])
+        prompt_path = candidate_root / "Final_Prompt.md"
+        prompt_path.write_text(saved_input["prompt"], encoding="utf-8")
         prompt_copy = candidate_root / "Qwen_Local_Character_Prompt.md"
-        prompt_copy.parent.mkdir(parents=True, exist_ok=True)
-        prompt_copy.write_text("Positive Prompt:\n" + prompt_path.read_text(encoding="utf-8") + "\n\nNegative Prompt:\n", encoding="utf-8")
-        preset_name = self.definition["preset"]
+        prompt_copy.write_text("Positive Prompt:\n" + saved_input["prompt"] + "\n\nNegative Prompt:\n", encoding="utf-8")
+        preset_name = saved_input["preset"]
         profile = LocalRenderBackendService(self.project_root / "Config" / "Local_Render_Presets.json").preset(preset_name)
         ask_id = f"LocalCharacterAsset_{run_id}_{candidate_id}_{candidate.get('retry_count', 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
                     "pipeline": f"Local-{self.definition['label'].removeprefix('Local ')}", "pipeline_stage": "LOCAL_CHARACTER_RENDER"}
-        render_references = compiled.get("reference_files") or refs
+        render_references = saved_input["references"]
         ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
             manifest, prompt_copy, candidate_root, allow_parallel=True, seed=int(candidate["seed"]),
             checkpoint=str(profile.get("diffusion_model") or ""), render_preset=preset_name,
@@ -789,10 +796,14 @@ class LocalCharacterAssetPipelineService:
                          costume=str(run.get("costume") or ""), elapsed_seconds=elapsed_seconds)
 
     def _wait_render(self, run_id: str, candidate_id: str, costume: str = "") -> bool:
-        candidate = next(item for item in self.detail(run_id, costume)["candidates"] if item["candidate_id"] == candidate_id)
+        candidate = next((item for item in self.detail(run_id, costume)["candidates"] if item["candidate_id"] == candidate_id), None)
+        if candidate is None:
+            return True
         target = Path(str(candidate.get("image_path") or ""))
         deadline = time.monotonic() + 1860
         while not target.is_file():
+            if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id, costume)["candidates"]):
+                return True
             run = self.detail(run_id, costume)
             if run.get("stop_requested"):
                 return False
@@ -1017,7 +1028,7 @@ class LocalCharacterAssetPipelineService:
                 evaluation_id=evaluation_id), input_hashes=hashes)
 
     def reconcile_review_jobs(self, run_id: str, costume: str = "") -> dict[str, Any]:
-        from zet.services.local_image_evaluation_service import local_image_evaluation_service
+        from zet.services.local_image_evaluation_service import local_image_evaluation_service, finish_gate_collection
         run = self.detail(run_id, costume)
         for view, evaluation in (run.get("evaluations") or {}).items():
             if evaluation.get("status") not in {"RUNNING", "STAGING"}:
@@ -1027,12 +1038,15 @@ class LocalCharacterAssetPipelineService:
                 continue
             candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
                           and item["candidate_id"] in (evaluation.get("input_hashes") or {})]
+            def collect(candidates=candidates, view=view, evaluation_id=evaluation_id):
+                for item in candidates:
+                    self._collect_candidate_gates(run_id, item["candidate_id"], costume, evaluation_id)
+                finish_gate_collection(self._run_root(run_id, costume), view, evaluation_id)
             local_image_evaluation_service().reconcile_review_jobs(run_id, view, evaluation_id,
-                stage_gates=lambda: [self._stage_candidate_gates(run_id, item["candidate_id"], costume)
+                stage_gates=lambda candidates=candidates: [self._stage_candidate_gates(run_id, item["candidate_id"], costume)
                                      for item in candidates],
-                collect_gates=lambda: [self._collect_candidate_gates(run_id, item["candidate_id"], costume, evaluation_id)
-                                       for item in candidates],
-                rank=lambda: self.rank_view(run_id, view, costume, evaluation_id=evaluation_id))
+                collect_gates=collect,
+                rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, costume, evaluation_id=evaluation_id))
         return self.detail(run_id, costume)
 
     def _queue_gate(self, run: dict[str, Any], candidate: dict[str, Any], gate: ReviewGate,
@@ -1114,21 +1128,27 @@ class LocalCharacterAssetPipelineService:
                 with self._active_lock:
                     self._active.add(self._active_key(run_id))
                 run = self.detail(run_id, costume)
+                if candidate_ids is None and run.get("target_candidate_ids"):
+                    candidate_ids = set(run["target_candidate_ids"])
+                if views is None and run.get("target_views"):
+                    views = set(run["target_views"])
                 if views is None:
                     views = set(VIEWS) if run.get("front_anchor") or not self._requires_front_anchor(run) else {"FRONT"}
                 if any(view != "FRONT" for view in views) and self._requires_front_anchor(run) and not run.get("front_anchor"):
                     self._run_update(run_id, costume, status="AWAITING_FRONT_ANCHOR",
                                      error="Select a FRONT candidate before generating other views.")
                     return
-                self._run_update(run_id, costume, status="RUNNING", error="")
+                self._run_update(run_id, costume, status="RUNNING", error="", slot_work_pending=False)
                 for view in [item for item in VIEWS if item in views]:
-                    pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view
+                    pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view and not item.get("slot_managed")
                                and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                and not Path(str(item.get("image_path") or "")).is_file()]
                     for item in pending:
                         if self.detail(run_id, costume).get("stop_requested"):
                             break
-                        current = next(x for x in self.detail(run_id, costume)["candidates"] if x["candidate_id"] == item["candidate_id"])
+                        current = next((x for x in self.detail(run_id, costume)["candidates"] if x["candidate_id"] == item["candidate_id"]), None)
+                        if current is None:
+                            continue
                         if Path(str(current.get("image_path") or "")).is_file():
                             continue
                         try:
@@ -1147,28 +1167,29 @@ class LocalCharacterAssetPipelineService:
                     for item in pending:
                         if self.detail(run_id, costume).get("stop_requested"):
                             break
-                        current = next(x for x in self.detail(run_id, costume)["candidates"] if x["candidate_id"] == item["candidate_id"])
+                        current = next((x for x in self.detail(run_id, costume)["candidates"] if x["candidate_id"] == item["candidate_id"]), None)
+                        if current is None:
+                            continue
                         if not Path(str(current.get("image_path") or "")).is_file() and current.get("status") in {"QUEUED", "RUNNING"}:
                             try:
                                 self._wait_render(run_id, item["candidate_id"], costume)
                             except Exception as exc:
                                 self._update(run_id, item["candidate_id"], costume, status="FAILED", render_error=str(exc))
                     if not render_only and not self.detail(run_id, costume).get("stop_requested"):
-                        pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view
+                        pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view and not item.get("slot_managed")
                                    and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                    and Path(str(item.get("image_path") or "")).is_file()]
                         if pending and not self.detail(run_id, costume).get("stop_requested"):
-                            self.stage_view_evaluation(run_id, view, costume,
-                                candidate_ids={item["candidate_id"] for item in pending})
+                            self.stage_view_evaluation(run_id, view, costume)
                 latest = self.detail(run_id, costume)
                 selected = latest.get("selected_views") or {}
                 complete = all(selected.get(view) for view in VIEWS)
                 status = "CANCELLED" if latest.get("stop_requested") else "COMPLETE" if complete else "AWAITING_FRONT_ANCHOR" if self._requires_front_anchor(latest) and not latest.get("front_anchor") else "AWAITING_HUMAN_SELECTION"
-                self._run_update(run_id, costume, status=status, target_views=[])
+                self._run_update(run_id, costume, status=status, target_views=[], target_candidate_ids=[])
         except TimeoutError:
             return
         except Exception as exc:
-            self._run_update(run_id, costume, status="ERROR", error=str(exc), target_views=[])
+            self._run_update(run_id, costume, status="ERROR", error=str(exc), target_views=[], target_candidate_ids=[])
         finally:
             with self._active_lock:
                 self._active.discard(self._active_key(run_id))

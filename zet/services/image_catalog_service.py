@@ -300,145 +300,18 @@ class ImageCatalogService:
                 ))
         return rows
 
-    def _discover_scenes(self, discovery_context: DiscoveryContext | None = None) -> list[dict]:
-        if discovery_context is not None:
-            return self._discover_scenes_from_context(discovery_context)
-        rows = []
-        for story in self.story_service.list_stories():
-            for scene in self.story_service.list_scenes(story.slug):
-                image_path = self.story_service.scene_image_path(story.slug, scene.slug)
-                if image_path.is_file():
-                    source_key = f"scene:{story.slug}:{scene.slug}:main"
-                    rows.append(self._base_record(
-                        source_key,
-                        source_type="scene",
-                        tag=f"{{{{SCENE:{story.slug}:{scene.slug}}}}}",
-                        label=f"{story.title} - {scene.title}",
-                        image_path=str(image_path),
-                        thumbnail_path=str(image_path),
-                        semantic_category="Composite/Scene",
-                        pipeline="Rendered Scene",
-                        story_slug=story.slug,
-                        scene_slug=scene.slug,
-                        candidate_pending=self.path_service.scene_candidate_image_path(story.slug, scene.slug).is_file(),
-                        image_review_key=f"scene:{story.slug}:{scene.slug}",
-                    ))
-                document = self.story_service.load_scene_builder_data(story.slug, scene.slug)
-                elements = {str(item.get("id") or ""): item for item in document.data.get("scene_elements") or [] if isinstance(item, dict)}
-                for definition in document.data.get("subscenes") or []:
-                    target_id = str(definition.get("id") or "")
-                    image_path = self.path_service.scene_subscene_locked_path(story.slug, scene.slug, target_id)
-                    if not target_id or not image_path.is_file():
-                        continue
-                    if definition.get("kind") == "element":
-                        composition = (definition.get("setup") or {}).get("composition") or {}
-                    else:
-                        composition = definition.get("prompt_overrides") or {}
-                    composition_identity = str(composition.get("composition_notes") or "").strip()
-                    inherited_identity = composition_identity
-                    inherited_costume = ""
-                    category = "Composite/Scene"
-                    costume_applicable = False
-                    if definition.get("kind") == "element":
-                        anchor = elements.get(str(definition.get("anchor_element_id") or ""), {})
-                        sections = self.story_service._canonical_element_source_sections(anchor)
-                        if sections:
-                            inherited_identity = str(sections.get("identity_preservation_core") or composition_identity)
-                            inherited_costume = str(sections.get("identity_preservation_costume") or "")
-                            category = {"Character": "Person", "Person": "Person", "Place": "Place", "Object": "Object"}.get(str(anchor.get("resource_type") or ""), "Composite/Scene")
-                            costume_applicable = category == "Person"
-                    source_key = f"scene:{story.slug}:{scene.slug}:{target_id}"
-                    rows.append(self._base_record(
-                        source_key,
-                        source_type="subscene",
-                        tag=self.story_service.scene_render_target_service.image_tag(story.slug, scene.slug, target_id),
-                        label=f"{story.title} - {scene.title} - {definition.get('name') or target_id}",
-                        image_path=str(image_path),
-                        thumbnail_path=str(image_path),
-                        semantic_category=category,
-                        pipeline="Rendered Scene Subscene",
-                        story_slug=story.slug,
-                        scene_slug=scene.slug,
-                        subscene_id=target_id,
-                        candidate_pending=self.path_service.scene_subscene_candidate_path(story.slug, scene.slug, target_id).is_file(),
-                        image_review_key=f"scene:{story.slug}:{scene.slug}:{target_id}",
-                        inherited_identity=inherited_identity,
-                        inherited_costume=inherited_costume,
-                        costume_applicable=costume_applicable,
-                    ))
-        return rows
+    def _discover_scenes(self, discovery_context=None) -> list[dict]:
+        author = getattr(self, "narrative", None)
+        if author is None:
+            return []
+        return [self._base_record("narrative:" + source["candidate_id"], source_type="scene", tag=source["tag"],
+            label=source["title"], image_path=source["image_path"], thumbnail_path=source["image_path"],
+            semantic_category="Composite/Scene", pipeline="Narrative final assembly", story_slug=source["story_id"],
+            scene_slug=source["scene_id"], candidate_pending=False, image_review_key="")
+            for source in author.finished_sources()]
 
-    def _discover_scenes_from_context(self, context: DiscoveryContext) -> list[dict]:
-        rows = []
-        for item in context.scene_records():
-            if not item.locked_exists:
-                continue
-            if item.render_target_id == "main":
-                rows.append(self._base_record(
-                    f"scene:{item.story_slug}:{item.scene_slug}:main",
-                    source_type="scene",
-                    tag=f"{{{{SCENE:{item.story_slug}:{item.scene_slug}}}}}",
-                    label=f"{item.story_title} - {item.scene_title}",
-                    image_path=str(item.locked_path),
-                    thumbnail_path=str(item.locked_path),
-                    semantic_category="Composite/Scene",
-                    pipeline="Rendered Scene",
-                    story_slug=item.story_slug,
-                    scene_slug=item.scene_slug,
-                    candidate_pending=item.candidate_exists,
-                    image_review_key=f"scene:{item.story_slug}:{item.scene_slug}",
-                ))
-                continue
-
-            definition = item.definition or {}
-            composition = (
-                (definition.get("setup") or {}).get("composition") or {}
-                if definition.get("kind") == "element"
-                else definition.get("prompt_overrides") or {}
-            )
-            composition_identity = str(composition.get("composition_notes") or "").strip()
-            inherited_identity = composition_identity
-            inherited_costume = ""
-            category = "Composite/Scene"
-            costume_applicable = False
-            if definition.get("kind") == "element":
-                elements = {
-                    str(element.get("id") or ""): element
-                    for element in item.scene_elements
-                    if isinstance(element, dict)
-                }
-                anchor = elements.get(str(definition.get("anchor_element_id") or ""), {})
-                sections = self.story_service._canonical_element_source_sections(anchor)
-                if sections:
-                    inherited_identity = str(sections.get("identity_preservation_core") or composition_identity)
-                    inherited_costume = str(sections.get("identity_preservation_costume") or "")
-                    category = {
-                        "Character": "Person",
-                        "Person": "Person",
-                        "Place": "Place",
-                        "Object": "Object",
-                    }.get(str(anchor.get("resource_type") or ""), "Composite/Scene")
-                    costume_applicable = category == "Person"
-            target_id = item.render_target_id
-            rows.append(self._base_record(
-                f"scene:{item.story_slug}:{item.scene_slug}:{target_id}",
-                source_type="subscene",
-                tag=self.story_service.scene_render_target_service.image_tag(item.story_slug, item.scene_slug, target_id),
-                label=f"{item.story_title} - {item.scene_title} - {definition.get('name') or target_id}",
-                image_path=str(item.locked_path),
-                thumbnail_path=str(item.locked_path),
-                semantic_category=category,
-                pipeline="Rendered Scene Subscene",
-                story_slug=item.story_slug,
-                scene_slug=item.scene_slug,
-                subscene_id=target_id,
-                candidate_pending=item.candidate_exists,
-                image_review_key=f"scene:{item.story_slug}:{item.scene_slug}:{target_id}",
-                inherited_identity=inherited_identity,
-                inherited_costume=inherited_costume,
-                costume_applicable=costume_applicable,
-            ))
-        return rows
+    def _discover_scenes_from_context(self, context) -> list[dict]:
+        return self._discover_scenes()
 
     def _pending_ids(self) -> set[str]:
         result = set()

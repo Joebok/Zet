@@ -40,3 +40,16 @@ When adding a task type, define producer manifest, input snapshots, worker/respo
 ## Tests and related decisions
 
 [fast.spec.mjs](../../tests/e2e/fast.spec.mjs) S2/S3 publish real private asks and consume prepared answers through local/Narrative workflow services; the fast suite does not run the external dispatcher or generic harvester. The separately requested [live check](../../tests/e2e/live.spec.mjs) starts a private AI Proxy for Narrative final synthesis/rendering. No dedicated maintained scenario covers every readiness, producer/universe ownership, stale answer, receipt, copy-failure or manual-upload branch. See [Testing](../Testing.md). [ADR 0001](../DECISIONS/0001-library-authority-and-derived-index.md) distinguishes authored and local state; production policy is [ADR 0003](../DECISIONS/0003-local-character-production-boundary.md).
+
+## Retired scene ownership
+
+Scene Builder producers, batch services and recovery wiring no longer dispatch work.
+Owned late legacy scene/prompt-analysis answers are marked superseded without publishing
+into either source or Narrative records; answer bytes and attribution remain preserved.
+Foreign universe/consumer results still fail or skip ownership checks. Existing shared
+queue files are not automatically cancelled/deleted during migration. Narrative jobs
+retain independent consumer IDs and attempt fencing. Manual scene publication recovery
+is fenced; supported character/manual transports remain available.
+
+## Supplemental render-slot work (2026-10-12)
+Character slot allocation saves new candidate identities and target IDs before dispatch. An independent slot collector resumes persisted `slot_render_ids` after restart; existing batch runners exclude these additions and empty slots are not queued work. New slot actions can publish while other renders run, with state transactions fencing cleared candidates. Clearing/replacing a candidate detaches its active membership and changes the advisory evaluation fence, retaining old artifacts so late answers cannot populate replacement slots. Prompt/reference snapshots persist per candidate and remain ordered. Image Generation saves its board reservation before staging jobs and persists child seeds/status/errors; new result arrays are indexed by submission child rather than arrival order. Queue publication/readiness/ownership protocols are unchanged. See [ADR 0007](../DECISIONS/0007-stable-render-slots.md).

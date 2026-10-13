@@ -11,6 +11,7 @@
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
   <link rel="stylesheet" href="/static/zet.css?v=20261010-story-task-context">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261010-screenshots">
+  <link rel="stylesheet" href="/static/narrative.css?v=retirement">
 </head>
 <body>
   <header class="app-header">
@@ -51,15 +52,7 @@
           Scene
           <select id="header-scene-select"></select>
         </label>
-        <label>
-          Workflow
-          <select id="scene-workflow-menu" aria-label="Scene workflow">
-            <option value="">Scene workflow...</option>
-            <option value="scene-builder">Builder</option>
-            <option value="prompt-review">Prompt / Analysis</option>
-            <option value="locked-image">Locked Image</option>
-          </select>
-        </label>
+
       </div>
       <div class="header-menu">
         <button id="new-menu-button" class="create-action" type="button" aria-expanded="false" aria-controls="new-menu">New ▾</button>
@@ -96,20 +89,14 @@
       <button class="tab workflow-tab" data-page="local-overview">Overview</button>
     </div>
     <div id="story-navigation" class="workspace-navigation" hidden>
-      <a class="tab workflow-tab" href="/narrative">Narrative Scenes</a>
-      <button class="tab workflow-tab" data-page="stories">Overview</button>
-      <button class="tab workflow-tab" data-page="scenes">Scenes</button>
+
+      <button class="tab workflow-tab" data-page="narrative">Stories</button>
+
       <button class="tab workflow-tab" data-page="scene-candidates">Candidates</button>
-      <button class="tab workflow-tab" data-page="scene-builder">Scene Builder</button>
-      <button class="tab workflow-tab" data-page="scene-batches">Scene Renders</button>
+
+
       <button class="tab workflow-tab" data-page="zine">Zines</button>
-      <div class="production-navigation" aria-label="Story production">
-        <button class="tab production-tab" data-page="prompt-review">Prompt / Analysis <span class="production-count" data-production-count="prompt_available" hidden></span><span class="production-analysis-count" data-analysis-pending hidden></span></button>
-      </div>
-      <select id="story-production-menu" class="tab production-menu" aria-label="Story production tools">
-        <option value="" selected>Production ▾</option>
-        <option value="prompt-review">Prompt / Analysis</option>
-      </select>
+
     </div>
     <div class="toolbar-actions">
       <button id="toolbar-create-task" class="navigation-action" type="button">Create task</button>
@@ -266,8 +253,8 @@
           <section id="local-pipeline-lineage-warning" class="local-pipeline-lineage-warning" role="status" hidden></section>
           <section id="local-pipeline-options" class="local-pipeline-options">
             <h2>New batch</h2>
-            <label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" value="8"></label>
-            <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" value="4"></label>
+            <label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" max="8" value="8"></label>
+            <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" max="8" value="4"></label>
             <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
             <div id="local-pipeline-source-batches" class="local-pipeline-source-batches" hidden></div>
             <label id="local-pipeline-rerun-refresh-option" hidden><span>Refresh references from chosen batches when rerunning</span><input id="local-pipeline-rerun-refresh-sources" type="checkbox" checked></label>
@@ -580,6 +567,7 @@
       </section>
       <section id="entity-library-detail-view" class="inventory-view" hidden>
         <button id="entity-library-back" class="text-action" type="button">← Back to search</button>
+        <div class="status-text" id="entity-library-editor-state" role="status" aria-live="polite"></div>
         <aside class="review-actions entity-library-editor">
           <section class="inventory-detail-group">
             <h2 id="entity-library-editor-title">Select an image</h2>
@@ -616,6 +604,7 @@
           <section class="inventory-detail-group"><h3>Logical references</h3><ul id="entity-library-logical-references"></ul></section>
           <section class="inventory-detail-group"><h3>Where used</h3><ul id="entity-library-usages"></ul></section>
         </aside>
+        <button id="entity-library-retry-load" type="button" hidden>Retry loading image</button>
       </section>
       <section id="entity-library-organizer-view" class="inventory-view" hidden>
         <div id="entity-library-organizer"></div>
@@ -988,183 +977,12 @@
       </div>
     </section>
 
-    <section id="stories-page" class="page">
-      <div class="page-title-row">
-        <h1>Story Overview</h1>
-        <div id="story-status" class="status-text"></div>
-      </div>
-      <div id="story-message" class="action-message" hidden></div>
-      <section class="workspace-overview story-overview" aria-label="Story progress">
-        <section id="story-phone-viewer" class="phone-workspace-viewer" aria-label="Selected scene image">
-          <div class="phone-viewer-heading">
-            <div><span class="eyebrow">Selected scene</span><h2 id="story-phone-viewer-title"></h2></div>
-            <span id="story-phone-viewer-state" class="status-badge"></span>
-          </div>
-          <div id="story-phone-viewer-image" class="phone-viewer-image"></div>
-          <div class="phone-viewer-navigation">
-            <button id="story-phone-previous" class="navigation-action" type="button">Previous</button>
-            <span id="story-phone-position" class="status-text"></span>
-            <button id="story-phone-next" class="navigation-action" type="button">Next</button>
-          </div>
-        </section>
-        <div id="story-overview-metrics" class="overview-metrics"></div>
-        <div id="story-overview-scenes" class="story-overview-scenes"></div>
-      </section>
-      <div class="costume-layout story-layout">
-        <section class="control-panel">
-          <table id="story-table">
-            <thead>
-              <tr>
-                <th>title</th>
-                <th>order</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-          <div class="button-row compact story-create-row">
-            <label>
-              New Story Title
-              <input id="story-new-title" type="text" placeholder="Forest Road Reunion">
-            </label>
-            <button id="story-create" class="create-action" type="button">Add Story</button>
-          </div>
-          <div class="story-git-panel">
-            <div class="button-row compact">
-              <button id="story-git-status" class="navigation-action" type="button">Show Git Status</button>
-              <button id="story-git-pull" type="button">Pull</button>
-              <button id="story-git-commit" type="button">Commit</button>
-            </div>
-            <pre id="story-git-output" class="story-git-output"></pre>
-          </div>
-        </section>
-        <section class="review-main">
-          <div class="editor-sticky-header">
-            <div class="review-header">
-              <h2 id="story-editor-title">Select a story</h2>
-              <div class="button-row compact">
-                <span id="story-save-state" class="save-state" aria-live="polite"></span>
-                <button id="story-view" class="navigation-action" type="button" disabled>View Story</button>
-                <button id="story-save" class="primary-action" type="button" disabled>Save Story</button>
-                <button id="story-scenes" class="navigation-action" type="button" disabled>Scenes</button>
-                <button id="story-delete" class="danger-action" type="button" disabled>Delete Story</button>
-              </div>
-            </div>
-            <div id="story-validation" class="action-message info" aria-label="Story markdown validation" hidden></div>
-          </div>
-          <div class="button-row compact management-row">
-            <label>
-              Story Title
-              <input id="story-rename-title" type="text">
-            </label>
-            <button id="story-rename" class="update-action" type="button" disabled>Rename</button>
-          </div>
-          <textarea id="story-text" spellcheck="false" placeholder="Select or create a story to edit its markdown."></textarea>
-          <textarea id="story-settings-json" spellcheck="false" placeholder="Story settings JSON" hidden></textarea>
-          <div id="story-settings-fields" class="story-settings-fields"></div>
-        </section>
-      </div>
-    </section>
+    <!-- NARRATIVE_WORKSPACE -->
 
-    <section id="scenes-page" class="page">
-      <div class="page-title-row">
-        <h1>Scenes</h1>
-        <div id="scene-status" class="status-text"></div>
-      </div>
-      <div id="scene-message" class="action-message" hidden></div>
-      <div class="review-layout scene-layout">
-        <aside class="review-sidebar">
-          <label>
-            Story
-            <select id="scene-story-select"></select>
-          </label>
-          <table id="scene-table">
-            <thead>
-              <tr>
-                <th>scene</th>
-                <th>order</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-          <div class="button-row compact scene-create-row">
-            <label>
-              New Scene Name
-              <input id="scene-new-name" type="text" placeholder="Moonlit Campsite">
-            </label>
-            <button id="scene-create" class="create-action" type="button">Add Scene</button>
-          </div>
-        </aside>
-        <section class="review-main">
-          <div class="editor-sticky-header">
-            <div class="review-header">
-              <h2 id="scene-editor-title">Select a scene</h2>
-              <div class="button-row compact">
-                <span id="scene-save-state" class="save-state" aria-live="polite"></span>
-                <button id="scene-toggle-image" class="navigation-action" type="button" disabled>Images</button>
-                <button id="scene-builder-open" class="navigation-action" type="button" disabled>Builder</button>
-                <button id="scene-stage-render" class="update-action" type="button" disabled>Scene Renders</button>
-                <button id="scene-save" class="primary-action" type="button" disabled>Save Scene</button>
-                <button id="scene-delete" class="danger-action" type="button" disabled>Delete Scene</button>
-              </div>
-            </div>
-            <div id="scene-validation" class="action-message info" aria-label="Scene markdown validation" hidden></div>
-          </div>
-          <div class="button-row compact management-row">
-            <label>
-              Scene Title
-              <input id="scene-rename-title" type="text">
-            </label>
-            <button id="scene-rename" class="update-action" type="button" disabled>Rename</button>
-            <label>
-              Move To Story
-              <select id="scene-move-story"></select>
-            </label>
-            <button id="scene-move" class="navigation-action" type="button" disabled>Move Scene</button>
-          </div>
-          <div id="scene-image-panel" class="scene-image-panel" hidden>
-            <img id="scene-image-preview" alt="Scene render">
-            <a id="scene-image-candidate-link" class="candidate-pending-overlay" hidden>Candidate Image Pending</a>
-          </div>
-          <textarea id="scene-text" spellcheck="false" placeholder="Select or create a scene to edit its markdown."></textarea>
-        </section>
-        <aside class="review-actions scene-picker-panel" hidden>
-          <h3>Image References</h3>
-          <label>
-            Character Filter
-            <select id="scene-picker-character"></select>
-          </label>
-          <label>
-            Search
-            <input id="scene-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
-          </label>
-          <button id="scene-picker-refresh" type="button">Refresh References</button>
-          <div id="scene-picker-status" class="status-text"></div>
-          <table id="scene-picker-table">
-            <thead>
-              <tr>
-                <th>tag</th>
-                <th>label</th>
-                <th>source</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </aside>
-      </div>
-    </section>
 
-    <section id="scene-batches-page" class="page">
-      <div class="page-heading"><h1>Scene Renders</h1><span id="scene-batch-context"></span></div>
-      <p id="scene-batch-message" role="status"></p>
-      <p id="scene-batch-status" class="status-text"></p>
-      <div class="button-row compact">
-        <button id="scene-batch-start" type="button" disabled>Render Next Group</button>
-        <button id="scene-batch-stop" type="button" disabled>Stop</button>
-        <button id="scene-batch-refresh" type="button">Refresh</button>
-        <button id="scene-batch-publish" type="button" disabled>Review &amp; Publish</button>
-      </div>
-      <div id="scene-batch-groups"></div>
-    </section>
+
+
+
     <dialog id="scene-batch-publication-dialog" class="scene-batch-publication-dialog" aria-labelledby="scene-batch-publication-title">
       <div class="scene-batch-review-heading">
         <h2 id="scene-batch-publication-title">Review selected images before publishing</h2>
@@ -1334,138 +1152,7 @@
       </div>
     </section>
 
-    <section id="scene-builder-page" class="page">
-      <div class="page-title-row">
-        <h1>Scene Builder</h1>
-        <div class="scene-builder-navigation">
-          <button id="scene-builder-previous" type="button" class="glyph-action" aria-label="Previous scene" title="Previous scene" disabled>&lt;</button>
-          <div id="scene-builder-status" class="status-text"></div>
-          <button id="scene-builder-next" type="button" class="glyph-action" aria-label="Next scene" title="Next scene" disabled>&gt;</button>
-        </div>
-      </div>
-      <div id="scene-builder-message" class="action-message" hidden></div>
-      <div id="scene-builder-panel" class="scene-builder-panel"></div>
-      <dialog id="scene-builder-interview-modal" class="image-picker-modal" aria-labelledby="scene-builder-interview-title">
-        <div class="image-picker-dialog scene-builder-interview-dialog">
-          <div class="review-header">
-            <div>
-              <span class="eyebrow">Narrative to scene</span>
-              <h2 id="scene-builder-interview-title">Scene-Builder Interview</h2>
-            </div>
-            <button id="scene-builder-interview-close" type="button">Close</button>
-          </div>
-          <div id="scene-builder-interview-status" class="status-text" role="status"></div>
-          <label id="scene-builder-interview-narrative-label">
-            Describe the scene in story terms
-            <textarea id="scene-builder-interview-narrative" rows="10" placeholder="Paste a narrative description of the moment, who is present, what happens, and how it should feel..."></textarea>
-          </label>
-          <div id="scene-builder-interview-questions"></div>
-          <div class="button-row compact">
-            <button id="scene-builder-interview-cancel" type="button">Cancel</button>
-            <button id="scene-builder-interview-restart" type="button">Start New Interview</button>
-            <button id="scene-builder-interview-next" class="primary-action" type="button">Begin Interview</button>
-            <button id="scene-builder-interview-apply" class="primary-action" type="button" hidden>Apply to Scene</button>
-          </div>
-        </div>
-      </dialog>
-      <dialog id="builder-element-modal" class="image-picker-modal" aria-labelledby="builder-element-modal-title">
-        <div class="image-picker-dialog">
-          <div class="review-header">
-            <h2 id="builder-element-modal-title">New Element</h2>
-          </div>
-          <label>
-            Resource Type
-            <select id="builder-element-resource-type"></select>
-          </label>
-          <label>Display Name<input id="builder-element-scene-name" type="text" required></label>
-          <section id="builder-element-character-section">
-            <h3>Character</h3>
-            <label>Existing character (optional)<select id="builder-element-character"></select></label>
-            <label>Phase<select id="builder-element-phase"></select></label>
-            <label>Costume<select id="builder-element-costume"></select></label>
-          </section>
-          <section id="builder-element-aux-section">
-            <h3>Reference Set (optional)</h3>
-            <label>Set<select id="builder-element-aux"></select></label>
-            <button id="builder-element-new-aux" type="button">New Reference Set</button>
-            <div id="builder-element-new-aux-form" class="inline-create-form" hidden>
-              <label>Set label<input id="builder-element-new-aux-label" type="text"></label>
-              <div class="button-row compact">
-                <button id="builder-element-new-aux-cancel" type="button">Cancel</button>
-                <button id="builder-element-new-aux-save" class="primary-action" type="button">Create</button>
-              </div>
-              <div id="builder-element-new-aux-status" class="status-text" role="status"></div>
-            </div>
-          </section>
-          <section id="builder-element-scene-section">
-            <p>Scene-only elements have no library reference. Add references or a visual description later if needed.</p>
-          </section>
-          <section id="builder-element-subscene-section" hidden>
-            <p>This creates a named group render target. Move elements into it using each element’s “Render in” field, then render the group before the full scene.</p>
-          </section>
-          <div class="button-row compact">
-            <button id="builder-element-cancel" type="button">Cancel</button>
-            <button id="builder-element-add" type="button">Add</button>
-          </div>
-        </div>
-      </dialog>
-      <dialog id="builder-continue-modal" class="image-picker-modal" aria-labelledby="builder-continue-modal-title">
-        <div class="image-picker-dialog">
-          <div class="review-header">
-            <h2 id="builder-continue-modal-title">Continue from...</h2>
-          </div>
-          <label>Scene<select id="builder-continue-scene"></select></label>
-          <div class="button-row compact">
-            <button id="builder-continue-cancel" type="button">Cancel</button>
-            <button id="builder-continue-confirm" type="button">Continue...</button>
-          </div>
-        </div>
-      </dialog>
-      <dialog id="builder-image-picker-modal" class="image-picker-modal" aria-labelledby="builder-image-picker-modal-title">
-        <div class="image-picker-dialog">
-          <div class="review-header">
-            <h2 id="builder-image-picker-modal-title">Image References</h2>
-            <button id="builder-image-picker-close" type="button">Close</button>
-          </div>
-          <label>Entity<select id="builder-image-picker-entity"></select></label>
-          <label>Variant<select id="builder-image-picker-variant"></select></label>
-          <label>Reference set<select id="builder-image-picker-set"></select></label>
-          <label>Facet<select id="builder-image-picker-facet"></select></label>
-          <label>Reference choice<select id="builder-image-picker-mode"><option value="asset">This exact image</option><option value="logical">Current preferred reference</option></select></label>
-          <label>
-            Character Filter
-            <select id="builder-image-picker-character" hidden></select>
-          </label>
-          <label>
-            Search
-            <input id="builder-image-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
-          </label>
-          <label class="checkbox-field" hidden><input id="builder-image-picker-include-base" type="checkbox"></label>
-          <select id="builder-image-picker-source" hidden></select>
-          <select id="builder-image-picker-category" hidden></select>
-          <select id="builder-image-picker-status" hidden></select>
-          <button id="builder-image-picker-refresh" type="button">Refresh References</button>
-          <div id="builder-image-picker-status" class="status-text"></div>
-          <table id="builder-image-picker-table">
-            <thead>
-              <tr>
-                <th>label</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </dialog>
-      <dialog id="scene-builder-context-dialog" class="side-panel-dialog scene-builder-context-dialog" aria-labelledby="scene-builder-context-title">
-        <div class="side-panel-dialog-content">
-          <div class="review-header">
-            <h2 id="scene-builder-context-title">Imported Candidate</h2>
-            <button id="scene-builder-context-close" type="button">Close</button>
-          </div>
-          <div id="scene-builder-context-content"></div>
-        </div>
-      </dialog>
-    </section>
+
 
     <section id="manifest-page" class="page">
       <div class="page-title-row">
@@ -1547,7 +1234,6 @@
           <div class="review-header">
             <h2 id="prompt-review-title">Select a prompt</h2>
             <div class="button-row compact">
-              <button id="prompt-review-scene-builder" class="navigation-action" hidden>Scene Builder</button>
               <button id="prompt-review-render-console" class="navigation-action" hidden disabled>Retired</button>
               <button id="copy-prompt">Copy Prompt</button>
               <button id="analyze-prompt" type="button" disabled>Run analysis</button>
@@ -1672,7 +1358,6 @@
           <div class="review-header">
             <h2 id="render-console-title">Select a render task</h2>
             <div class="button-row compact">
-              <button id="render-console-scene-builder" class="navigation-action" hidden>Scene Builder</button>
               <button id="render-console-review-prompt" disabled>Open Prompt</button>
               <button id="render-console-copy-prompt" disabled>Copy Prompt</button>
             </div>
@@ -1967,9 +1652,9 @@
           </div>
           <p class="status-text">Width and height must be from 256 to 4096 in steps of 32. AI_Proxy starts ComfyUI when needed.</p>
           <div class="button-row compact">
-            <button id="image-generation-submit" class="primary-action" type="submit">Render First 4</button>
-            <button id="image-generation-fill" type="button" disabled>Fill Slots</button>
-            <button id="image-generation-clear" type="button" disabled>Clear Results</button>
+            <label>Render count<input id="image-generation-count" type="number" min="1" max="8" value="4"></label><button id="image-generation-submit" class="primary-action" type="submit">Generate</button>
+            <button id="image-generation-fill" type="button" disabled>Add renders</button>
+            <button id="image-generation-clear" type="button" disabled>Clear all</button>
             <span id="image-generation-progress" class="status-text" aria-live="polite"></span>
           </div>
           <fieldset id="image-generation-reference-slots" class="image-generation-reference-slots" hidden>
@@ -1987,7 +1672,8 @@
             <img id="image-generation-review-image" alt="Selected generated result">
             <p><strong>Prompt</strong><br><span id="image-generation-review-prompt"></span></p>
             <p><strong>Negative prompt</strong><br><span id="image-generation-review-negative"></span></p>
-            <div class="button-row"><button id="image-generation-review-select" class="primary-action" type="button">Select</button><button id="image-generation-review-retry" type="button">Retry</button><button id="image-generation-review-clear" type="button">Clear</button></div>
+            <div class="button-row"><button id="image-generation-review-select" class="primary-action" type="button">Select</button><button id="image-generation-review-retry" type="button">Regen</button><button id="image-generation-review-clear" type="button">Clear</button></div>
+            <div id="image-generation-review-add"></div>
           </dialog>
         </section>
       </div>
@@ -2088,7 +1774,6 @@
               <p class="managed-llm-description">Analyzes character references and reviews three-view drafts. Defaults to Codex GPT-6 Luna.</p>
             </article>
             <article class="managed-llm-role" data-llm-role="scene_builder">
-              <label>Scene Builder narrative interview<select id="setting-ai-scene-builder-model" form="automation-form"></select></label>
               <p class="managed-llm-description"></p>
               <div class="managed-llm-templates"></div>
             </article>
@@ -2363,55 +2048,50 @@ Add prompt language here.
         </div>
       </form>
     </dialog>
+    <dialog id="builder-image-picker-modal" class="image-picker-modal" aria-labelledby="builder-image-picker-modal-title">
+        <div class="image-picker-dialog">
+          <div class="review-header">
+            <h2 id="builder-image-picker-modal-title">Image References</h2>
+            <button id="builder-image-picker-close" type="button">Close</button>
+          </div>
+          <label>Entity<select id="builder-image-picker-entity"></select></label>
+          <label>Variant<select id="builder-image-picker-variant"></select></label>
+          <label>Reference set<select id="builder-image-picker-set"></select></label>
+          <label>Facet<select id="builder-image-picker-facet"></select></label>
+          <label>Reference choice<select id="builder-image-picker-mode"><option value="asset">This exact image</option><option value="logical">Current preferred reference</option></select></label>
+          <label>
+            Character Filter
+            <select id="builder-image-picker-character" hidden></select>
+          </label>
+          <label>
+            Search
+            <input id="builder-image-picker-search" type="text" placeholder="Filter by tag, label, character, phase...">
+          </label>
+          <label class="checkbox-field" hidden><input id="builder-image-picker-include-base" type="checkbox"></label>
+          <select id="builder-image-picker-source" hidden></select>
+          <select id="builder-image-picker-category" hidden></select>
+          <select id="builder-image-picker-status" hidden></select>
+          <button id="builder-image-picker-refresh" type="button">Refresh References</button>
+          <div id="builder-image-picker-status" class="status-text"></div>
+          <table id="builder-image-picker-table">
+            <thead>
+              <tr>
+                <th>label</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </dialog>
   </main>
 
-  <script type="importmap">
-    {"imports":{"three":"/static/vendor/three/build/three.module.js","three/addons/":"/static/vendor/three/examples/jsm/"}}
-  </script>
-  <dialog id="scene-layout-dialog" class="scene-layout-dialog" aria-labelledby="scene-layout-title">
-    <div class="scene-layout-shell">
-      <header class="scene-layout-header">
-        <div><span class="eyebrow">Scene Builder</span><h2 id="scene-layout-title">3D Layout</h2><p id="scene-layout-breadcrumb">Full Scene</p><p>Stage: arrange the actors. Camera: compose the shot. Adjust the background crop separately.</p></div>
-        <div class="button-row"><button type="button" data-layout-action="parent-workspace" hidden>Parent workspace</button><button type="button" data-layout-action="edit-contents" hidden>Edit contents</button><button type="button" data-layout-action="discard">Discard draft</button></div>
-        <button type="button" data-layout-action="close">Close</button>
-      </header>
-      <div class="scene-layout-toolbar">
-        <button type="button" data-layout-mode="stage" aria-pressed="true">Stage</button><button type="button" data-layout-mode="camera" aria-pressed="false">Camera</button>
-        <label>Adjust<select id="scene-layout-adjust"><option value="camera">Camera · drag to move</option><option value="aim">Camera · drag to aim</option><option value="background">Background · drag to frame</option></select></label>
-        <button type="button" data-layout-action="dolly-in">Dolly in</button><button type="button" data-layout-action="dolly-out">Dolly out</button>
-        <label class="checkbox-field"><input id="scene-layout-horizon" type="checkbox"> Horizon guide</label>
-        <button type="button" data-layout-view="orbit">Orbit</button><button type="button" data-layout-view="top">Top</button><button type="button" data-layout-view="front">Front</button><button type="button" data-layout-view="side">Side</button>
-        <button type="button" data-layout-action="move">Move</button><button type="button" data-layout-action="rotate">Rotate</button>
-        <button type="button" data-layout-action="undo" disabled>Undo</button><button type="button" data-layout-action="redo" disabled>Redo</button>
-        <button type="button" data-layout-action="camera-from-view">Use current view as camera</button>
-        <label class="checkbox-field"><input id="scene-layout-camera-lock" type="checkbox"> Lock render camera</label>
-        <label class="checkbox-field"><input id="scene-layout-snap" type="checkbox" checked> Snap to 1 ft</label>
-      </div>
-      <div class="scene-layout-content">
-        <div class="scene-layout-viewport"><canvas id="scene-layout-canvas" aria-label="Interactive 3D scene layout"></canvas><div id="scene-layout-camera-frame" hidden><div id="scene-layout-horizon-line" hidden></div><div id="scene-layout-ground-join-line" hidden><span>Ground join</span></div></div><div class="scene-layout-facing-legend"><span class="scene-layout-body-key">Orange arrow: body faces this way</span><span class="scene-layout-head-key">Blue arrow: head looks this way</span><span class="scene-layout-dial-help">Drag a dial around the selected pawn:</span><span class="scene-layout-body-key">Outer · Body only</span><span class="scene-layout-both-key">Middle · Body + head together</span><span class="scene-layout-head-key">Inner · Head only</span></div><div id="scene-layout-status" role="status"></div></div>
-        <aside class="scene-layout-inspector">
-          <label>Element<select id="scene-layout-element"></select></label>
-          <fieldset id="scene-layout-background-controls" hidden><legend>Background &amp; foreground</legend><label class="scene-layout-full-row">Image<select id="scene-layout-background-source"><option value="">No background</option></select></label><label class="scene-layout-full-row">Image size · 5% to 2000%<input id="scene-layout-background-zoom" type="range" min="0.05" max="20" step="0.01" value="1"></label><label>Horizontal<input id="scene-layout-background-x" type="range" min="-2" max="3" step="0.001" value="0.5"></label><label>Vertical<input id="scene-layout-background-y" type="range" min="-2" max="3" step="0.001" value="0.5"></label><button type="button" data-layout-action="background-fit" class="scene-layout-full-row">Fit whole image</button><button type="button" data-layout-action="background-reset" class="scene-layout-full-row">Reset framing</button><label class="checkbox-field scene-layout-full-row"><input id="scene-layout-ground-enabled" type="checkbox" checked> Show foreground ground</label><label class="scene-layout-full-row">Ground join · up for more foreground<input id="scene-layout-ground-join" type="range" min="0" max="1" step="0.001" value="0.5"></label><button type="button" data-layout-action="ground-align" class="scene-layout-full-row">Align ground</button><label class="scene-layout-full-row">Ground surface<input id="scene-layout-ground-surface" maxlength="1000" placeholder="Stone path, grass, wooden floor…"></label><p class="scene-layout-full-row">Shrink and move the image freely. Pale areas will be extended by generation. Actors stop at the backdrop; adjust the ground join to move it.</p></fieldset>
-          <fieldset><legend>Position (feet/inches)</legend><label>X<input id="scene-layout-x" data-layout-dimension="position" data-axis="0"></label><label>Elevation<input id="scene-layout-y" data-layout-dimension="position" data-axis="1"></label><label>Z<input id="scene-layout-z" data-layout-dimension="position" data-axis="2"></label></fieldset>
-          <fieldset id="scene-layout-size-controls"><legend>Size (feet/inches)</legend><label>Stature<input id="scene-layout-height" data-layout-dimension="stature"></label><label>Occupied height<input id="scene-layout-occupied-height" data-layout-dimension="occupied-height"></label><label>Width<input id="scene-layout-width" data-layout-dimension="dimensions" data-dimension="width"></label><label>Depth<input id="scene-layout-depth" data-layout-dimension="dimensions" data-dimension="depth"></label></fieldset>
-          <fieldset id="scene-layout-facing-controls"><legend>Facing (degrees)</legend><label>Body yaw<input id="scene-layout-body-yaw" type="number" step="5"></label><label>Head yaw<input id="scene-layout-head-yaw" type="number" step="5"></label><label>Head tilt<input id="scene-layout-head-pitch" type="number" step="5"></label><label>Look at<select id="scene-layout-look-at"><option value="">Set facing manually</option><option value="camera">Camera</option></select></label></fieldset>
-          <label>Lens · Wide ↔ Tight<input id="scene-layout-lens" type="range" min="5" max="120" step="1" value="50" dir="rtl"></label>
-          <details><summary>Advanced camera</summary><fieldset><legend>Render camera</legend><label>Position X<input data-camera-point="position" data-axis="0"></label><label>Position Y<input data-camera-point="position" data-axis="1"></label><label>Position Z<input data-camera-point="position" data-axis="2"></label><label>Target X<input data-camera-point="target" data-axis="0"></label><label>Target Y<input data-camera-point="target" data-axis="1"></label><label>Target Z<input data-camera-point="target" data-axis="2"></label><label>Vertical field of view<input id="scene-layout-fov" type="number" min="5" max="120" step="1"></label></fieldset></details>
-          <label>Grid spacing<input id="scene-layout-grid" value="1 ft"></label>
-          <label class="checkbox-field"><input id="scene-layout-migration-confirm" type="checkbox"> I reviewed the approximate imported placements</label>
-          <img id="scene-layout-preview" alt="Projected guidance image for Qwen" hidden>
-          <div id="scene-layout-warnings" role="status"></div>
-          <div class="button-row"><button type="button" data-layout-action="save" class="primary-action">Save Layout</button><button type="button" data-layout-action="preview">Refresh Camera Preview</button></div>
-        </aside>
-      </div>
-    </div>
-  </dialog>
+
   <script src="/static/task_capture.js?v=20261011-randomuuid-fallback"></script>
-  <script src="/static/zet.js?v=20261010-retire-todo"></script>
+  <script src="/static/render_slots.js?v=20261012"></script>
+  <script src="/static/zet.js?v=20261012-slot-fixes"></script>
   <script src="/static/quick_character_wizard.js?v=20261009"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261010-task-context"></script>
-  <script src="/static/local_scene_batches.js?v=20261010-task-context"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261012-slot-fixes"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
-  <script type="module" src="/static/scene_layout.js?v=20261007-free-backdrop"></script>
+
 </body>
 </html>

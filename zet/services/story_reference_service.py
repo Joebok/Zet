@@ -236,6 +236,19 @@ class StoryReferenceService:
     def resolve_scene_references(self, scene_text: str) -> list[dict]:
         references = []
         seen = set()
+        from zet.repositories.narrative_repository import NarrativeRepository
+        repository = NarrativeRepository(self.path_service.config.base_library_path)
+        for match in re.finditer(r"\{\{NARRATIVE:([a-f0-9]{32}):([a-f0-9]{32}):([a-f0-9]{32}):([a-f0-9]{32})\}\}", scene_text or ""):
+            story, scene, target, candidate_id = match.groups()
+            record = repository.read(story, scene, target)
+            candidate = record.get("candidates", {}).get(candidate_id)
+            if not candidate or not candidate.get("image"):
+                raise self.error_type("Narrative reference image is unavailable.")
+            path = (repository.folder(story, scene, target) / candidate["image"]).resolve()
+            if not path.is_relative_to(repository.folder(story, scene, target)) or not path.is_file():
+                raise self.error_type("Narrative reference image is unavailable.")
+            seen.add(match.group(0))
+            references.append({"tag": match.group(0), "path": str(path), "label": record["title"], "kind": "narrative", "role": "story_reference"})
         pattern = (
             r"\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}"
             r"|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"

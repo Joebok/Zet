@@ -9,6 +9,9 @@ Record significant choices that affect future implementation: boundaries, persis
 | [0003 — Local character production boundary](0003-local-character-production-boundary.md) | Which character workflow/renderer should receive new production behavior? | Current policy; retrospective |
 | [0004 — Approved local task testing baseline](0004-local-task-testing-baseline.md) | What validation is maintained, and when can coverage/live testing expand? | Current policy; reconstructed from recovered commits |
 
+| [0005 — Narrative dashboard and legacy scene retirement](0005-narrative-dashboard-and-legacy-scene-retirement.md) | How do dashboard authoring, historical images, Candidates and the geometry archive relate? | Accepted 2026-10-12 |
+| [0006 — Atomic image inventory edits and preferred references](0006-atomic-image-inventory-edits.md) | How are image editor updates committed and which active key is displayed? | Accepted 2026-10-12 |
+
 These records were reconstructed on 2026-10-11 from cited code/tests and notes. They are not a claim to know the historical decision date or undocumented motivation. A significant future change should add a new ADR and mark superseded records with its link instead of silently changing history.
 
 Use `NNNN-short-topic.md` with:
@@ -38,3 +41,5 @@ Authoritative paths, tests, relevant component and plan links.
 ```
 
 Link new ADRs here and from the owning component. A proposed decision or plan does not authorize unrequested implementation.
+
+| [0007 — Stable render slots](0007-stable-render-slots.md) | Who owns render positions, supplemental candidates, and Image Generation selection? | Accepted 2026-10-12 |

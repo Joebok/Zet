@@ -30,6 +30,7 @@ from zet.services.local_image_pipeline_policy import (
     serialize_local_run_state, view_candidate_id,
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
+from zet.services.render_slot_service import merge_candidates, render_count, slot_maps, frozen_input, verify_input
 from zet.services.workflow_storage import file_lock, supersede_task
 
 
@@ -149,7 +150,7 @@ class LocalHeadImageService:
         status = status_loader(character, phase) if callable(status_loader) else None
         if status is not None and not status.template_ready:
             raise LocalHeadImageError("A valid Character.md is required before local Head-Image can run: " + "; ".join(status.validation_errors))
-        front_count, other_count = int(payload.get("front_count") or 8), int(payload.get("other_count") or 4)
+        front_count, other_count = render_count(payload.get("front_count"), 8), render_count(payload.get("other_count"), 4)
         if front_count < 1 or other_count < 1 or front_count + 7 * other_count > 256:
             raise LocalHeadImageError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
         return {"character": character, "phase": phase, "views": list(VIEWS), "front_count": front_count,
@@ -246,6 +247,7 @@ class LocalHeadImageService:
                 "front_source_sha256": self._hash(Path(source_snapshot)) if source_snapshot else "",
                 "front_prompt_path": front_prompt["final_prompt"], "front_prompt_sha256": self._hash(Path(front_prompt["final_prompt"])),
                 "candidates": candidates, "front_anchor": None, "selected_views": {}, "rankings": {}, "created_by": "zet"}
+        spec["slots_by_view"] = slot_maps(spec)
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": "QUEUED", "updated_at": self._now(),
                                             "stop_requested": False, "candidates": {}, "selected_views": {}, "rankings": {}})
@@ -261,10 +263,7 @@ class LocalHeadImageService:
         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
         from zet.services.local_prompt_improvement_service import ensure_view_reviews
         spec, state = ensure_view_reviews(root, spec, state)
-        candidates = {item["candidate_id"]: dict(item) for item in spec.get("candidates", [])}
-        for candidate_id, update in (state.get("candidates") or {}).items():
-            if candidate_id in candidates:
-                candidates[candidate_id].update(update)
+        candidates = merge_candidates(spec, state)
         value = {**spec, **state, "candidates": list(candidates.values()), "root": str(root),
                  "stop_requested": bool(state.get("stop_requested"))}
         value["apply_phase_change"] = self._apply_phase_change(spec)
@@ -384,16 +383,13 @@ class LocalHeadImageService:
                     with self._active_lock:
                         if self._active_key(run_id) not in self._active:
                             status = "INTERRUPTED"
-                candidates = {item["candidate_id"]: item for item in spec.get("candidates", [])}
-                for candidate_id, update in (state.get("candidates") or {}).items():
-                    if candidate_id in candidates:
-                        candidates[candidate_id].update(update)
+                candidates = merge_candidates(spec, state)
                 result.append({
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
                     "apply_phase_change": self._apply_phase_change(spec),
                     "created_at": spec.get("created_at", ""), "status": status,
-                    "candidate_count": int(spec.get("candidate_count") or len(candidates)),
+                    "candidate_count": len(candidates),
                     "complete_count": sum(bool(item.get("image_path")) for item in candidates.values()),
                     "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
                     "selected_views": state.get("selected_views") or {},
@@ -440,17 +436,27 @@ class LocalHeadImageService:
             if not anchor_path.is_file():
                 raise LocalHeadImageError("Selected FRONT anchor image is missing.")
             references = [{"role": "head_image_source", "label": "Selected local FRONT anchor", "path": str(anchor_path)}]
-        compiled = self._compile(root, run["character"], run["phase"], candidate["view"], references,
-                                 apply_phase_change=bool(run.get("apply_phase_change", False)))
-        prompt_path = Path(compiled["final_prompt"])
         candidate_dir = root / "renders" / candidate_id
         candidate_dir.mkdir(parents=True, exist_ok=True)
+        saved_input = candidate.get("render_input")
+        if saved_input:
+            verify_input(saved_input)
+            references = saved_input["references"]
+            preset_name = saved_input["preset"]
+        else:
+            compiled = self._compile(root, run["character"], run["phase"], candidate["view"], references,
+                                     apply_phase_change=bool(run.get("apply_phase_change", False)))
+            preset_name = "comfyui-qwen-head-image-edit" if references else "comfyui-qwen-head-image-text"
+            saved_input = frozen_input(candidate_dir / "inputs", Path(compiled["final_prompt"]).read_text(encoding="utf-8"), references, preset_name)
+            references = saved_input["references"]
+        self._update(run_id, candidate_id, render_input=saved_input)
+        prompt_path = candidate_dir / "Final_Prompt.md"
+        prompt_path.write_text(saved_input["prompt"], encoding="utf-8")
         output_name = f"HeadImage_{candidate_id}_{int(candidate.get('retry_count') or 0)}.png"
         render_dir = candidate_dir / "Local_Test_Renders"
         output_path = render_dir / output_name
         prompt_copy = candidate_dir / "Qwen_Head_Image_Prompt.md"
-        prompt_copy.write_text("Positive Prompt:\n" + prompt_path.read_text(encoding="utf-8") + "\n\nNegative Prompt:\n", encoding="utf-8")
-        preset_name = "comfyui-qwen-head-image-edit" if references else "comfyui-qwen-head-image-text"
+        prompt_copy.write_text("Positive Prompt:\n" + saved_input["prompt"] + "\n\nNegative Prompt:\n", encoding="utf-8")
         profile = LocalRenderBackendService(self.project_root / "Config" / "Local_Render_Presets.json").preset(preset_name)
         ask_id = f"LocalHeadImage_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
@@ -514,10 +520,14 @@ class LocalHeadImageService:
         shutil.copy2(source, target)
 
     def _wait_render(self, run_id: str, candidate_id: str) -> bool:
-        candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
+        candidate = next((item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id), None)
+        if candidate is None:
+            return True
         target = Path(str(candidate.get("image_path") or ""))
         deadline = time.monotonic() + 1860
         while not target.is_file():
+            if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id)["candidates"]):
+                return True
             run = self.detail(run_id)
             if run.get("stop_requested"):
                 return False
@@ -780,13 +790,17 @@ class LocalHeadImageService:
                 with self._active_lock:
                     self._active.add(self._active_key(run_id))
                 run = self.detail(run_id)
+                if candidate_ids is None and run.get("target_candidate_ids"):
+                    candidate_ids = set(run["target_candidate_ids"])
+                if views is None and run.get("target_views"):
+                    views = set(run["target_views"])
                 if views is None:
                     views = {FRONT} if not run.get("front_anchor") else {view for view in VIEWS if view != FRONT}
-                self._run_update(run_id, status="RUNNING", error="")
+                self._run_update(run_id, status="RUNNING", error="", slot_work_pending=False)
                 selected_views = [view for view in VIEWS if view in views]
                 for view in selected_views:
                     view_candidates = [item for item in self.detail(run_id)["candidates"]
-                                       if item["view"] == view
+                                       if item["view"] == view and not item.get("slot_managed")
                                        and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                        and not Path(str(item.get("image_path") or "")).is_file()]
 
@@ -796,8 +810,10 @@ class LocalHeadImageService:
                         if self.detail(run_id).get("stop_requested"):
                             break
                         candidate_id = candidate["candidate_id"]
-                        current = next(item for item in self.detail(run_id)["candidates"]
-                                       if item["candidate_id"] == candidate_id)
+                        current = next((item for item in self.detail(run_id)["candidates"]
+                                       if item["candidate_id"] == candidate_id), None)
+                        if current is None:
+                            continue
                         if Path(str(current.get("image_path") or "")).is_file():
                             continue
                         try:
@@ -814,8 +830,10 @@ class LocalHeadImageService:
                         if self.detail(run_id).get("stop_requested"):
                             break
                         candidate_id = candidate["candidate_id"]
-                        current = next(item for item in self.detail(run_id)["candidates"]
-                                       if item["candidate_id"] == candidate_id)
+                        current = next((item for item in self.detail(run_id)["candidates"]
+                                       if item["candidate_id"] == candidate_id), None)
+                        if current is None:
+                            continue
                         if Path(str(current.get("image_path") or "")).is_file():
                             continue
                         if current.get("status") not in {"QUEUED", "RUNNING"}:
@@ -830,18 +848,17 @@ class LocalHeadImageService:
                         break
 
                     if not render_only:
-                        completed_view = [item for item in self.detail(run_id)["candidates"] if item["view"] == view
+                        completed_view = [item for item in self.detail(run_id)["candidates"] if item["view"] == view and not item.get("slot_managed")
                                           and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                           and Path(str(item.get("image_path") or "")).is_file()]
                         if completed_view and not self.detail(run_id).get("stop_requested"):
-                            self.stage_view_evaluation(run_id, view,
-                                candidate_ids={item["candidate_id"] for item in completed_view})
+                            self.stage_view_evaluation(run_id, view)
 
                 if render_only:
                     latest = self.detail(run_id)
                     status = "CANCELLED" if latest.get("stop_requested") else (
                         "AWAITING_FRONT_ANCHOR" if not latest.get("front_anchor") else "AWAITING_HUMAN_SELECTION")
-                    self._run_update(run_id, status=status, target_views=[])
+                    self._run_update(run_id, status=status, target_views=[], target_candidate_ids=[])
                     return
                 latest = self.detail(run_id)
                 waiting_anchor = not latest.get("front_anchor")
@@ -854,7 +871,7 @@ class LocalHeadImageService:
                 self._run_update(run_id, status=("CANCELLED" if latest.get("stop_requested") else
                                                   "AWAITING_FRONT_ANCHOR" if waiting_anchor else
                                                   "COMPLETE" if complete else "AWAITING_HUMAN_SELECTION"),
-                                 target_views=[])
+                                 target_views=[], target_candidate_ids=[])
         except TimeoutError:
             return
         except Exception as exc:
@@ -905,8 +922,12 @@ class LocalHeadImageService:
         return path.read_text(encoding="utf-8")
 
     def image_prompt(self, run_id: str, view: str) -> str:
-        """Return the image-generation prompt saved for a view."""
-        return self.review_prompt(run_id, view)
+        """Return the current view prompt; candidate prompts retain their own snapshots."""
+        run = self.detail(run_id)
+        if view not in run["views"]:
+            raise LocalHeadImageError("Unknown head view.")
+        path = Path(run["root"]) / "prompts" / view / "Final_Image_Prompt.md"
+        return path.read_text(encoding="utf-8") if path.is_file() else self.review_prompt(run_id, view)
 
     def review_specification(self, run_id: str, view: str) -> str:
         run = self.detail(run_id)
@@ -1003,7 +1024,7 @@ class LocalHeadImageService:
                 evaluation_id=evaluation_id), input_hashes=hashes)
 
     def reconcile_review_jobs(self, run_id: str) -> dict[str, Any]:
-        from zet.services.local_image_evaluation_service import local_image_evaluation_service
+        from zet.services.local_image_evaluation_service import local_image_evaluation_service, finish_gate_collection
         run = self.detail(run_id)
         for view, evaluation in (run.get("evaluations") or {}).items():
             if evaluation.get("status") not in {"RUNNING", "STAGING"}:
@@ -1013,12 +1034,15 @@ class LocalHeadImageService:
                 continue
             candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
                           and item["candidate_id"] in (evaluation.get("input_hashes") or {})]
+            def collect(candidates=candidates, view=view, evaluation_id=evaluation_id):
+                for item in candidates:
+                    self._collect_candidate_gates(run_id, item["candidate_id"], evaluation_id)
+                finish_gate_collection(self._run_root(run_id), view, evaluation_id)
             local_image_evaluation_service().reconcile_review_jobs(run_id, view, evaluation_id,
-                stage_gates=lambda: [self._stage_candidate_gates(run_id, item["candidate_id"])
+                stage_gates=lambda candidates=candidates: [self._stage_candidate_gates(run_id, item["candidate_id"])
                                      for item in candidates],
-                collect_gates=lambda: [self._collect_candidate_gates(run_id, item["candidate_id"], evaluation_id)
-                                       for item in candidates],
-                rank=lambda: self.rank_view(run_id, view, evaluation_id=evaluation_id))
+                collect_gates=collect,
+                rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, evaluation_id=evaluation_id))
         return self.detail(run_id)
 
     def rank_view(self, run_id: str, view: str, *, evaluation_id: str = "") -> dict[str, Any]:
@@ -1291,7 +1315,7 @@ class LocalHeadImageService:
                 continue
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
-                status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
+                status="PENDING", render_input=None, image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
                 failed_gate="", render_error="", human_review={"decision": "undecided"},
                 retry_count=int(candidate.get("retry_count") or 0) + (1 if candidate.get("image_path") else 0),
             )
@@ -1376,7 +1400,7 @@ class LocalHeadImageService:
         for candidate in run["candidates"]:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
-                status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
+                status="PENDING", render_input=None, image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
                 failed_gate="", render_error="", human_review={"decision": "undecided"},
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
                 seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
@@ -1400,7 +1424,7 @@ class LocalHeadImageService:
             if item["view"] in affected_views:
                 clear_candidate_artifacts(root, item["candidate_id"], item.get("image_path"))
                 state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
-                    status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
+                    status="PENDING", render_input=None, image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
                     failed_gate="", render_error="", human_review={"decision": "undecided"},
                     retry_count=int(item.get("retry_count") or 0) + 1,
                     seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))
@@ -1436,7 +1460,7 @@ class LocalHeadImageService:
         for item in candidates:
             clear_candidate_artifacts(root, item["candidate_id"], item.get("image_path"))
             state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
-                status="PENDING", image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
+                status="PENDING", render_input=None, image_path="", image_sha256="", ask_id="", gates={}, rejection_gate="",
                 failed_gate="", render_error="", human_review={"decision": "undecided"},
                 retry_count=int(item.get("retry_count") or 0) + 1,
                 seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))

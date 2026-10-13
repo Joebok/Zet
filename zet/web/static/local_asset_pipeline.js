@@ -31,7 +31,7 @@
   const restoreParams = new URLSearchParams(window.location.search);
 
   function contextKey() {
-    return `${document.querySelector("#character-select").value}\u0000${document.querySelector("#phase-select").value}`;
+    return `${document.querySelector("#universe-select").value}\u0000${document.querySelector("#character-select").value}\u0000${document.querySelector("#phase-select").value}\u0000${selectedCostume()}`;
   }
 
   function isCostume() { return state.pipeline === "costume-dressing"; }
@@ -81,7 +81,7 @@
     $("status").classList.toggle("success", !error && Boolean(message));
   }
 
-  function busy(run = state.run) { return Boolean(run && activeStatuses.has(run.status)); }
+  function busy(run = state.run) { return Boolean(run && (activeStatuses.has(run.status) || run.slot_work_pending)); }
 
   function unstartedViews(run) {
     return (run?.views || []).filter((view) => (view !== "FRONT" || hasSharedAssetRouter()) && (() => {
@@ -155,14 +155,14 @@
 
   function setBusyControls() {
     const run = state.run;
-    const isBusy = busy(run);
+    const isBusy = busy(run) || Boolean(run?.slot_render_ids?.length);
     const resumable = ["INTERRUPTED", "STOPPED"].includes(run?.status)
       || (run?.status === "CANCELLED" && run?.created_by_autogenerate);
     $("start").hidden = !run;
     $("start").disabled = isBusy || !(run?.status === "QUEUED" || resumable);
     $("start").textContent = resumable ? "Resume batch" : "Start batch";
-    $("stop").hidden = !isBusy;
-    $("stop").disabled = !isBusy;
+    $("stop").hidden = !busy(run);
+    $("stop").disabled = !busy(run);
     $("rerun").disabled = !run || isBusy;
     $("reevaluate").disabled = !run || isBusy || !(run.candidates || []).some((item) => item.image_path);
     $("prompt-improvement-package").hidden = !run;
@@ -282,7 +282,7 @@
     return url.pathname + url.search;
   }
 
-  function imageUrl(candidate) { return universeImageUrl(route("image", state.run.run_id, "", candidate.candidate_id)); }
+  function imageUrl(candidate) { const url = universeImageUrl(route("image", state.run.run_id, "", candidate.candidate_id)); return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(candidate.ask_id || candidate.image_sha256 || candidate.candidate_id)}`; }
 
   function renderErrorDetails(candidate) {
     const message = String(candidate.render_error || "").trim();
@@ -316,6 +316,7 @@
     label.className = "local-pipeline-recompile-option";
     const text = document.createElement("span");
     text.textContent = "Recompile";
+    label.title = "Generate, Regen and Regen view: compile the prompt from current templates first. Retry reuses saved inputs.";
     const input = document.createElement("input");
     input.type = "checkbox";
     input.dataset.recompile = "true";
@@ -386,7 +387,7 @@
     card.dataset.view = view;
     card.dataset.candidate = candidate.candidate_id;
     const heading = document.createElement("h3");
-    heading.textContent = candidate.candidate_id;
+    heading.textContent = `Slot ${candidate.slot || candidate.ordinal} · ${candidate.candidate_id}`;
     card.append(heading);
     if (candidate.image_path) {
       const imageButton = document.createElement("button");
@@ -407,7 +408,7 @@
       }
     } else {
       const pending = document.createElement("p");
-      pending.textContent = renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Waiting";
+      pending.textContent = candidate.slot_waiting ? `Waiting for prerequisites · ${candidate.slot_waiting}` : renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Waiting";
       card.append(pending);
     }
     const status = document.createElement("p");
@@ -422,22 +423,122 @@
     human.className = "muted";
     human.textContent = `Human ${candidate.human_review?.decision || "undecided"}`;
     card.append(human);
+    if (candidate.render_input?.prompt || candidate.prompt) {
+      const source = document.createElement("details"); source.className = "render-slot-prompt";
+      const summary = document.createElement("summary"); summary.textContent = "Prompt and source";
+      const prompt = document.createElement("pre"); prompt.textContent = candidate.render_input?.prompt || candidate.prompt;
+      const references = document.createElement("p"); references.className = "muted";
+      references.textContent = (candidate.render_input?.references || candidate.reference_images || []).map((ref, index) => `Image ${index + 1}: ${ref.label || ref.role || "Reference"}`).join(" · ");
+      source.append(summary, prompt, references); card.append(source);
+    }
     const controls = document.createElement("div");
     controls.className = "button-row compact local-pipeline-candidate-controls";
-    if (state.pipeline === "body-reference") {
-      if (candidate.image_path) addButton(controls, "Review", "review", { view, candidate: candidate.candidate_id });
-    } else {
-      if (candidate.image_path) addButton(controls, "Review", "review", { view, candidate: candidate.candidate_id });
-      const canSelect = candidate.render_status === "COMPLETE" && selectedViews[view] !== candidate.candidate_id;
-      if (canSelect) addButton(controls, "Select", "select", { primary: true, view, candidate: candidate.candidate_id });
-      if (["FAILED", "GATE_REJECTED"].includes(candidate.status)) addButton(controls, "Retry", "retry", { disabled: busy(run), view, candidate: candidate.candidate_id });
+    if (candidate.image_path) {
+      addButton(controls, "Review", "review", { view, candidate: candidate.candidate_id });
+      addButton(controls, selected ? "Unselect" : "Select", selected ? "unselect" : "select", { primary: !selected, view, candidate: candidate.candidate_id });
+    } else if (selected) addButton(controls, "Unselect", "unselect", {view, candidate: candidate.candidate_id});
+    const slot = candidate.slot;
+    const disabled = Boolean(candidate.slot_reason);
+    if (slot) {
+      if (slot <= 8 && (candidate.image_path || ["QUEUED", "RUNNING"].includes(candidate.render_status))) addSlotButton(controls, "Regen", "regenerate", view, slot, disabled, candidate.slot_reason);
+      else if (slot <= 8 && candidate.render_status === "FAILED") addSlotButton(controls, "Retry", "retry", view, slot, disabled, candidate.slot_reason);
+      addSlotButton(controls, "Clear", "clear", view, slot, disabled, candidate.slot_reason);
     }
+    if (candidate.failed_gate || candidate.review_error) addButton(controls, "Retry review", "retry", { disabled: busy(run), view, candidate: candidate.candidate_id });
     if (controls.childElementCount) card.append(controls);
     return card;
   }
 
-  function renderViews(run) {
+  function addSlotButton(host, label, operation, view, slot, disabled, reason = "") {
+    const button = document.createElement("button"); button.type = "button"; button.textContent = label;
+    button.disabled = disabled; button.title = reason || "";
+    button.addEventListener("click", () => void slotAction(operation, view, slot).catch(error => setStatus(error.message, true)));
+    host.append(button);
+  }
+
+  async function slotAction(operation, view, slot, count = 1) {
+    const generation = state.generation, runId = state.run.run_id, key = contextKey();
+    const suffix = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
+    const path = `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/slots${slot ? `/${slot}/${operation}` : ""}${suffix}`;
+    const recompile = Boolean($("views").querySelector(`details[data-view="${view}"] input[data-recompile]`)?.checked);
+    await request(path, {method: "POST", body: JSON.stringify({... (slot ? {expected_candidate_id: state.run.slots_by_view?.[view]?.[slot - 1] || null} : {count}), recompile})});
+    if (generation !== state.generation || state.run?.run_id !== runId || contextKey() !== key) return;
+    await loadRun(runId, generation);
+    setStatus(operation === "clear" ? "Slot cleared." : "Renders queued.");
+  }
+
+  function mergeLiveRun(latest) {
+    const currentId = state.reviewCandidates[state.reviewIndex]?.candidate_id;
+    const decision = $("review-panel").querySelector("input[name='local-human-decision']:checked")?.value;
+    const oldRun = state.run;
+    state.run = latest;
+    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_view, run?.slot_controls, run?.rankings, run?.evaluations, run?.selected_views, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256]);
+    const changed = signature(oldRun) !== signature(latest);
+    const replacement = document.createElement("div");
+    if (changed) renderViews(latest, replacement);
     const host = $("views");
+    for (const next of [...replacement.children]) {
+      const previous = [...host.children].find(item => item.dataset.view === next.dataset.view);
+      if (!previous) { host.append(next); continue; }
+      const gallery = previous.querySelector(".local-pipeline-gallery"), newGallery = next.querySelector(".local-pipeline-gallery");
+      if (gallery && newGallery) {
+        const newCards = [...newGallery.children];
+        for (let index = 0; index < newCards.length; index++) {
+          const card = gallery.children[index], newCard = newCards[index];
+          if (!card) gallery.append(newCard);
+          else {
+            [...card.querySelectorAll("details")].forEach((section, sectionIndex) => { const nextSection = newCard.querySelectorAll("details")[sectionIndex]; if (nextSection) nextSection.open = section.open; });
+            if (card.outerHTML === newCard.outerHTML) continue;
+            const focus = document.activeElement;
+            const focusIndex = card.contains(focus) ? [...card.querySelectorAll("button,a")].indexOf(focus) : -1;
+            card.replaceWith(newCard);
+            if (focusIndex >= 0) newCard.querySelectorAll("button,a")[focusIndex]?.focus();
+          }
+        }
+        while (gallery.children.length > newCards.length) gallery.lastElementChild.remove();
+      }
+      const view = next.dataset.view;
+      const sourceSignature = run => JSON.stringify([run?.sources?.[view], run?.front_source_sha256, (run?.candidates || []).filter(item => item.view === view).map(item => item.reference_images)]);
+      if (sourceSignature(oldRun) !== sourceSignature(latest)) {
+        previous.querySelectorAll(".local-pipeline-sources").forEach(section => section.remove());
+        next.querySelectorAll(".local-pipeline-sources").forEach(section => previous.insertBefore(section, previous.querySelector(".local-pipeline-observations")));
+      }
+      const observations = previous.querySelector("textarea[data-view-observations]");
+      if (observations && observations.value === (oldRun?.view_reviews?.[view]?.observations || "")) observations.value = latest.view_reviews?.[view]?.observations || "";
+      const recompile = previous.querySelector("input[data-recompile]");
+      const nextRecompile = next.querySelector("input[data-recompile]");
+      if (recompile && nextRecompile) nextRecompile.checked = recompile.checked;
+      for (const selector of ["summary", ".render-slot-add", ".local-pipeline-review-progress", ".local-pipeline-ai-observations"]) {
+        const oldSection = previous.querySelector(selector), newSection = next.querySelector(selector);
+        if (selector === ".render-slot-add" && oldSection && newSection) newSection.querySelector("input").value = oldSection.querySelector("input").value;
+        if (oldSection && newSection && oldSection.outerHTML !== newSection.outerHTML && !oldSection.contains(document.activeElement)) oldSection.replaceWith(newSection);
+        else if (!oldSection && newSection) previous.append(newSection);
+      }
+    }
+    if (JSON.stringify(oldRun?.selected_views) !== JSON.stringify(latest.selected_views) || JSON.stringify(oldRun?.local_assets) !== JSON.stringify(latest.local_assets)) renderSelectedViews(latest);
+    setBusyControls(); updateRefreshButton();
+    $("summary").textContent = `${latest.character} · ${latest.phase}${latest.costume ? ` · ${latest.costume}` : ""} · ${latest.render_progress?.COMPLETE || 0}/${latest.candidate_count} images · ${statusLabels[latest.status] || latest.status}`;
+    if ($("review-dialog").open && changed) {
+      const oldAddCount = $("review-panel").querySelector(".render-slot-add input")?.value;
+      state.reviewCandidates = orderedReviewCandidates();
+      const index = state.reviewCandidates.findIndex(item => item.candidate_id === currentId);
+      state.reviewIndex = index >= 0 ? index : Math.min(state.reviewIndex, state.reviewCandidates.length - 1);
+      if (state.reviewIndex >= 0) {
+        const focus = document.activeElement;
+        const focusName = focus?.name, focusText = focus?.textContent;
+        const hadFocus = $("review-panel").contains(focus);
+        renderReview();
+        const newAddCount = $("review-panel").querySelector(".render-slot-add input");
+        if (newAddCount && oldAddCount) newAddCount.value = oldAddCount;
+        if (index >= 0 && decision) { const radio = $("review-panel").querySelector(`input[value="${decision}"]`); if (radio) radio.checked = true; }
+        if (hadFocus && focus?.closest(".render-slot-add")) newAddCount?.focus();
+        else if (hadFocus && focusName) $("review-panel").querySelector(`input[name="${focusName}"]:checked`)?.focus();
+        else if (hadFocus && focusText) [...$("review-panel").querySelectorAll("button")].find(button => button.textContent === focusText)?.focus();
+      } else $("review-dialog").close();
+    }
+  }
+
+  function renderViews(run, host = $("views")) {
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
     const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
     host.replaceChildren();
@@ -459,10 +560,10 @@
       viewActions.className = "button-row compact";
       const viewReady = view === "FRONT" || run.use_front_anchor === false || Boolean(run.front_anchor);
       addRecompileOption(viewActions);
-      addButton(viewActions, "Re-run view", "rerun-view", { disabled: busy(run) || !viewReady || !candidates.length, view });
-      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || !viewReady || !candidates.some((item) => ["FAILED", "GATE_REJECTED"].includes(item.status)), view });
-      addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || !viewReady || !candidates.some((item) => item.image_path), view });
-      addButton(viewActions, ranking.status === "COMPLETE" ? "Re-rank" : "Rank images", "rank", { disabled: busy(run) || !viewReady || !candidates.some((item) => item.image_path), view });
+      addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
+      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => ["FAILED", "GATE_REJECTED"].includes(item.status)), view });
+      addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
+      addButton(viewActions, ranking.status === "COMPLETE" ? "Re-rank" : "Rank images", "rank", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
       const ai = run.view_reviews?.[view]?.ai_observations || {};
       addButton(viewActions, "Re-analyze", "reanalyze", { disabled: ["QUEUED", "RUNNING"].includes(ai.status) || !candidates.some((item) => item.image_path), view });
       summary.append(viewActions);
@@ -533,7 +634,9 @@
       addLink(links, "Review specification", route("prompt", run.run_id, view));
       links.append(document.createTextNode(" · "));
       addLink(links, "Image prompt", route("image-prompt", run.run_id, view));
-      details.append(links);
+      const promptHelp = document.createElement("p"); promptHelp.className = "muted local-pipeline-prompt-help";
+      promptHelp.textContent = "Generate / Regen use the current view prompt. Recompile builds it from current templates first. Retry uses the failed render’s saved prompt.";
+      details.append(links, promptHelp);
       const observationDetails = document.createElement("details");
       observationDetails.className = "local-pipeline-observations";
       observationDetails.dataset.view = view;
@@ -568,12 +671,22 @@
       }
       const gallery = document.createElement("div");
       gallery.className = "local-pipeline-gallery";
-      candidates.sort((left, right) => {
-        const order = ranking.ordered_candidate_ids || [];
-        return (order.indexOf(left.candidate_id) < 0 ? Infinity : order.indexOf(left.candidate_id))
-          - (order.indexOf(right.candidate_id) < 0 ? Infinity : order.indexOf(right.candidate_id));
+      const slots = run.slots_by_view?.[view] || [...candidates.map(item => item.candidate_id), ...Array(Math.max(0, 8 - candidates.length)).fill(null)];
+      slots.forEach((id, index) => {
+        const candidate = candidates.find(item => item.candidate_id === id);
+        if (candidate) gallery.append(renderCandidate(view, {...candidate, slot: index + 1}, ranking, run));
+        else {
+          const card = document.createElement("article"); card.className = "local-pipeline-candidate render-slot-empty";
+          const title = document.createElement("h3"); title.textContent = `Slot ${index + 1}`;
+          const empty = document.createElement("p"); empty.textContent = "Empty";
+          card.append(title, empty);
+          const control = run.slot_controls?.[view] || {};
+          addSlotButton(card, "Generate", "generate", view, index + 1, !control.can_generate, control.reason);
+          gallery.append(card);
+        }
       });
-      for (const candidate of candidates) gallery.append(renderCandidate(view, candidate, ranking, run));
+      const control = run.slot_controls?.[view] || {};
+      details.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason}));
       details.append(gallery);
       details.append(observationDetails);
       host.append(details);
@@ -585,7 +698,7 @@
     const button = $("refresh");
     const hasRun = Boolean(state.run?.run_id);
     const hasNewImages = Boolean(state.polledRun);
-    button.disabled = hasRun && !hasNewImages;
+    button.disabled = false;
     button.textContent = hasNewImages ? "Refresh · Updates available" : "Refresh";
   }
 
@@ -651,10 +764,11 @@
     try {
       const loaded = await request(route("detail", runId));
       if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
-      state.run = loaded;
+      const sameRun = state.run?.run_id === loaded.run_id;
+      if (sameRun) mergeLiveRun(loaded); else state.run = loaded;
       state.runState = "selected";
       state.polledRun = null;
-      render();
+      if (!sameRun) render();
     } catch (error) {
       if (requestId !== state.runRequest || generation !== state.generation) return;
       state.runState = "unavailable";
@@ -668,16 +782,10 @@
     try {
       const latest = await request(route("detail", runId));
       if (generation !== state.generation || state.run?.run_id !== runId) return;
-      const knownImages = new Map((state.run.candidates || []).filter((item) => item.image_path).map((item) => [item.candidate_id, item.image_path]));
-      const hasNewImage = (latest.candidates || []).some((item) => item.image_path && knownImages.get(item.candidate_id) !== item.image_path);
-      const adviceChanged = JSON.stringify(latest.view_reviews || {}) !== JSON.stringify(state.run.view_reviews || {})
-        || JSON.stringify(latest.rankings || {}) !== JSON.stringify(state.run.rankings || {});
-      if (hasNewImage || adviceChanged) {
-        state.polledRun = latest;
-        updateRefreshButton();
-      }
-    } catch (_) {
-      // Poll failures are transient; the next interval will retry.
+      if (contextKey() !== state.contextKey || !document.querySelector("#local-pipeline-page").classList.contains("active")) return;
+      mergeLiveRun(latest);
+    } catch (error) {
+      setStatus(`Unable to check renders: ${error.message}. Retrying automatically.`, true);
     } finally {
       state.pollInFlight = false;
     }
@@ -735,6 +843,7 @@
     state.runsState = "loading";
     state.runState = "loading";
     state.contextKey = contextKey();
+    const generation = state.generation;
     state.run = null;
     state.polledRun = null;
     state.renderedSelections = {};
@@ -746,7 +855,9 @@
     $("source-remove").hidden = true;
     try {
       await loadCostumes();
-      await Promise.all([refreshRuns("", state.generation), readiness()]);
+      if (generation !== state.generation) return;
+      state.contextKey = contextKey();
+      await Promise.all([refreshRuns("", generation), readiness()]);
     } catch (error) { setStatus(error.message, true); }
   }
 
@@ -772,6 +883,13 @@
     else if (routeCostume && restoreParams.get("task_context") === "1") {
       window.ZetTaskCapture.notice(`Recorded costume "${routeCostume}" is unavailable. Showing an available costume, if any.`);
     }
+  }
+
+  function startPolling() {
+    clearInterval(state.poll);
+    state.poll = setInterval(() => {
+      if (state.pipeline && document.querySelector("#local-pipeline-page").classList.contains("active") && state.run?.run_id) void pollForImages(state.run.run_id, state.generation);
+    }, 2000);
   }
 
   function configurePipeline(pipeline) {
@@ -801,12 +919,7 @@
     $("views").replaceChildren();
     $("selected").replaceChildren();
     setStatus("");
-    if (state.poll) clearInterval(state.poll);
-    state.poll = setInterval(() => {
-      if (state.pipeline === pipeline && document.querySelector("#local-pipeline-page").classList.contains("active") && state.run?.run_id && !$("review-dialog").open) {
-        void pollForImages(state.run.run_id, state.generation);
-      }
-    }, 5000);
+    startPolling();
     const generation = state.generation;
     void refreshContext().then(() => loadGateSettings(state.generation)).catch((error) => setStatus(error.message, true));
   }
@@ -860,9 +973,7 @@
       setStatus("Selection updated.");
     }
     if (action === "rerun" || action === "rerun-view" || action === "rerun-failed" || action === "reevaluate" || action === "reevaluate-view" || action === "proceed") {
-      state.run = result;
-      state.polledRun = null;
-      render();
+      await loadRun(state.run?.run_id);
     } else await loadRun(state.run?.run_id);
   }
 
@@ -872,8 +983,7 @@
     return candidates.sort((left, right) => {
       const viewOrder = views.indexOf(left.view) - views.indexOf(right.view);
       if (viewOrder) return viewOrder;
-      const order = state.run?.rankings?.[left.view]?.ordered_candidate_ids || [];
-      return order.indexOf(left.candidate_id) - order.indexOf(right.candidate_id);
+      return (left.slot || left.ordinal) - (right.slot || right.ordinal);
     });
   }
 
@@ -955,7 +1065,7 @@
     title.textContent = candidate.candidate_id;
     const view = document.createElement("p");
     view.className = "local-pipeline-review-position";
-    view.textContent = `${candidate.view} · ${state.reviewIndex + 1} of ${state.reviewCandidates.length} · ${statusLabels[candidate.status] || candidate.status}`;
+    view.textContent = `${candidate.view} · Slot ${candidate.slot || candidate.ordinal} · ${state.reviewIndex + 1} of ${state.reviewCandidates.length} · ${statusLabels[candidate.status] || candidate.status}`;
     const info = document.createElement("p");
     info.className = "local-pipeline-review-meta muted";
     const metadata = [candidate.method && `Method: ${candidate.method}`, candidate.seed && `Seed: ${candidate.seed}`].filter(Boolean);
@@ -1038,6 +1148,18 @@
     const actions = document.createElement("div");
     actions.className = "button-row compact local-pipeline-review-actions";
     actions.append(save);
+    const slot = candidate.slot || candidate.ordinal;
+    if (slot <= 8) {
+      if (selectedViews[candidate.view] === candidate.candidate_id) {
+        const unselect = document.createElement("button"); unselect.textContent = "Unselect";
+        unselect.addEventListener("click", () => void perform("unselect", candidate.view, candidate.candidate_id, {candidate_id: ""}).catch(error => setStatus(error.message, true)));
+        actions.append(unselect);
+      }
+      addSlotButton(actions, "Regen", "regenerate", candidate.view, slot, Boolean(candidate.slot_reason), candidate.slot_reason);
+      addSlotButton(actions, "Clear", "clear", candidate.view, slot, Boolean(candidate.slot_reason), candidate.slot_reason);
+    }
+    const control = run.slot_controls?.[candidate.view] || {};
+    actions.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", candidate.view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.reason}));
     if (!select.disabled) actions.append(select);
     if (adjustedPosition >= 0) {
       const up = document.createElement("button");
@@ -1118,8 +1240,7 @@
     if (action === "save-observations") {
       const observations = $("views").querySelector(`textarea[data-view-observations="${view}"]`)?.value || "";
       const result = await request(route("observations", state.run.run_id, view), { method: "PUT", body: JSON.stringify({ observations }) });
-      state.run = result;
-      render();
+      await loadRun(state.run.run_id);
       setStatus("Observations saved.");
       return;
     }
@@ -1255,12 +1376,14 @@
     if (!pipeline) return;
     if (pipeline === state.pipeline) {
       if (contextKey() !== state.contextKey) await refreshContext();
+      if (!state.poll) startPolling();
       return;
     }
     configurePipeline(pipeline);
   }
 
   function deactivate() {
+    clearInterval(state.poll); state.poll = null; state.runRequest += 1;
     state.generation += 1;
     state.previewGeneration += 1;
   }

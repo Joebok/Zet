@@ -11,6 +11,7 @@ from zet.services.local_image_workflow_service import LocalImagePipelineWorkflow
 from zet.services.local_character_overview_service import submit_local_pipeline_task
 from zet.services.local_batch_status_service import LocalBatchStatusService
 from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
+from zet.services.render_slot_service import RenderSlotConflict
 
 
 def create_local_character_asset_pipeline_router(
@@ -27,6 +28,8 @@ def create_local_character_asset_pipeline_router(
             return function()
         except HTTPException:
             raise
+        except RenderSlotConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=missing, detail=str(exc)) from exc
 
@@ -101,6 +104,25 @@ def create_local_character_asset_pipeline_router(
             instance = service(_pipeline)
             submit_local_pipeline_task(instance.execute, run_id, costume=costume if _pipeline == "costume-dressing" else "")
             return {"started": True, "run_id": run_id}
+
+        @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/slots")
+        def generate_slots(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            instance = service(_pipeline)
+            qualifier = costume if _pipeline == "costume-dressing" else ""
+            result = call(lambda: instance.action("generate_slots", run_id=run_id, view=view, payload=payload, costume=qualifier))
+            instance.slots.start(run_id, qualifier)
+            return result
+
+        @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/slots/{{slot}}/{{operation}}")
+        def slot_action(run_id: str, view: str, slot: int, operation: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+            names = {"generate": "generate_slots", "clear": "clear_slot", "regenerate": "regenerate_slot", "retry": "retry_render_slot"}
+            if operation not in names:
+                raise HTTPException(status_code=404, detail="Unknown slot action.")
+            instance = service(_pipeline)
+            qualifier = costume if _pipeline == "costume-dressing" else ""
+            result = call(lambda: instance.action(names[operation], run_id=run_id, view=view, payload={**payload, "slot": slot}, costume=qualifier))
+            instance.slots.start(run_id, qualifier)
+            return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/rerun")
         def rerun(run_id: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):

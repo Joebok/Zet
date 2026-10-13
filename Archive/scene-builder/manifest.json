@@ -1,0 +1,197 @@
+{
+  "source_revision": "b5dffefbe77e349999539b05933d082ac805d9fe",
+  "files": [
+    {
+      "path": "app-facade.py",
+      "sha256": "05b47dfa569f0bfe142ed24a76cc4f4308dd1665220a775e97e9c1f48f016df0"
+    },
+    {
+      "path": "dashboard-panels.html",
+      "sha256": "b22585ddbbbbea4eb2a03f612213e13765486a2686ff7ceb2089406ac133c64e"
+    },
+    {
+      "path": "dashboard-retired.js",
+      "sha256": "47fcf8dcb10049033e3b580a1070940f8a89b340de6edb653c203136ec77609d"
+    },
+    {
+      "path": "layout-styles.css",
+      "sha256": "d8882d1bf76140f76c70dc7c31809d9d51463f2cc2d0d57a6dca6b4a82b3a716"
+    },
+    {
+      "path": "layout-ui.html",
+      "sha256": "1ba90164ee35a4a0398cd3afcf31e2d2d1b044521db681147afefa8b95293c67"
+    },
+    {
+      "path": "README.md",
+      "sha256": "1146a73448abb8d77debd07910c25cdacee682e99a01d2b1a4eac5b3b8f613b0"
+    },
+    {
+      "path": "Scripts/Benchmark_WP01.py",
+      "sha256": "e2931ae3e8ab3a466b194201a365848d43a8e5045fca0f6d9d5a1149d1898394"
+    },
+    {
+      "path": "Scripts/Benchmark_WP12.py",
+      "sha256": "c9167777056ce83e2ec8bb5fade0c59b709ff5baf950559676aa640ba6ebb70c"
+    },
+    {
+      "path": "Scripts/copy-three-runtime.mjs",
+      "sha256": "ba07d87bb5b199c125f03e704f586a97733086409dcd3c92650b4e9677a1181d"
+    },
+    {
+      "path": "THREE-LICENSE.txt",
+      "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
+    },
+    {
+      "path": "three-package.json",
+      "sha256": "e5726e579f53a9f12a038e6daf62b8023cce697144aaa85af29df827bc7e21c7"
+    },
+    {
+      "path": "web-routes.py",
+      "sha256": "5a9761b1094fb5ae0087ba85255f4837fd552d8541f71a51508636779fc75939"
+    },
+    {
+      "path": "zet/models/scene_layout.py",
+      "sha256": "ed2a25a65c50f4350eba35910d7e00b842b458d6f8e9b8dd02b1223c595a1135"
+    },
+    {
+      "path": "zet/scripts/export_wp14_corpus.py",
+      "sha256": "374197731dd6a21d40924bd45f5adca3d405c967eb18b689d96b48d4ce38ddf9"
+    },
+    {
+      "path": "zet/scripts/scene_assembly_comparison.py",
+      "sha256": "be357316e51113c70a53ea99025036932e07f60dcaa149c5c24fde9c0d1c24b9"
+    },
+    {
+      "path": "zet/scripts/scene_assembly_review_server.py",
+      "sha256": "0e0162bf14f7731a2f52e3fa1a37a3ac2fd609ea474130d6589039b8353d81f8"
+    },
+    {
+      "path": "zet/scripts/scene_layer_integration_followup.py",
+      "sha256": "67683881c08ecfbc62f232cc954503e597eb4d128f1f9df70818e90b0ebb081c"
+    },
+    {
+      "path": "zet/scripts/scene_layer_integration_review_server.py",
+      "sha256": "c6f48b71d471d5cd102346a417ebf17e21c01cb4e579cc7a596de9df97d21f5b"
+    },
+    {
+      "path": "zet/services/checkpoint_lab_service.py",
+      "sha256": "b8af0035cc22e90c458195e73ca6baded23e60f80d1ab4761566da91e586514a"
+    },
+    {
+      "path": "zet/services/comfyui_prompt_compiler.py",
+      "sha256": "bf6d06050c3624823590a1b931a30ab22a38a1589da906aebf8156e14aefbc10"
+    },
+    {
+      "path": "zet/services/comfyui_workflow_registry.py",
+      "sha256": "1bfae3c26420702eff36482d4a6864e1da24b80f0e7571677cb18bcb0b9ad8a2"
+    },
+    {
+      "path": "zet/services/local_scene_batch_service.py",
+      "sha256": "f4d109942967166af470bd0d00123236dea99dd3a53c6f4ca767ecd317c5eac7"
+    },
+    {
+      "path": "zet/services/qwen_scene_prompt.py",
+      "sha256": "28d10adf0b0670d7424d6b367b5797309260d10f0bd887621b3a717842d3b524"
+    },
+    {
+      "path": "zet/services/scene_assembly_experiment_service.py",
+      "sha256": "a2a2f73df0a3fc94785300396f96931cdc22f43036872ccbb90d404ae9e3e272"
+    },
+    {
+      "path": "zet/services/scene_background_service.py",
+      "sha256": "befb16f7108feeacdb0c2d4acbfd888a545b3f017e41bb93f6b0a309a0b681fa"
+    },
+    {
+      "path": "zet/services/scene_builder_interview_service.py",
+      "sha256": "2bb02f921548e261282d3a96cceba6c2dacc5c9d0e9d84ea862a181485b30ce6"
+    },
+    {
+      "path": "zet/services/scene_candidate_import_service.py",
+      "sha256": "f50635e8d5e9c2397da2e6cd8bee754f4a513bdde46775880bef3c193dce8c3a"
+    },
+    {
+      "path": "zet/services/scene_document_service.py",
+      "sha256": "6f0e947067403256722a1473d11e86d68b7452ba8a4927f50ef4a7e0e728c9b8"
+    },
+    {
+      "path": "zet/services/scene_image_review_service.py",
+      "sha256": "5d7902517bbb043eb5bcee77429cc616a0eb74c90ac27eba4067dd33f5adc1d1"
+    },
+    {
+      "path": "zet/services/scene_layer_integration_followup.py",
+      "sha256": "c1a9f7170d339830d4a67395415c0b8795de5c99020310df1bceb7bcd1eca637"
+    },
+    {
+      "path": "zet/services/scene_layout_planner.py",
+      "sha256": "34ef8ab3dff8db2b39c43915a5a16c4728a20311eec499edc7757512769201a2"
+    },
+    {
+      "path": "zet/services/scene_layout_service.py",
+      "sha256": "5db6e5785e3171b3c613d71dc429ef28d053d05659997f59af9f600dc58cc276"
+    },
+    {
+      "path": "zet/services/scene_prompt_analysis_service.py",
+      "sha256": "6b194d75b9d1cfaf3d5de24fbe33f423afcaef36b737f68d446c6c6e0245491b"
+    },
+    {
+      "path": "zet/services/scene_prompt_cleanup.py",
+      "sha256": "7c6fcbc2e55e7392ba9f8abfb2ff69a2cf13a162d25762992af30f22c1d8674f"
+    },
+    {
+      "path": "zet/services/scene_prompt_sections.py",
+      "sha256": "90d5a4a934ec661c1f141a4a8fe566eaf49e339b7d5cf7d2d13aac9cd991d2f3"
+    },
+    {
+      "path": "zet/services/scene_render_compiler.py",
+      "sha256": "7d34cb6f19cfaa2a8e31f2bbfbefcb8d49ebe62f89c98fea31686fa157a5ab05"
+    },
+    {
+      "path": "zet/services/scene_render_target_service.py",
+      "sha256": "bcd7be8f03b167880b487ac48e623f3a703d216a7fe54fc2d511251a9541c0ab"
+    },
+    {
+      "path": "zet/services/scene_spatial_contract.py",
+      "sha256": "8ebddb338d4b70ec67c0e7fa2d7403763a5363392878ffe30c28ad9096f22b47"
+    },
+    {
+      "path": "zet/services/story_render_service.py",
+      "sha256": "ed9d981064e3f5f2373a36556ec8684792ecb3cdacabf457d3ae028550ff50f9"
+    },
+    {
+      "path": "zet/services/story_service.py",
+      "sha256": "c3d8da44062e46620aee0e3fdb086e7b9b4b368cdd8ffd4ae51fcf1aec774458"
+    },
+    {
+      "path": "zet/web/local_scene_batch_router.py",
+      "sha256": "6e2b948247a0863d45a21aa07e3bc8a517c81edb82ae4ea05bbb13f285df6dd7"
+    },
+    {
+      "path": "zet/web/static/local_scene_batches.js",
+      "sha256": "d68cc7cecd7d9496095cfdf760892d58851c4f73aa55fb7af4743f5a71e2daeb"
+    },
+    {
+      "path": "zet/web/static/scene_layout.js",
+      "sha256": "b4ea626c8404a6ef0f210ec409a14fe4b0a9fc07ad0dee3fae63fc1538c29fee"
+    },
+    {
+      "path": "zet/web/static/scene_layout_framing.js",
+      "sha256": "95095d21f0d0e8a981495042c974fa3a81bb62ddf3e5a8e4ecead410249b1d37"
+    },
+    {
+      "path": "zet/web/static/vendor/three/build/three.core.js",
+      "sha256": "8bf68efebbef2b6f162a5bc5746ec88a60523254c4ae0b042277ed0ce0b30a07"
+    },
+    {
+      "path": "zet/web/static/vendor/three/build/three.module.js",
+      "sha256": "211760950dc7bddeb46b09ca7fa4d3620ddde43168a4fba8560489f86a92548f"
+    },
+    {
+      "path": "zet/web/static/vendor/three/examples/jsm/controls/OrbitControls.js",
+      "sha256": "97c6ad5c5b19d958be1652c7b3f920062ad1be836850008327ae463b16d91ef5"
+    },
+    {
+      "path": "zet/web/static/vendor/three/examples/jsm/controls/TransformControls.js",
+      "sha256": "c68dc61dedb33f52317279cfc74a2737e95d68b91bfb19b5d2a778b022e0a1dd"
+    }
+  ]
+}

@@ -53,10 +53,6 @@ from zet.services.scene_appearance_service import (
     SceneAppearanceUpdateResult,
 )
 from zet.services.story_service import ImageReferenceRow, SceneBuilderDocument, SceneDocument, SceneRecord, StoryDocument, StoryGitResult, StoryRecord, StoryRenderTask, StoryService
-from zet.services.scene_prompt_analysis_service import ScenePromptAnalysisService
-from zet.services.scene_builder_interview_service import SceneBuilderInterviewService
-from zet.services.scene_candidate_import_service import SceneCandidateImportService
-from zet.services.scene_image_review_service import SceneImageReviewService
 from zet.services.state_machine import StateMachine
 from zet.services.turnaround_service import TurnaroundRow, TurnaroundService
 from zet.services.template_manual_service import TemplateManualService
@@ -213,9 +209,6 @@ class ZetApp:
         self.entity_library_service = None
         self.library_deletion_service = None
         self.template_manual_service = TemplateManualService(Path(__file__).resolve().parents[1])
-        self.scene_image_review_service = SceneImageReviewService(story_service)
-        from zet.services.local_scene_batch_service import LocalSceneBatchService
-        self.local_scene_batch_service = LocalSceneBatchService(self, Path(__file__).resolve().parents[1])
         from zet.services.narrative_scene_service import NarrativeSceneService
         from zet.services.narrative_generation_service import NarrativeGenerationService
         self.narrative_scene_service = NarrativeSceneService(self)
@@ -234,7 +227,6 @@ class ZetApp:
             story_service,
             path_service,
         )
-        self.asset_service.ai_answer_harvester.scene_image_review_service = self.scene_image_review_service
         self.character_source_service = CharacterSourceService(
             path_service,
             costume_service,
@@ -242,15 +234,11 @@ class ZetApp:
             Path(__file__).resolve().parents[1],
         )
         self.zine_service = ZineService(path_service, story_service)
-        self.scene_prompt_analysis_service = ScenePromptAnalysisService(config, story_service)
-        self.production_work_summary_service = ProductionWorkSummaryService(
-            config,
-            asset_repository,
-            self.scene_image_review_service,
-            self.scene_prompt_analysis_service,
-        )
-        self.scene_builder_interview_service = SceneBuilderInterviewService(config.ai_scene_builder_model)
-        self.scene_candidate_import_service = SceneCandidateImportService(config, story_service)
+        self.production_work_summary_service = ProductionWorkSummaryService(config, asset_repository, story_service)
+        from zet.services.narrative_candidate_import_service import NarrativeCandidateImportService
+        self.narrative_candidate_import_service = NarrativeCandidateImportService(self)
+        self.workspace_summary_service.narrative = self.narrative_scene_service
+        self.zine_service.narrative = self.narrative_scene_service
         self.process_service = ProcessService(Path(__file__).resolve().parents[1])
         self.pipeline_control_service = PipelineControlService(
             self.config_path,
@@ -407,8 +395,8 @@ class ZetApp:
         app.universe_service = universe_service
         app.universe_id = selected_id
         app.ai_proxy_service.manual_render_publication_service = app.manual_render_publication_service
-        app.story_service.story_render_service.publication_service = app.manual_render_publication_service
         app.image_catalog_service = image_catalog_service
+        image_catalog_service.narrative = app.narrative_scene_service
         entity_library_service = EntityLibraryService(path_service, entity_library_repository)
         entity_library_service.pipeline_provider = lambda: image_catalog_service.list_items(include_base=True)
         app.entity_library_service = entity_library_service
@@ -490,23 +478,12 @@ class ZetApp:
                 self.library_index_service._record_error(
                     "project/.indexed-dashboard/entity-library", "indexed_dashboard", "provider", str(exc)
                 )
-        for source in self.scene_candidate_import_service.list_sources():
-            if not source.exists:
+        for source in self.narrative_candidate_import_service.list_sources():
+            if not source["exists"]:
                 continue
-            try:
-                candidates = self.scene_candidate_import_service.list_candidates(source.key)
-            except Exception as exc:
-                self.library_index_service._record_error(
-                    f"project/.indexed-dashboard/candidates/{source.key}",
-                    "indexed_dashboard", "provider", str(exc),
-                )
-                candidates = []
-            for item in candidates:
-                rows.append(self._indexed_row(
-                    "scene_candidate", f"{source.key}:{item.candidate_id}",
-                    f"{item.title.casefold()}\0{item.candidate_id}", asdict(item),
-                    source_key=source.key, status=item.import_state,
-                ))
+            for item in self.narrative_candidate_import_service.list_candidates(source["key"]):
+                rows.append(self._indexed_row("scene_candidate", source["key"] + ":" + item["candidate_id"],
+                    item["title"].casefold(), item, source_key=source["key"], status=item["import_state"]))
         for asset in self.production_work_summary_service.list_asset_reviews():
             candidate = self.path_service.candidate_image_path(asset)
             locked = self.path_service.locked_image_path(asset)
@@ -528,33 +505,6 @@ class ZetApp:
                 "image_review", payload["review_key"], payload["title"].casefold(), payload,
                 character=asset.character, phase=asset.phase,
             ))
-        try:
-            scene_records = context.scene_records()
-        except Exception as exc:
-            self.library_index_service._record_error(
-                "project/.indexed-dashboard/scene-reviews",
-                "indexed_dashboard", "provider", str(exc),
-            )
-            scene_records = ()
-        for item in scene_records:
-            if item.candidate_exists:
-                payload = {
-                    "review_kind": "scene", "story_slug": item.story_slug,
-                    "scene_slug": item.scene_slug, "render_target_id": item.render_target_id,
-                }
-                key = self.scene_image_review_service.review_key(
-                    item.story_slug, item.scene_slug, item.render_target_id
-                )
-                rows.append(self._indexed_row(
-                    "image_review_scene", key,
-                    f"{item.story_slug}\0{item.scene_slug}\0{item.render_target_id}", payload,
-                    story_slug=item.story_slug, scene_slug=item.scene_slug,
-                ))
-                rows.append(self._indexed_row(
-                    "image_review", key,
-                    f"{item.story_slug}\0{item.scene_slug}\0{item.render_target_id}", payload,
-                    story_slug=item.story_slug, scene_slug=item.scene_slug,
-                ))
         for task in self.production_work_summary_service._manual_tasks():
             manifest = task.manifest
             key = str(manifest.get("ask_id") or getattr(task, "ask_id", ""))
@@ -562,13 +512,6 @@ class ZetApp:
                 "manual_task", key, key, {"ask_id": key},
                 character=getattr(task, "character", ""), phase=getattr(task, "phase", ""),
                 story_slug=manifest.get("story_slug"), scene_slug=manifest.get("scene_slug"),
-            ))
-        for story, scene, target in self.scene_prompt_analysis_service.pending_records():
-            key = f"{story}:{scene}:{target}"
-            rows.append(self._indexed_row(
-                "analysis_pending", key, key,
-                {"story_slug": story, "scene_slug": scene, "render_target_id": target},
-                story_slug=story, scene_slug=scene,
             ))
         return rows
 
@@ -640,7 +583,16 @@ class ZetApp:
         return self.entity_library_service.get_asset(asset_id)
 
     def entity_library_update_asset(self, asset_id: str, data: dict):
-        return self._indexed_write(lambda: self.entity_library_service.update_asset(asset_id, data))
+        self.entity_library_service.refresh_usages(self.path_service.config.base_library_path)
+        asset = self.entity_library_service.update_asset(asset_id, data)
+        from zet.services.summary_cache import invalidate_summary_cache
+        invalidate_summary_cache()
+        warning = ""
+        try:
+            self.refresh_library_index()
+        except Exception as exc:
+            warning = f"Image saved, but the search index could not refresh: {exc}"
+        return {"asset": asset, "refresh_warning": warning}
 
     def entity_library_replace_asset(self, asset_id: str, mime_type: str, data: bytes):
         return self._indexed_write(lambda: self.entity_library_service.replace_asset(asset_id, mime_type, data))
@@ -729,179 +681,64 @@ class ZetApp:
         """Return Story Telling progress for one story."""
         return self.workspace_summary_service.story_summary(story_slug)
 
-    def list_stories(self) -> list[StoryRecord]:
-        """List story folders in the shared library."""
-        return self.story_service.list_stories()
+    def list_stories(self):
+        return [StoryRecord(s["id"], s["title"], str(self.narrative_scene_service.repository.folder(s["id"])), "", False)
+                for s in self.narrative_scene_service.repository.stories()]
 
-    def list_scene_candidate_sources(self):
-        return self.scene_candidate_import_service.list_sources()
 
-    def list_scene_candidates(self, source_key: str):
-        return self.scene_candidate_import_service.list_candidates(source_key)
 
-    def get_scene_candidate(self, source_key: str, candidate_id: str):
-        return self.scene_candidate_import_service.get_candidate(source_key, candidate_id)
 
-    def set_scene_candidate_passed(self, source_key: str, candidate_id: str, passed: bool):
-        return self._indexed_write(
-            lambda: self.scene_candidate_import_service.set_passed(source_key, candidate_id, passed)
-        )
 
-    def scene_candidate_image_path(self, source_key: str, candidate_id: str) -> Path:
-        return self.scene_candidate_import_service.candidate_image_path(source_key, candidate_id)
 
-    def import_scene_candidate(self, source_key: str, candidate_id: str, story_slug: str, confirm_update: bool = False):
-        return self._indexed_write(lambda: self.scene_candidate_import_service.import_candidate(
-            source_key,
-            candidate_id,
-            story_slug,
-            confirm_update,
-        ))
 
-    def scene_readiness(self, data: dict) -> dict:
-        readiness = self.scene_candidate_import_service.readiness(data)
-        catalog_by_tag = {
-            item.tag: item for item in self.image_catalog_service.list_items(include_base=True)
-        }
-        blockers = list(readiness.get("blockers") or [])
-        for element in data.get("scene_elements") or []:
-            references = [item for item in element.get("reference_images") or [] if isinstance(item, dict)]
-            if not references:
-                continue
-            catalog_item = catalog_by_tag.get(str(references[0].get("tag") or ""))
-            if catalog_item is None:
-                continue
-            label = element.get("display_name") or element.get("id") or "Scene element"
-            if catalog_item.identity_status == "missing":
-                blockers.append(f"{label}'s selected image needs identity description text.")
-            if catalog_item.costume_status == "missing":
-                blockers.append(f"{label}'s selected image needs costume description text.")
-        readiness["blockers"] = list(dict.fromkeys(blockers))
-        if readiness["blockers"] and readiness.get("status") == "ready":
-            readiness["status"] = "needs_attention"
-        return readiness
 
-    def create_story(self, title: str) -> StoryDocument:
-        """Create a story folder and main story markdown file."""
-        return self._indexed_write(lambda: self.story_service.create_story(title))
 
-    def load_story(self, story_slug: str) -> StoryDocument:
-        """Load one story markdown document."""
-        return self.story_service.load_story(story_slug)
 
-    def save_story(self, story_slug: str, text: str) -> StoryDocument:
-        """Save one story markdown document."""
-        return self._indexed_write(lambda: self.story_service.save_story(story_slug, text))
 
-    def rename_story(self, story_slug: str, title: str) -> StoryDocument:
-        """Rename one story without changing its stable slug."""
-        return self._indexed_write(lambda: self.story_service.rename_story(story_slug, title))
 
-    def reorder_stories(self, story_slugs: list[str]) -> list[StoryRecord]:
-        """Persist the display order for all stories."""
-        return self._indexed_write(lambda: self.story_service.reorder_stories(story_slugs))
 
-    def load_story_settings(self, story_slug: str) -> dict:
-        """Load one story settings JSON document."""
-        path = self.story_service.get_story_settings_path_from_story_md(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug)))
-        if not path.exists():
-            self.story_service.save_story_settings(path, self.story_service.create_default_story_settings(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug))))
-        return self.story_service.load_story_settings(path)
 
-    def save_story_settings(self, story_slug: str, data: dict) -> dict:
-        """Save one story settings JSON document."""
-        path = self.story_service.get_story_settings_path_from_story_md(self.story_service.path_service.story_file_path(self.story_service.safe_slug(story_slug)))
-        self.story_service.save_story_settings(path, data)
-        self.refresh_library_index()
-        return self.story_service.load_story_settings(path)
 
-    def delete_story(self, story_slug: str) -> StoryGitResult:
-        """Commit and delete one story folder."""
-        result = self.story_service.delete_story(story_slug)
-        self.image_catalog_service.rebind_source_prefix(f"scene:{story_slug}:")
-        self.refresh_library_index()
-        return result
 
     def story_git_has_changes(self) -> bool:
-        """Return whether the Stories folder has uncommitted changes."""
-        return self.story_service.story_git_has_changes()
+        return False
 
-    def story_git_status(self) -> StoryGitResult:
-        """Fetch and return story git status."""
-        return self.story_service.story_git_status()
 
-    def story_git_pull(self) -> StoryGitResult:
-        """Pull library changes and return story git output."""
-        return self.story_service.story_git_pull()
 
-    def story_git_commit(self) -> StoryGitResult:
-        """Commit and push story changes."""
-        return self.story_service.story_git_commit()
 
-    def list_scenes(self, story_slug: str) -> list[SceneRecord]:
-        """List scene markdown files for one story."""
-        return self.story_service.list_scenes(story_slug)
+    def list_scenes(self, story_slug):
+        return [SceneRecord(story_slug, s["id"], s["title"], str(self.narrative_scene_service.repository.path(story_slug, s["id"])))
+                for s in self.narrative_scene_service.story(story_slug)["scenes"]]
 
     def discovery_context(self) -> DiscoveryContext:
         """Create one request-scoped discovery context for related reads."""
         return DiscoveryContext(self.story_service, self.path_service)
 
-    def create_scene(self, story_slug: str, scene_name: str) -> SceneDocument:
-        """Create a new scene markdown file from template."""
-        return self._indexed_write(lambda: self.story_service.create_scene(story_slug, scene_name))
 
-    def load_scene(self, story_slug: str, scene_slug: str) -> SceneDocument:
-        """Load one scene markdown document."""
-        return self.story_service.load_scene(story_slug, scene_slug)
 
-    def save_scene(self, story_slug: str, scene_slug: str, text: str) -> SceneDocument:
-        """Save one scene markdown document."""
-        return self._indexed_write(lambda: self.story_service.save_scene(story_slug, scene_slug, text))
 
-    def rename_scene(self, story_slug: str, scene_slug: str, title: str) -> SceneDocument:
-        """Rename one scene without changing its stable slug."""
-        return self._indexed_write(lambda: self.story_service.rename_scene(story_slug, scene_slug, title))
 
-    def reorder_scenes(self, story_slug: str, scene_slugs: list[str]) -> list[SceneRecord]:
-        """Persist the display order for one story's scenes."""
-        return self._indexed_write(lambda: self.story_service.reorder_scenes(story_slug, scene_slugs))
 
-    def move_scene(self, story_slug: str, scene_slug: str, target_story_slug: str) -> SceneDocument:
-        """Move one scene and its artifacts to another story."""
-        document = self.story_service.move_scene(story_slug, scene_slug, target_story_slug)
-        self.image_catalog_service.rebind_source_prefix(
-            f"scene:{story_slug}:{scene_slug}:",
-            f"scene:{target_story_slug}:{scene_slug}:",
-        )
-        self.refresh_library_index()
-        return document
 
-    def delete_scene(self, story_slug: str, scene_slug: str) -> StoryGitResult:
-        """Commit and delete one scene markdown and image."""
-        result = self.story_service.delete_scene(story_slug, scene_slug)
-        self.image_catalog_service.rebind_source_prefix(f"scene:{story_slug}:{scene_slug}:")
-        self.refresh_library_index()
-        return result
 
     def scene_image_path(self, story_slug: str, scene_slug: str) -> Path:
-        """Return the expected rendered scene image path."""
-        return self.story_service.scene_image_path(story_slug, scene_slug)
+        """Read a Narrative final/legacy image, or an unmigrated historical image."""
+        try:
+            final = next((s for s in self.narrative_scene_service.finished_sources(story_slug)
+                          if s["scene_id"] == scene_slug), None)
+            if final:
+                return Path(final["image_path"])
+            return Path(self.narrative_scene_service.legacy_image(story_slug, scene_slug)["image_path"])
+        except (ValueError, KeyError):
+            try:
+                mapped = self.narrative_scene_service.legacy_location(story_slug, scene_slug)
+                return Path(self.narrative_scene_service.legacy_image(mapped["story_id"], mapped["scene_id"])["image_path"])
+            except KeyError:
+                reference = self.story_service.story_reference_service.resolve_scene_reference(
+                    f"{{{{SCENE:{story_slug}:{scene_slug}}}}}", story_slug, scene_slug)
+                return Path(reference["path"])
 
-    def scene_image_review_status(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
-        return self.scene_image_review_service.status(story_slug, scene_slug, render_target_id)
 
-    def list_pending_scene_image_reviews(
-        self,
-        story_slug: str = "",
-        scene_slug: str = "",
-        *,
-        discovery_context: DiscoveryContext | None = None,
-    ):
-        return self.scene_image_review_service.list_pending(
-            story_slug,
-            scene_slug,
-            discovery_context=discovery_context,
-        )
 
     def list_pending_asset_image_reviews(self, character: str = "", phase: str = ""):
         return self.production_work_summary_service.list_asset_reviews(character, phase)
@@ -922,229 +759,31 @@ class ZetApp:
             scene_slug,
         )
 
-    def promote_scene_image(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
-        return self._indexed_write(
-            lambda: self.scene_image_review_service.promote(story_slug, scene_slug, render_target_id)
-        )
 
-    def relock_current_scene_image(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
-        return self._indexed_write(
-            lambda: self.scene_image_review_service.relock_current(story_slug, scene_slug, render_target_id)
-        )
 
-    def discard_scene_image_candidate(self, story_slug: str, scene_slug: str, render_target_id: str = "main"):
-        return self.scene_image_review_service.discard(story_slug, scene_slug, render_target_id)
 
-    def save_scene_image_review_comment(self, story_slug: str, scene_slug: str, comment: str, render_target_id: str = "main"):
-        return self.scene_image_review_service.save_comment(story_slug, scene_slug, comment, render_target_id)
 
-    def load_scene_builder(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
-        """Load Scene Builder JSON for one story scene."""
-        return self.story_service.load_scene_builder_data(story_slug, scene_slug)
 
-    def save_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> SceneBuilderDocument:
-        """Save Scene Builder JSON for one story scene."""
-        return self._indexed_write(
-            lambda: self.story_service.save_scene_builder_data(story_slug, scene_slug, data)
-        )
 
-    def save_scene_builder_subscene(
-        self, story_slug: str, scene_slug: str, target_id: str, subscene: dict
-    ) -> SceneBuilderDocument:
-        """Save one Scene Builder subscene without replacing the full scene."""
-        return self._indexed_write(
-            lambda: self.story_service.save_scene_builder_subscene_data(
-                story_slug, scene_slug, target_id, subscene
-            )
-        )
 
-    def continue_scene_builder_from(self, story_slug: str, scene_slug: str, source_scene_slug: str) -> SceneBuilderDocument:
-        """Copy another scene's complete editable structure into this scene."""
-        return self._indexed_write(
-            lambda: self.story_service.continue_scene_builder_from(story_slug, scene_slug, source_scene_slug)
-        )
 
-    def generate_scene_builder(self, story_slug: str, scene_slug: str, data: dict) -> dict:
-        """Generate Scene Builder outputs without saving."""
-        return self.story_service.generate_scene_builder_outputs(story_slug, scene_slug, data)
 
-    def preview_scene_layout(self, data: dict, *, width: int = 1024, height: int = 576, target_id: str = "main") -> dict:
-        """Project an unsaved scene layout and return its clean guidance image."""
-        data = __import__("copy").deepcopy(data)
-        if target_id == "main":
-            data["layout_3d"] = data.get("layout_3d") or {}
-        else:
-            definition = next((item for item in data.get("subscenes") or [] if item.get("id") == target_id), None)
-            if definition is None:
-                raise ValueError(f"Scene subscene not found: {target_id}")
-            definition["layout_3d"] = data.get("layout_3d") or definition.get("layout_3d") or {}
-        elements = data.get("scene_elements") or []
-        service = self.story_service.scene_layout_service
-        targets = service.normalize_targets(data)
-        if target_id not in targets["targets"]:
-            raise ValueError(f"Scene subscene not found: {target_id}")
-        layout = targets["targets"][target_id]
-        if target_id == "main":
-            composition = service.compose_targets(data, target_id)
-            visible_ids = {item["element_id"] for item in composition["pawns"]}
-            layout = {**layout, "pawns": [item for item in layout["pawns"] if item["element_id"] in visible_ids]}
-        else:
-            composition = service.compose_targets(data, target_id)
-        if width == 1024 and height == 576:
-            canvas = (data.get("setup") or {}).get("canvas") or {}
-            try:
-                presets = __import__("json").loads(self.story_service._project_config_path("Local_Render_Presets.json").read_text(encoding="utf-8"))
-                budget = int(presets.get("comfyui-qwen-image-2-1-scene", {}).get("pixel_budget", 1_048_576))
-            except (OSError, ValueError, TypeError):
-                budget = 1_048_576
-            width, height = service.output_size(str(canvas.get("aspect_ratio") or "16:9"), budget)
-        from zet.services.scene_background_service import SceneBackgroundService
-        backgrounds = SceneBackgroundService(self.story_service.story_reference_service, self.story_service.scene_render_target_service)
-        background = None
-        background_warning = ""
-        try:
-            background = backgrounds.resolve(data, layout, width=width, height=height)
-        except ValueError as exc:
-            background_warning = str(exc)
-        if target_id == "main":
-            composition_ids = {item["element_id"] for item in composition["pawns"]}
-            main_elements = [item for item in elements if item.get("id") in composition_ids]
-            camera_layout = {**layout, "pawns": [item for item in composition["pawns"]]}
-        else:
-            main_elements = [item for item in elements if item.get("id") in {pawn["element_id"] for pawn in composition["pawns"]}]
-            camera_layout = {**layout, "pawns": composition["pawns"]}
-        projection = service.project(camera_layout, width=width, height=height, aspect=backgrounds.aspect(data))
-        composition["groups_workspace"] = target_id
-        service.aggregate_group_projection(projection, composition, main_elements)
-        projection["warnings"].extend(service.empty_group_warnings(composition, data.get("subscenes") or []))
-        if background:
-            projection["background"] = background["projection"]
-        if background_warning:
-            projection["warnings"].append(background_warning)
-        import base64
-        png = service.render_guidance(camera_layout, projection, main_elements, background_png=background["png_bytes"] if background else None)
-        return {"projection": projection, "guidance_png_base64": base64.b64encode(png).decode("ascii"),
-                "layout_3d": layout, "background_options": backgrounds.options(data),
-                "composition": composition,
-                "background_source_png_base64": base64.b64encode(background["source_png_bytes"]).decode("ascii") if background else "",
-                "sha256": __import__("hashlib").sha256(png).hexdigest(),
-                "warnings": projection["warnings"], "migration_review_required": layout.get("migration_review_required", False),
-                "provisional_elements": [item["element_id"] for item in camera_layout["pawns"] if item["provisional_height"]]}
 
-    def create_scene_layout_draft(self, data: dict, target_id: str = "main") -> dict:
-        """Create an unsaved 3D layout draft from scene elements and legacy positions."""
-        service = self.story_service.scene_layout_service
-        targets = service.normalize_targets(data)
-        if target_id not in targets["targets"]:
-            raise ValueError(f"Scene subscene not found: {target_id}")
-        return targets["targets"][target_id]
 
-    def save_scene_layout(self, story_slug: str, scene_slug: str, target_id: str, layout: dict,
-                          expected_revision: int):
-        """Save a single 3D layout workspace without replacing other scene edits."""
-        return self._indexed_write(lambda: self.story_service.save_scene_layout_data(
-            story_slug, scene_slug, target_id, layout, expected_revision
-        ))
 
-    def export_scene_builder_markdown(self, story_slug: str, scene_slug: str, data: dict) -> SceneDocument:
-        """Export Scene Builder-managed markdown into the scene file."""
-        return self._indexed_write(
-            lambda: self.story_service.export_scene_markdown(story_slug, scene_slug, data)
-        )
 
-    def scene_builder_options(self) -> dict:
-        """Return Scene Builder option lists."""
-        return self.story_service.scene_builder_options()
 
-    def start_scene_builder_interview(self, narrative: str, data: dict, phases: list[str] | None = None) -> dict:
-        """Start a narrative-to-Scene-Builder interview."""
-        return self.scene_builder_interview_service.start(narrative, data, phases)
 
-    def continue_scene_builder_interview(self, session: dict, answers: dict | None = None) -> dict:
-        """Run one focused phase of a Scene Builder interview."""
-        return self.scene_builder_interview_service.step(session, answers)
 
-    def scene_builder_interview_seed(self, story_slug: str, scene_slug: str) -> dict[str, object]:
-        """Rebuild an imported candidate's Scene Builder interview seed."""
-        data = self.load_scene_builder(story_slug, scene_slug).data
-        return self.scene_candidate_import_service.interview_seed(data)
 
-    def stage_scene_render(
-        self,
-        story_slug: str,
-        scene_slug: str,
-        render_target_id: str = "main",
-        allow_stale_dependencies: bool = False,
-    ) -> StoryRenderTask:
-        """Compile and stage one story scene for the Render Console."""
-        task = self.story_service.stage_scene_render(
-            story_slug, scene_slug, render_target_id, allow_stale_dependencies
-        )
-        if self.config.ai_prompt_analysis_auto_queue_on_render:
-            try:
-                self.scene_prompt_analysis_service.queue(story_slug, scene_slug, render_target_id,
-                                                         Path(task.ask_path) / "Final_Image_Prompt.md")
-            except Exception as exc:
-                from dataclasses import replace
-                from zet.services.atomic_file_service import write_json_atomic
-                warning = f"Render is staged, but prompt analysis could not be queued: {exc}. Retry analysis from Scene Builder."
-                task = replace(task, warning=warning)
-                try:
-                    write_json_atomic(Path(task.ask_path) / "analysis_queue_error.json", {"error": str(exc), "recovery": warning})
-                except OSError:
-                    pass  # The returned task still carries the recovery message.
-        self.refresh_library_index()
-        return task
 
-    def enable_background_subscene(self, story_slug: str, scene_slug: str) -> SceneBuilderDocument:
-        return self._indexed_write(
-            lambda: self.story_service.enable_background_subscene(story_slug, scene_slug)
-        )
 
-    def create_subscene(self, story_slug: str, scene_slug: str) -> tuple[SceneBuilderDocument, str]:
-        return self._indexed_write(lambda: self.story_service.create_subscene(story_slug, scene_slug))
 
-    def enable_element_subscene(self, story_slug: str, scene_slug: str, element_id: str) -> SceneBuilderDocument:
-        return self._indexed_write(
-            lambda: self.story_service.enable_element_subscene(story_slug, scene_slug, element_id)
-        )
 
-    def disable_scene_subscene(self, story_slug: str, scene_slug: str, target_id: str) -> SceneBuilderDocument:
-        return self._indexed_write(
-            lambda: self.story_service.disable_scene_subscene(story_slug, scene_slug, target_id)
-        )
 
-    def queue_scene_prompt_analysis(self, story_slug: str, scene_slug: str, render_target_id: str = "main") -> dict:
-        return self._indexed_write(
-            lambda: self.scene_prompt_analysis_service.queue(story_slug, scene_slug, render_target_id)
-        )
 
-    def queue_scene_prompt_analysis_second_opinion(
-        self, story_slug: str, scene_slug: str, render_target_id: str = "main"
-    ) -> dict:
-        return self._indexed_write(
-            lambda: self.scene_prompt_analysis_service.queue(
-                story_slug, scene_slug, render_target_id, second_opinion=True
-            )
-        )
 
-    def scene_prompt_analysis_status(
-        self,
-        story_slug: str,
-        scene_slug: str,
-        render_target_id: str = "main",
-        *,
-        current_prompt_text: str | None = None,
-    ) -> dict:
-        return self.scene_prompt_analysis_service.status(
-            story_slug,
-            scene_slug,
-            render_target_id,
-            current_prompt_text=current_prompt_text,
-        )
 
-    def list_scene_prompt_analyses(self, story_slug: str = "", scene_slug: str = "") -> list[dict]:
-        return self.scene_prompt_analysis_service.list_statuses(story_slug, scene_slug)
 
     def scene_image_reference_rows(
         self,
@@ -1424,26 +1063,6 @@ class ZetApp:
             checkpoint=checkpoint,
         )
 
-    def stage_scene_local_render_ask(
-        self,
-        manifest: dict,
-        workspace: Path,
-        *,
-        allow_parallel: bool = False,
-        seed: int | None = None,
-        checkpoint: str | None = None,
-        qwen_prompt_override: str | None = None,
-        render_profile: str | None = None,
-    ):
-        return self.ai_proxy_service.stage_scene_local_render_ask(
-            manifest,
-            workspace,
-            allow_parallel=allow_parallel,
-            seed=seed,
-            checkpoint=checkpoint,
-            qwen_prompt_override=qwen_prompt_override,
-            render_profile=render_profile,
-        )
 
     def recompile_prompt_review(
         self,
@@ -1572,14 +1191,14 @@ class ZetApp:
     def inspect_manual_render_publications(self) -> list[dict]:
         """Inspect manual-render publication journals and staging bundles."""
         return self.manual_render_publication_service.inspect(
-            dependency_validator=self.story_service.story_render_service.manual_render_dependencies_current,
+            dependency_validator=lambda manifest: not bool(manifest.get("story_slug")),
         )
 
     def recover_manual_render_publication(self, ask_id: str):
         """Explicitly recover one complete manual-render publication."""
         return self.manual_render_publication_service.recover(
             ask_id,
-            dependency_validator=self.story_service.story_render_service.manual_render_dependencies_current,
+            dependency_validator=lambda manifest: not bool(manifest.get("story_slug")),
         )
 
     def asset_ai_proxy_status(self, asset_id: int):

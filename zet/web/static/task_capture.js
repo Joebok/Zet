@@ -336,7 +336,7 @@
   });
   document.querySelector("#toolbar-create-task").addEventListener("click", () => void open());
   const notices = new Set();
-  window.ZetTaskCapture = { registerProvider: (callback) => { provider = callback; }, open,
+  window.ZetTaskCapture = { registerProvider: (callback) => { const previous = provider; provider = callback; return () => { if (provider === callback) provider = previous; }; }, open,
     notice(text) {
       notices.add(text);
       const banner = document.querySelector("#task-context-notice");

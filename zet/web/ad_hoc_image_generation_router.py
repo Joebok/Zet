@@ -10,12 +10,30 @@ from zet.services.ad_hoc_image_generation_service import (
     AdHocImageGenerationError,
     AdHocImageGenerationService,
 )
+from zet.services.render_slot_service import RenderSlotConflict
 
 
 def create_ad_hoc_image_generation_router(
     service_provider: Callable[[], AdHocImageGenerationService],
 ) -> APIRouter:
     router = APIRouter(prefix="/api/image-generation", tags=["image-generation"])
+
+    @router.get("/workspace")
+    def workspace():
+        return service_provider().slot_workspace.detail()
+
+    @router.post("/workspace/import")
+    def import_workspace(payload: dict[str, Any] = Body(...)):
+        return service_provider().slot_workspace.import_browser(payload)
+
+    @router.post("/workspace/{operation}")
+    def workspace_action(operation: str, payload: dict[str, Any] = Body(default={})):
+        try:
+            return service_provider().slot_workspace.action(operation, payload)
+        except RenderSlotConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.get("/options")
     def options() -> dict[str, Any]:

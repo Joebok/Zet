@@ -9,13 +9,11 @@ flowchart TD
     Browser[Browser: templates, zet.js, zet.css] --> Web[FastAPI routes and routers]
     Web --> App[ZetApp and focused services]
     App --> Characters[Local character workflows]
-    App --> Scenes[StoryService / Scene Builder]
+    App --> LegacyRefs[Read-only historic and character references]
     App --> Narrative[Narrative services]
     App --> Library[Entity library and reference services]
     Characters --> Prompts[Shared compilers and prompt contracts]
-    Scenes --> Prompts
     Characters --> Queue[File Proxy / manual queues]
-    Scenes --> Queue
     Narrative --> Queue
     Narrative --> Codex[Codex subprocess integration]
     App --> Tasks[TaskService: frozen dashboard reports]
@@ -48,10 +46,10 @@ CLI modules under [zet/scripts/](../zet/scripts/) are separate operations; some 
 ## Major data flows
 
 - **Local characters:** source/template snapshots → shared compiler → proxy render candidates → defect gates/ranking → human selection → lock/publication into the entity library. Candidate workspace and approved-image lookup are separate. See [LOCAL_CHARACTERS](COMPONENTS/LOCAL_CHARACTERS.md).
-- **Scene Builder (retiring):** story Markdown/settings + Scene Builder V4 JSON + resolved references/layout → render target IR (intermediate representation) → general/local/Qwen prompt artifacts → immutable queue task → candidate review → locked target image. Targets may depend on accepted subscene renders. Still usable, but current scene/story testing targets Narrative; no maintained Scene Builder/local scene-batch scenario remains. See [SCENE_BUILDER](COMPONENTS/SCENE_BUILDER.md).
-- **Narrative:** independent story/scene/target records → prose interview/synthesis → frozen references/assembly snapshot → durable image jobs → candidate slots and selection. This subsystem does not route through Scene Builder or its pipeline state. See [NARRATIVE](COMPONENTS/NARRATIVE.md).
+- **Scene Builder (retired):** authoring/render execution is removed or fenced; historic source data remains. Dedicated geometry and integration code live in the [offline archive](../Archive/scene-builder/README.md). StoryService is now a narrow locked-character/auxiliary reference compatibility reader. Legacy image references retain read-only resolution.
+- **Narrative:** dashboard-mounted story/scene/target records → prose interview/synthesis → frozen references/assembly snapshot → durable image jobs → candidate slots and selection. This subsystem does not route through Scene Builder or its pipeline state. See [NARRATIVE](COMPONENTS/NARRATIVE.md).
 - **Library/discovery:** approved image bytes and entity/reference metadata are authoritative; the separate local index scans authored sources and queue summaries into published generations for dashboard queries. See [LIBRARY](COMPONENTS/LIBRARY.md).
-- **Zines:** [ZineService](../zet/services/zine_service.py) uses finished story-scene sources to compose print layouts; it is not the Narrative scene assembler.
+- **Zines:** [ZineService](../zet/services/zine_service.py) uses selected Narrative final assemblies to compose print layouts; it is not the Narrative scene assembler.
 - **Dashboard task capture:** browser context providers freeze a report/draft and Return to Zet location → [task router](../zet/web/task_router.py) → `ZetApp.create_task`/`upload_task_attachment` → [TaskService](../zet/services/task_service.py) → external Kanban intake. Zet owns forwarding/context, while Kanban owns board files and request-ID idempotency. [Kanban integration](Kanban_Integration.md) owns the detailed contract; metadata reads make no Kanban request.
 
 ## Persistence, integrations, and constraints
@@ -65,3 +63,8 @@ Important complexity: a large composition facade/web module, callbacks between s
 ## Current test execution boundary
 
 [Testing](Testing.md) documents the recovered local E2E harness: a disposable Test universe/private queue, temporary derived index, prepared fast responses and selected-state resets. Exactly three maintained scenarios exercise representative authoring, character-to-costume and Narrative assembly tasks. The separate live Narrative check is opt-in. Python/browser unit suites and Actions gates have been retired; these scenarios do not establish every subsystem contract. Task capture, zines, geometry and many lifecycle/error branches have no dedicated maintained scenario.
+
+[ADR 0005](DECISIONS/0005-narrative-dashboard-and-legacy-scene-retirement.md) owns the active Narrative/legacy migration boundary. Migration CLI deliberately avoids app construction, workers and live services.
+
+## Render slot presentation and ownership (2026-10-12)
+Character adapters share [render_slot_service.py](../zet/services/render_slot_service.py) for fixed positions, supplemental candidate merging and protected mutations through the local workflow service. Image Generation's [workspace service](../zet/services/image_generation_workspace_service.py) persists universe-owned assignments over its existing jobs. Shared [render_slots.js](../zet/web/static/render_slots.js) provides presentation controls only. Active browser pages poll and patch results during review; Narrative continues owning its independent target records. No new event transport or production dependency is introduced. See [ADR 0007](DECISIONS/0007-stable-render-slots.md).

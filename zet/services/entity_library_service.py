@@ -90,6 +90,19 @@ class EntityLibraryService:
             row[key] = int(row[key])
         return row
 
+    @staticmethod
+    def _selected_logical_reference(references: list[dict], preferred_key: str | None, approved: bool):
+        if not approved:
+            return None
+        if preferred_key:
+            preferred = next((item for item in references
+                              if item["reference_key"] == preferred_key and item["status"] == "active"), None)
+            if preferred:
+                return preferred
+        if preferred_key == "":
+            return None
+        return next((item for item in references if item["status"] == "active"), None)
+
     def _sync_pipeline_assets(self) -> None:
         if not callable(self.pipeline_provider):
             return
@@ -262,9 +275,9 @@ class EntityLibraryService:
             facets = facets_by_asset.get(asset_id, [])
             tags = tags_by_asset.get(asset_id, [])
             logical_references = references_by_asset.get(asset_id, [])
-            logical = next((reference for reference in logical_references if reference["status"] == "active"), None)
-            if row["status"] != "approved":
-                logical = None
+            logical = self._selected_logical_reference(
+                logical_references, row.get("preferred_reference_key"), row["status"] == "approved"
+            )
             item = {**row, "image_path": str(path), "thumbnail_path": str(path), "entities": entities, "sets": sets, "facets": facets, "tags": tags, "logical_reference": logical, "logical_references": logical_references}
             item["descriptor_ready"] = asset_id in descriptor_assets
             if row["status"] == "archived" and filters.get("status") != "archived" and not include_archived:
@@ -304,9 +317,55 @@ class EntityLibraryService:
         return {**item, "image_path": str(path)}
 
     def get_asset(self, asset_id: str) -> dict:
-        item = next((row for row in self.list_assets(include_archived=True) if row["asset_id"] == asset_id), None)
-        if item is None:
+        row = self.repository.fetchone("SELECT * FROM assets WHERE asset_id=?", (asset_id,))
+        if row is None:
             raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
+        path = self._image_path(asset_id, row["file_name"])
+        if not path.is_file():
+            raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
+        entities = self.repository.fetchall(
+            """SELECT ae.asset_id,e.entity_id,e.name,e.entity_type,ae.role,ae.variant_id,
+                      v.name AS variant_name
+               FROM asset_entities ae JOIN entities e ON e.entity_id=ae.entity_id
+               LEFT JOIN variants v ON v.variant_id=ae.variant_id
+               WHERE ae.asset_id=? ORDER BY e.name""", (asset_id,)
+        )
+        sets = self.repository.fetchall(
+            """SELECT sa.asset_id,s.set_id,s.name,sa.role,sa.sort_order
+               FROM reference_set_assets sa JOIN reference_sets s ON s.set_id=sa.set_id
+               WHERE sa.asset_id=? ORDER BY sa.sort_order,s.name""", (asset_id,)
+        )
+        facets = self.repository.fetchall(
+            """SELECT f.namespace,f.value FROM asset_facets af JOIN facets f ON f.facet_id=af.facet_id
+               WHERE af.asset_id=? ORDER BY f.namespace,f.value""", (asset_id,)
+        )
+        tags = [item["tag"] for item in self.repository.fetchall(
+            "SELECT tag FROM asset_tags WHERE asset_id=? ORDER BY tag", (asset_id,)
+        )]
+        references = self.repository.fetchall(
+            """SELECT reference_key,label,set_id,status FROM logical_references
+               WHERE asset_id=? ORDER BY reference_key""", (asset_id,)
+        )
+        descriptor_ready = bool(self.repository.fetchone(
+            """SELECT 1 AS found FROM descriptors d
+               LEFT JOIN asset_entities ae ON ae.asset_id=?
+               LEFT JOIN reference_set_assets rsa ON rsa.asset_id=?
+               WHERE d.enabled=1 AND d.descriptor_type IN
+                   ('prompt_identity','prompt_object','prompt_background','human_description')
+                 AND ((d.owner_type='asset' AND d.owner_id=?)
+                   OR (d.owner_type='entity' AND d.owner_id=ae.entity_id)
+                   OR (d.owner_type='variant' AND d.owner_id=ae.variant_id)
+                   OR (d.owner_type='set' AND d.owner_id=rsa.set_id)) LIMIT 1""",
+            (asset_id, asset_id, asset_id),
+        ))
+        item = {
+            **row, "image_path": str(path), "thumbnail_path": str(path), "entities": entities,
+            "sets": sets, "facets": facets, "tags": tags,
+            "logical_reference": self._selected_logical_reference(
+                references, row.get("preferred_reference_key"), row["status"] == "approved"
+            ),
+            "logical_references": references, "descriptor_ready": descriptor_ready,
+        }
         item["descriptors"] = self.repository.fetchall(
             "SELECT * FROM descriptors WHERE owner_type='asset' AND owner_id=? ORDER BY priority,descriptor_type", (asset_id,)
         )
@@ -572,6 +631,10 @@ class EntityLibraryService:
                 connection.execute("UPDATE assets SET status='obsolete',updated_at=? WHERE asset_id=?", (stamp, asset_id))
             connection.execute("INSERT INTO provenance(provenance_id,asset_id,relation_type,source_asset_id,created_at) VALUES(?,?,?,?,?)", (str(uuid4()), created["asset_id"], "replacement_for", asset_id, stamp))
             connection.execute("UPDATE logical_references SET asset_id=?,updated_at=? WHERE asset_id=?", (created["asset_id"], stamp, asset_id))
+            connection.execute(
+                "UPDATE assets SET preferred_reference_key=? WHERE asset_id=?",
+                (original.get("preferred_reference_key"), created["asset_id"]),
+            )
             for entity in original["entities"]:
                 connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (created["asset_id"], entity["entity_id"], entity["variant_id"], entity["role"]))
             for member in original["sets"]:
@@ -674,70 +737,212 @@ class EntityLibraryService:
                 raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
         return self.get_asset(asset_id)
 
+    @staticmethod
+    def _upsert_descriptor(connection, owner_type: str, owner_id: str, descriptor_type: str,
+                           text: str, stamp: str) -> dict:
+        existing = connection.execute(
+            "SELECT descriptor_id,priority,enabled,created_at FROM descriptors "
+            "WHERE owner_type=? AND owner_id=? AND descriptor_type=?",
+            (owner_type, owner_id, descriptor_type),
+        ).fetchone()
+        descriptor_id = existing["descriptor_id"] if existing else str(uuid4())
+        priority = existing["priority"] if existing else 0
+        enabled = existing["enabled"] if existing else 1
+        created_at = existing["created_at"] if existing else stamp
+        if existing:
+            connection.execute(
+                "UPDATE descriptors SET text=?,enabled=1,updated_at=? WHERE descriptor_id=?",
+                (text, stamp, descriptor_id),
+            )
+        else:
+            connection.execute(
+                """INSERT INTO descriptors
+                   (descriptor_id,owner_type,owner_id,descriptor_type,text,priority,enabled,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (descriptor_id, owner_type, owner_id, descriptor_type, text, priority, enabled, created_at, stamp),
+            )
+        return dict(connection.execute("SELECT * FROM descriptors WHERE descriptor_id=?", (descriptor_id,)).fetchone())
+
+    @staticmethod
+    def _save_logical_reference(connection, *, key: str, label: str, asset_id: str,
+                                 set_id: str | None, stamp: str, allow_reassign: bool = False) -> dict:
+        existing = connection.execute(
+            "SELECT * FROM logical_references WHERE reference_key=?", (key,)
+        ).fetchone()
+        if existing and existing["asset_id"] not in (None, asset_id) and not allow_reassign:
+            raise EntityLibraryServiceError(f"Reference key is already assigned to another image: {key}")
+        resolved_set_id = set_id if set_id is not None else (existing["set_id"] if existing else None)
+        connection.execute(
+            """INSERT INTO logical_references(reference_key,label,asset_id,set_id,status,updated_at)
+               VALUES(?,?,?,?, 'active', ?) ON CONFLICT(reference_key) DO UPDATE SET
+               label=excluded.label,asset_id=excluded.asset_id,set_id=excluded.set_id,
+               status='active',updated_at=excluded.updated_at""",
+            (key, label, asset_id, resolved_set_id, stamp),
+        )
+        result = dict(connection.execute(
+            "SELECT * FROM logical_references WHERE reference_key=?", (key,)
+        ).fetchone())
+        if asset_id:
+            connection.execute(
+                "UPDATE assets SET preferred_reference_key=? "
+                "WHERE asset_id=? AND preferred_reference_key IS NULL",
+                (key, asset_id),
+            )
+        if existing and existing["asset_id"] and existing["asset_id"] != asset_id:
+            preferred = connection.execute(
+                "SELECT preferred_reference_key FROM assets WHERE asset_id=?", (existing["asset_id"],)
+            ).fetchone()
+            if preferred and preferred["preferred_reference_key"] == key:
+                EntityLibraryService._fallback_preferred_reference(connection, existing["asset_id"], stamp)
+        elif existing and existing["asset_id"] == asset_id and result["status"] != "active":
+            preferred = connection.execute(
+                "SELECT preferred_reference_key FROM assets WHERE asset_id=?", (asset_id,)
+            ).fetchone()
+            if preferred and preferred["preferred_reference_key"] == key:
+                EntityLibraryService._fallback_preferred_reference(connection, asset_id, stamp)
+        return result
+
+    @staticmethod
+    def _fallback_preferred_reference(connection, asset_id: str, stamp: str) -> None:
+        reference = connection.execute(
+            "SELECT reference_key FROM logical_references WHERE asset_id=? AND status='active' "
+            "ORDER BY reference_key LIMIT 1", (asset_id,),
+        ).fetchone()
+        connection.execute(
+            "UPDATE assets SET preferred_reference_key=?,updated_at=? WHERE asset_id=?",
+            (reference["reference_key"] if reference else None, stamp, asset_id),
+        )
+
     def update_asset(self, asset_id: str, data: dict) -> dict:
         current = self.get_asset(asset_id)
         stamp = _now()
-        requested_status = str(data.get("status", current["status"]) or "").strip()
-        if current["status"] == "approved" and requested_status not in {"approved", "archived"}:
-            usages = self.usage_for_asset(asset_id)
-            references = self.repository.fetchall("SELECT reference_key FROM logical_references WHERE asset_id=? AND status='active'", (asset_id,))
-            if usages or references:
-                raise EntityLibraryServiceError("Resolve current consumers and preferred references before changing this image from approved status.")
-        if requested_status == "archived":
-            usages = self.usage_for_asset(asset_id)
-            if usages:
+        label = str(data.get("label", current["label"]) or "").strip()
+        notes = str(data.get("notes", current["notes"]) or "").strip()
+        status = str(data.get("status", current["status"]) or "").strip()
+        if not label:
+            raise EntityLibraryServiceError("Image label is required.")
+        if status not in ASSET_STATUSES:
+            raise EntityLibraryServiceError("Invalid image status.")
+        reference_key = None
+        if "preferred_reference_key" in data:
+            reference_key = str(data.get("preferred_reference_key") or "").strip()
+            if reference_key and not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", reference_key):
                 raise EntityLibraryServiceError(
-                    f"Image has {len(usages)} current consumer(s); update those consumers before archiving it."
+                    "Logical reference keys use lowercase letters, numbers, dots, underscores, and hyphens."
                 )
+        descriptors = data.get("descriptors")
+        if descriptors is not None and not isinstance(descriptors, dict):
+            raise EntityLibraryServiceError("Descriptors must be an object.")
+        descriptor_types = {"prompt_identity", "prompt_costume"}
+        if descriptors and set(descriptors) - descriptor_types:
+            raise EntityLibraryServiceError("Unsupported image descriptor type.")
+        facets = data.get("facets")
+        if facets is not None:
+            if not isinstance(facets, list):
+                raise EntityLibraryServiceError("Facets must be a list.")
+            facets = [{
+                "namespace": self._require(item.get("namespace"), "Facet namespace"),
+                "value": self._require(item.get("value"), "Facet value"),
+                "controlled": bool(item.get("controlled", True)),
+            } for item in facets]
+        requested_prompt = str(data.get("prompt", current.get("prompt", "")) or "").strip()
+        requested_negative = str(data.get("negative_prompt", current.get("negative_prompt", "")) or "").strip()
         with self.repository.transaction() as connection:
-            label = str(data.get("label", current["label"]) or "").strip()
-            notes = str(data.get("notes", current["notes"]) or "").strip()
-            status = requested_status
-            if not label:
-                raise EntityLibraryServiceError("Image label is required.")
-            if status not in ASSET_STATUSES:
-                raise EntityLibraryServiceError("Invalid image status.")
-            if status == "archived":
-                connection.execute(
-                    "UPDATE logical_references SET status='inactive',updated_at=? WHERE asset_id=? AND status='active'",
-                    (stamp, asset_id),
+            fresh = connection.execute("SELECT * FROM assets WHERE asset_id=?", (asset_id,)).fetchone()
+            if fresh is None:
+                raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
+            has_usages = bool(connection.execute(
+                """SELECT 1 FROM asset_usages u LEFT JOIN logical_references lr
+                   ON lr.reference_key=u.reference_key WHERE u.status='current'
+                   AND (u.asset_id=? OR lr.asset_id=?) LIMIT 1""", (asset_id, asset_id),
+            ).fetchone())
+            active_references = bool(connection.execute(
+                "SELECT 1 FROM logical_references WHERE asset_id=? AND status='active' LIMIT 1",
+                (asset_id,),
+            ).fetchone())
+            if fresh["status"] == "approved" and status not in {"approved", "archived"}:
+                if has_usages or active_references:
+                    raise EntityLibraryServiceError(
+                        "Resolve current consumers and preferred references before changing this image from approved status."
+                    )
+            if status == "archived" and has_usages:
+                raise EntityLibraryServiceError(
+                    "Image has current consumers; update those consumers before archiving it."
                 )
-            connection.execute("UPDATE assets SET label=?,notes=?,status=?,rating=?,prompt=?,negative_prompt=?,updated_at=? WHERE asset_id=?",
-                               (label, notes, status, data.get("rating", current["rating"]),
-                                str(data.get("prompt", current.get("prompt", "")) or "").strip(),
-                                str(data.get("negative_prompt", current.get("negative_prompt", "")) or "").strip(),
-                                stamp, asset_id))
+            if reference_key:
+                collision = connection.execute(
+                    "SELECT asset_id FROM logical_references WHERE reference_key=?", (reference_key,)
+                ).fetchone()
+                if collision and collision["asset_id"] not in (None, asset_id):
+                    raise EntityLibraryServiceError(
+                        f"Reference key is already assigned to another image: {reference_key}"
+                    )
+            connection.execute(
+                """UPDATE assets SET label=?,notes=?,status=?,rating=?,prompt=?,negative_prompt=?,updated_at=?
+                   WHERE asset_id=?""",
+                (label, notes, status, data.get("rating", current["rating"]), requested_prompt,
+                 requested_negative, stamp, asset_id),
+            )
             if "entity_links" in data:
                 existing_links = {(item["entity_id"], item["role"]): item for item in current["entities"]}
                 connection.execute("DELETE FROM asset_entities WHERE asset_id=?", (asset_id,))
                 for link in data.get("entity_links") or []:
                     if isinstance(link, str):
                         link = {"entity_id": link}
-                    previous = next((value for (entity_id, _), value in existing_links.items() if entity_id == link.get("entity_id")), {})
+                    previous = next((value for (entity_id, _), value in existing_links.items()
+                                     if entity_id == link.get("entity_id")), {})
                     role = str(link.get("role") or previous.get("role") or "depicted_subject")
                     if role not in ASSET_ROLES:
                         raise EntityLibraryServiceError(f"Invalid asset relationship role: {role}")
-                    connection.execute("INSERT INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset_id, link["entity_id"], link.get("variant_id") or previous.get("variant_id") or None, role))
+                    connection.execute(
+                        "INSERT INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)",
+                        (asset_id, link["entity_id"], link.get("variant_id") or previous.get("variant_id") or None, role),
+                    )
             if "set_ids" in data:
                 existing_sets = {item["set_id"]: item for item in current["sets"]}
                 connection.execute("DELETE FROM reference_set_assets WHERE asset_id=?", (asset_id,))
                 for order, set_id in enumerate(data.get("set_ids") or []):
                     previous = existing_sets.get(set_id, {})
-                    connection.execute("INSERT INTO reference_set_assets(set_id,asset_id,role,sort_order) VALUES(?,?,?,?)", (set_id, asset_id, previous.get("role", "member"), previous.get("sort_order", order)))
-            if "facets" in data:
+                    connection.execute(
+                        "INSERT INTO reference_set_assets(set_id,asset_id,role,sort_order) VALUES(?,?,?,?)",
+                        (set_id, asset_id, previous.get("role", "member"), previous.get("sort_order", order)),
+                    )
+            if facets is not None:
                 connection.execute("DELETE FROM asset_facets WHERE asset_id=?", (asset_id,))
-                for facet in data.get("facets") or []:
-                    namespace = self._require(facet.get("namespace"), "Facet namespace")
-                    value = self._require(facet.get("value"), "Facet value")
-                    found = connection.execute("SELECT facet_id FROM facets WHERE namespace=? AND value=?", (namespace, value)).fetchone()
-                    facet_id = found[0] if found else str(uuid4())
+                for facet in facets:
+                    found = connection.execute(
+                        "SELECT facet_id FROM facets WHERE namespace=? AND value=?",
+                        (facet["namespace"], facet["value"]),
+                    ).fetchone()
+                    facet_id = found["facet_id"] if found else str(uuid4())
                     if not found:
-                        connection.execute("INSERT INTO facets VALUES(?,?,?,?)", (facet_id, namespace, value, int(bool(facet.get("controlled", True)))))
+                        connection.execute(
+                            "INSERT INTO facets VALUES(?,?,?,?)",
+                            (facet_id, facet["namespace"], facet["value"], int(facet["controlled"])),
+                        )
                     connection.execute("INSERT INTO asset_facets VALUES(?,?)", (asset_id, facet_id))
             if "tags" in data:
                 connection.execute("DELETE FROM asset_tags WHERE asset_id=?", (asset_id,))
                 for tag in sorted({str(value).strip() for value in data.get("tags") or [] if str(value).strip()}):
                     connection.execute("INSERT INTO asset_tags VALUES(?,?)", (asset_id, tag))
+            for descriptor_type, text in (descriptors or {}).items():
+                self._upsert_descriptor(connection, "asset", asset_id, descriptor_type, str(text or "").strip(), stamp)
+            if reference_key:
+                set_ids = data.get("set_ids", [item["set_id"] for item in current["sets"]])
+                self._save_logical_reference(
+                    connection, key=reference_key, label=label, asset_id=asset_id,
+                    set_id=(set_ids[0] if set_ids else None), stamp=stamp,
+                )
+            if reference_key is not None:
+                connection.execute(
+                    "UPDATE assets SET preferred_reference_key=? WHERE asset_id=?",
+                    (reference_key, asset_id),
+                )
+            if status == "archived":
+                connection.execute(
+                    "UPDATE logical_references SET status='inactive',updated_at=? "
+                    "WHERE asset_id=? AND status='active'", (stamp, asset_id),
+                )
         return self.get_asset(asset_id)
 
     def delete_asset(self, asset_id: str) -> dict:
@@ -754,7 +959,6 @@ class EntityLibraryService:
         return self.repository.fetchone("SELECT * FROM entities WHERE entity_id=?", (entity_id,)) or {}
 
     def list_entities(self, entity_type: str = "") -> list[dict]:
-        self._sync_pipeline_assets()
         if entity_type:
             rows = self.repository.fetchall("SELECT * FROM entities WHERE entity_type=? ORDER BY name COLLATE NOCASE", (entity_type,))
         else:
@@ -799,7 +1003,6 @@ class EntityLibraryService:
         return self.repository.fetchone("SELECT * FROM variants WHERE variant_id=?", (variant_id,)) or {}
 
     def list_variants(self, entity_id: str = "") -> list[dict]:
-        self._sync_pipeline_assets()
         if entity_id:
             rows = self.repository.fetchall("SELECT v.*,e.name AS entity_name FROM variants v JOIN entities e USING(entity_id) WHERE entity_id=? ORDER BY name COLLATE NOCASE", (entity_id,))
         else:
@@ -900,7 +1103,6 @@ class EntityLibraryService:
         return item
 
     def list_sets(self) -> list[dict]:
-        self._sync_pipeline_assets()
         return [self.get_set(item["set_id"]) for item in self.repository.fetchall("SELECT set_id FROM reference_sets ORDER BY name COLLATE NOCASE")]
 
     def add_set_asset(self, set_id: str, asset_id: str, role: str = "member", sort_order: int = 0) -> dict:
@@ -939,7 +1141,6 @@ class EntityLibraryService:
         return self.repository.fetchall("SELECT f.namespace,f.value FROM asset_facets af JOIN facets f ON f.facet_id=af.facet_id WHERE af.asset_id=? ORDER BY namespace,value", (asset_id,))
 
     def list_facets(self) -> list[dict]:
-        self._sync_pipeline_assets()
         return self.repository.fetchall("SELECT f.facet_id,f.namespace,f.value,f.controlled,count(DISTINCT af.asset_id) AS usage_count FROM facets f LEFT JOIN asset_facets af ON af.facet_id=f.facet_id GROUP BY f.facet_id,f.namespace,f.value,f.controlled ORDER BY namespace,value")
 
     def create_facet(self, data: dict) -> dict:
@@ -1150,9 +1351,37 @@ class EntityLibraryService:
         if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", key):
             raise EntityLibraryServiceError("Logical reference keys use lowercase letters, numbers, dots, underscores, and hyphens.")
         label = self._require(data.get("label") or key, "Logical reference label")
+        stamp = _now()
         with self.repository.transaction() as connection:
-            connection.execute("INSERT OR REPLACE INTO logical_references VALUES(?,?,?,?,?,?)", (key, label, data.get("asset_id") or None, data.get("set_id") or None, str(data.get("status") or "active"), _now()))
-        return self.repository.fetchone("SELECT * FROM logical_references WHERE reference_key=?", (key,)) or {}
+            existing = connection.execute(
+                "SELECT * FROM logical_references WHERE reference_key=?", (key,)
+            ).fetchone()
+            asset_id = data.get("asset_id") or None
+            status = str(data.get("status") or "active")
+            if status == "active" and asset_id:
+                result = self._save_logical_reference(
+                    connection, key=key, label=label, asset_id=asset_id,
+                    set_id=data.get("set_id"), stamp=stamp, allow_reassign=True,
+                )
+            else:
+                connection.execute(
+                    """INSERT INTO logical_references(reference_key,label,asset_id,set_id,status,updated_at)
+                       VALUES(?,?,?,?,?,?) ON CONFLICT(reference_key) DO UPDATE SET
+                       label=excluded.label,asset_id=excluded.asset_id,set_id=excluded.set_id,
+                       status=excluded.status,updated_at=excluded.updated_at""",
+                    (key, label, asset_id, data.get("set_id"), status, stamp),
+                )
+                result = dict(connection.execute(
+                    "SELECT * FROM logical_references WHERE reference_key=?", (key,)
+                ).fetchone())
+                if existing and existing["asset_id"]:
+                    preferred = connection.execute(
+                        "SELECT preferred_reference_key FROM assets WHERE asset_id=?",
+                        (existing["asset_id"],),
+                    ).fetchone()
+                    if preferred and preferred["preferred_reference_key"] == key:
+                        self._fallback_preferred_reference(connection, existing["asset_id"], stamp)
+        return result
 
     def list_logical_references(self) -> list[dict]:
         return self.repository.fetchall("SELECT lr.*,a.file_name,a.status AS asset_status FROM logical_references lr LEFT JOIN assets a ON a.asset_id=lr.asset_id ORDER BY reference_key")
@@ -1206,7 +1435,10 @@ class EntityLibraryService:
         root = Path(library_root).resolve()
         observations = []
         missing = []
-        for path in sorted(root.rglob("*.scene.json")):
+        scene_paths = (list(root.rglob("*.scene.json"))
+                       + list((root / "NarrativeStories").glob("*/*/scene.json"))
+                       + list((root / "NarrativeStories").glob("*/*/*/target.json")))
+        for path in sorted(scene_paths):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
@@ -1219,6 +1451,8 @@ class EntityLibraryService:
                     if direct or logical:
                         observations.append((direct or None, logical or None, "scene", consumer_id, locator or "$"))
                     for key, child in value.items():
+                        if key in {"source_document", "source_markdown", "image_review", "imported_baseline"}:
+                            continue
                         visit(child, f"{locator}.{key}" if locator else str(key))
                 elif isinstance(value, list):
                     for index, child in enumerate(value):

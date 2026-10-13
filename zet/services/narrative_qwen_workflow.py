@@ -29,7 +29,8 @@ def compile_narrative_qwen(positive_prompt, negative_prompt, profile, *, checkpo
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": profile["vae"]}},
     }
     encode = {"clip": ["2", 0], "vae": ["3", 0], "prompt": positive_prompt,
-              "negative_prompt": negative_prompt, "resolution": max(width, height)}
+              "negative_prompt": negative_prompt,
+              "resolution": 0 if refs and profile.get("qwen_reference_resize_enabled") else max(width, height)}
     bindings = []
     for index, ref in enumerate(refs, 1):
         source = Path(str(ref.get("path") or ""))

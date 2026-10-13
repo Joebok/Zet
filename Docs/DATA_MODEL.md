@@ -7,14 +7,14 @@ Paths below are relative to the **bound universe root** unless stated otherwise.
 | Store | Owner and authoritative definition | Lifecycle / compatibility |
 | --- | --- | --- |
 | `universe.json` | [UniverseService](../zet/services/universe_service.py): descriptor with universe ID, name, canonical art style, layout version | New universes use layout version 1. Legacy Moonsea can resolve to the container root without a descriptor. Selection is project-local `Config/universe-selection.json`, not image data. |
-| `catalog.sqlite3` and `images/` | [EntityLibraryRepository](../zet/repositories/entity_library_repository.py), [EntityLibraryService](../zet/services/entity_library_service.py) | Authoritative entity image catalog and ID-addressed blobs. Schema version 2 via `PRAGMA user_version`; initialization rejects newer versions and backs up an older existing database before migration. |
+| `catalog.sqlite3` and `images/` | [EntityLibraryRepository](../zet/repositories/entity_library_repository.py), [EntityLibraryService](../zet/services/entity_library_service.py) | Authoritative entity image catalog and ID-addressed blobs. Schema version 3 via `PRAGMA user_version`; initialization rejects newer versions and backs up an older existing database before migration. `assets.preferred_reference_key` selects the displayed active logical reference; empty means use the direct asset tag, and older active keys remain aliases. |
 | `ImageCatalog/ImageCatalog.json`, `Records/`, `ReferenceSets/`, `Organization.json` | [ImageCatalogRepository](../zet/repositories/image_catalog_repository.py) | Distinct record-oriented catalog: manifest schema 3, record version 1, organization version 1. A v3 manifest must be complete and its declared layout present. Old/incomplete catalogs require explicit migration; `load` does not silently convert them. |
 | `Characters/<character>/<phase>/Character.md`, costume Markdown, expression/appearance definitions | [PathService](../zet/services/path_service.py), [CharacterSourceService](../zet/services/character_source_service.py), [CostumeService](../zet/services/costume_service.py), models under [zet/models](../zet/models/) | Authoring sources. Shared templates/instructions are in repository `Shared_Library/`; generated prompt artifacts are not canonical source replacements. |
 | Character-phase `Assets.json`, `Pipelines.json` and identity/turnaround records | [Asset](../zet/models/asset.py), [PipelineDefinition](../zet/models/pipeline.py), [repositories](../zet/repositories/) | Retained traditional pipeline data; numeric asset IDs are scoped by character and phase. Optimistic `revision` guards saves. Local character generation does not use these as its run state. |
 | `PipelineCandidates/Character-Pipeline/` | [LocalBodyReferenceService](../zet/services/local_body_reference_service.py), [LocalHeadImageService](../zet/services/local_head_image_service.py), [LocalCharacterAssetPipelineService](../zet/services/local_character_asset_pipeline_service.py) | Durable batch `spec.json`, run state, source snapshots, candidate images, gates, and ranks. Read serializers/mutation helpers in [local_image_pipeline_policy.py](../zet/services/local_image_pipeline_policy.py) before changing state. |
 | `_state/LocalAssets/<character>/<phase>/local_assets.json` | [LocalAssetStoreService](../zet/services/local_asset_store_service.py) | Schema version 1 workspace with keyed assets. Separates selected candidate, verified lock, upstream dependencies, entity asset ID, and logical reference. A lock is not merely a boolean flag. |
-| `Stories/<story>/` | [StoryService](../zet/services/story_service.py), [SceneDocumentService](../zet/services/scene_document_service.py), [PathService](../zet/services/path_service.py) | Story/scene Markdown, story settings (schema 1), Scene Builder JSON (schema 4, `file_kind=scene`). `_Story_Index.json` has schema 1 / `story_index`. Scene JSON has elements, placements, subscenes, dialogue, and optional 3D layout; normalization is authoritative. |
-| Story pipeline target artifacts | [StoryRenderService](../zet/services/story_render_service.py), [SceneRenderTargetService](../zet/services/scene_render_target_service.py) | IR schema 4; prompt schema 2 for current general prompts, explicit legacy prompt variant retained. Derived prompts/source maps/dependency manifests, candidates and locked target metadata have separate roles. |
+| `Stories/<story>/` | Preserved legacy source files; [retirement archive](../Archive/scene-builder/README.md) | Original V4 JSON, Markdown, images and optional 3D layouts remain unchanged; no active authoring or normalization. |
+| Legacy story pipeline artifacts | Preserved files and [offline source archive](../Archive/scene-builder/README.md) | Historical compiler/review/queue records; retired execution paths do not stage or publish new work. |
 | `NarrativeStories/<story-id>/<scene-id>/<target-id>/` | [NarrativeRepository](../zet/repositories/narrative_repository.py), [Narrative models](../zet/models/narrative.py) | `story.json`, `scene.json`, `target.json` plus images/snapshots. Independent of Scene Builder. Target reads fill absent model defaults; no global schema version is declared in these models. |
 | Zine documents/outputs | [ZineDocument/ZineRecord](../zet/models/zine.py), [ZineService](../zet/services/zine_service.py), `PathService.zines_path` | Source selections and page/spread layout. Use service validation and slot constants rather than inventing another ordering. |
 | Machine-local index `<library-hash>.sqlite3` | [LibraryIndexRepository](../zet/repositories/library_index_repository.py) | **Derived**, schema version 1, default `%LOCALAPPDATA%/Zet/Indexes` (fallback under the user's home). Root rejected inside Git or Dropbox. Published generations, cached parsed sources, dependency fingerprints, work/history summaries; rebuild does not recreate authoritative catalogs. |
@@ -27,6 +27,11 @@ Paths below are relative to the **bound universe root** unless stated otherwise.
 [EntityLibraryRepository.initialize](../zet/repositories/entity_library_repository.py) owns the SQL tables: entities/variants and their aliases/relations; assets and entity assignments; reference sets/members; descriptors; facets/tags; logical and legacy references; usages; provenance. Foreign keys are enabled. Descriptors are purpose-specific text, facets are structured attributes, and tags are flexible labels. Some polymorphic ownership (such as descriptor owner IDs) is enforced at the service layer rather than by an SQL foreign key.
 
 Logical references can bind an image or reference set and survive image replacement. Usage records connect consumers and locations to assets/references; services use them to protect archive/delete and merge operations. Read [EntityLibraryService](../zet/services/entity_library_service.py) for ID construction, allowed values, deduplication, and operation-specific validation instead of treating filenames as identity.
+
+The asset editor saves image metadata, organization links, its two asset descriptors,
+and preferred reference in one PATCH transaction. The asset detail endpoint queries
+the selected image directly; pipeline discovery belongs to inventory search and
+reconciliation, not a detail read.
 
 ## Identifier and reference conventions
 
@@ -49,6 +54,16 @@ Path serialization is mixed: [PathService.resolve_path](../zet/services/path_ser
 
 Key sections to locate are `BaseFolders`, `BaseFoldersByPlatform`, `AIModels`, `LocalRender`, `ComfyUI`, `Render`, `AIHarvest`, `AIPromptAnalysis`, `PromptCondense`, `Zine`, and `Turnaround`, plus `SceneCandidateSources` tables. Consult the loader for defaults/coercion. `render_backend` selects final dispatch; `local_render_backend`/preset/checkpoint selects local generation. They are not interchangeable. Old saved local profile choices normalize to supported defaults; already-staged job validation still enforces current renderer policy.
 
+`[ComfyUI.QwenImage21]` in `config.toml` is machine-local renderer tuning read by
+the ComfyUI adapter: `reference_resize_enabled`, `reference_max_pixels`,
+`reference_total_max_pixels`, `cache_device`, and `cache_dtype`. Valid machine
+settings override corresponding Qwen preset defaults. Render-job-local
+`Qwen_Reference_Inputs/v1/` and `Qwen_Reference_Preparation.json` store prepared
+reference PNGs and reproducibility metadata beside the compiled workflow; they are
+artifacts rather than Narrative/library source data. Saved pending workflows and
+their submission journal remain authoritative across settings changes. See
+[PROMPTS](COMPONENTS/PROMPTS.md).
+
 `[Kanban]` adds shared `BaseURL`, `ProjectID`, and `TimeoutSeconds`, validated by [task_service.py](../zet/services/task_service.py) and loaded into `Config.kanban_*`. Defaults are loopback port 8000, an empty project ID, and 5 seconds. An empty ID leaves forwarding unconfigured without blocking dashboard startup. This mapping is retained across universe binding; it is not another universe-owned catalog. [Kanban integration](Kanban_Integration.md) owns frozen context-v1 reports, screenshot fields, stable request IDs, retries and browser draft storage. Zet does not persist the Kanban board itself.
 
 Prompt task bundles, templates, section metadata, view text, and aliases are repository `Config/` assets. Shared character/costume Markdown uses compiler section markers and view directives; [PROMPTS](COMPONENTS/PROMPTS.md) owns their processing. Machine-local state and generated artifacts are not templates.
@@ -56,3 +71,17 @@ Prompt task bundles, templates, section metadata, view text, and aliases are rep
 ## Change checklist
 
 Locate both writers and readers. Preserve required/default fields and unknown stored fields where repository saves merge them. Check schema gates, ID/reference usages, normalization, snapshots, and generated source maps. Use [Testing](Testing.md) for the approved scenarios; dedicated migration tests were retired, so inspect uncovered format transitions in source rather than claiming baseline coverage. Prefer approved migration tooling for persistent format changes; do not hand-edit or rebuild `catalog.sqlite3` as if it were the discovery index.
+
+Narrative scene metadata may include `legacy_image` (independent catalog binding),
+`source_provenance` and `migration` review/source records. Elements bind either a direct
+asset or logical `reference_key`; repository reads fill absent scene/element defaults.
+`_state/NarrativeMigration/journal.json` owns migration reservations/completion and
+backup location; `_state/NarrativeCandidates/state.json` owns passed choices and import
+reservations. These stores are universe-scoped. Historical source snapshots are not
+editable generation state. `NARRATIVE` tags bind story/scene/target/candidate IDs;
+legacy `SCENE`/`SCENE_RENDER` tags are read-only image compatibility.
+
+## Render slot ownership (2026-10-12)
+Character `spec.json` retains initial candidate definitions and initial `slots_by_view`. `state.json` can override slot maps and owns `slot_version=1`, `added_candidates` definitions, mutable `candidates` updates, `detached_candidates`, and persisted supplemental target IDs. New independent slot submissions use `slot_render_ids`, `slot_review_views`, and per-candidate `slot_managed`; older `target_candidate_ids` remain supported for interrupted batch-runner work. Shared merging excludes detached identities from execution/review and active counts. Slots refer to stable candidate IDs, independently of ranking. Existing >8-candidate views remain legacy galleries; compatibility never truncates them. Per-candidate `render_input` freezes prompt text, ordered copied reference paths/hashes and preset for new render attempts.
+
+Image Generation jobs remain under universe `_state/ImageGeneration/<request_id>/job.json`. New jobs use `image_slots_version=1`, child-index image arrays, per-child status/error/seed, and persisted `render_payload` for replay. Historical completion-order jobs retain their original result indices. `_state/ImageGeneration/workspace.json` (version 1) owns eight nullable `{requestId,index}` assignments, `selected_slot` (zero-based or null), and one-time browser import state. A persistent workspace lock serializes allocation; reservations are saved before dispatch. Missing jobs display interruption rather than binding another result. Clear removes board bindings, not historical job files. See [ADR 0007](DECISIONS/0007-stable-render-slots.md).

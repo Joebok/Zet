@@ -1,7 +1,7 @@
 [Kanban]
 BaseURL = "http://127.0.0.1:8000"
 # Register Zet_v5 on the Kanban board, then set its project-xxxxxxxx identifier here.
-ProjectID = "project-9310b14e"
+ProjectID = "project-95f6d7a0"
 TimeoutSeconds = 5.0
 
 [BaseFolders]
@@ -46,6 +46,13 @@ PositivePromptGlobals = "(masterpiece, best quality, highres), sharp focus"
 NegativePromptGlobals = ""
 PollSeconds = 1.0
 TimeoutSeconds = 300.0
+
+[ComfyUI.QwenImage21]
+reference_resize_enabled = true
+reference_max_pixels = 1048576
+reference_total_max_pixels = 6291456
+cache_device = "cpu"
+cache_dtype = "int8"
 
 [Zine]
 PrintScale = 0.97

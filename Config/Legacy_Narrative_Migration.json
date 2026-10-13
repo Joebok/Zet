@@ -1,0 +1,1772 @@
+{
+  "version": 1,
+  "universe_id": "Moonsea",
+  "stories": [
+    {
+      "slug": "FirstDay",
+      "title": "First Day",
+      "id": "b2ade816a60b575f80fa384a415a2972",
+      "scenes": [
+        {
+          "slug": "Chapter-01-Standing-in-Wonder",
+          "title": "Chapter 01 Standing in Wonder",
+          "id": "7300c02026d450d08ef734e0a4cddb01",
+          "source_sha256": "6c5c2d7e8aada53f50d6ddf26e4b13d22cedc3eb9c78721998eef5600a79f2b9",
+          "image_sha256": "a82159d2ab88ad205947fdaa6dd2a82e8f71a8160555d7331016c11a47b0a099",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Ornate stone-and-gold academy arch, banners, leafy path and distant spire. Warm morning sun.",
+            "staging": "Tsaeytte fills the right foreground in rear three-quarter view, books held at chest, chin raised toward the inscription. Exactly three boys approach together in the left background below the arch.",
+            "visible_text": "Potential is nothing without discipline; POTENTIAL IS NOTHING WITHOUT DISCIPLINE; THE SPIRE OF CELESTIAL WISDOM",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte"
+                ],
+                "staging": "Tsaeytte alone, rear three-quarter view at right foreground, holding books at chest and tilting her head up to read the arch. Full standing silhouette."
+              },
+              {
+                "title": "Subject group 2",
+                "names": [
+                  "Kaeldor",
+                  "Schoolboy 1",
+                  "Schoolboy 2"
+                ],
+                "staging": "Exactly three academy boys: Schoolboy 1 at left, Schoolboy 2 center, Kaeldor right. Small in the background; laughing and nudging one another as they approach."
+              }
+            ]
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4",
+              "tag": "",
+              "asset_id": "",
+              "set_id": "",
+              "primary_prompt_source": true,
+              "label": "Tsaeytte · Youth · Woodland outfit · Back Left 3 4"
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "set_id": "",
+              "primary_prompt_source": true,
+              "label": "Spire Archway (new)",
+              "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+              "tag": "",
+              "reference_key": ""
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "set_id": "",
+              "primary_prompt_source": true,
+              "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+              "label": "Kaeldor",
+              "tag": "",
+              "reference_key": ""
+            },
+            {
+              "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+              "label": "Schoolboy 1",
+              "roles": [
+                "identity",
+                "costume"
+              ],
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "primary_prompt_source": true,
+              "tag": "",
+              "reference_key": "",
+              "set_id": "",
+              "notes": ""
+            },
+            {
+              "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+              "label": "Schoolboy 2",
+              "roles": [
+                "identity",
+                "costume"
+              ],
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "primary_prompt_source": true,
+              "tag": "",
+              "reference_key": "",
+              "set_id": "",
+              "notes": ""
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Chapter-02-At-the-Arch",
+          "title": "Chapter 02 - At the Arch",
+          "id": "6ec6121c20215593b2e39a7273b88481",
+          "source_sha256": "8c901b3cd8301f7fb6f083ff3e29667ced03dd49317fbacec30d094fc55d4393",
+          "image_sha256": "b1422a2629b2ec3d666cdbd065a1a017d0ebf719fc48c8473d5285a6e946f7cc",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Academy arch and sunlit cobbled approach, distant spire framed by the opening.",
+            "staging": "Landscape frame: Valindia stands large at left foreground, body turned toward Tsaeytte at right; both carry attention across the gap. Three schoolboys run toward the viewer between them in the background.",
+            "visible_text": "country girl; academy arch inscriptions",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Valindia"
+                ],
+                "staging": "Valindia at left in rear three-quarter view turns her face toward Tsaeytte at right. Tsaeytte holds books and looks back at her. Leave a clear gap between their silhouettes."
+              },
+              {
+                "title": "Subject group 2",
+                "names": [
+                  "Kaeldor",
+                  "Schoolboy 1",
+                  "Schoolboy 2"
+                ],
+                "staging": "Exactly three boys approach along the path: two schoolboys left/center and Kaeldor right, waving or laughing. All three visible as one group."
+              }
+            ]
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "set_id": "",
+              "primary_prompt_source": true,
+              "label": "Tsaeytte · Youth · Woodland outfit · Left Profile",
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.left-profile",
+              "tag": "",
+              "asset_id": ""
+            },
+            {
+              "roles": [
+                "identity",
+                "costume"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "set_id": "",
+              "primary_prompt_source": true,
+              "preserve": [
+                "face",
+                "hair",
+                "pointed ears",
+                "academy clothing"
+              ],
+              "change": [],
+              "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+              "label": "Kaeldor",
+              "tag": "",
+              "reference_key": ""
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source framing",
+                "source aspect ratio"
+              ],
+              "notes": "",
+              "set_id": "",
+              "primary_prompt_source": true,
+              "preserve": [
+                "identity"
+              ],
+              "change": [],
+              "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+              "label": "Spire Archway (new)",
+              "tag": "",
+              "reference_key": ""
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "set_id": "",
+              "primary_prompt_source": true,
+              "label": "Valindia · Adult · School Outfit · Right Profile",
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.right-profile",
+              "tag": "",
+              "asset_id": ""
+            },
+            {
+              "roles": [
+                "identity",
+                "costume"
+              ],
+              "preserve": [
+                "identity"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "primary_prompt_source": true,
+              "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+              "set_id": "",
+              "tag": "",
+              "reference_key": ""
+            },
+            {
+              "roles": [
+                "identity",
+                "costume"
+              ],
+              "preserve": [
+                "identity"
+              ],
+              "change": [],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "primary_prompt_source": true,
+              "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+              "set_id": "",
+              "tag": "",
+              "reference_key": ""
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Chapter-03-Collision",
+          "title": "Chapter 03 - Collision",
+          "id": "eb37f2e8d41852a8b2a166504856ff71",
+          "source_sha256": "94db3f3f68a43681076cc5cdd12b3bf0977979f739b60a82e544e50346b0c199",
+          "image_sha256": "5bc3878bb0fdad611bb40ec08a3b96907cb339ab46a4de532cc7e2e9d15529be",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Leafy academy arch, cobbles, gold banners and spire beyond; warm dappled light.",
+            "staging": "Portrait frame: Tsaeytte sits low at right foreground amid scattered books and looks up. Three boys stride past at left, Kaeldor closest and largest. Valindia stands centered behind Tsaeytte with hands over mouth.",
+            "visible_text": "sorry; academy arch inscriptions",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Valindia"
+                ],
+                "staging": "Tsaeytte seated low at right with legs forward, looking up; Valindia stands behind her covering her mouth with both hands. Preserve their different depths and scales."
+              },
+              {
+                "title": "Subject group 2",
+                "names": [
+                  "Kaeldor",
+                  "Schoolboy 1",
+                  "Schoolboy 2"
+                ],
+                "staging": "Three boys stride past at left foreground; Kaeldor largest and nearest, schoolboys laughing behind him. Preserve all three once, including visible cropping."
+              }
+            ]
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4",
+              "tag": "",
+              "asset_id": "",
+              "set_id": "",
+              "primary_prompt_source": true
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.front-right-3-4",
+              "tag": "",
+              "asset_id": "",
+              "set_id": "",
+              "primary_prompt_source": true
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "set_id": "",
+              "primary_prompt_source": true,
+              "asset_id": "9f329939-120b-4a1c-bb6d-2cfde7467490",
+              "tag": "",
+              "reference_key": ""
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "set_id": "",
+              "primary_prompt_source": true,
+              "preserve": [],
+              "change": [],
+              "asset_id": "cb9087bb-7b38-4a04-9c2b-7a04a395cb5a",
+              "tag": "",
+              "reference_key": ""
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [
+                "identity",
+                "costume"
+              ],
+              "change": [
+                "pose"
+              ],
+              "ignore": [
+                "background"
+              ],
+              "notes": "",
+              "primary_prompt_source": true,
+              "asset_id": "14dcb5f2-cbb7-48aa-a2f0-bf6f9b7907b1",
+              "set_id": "",
+              "tag": "",
+              "reference_key": ""
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [
+                "identity",
+                "costume"
+              ],
+              "change": [
+                "pose"
+              ],
+              "ignore": [
+                "background"
+              ],
+              "notes": "",
+              "primary_prompt_source": true,
+              "asset_id": "89fefb7b-1e0e-4217-b572-274fa76c1aa1",
+              "set_id": "",
+              "tag": "",
+              "reference_key": ""
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Chapter-04-A-Lending-Hand",
+          "title": "Chapter 04 - A Lending Hand",
+          "id": "68b5d7f274625f94835febf66d9e6d3b",
+          "source_sha256": "47613d8271f51985bb27484ca62c59ce6b1ed2ed3baa2ded0e299883c9a10cc6",
+          "image_sha256": "7c58e31bcee2cbb03e3eb921f1a39b0f08003557e2f0cf2d5536d862c573aba0",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Sunlit academy arch, banners and cobbled path with scattered books.",
+            "staging": "Valindia stands on the left, extending a recovered book down toward Tsaeytte seated on the lower right. Tsaeytte holds another book against her torso and looks up; their hands do not touch.",
+            "visible_text": "academy arch inscriptions",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Valindia"
+                ],
+                "staging": "Valindia stands on the left, extending a recovered book down toward Tsaeytte seated on the lower right. Tsaeytte holds another book against her torso and looks up; their hands do not touch."
+              }
+            ]
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4"
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.right-profile"
+            },
+            {
+              "tag": "{{AUX:place:spire-archway:spire-archway}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Chapter-05",
+          "title": "Chapter 05",
+          "id": "e701c9a3e80556a6ab5715e22f7744fa",
+          "source_sha256": "649689f937be5a8ec982c0f06ecb0003f2400492554c30bb75a76ac437d18511",
+          "image_sha256": "5263417a8697c12db46f7002e72e821d30190772e2056ced399950e7bacce58f",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Academy gateway framing the spire and small departing students, warm backlit foliage.",
+            "staging": "Valindia stands on the left facing Tsaeytte on the right; both seen largely from behind, Tsaeytte carrying a stack of books. Valindia folds her arms and turns her head toward Tsaeytte.",
+            "visible_text": "Maybe you should try not to be so...",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Valindia"
+                ],
+                "staging": "Valindia stands on the left facing Tsaeytte on the right; both seen largely from behind, Tsaeytte carrying a stack of books. Valindia folds her arms and turns her head toward Tsaeytte."
+              }
+            ]
+          },
+          "references": [
+            {
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.back-left-3-4"
+            },
+            {
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.back-right-3-4"
+            },
+            {
+              "tag": "{{AUX:place:spire-archway:spire-archway}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Chapter-06",
+          "title": "Chapter 06",
+          "id": "7b4479dc56bc5648b547e5d36318881b",
+          "source_sha256": "8fca8c5d59f2531d93b7770b65e05f1825cbd72c338b8ade526fbff38850c876",
+          "image_sha256": "bef7039f13f950b1330c948fe4277f3fb653d6ab25daca3592da87395dd5df4b",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Academy gate and cobbled path, small students behind, warm dappled daylight.",
+            "staging": "Tsaeytte walks toward viewer at center clutching books. Valindia walks at right pointing across Tsaeytte. A separate student hurries into frame at left, reaching toward Tsaeytte; preserve separation of all three silhouettes.",
+            "visible_text": "...camouflaged.; hey!",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production.",
+              "Final arch lettering differs from the earlier canonical arch inscription; retain written continuity and review the discrepancy."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Valindia",
+                  "Student"
+                ],
+                "staging": "Tsaeytte walks toward viewer at center clutching books. Valindia walks at right pointing across Tsaeytte. A separate student hurries into frame at left, reaching toward Tsaeytte; preserve separation of all three silhouettes."
+              }
+            ]
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front"
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [],
+              "change": [],
+              "ignore": [],
+              "notes": "",
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.front"
+            },
+            {
+              "tag": "{{AUX:place:spire-archway:arch-back-view}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Chapter-07-Nice-Hair",
+          "title": "Chapter 07 - Nice Hair",
+          "id": "d7fb9e59c90c5dc9b4569ae5c7ca3767",
+          "source_sha256": "5c58c7fc48f7e95d92c6f99e1700e8441be67e7f0d8121d13780658ae3580b95",
+          "image_sha256": "e9fe5777584e6bd653796495100c90bb6e5bc44fbcbb4cc892b2bb04aa97aa4d",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Academy gateway receding down a sunny path with small background students.",
+            "staging": "Tsaeytte walks on left hugging books, glancing toward Valindia on right. Valindia touches her red hair while speaking. Both foreground faces and complete bodies are visible.",
+            "visible_text": "Thank you. My name is Tsaeytte.; Well, Zet - try to keep up.",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Valindia"
+                ],
+                "staging": "Tsaeytte walks on left hugging books, glancing toward Valindia on right. Valindia touches her red hair while speaking. Both foreground faces and complete bodies are visible."
+              }
+            ]
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front"
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [],
+              "change": [],
+              "ignore": [],
+              "notes": "",
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.front"
+            },
+            {
+              "tag": "{{AUX:place:spire-archway:arch-back-view}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Chapter-08-Nightmare-Version",
+          "title": "Chapter 08 - Nightmare Version",
+          "id": "c520380127105f1c8b22a79fc420d40c",
+          "source_sha256": "8e559102447458ef38b04bce1ef07da9ebe6f4b683968314e574eeb0d13effad",
+          "image_sha256": "44b3fdbae886708b42fa18a0d3b221321122578dde875824379a9ecb978faedd",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Academy arch behind a low group on cobbles, scattered books and a raven perched above.",
+            "staging": "Tsaeytte sits center foreground looking down, legs outstretched. Valindia stands over her on left pointing and laughing, Kaeldor beside Valindia, two boys crouched to the right laughing. Preserve this as the nightmare version.",
+            "visible_text": "academy inscriptions; no speech panels",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Valindia",
+                  "Kaeldor",
+                  "School Boys"
+                ],
+                "staging": "Tsaeytte sits center foreground looking down, legs outstretched. Valindia stands over her on left pointing and laughing, Kaeldor beside Valindia, two boys crouched to the right laughing. Preserve this as the nightmare version."
+              }
+            ]
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.youth.costume-dressing.woodland-outfit.front-left-3-4"
+            },
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [],
+              "change": [],
+              "ignore": [],
+              "notes": "",
+              "reference_key": "valindia.adult.costume-dressing.school-outfit.front-right-3-4"
+            },
+            {
+              "tag": "{{AUX:person:kaeldor:kaeldor-uniform}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            },
+            {
+              "tag": "{{AUX:person:school-boys:schoolboys}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            },
+            {
+              "tag": "{{AUX:place:spire-archway:spire-archway}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": ""
+            }
+          ],
+          "candidate_id": ""
+        }
+      ]
+    },
+    {
+      "slug": "Phlan-Adventures",
+      "title": "Phlan Adventures",
+      "id": "9163fb390cf65e529fc3c95403f1379b",
+      "scenes": [
+        {
+          "slug": "Chapter-01-Group-Photo",
+          "title": "Chapter 01 - Group Photo",
+          "id": "5eba6ab81b26505c879df8a440017885",
+          "source_sha256": "eb2a61e5f9eb90643fae653aef4a2afcb8a78642a03621f50fa68c73af00589c",
+          "image_sha256": "25da1fc9af3ee1da590877d0a0e071491a5053c45c8e762afebb6a27429b6fde",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Green mountain meadow and stream with blue sky, clouds, conifers and distant peaks.",
+            "staging": "Landscape group portrait: Rin at far left, Freydis left of center, Tsaeytte center, Galen right of center, Peri at far right. Snarlspark sits low in front of Freydis. Standing subjects face camera with relaxed or folded arms.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production.",
+              "Final Tsaeytte wears a teal outfit; migrated current costume reference may have a different appearance. Review intentionally."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front"
+            },
+            {
+              "tag": "{{AUX:person:freydis:freydis}}"
+            },
+            {
+              "tag": "{{AUX:person:galen:galen}}"
+            },
+            {
+              "tag": "{{AUX:person:peri:peri}}"
+            },
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            },
+            {
+              "tag": "{{AUX:person:snarlspark:snarlspark}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Hell-Scene-01-Dance-for-Minos",
+          "title": "Dance for Minos",
+          "id": "bc5f54b78d4953829bc19b8043d8fc49",
+          "source_sha256": "f44665e1ed1f2ed19cb1411dd9f57c710fa05b7639f8c01f661d65ea91c1a4df",
+          "image_sha256": "0d444e8f1e3683e8832dce95f20e841227da4d7c744aeb9a69df3560a9c08cea",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Dark circular infernal arena, high spectator galleries, torches and warm amber light.",
+            "staging": "Tsaeytte at right foreground climbs or spins around an upright tusk, bent knees and flowing skirt. A huge horned judge dominates center background; party members watch from left and lower background. Keep dancer separated from judge.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front-left-3-4"
+            },
+            {
+              "tag": "{{AUX:place:hell-arena:arena}}"
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:holding-tusk-vertically}}"
+            },
+            {
+              "tag": "{{AUX:person:freydis:freydis}}"
+            },
+            {
+              "tag": "{{AUX:person:galen:galen}}"
+            },
+            {
+              "tag": "{{AUX:person:peri:peri}}"
+            },
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Hell-Scene-02-Can-We-Jump-Now",
+          "title": "Can We Jump Now",
+          "id": "8663e2b6241f5300b3caed56403b21fa",
+          "source_sha256": "37cea908474cd2881b30fc0659cd44c36196d8839225b6140c1a6d641324e6ec",
+          "image_sha256": "a9f293b5c12d4923a28d75111948d528f992f83d1c9043182d2882cf6fc77ad3",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Infernal circular stairwell, glowing deep red pit at center and stairs sweeping upward to upper left.",
+            "staging": "Tsaeytte crouches at left foreground beside the pit rim, holding the tusk upright and pointing down. Four companions stand together across the pit at right background, gesturing objections.",
+            "visible_text": "It's the quickest way down!; no!; don't jump!",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "tag": "{{AUX:place:hell-stairs:stairs}}"
+            },
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.right-profile"
+            },
+            {
+              "tag": "{{AUX:person:freydis:freydis}}"
+            },
+            {
+              "tag": "{{AUX:person:galen:galen}}"
+            },
+            {
+              "tag": "{{AUX:person:peri:peri}}"
+            },
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Hell-Scene-03-Fine",
+          "title": "Fine",
+          "id": "55cc68a5e9ef52359adbff23a3d58ad0",
+          "source_sha256": "5a058e56b47bc56b259da15032ef3fdc1ff4f04291bb72131ffa24aef1a08e05",
+          "image_sha256": "3017fddfe41f2a5e2029a3444b227afbd196d21cebc0025b52fdc96f9446d14e",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Infernal spiral stairs and red-lit central pit, orange doorway at right.",
+            "staging": "Tsaeytte walks left-to-right across foreground, head turned right and dragging the long tusk diagonally behind. Companions wait on right near the doorway; stairs recede at upper left.",
+            "visible_text": "fine; ...clunk...",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "tag": "{{AUX:place:hell-stairs:stairs}}"
+            },
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.right-profile"
+            },
+            {
+              "tag": "{{AUX:person:freydis:freydis}}"
+            },
+            {
+              "tag": "{{AUX:person:galen:galen}}"
+            },
+            {
+              "tag": "{{AUX:person:peri:peri}}"
+            },
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:dragging}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Troll-Forest",
+          "title": "Troll Forest",
+          "id": "630aa4e6b6f0505d893660f6704d216d",
+          "source_sha256": "1348ba9b219d81826f5cc4d003497d35892386b3867a696518d4aaa4e5d070b9",
+          "image_sha256": "4e4e69daa8773473710fbd63e9a76e9a4124ef6e7444720c75f79aad23d06300",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Red sky and black twisted forest, cobbled road with scattered flames and advancing trolls.",
+            "staging": "Tsaeytte and Andy the troll stand close at left foreground, her hand near her mouth as she talks up to him; upright tusk beside her. Party group crouches or fights on road in middle right, more trolls approach behind.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "tag": "{{AUX:place:troll-forest:forest-and-path}}"
+            },
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front-right-3-4"
+            },
+            {
+              "tag": ""
+            },
+            {
+              "tag": ""
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}"
+            },
+            {
+              "tag": "{{AUX:person:adventuring-party:attack-back-right}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "No-Surrender",
+          "title": "No Surrender",
+          "id": "0fb3b99ccb07536a997b3492caa5beda",
+          "source_sha256": "2ac0ed78e20f979e0f7acd7f9df097a0869c06033dfd8c808644bf1be9eb8b6f",
+          "image_sha256": "afd9bbfcab81a255f10426fee9bf92cc28b0d0454286b44df2a12d9ce15815dc",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Two stacked panels of an infernal red sky, jagged dark city silhouettes below.",
+            "staging": "Top panel: Tsaeytte from behind at right holds upright tusk and reads SURRENDER TSAEY TTE. Bottom panel: same rear figure at right gestures blue magic to insert an I above the sky writing. Keep both panels as historical composition; choose a single instant or separate scenes before production.",
+            "visible_text": "Top: SURRENDER TSAEYTTE; No... Bottom: I SURRENDER TSAEYTTE; Much better!",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production.",
+              "Historical final is a two-panel sequence, not one depicted instant; review whether to split it."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.back-left-3-4"
+            },
+            {
+              "tag": "{{AUX:place:hell-skywriting:surrender-tsaeytte}}"
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Mushrooms",
+          "title": "Mushrooms",
+          "id": "deb6a3efb0355f989491c307018ebfee",
+          "source_sha256": "42536d59c70f2a7db0cece88db34ebe0f4b16b9633dd8d872877600b02a36325",
+          "image_sha256": "630acb9412e25bbb0df3fc868a39be9a683cfe5b398cf2743f8665526a8437f1",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Burning black forest, orange flame wall, red smoky sky and small mushrooms at lower right.",
+            "staging": "Tsaeytte at right midground strides left with both arms spread toward an animated tree creature at left. The tree has a screaming face and holds a person against its trunk. Preserve the large scale difference and open gap between subjects.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "tag": "{{AUX:place:troll-forest:clearing}}"
+            },
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.left-profile"
+            },
+            {
+              "tag": "{{AUX:person:freydis:freydis}}"
+            },
+            {
+              "tag": ""
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Cannibal-Stew",
+          "title": "Cannibal Stew",
+          "id": "70a9f7d87c1e5659aeca4ead55dfb7e1",
+          "source_sha256": "1772dc4660facf308512b663a96d35773e80acacddbe5a98c28b9cea77f3bdc2",
+          "image_sha256": "efcdfe8f4d601196a90dfaf47407b11559d962f87b38bf3468167ef4b35a5870",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Infernal forest with red sky, dark boulders and torchlight around a steaming cauldron.",
+            "staging": "Tsaeytte at left bends toward Rin in center, hand by her mouth. Rin holds a bowl at chest level. Peri stands at right lifting food to his mouth. Large cauldron occupies lower center/right, hostile faces peer over rocks behind.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "tag": "{{AUX:place:troll-forest:clearing}}"
+            },
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.right-profile"
+            },
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            },
+            {
+              "tag": "{{AUX:person:peri:peri}}"
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Fountain",
+          "title": "Fountain",
+          "id": "0233e950ce4d5155a612e58164cfffc0",
+          "source_sha256": "42aa8f52b1effbc31cc840853656a4ca4118c77432083116e302b4bf1e45ed23",
+          "image_sha256": "d5691813004b94d6d6fd5587a70dac4c8c47afec49865d17e17743a1712ef109",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Circular fountain plaza under red sunset, greenish water and golden glowing spheres on its rim.",
+            "staging": "Tsaeytte left foreground recoils with arms open as a dark water elemental rises at right and sends a broad jet toward her torso. Rin stands center background pointing a staff at the elemental; statue behind Tsaeytte.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front-right-3-4"
+            },
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Too-Much-Information",
+          "title": "Too Much Information",
+          "id": "893f77d9226053ebae1392d8c8cf2d03",
+          "source_sha256": "ad2cccbcd1ac14725284d16e9b198d90fc419a471301fcbf2fdfd86337700c06",
+          "image_sha256": "298d20e36e12b8bd4162c0516d88bd654ec00e45dc02a88570733e081e973cef",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Narrow obsidian canyon, wet reflective path and bright orange sunset between dark walls.",
+            "staging": "Portrait two-shot: Tsaeytte left foreground grips upright tusk with one hand and points at Jero on right with the other. Jero in wide hat holds an open notebook and looks toward her. Their upper bodies dominate frame.",
+            "visible_text": "...and then she said, “I will CUT you a GREAT DEAL!”; Get it?",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "tag": ""
+            },
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front"
+            },
+            {
+              "tag": "{{AUX:person:jero:jero-composite}}"
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}"
+            }
+          ],
+          "candidate_id": "moonsea-obsidian-road-a"
+        },
+        {
+          "slug": "Ten-Nine",
+          "title": "Ten... Nine...",
+          "id": "88951352ebca5de3aa8528707abef1af",
+          "source_sha256": "ec3e32bbf1f4b37cc96f918e313be60697c2deac01179ccc5d42e66f51fc7896",
+          "image_sha256": "a82ffba79f73968395336ed11371569caf699bed7e9d6d4f5dd57c91814431ef",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Deep sheer-walled red infernal canyon, bright sunset at top and falling road fragments.",
+            "staging": "Tsaeytte largest at lower center/right falls diagonally holding Morrow close. Rin balances on detached rock at upper left; Galen tumbles with shields upper right; Jero falls lower left and Freydis lower right. Preserve depth and separated silhouettes.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Morrow"
+                ],
+                "staging": "Tsaeytte falls diagonally, legs toward lower left, clutching Morrow against her chest; wind lifts skirt and hair."
+              },
+              {
+                "title": "Subject group 2",
+                "names": [
+                  "Rin",
+                  "Freydis",
+                  "Galen",
+                  "Jero"
+                ],
+                "staging": "Rin on detached rock at upper left; Galen tumbles with shields upper right; Jero lower left; Freydis lower right. Separate the four falling silhouettes and their differing depths."
+              }
+            ]
+          },
+          "references": [
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            },
+            {
+              "tag": "{{AUX:person:freydis-from-hell:freydis-hell}}"
+            },
+            {
+              "tag": "{{AUX:person:galen:galen}}"
+            },
+            {
+              "tag": "{{AUX:person:jero:jero-composite}}"
+            },
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front-left-3-4"
+            }
+          ],
+          "candidate_id": "moonsea-obsidian-road-b"
+        },
+        {
+          "slug": "Menelmacar",
+          "title": "Menelmacar",
+          "id": "a1739947513a5dfdab4160fe8f837def",
+          "source_sha256": "4e7ffda83b31c725894ca2d1981956becfedde7227ce1e705f0f33e3776df90c",
+          "image_sha256": "1796039e99bf56b6b44979f85f8b59936835a0d330aa8e3f36503e0ac3c960c6",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Dark broken obsidian road among huge bones and skull, constellation net across a red starry sky.",
+            "staging": "Tsaeytte sits cross-legged low at left of center, playing a green-gold lyre held upright. Morrow perches on its top facing her. Skeletal musicians recede on right midground; massive skull and bones form right background.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front-right-3-4"
+            },
+            {
+              "tag": "{{AUX:place:orion:orion}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": []
+            }
+          ],
+          "candidate_id": "moonsea-road-malebolge-menelmacar"
+        },
+        {
+          "slug": "Roped-to-the-Road",
+          "title": "Roped to the Road",
+          "id": "9df3778fcc96557b881417652e216e5c",
+          "source_sha256": "c6caa3b056a50f387c796f650990187996ae30294e046496fdac06090c018503",
+          "image_sha256": "8d04069b8f89d59f2afdcb1f0941a8ffabd533c5dd13cd7e195dfc87efbf1043",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Narrow dark road through a dusty brown infernal landscape, looming devil overhead at right.",
+            "staging": "Tsaeytte large at left foreground leans forward and works a rope; blue magic follows the rope diagonally toward a group of companions and rescued travelers behind at center/right. Morrow perches on her shoulder; devil looms behind group.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production.",
+              "Older source labels the traveler group as a backdrop; it is retained as a subject group in this stub."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front-right-3-4"
+            }
+          ],
+          "candidate_id": "moonsea-road-malebolge-roped"
+        },
+        {
+          "slug": "Morrow-Returns",
+          "title": "Morrow Returns",
+          "id": "b601bcc9589250c9895b20d99bc8de52",
+          "source_sha256": "2679d183be5039bbe3ea37872add8b31cad3f5127913123c50f53ab0cf6748c4",
+          "image_sha256": "28d5e74baea89d9395c7b4b79f84e3d333f74f8cd07e220b21ab294624fd651e",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Obsidian road under fiery red sky with eclipsed sun, sparks and scattered feathers.",
+            "staging": "Tsaeytte kneels center foreground looking up at Morrow perched on her shoulder at upper right, raven wings spread wide. Rin stands behind on left holding staff. Damaged mirror and chain lie in foreground; visible burns on Tsaeytte require review against prose.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front"
+            },
+            {
+              "tag": "{{AUX:person:morrow:morrow-raven-form}}"
+            },
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            }
+          ],
+          "candidate_id": "moonsea-raven-flame-a"
+        },
+        {
+          "slug": "The-Entrance-to-Malebolge",
+          "title": "The Entrance to Malebolge",
+          "id": "5c900c5b5d935baeb273b15c90fcc95e",
+          "source_sha256": "b3b934513e2a98c85e0943d6fd0c0c09d60c6c3bb4b37236e3f59d29dca42d80",
+          "image_sha256": "a0b364f09562718bb1a84068b2f7ed68e81cf6ae07bd28979919eb5ad0580783",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Infernal black tower and glowing doorway at right, red sky and molten-looking road.",
+            "staging": "Tsaeytte at left foreground holds upright tusk and gestures to Rin center foreground. Freydis and Snarlspark at lower right stand with the poets near tower entrance. Foreground conversation and entrance group remain distinct.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Rin"
+                ],
+                "staging": "Tsaeytte at left holds upright tusk and gestures toward Rin standing to her right. Both fully visible, facing each other."
+              },
+              {
+                "title": "Subject group 2",
+                "names": [
+                  "Freydis From Hell",
+                  "Snarlspark",
+                  "The Poets"
+                ],
+                "staging": "Freydis and Snarlspark below right with the poets gathered at the tower doorway. Preserve separate identities and their smaller scale relative to foreground pair."
+              }
+            ]
+          },
+          "references": [
+            {
+              "tag": "{{ASSET:Tsaeytte:Adult:67:Scene Appearance | Front-Right-3-4 | Hell Adventures | Canonical Adventure Gear}}",
+              "roles": [
+                "visual reference"
+              ]
+            },
+            {
+              "tag": "{{AUX:person:rin:rin}}"
+            },
+            {
+              "tag": "{{AUX:person:freydis-from-hell:freydis-hell}}"
+            },
+            {
+              "tag": "{{AUX:person:snarlspark:snarlspark}}"
+            },
+            {
+              "tag": "{{IMAGE:img_0676c246787344879587}}"
+            }
+          ],
+          "candidate_id": "moonsea-raven-flame-b"
+        },
+        {
+          "slug": "Yolo",
+          "title": "Yolo",
+          "id": "81cad914ae2c5c198be150f3fa5247af",
+          "source_sha256": "870917d23139f15d0a87df00410a953d294a75b14943138924e71faa14613b15",
+          "image_sha256": "2028c2224861c152e76d8b095a17f4c644c65fd5215d848ec8f958c5c8e60021",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Infernal tower entrance receding behind subjects at right, molten road and red sunset.",
+            "staging": "Portrait: Freydis crouches at left foreground, grinning, axe upright at far left; one hand rests on Snarlspark seated lower right. Blue glowing eye and axe detail visible. Keep both large in frame.",
+            "visible_text": "yolo; woof!",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "tag": "{{SCENE_RENDER:Phlan-Adventures:The-Entrance-to-Malebolge:background}}",
+              "roles": [
+                "visual reference"
+              ]
+            },
+            {
+              "tag": "{{AUX:person:freydis-from-hell:freydis-hell}}"
+            },
+            {
+              "tag": "{{AUX:person:snarlspark:snarlspark}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Hey-wait",
+          "title": "Hey, wait!",
+          "id": "b1432f59c84f544694f6de0f4d2a1111",
+          "source_sha256": "4a0c8bc1bd27d25fc5b80b33916673f5049e3cf16d32c5fae29d3d54922fd3b3",
+          "image_sha256": "061f19dc2a9ff8393f6819046b08a44ecba72f7534c75a4c59add1cea1dcbe3e",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Black infernal tower doorway center/right, red sunset and road leading toward opening.",
+            "staging": "Tsaeytte fills left foreground in rear three-quarter view, one hand gripping upright tusk, other extended toward Freydis and Snarlspark running away toward doorway in center/right. Morrow perches on her shoulder.",
+            "visible_text": "Hey!",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "tag": "{{ASSET:Tsaeytte:Adult:65:Scene Appearance | Back-Right-3-4 | Hell Adventures | Canonical Adventure Gear}}",
+              "roles": [
+                "visual reference"
+              ]
+            },
+            {
+              "tag": "{{SCENE_RENDER:Phlan-Adventures:The-Entrance-to-Malebolge:background}}",
+              "roles": [
+                "visual reference"
+              ]
+            },
+            {
+              "tag": "{{AUX:person:freydis-from-hell:freydis-hell}}"
+            },
+            {
+              "tag": "{{AUX:person:snarlspark:snarlspark}}"
+            }
+          ],
+          "candidate_id": ""
+        },
+        {
+          "slug": "Into-the-Celestial-Sphere",
+          "title": "Wild Magic Surge",
+          "id": "9d48d729ec2e515c890e5f74e3970e6b",
+          "source_sha256": "641d6ea0d13f859756ecb23baa33f1dfb28a0b1210d0f82b799d353f0c51ac87",
+          "image_sha256": "a0dcbee0bf15278f6fe56351beee3847792d6ad791deff21b3be5a33f34a11eb",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Deep red infernal stairwell with gothic walls, suspended debris and brilliant blue-violet magic at upper right.",
+            "staging": "Tsaeytte falls diagonally across lower foreground, legs to left, tusk in right hand, left hand spreading magic toward upper right. Morrow flies above center with wings spread. Camel tumbles above left stairs. Preserve airborne subjects and separation.",
+            "visible_text": "wild magic",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front-left-3-4"
+            },
+            {
+              "tag": "{{AUX:person:morrow:morrow-raven-form}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": []
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}",
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [],
+              "change": [],
+              "ignore": [
+                "orientation",
+                "insets",
+                "background",
+                "text"
+              ],
+              "notes": ""
+            }
+          ],
+          "candidate_id": "moonsea-celestial-rift-a"
+        },
+        {
+          "slug": "The-Rift-Forms",
+          "title": "The Rift Forms",
+          "id": "854d002be85859b1aac521f2703287e4",
+          "source_sha256": "a1e1c0f5c7b873e7286474bdef7ac1f205b02a93a232812c755ef2c5813f1876",
+          "image_sha256": "c7b91d7fe4fcb3f122da15ca3d97d7dee23dd9786e62d0460347c5fadfc2b4e4",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Red gothic stairwell opening onto a large bright blue-violet celestial sphere at right, dust and floating debris.",
+            "staging": "Tsaeytte floats diagonally from lower left toward right, grips tusk with both hands, looks into sphere. Blue wing-like magic spreads behind her; Morrow flies upper left and camel tumbles far upper right. Sphere occupies right half.",
+            "visible_text": "None",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": []
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.front-right-3-4"
+            },
+            {
+              "tag": "{{AUX:person:morrow:morrow-raven-form}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": []
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}",
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [],
+              "change": [],
+              "ignore": [
+                "orientation",
+                "insets",
+                "background",
+                "text"
+              ],
+              "notes": ""
+            }
+          ],
+          "candidate_id": "moonsea-celestial-rift-a"
+        },
+        {
+          "slug": "The-Celestial-Sphere",
+          "title": "The Celestial Sphere",
+          "id": "52352a8833b65068a6abadf014d048dd",
+          "source_sha256": "39e301f36b8702ad4b518d74ef8144b1037916049ddfacf071c436a7d79acf06",
+          "image_sha256": "ee2ddcc7c7e0f53f63c864492ccfcb21c3cb3e7f69a1150f0dd14cda11a3bbf0",
+          "image_review": {
+            "reviewed": true,
+            "backdrop": "Red infernal stairwell around a round violet celestial portal at right, stars and orbital lines inside.",
+            "staging": "Landscape: Tsaeytte flies left-to-right at left with blue magical wings and upright tusk; Morrow above her. Portal fills right half with four distinct memory windows in a two-by-two arrangement, each showing Thalor at a desk. Preserve four windows without replacing them with new scenes.",
+            "visible_text": "it was me...",
+            "framing": "Preserve the legacy image aspect and visible cropping.",
+            "issues": [
+              "Image-derived composition is preliminary; review saved prose/dialogue and actual reference availability before production."
+            ],
+            "groups": [
+              {
+                "title": "Subject group 1",
+                "names": [
+                  "Tsaeytte",
+                  "Morrow",
+                  "Utility Tusk"
+                ],
+                "staging": "Tsaeytte floats from left toward right with blue magical wings, tusk upright in hands; Morrow flies above her."
+              },
+              {
+                "title": "Subject group 2",
+                "names": [
+                  "Thalor 1",
+                  "Thalor 2",
+                  "Thalor 3",
+                  "Thalor 4"
+                ],
+                "staging": "Four independent Thalor-at-desk memory windows, arranged two by two inside a round celestial sphere. Preserve the original vignette references when recovered."
+              }
+            ]
+          },
+          "references": [
+            {
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": [],
+              "reference_key": "tsaeytte.adult.costume-dressing.canonical-adventure-gear.right-profile"
+            },
+            {
+              "tag": "{{AUX:person:morrow:morrow-raven-form}}",
+              "roles": [
+                "visual reference"
+              ],
+              "ignore": [
+                "source pose",
+                "source background",
+                "source framing"
+              ],
+              "notes": "",
+              "preserve": [],
+              "change": []
+            },
+            {
+              "tag": "{{AUX:thing:utility-tusk:tusk-reference}}",
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [],
+              "change": [],
+              "ignore": [
+                "orientation",
+                "insets",
+                "background",
+                "text"
+              ],
+              "notes": ""
+            },
+            {
+              "tag": "{{IMAGE:img_86d7159f402241c38227}}",
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [
+                "the entire image"
+              ],
+              "change": [
+                "Give a slight dream-like tilt to the image."
+              ],
+              "ignore": [],
+              "notes": ""
+            },
+            {
+              "tag": "{{IMAGE:img_96a93ea104bb4b148fa4}}",
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [
+                "The entire image"
+              ],
+              "change": [
+                "Give a slight dream-like tilt to the image."
+              ],
+              "ignore": [],
+              "notes": ""
+            },
+            {
+              "tag": "{{IMAGE:img_61916793584e44dead16}}",
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [
+                "The entire image"
+              ],
+              "change": [
+                "Give a dream-like tilt to the image."
+              ],
+              "ignore": [],
+              "notes": ""
+            },
+            {
+              "tag": "{{IMAGE:img_a3f40085eea148ad92a9}}",
+              "roles": [
+                "visual reference"
+              ],
+              "preserve": [
+                "The entire image"
+              ],
+              "change": [
+                "Give a dream-like tilt to the image."
+              ],
+              "ignore": [],
+              "notes": ""
+            }
+          ],
+          "candidate_id": "moonsea-celestial-rift-a"
+        }
+      ]
+    }
+  ],
+  "excluded": [
+    "FirstDay/Collision"
+  ],
+  "unavailable_managed_images": {
+    "img_0676c246787344879587": {
+      "label": "Poets Arguing",
+      "historical_image_path": "ImageCatalog/Images/img_0676c246787344879587.png",
+      "record_recovered_from": "Zet_Library HEAD",
+      "image_bytes_available": false
+    },
+    "img_61916793584e44dead16": {
+      "label": "Lonely Thalor 3 Vignette",
+      "historical_image_path": "C:\\Users\\Joe\\Projects\\Zet_Library\\ImageCatalog\\Images\\img_61916793584e44dead16.png",
+      "record_recovered_from": "Zet_Library HEAD",
+      "image_bytes_available": false
+    },
+    "img_86d7159f402241c38227": {
+      "label": "Lonely Thalor 1 Vignette",
+      "historical_image_path": "C:\\Users\\Joe\\Projects\\Zet_Library\\ImageCatalog\\Images\\img_86d7159f402241c38227.png",
+      "record_recovered_from": "Zet_Library HEAD",
+      "image_bytes_available": false
+    },
+    "img_96a93ea104bb4b148fa4": {
+      "label": "Lonely Thalor 2 Vignette",
+      "historical_image_path": "C:\\Users\\Joe\\Projects\\Zet_Library\\ImageCatalog\\Images\\img_96a93ea104bb4b148fa4.png",
+      "record_recovered_from": "Zet_Library HEAD",
+      "image_bytes_available": false
+    },
+    "img_a3f40085eea148ad92a9": {
+      "label": "Lonely Thalor 4 Vignette",
+      "historical_image_path": "C:\\Users\\Joe\\Projects\\Zet_Library\\ImageCatalog\\Images\\img_a3f40085eea148ad92a9.png",
+      "record_recovered_from": "Zet_Library HEAD",
+      "image_bytes_available": false
+    }
+  }
+}

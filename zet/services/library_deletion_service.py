@@ -66,18 +66,25 @@ class LibraryDeletionService:
             connection.execute(f"UPDATE assets SET replacement_for_asset_id=NULL WHERE replacement_for_asset_id IN ({placeholders})", tuple(ids))
             connection.execute(f"DELETE FROM assets WHERE asset_id IN ({placeholders})", tuple(ids))
 
+    def _protect_narrative_assets(self, ids: list[str]) -> None:
+        if not ids:
+            return
+        placeholders = ",".join("?" for _ in ids)
+        usage = self.entity_repository.fetchone(
+            f"""SELECT u.consumer_id FROM asset_usages u
+                LEFT JOIN logical_references lr ON lr.reference_key=u.reference_key
+                WHERE u.status='current' AND u.consumer_id LIKE 'NarrativeStories/%'
+                  AND (u.asset_id IN ({placeholders}) OR lr.asset_id IN ({placeholders})) LIMIT 1""",
+            (*ids, *ids),
+        )
+        if usage:
+            raise LibraryDeletionServiceError("A Narrative scene uses these images. Change its references before deleting the phase or costume.")
+
     def delete_phase(self, character: str, phase: str) -> str:
         character, phase = self._name(character, "character"), self._name(phase, "phase")
         phase_path = self.paths.character_path(character, phase)
         if not phase_path.is_dir():
             raise LibraryDeletionServiceError(f"Character phase not found: {character} / {phase}")
-        archive = self._archive(character, phase, "phase")
-        self._move(phase_path, archive / "Characters" / character / phase)
-        self._move(self.paths.character_asset_path(character, phase), archive / "Assets" / character / phase)
-        self._move(self.paths.pipeline_base_path(character, phase), archive / "Pipelines" / character / phase)
-        self._move(self.paths.pipeline_candidates_path("Character-Pipeline", character, phase), archive / "PipelineCandidates" / character / phase)
-        self._move(self.local_sources.store.workspace_path(character, phase).parent, archive / "LocalAssets" / character / phase)
-
         character_entity = self.entity_repository.fetchone(
             "SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='character'", (character,)
         )
@@ -89,6 +96,14 @@ class LibraryDeletionService:
             "SELECT DISTINCT a.asset_id FROM assets a JOIN asset_entities ae ON ae.asset_id=a.asset_id WHERE ae.variant_id=?",
             (variant["variant_id"],),
         )] if variant else []
+        self._protect_narrative_assets(ids)
+        archive = self._archive(character, phase, "phase")
+        self._move(phase_path, archive / "Characters" / character / phase)
+        self._move(self.paths.character_asset_path(character, phase), archive / "Assets" / character / phase)
+        self._move(self.paths.pipeline_base_path(character, phase), archive / "Pipelines" / character / phase)
+        self._move(self.paths.pipeline_candidates_path("Character-Pipeline", character, phase), archive / "PipelineCandidates" / character / phase)
+        self._move(self.local_sources.store.workspace_path(character, phase).parent, archive / "LocalAssets" / character / phase)
+
         self._purge_assets(ids, archive)
         if variant:
             with self.entity_repository.transaction() as connection:
@@ -104,6 +119,22 @@ class LibraryDeletionService:
         if match is None:
             raise LibraryDeletionServiceError(f"Costume not found: {costume_slug}")
         costume_name = self.paths_costume_name(costume_slug)
+        entity_assets = self.entity_repository.fetchall(
+            """SELECT DISTINCT a.asset_id FROM assets a
+               LEFT JOIN asset_entities ae ON ae.asset_id=a.asset_id
+               LEFT JOIN entities e ON e.entity_id=ae.entity_id
+               WHERE a.origin_key LIKE ?
+                  OR (e.entity_type='costume' AND lower(e.name)=lower(?) AND EXISTS (
+                      SELECT 1 FROM asset_entities subject
+                      JOIN entities character_entity ON character_entity.entity_id=subject.entity_id
+                      JOIN variants phase_variant ON phase_variant.variant_id=subject.variant_id
+                      WHERE subject.asset_id=a.asset_id AND character_entity.entity_type='character'
+                        AND lower(character_entity.name)=lower(?) AND phase_variant.variant_type='life_stage'
+                        AND lower(phase_variant.name)=lower(?)
+                  ))""",
+            (f"local:Costume-Dressing:{character}:{phase}:%", costume_name, character, phase),
+        )
+        self._protect_narrative_assets([row["asset_id"] for row in entity_assets])
         archive = self._archive(character, phase, f"costume_{costume_slug}")
         self._move(match, archive / "Templates" / match.name)
 
@@ -146,21 +177,6 @@ class LibraryDeletionService:
                                        if not isinstance(dep, dict) or dep.get("key") not in removed_set]
             write_json_atomic(store_path, data)
 
-        entity_assets = self.entity_repository.fetchall(
-            """SELECT DISTINCT a.asset_id FROM assets a
-               LEFT JOIN asset_entities ae ON ae.asset_id=a.asset_id
-               LEFT JOIN entities e ON e.entity_id=ae.entity_id
-               WHERE a.origin_key LIKE ?
-                  OR (e.entity_type='costume' AND lower(e.name)=lower(?) AND EXISTS (
-                      SELECT 1 FROM asset_entities subject
-                      JOIN entities character_entity ON character_entity.entity_id=subject.entity_id
-                      JOIN variants phase_variant ON phase_variant.variant_id=subject.variant_id
-                      WHERE subject.asset_id=a.asset_id AND character_entity.entity_type='character'
-                        AND lower(character_entity.name)=lower(?) AND phase_variant.variant_type='life_stage'
-                        AND lower(phase_variant.name)=lower(?)
-                  ))""",
-            (f"local:Costume-Dressing:{character}:{phase}:%", costume_name, character, phase),
-        )
         self._purge_assets([row["asset_id"] for row in entity_assets], archive)
         return str(archive)
 

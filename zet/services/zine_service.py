@@ -198,27 +198,16 @@ class ZineService:
         return ZineDocument(self._record(metadata, json_path), metadata)
 
     def story_scene_sources(self, story_slug: str) -> list[ZineSceneSource]:
-        sources = []
-        for scene in self.story_service.list_scenes(story_slug):
-            path = self.story_service.scene_image_path(story_slug, scene.slug)
-            if not path.is_file():
-                continue
-            try:
-                with Image.open(path) as image:
-                    width, height = image.size
-                    image.verify()
-            except (OSError, ValueError):
-                continue
-            sources.append(ZineSceneSource(
-                story_slug=story_slug,
-                scene_slug=scene.slug,
-                title=scene.title,
-                tag=f"{{{{SCENE:{story_slug}:{scene.slug}}}}}",
-                image_path=str(path),
-                width=width,
-                height=height,
-            ))
-        return sources
+        author = getattr(self, "narrative", None)
+        if author is None:
+            return []
+        result = []
+        for source in author.finished_sources(story_slug):
+            with Image.open(source["image_path"]) as image:
+                width, height = image.size
+            result.append(ZineSceneSource(story_slug=story_slug, scene_slug=source["scene_id"], title=source["title"],
+                tag=source["tag"], image_path=source["image_path"], width=width, height=height))
+        return result
 
     def _normalized_metadata(self, payload: dict) -> dict:
         name = str(payload.get("zine_name") or "").strip()

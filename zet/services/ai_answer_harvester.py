@@ -522,6 +522,14 @@ class AIAnswerHarvester:
         if not answer.expected_output or Path(answer.expected_output).name != answer.expected_output:
             raise AIAnswerHarvesterError("Answer expected_output must be a filename.")
 
+        owner = str(ask_manifest.get("universe_id") or "")
+        if owner != str(getattr(self.path_service.config, "universe_id", "Moonsea")):
+            raise AIAnswerHarvesterError("Answer belongs to another universe; files retained.")
+        if ask_manifest.get("story_slug") or ask_manifest.get("task_type") == "scene_prompt_analysis":
+            result = HarvestResult(answer_path=answer_path, ask_id=answer.ask_id, asset_id=answer.asset_id,
+                                   status="SUPERSEDED", message="Scene Builder is retired; late result bytes preserved without publication.")
+            self._write_harvest_manifest(answer_path, result)
+            return result
         character = str(ask_manifest.get("character") or "")
         phase = str(ask_manifest.get("phase") or "")
         if bool(ask_manifest.get("auxiliary", False)):

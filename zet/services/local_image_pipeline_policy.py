@@ -30,7 +30,7 @@ class LocalImagePipelineConfig:
     front_anchor_rule: str = "optional"
     front_count: int = 8
     other_count: int = 4
-    candidate_limit: int = 256
+    candidate_limit: int = 64
     review_version: int = 2
 
     def page_contract(self) -> dict[str, Any]:
@@ -177,6 +177,7 @@ def decorate_local_pipeline_detail(run: dict[str, Any], pipeline: str) -> dict[s
         counts[render_status] += 1
         candidates.append(candidate)
     result["candidates"] = candidates
+    result["candidate_count"] = len(candidates)
     result["render_progress"] = {
         **counts,
         "total": len(candidates),

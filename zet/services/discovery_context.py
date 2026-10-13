@@ -46,58 +46,8 @@ class DiscoveryContext:
         self._lock = RLock()
 
     def scene_records(self) -> tuple[SceneDiscoveryRecord, ...]:
-        with self._lock:
-            if self._scene_records is not None:
-                return self._scene_records
-
-            records: list[SceneDiscoveryRecord] = []
-            for story in self.story_service.list_stories():
-                for scene in self.story_service.list_scenes(story.slug):
-                    story_slug = str(story.slug)
-                    scene_slug = str(scene.slug)
-                    main_locked = self.path_service.scene_locked_image_path(story_slug, scene_slug)
-                    main_candidate = self.path_service.scene_candidate_image_path(story_slug, scene_slug)
-                    record("candidate_path_checks", count=1)
-                    records.append(SceneDiscoveryRecord(
-                        story_slug=story_slug,
-                        story_title=str(story.title),
-                        scene_slug=scene_slug,
-                        scene_title=str(scene.title),
-                        render_target_id="main",
-                        render_target_label="Full Scene",
-                        locked_path=main_locked,
-                        candidate_path=main_candidate,
-                    ))
-
-                    loader = getattr(self.story_service, "load_scene_builder_data", None)
-                    document = loader(story_slug, scene_slug) if loader is not None else None
-                    data = getattr(document, "data", {}) if document is not None else {}
-                    elements = tuple(
-                        copy.deepcopy(item)
-                        for item in (data.get("scene_elements") or [])
-                        if isinstance(item, dict)
-                    )
-                    for definition in data.get("subscenes") or []:
-                        if not isinstance(definition, dict):
-                            continue
-                        target_id = str(definition.get("id") or "").strip()
-                        if not target_id:
-                            continue
-                        record("candidate_path_checks", count=1)
-                        records.append(SceneDiscoveryRecord(
-                            story_slug=story_slug,
-                            story_title=str(story.title),
-                            scene_slug=scene_slug,
-                            scene_title=str(scene.title),
-                            render_target_id=target_id,
-                            render_target_label=str(definition.get("name") or target_id),
-                            locked_path=self.path_service.scene_subscene_locked_path(story_slug, scene_slug, target_id),
-                            candidate_path=self.path_service.scene_subscene_candidate_path(story_slug, scene_slug, target_id),
-                            definition=copy.deepcopy(definition),
-                            scene_elements=elements,
-                        ))
-            self._scene_records = tuple(records)
-            return self._scene_records
+        """Retired Scene Builder review records are excluded from active discovery."""
+        return ()
 
     def filtered_scene_records(self, story_slug: str = "", scene_slug: str = "") -> tuple[SceneDiscoveryRecord, ...]:
         return tuple(

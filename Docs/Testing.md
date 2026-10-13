@@ -2,7 +2,7 @@
 
 Zet maintains exactly **three fast Playwright task scenarios** and **one separately invoked live Narrative check**. This is the validation owner for the agent knowledge base. The recovered commits `b3d695a`, `3f6acbe`, and `257fdeb` retired the former Python/browser suites and GitHub Actions gates in favor of representative local tasks. See [AGENTS.md](../AGENTS.md) and the [delivery workflow](../.github/CODEX_WORKFLOW.md). Old test paths in tickets refer agents to this baseline; they are not instructions to recreate deleted tests.
 
-Scene and story coverage uses `/narrative`, `/api/narrative`, and `NarrativeStories`. The retiring Scene Builder and local scene-batch workflows remain usable but have no maintained scenario. Passing the baseline is not evidence of every subsystem contract or live rendering quality.
+Scene and story coverage uses `/narrative`, `/api/narrative`, and `NarrativeStories`. Scene Builder and local scene-batch execution are retired; their offline archive has no maintained scenario. Passing the baseline is not evidence of every subsystem contract or live rendering quality.
 
 ## Approved fast scenarios
 
@@ -24,9 +24,9 @@ Run the default suite with:
 npm run test:e2e
 ```
 
-On Windows, `npm.cmd run test:e2e` avoids PowerShell script-policy restrictions. [package.json](../package.json) calls [playwright.config.mjs](../playwright.config.mjs), which runs only `fast.spec.mjs` on Chromium with one worker, a 90-second scenario timeout, 8-second default assertion timeout, and port **8765**. The local-front helper has a bounded 70-second poll. Reuse of an existing server is disabled; keep suites serial across worktrees and resolve port conflicts before rerunning.
+On Windows, `npm.cmd run test:e2e` avoids PowerShell script-policy restrictions. Its pretest setup uses `npm ci` when the locked Playwright packages are missing and installs Chromium only when the matching browser executable is absent. Browser downloads use Playwright's shared user cache, while npm packages are installed into the current checkout or worktree. [package.json](../package.json) calls [playwright.config.mjs](../playwright.config.mjs), which runs only `fast.spec.mjs` on Chromium with one worker, a 90-second scenario timeout, 8-second default assertion timeout, and port **8765**. The local-front helper has a bounded 70-second poll. Reuse of an existing server is disabled; keep suites serial across worktrees and resolve port conflicts before rerunning.
 
-Use an existing verified Python 3.11+ runtime, project packages, Node, Playwright and Chromium. The configs call `python3 -B tests/e2e/server.py`; verify that interpreter before running. No dependency installation is implied by these commands; missing packages/browsers require approval. There is no routine pytest, coverage, lint/type-check, or GitHub Actions test command in the current baseline.
+Use an existing verified Python 3.11+ runtime, project packages, Node, Playwright and Chromium. The configs call `python3 -B tests/e2e/server.py`; verify that interpreter before running. The pretest setup restores only dependencies pinned by `package-lock.json` and the required Chromium browser; it does not change dependency declarations. There is no routine pytest, coverage, lint/type-check, or GitHub Actions test command in the current baseline.
 
 ## Fixture and response boundaries
 
@@ -70,3 +70,8 @@ It preflights the Zet and AI Proxy Python runtimes, the configured Ollama model,
 Joe explicitly approves each new test, scenario, or material coverage expansion. The approval must identify the user task and why the existing scenarios are insufficient. Existing tests can be repaired to preserve their approved purpose. Do not add exhaustive cases, snapshots, coverage targets, test frameworks, or dependencies without that approval.
 
 For a change, locate the relevant S1–S3 assertions, run the approved baseline, and inspect uncovered contracts in authoritative code. Do not add tests for retiring Scene Builder/local scene-batch workflows. Plan/test references must distinguish scenario coverage from source-only verification. [DEVELOPMENT.md](DEVELOPMENT.md) records actual command outcomes; [ADR 0004](DECISIONS/0004-local-task-testing-baseline.md) records the policy change.
+
+The existing `/narrative` test links redirect into the mounted dashboard editor. The approved S1–S3 scenarios retain their purpose. The 2026-10-12 retirement used separate disposable/manual migration and Candidates checks; these are not additional maintained tests. No live rendering was performed.
+
+## Approved disposable slot-fix checks (2026-10-12)
+Joe approved four one-time check groups for reported issues: costume batch-link restoration, card containment, current-prompt/Recompile behavior, and overlapping slot actions. The disposable fixture used a separate Test library/private queue, prepared images/gates/rankings, and no live models. All groups passed, including Image Generation containment at 1365/850/640 pixels and preserving an unsaved review choice while images arrived. Scripts/results are ignored `test-results` artifacts, not new maintained scenarios. The approved S1–S3 suite remains unchanged and passed afterward (3 tests, 23.0 seconds). See the [completed plan](../plans/completed/standard-render-slots.md) for limits and exact observations.
