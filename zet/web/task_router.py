@@ -30,6 +30,13 @@ def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:
         zet_app = provider()
         return {**zet_app.task_status_service.snapshot(), "deployment": zet_app.deployment_service.status()}
 
+    @router.post("/worker/{action}")
+    def worker_action(action: str, request: Request, payload: dict = Body(...)):
+        try:
+            return provider().worker_bridge_service.execute(action, payload, request.headers.get("authorization", ""), request.client.host if request.client else "")
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(getattr(exc, "status_code", 503), str(exc)) from exc
+
     @router.post("", status_code=201)
     def create(response: Response, payload: dict = Body(...)):
         try:

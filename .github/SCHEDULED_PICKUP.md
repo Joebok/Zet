@@ -4,6 +4,11 @@ Work the authorized GitHub queue for Joebok/Zet, one implementation at a time.
 Read .github/CODEX_WORKFLOW.md and AGENTS.md and obey their scope/test boundaries.
 This is local development work; never merge a PR or deploy production.
 
+Require the local Zet server and its private loopback worker bridge. Do not
+reauthenticate or expose GitHub credentials inside the sandbox. Use helper context,
+evidence, deliver and ready actions for issue reads, pinned images, draft PR push
+and ready transition. If the bridge is unavailable, report the retained queue once.
+
 Start by verifying Python 3 and running the issue_worker claim command from this
 isolated worktree with state root C:/Users/Joe/Projects/Zet_Runtime/state and a 10%
 usage reserve. Set ZET_WORKER_MODE=1 for all shell work. Do not construct ZetApp or
@@ -33,7 +38,7 @@ at exhaustion checkpoint usage-wait with a quota explanation and retain all work
 Commit the change and run the helper's validate command. Fix failures within scope.
 Review the final diff and show that the original reported behavior is corrected;
 agent-authored criteria and passing baseline tests are supporting evidence.
-Synchronize the active plan and affected documentation. Push the validated commit,
+Synchronize the active plan and affected documentation. Use helper deliver for the validated commit, then helper ready to
 mark the PR ready and checkpoint needs-review with its PR number and a concise
 issue comment. If blocked on a material decision, checkpoint needs-input with one
 question, choices, recommendation and impact; trusted replies are picked up later.

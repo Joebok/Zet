@@ -982,6 +982,9 @@ def create_app(
         application.state.ollama_catalog_refresh_thread.start()
         application.state.image_generation_service.start()
         application.state.zet_app.task_status_service.start()
+        if config.github_repository and config.runtime_role != "development":
+            import os
+            application.state.zet_app.worker_bridge_service.publish(os.environ.get("ZET_WEB_PORT", "8081"), app.state.boot_id)
         for zet_app in application.state.universe_apps.values():
             zet_app.narrative_generation_service.start_background()
             zet_app.image_catalog_service.repository.load()
@@ -992,6 +995,8 @@ def create_app(
         finally:
             application.state.image_generation_service.stop()
             application.state.zet_app.task_status_service.stop()
+            if config.github_repository and config.runtime_role != "development":
+                application.state.zet_app.worker_bridge_service.close()
             for zet_app in application.state.universe_apps.values():
                 zet_app.narrative_generation_service.stop_background()
                 zet_app.library_index_reconciler.stop()

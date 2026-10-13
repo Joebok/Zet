@@ -33,7 +33,7 @@ class TaskStatusService:
             status = dict(previous, error=str(exc)[:300], attempted_at=time.time())
         self.task.store.put("status", "github", status)
         quota = self.task.store.get("status", "usage", {})
-        if time.time() - quota.get("checked_at", 0) > 300:
+        if time.time() - quota.get("checked_at", 0) > 300 or quota.get("reserve_percent") != self.usage.reserve:
             self.usage.refresh()
 
     def snapshot(self):

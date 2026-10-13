@@ -15,8 +15,8 @@ Read AGENTS.md and the relevant Docs/INDEX.md entries. Do not delegate.
 ## Scheduled pickup
 
 The saved prompt is [SCHEDULED_PICKUP.md](SCHEDULED_PICKUP.md). One project-scoped
-local automation polls every 30 minutes in an isolated worktree. The PC and desktop
-app must be running. The prompt calls the deterministic helper; it never selects
+local automation polls every 30 minutes in an isolated worktree. The PC, desktop app and local Zet server
+must be running. The Zet server hosts the authenticated loopback worker bridge. The prompt calls the deterministic helper; it never selects
 or claims issues by editing labels independently of that helper.
 
 Use a verified Python 3 runtime. From the isolated worktree:
@@ -40,8 +40,9 @@ issue. An uncertain claim is an attention item, not permission to start again.
 
 For `new`, create the returned issue branch from fetched `origin/main` in the
 isolated worktree. For `resume` or `review-feedback`, use the returned retained
-worktree/branch. Read the ORIGINAL issue and every new trusted comment. Download
-and open the actual screenshots; verify provided SHA-256 hashes. A Return to Zet
+worktree/branch. Read the ORIGINAL issue and every new trusted comment. Use `context --token <token>` to read issue/comments and
+`evidence --token <token> --url <capture-url> --output <test-results-path>` to
+download images through the bridge when sandbox networking needs it. Open the actual screenshots; verify provided SHA-256 hashes. A Return to Zet
 link is a human navigation aid, not access to the live production library.
 
 Prepare an inspection fixture with `python3 -B -m
@@ -69,7 +70,10 @@ Keep the claim token private to local worker state. Heartbeat with:
 python3 -B -m zet.scripts.issue_worker --state-root C:/Users/Joe/Projects/Zet_Runtime/state checkpoint --token <token> --state in-progress
 ```
 
-Open a draft PR early with `Closes #<number>`. Commit the scoped change, then run:
+Open a draft PR early with `Closes #<number>` through the helper
+`deliver --token <token> --title <title> --body-file <path>`. This transfers a
+scoped Git bundle through the private loopback bridge; GitHub credentials stay
+on the normal Zet host, outside the worker sandbox. Commit the scoped change, then run:
 
 ```powershell
 python3 -B -m zet.scripts.issue_worker --state-root C:/Users/Joe/Projects/Zet_Runtime/state validate --token <token>
@@ -81,8 +85,8 @@ maintained scenarios or live check are implied. Fix failures and rerun only afte
 the relevant change. Passing these scenarios does not prove every task contract.
 
 Perform final review against the original problem: show the concrete before/after
-behavior and visual evidence when appropriate. Push the validated commit. Mark
-the PR ready, then checkpoint `needs-review --pr-number <N> --message-file <path>`.
+behavior and visual evidence when appropriate. Deliver the validated commit with the same helper, then run
+`ready --token <token> --pr-number <N>` to mark the PR ready, then checkpoint `needs-review --pr-number <N> --message-file <path>`.
 The helper requires a clean, validated current revision and a ready issue-branch PR.
 Questions use `checkpoint --state needs-input --message-file <path>`. Errors use
 `stopped` with a diagnostic message; retained work is never deleted automatically.
@@ -95,12 +99,12 @@ restart action after merging. Code and deployment failures never erase authored 
 ## Limits and notifications
 
 Require fresh quota and at least the configured reserve (default 10%) in applicable
-Codex windows before new claims. Unknown quota pauses pickup. Check quota between
+Codex windows before new claims. Unknown quota pauses pickup.
 The helper can use a host-side reading no older than five minutes. When its nested
 stdio reader lacks account access, use the desktop app's read-only usage-limits
 tool and import its actual JSON with `usage --input-file <path>`; do not estimate
 or force quota. Zet's background reader also publishes these fresh readings.
-major stages and checkpoint `usage-wait` when exhausted; it resumes after fresh
+Check quota between major stages and checkpoint `usage-wait` when exhausted; it resumes after fresh
 quota is available. Never buy credits or consume reset
 credits automatically. Scheduled polling itself consumes some capacity.
 

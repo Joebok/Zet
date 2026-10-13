@@ -182,6 +182,8 @@ class ZetApp:
         from zet.services.task_status_service import TaskStatusService
         self.codex_usage_service = CodexUsageService(self.task_service.store, config.codex_usage_reserve_percent)
         self.task_status_service = TaskStatusService(self.task_service, self.codex_usage_service, config.codex_trusted_users)
+        from zet.services.worker_bridge_service import WorkerBridgeService
+        self.worker_bridge_service = WorkerBridgeService(self.task_service, self.codex_usage_service)
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service

@@ -48,7 +48,14 @@ original bytes and SHA-256; no silent resizing occurs.
 [CODEX_WORKFLOW](../.github/CODEX_WORKFLOW.md) owns authorization, states, selection,
 trusted resumption and delivery. [SCHEDULED_PICKUP](../.github/SCHEDULED_PICKUP.md)
 is the saved prompt. A local project task polls every 30 minutes in isolated
-worktrees; the PC/app must run. Polling itself consumes capacity. One helper claim
+worktrees; the PC/app and local Zet server must run. A private loopback bridge
+keeps GitHub/usage credentials on the host when the nested sandbox cannot access
+its credential store. Its bearer is only in machine-local state, never the browser.
+It permits issue reads, claimed-issue labels/comments, pinned evidence and scoped
+draft/ready delivery; merge/deployment and other repositories are excluded.
+Git bundles are imported/pushed from a protected bare transfer directory; host git
+is never executed in an agent-controlled worktree (hooks/config could escape its
+sandbox). Helper context/evidence/deliver/ready use this bridge. Polling itself consumes capacity. One helper claim
 owns coding; interrupted ownership never auto-transfers. Explicit recovery requires
 an operator to confirm the old worker stopped before inspecting/resuming retained work.
 

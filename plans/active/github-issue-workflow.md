@@ -90,3 +90,11 @@ Pending.
 - First real pilot correctly paused: nested Codex could not read account quota,
   despite successful host/app reads. Added expiring host-reading reuse and explicit
   native app-reading import; reserve/unknown guards remain. Repeating the pilot.
+
+- Pilot discovery: sandboxed gh also cannot access the valid host credential store.
+  No human reauthentication is needed. WP6 gained a bounded private loopback
+  credential bridge (service/client/router) for scoped GitHub operations and pinned
+  evidence. Draft push imports a bundle in a protected bare directory rather than
+  executing agent-controlled Git hooks/config with host credentials. Normal pickup
+  consequently requires the local Zet server as well as the PC/Codex app. The pilot
+  uses a disposable normal-user bridge host, without loading a live ZetApp/library.

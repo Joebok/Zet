@@ -41,7 +41,7 @@ class CodexUsageService:
                     continue
                 windows.append({"bucket": name, "window": kind, "remaining_percent": max(0, min(100, 100 - window["usedPercent"])),
                                 "resets_at": window.get("resetsAt"), "duration_minutes": window.get("windowDurationMins")})
-        allowed = bool(windows) and value.get("ordinaryUsageAllowed") is not False and all(item["remaining_percent"] >= reserve for item in windows)
+        allowed = bool(windows) and value.get("ordinaryUsageAllowed") is not False and all(item["remaining_percent"] > 0 and item["remaining_percent"] >= reserve for item in windows)
         return {"checked_at": now, "known": bool(windows), "allowed": allowed, "ordinary_usage_allowed": value.get("ordinaryUsageAllowed") is not False, "reserve_percent": reserve,
                 "windows": windows, "error": None if windows else "Codex did not return usage windows."}
 
@@ -87,7 +87,9 @@ class CodexUsageService:
     def refresh(self):
         cached = self.store.get("status", "usage", {})
         if cached.get("known") and time.time() - cached.get("checked_at", 0) <= 300:
-            return dict(cached, reserve_percent=self.reserve, allowed=bool(cached["windows"]) and all(window["remaining_percent"] >= self.reserve for window in cached["windows"]) and cached.get("ordinary_usage_allowed", cached.get("allowed", False)))
+            status = dict(cached, reserve_percent=self.reserve, allowed=bool(cached["windows"]) and all(window["remaining_percent"] > 0 and window["remaining_percent"] >= self.reserve for window in cached["windows"]) and cached.get("ordinary_usage_allowed", cached.get("allowed", False)))
+            self.store.put("status", "usage", status)
+            return status
         try:
             status = self.normalize(self.read_account(), self.reserve)
         except (OSError, RuntimeError, queue.Empty, ValueError) as exc:
