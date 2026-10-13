@@ -30,6 +30,8 @@ Inputs include scene intent/visual settings, named elements/library asset IDs, t
 
 Layer controls/identifiers come from the client, but filenames, metadata, and source-byte binding are server owned. Assembly modes influence prompt provenance; a prompt generated for one mode cannot silently render another. `finish_composite` is the model's default assembly mode; inspect the service for supported alternatives. Extraction uses OpenCV/NumPy/Pillow and its own lock. Imported subscenes/backdrops retain independent snapshots; they are not live links to another target's changing candidate.
 
+The scene overview and scene-page target selector keep final assembly targets after backdrops and subscenes, even when a new target is added later. This is presentation ordering; stored target order remains unchanged.
+
 Qwen reference sizing and prefix-cache placement are configured under
 `[ComfyUI.QwenImage21]` in `config.toml`; see
 [PROMPTS](PROMPTS.md) for limits and image handling. Pixel budgets are tunable
