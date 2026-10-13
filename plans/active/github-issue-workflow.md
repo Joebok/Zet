@@ -106,3 +106,20 @@ Pending.
   helper selection/bootstrap of declared main dependencies. No broad sandbox
   permissions or production/library access were added.
 - Shared bridge/status lifecycle is now independent of default universe replacement.
+
+- Pilot now produced one scoped help-text commit and draft PR #43. Both images
+  were opened/hash verified and browser after-inspection passed. Its sandbox
+  baseline exposed two fixture leaks: machine-local queue receipts and compiler
+  config lookup falling back to repository config. Corrected active config binding
+  and fixture-only queue-state storage; no live library access or new scenarios.
+  Revalidating with ZET_WORKER_MODE=1 before final ready delivery.
+
+- Worker-mode baseline passed after isolation repair: 3 scenarios, 25.3s.
+- Regular native automation zet-github-pickup is configured PAUSED at 30 minutes.
+  Its prompt gates on merged main and the local credential bridge, archives idle
+  chats and limits notifications to meaningful changes.
+- Latest actual pilot retry paused at 7% capacity; app subsequently reports 4%,
+  below the approved 10% reserve, resetting 2026-10-13 10:59 AM Pacific. The text
+  commit and draft PR #43 are preserved. Full pilot ready-delivery remains pending;
+  production adoption and three-delivery final cutover are not complete.
+- Temporary continuation will resume the remaining pilot/gates after capacity reset.
