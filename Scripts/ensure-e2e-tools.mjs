@@ -22,8 +22,15 @@ function run(command, args, options = {}) {
 
 if (!canResolve("playwright") || !canResolve("@playwright/test")) {
   console.log("Installing npm dependencies pinned in package-lock.json...");
+  // npm lifecycle scripts export .npmrc settings as environment overrides. npm 11
+  // rejects allow-scripts overrides for project installs; let ci read policy from
+  // package.json/.npmrc itself. Preserve all other settings, including userconfig.
+  const installEnv = Object.fromEntries(Object.entries(process.env).filter(
+    ([key]) => !/^npm_config_allow[-_]scripts$/i.test(key),
+  ));
   run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci"], {
     shell: process.platform === "win32",
+    env: installEnv,
   });
 }
 

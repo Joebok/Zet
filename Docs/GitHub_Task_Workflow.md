@@ -59,6 +59,16 @@ sandbox). Helper context/evidence/deliver/ready use this bridge. Polling itself 
 owns coding; interrupted ownership never auto-transfers. Explicit recovery requires
 an operator to confirm the old worker stopped before inspecting/resuming retained work.
 
+The coordinator runs from the development checkout with an explicit isolated
+`claim --worktree` target; coding/tests use the returned worktree. `reconcile`
+reads retained ready PRs and records validated merged deliveries as completed
+without changing GitHub or deleting work. Claim also performs reconciliation and
+skips completed issues even if their GitHub label is still ready. Waiting reviews
+do not block independent ready work. Scheduled runs must actually call claim
+rather than infer queue state from an old checkpoint. During pickup verification,
+run chats stay visible and memory records each helper result; unchanged results
+do not produce attention notifications.
+
 [CodexUsageService](../zet/services/codex_usage_service.py) reads account/rateLimits/read
 over stdio without a model turn. Applicable returned Codex windows show remaining
 percent/reset times. Unknown/stale quota pauses claims. The default reserve is 10%.

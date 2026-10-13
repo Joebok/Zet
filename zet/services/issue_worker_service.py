@@ -36,7 +36,33 @@ class IssueWorkerService:
         desired = sorted((labels(issue) - WORKFLOW_LABELS) | {state})
         self.github.repo_api(f"/issues/{number}/labels", method="PUT", payload={"labels": desired})
 
+    def reconcile(self):
+        """Retain merged delivery history without taking or reviving ownership."""
+        completed = []
+        with self.store.transaction() as db:
+            active = self.store.read(db, "worker", self.github.repository)
+            records = list(db.execute("SELECT key,payload FROM records WHERE scope='issue-work'"))
+            for key, payload in records:
+                claim = json.loads(payload)
+                if claim.get("repository") != self.github.repository or claim.get("state") != "needs-review" or not claim.get("pr_number"):
+                    continue
+                pr = self.github.repo_api(f"/pulls/{claim['pr_number']}")
+                if not pr.get("merged_at"):
+                    continue
+                validation = claim.get("validation", {})
+                if (pr.get("head", {}).get("ref") != claim["branch"] or not validation.get("passed")
+                        or pr.get("head", {}).get("sha") != validation.get("revision")):
+                    raise TaskServiceError("Merged PR differs from the validated retained delivery; inspect before reconciliation.", 409)
+                claim.update(state="completed", merged_at=pr["merged_at"], updated_at=time.time())
+                self.store.write(db, "issue-work", key, claim)
+                if active and active.get("token") == claim["token"]:
+                    self.store.write(db, "worker", self.github.repository, claim)
+                    self.store.write(db, "status", "worker", {"checked_at": time.time(), "state": "completed", "error": None})
+                completed.append(claim["issue_number"])
+        return {"state": "reconciled" if completed else "unchanged", "completed": completed}
+
     def claim(self, worktree):
+        self.reconcile()
         now = time.time()
         self.store.put("status", "worker", {"checked_at": now, "state": "checking", "error": None})
         quota = self.usage.refresh()
@@ -59,6 +85,8 @@ class IssueWorkerService:
             for issue in issues:
                 number, state = issue["number"], labels(issue)
                 old = previous(number)
+                if old and old.get("state") == "completed":
+                    continue
                 linked = associated(issue)
                 if "in-progress" in state:
                     if old and old.get("state") == "usage-wait":
@@ -114,6 +142,8 @@ class IssueWorkerService:
             claim = self.store.read(db, "worker", self.github.repository)
             if not claim or claim["token"] != token:
                 raise TaskServiceError("This worker no longer owns the issue claim.", 409)
+            if claim.get("state") == "completed":
+                raise TaskServiceError("This issue delivery is already completed; its claim cannot be resumed.", 409)
             if state == "needs-review":
                 validation = claim.get("validation", {})
                 revision = subprocess.run(["git", "-C", claim["worktree"], "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
@@ -193,6 +223,8 @@ class IssueWorkerService:
             claim = self.store.read(db, "worker", self.github.repository)
             if not claim or claim["token"] != token:
                 raise TaskServiceError("Recovery token does not match the retained claim.", 409)
+            if claim.get("state") == "completed":
+                raise TaskServiceError("A completed delivery cannot be recovered.", 409)
             comments = self.github.repo_api(f"/issues/{claim['issue_number']}/comments?per_page=100", paginate=True)
             self.transition(claim["issue_number"], "needs-input")
             claim.update(state="needs-input", updated_at=time.time(),

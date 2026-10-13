@@ -9,12 +9,25 @@ reauthenticate or expose GitHub credentials inside the sandbox. Use helper conte
 evidence, deliver and ready actions for issue reads, pinned images, draft PR push
 and ready transition. If the bridge is unavailable, report the retained queue once.
 
-Start by verifying Python 3 and running the issue_worker claim command from this
-isolated worktree with state root C:/Users/Joe/Projects/Zet_Runtime/state and a 10%
-usage reserve. Set ZET_WORKER_MODE=1 for all shell work. Do not construct ZetApp or
-load repository config.toml to coordinate tasks. Use the helper's returned claim,
-issue, token, branch and retained worktree. If idle, busy, quota-limited or unchanged,
-exit quietly; never independently change labels to bypass a claim or quota guard.
+Verify Python 3 and set ZET_WORKER_MODE=1 for all shell work. Run the coordinator
+from C:/Users/Joe/Projects/Zet with state root C:/Users/Joe/Projects/Zet_Runtime/state;
+it must not construct ZetApp or load repository config.toml. Run issue_worker
+reconcile to record validated merged deliveries, then inspect status for active
+ownership. A needs-review or completed record is history, not a reason to skip
+the queue. Create an attached managed worktree from fetched origin/main for new
+work, then ALWAYS run issue_worker claim --worktree <isolated-checkout> with the
+10% reserve. The explicit target must be an isolated worktree, never the primary
+checkout. An active in-progress claim may be polled using its existing worktree
+target without attaching or taking it over. The helper decides busy/attention,
+trusted resumption, review feedback and new work. Only after selection use its
+returned issue, token, branch and coding worktree. Preserve retained worktrees;
+do not attach another chat's worktree merely to inspect status or poll the queue.
+If idle, busy or quota-limited, exit quietly after recording the actual result;
+never independently change labels to bypass a claim or quota guard. A waiting
+review does not prevent another eligible issue from being claimed. Keep all run
+chats visible; do not call set_thread_archived. Record time, reconciliation and
+claim outcome in automation memory, and leave a concise final run result. Emit
+attention notifications only for the meaningful changes described below.
 If quota is unknown, use the desktop app's read-only get_usage_limits tool and save
 its actual JSON reading to an ignored file. Import that reading with issue_worker
 usage --input-file before retrying claim. Never estimate capacity or replace a
