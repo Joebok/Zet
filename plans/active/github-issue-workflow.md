@@ -143,3 +143,7 @@ Pending.
   Repaired durable log streaming/owned-tree timeout and verified that path with a
   disposable parent/child sleeper. Retrying exact validation with saved automatic
   review for Windows process cleanup; no writable-root or approval-policy changes.
+- Retained recovery also exposed host/GitHub clock skew in the timestamp fallback.
+  Recovery now records the latest existing GitHub comment ID before awaiting the
+  repair reply, so resumption uses an ordered server-owned marker. Disposable
+  coordination checks passed again; original claims/work remain intact.

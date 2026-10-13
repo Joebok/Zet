@@ -193,8 +193,10 @@ class IssueWorkerService:
             claim = self.store.read(db, "worker", self.github.repository)
             if not claim or claim["token"] != token:
                 raise TaskServiceError("Recovery token does not match the retained claim.", 409)
+            comments = self.github.repo_api(f"/issues/{claim['issue_number']}/comments?per_page=100", paginate=True)
             self.transition(claim["issue_number"], "needs-input")
-            claim.update(state="needs-input", updated_at=time.time())
+            claim.update(state="needs-input", updated_at=time.time(),
+                         question_comment_id=max((comment.get("id", 0) for comment in comments), default=0))
             self.store.write(db, "worker", self.github.repository, claim)
             self.store.write(db, "issue-work", f"{self.github.repository}#{claim['issue_number']}", claim)
             return claim
