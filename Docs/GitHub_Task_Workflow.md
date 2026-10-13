@@ -113,3 +113,8 @@ permanent suite or live rendering is implied. Enable scheduling after one real
 small-issue pilot. Retire remaining Kanban execution only after three correct
 issue-to-PR deliveries, preserving unfinished work for deliberate migration.
 The active plan records observed results and outstanding rollout gates.
+
+Existing-PR delivery refreshes its title and description as well as its branch, so
+validation and original-problem acceptance remain current after a retained retry.
+To resume a question with an existing PR, answer on the issue while it has
+`needs-input`; changing it to `codex-ready` alone does not supersede that PR.

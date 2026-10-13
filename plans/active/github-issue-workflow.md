@@ -123,3 +123,17 @@ Pending.
   commit and draft PR #43 are preserved. Full pilot ready-delivery remains pending;
   production adoption and three-delivery final cutover are not complete.
 - Temporary continuation will resume the remaining pilot/gates after capacity reset.
+
+- October 13 continuation: fresh capacity exceeds the 10% reserve. Retained #42
+  needed a trusted repair reply under needs-input (ready alone correctly skips an
+  existing PR); supplied that reply and resumed its original branch/commit.
+- Focused disposable bridge checks passed: bearer/loopback enforcement, scoped
+  issue writes, pinned-evidence/origin restrictions, successor registry ownership,
+  protected transfer Git roots and existing-PR description refresh. Redelivery now
+  updates title/body, retaining the original issue reference.
+- Read-only Kanban inventory: three Planning tasks (browser information, normalized
+  browser context, bounded privacy-safe diagnostics), Costume Wizard in Executing,
+  two Done tasks. No migration/data writes; inspect actual review evidence before
+  deliberately migrating the unfinished work.
+- Saved pickup prompt now explicitly creates/reuses a managed isolated worktree
+  before claiming. Native automation remains paused pending the real pilot.

@@ -86,6 +86,9 @@ class WorkerBridgeService:
             base = payload.get("base", "main")
             if base not in {"main", self.pilot_base}:
                 raise TaskServiceError("This PR base is not authorized by the bridge.", 403)
+            body = payload.get("body", "")
+            if f"Closes #{claim['issue_number']}" not in body:
+                raise TaskServiceError("The PR must close the claimed issue.", 422)
             content = base64.b64decode(payload.get("bundle", ""), validate=True)
             if not content or len(content) > 25 * 1024 * 1024:
                 raise TaskServiceError("The scoped delivery bundle exceeds 25 MiB or is empty.", 413)
@@ -113,15 +116,16 @@ class WorkerBridgeService:
             existing = [pr for pr in self.task.github.pulls() if pr["head"]["ref"] == claim["branch"]]
             if existing:
                 pr = existing[0]
+                if pr["base"]["ref"] != base or pr["head"]["repo"]["full_name"] != self.task.repository:
+                    raise TaskServiceError("The retained PR has an unexpected repository or base; inspect before delivery.", 409)
+                self.task.github.repo_api(f"/pulls/{pr['number']}", method="PATCH",
+                                          payload={"title": payload["title"], "body": body})
                 if not pr.get("draft"):
                     result = subprocess.run([shutil.which("gh"), "pr", "ready", str(pr["number"]), "--undo", "--repo", self.task.repository], capture_output=True, text=True, timeout=30,
                                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                     if result.returncode:
                         raise TaskServiceError("GitHub could not return the retained PR to draft.", 503)
             else:
-                body = payload.get("body", "")
-                if f"Closes #{claim['issue_number']}" not in body:
-                    raise TaskServiceError("The PR must close the claimed issue.", 422)
                 pr = self.task.github.repo_api("/pulls", method="POST", payload={"title": payload["title"], "body": body,
                                                "head": claim["branch"], "base": base, "draft": True})
             return {"number": pr["number"], "url": pr["html_url"]}
