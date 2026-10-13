@@ -33,6 +33,8 @@ flowchart LR
 
 [auto_harvest_ai_answers.py](../../zet/scripts/auto_harvest_ai_answers.py) and platform launchers provide separate harvester execution. [ProcessService](../../zet/services/process_service.py) manages dashboard/harvester process discovery and [PipelineControlService](../../zet/services/pipeline_control_service.py) exposes controls. FastAPI lifespan additionally starts index reconciliation, ad hoc image work, Narrative polling, and local workflow recovery; it is not the external queue dispatcher.
 
+The AI Queue dashboard reads current Ask/Running/Answer folders directly and combines recent indexed history with producer-local receipts. Receipts are available before the background library-index scan catches up, so the first recent-history page must use [ZetApp.recent_ai_harvests](../../zet/app.py); later cursor pages come from the derived index.
+
 Failures include mismatched queue roots, absent workers, incomplete Dropbox sync, missing local routes, foreign producers/universes, superseded attempts, invalid output bytes, blocked Windows replacement, and failed archive/copy operations. Inspect `job.json`, ask/answer manifests, `proxy_result.json`, receipts, superseded markers, and owning workflow errors. Prefer service recovery/retry logic over moving/deleting folders manually. [INVARIANTS](../INVARIANTS.md) owns ordering, ownership, locking and stale-result contracts.
 
 When adding a task type, define producer manifest, input snapshots, worker/response contract, routing, owner/attempt checks, result application, restart/duplicate semantics, and cleanup together. A new router alone is insufficient. Live queue mutations and real rendering are separate operations from fixture-based tests.
