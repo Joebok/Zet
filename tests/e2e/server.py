@@ -157,6 +157,8 @@ def prepare(mode: str) -> Path:
 
 
 def build_app(config: Path, index_root: Path):
+    os.environ["ZET_CONFIG_PATH"] = str(config.resolve())
+    os.environ["ZET_TEST_QUEUE_STATE_ROOT"] = str(config.parent / "QueueState")
     os.chdir(config.parent)
     sys.path.insert(0, str(PROJECT_ROOT))
 

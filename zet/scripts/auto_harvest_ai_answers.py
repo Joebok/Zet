@@ -46,6 +46,9 @@ def harvest_once(config_path: str) -> int:
 
 def main() -> int:
     args = build_parser().parse_args()
+    import os
+    from pathlib import Path
+    os.environ["ZET_CONFIG_PATH"] = str(Path(args.config).resolve())
     if args.debug:
         import os
         os.environ["ZET_AI_QUEUE_DEBUG"] = "1"

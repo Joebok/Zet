@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -12,13 +13,15 @@ from zet.services.universe_service import UniverseService
 
 def load_project_config(project_root: Path = PROJECT_ROOT):
     """Load the Zet project config for script path resolution."""
-    return ConfigService.load(project_root / "config.toml")
+    path = Path(os.environ.get("ZET_CONFIG_PATH", "")) if os.environ.get("ZET_CONFIG_PATH") else project_root / "config.toml"
+    return ConfigService.load(path)
 
 
 def library_root(project_root: Path = PROJECT_ROOT) -> Path:
     """Return the currently selected universe root."""
     config = load_project_config(project_root)
-    service = UniverseService(config.base_library_path, project_root / "Config" / "universe-selection.json")
+    active_root = Path(os.environ["ZET_CONFIG_PATH"]).resolve().parent if os.environ.get("ZET_CONFIG_PATH") else project_root
+    service = UniverseService(config.base_library_path, config.state_file(active_root, "universe-selection.json"))
     return Path(service.get_universe(service.selection())["root"])
 
 

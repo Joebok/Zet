@@ -145,6 +145,8 @@ class IssueWorkerService:
         self.checkpoint(token, "in-progress")
         command = ["cmd.exe", "/d", "/c", "npm.cmd run test:e2e"] if os.name == "nt" else ["npm", "run", "test:e2e"]
         env = os.environ.copy()
+        env.setdefault("npm_config_cache", str(root / "test-results" / "npm-cache"))
+        env.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(root / "test-results" / "playwright-browsers"))
         python = root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         if python.exists():
             subprocess.run([str(python), "-c", "import sys; assert sys.version_info.major == 3"], check=True, timeout=10)

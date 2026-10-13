@@ -95,6 +95,8 @@ class WorkerBridgeService:
             private_root.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="delivery-", dir=private_root) as folder:
                 transfer = Path(folder)
+                if transfer.resolve().parent != private_root.resolve():
+                    raise TaskServiceError("The private transfer escaped its owned directory.", 403)
                 bundle = transfer / "change.bundle"
                 bundle.write_bytes(content)
                 bare = transfer / "repo.git"

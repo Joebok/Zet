@@ -85,3 +85,10 @@ claims/trusted replies/quota, browser attention and two-instance deployment reco
 these do not create a permanent suite. Worker validation and deployment staging share
 a fixed-port check lock outside Git. No live check was run. See the active workflow
 plan for exact observed results and remaining real pilot/promotion gates.
+
+The real sandbox pilot exposed physical queue-state and compiler-config leaks in
+the old fixture. build_app now sets the active fixture config and a fixture-only
+queue-state root. Compiler script helpers honor that active config; normal queue
+state paths remain unchanged without the test override. Worker validation keeps
+locked npm/browser caches inside ignored test-results and selects its own verified
+Python environment. These repair the approved scenarios without adding coverage.

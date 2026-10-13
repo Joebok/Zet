@@ -3834,6 +3834,7 @@ def main() -> int:
     import os
     os.environ["ZET_WEB_HOST"] = args.host
     os.environ["ZET_WEB_PORT"] = str(args.port)
+    os.environ["ZET_CONFIG_PATH"] = str(Path(args.config).resolve())
     if args.debug:
         import os
         os.environ["ZET_AI_QUEUE_DEBUG"] = "1"
