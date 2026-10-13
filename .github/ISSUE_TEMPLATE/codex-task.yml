@@ -5,7 +5,7 @@ labels: []
 body:
   - type: markdown
     attributes:
-      value: Add `codex-ready` only after every required field is complete and the issue is approved for immediate implementation.
+      value: Add `codex-ready` to authorize scoped Codex implementation and PR delivery. The local worker picks it up automatically when available. Joe owns merge and deployment. Original intent and actual screenshots remain acceptance inputs.
   - type: textarea
     id: goal
     attributes:

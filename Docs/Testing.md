@@ -75,3 +75,13 @@ The existing `/narrative` test links redirect into the mounted dashboard editor.
 
 ## Approved disposable slot-fix checks (2026-10-12)
 Joe approved four one-time check groups for reported issues: costume batch-link restoration, card containment, current-prompt/Recompile behavior, and overlapping slot actions. The disposable fixture used a separate Test library/private queue, prepared images/gates/rankings, and no live models. All groups passed, including Image Generation containment at 1365/850/640 pixels and preserving an unsaved review choice while images arrived. Scripts/results are ignored `test-results` artifacts, not new maintained scenarios. The approved S1–S3 suite remains unchanged and passed afterward (3 tests, 23.0 seconds). See the [completed plan](../plans/completed/standard-render-slots.md) for limits and exact observations.
+
+## GitHub workflow validation (2026-10-13)
+
+The maintained S1–S3 purpose and count are unchanged. Fixture configuration explicitly
+uses Runtime.Role=development. ZET_TEST_PYTHON optionally selects a verified staged
+release interpreter for the same baseline. Disposable checks cover capture/retries,
+claims/trusted replies/quota, browser attention and two-instance deployment recovery;
+these do not create a permanent suite. Worker validation and deployment staging share
+a fixed-port check lock outside Git. No live check was run. See the active workflow
+plan for exact observed results and remaining real pilot/promotion gates.

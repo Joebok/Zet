@@ -1427,7 +1427,7 @@
         if (asset) selections.asset = { state: "selected", id: asset[0], label: candidate.view };
       }
     }
-    return { selections, parameters };
+    return { selections, parameters, workflow_status: run?.status || null };
   }
   window.ZetLocalAssetPipeline = { activate, deactivate, taskContext };
 })();

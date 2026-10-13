@@ -25,6 +25,11 @@ def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:
     def configuration():
         return provider().task_service.metadata()
 
+    @router.get("/status")
+    def status():
+        zet_app = provider()
+        return {**zet_app.task_status_service.snapshot(), "deployment": zet_app.deployment_service.status()}
+
     @router.post("", status_code=201)
     def create(response: Response, payload: dict = Body(...)):
         try:
@@ -33,6 +38,13 @@ def create_task_router(provider: Callable[[], ZetApp]) -> APIRouter:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
         response.status_code = 201 if result["created"] else 200
         return result
+
+    @router.post("/preview")
+    def preview(payload: dict = Body(...)):
+        try:
+            return provider().task_service.preview(payload)
+        except TaskServiceError as exc:
+            raise HTTPException(exc.status_code, str(exc)) from exc
 
     @router.post("/attachments", status_code=201)
     async def upload(request: Request, response: Response):

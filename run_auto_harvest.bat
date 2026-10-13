@@ -6,4 +6,4 @@ if not exist ".venv\Scripts\activate.bat" (
 )
 call ".venv\Scripts\activate.bat"
 if errorlevel 1 exit /b %errorlevel%
-python -B -m zet.scripts.auto_harvest_ai_answers --config config.toml
+"%~dp0.venv\Scripts\python.exe" -B -m zet.scripts.auto_harvest_ai_answers --config "%~dp0config.toml"

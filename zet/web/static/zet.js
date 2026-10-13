@@ -3986,7 +3986,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=retirement');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261013-github');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;
@@ -5888,38 +5888,63 @@ async function returnToScenesFromBuilder() {
 
 
 async function restartZetFromToolbar() {
-  const returnUrl = window.location.href;
-  toolbarRestartZet.disabled = true;
-  toolbarRestartZet.textContent = "…";
-  toolbarRestartZet.title = "Restarting Zet…";
-  toolbarRestartZet.setAttribute("aria-label", "Restarting Zet; waiting for server readiness");
-  try {
-    await fetchJson("/api/processes/restart-zet", { method: "POST" });
-    const deadline = Date.now() + 120000;
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => window.setTimeout(resolve, 800));
-      try {
-        const response = await fetch("/api/health", { cache: "no-store" });
-        if (response.ok) {
-          const health = await response.json();
-          if (health.ready && health.catalog_reconciliation?.running) {
-            toolbarRestartZet.title = "Zet is available; catalog reconciliation is still running…";
-          } else if (health.ready) {
-            window.location.replace(returnUrl);
-            return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "task-capture-dialog";
+  const heading = document.createElement("h2"); heading.textContent = "Restart Zet";
+  const status = document.createElement("p"); status.setAttribute("role", "status");
+  const update = document.createElement("button"); update.textContent = "Update and restart";
+  const restart = document.createElement("button"); restart.textContent = "Restart current version";
+  const cancel = document.createElement("button"); cancel.textContent = "Cancel";
+  dialog.append(heading, status, update, restart, cancel); document.body.append(dialog); dialog.showModal();
+  cancel.onclick = () => dialog.close();
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  const deployment = await fetchJson("/api/deployment").catch(() => null);
+  update.disabled = !deployment?.configured || deployment.role === "development";
+  status.textContent = update.disabled ? "Updates are unavailable in this instance." : "Update installs merged main after isolated validation. Your library is preserved.";
+  async function begin(updating) {
+    const returnUrl = window.location.href;
+    const before = await fetchJson("/api/health");
+    update.disabled = restart.disabled = cancel.disabled = true;
+    toolbarRestartZet.disabled = true;
+    status.textContent = updating ? "Staging and validating the merged release…" : "Restarting Zet…";
+    try {
+      const operation = await fetchJson(updating ? "/api/deployment/update" : "/api/processes/restart-zet", { method: "POST" });
+      const previousBoot = operation.previous_boot || before.boot_id;
+      let expectedRevision = updating ? null : operation.expected_revision;
+      let finished = !updating;
+      const deadline = Date.now() + (updating ? 1200000 : 120000);
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        if (updating) {
+          let current = null;
+          try {
+            current = (await fetchJson("/api/deployment")).operation;
+          } catch { /* Listener is restarting. */ }
+          if (current?.id === operation.id) {
+            status.textContent = `Update: ${current.state}`;
+            expectedRevision = current.target_revision || expectedRevision;
+            finished = current.state === "succeeded";
+            if (["failed", "rolled-back", "recovery-required"].includes(current.state)) throw new Error(current.error || current.recovery_error || "Update failed; inspect Tasks for recovery details.");
           }
         }
-      } catch { /* The listener is still restarting. */ }
+        try {
+          const health = await fetchJson("/api/health");
+          if (finished && health.ready && health.boot_id !== previousBoot && health.revision === expectedRevision) {
+            window.location.replace(returnUrl); return;
+          }
+        } catch { /* Listener is restarting. */ }
+      }
+      throw new Error("Restart has not reported the expected new boot and revision. Inspect Tasks or reload later.");
+    } catch (error) {
+      status.textContent = error.message;
+      cancel.disabled = false;
+      restart.disabled = false;
+      toolbarRestartZet.disabled = false;
     }
-    throw new Error("Zet has not reported ready yet. Retry the page after startup finishes.");
-  } catch (error) {
-    toolbarRestartZet.disabled = false;
-    toolbarRestartZet.textContent = "♻";
-    toolbarRestartZet.title = error.message;
-    toolbarRestartZet.setAttribute("aria-label", "Restart Zet");
   }
+  update.onclick = () => void begin(true);
+  restart.onclick = () => void begin(false);
 }
-
 
 
 const BUILDER_SUBSCENE_COLORS = ["#DDEAF4", "#E4E0F3", "#F3E1E7", "#F4E7D5", "#E2EEDC", "#DCEDEA"];
@@ -12895,7 +12920,7 @@ window.ZetTaskCapture.registerProvider(() => {
   return { page_id: page,
     page_name: LOCAL_ASSET_PAGES.has(page) ? document.querySelector("#local-pipeline-title").textContent.trim()
       : document.querySelector(`#${page}-page h1`)?.textContent?.trim() || page,
-    source_url: source.href, universe_id: state.universeId || null, selections };
+    source_url: source.href, universe_id: state.universeId || null, selections, workflow_status: local?.workflow_status || null };
 });
 window.zetQuickCharacterWizard = {
   fetchJson,

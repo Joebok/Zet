@@ -981,6 +981,7 @@ def create_app(
         )
         application.state.ollama_catalog_refresh_thread.start()
         application.state.image_generation_service.start()
+        application.state.zet_app.task_status_service.start()
         for zet_app in application.state.universe_apps.values():
             zet_app.narrative_generation_service.start_background()
             zet_app.image_catalog_service.repository.load()
@@ -990,14 +991,17 @@ def create_app(
             yield
         finally:
             application.state.image_generation_service.stop()
+            application.state.zet_app.task_status_service.stop()
             for zet_app in application.state.universe_apps.values():
                 zet_app.narrative_generation_service.stop_background()
                 zet_app.library_index_reconciler.stop()
 
     app = FastAPI(title="Zet Web", lifespan=lifespan)
+    from uuid import uuid4
+    app.state.boot_id = uuid4().hex
     app.state.config_path = str(config_path)
     app.state.ollama_model_service = OllamaModelService(
-        cache_path=config_path.resolve().parent / "Config" / "ollama-models-cache.json"
+        cache_path=config.state_file(config_path.resolve().parent, "ollama-models-cache.json")
     )
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
@@ -1188,6 +1192,9 @@ def create_app(
         """Report that the Zet HTTP application has completed startup and can serve requests."""
         return {
             "ready": True,
+            "boot_id": app.state.boot_id,
+            "revision": app.state.zet_app.task_service.zet_revision,
+            "instance": config.runtime_role + ":" + str(config_path.resolve()),
             "catalog_reconciliation": app.state.zet_app.library_index_reconciler.status(),
             "recovery": _recovery_status(current_universe.get()),
         }
@@ -3336,11 +3343,31 @@ def create_app(
             harvester_stopped, dashboard_stopped = _app(app.state.config_path).restart_zet()
             return {
                 "message": "Restarting Zet.",
+                "previous_boot": app.state.boot_id,
+                "expected_revision": app.state.zet_app.task_service.zet_revision,
                 "auto_harvest_stopped": harvester_stopped,
                 "dashboard_stopped": dashboard_stopped,
             }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/deployment")
+    def deployment_status():
+        return _app(app.state.config_path).deployment_service.status()
+
+    @app.post("/api/deployment/update", status_code=202)
+    def deployment_update():
+        try:
+            return _app(app.state.config_path).deployment_service.start(app.state.boot_id)
+        except ValueError as exc:
+            raise HTTPException(getattr(exc, "status_code", 400), str(exc)) from exc
+
+    @app.post("/api/deployment/stage", status_code=202)
+    def deployment_stage():
+        try:
+            return _app(app.state.config_path).deployment_service.start(app.state.boot_id, stage_only=True)
+        except ValueError as exc:
+            raise HTTPException(getattr(exc, "status_code", 400), str(exc)) from exc
 
     @app.get("/api/local-image/checkpoints")
     def local_image_checkpoints(
@@ -3349,7 +3376,7 @@ def create_app(
     ) -> dict[str, Any]:
         try:
             zet_app = _app(app.state.config_path)
-            profiles_path = Path(app.state.config_path).resolve().parent / "Config" / "Local_Render_Presets.json"
+            profiles_path = zet_app.config.state_file(Path(app.state.config_path).resolve().parent, "Local_Render_Presets.json")
             service = LocalRenderBackendService(profiles_path)
             server_url = zet_app.config.comfyui_server_url if backend == "comfyui" else ""
             return {
@@ -3797,6 +3824,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    import os
+    os.environ["ZET_WEB_HOST"] = args.host
+    os.environ["ZET_WEB_PORT"] = str(args.port)
     if args.debug:
         import os
         os.environ["ZET_AI_QUEUE_DEBUG"] = "1"

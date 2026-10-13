@@ -405,7 +405,7 @@ class AIProxyService:
             return ""
         profile_name = self._local_render_preset()
         profiles = self._read_json_if_exists(
-            self.path_service.project_root / "Config" / "Local_Render_Presets.json"
+            self.path_service.config.state_file(self.path_service.project_root, "Local_Render_Presets.json")
         )
         profile = profiles.get(profile_name) if isinstance(profiles, dict) else None
         if isinstance(profile, dict) and str(profile.get("workflow_kind") or "").strip():
@@ -414,7 +414,7 @@ class AIProxyService:
 
     def _workflow_kind_for_preset(self, profile_name: str) -> str:
         profiles = self._read_json_if_exists(
-            self.path_service.project_root / "Config" / "Local_Render_Presets.json"
+            self.path_service.config.state_file(self.path_service.project_root, "Local_Render_Presets.json")
         )
         profile = profiles.get(profile_name) if isinstance(profiles, dict) else None
         if not isinstance(profile, dict):
@@ -642,7 +642,8 @@ class AIProxyService:
         consumer: str = "zet",
     ) -> dict:
         require_qwen_profile(Path(__file__).resolve().parents[2], render_preset or self._local_render_preset(),
-                             image_generation or self.path_service.config.local_render_backend)
+                             image_generation or self.path_service.config.local_render_backend,
+                             presets_path=self.path_service.config.state_file(self.path_service.project_root, "Local_Render_Presets.json"))
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         target_output_file = f"test_{stamp}.png"
         ask_id = f"Ask_Render_Task_LOCAL_RENDER_{stamp}_{uuid4().hex}"
@@ -688,7 +689,8 @@ class AIProxyService:
             )
         )
         require_qwen_profile(Path(__file__).resolve().parents[2], ask_manifest["render_preset"],
-                             ask_manifest["image_generation"], ask_manifest["checkpoint"])
+                             ask_manifest["image_generation"], ask_manifest["checkpoint"],
+                             presets_path=self.path_service.config.state_file(self.path_service.project_root, "Local_Render_Presets.json"))
         workflow_kind = self._workflow_kind_for_preset(str(ask_manifest["render_preset"]))
         if not workflow_kind and ask_manifest["image_generation"] == "comfyui":
             workflow_kind = self._local_render_workflow_kind()
@@ -731,7 +733,8 @@ class AIProxyService:
         submitted_prompt = prompt_text_override if prompt_text_override is not None else prompt_path.read_text(encoding="utf-8")
         selected_preset = render_preset or self._local_render_preset()
         require_qwen_profile(Path(__file__).resolve().parents[2], selected_preset,
-                             image_generation or self.path_service.config.local_render_backend, checkpoint or "")
+                             image_generation or self.path_service.config.local_render_backend, checkpoint or "",
+                             presets_path=self.path_service.config.state_file(self.path_service.project_root, "Local_Render_Presets.json"))
         if not allow_parallel:
             for path in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
                 queued = self._read_json_if_exists(path / "ask_manifest.json")

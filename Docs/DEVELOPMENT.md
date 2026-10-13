@@ -78,3 +78,15 @@ records commands/outcomes, backup and remaining stub review issues.
 
 ## Render-slot implementation validation (2026-10-12)
 Approved `npm.cmd run test:e2e` passed all three fast scenarios after backend/recovery integration (24.8 seconds); S2 also passed independently. Default Windows `python3` resolves to an unusable WindowsApps alias on this host. Verified Python 3 at `C:/Python314/python.exe`; an ignored `test-results/runtime/python3.cmd` shim was placed first on the command's PATH for the harness. Python compilation, JS syntax checks for changed slot browser files, and `git diff --check` passed. Restricted-network Chromium bootstrap failed; the approved pinned setup/suite succeeded with sandbox escalation. No production dependencies or maintained tests were added, and no live renderer or normal creative library was used. Joe subsequently approved four disposable follow-up checks: costume batch-link restoration, card containment, current-prompt/Recompile behavior, and overlapping slot actions. They passed using prepared responses, including live arrivals during review with an unsaved human decision preserved, late cleared-answer fencing, and Image Generation containment at 1365/850/640 pixels. The final approved fast baseline also passed (3 tests, 23.0 seconds). Full Body/Head generation and general recovery remain outside maintained coverage. See [completed plan](../plans/completed/standard-render-slots.md).
+
+## GitHub pickup and production releases
+
+[GitHub task workflow](GitHub_Task_Workflow.md) owns capture/setup, worker authority,
+quota and deployment. Automated work sets ZET_WORKER_MODE=1 and loads only disposable
+development configuration. prepare_issue_workspace prepares the existing inspection
+seed from an isolated worktree; it does not load the live library. Production uses
+Zet_Runtime/releases/<sha> with stable state and its existing authored-data roots.
+After the first explicit promotion, run_zet_runtime.bat starts that release. Merged
+main must contain the new deployment contract before first promotion. Inspect
+runtime/state operation records and production.log for recovery; do not reset local
+edits or move/rebuild creative data to bypass a blocker.

@@ -1,3 +1,5 @@
+> Historical integration: active task capture now uses [GitHub task workflow](GitHub_Task_Workflow.md). The contract below describes the preserved former implementation; it is not the current API. Kanban data is retained.
+
 # Kanban task forwarding and capture (packets 04–09)
 
 Zet now exposes task forwarding through `ZetApp.create_task(payload)` and

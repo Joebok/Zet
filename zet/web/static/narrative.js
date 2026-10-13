@@ -918,7 +918,8 @@ restoreProvider = window.ZetTaskCapture.registerProvider(() => {
       source.searchParams.set('task_candidate',id);
     }
   }
-  return {page_id:'narrative',page_name:'Narrative Scenes',source_url:source.href,universe_id:universe || null,selections};
+  return {page_id:'narrative',page_name:'Narrative Scenes',source_url:source.href,universe_id:universe || null,selections,
+    workflow_status: contextState==='selected' ? Object.values(detail?.jobs || {}).slice(-4).map(job=>`${job.kind}: ${job.status}`).join(' · ') || 'Ready' : contextState};
 });
 listen(host.querySelector('#narrative-review-task'),'click',()=>void window.ZetTaskCapture.open());
 try {

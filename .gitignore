@@ -17,6 +17,7 @@
 
 # Other exclusions
 .venv/
+config.runtime.toml
 .codex_tmp/
 _Lib/AI_Queue
 _Lib/Assets

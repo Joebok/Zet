@@ -457,7 +457,7 @@ class LocalHeadImageService:
         output_path = render_dir / output_name
         prompt_copy = candidate_dir / "Qwen_Head_Image_Prompt.md"
         prompt_copy.write_text("Positive Prompt:\n" + saved_input["prompt"] + "\n\nNegative Prompt:\n", encoding="utf-8")
-        profile = LocalRenderBackendService(self.project_root / "Config" / "Local_Render_Presets.json").preset(preset_name)
+        profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json")).preset(preset_name)
         ask_id = f"LocalHeadImage_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
                     "pipeline": "Local-Head-Image", "pipeline_stage": "HEAD_IMAGE_RENDER"}

@@ -211,7 +211,7 @@ class PipelineControlService:
         )
 
     def render_profiles(self) -> dict[str, list[str]]:
-        path = self.config_path.resolve().parent / "Config" / "Local_Render_Presets.json"
+        path = self.config.state_file(self.config_path.resolve().parent, "Local_Render_Presets.json")
         try:
             profiles = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -298,7 +298,8 @@ class PipelineControlService:
             raise PipelineControlServiceError(f"Local render backend must be one of: {choices}.")
         if not settings.comfyui_profile.strip():
             raise PipelineControlServiceError("ComfyUI profile cannot be blank.")
-        require_qwen_profile(Path(__file__).resolve().parents[2], settings.comfyui_profile, checkpoint=settings.comfyui_checkpoint)
+        require_qwen_profile(Path(__file__).resolve().parents[2], settings.comfyui_profile, checkpoint=settings.comfyui_checkpoint,
+                             presets_path=self.config.state_file(self.config_path.resolve().parent, "Local_Render_Presets.json"))
         if not settings.comfyui_server_url.strip():
             raise PipelineControlServiceError("ComfyUI server URL cannot be blank.")
         if settings.comfyui_poll_seconds < 0 or settings.comfyui_timeout_seconds <= 0:

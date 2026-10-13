@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import signal
@@ -12,7 +13,7 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cwd", type=Path, required=True)
-    parser.add_argument("--command", required=True)
+    parser.add_argument("--command-json", required=True)
     parser.add_argument("--pid", type=int, action="append", default=[])
     args = parser.parse_args()
 
@@ -33,14 +34,9 @@ def main() -> None:
                 pass
 
     time.sleep(0.5)
-    if platform.system() == "Windows":
-        subprocess.Popen(
-            ["cmd.exe", "/c", "call", args.command],
-            cwd=str(args.cwd),
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
-        )
-    else:
-        subprocess.Popen(args.command, cwd=str(args.cwd), shell=True, start_new_session=True)
+    command = json.loads(args.command_json)
+    subprocess.Popen(command, cwd=str(args.cwd), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                     start_new_session=platform.system() != "Windows")
 
 
 if __name__ == "__main__":

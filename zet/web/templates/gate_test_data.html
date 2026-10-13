@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Review Gate Test Data</title>
 <style>body{margin:0;background:#f5f7fb;color:#202124;font:15px system-ui,sans-serif}header,main{max-width:1300px;margin:auto;padding:1rem 1.5rem}.panel,.case{background:#fff;border:1px solid #d8dee8;border-radius:9px;padding:1rem;margin-bottom:1rem}.row{display:flex;flex-wrap:wrap;gap:.7rem;align-items:end}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.8rem}label{display:grid;gap:.3rem}button,select{font:inherit;padding:.5rem;border:1px solid #b9c2d0;border-radius:5px;background:#fff}img{width:100%;height:220px;object-fit:contain;background:#111}.muted{color:#667085}.danger{color:#b42318}</style><link rel="stylesheet" href="/static/task_capture.css?v=20261010-screenshots"></head>
-<body class="auxiliary-task-page"><header><h1>Review Gate Test Data</h1><nav><a href="/gate-test-rig">Gate Test Rig</a> · <a href="/">Dashboard</a> · <button id="toolbar-create-task" type="button">Create task</button> · <a id="toolbar-open-board" target="_blank" rel="noopener" hidden>Open board</a></nav></header><p id="task-context-notice" role="status" aria-live="polite" hidden></p><main>
+<body class="auxiliary-task-page"><header><h1>Review Gate Test Data</h1><nav><a href="/gate-test-rig">Gate Test Rig</a> · <a href="/">Dashboard</a> · <button id="toolbar-create-task" type="button">Create task</button> · <a id="toolbar-github-issues" target="_blank" rel="noopener" hidden>GitHub issues</a></nav></header><p id="task-context-notice" role="status" aria-live="polite" hidden></p><main>
 <section class="panel"><div class="row"><label>Pipeline<select id="pipeline"></select></label><label>Gate<select id="gate"></select></label><button id="refresh">Refresh</button><a href="/gate-test-rig">Add test data</a></div><p id="status" class="muted"></p></section><section id="cases" class="grid"></section>
 <!-- TASK_CAPTURE_FORM -->
-<script src="/static/task_capture.js?v=20261011-randomuuid-fallback"></script>
+<script src="/static/task_capture.js?v=20261013-github"></script>
 <script src="/static/auxiliary_task_context.js?v=20261010"></script>
 <script>
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));let catalog=null,caseData=[],selectedCase='',ready=false,failed=false,initial=true,editorElement='';
