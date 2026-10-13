@@ -685,7 +685,7 @@ async function assignElements() {
   await save();
   const scene = await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}`);
   const dialog = host.querySelector('#membership-dialog');
-  dialog.innerHTML = `<h2>Assign elements to ${esc(detail.title)}</h2><form id="membership-form">${scene.elements.map(element=>`<p><label><input type="checkbox" name="element" value="${element.id}" ${detail.element_ids.includes(element.id) ? 'checked' : ''}> ${esc(element.name)} · ${esc(element.kind)}</label></p>`).join('') || '<p>Create an element first.</p>'}<div class="narrative-actions"><button class="primary">Save assignments</button><button type="button" data-close="membership-dialog">Cancel</button></div></form>`;
+  dialog.innerHTML = `<h2>Assign elements to ${esc(detail.title)}</h2><form id="membership-form"><div class="narrative-membership-list">${scene.elements.map(element=>`<label class="narrative-membership-row"><input type="checkbox" name="element" value="${element.id}" ${detail.element_ids.includes(element.id) ? 'checked' : ''}> <span>${esc(element.name)} · ${esc(element.kind)}</span></label>`).join('') || '<p>Create an element first.</p>'}</div><div class="narrative-actions"><button class="primary">Save assignments</button><button type="button" data-close="membership-dialog">Cancel</button></div></form>`;
   dialog.showModal();
 }
 
