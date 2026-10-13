@@ -80,3 +80,9 @@ Pending.
   server was still alive failed; the repeat after verified stop passed.
 - Windows runtime paths use platform overrides; Darwin configuration loading
   preserves normal startup with empty local runtime paths.
+
+- Real capture published pilot issue #42 and commit-pinned image successfully.
+  Visual inspection exposed leftover plan-approval help text and oversized checkbox
+  styling; corrected in the parent feature before worker execution. Original issue
+  capture remains unchanged; a supplemental screenshot/comment records the new
+  pilot base. This is a setup correction, not a scope change to the queued-work task.
