@@ -86,6 +86,13 @@ these do not create a permanent suite. Worker validation and deployment staging 
 a fixed-port check lock outside Git. No live check was run. See the active workflow
 plan for exact observed results and remaining real pilot/promotion gates.
 
+Worker validation streams directly to its ignored log. Its timeout stops only the
+owned command process tree, avoiding a descendant-held output pipe blocking recovery.
+A disposable parent/child timeout check verified retained output and a failed
+revision checkpoint. Windows sandbox cleanup may require the saved automatic review
+for this exact isolated check; three printed scenario successes without successful
+runner completion are insufficient to mark a PR ready.
+
 The real sandbox pilot exposed physical queue-state and compiler-config leaks in
 the old fixture. build_app now sets the active fixture config and a fixture-only
 queue-state root. Compiler script helpers honor that active config; normal queue

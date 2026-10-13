@@ -39,6 +39,10 @@ between stages. Recheck quota through the helper before further model-heavy work
 at exhaustion checkpoint usage-wait with a quota explanation and retain all work.
 
 Commit the change and run the helper's validate command. Fix failures within scope.
+On Windows, the restricted process job can prevent Playwright from cleaning up its
+own generated server. If needed, request the saved automatic review for the exact
+disposable helper validation command; do not add writable roots or bypass a failed
+result. Validation streams to a retained log and bounds its own process tree.
 Review the final diff and show that the original reported behavior is corrected;
 agent-authored criteria and passing baseline tests are supporting evidence.
 Synchronize the active plan and affected documentation. Use helper deliver for the validated commit, then helper ready to

@@ -137,3 +137,9 @@ Pending.
   deliberately migrating the unfinished work.
 - Saved pickup prompt now explicitly creates/reuses a managed isolated worktree
   before claiming. Native automation remains paused pending the real pilot.
+- Pilot at 72f64f0 passed its dialog inspection and all three scenario assertions
+  (2.8s/15.3s/3.5s), but Windows restricted-job cleanup hung. Stopped only the
+  identity-verified fixture process tree; recorded failed validation, not delivery.
+  Repaired durable log streaming/owned-tree timeout and verified that path with a
+  disposable parent/child sleeper. Retrying exact validation with saved automatic
+  review for Windows process cleanup; no writable-root or approval-policy changes.
