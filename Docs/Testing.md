@@ -26,6 +26,31 @@ npm run test:e2e
 
 On Windows, `npm.cmd run test:e2e` avoids PowerShell script-policy restrictions. Its pretest setup uses `npm ci` when the locked Playwright packages are missing and installs Chromium only when the matching browser executable is absent. Browser downloads use Playwright's shared user cache, while npm packages are installed into the current checkout or worktree. [package.json](../package.json) calls [playwright.config.mjs](../playwright.config.mjs), which runs only `fast.spec.mjs` on Chromium with one worker, a 90-second scenario timeout, 8-second default assertion timeout, and port **8765**. The local-front helper has a bounded 70-second poll. Reuse of an existing server is disabled; keep suites serial across worktrees and resolve port conflicts before rerunning.
 
+The bootstrap removes only the lifecycle-exported `npm_config_allow_scripts`
+override (including case and hyphen variants) from its nested `npm ci`
+environment, allowing npm to read script policy directly from `.npmrc` or
+`package.json`. It preserves the remaining environment, including `userconfig`,
+cache, registry, and other script controls. npm 11.16 rejects that environment
+override for project installs even when the original setting came from `.npmrc`;
+see [npm's lifecycle export bug](https://github.com/npm/cli/issues/9912).
+Do not work around this failure by enabling all scripts, editing allowlists, or
+changing locked dependencies.
+
+On 2026-10-13, disposable clean projects running npm 11.16.0 reproduced the old
+helper's `EALLOWSCRIPTS` failure. The repaired helper passed cold and warm lifecycle
+bootstraps with user `.npmrc`, project `.npmrc`, and `package.json` policies, plus
+an uppercase/hyphen environment override. Package manifests, lockfiles, and
+configuration files stayed unchanged. The approved `npm.cmd run test:e2e`
+baseline then passed all three scenarios in 28.2 seconds using verified Python
+3.14.6 through `ZET_TEST_PYTHON`. These bootstrap checks are disposable, not new
+maintained scenarios. Issue #46's worker validation receipt at `1c21be2` remains
+failed until the repair is integrated into that worktree and its helper validation
+is rerun; the passing checkout baseline does not replace that receipt.
+
+On 2026-10-13, directly bootstrapping the failed staged release `8917920` also
+passed; its approved `npm.cmd run test:e2e` baseline then passed all three scenarios
+(26.3 seconds). This validated staging only; production promotion was not retried.
+
 Use an existing verified Python 3.11+ runtime, project packages, Node, Playwright and Chromium. The configs call `python3 -B tests/e2e/server.py`; verify that interpreter before running. The pretest setup restores only dependencies pinned by `package-lock.json` and the required Chromium browser; it does not change dependency declarations. There is no routine pytest, coverage, lint/type-check, or GitHub Actions test command in the current baseline.
 
 ## Fixture and response boundaries
