@@ -25,6 +25,7 @@ def main():
     claim = sub.add_parser("claim")
     claim.add_argument("--worktree", type=Path, default=Path.cwd())
     sub.add_parser("status")
+    sub.add_parser("reconcile")
     context = sub.add_parser("context")
     context.add_argument("--token", required=True)
     evidence = sub.add_parser("evidence")
@@ -78,6 +79,10 @@ def main():
             result = usage.import_reading(json.loads(args.input_file.read_text(encoding="utf-8"))) if args.input_file else usage.refresh()
         elif args.action == "status":
             result = {"claim": store.get("worker", args.repository), "worker": store.get("status", "worker"), "usage": store.get("status", "usage")}
+        elif args.action == "reconcile":
+            if not bridge:
+                raise ValueError("Start the local Zet server with its authenticated worker bridge before reconciliation.")
+            result = worker.reconcile()
         elif args.action == "recover":
             result = worker.recover(args.token)
         elif args.action in {"context", "evidence", "deliver", "ready"}:

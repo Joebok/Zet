@@ -19,17 +19,28 @@ local automation polls every 30 minutes in an isolated worktree. The PC, desktop
 must be running. The Zet server hosts the authenticated loopback worker bridge. The prompt calls the deterministic helper; it never selects
 or claims issues by editing labels independently of that helper.
 
-Use a verified Python 3 runtime. From the isolated worktree:
+Use a verified Python 3 runtime. Run the coordinator from the configured Zet
+development checkout without constructing ZetApp or loading its config. Before
+selection, run `reconcile` to record validated merged PRs as completed locally.
+Retained needs-review/completed state never replaces polling the current queue.
+Then select an isolated worktree target and run:
 
 ```powershell
 $env:ZET_WORKER_MODE = "1"
-python3 -B -m zet.scripts.issue_worker --state-root C:/Users/Joe/Projects/Zet_Runtime/state claim
+python3 -B -m zet.scripts.issue_worker --state-root C:/Users/Joe/Projects/Zet_Runtime/state claim --worktree <isolated-checkout>
 ```
 
 This reads fresh account quota, checks the singleton claim, and selects by lowest
 `priority:<N>` then age. A new issue must be open, ready, unassigned, without an
 open dependency, matching branch or matching PR. Trusted answers to retained
 `needs-input` issues and trusted requested PR changes are considered first.
+Claim also reconciles merged deliveries before selection. Completed records keep
+the validated branch, revision and PR history and cannot be reclaimed or recovered.
+Reconciliation reads GitHub and updates only local coordination state; it does
+not merge, close issues, delete worktrees or change production. A waiting PR does
+not block independent ready issues. For active ownership, poll using the retained
+worktree target; otherwise create an attached managed worktree from origin/main.
+Choose the coding worktree only from the helper's returned claim.
 
 No claim is silently taken from another run. Interrupted ownership remains fenced.
 After confirming the old worker stopped, an operator can run `recover --token
@@ -110,7 +121,10 @@ Check quota between major stages and checkpoint `usage-wait` when exhausted; it 
 quota is available. Never buy credits or consume reset
 credits automatically. Scheduled polling itself consumes some capacity.
 
-Stay quiet while idle or unchanged. Notify only when a PR is ready, a material
+Keep scheduled run chats visible and record the timestamp and actual helper result
+in automation memory; do not archive runs while pickup is being verified. Leave
+a concise final result even for an idle/busy/quota-wait poll, without an attention
+notification for unchanged state. Notify only when a PR is ready, a material
 question needs Joe, worker/authentication fails, or a deployment needs recovery.
 The dashboard displays cached questions, reviews, freshness, limits and merged
 updates. Questions/reviews are answered on GitHub; there is no v1 dashboard merge UI.
