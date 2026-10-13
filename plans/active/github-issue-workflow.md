@@ -26,7 +26,7 @@ Kanban_Integration.md and .github/CODEX_WORKFLOW.md are affected knowledge owner
 | WP5 Capture UI | task_capture.js/html, task router, toolbar templates | WP4 | Ready/later, retry/reload, deliberate legacy conversion; disposable browser checks | implemented; disposable validation passed |
 | WP6 Claim/recovery | worker service/repository/CLI, issue workflow | WP3-4 | One claim, branches/PRs checked, trusted replies resume; fake GitHub checks | implemented; disposable validation passed |
 | WP7 Usage | Codex usage adapter/cache | WP1 | Fresh limits, 10% reserve, unknown pauses; read-only protocol/disposable checks | implemented; disposable validation passed |
-| WP8 Pilot/schedule | automation prompt, development setup | WP6-7 | Small authorized issue reaches validated PR before 30-minute schedule starts | pending |
+| WP8 Pilot/schedule | automation prompt, development setup | WP6-7 | Small authorized issue reaches validated PR before 30-minute schedule starts | complete; #43 ready, 30-minute schedule enabled |
 | WP9 Attention | status service/router, dashboard panel | WP6-8 | Action items, freshness, quota, errors; mocked browser checks | implemented; disposable validation passed |
 | WP10 Deployment | deployment service/stable helper, restart UI | WP1-2,9 | Stage merged main, validate disposable data, new boot/revision, recovery | implemented; disposable validation passed |
 | WP11 Cutover/docs | component docs, code map, workflow/template, ADR | all | Three successful deliveries before final cutover; preserve Kanban records | pending |
@@ -56,7 +56,8 @@ Keep this plan active until those rollout gates and three successful deliveries 
 - Prior read-only probe confirmed account/rateLimits/read support.
 
 ## Final results
-Pending.
+Implementation and disposable validation are complete; real pilot validated.
+Human merge/production adoption and three-delivery final cutover remain open.
 
 - Existing baseline passed: 3 scenarios, 25.9 seconds (before final hardening).
 - Disposable service checks passed: receipts/conflicts/ambiguous delivery, pinned
@@ -147,3 +148,13 @@ Pending.
   Recovery now records the latest existing GitHub comment ID before awaiting the
   repair reply, so resumption uses an ordered server-owned marker. Disposable
   coordination checks passed again; original claims/work remain intact.
+- Retained real pilot validation completed successfully at 5dd11b7 through the
+  saved automatic review: three approved scenarios passed in 25.2s, diff checks
+  passed, and the original issue/screenshot browser acceptance passed. Scoped
+  bridge delivery updated existing PR #43 to that exact revision and refreshed its
+  description. No merge, production update, permanent test or dependency change.
+- #43 is ready at the validated SHA and #42 is checkpointed needs-review. Enabled
+  zet-github-pickup at 30 minutes after this real pilot passed. It stays quiet until
+  main contains the feature and requires the actual local Zet server/bridge.
+  Feature #41 is prepared for Joe's review; merge #43 into its feature branch first,
+  then #41 into main. Final cutover still requires three successful deliveries.
