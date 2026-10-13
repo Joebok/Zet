@@ -75,6 +75,25 @@ function layerUrl(layer,kind='cutout') {
 function modelControl(key) {
   return `<label class="narrative-field">${title(key)}<input data-field="${key}" id="narrative-${key}" list="narrative-model-options" value="${esc(detail[key])}" placeholder="Default: ${esc(modelOptions.model)}"></label>`;
 }
+function enableModelPickers() {
+  for (const field of root.querySelectorAll('input[list="narrative-model-options"]')) {
+    let previousValue = null;
+    const revealOptions = () => {
+      const key = field.dataset.field;
+      if (field.value && !dirty.has(key) && field.value === detail[key]) {
+        previousValue = field.value;
+        field.value = '';
+      }
+    };
+    listen(field,'focus',revealOptions);
+    listen(field,'pointerdown',revealOptions);
+    listen(field,'input',()=>{ previousValue = null; });
+    listen(field,'blur',()=>{
+      if (previousValue !== null && !field.value) field.value = previousValue;
+      previousValue = null;
+    });
+  }
+}
 async function loadModels() {
   const url = base();
   try {
@@ -462,6 +481,7 @@ function renderTarget(targets) {
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></section>
     <section class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+  enableModelPickers();
   updateLive();
   loadModels();
   if (assembly) renderLayers();
