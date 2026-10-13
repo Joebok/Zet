@@ -3324,13 +3324,19 @@ def create_app(
             page = zet_app.library_index_service.repository.query_job_history(
                 harvested_only=True, cursor=cursor or None, limit=limit
             )
-            items = []
-            for item in page.items:
-                try:
-                    items.append(json.loads(str(item.get("payload_json") or "{}")))
-                except json.JSONDecodeError:
-                    items.append({})
-            return _indexed_page_payload(page, items=items)
+            if cursor:
+                items = []
+                for item in page.items:
+                    try:
+                        items.append(json.loads(str(item.get("payload_json") or "{}")))
+                    except json.JSONDecodeError:
+                        items.append({})
+            else:
+                # Include producer-local receipts before the background index scan sees them.
+                items = zet_app.recent_ai_harvests(limit)
+            payload = _indexed_page_payload(page, items=_jsonable(items))
+            payload["total"] = max(page.total, len(items))
+            return payload
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
