@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import time
 from uuid import uuid4
@@ -151,20 +152,31 @@ class IssueWorkerService:
         if python.exists():
             subprocess.run([str(python), "-c", "import sys; assert sys.version_info.major == 3"], check=True, timeout=10)
             env["ZET_TEST_PYTHON"] = str(python)
-        with test_lock(self.store.root):
-            try:
-                result = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
-                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            except subprocess.TimeoutExpired as exc:
-                def decoded(value):
-                    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
-                result = subprocess.CompletedProcess(command, 124, decoded(exc.stdout), decoded(exc.stderr) + "\nApproved baseline timed out; retained output follows.\n")
-        diff = subprocess.run(["git", "diff", "--check"], cwd=root, capture_output=True, text=True)
-        revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
         log = root / "test-results" / "issue-worker-validation.log"
         log.parent.mkdir(parents=True, exist_ok=True)
-        log.write_text(result.stdout + result.stderr + diff.stdout + diff.stderr, encoding="utf-8")
-        validation = {"passed": result.returncode == 0 and diff.returncode == 0, "revision": revision,
+        with test_lock(self.store.root):
+            # A descendant can retain a captured pipe after its parent times out.
+            # Write directly to a durable log and stop only this owned process tree.
+            with log.open("w", encoding="utf-8") as output:
+                process = subprocess.Popen(command, cwd=root, env=env, stdout=output, stderr=subprocess.STDOUT,
+                                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
+                try:
+                    returncode = process.wait(timeout=600)
+                except subprocess.TimeoutExpired:
+                    if os.name == "nt":
+                        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                       stdout=output, stderr=subprocess.STDOUT, timeout=20,
+                                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    else:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=20)
+                    output.write("\nApproved baseline timed out; its process tree was stopped.\n")
+                    returncode = 124
+        diff = subprocess.run(["git", "diff", "--check"], cwd=root, capture_output=True, text=True)
+        revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
+        with log.open("a", encoding="utf-8") as output:
+            output.write(diff.stdout + diff.stderr)
+        validation = {"passed": returncode == 0 and diff.returncode == 0, "revision": revision,
                       "command": "npm run test:e2e; git diff --check", "checked_at": time.time(), "log": str(log)}
         with self.store.transaction() as db:
             current = self.store.read(db, "worker", self.github.repository)
