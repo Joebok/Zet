@@ -158,3 +158,8 @@ Human merge/production adoption and three-delivery final cutover remain open.
   main contains the feature and requires the actual local Zet server/bridge.
   Feature #41 is prepared for Joe's review; merge #43 into its feature branch first,
   then #41 into main. Final cutover still requires three successful deliveries.
+- Final checkpoint: #41 and #43 are ready for review; root and retained worktree
+  are clean and final branch diff checks pass. Temporary reset heartbeat paused;
+  only verified disposable fixture/bridge processes stopped and their owned
+  bridge registry removed. Retained worktree, claims, evidence and all Kanban/live
+  data remain. Primary chat stays open; Joe owns merge and production promotion.
