@@ -1216,11 +1216,12 @@ def create_app(
         runtime = app.state.zet_app.task_service
         if runtime.zet_revision and runtime.zet_revision_at:
             committed_at = datetime.fromisoformat(runtime.zet_revision_at)
-            local_time = committed_at.astimezone().strftime("%Y-%m-%d %H:%M %Z")
+            local_time = committed_at.astimezone()
             version = (
                 f'<time class="runtime-version" datetime="{runtime.zet_revision_at}" '
                 f'title="Commit {runtime.zet_revision} · {runtime.zet_revision_at}">'
-                f'Updated {local_time} · {runtime.zet_revision[:8]}</time>'
+                f'Updated {local_time:%Y-%m-%d}<br>'
+                f'{local_time:%H:%M} · {runtime.zet_revision[:8]}</time>'
             )
             page = page.replace("<!-- ZET_RUNTIME_VERSION -->", version)
         else:
