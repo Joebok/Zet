@@ -5423,10 +5423,10 @@ dd {
 .costume-wizard-header, .costume-wizard-resume { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .costume-wizard-header h2 { margin: 0; }
 .costume-wizard-images { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.costume-wizard-image-slot { display: grid; align-content: start; gap: 9px; border: 1px solid #d5e0e2; border-radius: 10px; padding: 12px; }
+.costume-wizard-image-slot { display: grid; align-content: start; gap: 9px; min-width: 0; border: 1px solid #d5e0e2; border-radius: 10px; padding: 12px; }
 .costume-wizard-image-slot h3 { margin: 0; }
-.costume-wizard-file { display: block; margin-top: 5px; max-width: 100%; }
-.costume-wizard-paste { min-height: 52px; display: grid; place-items: center; border: 1px dashed #8aa3a8; border-radius: 8px; color: #526a70; cursor: pointer; text-align: center; }
+.costume-wizard-file { display: block; box-sizing: border-box; width: 100%; min-width: 0; margin-top: 5px; }
+.costume-wizard-paste { min-height: 52px; display: grid; place-items: center; overflow-wrap: anywhere; border: 1px dashed #8aa3a8; border-radius: 8px; color: #526a70; cursor: pointer; text-align: center; }
 .costume-wizard-paste:focus { outline: 2px solid #347c8a; }
 .costume-wizard-preview { max-width: 100%; max-height: 220px; object-fit: contain; justify-self: center; }
 .costume-wizard-dialog textarea { width: 100%; box-sizing: border-box; }
