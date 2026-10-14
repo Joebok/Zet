@@ -4514,7 +4514,15 @@ async function deleteSelectedCostume() {
     renderCostumeTable();
     renderCostumeEditor();
     showCostumeMessage(payload.message || "Costume moved to deleted storage.");
-    await loadAssets();
+    try {
+      await loadAssets();
+    } catch (error) {
+      if (!error.message.includes("Assets.json not found at")) throw error;
+      state.assets = [];
+      state.selectedAssetId = null;
+      renderAssetTable();
+      clearDetail();
+    }
   } catch (error) {
     if (error.detail?.references) showCostumeReferenceConflict(error.detail);
     else showCostumeMessage(error.message, "error");
