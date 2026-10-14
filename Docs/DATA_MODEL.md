@@ -28,6 +28,13 @@ Paths below are relative to the **bound universe root** unless stated otherwise.
 
 Logical references can bind an image or reference set and survive image replacement. Usage records connect consumers and locations to assets/references; services use them to protect archive/delete and merge operations. A usage with a direct asset ID remains bound to that image even if it also carries a historical logical key; a key-only usage follows the key's current binding. Refresh validates both fields independently, reports missing endpoints, and retains the valid endpoint. Read [EntityLibraryService](../zet/services/entity_library_service.py) for ID construction, allowed values, deduplication, and operation-specific validation instead of treating filenames as identity.
 
+Active image-bound logical references cannot target archived images. Pipeline
+reconciliation deactivates references in the same transaction that archives their
+assets. To repair an existing mismatch, use the preview-first
+[`repair_archived_reference`](../zet/scripts/repair_archived_reference.py) command
+with an explicit universe root, key, and expected asset ID; `--apply` makes a
+verified catalog backup before changing only the reference status and timestamp.
+
 The asset editor saves image metadata, organization links, its two asset descriptors,
 and preferred reference in one PATCH transaction. The asset detail endpoint queries
 the selected image directly; pipeline discovery belongs to inventory search and

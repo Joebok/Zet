@@ -186,20 +186,40 @@ class EntityLibraryService:
                     (str(uuid4()), asset_id, "locked_pipeline_source", json.dumps({"tag": origin_key, "label": item.label}), stamp),
                 )
             self._pipeline_signatures[origin_key] = signature
-        if active_origin_keys:
-            placeholders = ",".join("?" for _ in active_origin_keys)
-            with self.repository.transaction() as connection:
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            if active_origin_keys:
+                placeholders = ",".join("?" for _ in active_origin_keys)
+                archived = connection.execute(
+                    f"SELECT asset_id FROM assets WHERE origin='pipeline' AND status<>'archived' "
+                    f"AND origin_key NOT IN ({placeholders})",
+                    tuple(sorted(active_origin_keys)),
+                ).fetchall()
                 connection.execute(
                     f"UPDATE assets SET status='archived',updated_at=? "
                     f"WHERE origin='pipeline' AND status<>'archived' AND origin_key NOT IN ({placeholders})",
-                    (_now(), *sorted(active_origin_keys)),
+                    (stamp, *sorted(active_origin_keys)),
                 )
-        else:
-            with self.repository.transaction() as connection:
+            else:
+                archived = connection.execute(
+                    "SELECT asset_id FROM assets WHERE origin='pipeline' AND status<>'archived'"
+                ).fetchall()
                 connection.execute(
                     "UPDATE assets SET status='archived',updated_at=? WHERE origin='pipeline' AND status<>'archived'",
-                    (_now(),),
+                    (stamp,),
                 )
+            self._deactivate_asset_references(connection, [row["asset_id"] for row in archived], stamp)
+
+    @staticmethod
+    def _deactivate_asset_references(connection, asset_ids: list[str], stamp: str) -> None:
+        if not asset_ids:
+            return
+        placeholders = ",".join("?" for _ in asset_ids)
+        connection.execute(
+            f"UPDATE logical_references SET status='inactive',updated_at=? "
+            f"WHERE status='active' AND asset_id IN ({placeholders})",
+            (stamp, *asset_ids),
+        )
 
     def list_assets(self, **filters) -> list[dict]:
         self._sync_pipeline_assets()
@@ -625,6 +645,11 @@ class EntityLibraryService:
             return created
         stamp = _now()
         with self.repository.transaction() as connection:
+            replacement = connection.execute(
+                "SELECT status FROM assets WHERE asset_id=?", (created["asset_id"],)
+            ).fetchone()
+            if not replacement or replacement["status"] == "archived":
+                raise EntityLibraryServiceError("Replacement image must remain available before references can be transferred.")
             connection.execute("UPDATE assets SET replacement_for_asset_id=? WHERE asset_id=?", (asset_id, created["asset_id"]))
             direct_usages = connection.execute("SELECT 1 FROM asset_usages WHERE asset_id=? AND status='current' LIMIT 1", (asset_id,)).fetchone()
             if not direct_usages:
@@ -737,6 +762,41 @@ class EntityLibraryService:
                 raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
         return self.get_asset(asset_id)
 
+    def deactivate_archived_reference(self, reference_key: str, expected_asset_id: str,
+                                     *, dry_run: bool = True) -> dict:
+        """Deactivate one reference only while it still matches its expected archived image."""
+        reference_key = self._require(reference_key, "Logical reference key")
+        expected_asset_id = self._require(expected_asset_id, "Expected image asset ID")
+        query = """SELECT lr.reference_key,lr.asset_id,lr.status AS reference_status,
+                          a.status AS asset_status
+                   FROM logical_references lr JOIN assets a ON a.asset_id=lr.asset_id
+                   WHERE lr.reference_key=?"""
+        if dry_run:
+            row = self.repository.fetchone(query, (reference_key,))
+            if not row or row["asset_id"] != expected_asset_id:
+                raise EntityLibraryServiceError("Logical reference is missing or no longer has the expected image binding.")
+            if row["reference_status"] == "inactive":
+                return {**row, "action": "already_inactive", "dry_run": True}
+            if row["reference_status"] != "active" or row["asset_status"] != "archived":
+                raise EntityLibraryServiceError("Expected an active logical reference bound to an archived image.")
+            return {**row, "action": "deactivate", "dry_run": True}
+
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            row = connection.execute(query, (reference_key,)).fetchone()
+            if not row or row["asset_id"] != expected_asset_id:
+                raise EntityLibraryServiceError("Logical reference is missing or no longer has the expected image binding.")
+            if row["reference_status"] == "inactive":
+                return {**dict(row), "action": "already_inactive", "dry_run": False}
+            if row["reference_status"] != "active" or row["asset_status"] != "archived":
+                raise EntityLibraryServiceError("Expected an active logical reference bound to an archived image.")
+            connection.execute(
+                "UPDATE logical_references SET status='inactive',updated_at=? "
+                "WHERE reference_key=? AND asset_id=? AND status='active'",
+                (stamp, reference_key, expected_asset_id),
+            )
+        return {**dict(row), "reference_status": "inactive", "action": "deactivated", "dry_run": False}
+
     @staticmethod
     def _upsert_descriptor(connection, owner_type: str, owner_id: str, descriptor_type: str,
                            text: str, stamp: str) -> dict:
@@ -765,7 +825,15 @@ class EntityLibraryService:
 
     @staticmethod
     def _save_logical_reference(connection, *, key: str, label: str, asset_id: str,
-                                 set_id: str | None, stamp: str, allow_reassign: bool = False) -> dict:
+                                 set_id: str | None, stamp: str, allow_reassign: bool = False,
+                                 status: str = "active") -> dict:
+        if status not in {"active", "inactive"}:
+            raise EntityLibraryServiceError("Invalid logical reference status.")
+        target = connection.execute("SELECT status FROM assets WHERE asset_id=?", (asset_id,)).fetchone()
+        if not target:
+            raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
+        if status == "active" and target["status"] == "archived":
+            raise EntityLibraryServiceError("An archived image cannot have an active logical reference.")
         existing = connection.execute(
             "SELECT * FROM logical_references WHERE reference_key=?", (key,)
         ).fetchone()
@@ -774,10 +842,10 @@ class EntityLibraryService:
         resolved_set_id = set_id if set_id is not None else (existing["set_id"] if existing else None)
         connection.execute(
             """INSERT INTO logical_references(reference_key,label,asset_id,set_id,status,updated_at)
-               VALUES(?,?,?,?, 'active', ?) ON CONFLICT(reference_key) DO UPDATE SET
+               VALUES(?,?,?,?,?,?) ON CONFLICT(reference_key) DO UPDATE SET
                label=excluded.label,asset_id=excluded.asset_id,set_id=excluded.set_id,
-               status='active',updated_at=excluded.updated_at""",
-            (key, label, asset_id, resolved_set_id, stamp),
+               status=excluded.status,updated_at=excluded.updated_at""",
+            (key, label, asset_id, resolved_set_id, status, stamp),
         )
         result = dict(connection.execute(
             "SELECT * FROM logical_references WHERE reference_key=?", (key,)
@@ -932,6 +1000,7 @@ class EntityLibraryService:
                 self._save_logical_reference(
                     connection, key=reference_key, label=label, asset_id=asset_id,
                     set_id=(set_ids[0] if set_ids else None), stamp=stamp,
+                    status="inactive" if status == "archived" else "active",
                 )
             if reference_key is not None:
                 connection.execute(

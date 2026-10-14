@@ -94,6 +94,11 @@ are superseded without publishing into source or Narrative records.
 - **Implementation/impact:** `EntityLibraryService.update_asset`, `assets.preferred_reference_key` in entity catalog schema 3, and `PATCH /api/entity-library/assets/{asset_id}`. Targeted detail reads do not synchronize pipeline images; inventory search and reconciliation own discovery.
 - **Verify:** Run disposable schema/backfill, collision, alias, rollback, and targeted-read diagnostics. The approved E2E suite does not cover inventory edit/save races or preference migration; obtain approval before adding that coverage.
 
+Pipeline archival deactivates active references to the archived images in the same
+catalog transaction. Service writes cannot activate a logical reference on an
+archived image. Existing mismatches use the expected-binding,
+preview-first [repair command](../zet/scripts/repair_archived_reference.py).
+
 ## 14. Render positions are independent of candidates and ranking
 Eight-slot grids keep stable physical positions and candidate bindings. A completed Luna ranking may change the browser's card presentation order, but it never changes the candidate's physical slot or its slot actions. Supplemental generation fills empty slots only; reserved prerequisites and failed renders are occupied. Replacement candidates/jobs have distinct identities, and changed character evaluations receive a new fence. Late results cannot fill another candidate's position. Selected and locked images require explicit protection transitions before slot replacement. Clear detaches membership while retaining historical artifacts; normal reruns still follow their existing explicit destructive behavior.
 
