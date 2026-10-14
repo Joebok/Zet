@@ -457,6 +457,10 @@ main {
   gap: .35rem;
 }
 
+#image-generation-add-universe-art-style {
+  justify-self: start;
+}
+
 .image-generation-modes,
 .image-generation-dimensions {
   display: grid;
