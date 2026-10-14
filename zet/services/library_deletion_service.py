@@ -82,7 +82,7 @@ class LibraryDeletionService:
             f"""SELECT DISTINCT u.asset_id,u.reference_key,u.consumer_id,u.locator FROM asset_usages u
                 LEFT JOIN logical_references lr ON lr.reference_key=u.reference_key
                 WHERE u.status='current' AND u.consumer_id LIKE 'NarrativeStories/%'
-                  AND (u.asset_id IN ({placeholders}) OR lr.asset_id IN ({placeholders}))
+                  AND (u.asset_id IN ({placeholders}) OR (u.asset_id IS NULL AND lr.asset_id IN ({placeholders})))
                 ORDER BY u.consumer_id,u.locator,u.asset_id,u.reference_key""",
             (*ids, *ids),
         )

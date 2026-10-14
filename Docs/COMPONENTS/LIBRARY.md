@@ -52,10 +52,8 @@ preferred reference together, then refreshes usages and the derived index once.
 Preference changes retain prior active keys so existing consumers continue to resolve.
 
 The [2026-10-14 reference audit](../../plans/completed/costume-reference-integrity.md)
-verified costume deletion using a copied Moonsea catalog and disposable fixtures.
-It also reproduced two unresolved usage-discovery defects: historical job metadata
-can acquire a replacement image as a consumer when a logical key is reassigned,
-and a dual asset/key observation validates only the asset before insertion, so a
-missing key aborts refresh. Database foreign keys do not establish these consumer
-semantics. The audit also records an active key bound to an archived image in the
-live catalog; no live records were repaired during this work.
+records the costume deletion fix and read-only live catalog findings. Its two usage
+tracking defects were addressed in the [entity usage integrity plan](../../plans/completed/entity-usage-reference-integrity.md): paired usages remain anchored
+to their direct asset, and refresh reports invalid endpoints while retaining valid
+ones. The audit also records an active key bound to an archived image in the live
+catalog; that pre-existing record was not repaired by the code change.

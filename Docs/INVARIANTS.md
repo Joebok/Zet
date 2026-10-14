@@ -99,6 +99,12 @@ Eight-slot grids keep stable positions. Supplemental generation fills empty slot
 
 Character slot changes hold the state lock and persist pending candidate IDs before background submission. An independent slot collector owns `slot_runner.lock`; it does not block unrelated slot actions on the batch runner. Existing batch runners exclude these independently managed additions. Empty capacity is not Run All Remaining work. Image Generation workspace assignments are universe-owned and server persisted; newly generated results return by child index, never completion order. Services own these transitions, browsers own only presentation/draft inputs. [ADR 0007](DECISIONS/0007-stable-render-slots.md) and [render_slot_service.py](../zet/services/render_slot_service.py) own the contract. Existing S2/S3 cover baseline compatibility; the separately approved disposable checks cover the reported slot issues. Full Body/Head generation and general restart recovery remain unverified by maintained scenarios.
 
+## 15. Image usage endpoints preserve identity
+
+- **Rule/why:** A usage with a direct asset ID remains tied to that image even when it also records a historical logical key. Key-only usages follow the key's current image. Usage refresh validates each endpoint separately; a missing key must not abort other observations or erase a valid direct consumer.
+- **Implementation/impact:** `EntityLibraryService.refresh_usages`, `usage_for_asset`, status guards, and `LibraryDeletionService._protect_narrative_assets`. Narrative jobs retain frozen resolved IDs and bytes; live authored elements keep current direct or logical bindings.
+- **Verify:** The approved S1-S3 suite exercises representative authoring and Narrative flows but has no dedicated usage protection assertion. Inspect endpoint validation and every catalog usage join; request approval before adding permanent coverage.
+
 ## GitHub capture and production promotion
 
 Frozen reports bind request IDs to repository/content hashes. Uncertain creation

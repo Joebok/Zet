@@ -854,7 +854,7 @@ class EntityLibraryService:
             has_usages = bool(connection.execute(
                 """SELECT 1 FROM asset_usages u LEFT JOIN logical_references lr
                    ON lr.reference_key=u.reference_key WHERE u.status='current'
-                   AND (u.asset_id=? OR lr.asset_id=?) LIMIT 1""", (asset_id, asset_id),
+                   AND (u.asset_id=? OR (u.asset_id IS NULL AND lr.asset_id=?)) LIMIT 1""", (asset_id, asset_id),
             ).fetchone())
             active_references = bool(connection.execute(
                 "SELECT 1 FROM logical_references WHERE asset_id=? AND status='active' LIMIT 1",
@@ -1423,7 +1423,7 @@ class EntityLibraryService:
 
     def usage_for_asset(self, asset_id: str) -> list[dict]:
         return self.repository.fetchall(
-            "SELECT DISTINCT u.* FROM asset_usages u LEFT JOIN logical_references lr ON lr.reference_key=u.reference_key WHERE (u.asset_id=? OR lr.asset_id=?) AND u.status='current' ORDER BY u.consumer_type,u.consumer_id,u.locator",
+            "SELECT DISTINCT u.* FROM asset_usages u LEFT JOIN logical_references lr ON lr.reference_key=u.reference_key WHERE (u.asset_id=? OR (u.asset_id IS NULL AND lr.asset_id=?)) AND u.status='current' ORDER BY u.consumer_type,u.consumer_id,u.locator",
             (asset_id, asset_id),
         )
 
@@ -1474,12 +1474,20 @@ class EntityLibraryService:
         with self.repository.transaction() as connection:
             connection.execute("UPDATE asset_usages SET status='stale'")
             for asset_id, reference_key, consumer_type, consumer_id, locator in observations:
-                if asset_id:
-                    exists = connection.execute("SELECT 1 FROM assets WHERE asset_id=?", (asset_id,)).fetchone()
-                else:
-                    exists = connection.execute("SELECT 1 FROM logical_references WHERE reference_key=?", (reference_key,)).fetchone()
-                if not exists:
-                    missing.append({"asset_id": asset_id, "reference_key": reference_key, "consumer_id": consumer_id, "locator": locator})
+                valid_asset = (connection.execute("SELECT 1 FROM assets WHERE asset_id=?", (asset_id,)).fetchone()
+                               if asset_id else None)
+                valid_reference = (connection.execute(
+                    "SELECT 1 FROM logical_references WHERE reference_key=?", (reference_key,)
+                ).fetchone() if reference_key else None)
+                if asset_id and not valid_asset:
+                    missing.append({"asset_id": asset_id, "reference_key": None,
+                                    "consumer_id": consumer_id, "locator": locator})
+                    asset_id = None
+                if reference_key and not valid_reference:
+                    missing.append({"asset_id": None, "reference_key": reference_key,
+                                    "consumer_id": consumer_id, "locator": locator})
+                    reference_key = None
+                if not asset_id and not reference_key:
                     continue
                 usage_id = hashlib.sha256("|".join((asset_id or "", reference_key or "", consumer_id, locator)).encode()).hexdigest()
                 connection.execute(
