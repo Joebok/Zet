@@ -6,6 +6,7 @@ from email.parser import BytesParser
 import json
 import time
 import threading
+from datetime import datetime
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -1211,7 +1212,20 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        return render_task_capture_page(PACKAGE_ROOT / "templates" / "index.html").replace("<!-- NARRATIVE_WORKSPACE -->", (PACKAGE_ROOT / "templates" / "narrative.html").read_text(encoding="utf-8"))
+        page = render_task_capture_page(PACKAGE_ROOT / "templates" / "index.html")
+        runtime = app.state.zet_app.task_service
+        if runtime.zet_revision and runtime.zet_revision_at:
+            committed_at = datetime.fromisoformat(runtime.zet_revision_at)
+            local_time = committed_at.astimezone().strftime("%Y-%m-%d %H:%M %Z")
+            version = (
+                f'<time class="runtime-version" datetime="{runtime.zet_revision_at}" '
+                f'title="Commit {runtime.zet_revision} · {runtime.zet_revision_at}">'
+                f'Updated {local_time} · {runtime.zet_revision[:8]}</time>'
+            )
+            page = page.replace("<!-- ZET_RUNTIME_VERSION -->", version)
+        else:
+            page = page.replace("<!-- ZET_RUNTIME_VERSION -->", "")
+        return page.replace("<!-- NARRATIVE_WORKSPACE -->", (PACKAGE_ROOT / "templates" / "narrative.html").read_text(encoding="utf-8"))
 
     @app.get("/local-body-reference")
     def local_body_reference_page() -> RedirectResponse:

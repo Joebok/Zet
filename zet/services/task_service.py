@@ -30,6 +30,7 @@ class TaskService:
         self.github = github or GitHubClient(repository, timeout_seconds)
         self.store = TaskWorkflowRepository(state_root)
         self.zet_revision = self._revision(project_root)
+        self.zet_revision_at = self._revision_timestamp(project_root, self.zet_revision)
 
     @staticmethod
     def _revision(project_root):
@@ -37,6 +38,22 @@ class TaskService:
             result = subprocess.run(["git", "-C", str(project_root), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=2)
             value = result.stdout.strip()
             return value if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", value) else None
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    @staticmethod
+    def _revision_timestamp(project_root, revision):
+        if not revision:
+            return None
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(project_root), "show", "-s", "--format=%cI", revision],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            value = result.stdout.strip()
+            return value if result.returncode == 0 and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}", value) else None
         except (OSError, subprocess.TimeoutExpired):
             return None
 
