@@ -1,5 +1,5 @@
 # Show references blocking costume deletion
-Status: active
+Status: complete
 Related issue/specification: https://github.com/Joebok/Zet/issues/58
 
 ## Goal
@@ -39,9 +39,8 @@ Use current authoritative `asset_usages` and logical-reference joins; do not byp
 - Status: complete.
 
 ## Validation
-Run the helper's revision-bound approved three-scenario E2E baseline and `git diff --check`. Existing scenarios do not directly cover deletion references; perform focused source review of the captured issue path and fixture-compatible service/API/UI behavior without adding maintained coverage.
-
-Observed focused disposable check: `test-results/costume-delete-reference-smoke.py` used the prepared inspection fixture with a temporary in-memory usage repository and two temporary Narrative scene records; it passed, asserting both current consumers resolve to titled Story/Scene rows. The inspection fixture's catalog was empty, so the focused check did not use entity-library assets. The disposable files are under ignored `test-results/`.
+- Focused disposable check passed: two current Narrative usages resolved to titled Story/Scene references. The prepared inspection catalog had no entity assets, so the check used a temporary in-memory usage repository and temporary fixture scene records; no maintained test was added.
+- Helper revision-bound validation passed at `6cc9e9d0320283a6dbb0b5c88b6565a8abfb3e0b`: `npm run test:e2e; git diff --check` (3 approved scenarios passed). Log: `C:/Users/Joe/.codex/worktrees/zet-pickup-20261014-1418/Zet/test-results/issue-worker-validation.log`.
 
 ## Risks and alternatives
 The current usage index stores file path and JSON locator, not cached display titles. Resolve titles from authored Narrative files at error time; if a record is missing or malformed, report the ID/path and locator rather than omitting a protection reference. Scene links use the existing `page=narrative&story_slug=...&scene_slug=...` route.
@@ -53,4 +52,4 @@ The current usage index stores file path and JSON locator, not cached display ti
 - WP2 now returns a structured HTTP 409 conflict and renders a safe linked list in the costume editor. Updated the Library component and code map.
 
 ## Final results
-Implementation is complete; the approved helper validation and final review are pending.
+Implementation, validation and final review are complete. The approved S1–S3 suite does not assert this exact deletion error contract; the focused disposable check verifies complete service-level reference collection.
