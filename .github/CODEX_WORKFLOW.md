@@ -94,15 +94,61 @@ python3 -B -m zet.scripts.issue_worker --state-root C:/Users/Joe/Projects/Zet_Ru
 
 The helper runs the existing three fast E2E scenarios and `git diff --check` under
 a fixed-port check lock, saving revision-bound results in `test-results`. No new
-maintained scenarios or live check are implied. Fix failures and rerun only after
-the relevant change. Passing these scenarios does not prove every task contract.
+maintained scenarios or live check are implied. Passing these scenarios does not
+prove every task contract.
+
+### Validation failures and escalation
+
+A failed test is work to investigate, not a reason to end the run. Keep the claim
+`in-progress` and heartbeat while diagnosing and repairing failures within the
+authorized scope. Before escalating:
+
+1. Inspect the retained validation log and relevant failure artifacts (trace,
+   screenshot, error context, or fixture state), then inspect the implicated code
+   and recent diff. Record the observed failure and an evidence-backed diagnosis;
+   distinguish a confirmed cause from a hypothesis.
+2. Attempt at least one minimal, scoped repair addressing that diagnosis, unless
+   a demonstrated access, authority, prerequisite, or quota constraint prevents
+   the attempt. In that case, record the evidence and explain why no authorized
+   repair or documented setup/recovery step can proceed.
+3. Run the relevant approved checks after the repair. Commit the scoped changes
+   and rerun helper `validate` before delivery so the result matches the current
+   revision. If the repair fails, use the new evidence to continue diagnosis and
+   repair while supported scoped next steps and quota remain available.
+
+Do not weaken assertions, skip a failing scenario, increase timeouts without
+evidence, or mark validation successful to get past a product defect. Repair an
+existing test or fixture only when the evidence identifies a harness defect and
+the repair preserves the approved scenario's purpose. An unknown cause, a failed
+first repair, or an assumption that the failure is unrelated is not by itself a
+blocker. Explicit ownership recovery is for interrupted/abandoned claims, not the
+normal response to a test failure in the current worker's own change.
+
+Any escalation must use a retained `--message-file` and state:
+
+- The failed command, revision, observed failure, and retained evidence paths.
+- The diagnosis or remaining hypotheses and the evidence supporting them.
+- The scoped repair(s) attempted and their validation results, or the concrete
+  constraint that prevented an attempt.
+- The exact remaining blocker, why the worker cannot proceed within its existing
+  authority, and why the available scoped alternatives do not resolve it.
+- The action, access, or decision needed to resume, with a recommendation when
+  Joe must choose.
+
+Use `needs-input` for a specific missing decision/access/authority, `usage-wait`
+for quota, and `stopped` for a demonstrated execution/prerequisite failure that
+cannot be repaired within scope. A bare "validation failed" or "investigate next"
+message is insufficient. Preserve the worktree, artifacts, and accurate failed
+result; never claim completion while required validation is failing.
+
+### Delivery after validation
 
 Perform final review against the original problem: show the concrete before/after
 behavior and visual evidence when appropriate. Deliver the validated commit with the same helper, then run
 `ready --token <token> --pr-number <N>` to mark the PR ready, then checkpoint `needs-review --pr-number <N> --message-file <path>`.
 The helper requires a clean, validated current revision and a ready issue-branch PR.
-Questions use `checkpoint --state needs-input --message-file <path>`. Errors use
-`stopped` with a diagnostic message; retained work is never deleted automatically.
+Escalations use the state and diagnostic message required above; retained work is
+never deleted automatically.
 
 Joe owns review and merge. `Closes #N` closes the issue when merged. Closing an
 unmerged PR does not automatically authorize another implementation; inspect and
@@ -121,11 +167,12 @@ Check quota between major stages and checkpoint `usage-wait` when exhausted; it 
 quota is available. Never buy credits or consume reset
 credits automatically. Scheduled polling itself consumes some capacity.
 
-Keep scheduled run chats visible and record the timestamp and actual helper result
-in automation memory; do not archive runs while pickup is being verified. Leave
-a concise final result even for an idle/busy/quota-wait poll, without an attention
-notification for unchanged state. Notify only when a PR is ready, a material
-question needs Joe, worker/authentication fails, or a deployment needs recovery.
+Record the timestamp and actual helper result in automation memory and leave a
+concise final result even for an idle/busy/quota-wait poll. Archive the run chat
+after an idle result with no eligible work; keep it visible for busy,
+quota-limited, active, or attention-needed outcomes. Unchanged state needs no
+attention notification. Notify only when a PR is ready, a material question needs
+Joe, worker/authentication fails, or a deployment needs recovery.
 The dashboard displays cached questions, reviews, freshness, limits and merged
 updates. Questions/reviews are answered on GitHub; there is no v1 dashboard merge UI.
 

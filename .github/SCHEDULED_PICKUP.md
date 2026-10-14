@@ -24,10 +24,12 @@ returned issue, token, branch and coding worktree. Preserve retained worktrees;
 do not attach another chat's worktree merely to inspect status or poll the queue.
 If idle, busy or quota-limited, exit quietly after recording the actual result;
 never independently change labels to bypass a claim or quota guard. A waiting
-review does not prevent another eligible issue from being claimed. Keep all run
-chats visible; do not call set_thread_archived. Record time, reconciliation and
-claim outcome in automation memory, and leave a concise final run result. Emit
-attention notifications only for the meaningful changes described below.
+review does not prevent another eligible issue from being claimed. Record time,
+reconciliation and claim outcome in automation memory, and leave a concise final
+run result. When the claim outcome is idle with no eligible work, archive the run
+chat after recording the result. Keep chats visible for busy, quota-limited,
+active, or attention-needed outcomes. Emit attention notifications only for the
+meaningful changes described below.
 If quota is unknown, use the desktop app's read-only get_usage_limits tool and save
 its actual JSON reading to an ignored file. Import that reading with issue_worker
 usage --input-file before retrying claim. Never estimate capacity or replace a
@@ -51,7 +53,23 @@ access, live models or rendering. Add a draft PR with Closes #N. Heartbeat the c
 between stages. Recheck quota through the helper before further model-heavy work;
 at exhaustion checkpoint usage-wait with a quota explanation and retain all work.
 
-Commit the change and run the helper's validate command. Fix failures within scope.
+Commit the change and run the helper's validate command. A failed test starts a
+diagnosis/repair cycle; keep the claim in-progress rather than ending the run.
+Follow CODEX_WORKFLOW.md's "Validation failures and escalation" rules: inspect
+retained logs/artifacts and implicated code, record an evidence-backed diagnosis,
+attempt a minimal scoped repair, and rerun the approved checks. Continue from new
+failure evidence while supported scoped next steps and quota remain. Do not mask
+product defects by weakening/skipping tests or changing timeouts without evidence.
+Before escalating, at least one scoped repair must have been attempted unless a
+demonstrated access, authority, prerequisite, or quota constraint prevents it.
+Every escalation must provide a retained message file with the failed command and
+revision, evidence paths, diagnosis, attempted repairs and results (or why an
+attempt was impossible), the exact blocker and why authorized alternatives cannot
+resolve it, and the action needed to resume. Use needs-input for a specific missing
+decision/access/authority, usage-wait for quota, and stopped only for an execution
+or prerequisite failure that cannot be repaired within scope. A test failure,
+unknown cause, or failed first repair alone does not justify stopping or requiring
+operator recovery. Never end with only "validation failed" or "investigate next".
 On Windows, the restricted process job can prevent Playwright from cleaning up its
 own generated server. If needed, request the saved automatic review for the exact
 disposable helper validation command; do not add writable roots or bypass a failed
