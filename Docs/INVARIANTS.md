@@ -82,6 +82,8 @@ hashes before resuming. Configuration changes apply only to new submissions.
 Narrative logical costume references resolve approved current exact-view images;
 unavailable/stale bindings remain review issues. Jobs freeze the resolved bytes and
 ordered references at submission. Legacy-image catalog blobs survive scene deletion.
+Costume deletion uses the same exact costume asset set for usage protection and
+purge; a character/phase origin prefix alone does not establish costume ownership.
 Candidate imports and migration resumes are idempotent; changed source briefs cannot
 silently overwrite authored inputs or selected/locked outputs. Retired owned answers
 are superseded without publishing into source or Narrative records.

@@ -168,11 +168,17 @@ class LibraryDeletionService:
         if match is None:
             raise LibraryDeletionServiceError(f"Costume not found: {costume_slug}")
         costume_name = self.paths_costume_name(costume_slug)
+        # Modern origins identify the costume; legacy checksum-only origins must
+        # be attributed by their exact catalog classification below.
+        origin_prefix = f"local:Costume-Dressing:{character}:{phase}:"
+        slug_prefix = origin_prefix + costume_slug.casefold() + ":"
+        name_prefix = origin_prefix + costume_name.casefold() + ":"
         entity_assets = self.entity_repository.fetchall(
             """SELECT DISTINCT a.asset_id FROM assets a
                LEFT JOIN asset_entities ae ON ae.asset_id=a.asset_id
                LEFT JOIN entities e ON e.entity_id=ae.entity_id
-               WHERE a.origin_key LIKE ?
+               WHERE lower(substr(a.origin_key,1,length(?)))=lower(?)
+                  OR lower(substr(a.origin_key,1,length(?)))=lower(?)
                   OR (e.entity_type='costume' AND lower(e.name)=lower(?) AND EXISTS (
                       SELECT 1 FROM asset_entities subject
                       JOIN entities character_entity ON character_entity.entity_id=subject.entity_id
@@ -181,7 +187,7 @@ class LibraryDeletionService:
                         AND lower(character_entity.name)=lower(?) AND phase_variant.variant_type='life_stage'
                         AND lower(phase_variant.name)=lower(?)
                   ))""",
-            (f"local:Costume-Dressing:{character}:{phase}:%", costume_name, character, phase),
+            (slug_prefix, slug_prefix, name_prefix, name_prefix, costume_name, character, phase),
         )
         self._protect_narrative_assets([row["asset_id"] for row in entity_assets])
         archive = self._archive(character, phase, f"costume_{costume_slug}")

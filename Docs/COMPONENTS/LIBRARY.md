@@ -35,7 +35,7 @@ Reconciliation scans authored/queue sources, fingerprints content, reuses cached
 Narrative scene/target JSON participates in entity usage discovery. Live element
 asset IDs, logical keys and legacy-image bindings protect catalog images; archived
 source documents in migration provenance are not live consumers. Authoring changes
-refresh usages. Phase/costume deletion checks current Narrative consumers before moving files. A blocked costume delete includes each Story/Scene title, reference locator and a Narrative scene link when the authored records can be resolved; unreadable records retain their usage path and locator in the reported context.
+refresh usages. Phase/costume deletion checks current Narrative consumers before moving files. Costume deletion selects literal costume-qualified local origins (slug or display name) and exact character/phase/costume catalog classifications; older checksum-only origins require classification and must never imply ownership of every costume in a phase. The same selected asset IDs govern protection and purge. A blocked costume delete includes each Story/Scene title, reference locator and a Narrative scene link when the authored records can be resolved; unreadable records retain their usage path and locator in the reported context.
 
 Migration imports use `legacy_scene` and `legacy_reference` origins and stable origin
 keys; character pipeline reconciliation cannot obsolete them. Imports preserve bytes,
@@ -50,3 +50,12 @@ synchronization; entity, variant, set, and facet option reads do not independent
 repeat that scan. Editor PATCH saves metadata, organization, asset descriptors, and
 preferred reference together, then refreshes usages and the derived index once.
 Preference changes retain prior active keys so existing consumers continue to resolve.
+
+The [2026-10-14 reference audit](../../plans/completed/costume-reference-integrity.md)
+verified costume deletion using a copied Moonsea catalog and disposable fixtures.
+It also reproduced two unresolved usage-discovery defects: historical job metadata
+can acquire a replacement image as a consumer when a logical key is reassigned,
+and a dual asset/key observation validates only the asset before insertion, so a
+missing key aborts refresh. Database foreign keys do not establish these consumer
+semantics. The audit also records an active key bound to an archived image in the
+live catalog; no live records were repaired during this work.
