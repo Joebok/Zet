@@ -35,10 +35,10 @@ Preserve candidate IDs, `slots_by_view`, selection/lock protection and action ow
 - Work: document Luna-ordered presentation separately from fixed physical slot identity and state the test coverage limits.
 - Acceptance: docs match the UI behavior and existing service/storage invariant.
 - Validation: source-linked documentation review and `git diff --check`.
-- Status: in progress. Updated the local character component contract and Invariant 14 to distinguish presentation order from physical slot bindings.
+- Status: complete. Updated the local character component contract and Invariant 14 to distinguish presentation order from physical slot bindings.
 
 ## Validation
-Planned: helper `validate --token` runs the unchanged approved three-scenario baseline plus `git diff --check`; run a disposable, prepared-fixture check with known multiple candidates/rankings to verify all four pipeline UI configurations and slot-action mappings. `node --check zet/web/static/local_asset_pipeline.js` and an initial `git diff --check` passed. No live model/render check or maintained coverage expansion.
+Observed at code revision `987b3285f3d440160be3520db5cc256c39f49db3`: helper `validate --token` passed the approved three E2E scenarios and `git diff --check` (26.4 seconds). `node --check zet/web/static/local_asset_pipeline.js` passed. The disposable `node test-results/issue-60-luna-rank-check.mjs` browser check passed on the prepared inspection fixture for all four pipelines: incomplete ranking retained physical order; complete Luna ranking put #1/#2 first; physical slot labels and Clear's slot/expected candidate remained correct; candidate focus and open prompt details survived live reordering. No live models/renders or maintained coverage changes were used.
 
 ## Risks and alternatives
 Changing persisted slot maps would violate slot identity and action fencing, so only presentation order changes. If the prepared fixture cannot represent all four pipeline configurations without introducing an unsupported fixture or permanent scenario, verify shared rendering logic and representative UI behavior, record the gap, and ask Joe only if acceptance cannot be demonstrated.
@@ -47,4 +47,4 @@ Changing persisted slot maps would violate slot identity and action fencing, so 
 - 2026-10-14: Verified one shared browser gallery for all local character pages and separate Luna versus manually adjusted ordering arrays. Kept backend and persisted render slots unchanged. Rank completion changes only browser card order; actions remain tied to the source slot.
 
 ## Final results
-Pending implementation and validation.
+Complete. The shared local-pipeline gallery presents candidate cards in Luna order after complete ranking while keeping persistent physical slot/candidate bindings unchanged. `zet/web/static/local_asset_pipeline.js`, `Docs/COMPONENTS/LOCAL_CHARACTERS.md`, and Invariant 14 were updated. Approved S1-S3 validation and focused all-pipeline fixture acceptance passed. Final helper validation will be rerun after this plan record is committed; Joe owns PR review and merge.
