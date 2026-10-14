@@ -1,5 +1,5 @@
 # Runtime version information in dashboard header
-Status: active
+Status: complete
 Related issue/specification: [Issue #54](https://github.com/Joebok/Zet/issues/54)
 
 ## Goal
@@ -36,10 +36,10 @@ Use only the current release checkout's own Git metadata. Do not read production
 - Work: document the header metadata owner; review the scoped diff; deliver through the issue helper, mark ready, and checkpoint `needs-review`.
 - Acceptance: only scoped files are changed, helper validation passes for the delivered revision, and the ready PR is recorded.
 - Validation: helper `deliver` and `ready`, final helper status, `git diff --check`.
-- Status: in progress; recovery and initial helper validation passed, final presentation validation and PR delivery remain.
+- Status: complete; the helper validated the compact label at `48488f1`, delivered PR #55, and marked it ready for review.
 
 ## Validation
-Direct commit timestamp/hash inspection passed. Initial helper validation failed at `f1b4bbc`: S1 could not switch to Character Development; S2/S3 passed. Investigation proved the unclipped runtime timestamp intercepted the button click. Joe committed overflow clipping and dashboard readiness assertions at `704a959`; the approved baseline passed directly (26.8 seconds) and through the recovered helper (24.5 seconds) at that revision. A disposable browser check confirmed the final two-line label fits its bounds and leaves Character Development clickable at 1280, 850, and 390 pixels; screenshots were inspected. No new maintained tests/scenarios or live checks were added. The changed final presentation requires fresh helper validation after commit.
+Direct commit timestamp/hash inspection passed. Initial helper validation failed at `f1b4bbc`: S1 could not switch to Character Development; S2/S3 passed. Investigation proved the unclipped runtime timestamp intercepted the button click. Joe committed overflow clipping and dashboard readiness assertions at `704a959`; the approved baseline passed directly (26.8 seconds) and through the recovered helper (24.5 seconds) at that revision. A disposable browser check confirmed the final two-line label fits its bounds and leaves Character Development clickable at 1280, 850, and 390 pixels; screenshots were inspected. No new maintained tests/scenarios or live checks were added. The helper then passed all three scenarios and `git diff --check` at compact-label revision `48488f1`; PR #55 was delivered and marked ready through the private bridge. The final documentation commit is revalidated before its PR update and review checkpoint.
 
 ## Risks and alternatives
 Runtime releases are Git checkouts, so release metadata is available without adding a build manifest. If metadata is unavailable in another runtime layout, the header remains empty rather than showing stale source metadata.
@@ -54,4 +54,4 @@ Runtime releases are Git checkouts, so release metadata is available without add
 - Existing code-map documentation already identifies the owning service, route, template, and stylesheet; no entry points moved.
 
 ## Final results
-Implementation commits `f1b4bbc` and `704a959` provide the header metadata, overflow clipping, and repaired existing S1 waits. Helper validation now passes at `704a959`. Final compact-label validation and PR delivery are in progress; Joe retains merge and deployment authority.
+Implementation commits `f1b4bbc`, `704a959`, and `48488f1` provide the header metadata, overflow clipping, repaired existing S1 waits, and compact date/time/hash label. Helper validation passed at `704a959` and `48488f1`. [PR #55](https://github.com/Joebok/Zet/pull/55) was delivered and marked ready. The completed plan moves to `plans/completed/`; its documentation commit is validated and sent through the same helper before the final `needs-review` checkpoint. Joe retains merge and deployment authority.
