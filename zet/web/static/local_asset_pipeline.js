@@ -386,6 +386,7 @@
     card.className = `local-pipeline-candidate${selected ? " is-selected" : ""}`;
     card.dataset.view = view;
     card.dataset.candidate = candidate.candidate_id;
+    card.dataset.slot = String(candidate.slot || candidate.ordinal || "");
     const heading = document.createElement("h3");
     heading.textContent = `Slot ${candidate.slot || candidate.ordinal} · ${candidate.candidate_id}`;
     card.append(heading);
@@ -413,7 +414,10 @@
     }
     const status = document.createElement("p");
     status.className = "muted";
-    const rank = (ranking.ordered_candidate_ids || []).indexOf(candidate.candidate_id);
+    const rankingOrder = ranking.luna_ordered_candidate_ids?.length
+      ? ranking.luna_ordered_candidate_ids
+      : ranking.ordered_candidate_ids || [];
+    const rank = rankingOrder.indexOf(candidate.candidate_id);
     status.textContent = `${renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}` : ""}`;
     card.append(status);
     const renderError = renderErrorDetails(candidate);
@@ -483,10 +487,26 @@
       const gallery = previous.querySelector(".local-pipeline-gallery"), newGallery = next.querySelector(".local-pipeline-gallery");
       if (gallery && newGallery) {
         const newCards = [...newGallery.children];
-        for (let index = 0; index < newCards.length; index++) {
-          const card = gallery.children[index], newCard = newCards[index];
-          if (!card) gallery.append(newCard);
-          else {
+        const cardKey = card => card.dataset.candidate ? `candidate:${card.dataset.candidate}` : `slot:${card.dataset.slot}`;
+        const oldKeys = [...gallery.children].map(cardKey), newKeys = newCards.map(cardKey);
+        if (oldKeys.length !== newKeys.length || oldKeys.some((key, index) => key !== newKeys[index])) {
+          const focus = document.activeElement;
+          const focusedCard = focus?.closest(".local-pipeline-candidate");
+          const focusKey = focusedCard ? cardKey(focusedCard) : "";
+          const focusIndex = focusedCard ? [...focusedCard.querySelectorAll("button,a")].indexOf(focus) : -1;
+          const openDetails = new Map([...gallery.children].map(card => [cardKey(card), [...card.querySelectorAll("details")].map(section => section.open)]));
+          for (const card of newCards) {
+            const open = openDetails.get(cardKey(card)) || [];
+            card.querySelectorAll("details").forEach((section, index) => { if (open[index] !== undefined) section.open = open[index]; });
+          }
+          gallery.replaceChildren(...newCards);
+          if (focusKey && focusIndex >= 0) {
+            const target = [...gallery.children].find(card => cardKey(card) === focusKey);
+            target?.querySelectorAll("button,a")[focusIndex]?.focus();
+          }
+        } else {
+          for (let index = 0; index < newCards.length; index++) {
+            const card = gallery.children[index], newCard = newCards[index];
             [...card.querySelectorAll("details")].forEach((section, sectionIndex) => { const nextSection = newCard.querySelectorAll("details")[sectionIndex]; if (nextSection) nextSection.open = section.open; });
             if (card.outerHTML === newCard.outerHTML) continue;
             const focus = document.activeElement;
@@ -494,8 +514,8 @@
             card.replaceWith(newCard);
             if (focusIndex >= 0) newCard.querySelectorAll("button,a")[focusIndex]?.focus();
           }
+          while (gallery.children.length > newCards.length) gallery.lastElementChild.remove();
         }
-        while (gallery.children.length > newCards.length) gallery.lastElementChild.remove();
       }
       const view = next.dataset.view;
       const sourceSignature = run => JSON.stringify([run?.sources?.[view], run?.front_source_sha256, (run?.candidates || []).filter(item => item.view === view).map(item => item.reference_images)]);
@@ -672,19 +692,40 @@
       const gallery = document.createElement("div");
       gallery.className = "local-pipeline-gallery";
       const slots = run.slots_by_view?.[view] || [...candidates.map(item => item.candidate_id), ...Array(Math.max(0, 8 - candidates.length)).fill(null)];
-      slots.forEach((id, index) => {
-        const candidate = candidates.find(item => item.candidate_id === id);
-        if (candidate) gallery.append(renderCandidate(view, {...candidate, slot: index + 1}, ranking, run));
-        else {
-          const card = document.createElement("article"); card.className = "local-pipeline-candidate render-slot-empty";
-          const title = document.createElement("h3"); title.textContent = `Slot ${index + 1}`;
-          const empty = document.createElement("p"); empty.textContent = "Empty";
-          card.append(title, empty);
-          const control = run.slot_controls?.[view] || {};
-          addSlotButton(card, "Generate", "generate", view, index + 1, !control.can_generate, control.reason);
-          gallery.append(card);
-        }
-      });
+      const candidateSlots = slots.map((id, index) => ({
+        id,
+        slot: index + 1,
+        candidate: candidates.find(item => item.candidate_id === id),
+      })).filter(item => item.candidate);
+      const appendEmptySlot = index => {
+        const card = document.createElement("article"); card.className = "local-pipeline-candidate render-slot-empty";
+        card.dataset.slot = String(index + 1);
+        const title = document.createElement("h3"); title.textContent = `Slot ${index + 1}`;
+        const empty = document.createElement("p"); empty.textContent = "Empty";
+        card.append(title, empty);
+        const control = run.slot_controls?.[view] || {};
+        addSlotButton(card, "Generate", "generate", view, index + 1, !control.can_generate, control.reason);
+        gallery.append(card);
+      };
+      const lunaOrder = ranking.status === "COMPLETE"
+        ? (ranking.luna_ordered_candidate_ids?.length ? ranking.luna_ordered_candidate_ids : ranking.ordered_candidate_ids || [])
+        : [];
+      if (lunaOrder.length) {
+        const rankById = new Map(lunaOrder.map((id, index) => [id, index]));
+        candidateSlots.sort((left, right) =>
+          (rankById.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rankById.get(right.id) ?? Number.MAX_SAFE_INTEGER)
+          || left.slot - right.slot);
+        candidateSlots.forEach(({candidate, slot}) => gallery.append(renderCandidate(view, {...candidate, slot}, ranking, run)));
+        slots.forEach((id, index) => {
+          if (!candidateSlots.some(item => item.slot === index + 1)) appendEmptySlot(index);
+        });
+      } else {
+        slots.forEach((id, index) => {
+          const candidate = candidates.find(item => item.candidate_id === id);
+          if (candidate) gallery.append(renderCandidate(view, {...candidate, slot: index + 1}, ranking, run));
+          else appendEmptySlot(index);
+        });
+      }
       const control = run.slot_controls?.[view] || {};
       details.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason}));
       details.append(gallery);
