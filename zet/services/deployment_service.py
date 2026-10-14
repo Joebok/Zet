@@ -63,6 +63,8 @@ class DeploymentService:
             request = {"id": identifier, "state": "pending", "runtime_root": str(self.root), "source_root": str(process.project_root),
                        "workflow_state_root": str(self.store.root),
                        "config_path": str(self.app.config_path.resolve()), "mutable_state_root": role_state,
+                       "library_root": str(Path(self.app.config.base_library_path).resolve()),
+                       "library_container": str(Path(self.app.config.library_container_path or self.app.config.base_library_path).resolve()),
                        "previous_release": previous.get("release"), "previous_revision": self.app.task_service.zet_revision,
                        "old_boot": boot_id, "pids": pids, "host": os.environ.get("ZET_WEB_HOST", "0.0.0.0"),
                        "owned_processes": [{"pid": info.pid, "command_line": info.command_line} for info in owned],

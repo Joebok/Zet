@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from urllib.request import urlopen
 
-from zet.scripts.deploy_release import release_python, run, start_harvester, start_release
+from zet.scripts.deploy_release import library_reference_version, release_python, run, start_harvester, start_release
 
 
 def main():
@@ -19,6 +19,9 @@ def main():
     release = Path(active["release"]).resolve()
     if release.parent != root / "releases":
         raise RuntimeError("Active release is outside Runtime.Root/releases.")
+    contract = json.loads((release / "Config" / "Runtime_Contract.json").read_text(encoding="utf-8"))
+    if int(contract.get("library_reference_version", 0)) < library_reference_version_from_release(release):
+        raise RuntimeError("The active release cannot read the configured library path format; restore a compatible release or library copy.")
     host, port = active.get("host", "0.0.0.0"), active.get("port", 8081)
     try:
         with urlopen(f"http://127.0.0.1:{port}/api/health", timeout=2) as response:
@@ -33,6 +36,13 @@ def main():
     start_release(release, host, port, root / "state")
     start_harvester(release)
     print(f"Starting production revision {active['revision']} on port {port}.")
+
+
+def library_reference_version_from_release(release):
+    from zet.services.config_service import ConfigService
+
+    config = ConfigService.load(Path(release) / "config.runtime.toml")
+    return library_reference_version(config.library_container_path or config.base_library_path)
 
 
 if __name__ == "__main__":

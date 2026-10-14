@@ -219,7 +219,9 @@ class AIQueueLifecycleService:
         return self.root / "Locks" / f"workflow-{number:02d}.lock"
 
     def file_proxy_client(self) -> FileProxyClient:
-        return FileProxyClient(self.queue_root, route_root=self.route_root)
+        return FileProxyClient(self.queue_root, route_root=self.route_root,
+                               library_root=self.config.base_library_path,
+                               universe_id=getattr(self.config, "universe_id", ""))
 
     def inbox_answers(self) -> list[Path]:
         if not self.inbox_root.is_dir():

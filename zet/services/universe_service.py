@@ -88,6 +88,17 @@ class UniverseService:
 
     def bind_config(self, config, universe_id: str):
         root = Path(self.get_universe(universe_id)["root"])
+        format_marker = root / "_state" / "library-reference-format.json"
+        if format_marker.is_file():
+            try:
+                marker_data = json.loads(format_marker.read_text(encoding="utf-8"))
+                version = marker_data.get("library_path_format_version", 0)
+                if isinstance(version, bool) or not isinstance(version, int):
+                    raise ValueError("library_path_format_version must be an integer")
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise UniverseServiceError(f"Cannot read library path format marker {format_marker}: {exc}") from exc
+            if version > 1:
+                raise UniverseServiceError(f"Library path format {version} requires a newer Zet release.")
         # All universe-owned stores follow this root; the queue and shared templates stay external.
         descriptor = self.get_universe(universe_id)
         return replace(config, base_library_path=str(root),

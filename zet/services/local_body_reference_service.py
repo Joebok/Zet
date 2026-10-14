@@ -18,12 +18,13 @@ from uuid import uuid4
 from PIL import Image
 
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
-from zet.services.atomic_file_service import write_json_atomic
 from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict
 from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
 from zet.services.local_image_ranking_service import rank_images_with_luna
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.library_reference_service import read_library_json, write_library_json
+from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, pipeline_page_config,
     gate_result_is_current, mutate_local_run_state, resume_cancelled_autogenerate_state, serialize_local_run_state,
@@ -247,7 +248,7 @@ Do not explain your reasoning."""
                 if path == marker or path.name.endswith(".tmp"):
                     continue
                 try:
-                    original = json.loads(path.read_text(encoding="utf-8"))
+                    original = self._read_json(path)
                 except (OSError, json.JSONDecodeError):
                     continue
                 upgraded = upgrade(original)
@@ -272,9 +273,14 @@ Do not explain your reasoning."""
     def _hash(path: Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
-    @staticmethod
-    def _write(path: Path, value: dict[str, Any]) -> None:
-        write_json_atomic(path, value)
+    def _read_json(self, path: Path) -> dict[str, Any]:
+        return read_library_json(path, self.library_root)
+
+    def _write(self, path: Path, value: dict[str, Any]) -> None:
+        if path.resolve().is_relative_to(self.runs_root.resolve()):
+            write_library_json(path, value, self.library_root)
+        else:
+            write_json_atomic(path, value)
 
     @staticmethod
     def _safe(value: str) -> str:
@@ -294,7 +300,7 @@ Do not explain your reasoning."""
     def _views(self) -> list[str]:
         path = self.project_root / "Config" / "Prompt_View_Text.json"
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload = self._read_json(path)
             configured = payload.get("views", payload) if isinstance(payload, dict) else {}
             keys = [str(key).upper() for key in configured if str(key).strip()]
         except (OSError, json.JSONDecodeError):
@@ -533,12 +539,12 @@ Do not explain your reasoning."""
 
     def detail(self, run_id: str, *, upgrade_legacy: bool = False) -> dict[str, Any]:
         root = self._root(run_id)
-        value = json.loads((root / "spec.json").read_text(encoding="utf-8"))
+        value = self._read_json((root / "spec.json"))
         with file_lock(root / "state.lock"):
-            state = json.loads((root / "state.json").read_text(encoding="utf-8")) if (root / "state.json").is_file() else {}
+            state = self._read_json((root / "state.json")) if (root / "state.json").is_file() else {}
             if upgrade_legacy and upgrade_legacy_review_v1(root, value, state, active=self._runner_is_active(run_id)):
-                value = json.loads((root / "spec.json").read_text(encoding="utf-8"))
-                state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+                value = self._read_json((root / "spec.json"))
+                state = self._read_json((root / "state.json"))
         from zet.services.local_prompt_improvement_service import ensure_view_reviews
         value, state = ensure_view_reviews(root, value, state)
         candidates = merge_candidates(value, state)
@@ -689,7 +695,7 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("Batch name cannot exceed 120 characters.")
         root = self._root(run_id)
         spec_path = root / "spec.json"
-        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        spec = self._read_json(spec_path)
         spec["batch_name"] = name
         self._write(spec_path, spec)
         return self.detail(run_id)
@@ -701,7 +707,7 @@ Do not explain your reasoning."""
         runs: list[dict[str, Any]] = []
         for spec_path in self.runs_root.glob("*/*/*/spec.json"):
             try:
-                spec = json.loads(spec_path.read_text(encoding="utf-8"))
+                spec = self._read_json(spec_path)
                 if wanted_character and spec.get("character") != wanted_character:
                     continue
                 if wanted_phase and spec.get("phase") != wanted_phase:
@@ -732,13 +738,13 @@ Do not explain your reasoning."""
         runs: list[dict[str, Any]] = []
         for spec_path in self.runs_root.glob("*/*/*/spec.json"):
             try:
-                spec = json.loads(spec_path.read_text(encoding="utf-8"))
+                spec = self._read_json(spec_path)
                 if wanted_character and spec.get("character") != wanted_character:
                     continue
                 if wanted_phase and spec.get("phase") != wanted_phase:
                     continue
                 state_path = spec_path.with_name("state.json")
-                state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+                state = self._read_json(state_path) if state_path.is_file() else {}
                 run_id = str(spec.get("run_id") or spec_path.parent.name)
                 status = str(state.get("status") or spec.get("status") or "UNKNOWN")
                 if status in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"} and not self._runner_is_active(run_id):
@@ -804,7 +810,7 @@ Do not explain your reasoning."""
     def _refresh_compiled_prompts(self, run_id: str, views: set[str]) -> None:
         root = self._root(run_id).resolve()
         spec_path = root / "spec.json"
-        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        spec = self._read_json(spec_path)
         snapshots = {str(item.get("view") or ""): item for item in spec.get("prompt_snapshots") or []}
         for index, view in enumerate(spec.get("views") or [], start=1):
             if view not in views:
@@ -860,7 +866,7 @@ Do not explain your reasoning."""
         for view in views:
             self._clear_owned_selection(run, view)
         state_path = root / "state.json"
-        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state = self._read_json(state_path)
         for candidate in run.get("candidates", []):
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
@@ -906,7 +912,7 @@ Do not explain your reasoning."""
             self._refresh_compiled_prompts(run_id, affected_views)
         for affected_view in affected_views:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", affected_view)
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((root / "state.json"))
         stamp = self._now()
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, affected_views, "A view or its inputs are being re-run.")
@@ -984,7 +990,7 @@ Do not explain your reasoning."""
 
         root = self._root(run_id).resolve()
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((root / "state.json"))
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, {view}, "Candidates in this view are being re-run.")
         stamp = self._now()
@@ -1070,7 +1076,7 @@ Do not explain your reasoning."""
         for target_view in target_views:
             self._review_facts(run, target_view)
         if int(run.get("review_version") or 1) >= 2:
-            state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+            state = self._read_json((self._root(run_id) / "state.json"))
             stamp = self._now()
             from zet.services.local_image_evaluation_service import supersede_evaluations
             supersede_evaluations(state, set(target_views), "The view is being re-evaluated.")
@@ -1092,7 +1098,7 @@ Do not explain your reasoning."""
             result = self.detail(run_id)
             result.update(status="REEVALUATING", interrupted=False, error="")
             return result
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         stamp = self._now()
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, set(target_views), "The view is being re-evaluated.")
@@ -1124,7 +1130,7 @@ Do not explain your reasoning."""
         run = self.detail(run_id)
         state_path = root / "state.json"
         try:
-            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+            state = self._read_json(state_path) if state_path.is_file() else {}
         except (OSError, ValueError, json.JSONDecodeError):
             state = {}
         candidates = {item["candidate_id"]: item for item in run.get("candidates", [])}
@@ -1152,7 +1158,7 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("Lock or unselect this batch's local assets before deleting it.")
         if state_path.is_file():
             try:
-                state = json.loads(state_path.read_text(encoding="utf-8"))
+                state = self._read_json(state_path)
             except (OSError, ValueError, json.JSONDecodeError):
                 state = {}
             if state.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
@@ -1205,7 +1211,7 @@ Do not explain your reasoning."""
         if any(candidate["analyses"][provider].get("input_hashes", {}).get("candidate") != image_hash
                for provider in ("local", "luna")):
             raise LocalBodyReferenceError("Front-anchor analysis is stale; rerun both analyses.")
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         state.update({"status": "READY_FOR_VIEWS", "updated_at": self._now(),
                       "front_anchor": candidate_id, "stop_requested": False,
                       "target_views": [], "target_candidate_ids": []})
@@ -1252,7 +1258,7 @@ Do not explain your reasoning."""
             update.update(disposition="human_reject", status="COMPLETE", completed_at=self._now())
         else:
             update.update(status="WAITING_FOR_HUMAN_REVIEW", completed_at="")
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
         merged_statuses = {item["candidate_id"]: item.get("status") for item in run.get("candidates") or []}
         merged_statuses[candidate_id] = update.get("status", candidate.get("status"))
@@ -1297,7 +1303,7 @@ Do not explain your reasoning."""
             if anchor_image is None or not anchor_image.is_file() or input_hashes.get("front_anchor") != self._hash(anchor_image):
                 raise LocalBodyReferenceError("Analysis front-anchor hash is missing or stale.")
         analysis = {**result, "provider": provider, "input_hashes": dict(input_hashes), "recorded_at": self._now()}
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         updates = state.setdefault("candidates", {}).setdefault(candidate_id, {})
         analyses = dict(updates.get("analyses") or candidate.get("analyses") or {})
         analyses[provider] = analysis
@@ -1407,7 +1413,7 @@ Do not explain your reasoning."""
         root = Path(str(run["root"]))
         spec_path = root / "spec.json"
         with file_lock(root / "analysis_prompt.lock"):
-            spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            spec = self._read_json(spec_path)
             snapshot = next((item for item in spec.get("prompt_snapshots", []) if item.get("view") == view), None)
             if snapshot is None:
                 raise LocalBodyReferenceError(f"No saved prompt for view {view}.")
@@ -1527,13 +1533,13 @@ Do not explain your reasoning."""
             record = root / ask_id
             if record.is_dir():
                 try:
-                    answer = json.loads((record / "answer_manifest.json").read_text(encoding="utf-8"))
+                    answer = self._read_json((record / "answer_manifest.json"))
                 except (OSError, json.JSONDecodeError):
                     answer = {}
                 return status, answer
         for record in paths.harvested_archive_root().glob(f"*/{ask_id}"):
             try:
-                answer = json.loads((record / "answer_manifest.json").read_text(encoding="utf-8"))
+                answer = self._read_json((record / "answer_manifest.json"))
             except (OSError, json.JSONDecodeError):
                 answer = {}
             return "HARVESTED", answer
@@ -1547,8 +1553,8 @@ Do not explain your reasoning."""
         if not (answer_path / "answer_manifest.json").is_file():
             return
         try:
-            ask = json.loads((answer_path / "ask_manifest.json").read_text(encoding="utf-8"))
-            answer = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
+            ask = self._read_json((answer_path / "ask_manifest.json"))
+            answer = self._read_json((answer_path / "answer_manifest.json"))
         except (OSError, json.JSONDecodeError) as exc:
             raise LocalBodyReferenceError(f"Invalid AI Proxy answer {ask_id}: {exc}") from exc
         if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
@@ -1736,7 +1742,7 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(str(exc)) from exc
         if adjusted is ranking:
             return run
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         state.setdefault("rankings", {})[view] = adjusted
         state["updated_at"] = self._now()
         self._save_state(run_id, state)
@@ -2019,7 +2025,7 @@ Do not explain your reasoning."""
 
         for run_id, candidate_ids in pending.items():
             run = self.detail(run_id)
-            state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+            state = self._read_json((self._root(run_id) / "state.json"))
             current_by_id = {item["candidate_id"]: item for item in run["candidates"]}
             candidate_ids = list(dict.fromkeys(
                 list(state.get("target_candidate_ids") or []) + candidate_ids
@@ -2190,7 +2196,7 @@ Do not explain your reasoning."""
                                      for item in run["candidates"]):
             raise LocalBodyReferenceError("No gate-reviewed candidates are available to rank.")
         root = self._root(run_id)
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((root / "state.json"))
         rankings = state.setdefault("rankings", {})
         previous = rankings.get(view)
         if previous:
@@ -2247,7 +2253,7 @@ Do not explain your reasoning."""
                      and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
         root = self._root(run_id)
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((root / "state.json"))
         previous = dict((state.get("rankings") or {}).get(view) or {})
         if previous.get("status") == "COMPLETE" and not evaluation_id:
             current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in survivors}
@@ -2470,7 +2476,7 @@ Do not explain your reasoning."""
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         root = self._root(run_id)
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((root / "state.json"))
         selected = state.setdefault("selected_views", {})
         if not candidate_id:
             if view == FRONT_VIEW:
@@ -2699,7 +2705,7 @@ Do not explain your reasoning."""
                 raise LocalBodyReferenceError("Timed out waiting for local image analysis.")
             time.sleep(2)
         try:
-            result = json.loads(output.read_text(encoding="utf-8"))
+            result = self._read_json(output)
             self.record_analysis(run_id, candidate_id, "local", result, job["input_hashes"])
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise LocalBodyReferenceError(f"Invalid local image analysis: {exc}") from exc
@@ -2720,7 +2726,7 @@ Do not explain your reasoning."""
         with self._active_runs_lock:
             self._active_runs.add(self._active_key(run_id))
         try:
-            initial_state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+            initial_state = self._read_json((self._root(run_id) / "state.json"))
             if initial_state.get("status") == "CANCELLED" or initial_state.get("stop_requested"):
                 self._withdraw_queued_asks(run_id)
                 self._run_update(run_id, status="CANCELLED", stop_requested=True)
@@ -2873,14 +2879,14 @@ Do not explain your reasoning."""
             checkpoint=checkpoint, render_preset=preset_name, image_generation="comfyui",
             reference_files=references,
         )
-        ask = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+        ask = self._read_json((ask_path / "ask_manifest.json"))
         update = {"status": "QUEUED", "ask_id": ask["ask_id"], "queued_at": self._now(),
                   "reference_images": [{"role": str(item.get("role") or ""),
                                         "label": str(item.get("label") or ""),
                                         "path": str(item.get("path") or "")}
                                        for item in references],
                   "image_path": str(candidate_dir / "Local_Test_Renders" / ask["expected_output"])}
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((root / "state.json"))
         state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
         state["updated_at"] = self._now()
         self._save_state(run_id, state)
@@ -2888,7 +2894,7 @@ Do not explain your reasoning."""
 
     def queue_next_render(self, run_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         if state.get("stop_requested"):
             return {"status": "STOPPED", "run_id": run_id, "candidate_id": None}
         pending = [item for item in run.get("candidates") or [] if item.get("status") == "PENDING"]
@@ -2902,7 +2908,7 @@ Do not explain your reasoning."""
 
     def request_stop(self, run_id: str) -> dict[str, Any]:
         root = self._root(run_id)
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((root / "state.json"))
         if state.get("status") == "CANCELLED":
             self._withdraw_queued_asks(run_id)
             return self.detail(run_id)
@@ -2931,7 +2937,7 @@ Do not explain your reasoning."""
             if self._runner_is_active(run_id):
                 raise LocalBodyReferenceError("Wait for the stopped batch runner to finish before resuming.")
             root = self._root(run_id)
-            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            state = self._read_json((root / "state.json"))
             resume_cancelled_autogenerate_state(run, state, ready_status="READY_FOR_VIEWS")
             state["updated_at"] = self._now()
             (root / "cancelled.json").unlink(missing_ok=True)
@@ -2939,7 +2945,7 @@ Do not explain your reasoning."""
             return self.detail(run_id)
         if run.get("status") != "INTERRUPTED":
             raise LocalBodyReferenceError("Only an interrupted batch can be resumed; cancelled batches are terminal.")
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         state["stop_requested"] = False
         state["status"] = "QUEUED"
         state["updated_at"] = self._now()
@@ -2952,7 +2958,7 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("Select a FRONT anchor before generating other views.")
         if run.get("status") in ACTIVE_RUN_STATUSES:
             raise LocalBodyReferenceError("Wait for the current batch operation to finish before proceeding.")
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         if run.get("review_version", 1) >= 2:
             anchor = next((item for item in run["candidates"] if item.get("candidate_id") == run["front_anchor"]), None)
             image = Path(str((anchor or {}).get("image_path") or ""))
@@ -2988,7 +2994,7 @@ Do not explain your reasoning."""
             self._candidate_update(run_id, candidate_id, {
                 "status": "WAITING_FOR_GATES", "gates": gates, "failed_gate": "", "render_error": "",
             })
-            state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+            state = self._read_json((self._root(run_id) / "state.json"))
             state.update(status="RUNNING", review_only=True, target_views=[candidate["view"]],
                          target_candidate_ids=[candidate_id], stop_requested=False,
                          post_review_status=("AWAITING_HUMAN_SELECTION" if run.get("front_anchor")
@@ -3102,7 +3108,7 @@ Do not explain your reasoning."""
                                        check=False, env=self._luna_environment())
             if completed.returncode != 0:
                 raise LocalBodyReferenceError((completed.stderr or completed.stdout or "Luna analysis failed")[-2000:])
-            result = json.loads(output_file.read_text(encoding="utf-8"))
+            result = self._read_json(output_file)
             if not isinstance(result, dict):
                 raise LocalBodyReferenceError("Luna analysis output must be a JSON object.")
             hashes = {"candidate": self._hash(image), "front_anchor": self._hash(images[0]) if len(images) == 2 else ""}
@@ -3130,7 +3136,7 @@ Do not explain your reasoning."""
                 raise LocalBodyReferenceError("Lineup candidate uses the wrong generation method.")
             if candidate.get("disposition") not in {"joint_pass", "human_keep"}:
                 raise LocalBodyReferenceError("Only jointly passed or human-kept candidates can enter a lineup.")
-        state = json.loads((self._root(run_id) / "state.json").read_text(encoding="utf-8"))
+        state = self._read_json((self._root(run_id) / "state.json"))
         state.setdefault("lineups", {})[method] = dict(selections)
         state["set_report"] = self.compare_lineups(run, state["lineups"])
         state["updated_at"] = self._now()

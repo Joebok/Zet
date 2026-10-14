@@ -20,6 +20,7 @@ from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_render_policy import require_qwen_profile
 from zet.services.workflow_storage import validate_image
 from zet.services.image_generation_workspace_service import ImageGenerationWorkspace
+from zet.services.library_reference_service import read_library_json, serialize_library_document
 
 
 IMAGE_GENERATION_CONSUMER = "zet-image-generation"
@@ -501,7 +502,7 @@ class AdHocImageGenerationService:
         record.update({"workspace": str(job["workspace"]), "prompt_path": str(job["prompt_path"]),
                        "images": image_records})
         temporary = directory / "job.json.tmp"
-        temporary.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        temporary.write_text(json.dumps(serialize_library_document(record, self.zet_app.config.base_library_path), indent=2) + "\n", encoding="utf-8")
         temporary.replace(directory / "job.json")
 
     def _load_jobs(self) -> None:
@@ -510,7 +511,7 @@ class AdHocImageGenerationService:
             if not directory.is_dir() or not record_path.is_file():
                 continue
             try:
-                record = json.loads(record_path.read_text(encoding="utf-8"))
+                record = read_library_json(record_path, self.zet_app.config.base_library_path)
                 images = [((directory / item["filename"]).read_bytes(), str(item["content_type"])) if item else None
                           for item in record.get("images", [])]
                 job = {**record, "workspace": Path(record["workspace"]),

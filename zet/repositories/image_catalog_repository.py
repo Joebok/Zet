@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from zet.repositories.json_storage import write_json_atomic
+from zet.services.library_reference_service import resolve_library_document, serialize_library_document
 
 
 class ImageCatalogRepositoryError(Exception):
@@ -118,7 +119,8 @@ class ImageCatalogRepository:
         source_keys: set[str] = set()
         catalog_ids: set[str] = set()
         for path in sorted(self.records_path.glob("*.json")):
-            record = self._read_object(path, "Image catalog record")
+            record = resolve_library_document(self._read_object(path, "Image catalog record"),
+                                              self.path_service.entity_library_root())
             catalog_id = str(record.get("catalog_id") or "")
             source_key = str(record.get("source_key") or "")
             if record.get("record_version") != self.RECORD_VERSION or not catalog_id or not source_key:
@@ -205,6 +207,7 @@ class ImageCatalogRepository:
         existing = {path.name: path for path in directory.glob("*.json")}
         for filename, value in desired.items():
             path = directory / filename
+            value = serialize_library_document(value, self.path_service.entity_library_root())
             current = self._read_object(path, kind) if path.is_file() else None
             if current == value:
                 continue

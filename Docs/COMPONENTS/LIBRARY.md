@@ -17,6 +17,8 @@ Reconciliation scans authored/queue sources, fingerprints content, reuses cached
 
 ## Failure modes and extension points
 
+Library-owned typed JSON path fields are stored in portable format version 1 relative to the owning universe and resolved by the shared [LibraryReferenceService](../../zet/services/library_reference_service.py). The offline [normalizer](../../zet/scripts/normalize_library_references.py) applies explicit old-root mappings and verifies records without constructing `ZetApp`; run it only after compatible readers are deployed and Zet/harvesters are stopped. See [DATA_MODEL](../DATA_MODEL.md) and [ADR 0011](../DECISIONS/0011-portable-library-references.md).
+
 - Wrong universe/request context can target the wrong store; queue/results must remain owned by the bound universe.
 - Older or incomplete record catalogs fail validation with a migration instruction. Entity initialization can migrate an older database with a backup; it rejects a newer unsupported version.
 - Usage protection can block archive/replace/merge operations. Preserve logical-reference semantics and operation previews rather than bypassing protections with raw SQL/file deletion.

@@ -7,6 +7,9 @@ from zet.services.config_service import Config
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+LIBRARY_PATH_FORMAT_VERSION = 1
+
+
 class PathService:
     def __init__(self, config: Config, project_root: str | Path = PROJECT_ROOT):
         """Create a path service from loaded configuration."""
@@ -61,6 +64,38 @@ class PathService:
         """Return ID-addressed image blob storage for the entity-centered image library."""
         return self.entity_library_root() / "images"
 
+    def serialize_library_path(self, path: str | Path) -> str:
+        """Return a forward-slash path relative to this bound library when owned by it."""
+        raw = str(path or "").strip()
+        if not raw:
+            return raw
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute() and not PureWindowsPath(raw).is_absolute():
+            return raw.replace("\\", "/")
+        try:
+            relative = candidate.resolve().relative_to(self.entity_library_root())
+        except (ValueError, OSError):
+            return raw
+        return relative.as_posix()
+
+    def resolve_library_path(self, path: str | Path) -> Path:
+        """Resolve a portable library path or current-root absolute path safely."""
+        raw = str(path or "").strip()
+        if not raw:
+            return Path()
+        candidate = Path(raw).expanduser()
+        if candidate.is_absolute() or PureWindowsPath(raw).is_absolute():
+            return candidate
+        normalized = raw.replace("\\", "/")
+        parts = tuple(part for part in normalized.split("/") if part not in {"", "."})
+        if not parts or ".." in parts:
+            raise ValueError("A portable library path must remain inside its universe.")
+        root = self.entity_library_root()
+        resolved = root.joinpath(*parts).resolve()
+        if not resolved.is_relative_to(root):
+            raise ValueError("A portable library path must remain inside its universe.")
+        return resolved
+
     def _path_parts(self, path: str | Path) -> tuple[str, ...]:
         """Return path parts while accepting stored POSIX or Windows separators."""
         text = str(path)
@@ -72,22 +107,16 @@ class PathService:
         """Resolve absolute, project-relative, and legacy _Lib paths."""
         parts = self._path_parts(path)
         if parts and parts[0].endswith(":\\"):
-            library_name = Path(self.config.base_library_path).name
-            container_name = Path(getattr(self.config, "library_container_path", "") or self.config.base_library_path).name
-            for index, part in enumerate(parts):
-                if part == library_name:
-                    return self.library_path(*parts[index + 1:])
-            for index, part in enumerate(parts):
-                if part == container_name:
-                    return self.library_path(*parts[index + 1:])
+            # Absolute paths remain tied to their recorded root. Relocation is explicit
+            # in LibraryReferenceMigrationService; basename matching is ambiguous.
             return Path(*parts)
         raw_path = Path(path)
         if raw_path.is_absolute():
             return raw_path
         if parts and parts[0] == "_Lib":
-            return self.library_path(*parts[1:])
-        if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "ImageCatalog", "Stories", "PipelineCandidates", "images"}:
-            return self.library_path(*parts)
+            return self.resolve_library_path(Path(*parts[1:]).as_posix())
+        if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "ImageCatalog", "Stories", "PipelineCandidates", "images", "_state", "NarrativeStories"}:
+            return self.resolve_library_path(raw_path.as_posix())
         return self.project_root.joinpath(*parts)
 
     def character_asset_path(self, character: str, phase: str) -> Path:

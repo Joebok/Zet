@@ -1,17 +1,17 @@
 """Independent, atomic storage; no legacy story templates or pipeline records."""
 from dataclasses import asdict
-import json
 from pathlib import Path
 import re
 import shutil
 
-from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import file_lock
+from zet.services.library_reference_service import read_library_json, write_library_json
 
 
 class NarrativeRepository:
     def __init__(self, library_root: str | Path):
-        self.root = Path(library_root).resolve() / "NarrativeStories"
+        self.library_root = Path(library_root).resolve()
+        self.root = self.library_root / "NarrativeStories"
 
     def lock(self):
         return file_lock(self.root / ".workflow.lock")
@@ -34,7 +34,7 @@ class NarrativeRepository:
         with self.lock():
             if not path.is_file():
                 raise KeyError("Narrative record not found.")
-            record = json.loads(path.read_text(encoding="utf-8"))
+            record = read_library_json(path, self.library_root)
         if target:
             from zet.models.narrative import NarrativeTarget
             for key, value in asdict(NarrativeTarget(record["title"], record["kind"])).items():
@@ -51,11 +51,11 @@ class NarrativeRepository:
 
     def write(self, record, story: str, scene: str = "", target: str = "") -> dict:
         data = record if isinstance(record, dict) else asdict(record)
-        write_json_atomic(self.path(story, scene, target), data)
+        write_library_json(self.path(story, scene, target), data, self.library_root)
         return data
 
     def stories(self) -> list[dict]:
-        return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(self.root.glob("*/story.json"))]
+        return [read_library_json(path, self.library_root) for path in sorted(self.root.glob("*/story.json"))]
 
     def delete(self, story: str, scene: str = "", target: str = "") -> None:
         self.read(story, scene, target)

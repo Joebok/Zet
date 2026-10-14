@@ -22,8 +22,8 @@ from Scripts.Run_Head_Image_Jobs import compile_head_image_job
 from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict
 from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
 from zet.services.local_image_ranking_service import rank_images_with_luna
-from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.library_reference_service import read_library_json, write_library_json
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail,
     gate_result_is_current, mutate_local_run_state, pipeline_page_config, resume_cancelled_autogenerate_state,
@@ -253,14 +253,16 @@ class LocalHeadImageService:
                                             "stop_requested": False, "candidates": {}, "selected_views": {}, "rankings": {}})
         return self.detail(run_id)
 
-    @staticmethod
-    def _write(path: Path, value: dict[str, Any]) -> None:
-        write_json_atomic(path, value)
+    def _read_json(self, path: Path) -> dict[str, Any]:
+        return read_library_json(path, self.library_root)
+
+    def _write(self, path: Path, value: dict[str, Any]) -> None:
+        write_library_json(path, value, self.library_root)
 
     def detail(self, run_id: str) -> dict[str, Any]:
         root = self._run_root(run_id)
-        spec = json.loads((root / "spec.json").read_text(encoding="utf-8"))
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        spec = self._read_json((root / "spec.json"))
+        state = self._read_json((root / "state.json"))
         from zet.services.local_prompt_improvement_service import ensure_view_reviews
         spec, state = ensure_view_reviews(root, spec, state)
         candidates = merge_candidates(spec, state)
@@ -330,14 +332,14 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Batch name cannot exceed 120 characters.")
         root = self._run_root(run_id)
         spec_path = root / "spec.json"
-        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        spec = self._read_json(spec_path)
         spec["batch_name"] = name
         self._write(spec_path, spec)
         return self.detail(run_id)
 
     def front_source_path(self, run_id: str) -> Path:
         root = self._run_root(run_id).resolve()
-        spec = json.loads((root / "spec.json").read_text(encoding="utf-8"))
+        spec = self._read_json((root / "spec.json"))
         source = Path(str(spec.get("front_source") or "")).resolve()
         if not source.is_file() or not source.is_relative_to(root):
             raise LocalHeadImageError(f"Front reference image not found for batch: {run_id}")
@@ -347,7 +349,7 @@ class LocalHeadImageService:
         result = []
         for path in self.root.glob("*/*/Head-Image/*/spec.json"):
             try:
-                spec = json.loads(path.read_text(encoding="utf-8"))
+                spec = self._read_json(path)
                 if spec.get("kind") != "local_head_image":
                     continue
                 if character and spec.get("character") != character or phase and spec.get("phase") != phase:
@@ -370,13 +372,13 @@ class LocalHeadImageService:
         result = []
         for path in self.root.glob("*/*/Head-Image/*/spec.json"):
             try:
-                spec = json.loads(path.read_text(encoding="utf-8"))
+                spec = self._read_json(path)
                 if spec.get("kind") != "local_head_image":
                     continue
                 if (character and spec.get("character") != character) or (phase and spec.get("phase") != phase):
                     continue
                 state_path = path.with_name("state.json")
-                state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+                state = self._read_json(state_path) if state_path.is_file() else {}
                 run_id = str(spec.get("run_id") or path.parent.name)
                 status = str(state.get("status") or spec.get("status") or "UNKNOWN")
                 if status in ACTIVE_RUN_STATUSES:
@@ -400,7 +402,7 @@ class LocalHeadImageService:
 
     def _state(self, run_id: str) -> tuple[Path, dict[str, Any]]:
         root = self._run_root(run_id)
-        return root, json.loads((root / "state.json").read_text(encoding="utf-8"))
+        return root, self._read_json((root / "state.json"))
 
     def _update(self, run_id: str, candidate_id: str, **changes: Any) -> None:
         root = self._run_root(run_id)
@@ -466,7 +468,7 @@ class LocalHeadImageService:
             checkpoint=str(profile.get("diffusion_model") or ""), render_preset=preset_name,
             image_generation="comfyui", reference_files=references,
         )
-        ask = json.loads((ask_path / "ask_manifest.json").read_text(encoding="utf-8"))
+        ask = self._read_json((ask_path / "ask_manifest.json"))
         reference_images = [{"role": str(reference.get("role") or ""),
                              "label": str(reference.get("label") or ""),
                              "path": str(reference.get("path") or ""),
@@ -491,7 +493,7 @@ class LocalHeadImageService:
             path = folder / ask_id
             if path.is_dir():
                 try:
-                    return status, json.loads((path / "answer_manifest.json").read_text(encoding="utf-8"))
+                    return status, self._read_json((path / "answer_manifest.json"))
                 except (OSError, json.JSONDecodeError):
                     return status, {}
         return "UNKNOWN", {}
@@ -502,8 +504,8 @@ class LocalHeadImageService:
         answer_dir = paths.answer_root() / ask_id
         if not answer_dir.is_dir() or not (answer_dir / "answer_manifest.json").is_file():
             return
-        ask = json.loads((answer_dir / "ask_manifest.json").read_text(encoding="utf-8"))
-        answer = json.loads((answer_dir / "answer_manifest.json").read_text(encoding="utf-8"))
+        ask = self._read_json((answer_dir / "ask_manifest.json"))
+        answer = self._read_json((answer_dir / "answer_manifest.json"))
         run = self.detail(run_id)
         if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
                 or ask.get("pipeline") != "Local-Head-Image" or not self._ask_belongs_to_run(ask, run)):
@@ -637,8 +639,8 @@ class LocalHeadImageService:
         folder = paths.answer_root() / ask_id
         if not folder.is_dir() or not (folder / "answer_manifest.json").is_file():
             return
-        ask = json.loads((folder / "ask_manifest.json").read_text(encoding="utf-8"))
-        answer = json.loads((folder / "answer_manifest.json").read_text(encoding="utf-8"))
+        ask = self._read_json((folder / "ask_manifest.json"))
+        answer = self._read_json((folder / "answer_manifest.json"))
         if (ask.get("ask_id") != ask_id or ask.get("local_head_image_run_id") != run_id
                 or not self._ask_belongs_to_run(ask, self.detail(run_id))
                 or ask.get("candidate_id") != candidate_id or ask.get("task_type") != "local_head_image_gate"):
@@ -1377,7 +1379,7 @@ class LocalHeadImageService:
         prompt = self._compile(root, run["character"], run["phase"], FRONT, references,
                                apply_phase_change=apply_phase_change)
         spec_path = root / "spec.json"
-        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        spec = self._read_json(spec_path)
         old_source = Path(str(spec.get("front_source") or "")).resolve()
         spec.update(front_source=str(destination) if destination else "",
                     front_source_sha256=self._hash(destination) if destination else "",

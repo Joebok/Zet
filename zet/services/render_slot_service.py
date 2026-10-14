@@ -12,6 +12,7 @@ import time
 import threading
 from typing import Any
 from uuid import uuid4
+from zet.services.library_reference_service import pipeline_library_root_for_path, write_library_json
 
 SLOT_COUNT = 8
 _SLOT_WORKERS: set[str] = set()
@@ -167,7 +168,6 @@ class CharacterRenderSlots:
         return ""
 
     def change(self, run_id: str, view: str, action: str, payload: dict, costume: str = "") -> dict:
-        from zet.services.atomic_file_service import write_json_atomic
         from zet.services.local_image_pipeline_policy import view_candidate_id
         from zet.services.local_image_evaluation_service import supersede_evaluations
         from zet.services.workflow_storage import file_lock
@@ -277,7 +277,7 @@ class CharacterRenderSlots:
                 review_views = state.setdefault("slot_review_views", [])
                 if view not in review_views:
                     review_views.append(view)
-                write_json_atomic(root / "state.json", state)
+                write_library_json(root / "state.json", state, pipeline_library_root_for_path(root))
         except TimeoutError as exc:
             raise RenderSlotConflict("Wait for this batch to finish rendering.") from exc
         result = self.detail(load())

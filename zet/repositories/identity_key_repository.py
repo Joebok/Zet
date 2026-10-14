@@ -8,9 +8,9 @@ from zet.repositories.json_storage import (
     MissingDataclassFieldsError,
     dataclass_from_record,
     dataclass_to_record,
-    write_json_atomic,
 )
 from zet.services.path_service import PathService
+from zet.services.library_reference_service import read_library_json, write_library_json
 
 
 class IdentityKeyRepositoryError(Exception):
@@ -38,7 +38,7 @@ class IdentityKeyRepository:
         if not path.exists():
             return self._empty_payload()
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload = read_library_json(path, self.path_service.config.base_library_path)
         except json.JSONDecodeError as exc:
             raise IdentityKeyRepositoryError(f"IdentityKeys.json is malformed at {path}: {exc}") from exc
         if not isinstance(payload, dict):
@@ -70,8 +70,7 @@ class IdentityKeyRepository:
         if path.exists():
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             shutil.copy2(path, backup_dir / f"IdentityKeys.backup.{timestamp}.json")
-        temp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
-        write_json_atomic(path, temp_path, payload)
+        write_library_json(path, payload, self.path_service.config.base_library_path)
 
     def list_identity_keys(self, character: str, phase: str) -> list[IdentityKey]:
         """List all identity keys for a character phase."""

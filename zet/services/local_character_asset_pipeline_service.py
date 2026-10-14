@@ -24,6 +24,7 @@ from zet.services.local_candidate_review_contract import (
 )
 from zet.services.local_image_ranking_service import rank_images_with_luna
 from zet.services.local_asset_store_service import LocalAssetStoreService
+from zet.services.library_reference_service import read_library_json, write_library_json
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, decorate_local_pipeline_detail, gate_result_is_current,
     local_image_pipeline_config,
@@ -154,20 +155,17 @@ class LocalCharacterAssetPipelineService:
                     return path
         raise LocalCharacterAssetPipelineError(f"Local {self.definition['label']} run not found: {run_id}")
 
-    @staticmethod
-    def _read(path: Path) -> dict[str, Any]:
+    def _read(self, path: Path) -> dict[str, Any]:
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            value = read_library_json(path, self.library_root)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise LocalCharacterAssetPipelineError(f"Could not read local pipeline state: {path}") from exc
         if not isinstance(value, dict):
             raise LocalCharacterAssetPipelineError(f"Invalid local pipeline state: {path}")
         return value
 
-    @staticmethod
-    def _write(path: Path, value: dict[str, Any]) -> None:
-        from zet.services.atomic_file_service import write_json_atomic
-        write_json_atomic(path, value)
+    def _write(self, path: Path, value: dict[str, Any]) -> None:
+        write_library_json(path, value, self.library_root)
 
     def _costume_path(self, character: str, phase: str, costume: str) -> Path:
         name = re.sub(r"[^A-Za-z0-9_-]+", "-", costume).strip("-") or "Costume"

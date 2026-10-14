@@ -15,7 +15,9 @@ from typing import Any
 from uuid import uuid4
 import zipfile
 
-from zet.services.atomic_file_service import write_json_atomic
+from zet.services.library_reference_service import (
+    pipeline_library_root_for_path, read_library_json, write_library_json,
+)
 from zet.services.local_image_pipeline_policy import mutate_local_run_state
 from zet.services.local_candidate_review_contract import view_review_defaults
 from zet.services.workflow_storage import file_lock
@@ -57,8 +59,10 @@ def _source_paths(source_map: Path) -> list[Path]:
 
 def record_compiler_sources(output_dir: Path) -> None:
     """Capture source hashes alongside the prompt at local compilation time."""
-    sources = {str(path.resolve()): _hash(path) for path in _source_paths(output_dir / "Prompt_Source_Map.json")}
-    write_json_atomic(output_dir / "Prompt_Source_Hashes.json", sources)
+    sources = [{"path": str(path.resolve()), "sha256": _hash(path)}
+               for path in _source_paths(output_dir / "Prompt_Source_Map.json")]
+    library_root = pipeline_library_root_for_path(output_dir)
+    write_library_json(output_dir / "Prompt_Source_Hashes.json", {"sources": sources}, library_root)
 
 
 def ensure_view_reviews(root: Path, spec: dict[str, Any], state: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -72,8 +76,9 @@ def ensure_view_reviews(root: Path, spec: dict[str, Any], state: dict[str, Any])
     if state.get("prompt_improvement_migrated") and not has_notes(spec, state.get("candidates") or {}):
         return spec, state
     with file_lock(root / "state.lock"):
-        spec = json.loads((root / "spec.json").read_text(encoding="utf-8"))
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        library_root = pipeline_library_root_for_path(root)
+        spec = read_library_json(root / "spec.json", library_root)
+        state = read_library_json(root / "state.json", library_root)
         if state.get("prompt_improvement_migrated") and not has_notes(spec, state.get("candidates") or {}):
             return spec, state
         reviews = state.setdefault("view_reviews", {})
@@ -100,8 +105,8 @@ def ensure_view_reviews(root: Path, spec: dict[str, Any], state: dict[str, Any])
                 if isinstance(human, dict):
                     human.pop("notes", None)
         state["prompt_improvement_migrated"] = True
-        write_json_atomic(root / "state.json", state)
-        write_json_atomic(root / "spec.json", spec)
+        write_library_json(root / "state.json", state, library_root)
+        write_library_json(root / "spec.json", spec, library_root)
         return spec, state
 
 
@@ -389,7 +394,16 @@ class LocalPromptImprovementService:
                         if prompt:
                             add_text(f"prompts/{view}/Final_Image_Prompt.md", prompt)
                     hash_path = prompt_dir / "Prompt_Source_Hashes.json"
-                    source_hashes = json.loads(hash_path.read_text(encoding="utf-8")) if hash_path.is_file() else {}
+                    if hash_path.is_file():
+                        hash_record = read_library_json(hash_path, pipeline_library_root_for_path(root))
+                        if isinstance(hash_record.get("sources"), list):
+                            source_hashes = {str(item.get("path") or ""): str(item.get("sha256") or "")
+                                             for item in hash_record["sources"] if isinstance(item, dict)}
+                        else:
+                            source_hashes = {str(key): str(value) for key, value in hash_record.items()
+                                             if key != "library_path_format_version"}
+                    else:
+                        source_hashes = {}
                     known_source_hashes.update(source_hashes)
                     for source in _source_paths(prompt_dir / "Prompt_Source_Map.json"):
                         add(source, f"sources/{source.name}", source_hashes.get(str(source.resolve()), ""))

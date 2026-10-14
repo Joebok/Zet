@@ -41,6 +41,18 @@ Fast browser tests use fixed port **8765**, one worker, and a disposable fixture
 
 The first documentation audit recorded 185 Python passes, 12 subtest passes and two cutover fixture failures across two selections. That suite is retired: these are **historical results, not outstanding failures in the approved E2E baseline**. The original commands/results can be recovered with `git show 676e048:Docs/DEVELOPMENT.md`; the [original completed plan](../plans/completed/agent-knowledge-base.md) preserves its audit outcome. Do not run or recreate deleted tests merely to reproduce that historical check.
 
+## Existing-library path update
+
+Install and select a release whose readers/writers support the library's path format, then stop every Zet server and harvester for that library. The command reads `config.toml` and universe descriptors without constructing `ZetApp`, applies recognized typed path updates, and verifies them directly. Pass every known former library root explicitly; repeat `--old-library-root` and `--route-root` when needed:
+
+```powershell
+python3 -B -m zet.scripts.normalize_library_references `
+  --config config.toml `
+  --old-library-root "C:\Users\Joe\Projects\Zet_Library_v5"
+```
+
+If `python3` is unavailable, verify a Python 3 fallback as described above and use it for the command. A nonzero result includes unresolved operational record/field references. The report separately counts old-root text outside typed path fields; that text stays unchanged. The command writes atomically per JSON record, creates no backup payloads, and stores a compact local report with counts and a content fingerprint. Do not open converted data with an older release; code rollback alone is incompatible. For recovery that requires an older reader, use the retained library copy. Applying this command to the production library and restarting production are separate rollout actions.
+
 ## Debugging and failure triage
 
 | Symptom | Inspect first |
@@ -64,6 +76,10 @@ Useful artifacts include `Prompt_Source_Map.json`, `Prompt_Compile_Diagnostics.j
 - Traditional/local generation, record/entity catalogs, and Scene Builder/Narrative coexist. Some README/design notes predate active policy. Investigate the relevant boundary before proposing retirement/migration; this task does not approve it.
 - Large facade/routes and callback-driven catalog/index integration warrant impact tracing for cross-component edits. No general refactor or architectural cleanup assessment was performed.
 - No repository-wide lint/type-check command is declared in package scripts or pyproject. Do not invent a required check or infer quality from existing cache directories.
+
+## Portable library-reference implementation validation (2026-10-14)
+
+Python 3.14.6 compilation, `git diff --check`, and disposable checks for two relocations, old-root mapping, typed prompt-source hashes, shared run-state writes, queue routes, checksum preservation, traversal/foreign-universe rejection, full updater apply/verify, and byte-stable reruns passed. An earlier approved E2E run passed all three scenarios. The latest run after shared state writers were converted passed S2/S3 but timed out in S1: the Narrative list response returned a different story ID than `/__test/context`, and loading that ID returned 404. This mismatch remains unresolved; no tests or scenarios were added. No live library update, production restart, or live rendering was performed.
 
 ## Observed Narrative retirement validation (2026-10-12)
 

@@ -12,6 +12,8 @@ Zet is a **producer/subscriber** of a separate AI Proxy system. Queue payloads m
 
 ## Publication and answer lifecycle
 
+File Proxy routes remain producer-local. Route destinations owned by a library are written relative to their declared universe and resolved by the matching producer before result application; shared asks, answers, bundles, producer identity, and attempt fences keep their existing ownership. The offline updater scans only current-producer routes and refuses to edit shared transport bundles. See [portable library references](../DECISIONS/0011-portable-library-references.md).
+
 ```mermaid
 flowchart LR
     Snapshot[Freeze prompt and reference bytes] --> Hidden[Hidden staging bundle]

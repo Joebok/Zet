@@ -11,6 +11,7 @@ import socket
 import time
 from typing import Iterator
 from zet.services.ai_queue_paths import queue_local_state_root
+from zet.services.library_reference_service import resolve_library_document, serialize_library_document
 
 
 class FileProxyClient:
@@ -22,13 +23,16 @@ class FileProxyClient:
         "local_image_render": "local_image",
     }
 
-    def __init__(self, base_queue_path: str | Path, *, route_root: Path | None = None):
+    def __init__(self, base_queue_path: str | Path, *, route_root: Path | None = None,
+                 library_root: str | Path | None = None, universe_id: str = ""):
         self.base_queue_path = Path(base_queue_path)
         self.root = self.base_queue_path / "File_Proxy"
         if route_root is None:
             route_root = queue_local_state_root(self.base_queue_path) / "Routes"
         self.route_root = route_root
         self.legacy_route_root = self.base_queue_path / "Zet_File_Proxy_State" / "Routes"
+        self.library_root = Path(library_root).resolve() if library_root else None
+        self.universe_id = str(universe_id or "")
 
     @property
     def ask_root(self) -> Path:
@@ -137,6 +141,9 @@ class FileProxyClient:
             json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         if route:
             route["_producer_id"] = socket.gethostname()
+            if self.library_root:
+                route["universe_id"] = route.get("universe_id") or self.universe_id
+                route = serialize_library_document(route, self.library_root)
             self.route_root.mkdir(parents=True, exist_ok=True)
             route_path = self.route_root / f"{job_id}.json"
             temp = route_path.with_name(f".{route_path.name}.tmp")
@@ -292,7 +299,13 @@ class FileProxyClient:
         if not path.exists():
             return {}
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        if self.library_root:
+            data = resolve_library_document(data, self.library_root)
+            if self.universe_id and data.get("universe_id") and data["universe_id"] != self.universe_id:
+                return {}
+        return data
 
     def remove_route(self, job_id: str) -> None:
         (self.route_root / f"{job_id}.json").unlink(missing_ok=True)

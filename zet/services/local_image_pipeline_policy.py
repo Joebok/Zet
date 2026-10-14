@@ -11,6 +11,9 @@ from dataclasses import dataclass, asdict
 from typing import Any
 
 from zet.services.workflow_storage import file_lock
+from zet.services.library_reference_service import (
+    pipeline_library_root_for_path, read_library_json, write_library_json,
+)
 
 
 @dataclass(frozen=True)
@@ -193,12 +196,11 @@ def mutate_local_run_state(run_root: Path, mutator) -> dict[str, Any]:
     state_path = run_root / "state.json"
     with file_lock(run_root / "state.lock"):
         try:
-            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state = read_library_json(state_path, pipeline_library_root_for_path(run_root))
         except (OSError, json.JSONDecodeError):
             state = {}
         mutator(state)
-        from zet.services.atomic_file_service import write_json_atomic
-        write_json_atomic(state_path, state)
+        write_library_json(state_path, state, pipeline_library_root_for_path(run_root))
         return state
 
 
@@ -269,9 +271,9 @@ def upgrade_legacy_review_v1(run_root: Path, spec: dict[str, Any], state: dict[s
     state.setdefault("selected_views", {})
     state["review_upgrade"] = {"from_version": 1, "to_version": 2}
 
-    from zet.services.atomic_file_service import write_json_atomic
-    write_json_atomic(run_root / "spec.json", spec)
-    write_json_atomic(run_root / "state.json", state)
+    library_root = pipeline_library_root_for_path(run_root)
+    write_library_json(run_root / "spec.json", spec, library_root)
+    write_library_json(run_root / "state.json", state, library_root)
     return True
 
 

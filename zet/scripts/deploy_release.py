@@ -61,6 +61,20 @@ def release_python(release):
     return release / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
+def library_reference_version(container):
+    """Return the highest path format declared by a universe in this library container."""
+    container = Path(container)
+    roots = [container]
+    if container.is_dir():
+        roots.extend(path for path in container.iterdir() if path.is_dir() and not path.name.startswith("."))
+    versions = []
+    for root in roots:
+        marker = root / "_state" / "library-reference-format.json"
+        if marker.is_file():
+            versions.append(int(json.loads(marker.read_text(encoding="utf-8")).get("library_path_format_version", 0)))
+    return max(versions, default=0)
+
+
 def healthy(url, revision, old_boot, timeout=120):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -128,11 +142,16 @@ def stage(request, update):
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
     if contract.get("requires_manual_migration") or contract.get("deployment_contract") != 1:
         raise RuntimeError("This release requires an explicit data migration; automatic promotion is blocked.")
+    required_library_version = library_reference_version(request.get("library_container", request["library_root"]))
+    if int(contract.get("library_reference_version", 0)) < required_library_version:
+        raise RuntimeError("This release cannot read the configured library's path format; production was not stopped.")
     if request.get("previous_release"):
         previous = Path(request["previous_release"])
         old_contract = json.loads((previous / "Config" / "Runtime_Contract.json").read_text(encoding="utf-8"))
         if old_contract["deployment_contract"] != contract["deployment_contract"]:
             raise RuntimeError("Release data compatibility changed; migration and rollback need explicit review.")
+        if int(old_contract.get("library_reference_version", 0)) < required_library_version:
+            raise RuntimeError("The previous release cannot read the configured library path format; promotion is blocked to preserve rollback compatibility.")
         dirty = run(["git", "-C", str(previous), "diff", "--name-only", "HEAD"])
         if dirty:
             raise RuntimeError("Production has local tracked edits. Preserve/reconcile them before update: " + dirty[:500])

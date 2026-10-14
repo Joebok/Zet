@@ -111,6 +111,13 @@ Character slot changes hold the state lock and persist pending candidate IDs bef
 - **Implementation/impact:** `EntityLibraryService.refresh_usages`, `usage_for_asset`, status guards, and `LibraryDeletionService._protect_narrative_assets`. Narrative jobs retain frozen resolved IDs and bytes; live authored elements keep current direct or logical bindings.
 - **Verify:** The approved S1-S3 suite exercises representative authoring and Narrative flows but has no dedicated usage protection assertion. Inspect endpoint validation and every catalog usage join; request approval before adding permanent coverage.
 
+## 16. Library-owned paths are universe-relative and versioned
+
+- **Rule/why:** Typed paths persisted by a library-owned record use forward-slash paths relative to the owning universe. Readers resolve them from the configured bound root and reject traversal or a foreign universe. Absolute legacy paths remain readable during transition; old roots are mapped only by the explicit offline updater. Free text, document/job-relative names, source-controlled templates, logical keys, and IDs are not path-migrated.
+- **Compatibility:** `library_path_format_version` is independent of workflow/review versions. New readers accept legacy and version 1 records and reject unsupported versions. Deployments and code rollback must check the library marker before opening converted data; recovery to an older release uses the retained library copy.
+- **Implementation/impact:** [LibraryReferenceService](../zet/services/library_reference_service.py), [PathService](../zet/services/path_service.py), the storage owners listed in [DATA_MODEL](DATA_MODEL.md), and [normalize_library_references](../zet/scripts/normalize_library_references.py).
+- **Verify:** Run the updater only while Zet servers and harvesters are stopped. It applies atomically per record, verifies operational references and saved image hashes, and writes a universe marker only after the full scan and route verification succeed. The approved S1-S3 baseline does not prove every relocation branch; use disposable fixtures for those checks.
+
 ## GitHub capture and production promotion
 
 Frozen reports bind request IDs to repository/content hashes. Uncertain creation

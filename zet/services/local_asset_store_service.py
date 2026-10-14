@@ -11,7 +11,7 @@ import tempfile
 from types import SimpleNamespace
 from typing import Any
 
-from zet.services.atomic_file_service import write_json_atomic
+from zet.services.library_reference_service import read_library_json, write_library_json
 from zet.services.workflow_storage import file_lock
 
 
@@ -64,7 +64,7 @@ class LocalAssetStoreService:
         if not path.is_file():
             return {"schema_version": 1, "character": character, "phase": phase, "assets": {}}
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
+            value = read_library_json(path, self.library_root)
         except (OSError, json.JSONDecodeError) as exc:
             raise LocalAssetStoreError(f"Local asset store is unreadable: {path}") from exc
         if not isinstance(value, dict) or not isinstance(value.get("assets", {}), dict):
@@ -213,7 +213,7 @@ class LocalAssetStoreService:
                 "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             }
             assets[key] = record
-            write_json_atomic(path, value)
+            write_library_json(path, value, self.library_root)
             return dict(record)
 
     def clear_selection(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
@@ -230,7 +230,7 @@ class LocalAssetStoreService:
                 if any(dep.get("key") == key for dep in child.get("dependencies", [])) and not child.get("locked"):
                     child["stale"] = True
                     child["stale_reason"] = f"Upstream selection {key} was cleared."
-            write_json_atomic(path, value)
+            write_library_json(path, value, self.library_root)
             return value
 
     def lock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
@@ -260,7 +260,7 @@ class LocalAssetStoreService:
                     "image_sha256": record["image_sha256"],
                 }],
             })
-            write_json_atomic(path, value)
+            write_library_json(path, value, self.library_root)
             return dict(record)
 
     def promote_chain(self, character: str, phase: str, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -322,7 +322,7 @@ class LocalAssetStoreService:
                     }]
                 assets[key] = record
                 result.append(dict(record))
-            write_json_atomic(path, value)
+            write_library_json(path, value, self.library_root)
             return result
 
     def unlock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
@@ -335,5 +335,5 @@ class LocalAssetStoreService:
             if not record or not record.get("locked"):
                 raise LocalAssetStoreError(f"{key} is not locked.")
             record.update({"locked": False, "unlocked_at": datetime.now().astimezone().isoformat(timespec="seconds")})
-            write_json_atomic(path, value)
+            write_library_json(path, value, self.library_root)
             return dict(record)
