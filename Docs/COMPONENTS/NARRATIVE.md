@@ -70,6 +70,40 @@ render-quality check. See [ADR 0009](../DECISIONS/0009-narrative-interview-revie
 
 Layer controls/identifiers come from the client, but filenames, metadata, and source-byte binding are server owned. Assembly modes influence prompt provenance; a prompt generated for one mode cannot silently render another. `finish_composite` is the model's default assembly mode; inspect the service for supported alternatives. Extraction uses OpenCV/NumPy/Pillow and its own lock. Imported subscenes/backdrops retain independent snapshots; they are not live links to another target's changing candidate.
 
+`harmonize_composite` (Harmonize placed composite) freezes the same placed image,
+including extraction corrections, tolerance, scale, fit and depth. Qwen receives
+only that composite; the entire dimension-validated output is retained, allowing
+subject relighting, color changes, edge repair, shadows and foreground integration.
+The frozen composite remains available for candidate comparison and retry; this
+mode does not save finishing masks. Layout preservation is prompt guidance and can
+drift. `finish_composite` instead restores original subject pixels and retains
+generated changes only through its exterior edit mask. `assemble_references`
+supplies original sources with text placement; extraction corrections are not sent.
+
+## Subscene transparency
+
+Subscenes show **Use transparent background**, checked by default, after Physical
+Context. The boolean `use_transparent_background` persists with target inputs and
+copies with imported subscenes. Missing fields on existing targets read as checked;
+existing prompts/images and historical job snapshots are not rewritten.
+
+Checked transparency intentionally overrides visible scenery in shared/local
+Setting and other prose for interview and Write Prompt, without deleting those
+inputs. Camera, perspective, subject lighting, physical relationships, required
+props and supports remain relevant. The effective-context display explains the
+suppression. Interviews receive the policy and must not erase shared Setting just
+to obtain transparency or propose changing the checkbox. Write Prompt suppresses
+visible scenery in its effective setting and appends explicit RGBA/zero-alpha
+instructions, excluding painted checkerboards and opaque mattes/floors. These are
+model instructions, not validation or a guarantee of actual transparent pixels.
+
+Unchecked follows authored visual context, with no injected neutral-background
+requirement. Changing the checkbox requires Write Prompt to update existing text;
+Render continues sending the editable prompt exactly as entered. New text jobs
+freeze the preference. A different preference, or an old job lacking the flag,
+prevents automatic prompt replacement/current interview review on completion.
+Existing completed history remains readable. See [ADR 0010](../DECISIONS/0010-narrative-harmonization-and-transparency.md).
+
 The scene overview and scene-page target selector keep final assembly targets after backdrops and subscenes, even when a new target is added later. This is presentation ordering; stored target order remains unchanged.
 
 Qwen reference sizing and prefix-cache placement are configured under

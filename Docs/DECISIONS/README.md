@@ -11,6 +11,7 @@ Record significant choices that affect future implementation: boundaries, persis
 
 | [0005 — Narrative dashboard and legacy scene retirement](0005-narrative-dashboard-and-legacy-scene-retirement.md) | How do dashboard authoring, historical images, Candidates and the geometry archive relate? | Accepted 2026-10-12 |
 | [0006 — Atomic image inventory edits and preferred references](0006-atomic-image-inventory-edits.md) | How are image editor updates committed and which active key is displayed? | Accepted 2026-10-12 |
+| [0010 — Composite harmonization and explicit subscene transparency](0010-narrative-harmonization-and-transparency.md) | How can assembly integrate subjects and subscenes explicitly request alpha backgrounds? | Accepted 2026-10-14 |
 
 These records were reconstructed on 2026-10-11 from cited code/tests and notes. They are not a claim to know the historical decision date or undocumented motivation. A significant future change should add a new ADR and mark superseded records with its link instead of silently changing history.
 

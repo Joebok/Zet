@@ -222,9 +222,13 @@ class NarrativeAssemblyService:
         manifest = self.reference_manifest(story, scene, detail, required=include_composite) if mode == "assemble_references" else []
         relative = f"snapshots/{job_id}"
         root = folder / relative
-        if include_composite and mode == "finish_composite":
+        has_composite = include_composite and mode in {"finish_composite", "harmonize_composite"}
+        if has_composite:
             canvas, mask, protected = self.compose(story, scene, detail)
-            for name, image in (("composite.png", canvas), ("edit-mask.png", mask), ("protected.png", protected)):
+            artifacts = [("composite.png", canvas)]
+            if mode == "finish_composite":
+                artifacts.extend((("edit-mask.png", mask), ("protected.png", protected)))
+            for name, image in artifacts:
                 write_bytes_atomic(root / name, png_bytes(image))
         layers = deepcopy(detail["layers"])
         for layer in layers:
@@ -232,13 +236,13 @@ class NarrativeAssemblyService:
             write_bytes_atomic(root / name, (folder / layer["source_file"]).read_bytes())
             layer["source_file"] = f"{relative}/{name}"
         references = [{"path": str(root / "composite.png"), "label": "Placed final scene",
-                       "role": "composition", "image_index": 1}] if include_composite and mode == "finish_composite" else []
+                       "role": "composition", "image_index": 1}] if has_composite else []
         if mode == "assemble_references":
             frozen = {layer["id"]: layer for layer in layers}
             references = [{**item, "path": str(folder / frozen[item["layer_id"]]["source_file"])} for item in manifest]
         return {"folder": relative, "layers": layers, "assembly_mode": mode,
                 "width": detail["width"], "height": detail["height"], "references": references,
-                "has_composite": include_composite and mode == "finish_composite"}, references
+                "has_composite": has_composite}, references
 
     def reference_manifest(self, story, scene, detail, *, required=False):
         """Bind original sources and their full-image placement without extracting cutouts."""
@@ -266,7 +270,7 @@ class NarrativeAssemblyService:
         return result
 
     def finish(self, story, scene, target, snapshot, proposal):
-        if snapshot.get("assembly_mode", "finish_composite") == "assemble_references":
+        if snapshot.get("assembly_mode", "finish_composite") in {"assemble_references", "harmonize_composite"}:
             with Image.open(BytesIO(proposal)) as generated:
                 if generated.size != (snapshot["width"], snapshot["height"]):
                     raise ValueError("Assembly output dimensions do not match the requested canvas.")

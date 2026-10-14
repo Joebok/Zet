@@ -10,6 +10,7 @@ from zet.services.narrative_interview_service import FIELD_PURPOSES, MOMENT_FIEL
 
 
 TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing", "width", "height",
+                 "use_transparent_background",
                  "element_ids", "visual_overrides", "prompt", "interview_model", "prompt_model", "layers", "assembly_mode",
                  "backdrop_adaptation")
 SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas")
@@ -211,8 +212,10 @@ class NarrativeSceneService:
     def _validate_target(record, parent):
         from zet.services.narrative_reference_service import NarrativeReferenceService
         NarrativeReferenceService.validate_adaptation(record)
-        if record["assembly_mode"] not in ("finish_composite", "assemble_references"):
-            raise ValueError("Choose finish_composite or assemble_references.")
+        if not isinstance(record["use_transparent_background"], bool):
+            raise ValueError("Use transparent background must be a boolean.")
+        if record["assembly_mode"] not in ("finish_composite", "assemble_references", "harmonize_composite"):
+            raise ValueError("Choose finish_composite, assemble_references or harmonize_composite.")
         if record["kind"] != "assembly" and record["assembly_mode"] != "finish_composite":
             raise ValueError("Only final assemblies have an assembly mode.")
         for key in ("width", "height"):

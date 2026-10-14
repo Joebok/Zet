@@ -37,8 +37,9 @@ let contextLabels = {};
 let candidateRestorePending = params.get('task_context') === '1';
 const active = new Set(['SUBMITTING', 'QUEUED', 'RUNNING', 'DISPATCHING']);
 const visualFields = ['setting', 'camera', 'perspective', 'lighting', 'style'];
-const targetFields = ['title', 'narrative', 'staging', 'physical_context', 'framing', 'width', 'height', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
-const assemblyModeName = mode => mode === 'assemble_references' ? 'Assemble from references' : 'Finish placed composite';
+const targetFields = ['title', 'narrative', 'staging', 'physical_context', 'use_transparent_background', 'framing', 'width', 'height', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
+const assemblyModeName = mode => ({assemble_references:'Assemble from references', harmonize_composite:'Harmonize placed composite'}[mode] || 'Finish placed composite');
+const fieldValue = field => field.type === 'checkbox' ? field.checked : field.value;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 const title = key => key.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
 const targetsWithAssemblyLast = targets => [...targets.filter(target => target.kind !== 'assembly'), ...targets.filter(target => target.kind === 'assembly')];
@@ -473,6 +474,7 @@ function renderTarget(targets) {
     <div class="narrative-editor"><div><section class="narrative-card"><h2>${backdrop ? 'Environment direction' : 'The moment'}</h2>
       ${label('title',detail.title,false)}${label('narrative',detail.narrative,true,backdrop ? 'Describe the environment' : 'Describe what is happening')}
       ${label('staging',detail.staging,true,backdrop ? 'Environment composition' : 'Interaction and staging')}${label('physical_context',detail.physical_context)}
+      ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
       ${label('framing',detail.framing,false)}<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
     ${sourcePanelHtml()}
@@ -484,7 +486,7 @@ function renderTarget(targets) {
     <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
       <label class="narrative-field">Answer or direct a revision<textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea></label>
       <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready.</p></section></div>
-    <div><section class="narrative-card"><h2>Prompt and generation</h2>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
+    <div><section class="narrative-card"><h2>Prompt and generation</h2>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option><option value="harmonize_composite" ${detail.assembly_mode==='harmonize_composite'?'selected':''}>Harmonize placed composite</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
       <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
       <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
@@ -545,7 +547,10 @@ function refreshVisualContext() {
   for (const key of visualFields) {
     const override = host.querySelector(`[data-field="override_${key}"]`).value;
     host.querySelector(`[data-shared-visual="${key}"]`).textContent = detail.inherited_context[key] || 'Not specified';
-    host.querySelector(`[data-effective-visual="${key}"]`).textContent = `${override || detail.inherited_context[key] || 'Not specified'} · ${override ? 'Local override' : 'Shared'}`;
+    const transparent = detail.kind === 'subscene' && host.querySelector('#narrative-use_transparent_background')?.checked;
+    host.querySelector(`[data-effective-visual="${key}"]`).textContent = key === 'setting' && transparent
+      ? `Visible scenery suppressed · Use transparent background. Saved setting: ${override || detail.inherited_context[key] || 'Not specified'} · ${override ? 'Local override' : 'Shared'}`
+      : `${override || detail.inherited_context[key] || 'Not specified'} · ${override ? 'Local override' : 'Shared'}`;
   }
 }
 
@@ -601,8 +606,10 @@ function updateLive() {
     const mode = host.querySelector('#narrative-assembly_mode').value;
     const stale = !dirty.has('prompt') && (detail.prompt_provenance?.assembly_mode || 'finish_composite') !== mode;
     host.querySelector('#narrative-assembly-help').textContent = mode === 'assemble_references'
-      ? 'Qwen assembles original sources using placement and depth instructions. Cutout corrections affect the placement preview and composite finishing. Exact placement may vary. Up to ten visible sources.'
-      : 'Qwen finishes the placed composite; seam and shadow blending preserves subject pixels.';
+      ? 'Qwen assembles original sources using placement and depth instructions. Cutout corrections affect the placement preview and composite modes. Exact placement may vary. Up to ten visible sources.'
+      : mode === 'harmonize_composite'
+        ? 'Qwen harmonizes the placed composite, including cutout corrections, lighting, color, edges and ground contact. The full generated image is retained; subject appearance can change and placement may drift.'
+        : 'Qwen finishes the placed composite; seam and shadow blending preserves subject pixels.';
     host.querySelector('#narrative-assembly-prompt-warning').textContent = stale && detail.prompt ? 'This prompt belongs to another assembly mode. Write or edit the prompt before rendering.' : '';
     for (const button of root.querySelectorAll('[data-action="render"]')) button.disabled = stale;
   }
@@ -686,7 +693,10 @@ function mergeTarget(updated) {
   if (dirty.has('backdrop_adaptation')) updated.backdrop_adaptation = detail.backdrop_adaptation;
   for (const key of targetFields) {
     const field = root.querySelector(`[data-field="${key}"]`);
-    if (field && !dirty.has(key) && (document.activeElement !== field || field.disabled)) field.value = updated[key];
+    if (field && !dirty.has(key) && (document.activeElement !== field || field.disabled)) {
+      if (field.type === 'checkbox') field.checked = updated[key];
+      else field.value = updated[key];
+    }
   }
   for (const key of visualFields) {
     const field = root.querySelector(`[data-field="override_${key}"]`);
@@ -711,7 +721,7 @@ async function save() {
     if (key === 'backdrop_adaptation') { payload.backdrop_adaptation = structuredClone(detail.backdrop_adaptation); continue; }
     if (key.startsWith('override_')) continue;
     const field = root.querySelector(`[data-field="${key}"]`);
-    if (field) payload[key] = ['width','height'].includes(key) ? Number(field.value) : field.value;
+    if (field) payload[key] = ['width','height'].includes(key) ? Number(field.value) : fieldValue(field);
   }
   if (changed.some(key=>key.startsWith('override_'))) {
     payload.visual_overrides = Object.fromEntries(visualFields.map(key=>[key,root.querySelector(`[data-field="override_${key}"]`).value]));
@@ -726,7 +736,7 @@ async function save() {
       if (key === 'backdrop_adaptation') { if (!pendingAdaptation) dirty.delete(key); continue; }
       const field = root.querySelector(`[data-field="${key}"]`);
       const value = key.startsWith('override_') ? payload.visual_overrides[key.slice(9)] : payload[key];
-      if (field && String(field.value) === String(value)) dirty.delete(key);
+      if (field && String(fieldValue(field)) === String(value)) dirty.delete(key);
     }
     Object.assign(detail,updated);
     if (pendingLayers) detail.layers = pendingLayers;

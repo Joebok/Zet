@@ -97,6 +97,16 @@ is introduced; old completed drafts remain readable, and incoming legacy replies
 proposals. UI-only field-purpose metadata is not a new authored scene field. Candidate `prompt`
 already records submitted render text; freshness indicators derive from it without stored flags.
 
+Narrative targets also store `use_transparent_background` (boolean, default true;
+only subscenes use it). Repository defaults cover missing fields on current targets
+without changing historical nested job snapshots. New job detail and copied source
+inputs retain explicit true/false. Background policy participates in text-result
+application fencing; a historical snapshot without the field is distinguishable.
+`assembly_mode` additionally accepts `harmonize_composite`, without changing the
+default `finish_composite`. Harmonization snapshots set `has_composite=true`, freeze
+one composition reference and source bytes, and omit edit-mask/protected artifacts.
+Candidates retain their mode/snapshot and complete dimension-validated output.
+
 ## Render slot ownership (2026-10-12)
 Character `spec.json` retains initial candidate definitions and initial `slots_by_view`. `state.json` can override slot maps and owns `slot_version=1`, `added_candidates` definitions, mutable `candidates` updates, `detached_candidates`, and persisted supplemental target IDs. New independent slot submissions use `slot_render_ids`, `slot_review_views`, and per-candidate `slot_managed`; older `target_candidate_ids` remain supported for interrupted batch-runner work. Shared merging excludes detached identities from execution/review and active counts. Slots refer to stable candidate IDs, independently of ranking. Existing >8-candidate views remain legacy galleries; compatibility never truncates them. Per-candidate `render_input` freezes prompt text, ordered copied reference paths/hashes and preset for new render attempts.
 

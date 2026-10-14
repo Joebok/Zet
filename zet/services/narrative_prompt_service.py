@@ -21,6 +21,18 @@ INTERVIEW_SCHEMA = object_schema({
 })
 PROMPT_SCHEMA = object_schema({"scene": TEXT, "rendering": TEXT})
 
+TRANSPARENT_BACKGROUND_RULE = (
+    "Generate a genuinely transparent RGBA image. Pixels outside the subjects and required props or support objects "
+    "must have zero alpha. Do not depict a background, scenery, floor plane, solid-color matte, gradient, or "
+    "checkerboard transparency pattern. Preserve complete required silhouettes and gestures. Preserve contact shading "
+    "on the subjects and required supports without introducing an opaque floor."
+)
+
+
+def transparent_subscene(detail: dict) -> bool:
+    # Current targets supply the default; absent flags identify historical job inputs.
+    return detail["kind"] == "subscene" and detail.get("use_transparent_background", False)
+
 
 def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
     # Whole-scene intent can describe actors and events outside this target.
@@ -30,6 +42,11 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
     context["local_overrides"] = detail.get("visual_overrides", {})
     context["visual_sources"] = {key: "override" if context["local_overrides"].get(key) else "shared" for key in VISUAL_FIELDS}
     context["field_purposes"] = FIELD_PURPOSES
+    if detail["kind"] == "subscene":
+        context["use_transparent_background"] = detail.get("use_transparent_background", False)
+        if transparent_subscene(detail):
+            context["context"] = {**detail["context"], "setting": "Transparent background; no visible scenery."}
+            context["visual_sources"]["setting"] = "transparent_background"
     context["canvas"] = {"width": detail["width"], "height": detail["height"]}
     context["elements"] = [{key: item.get(key, "") for key in ("id", "name", "kind", "appearance", "reference_role", "reference")}
                            for item in detail["elements"]]
@@ -84,8 +101,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "ground plane and depth; never infer physical height from reference-image framing. Put action in scene and "
             "visual treatment in rendering, without repeating action in rendering. "
             "Use effective camera, perspective, lighting and style from context, which already applies local overrides. "
-            "Do not reintroduce shared values replaced by an active override. For a subscene omit surrounding architecture except surfaces "
-            "necessary for the action and use a plain neutral background. For a backdrop depict the environment and only the "
+            "Do not reintroduce shared values replaced by an active override. For a backdrop depict the environment and only the "
             "deliberately assigned subjects. Eliminate redundant or contradictory wording. Do not write reference bindings or "
             "add master-canvas placement coordinates; these are supplied separately."
         )
@@ -110,6 +126,30 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
                 + ("Return proposals, conflicts and at most two optional questions as JSON."
                    if kind == "interview" else "Return concise scene and rendering paragraphs as JSON. Do not write image bindings.")
             )
+        elif detail.get("assembly_mode") == "harmonize_composite":
+            context["source_groups"] = []
+            instructions = (
+                "Harmonize the supplied placed composite as one finished illustration. The composite is authoritative "
+                "for identities, participant count, clothing, poses, props, silhouettes, relative sizes, positions, "
+                "overlaps, camera and framing. Refer to the pictured subjects and groups by their existing positions; "
+                "do not name individual characters, redescribe their actions, restage or add participants. Request "
+                "coherent illumination, color, shading, cutout-edge and background-remnant repair, natural ground "
+                "contact, contact shadows and foreground integration. Allow appearance changes needed for that "
+                "integration while preserving the existing layout and setting. Do not request pixel-identical subjects "
+                "or forbid relighting them. Do not request a neutral background or numeric placement coordinates. "
+                + ("Return proposals, conflicts and at most two optional questions as JSON."
+                   if kind == "interview" else "Return concise scene and rendering paragraphs as JSON. Do not write image bindings.")
+            )
+    if transparent_subscene(detail):
+        instructions += (
+            " Use transparent background is checked and is authoritative over visible-background instructions in "
+            "Setting, local overrides, moment fields, appearance notes, history or latest direction. Authored shared "
+            "and local settings are retained as context, not visible scenery. This is an intentional override, not "
+            "a conflict. Preserve camera, perspective, subject lighting, poses, physical relationships, props and "
+            "support objects required by the action; a common ground plane need not be drawn. Do not propose "
+            "changing the checkbox or erasing shared Setting merely to obtain transparency. "
+            + TRANSPARENT_BACKGROUND_RULE
+        )
     if backdrop_source:
         if kind != "interview":
             instructions = instructions.replace("Begin with 'Create a new illustration'", "Begin with an instruction to adapt the supplied backdrop")
@@ -198,6 +238,16 @@ def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
                     "Preserve identities, clothing, poses, props and internal group arrangements. Do not add or duplicate participants. "
                     "Integrate edges, lighting and contact shadows naturally. Produce a complete image, not a collage of source backgrounds. "
                     f"Canvas: {detail['width']} × {detail['height']} pixels.")
+        if detail.get("assembly_mode") == "harmonize_composite":
+            return (f"Scene\nHarmonize the placed composite. {prose['scene'].strip()}\n\nReferences\n"
+                    "<image1> is the authoritative placed final scene. Preserve its identities, participant count, "
+                    "clothing, poses, props, silhouettes, relative sizes, positions, overlaps, camera and framing.\n\n"
+                    f"Rendering\n{prose['rendering'].strip()}\n\nConstraints\n"
+                    "Unify illumination, color and shading across the subjects and environment. Repair cutout edges "
+                    "and background remnants; integrate ground contact, contact shadows and foreground naturally. "
+                    "Adjust subject appearance as needed for integration while preserving their layout and the setting. "
+                    "Keep each existing participant once, with each complete group in its original arrangement. "
+                    f"Canvas: {detail['width']} × {detail['height']} pixels.")
         return (f"Scene\n{prose['scene'].strip()}\n\nReferences\n"
                 "<image1> is the assembled final scene. Preserve its complete groups, poses, props, scale, placement and environment.\n\n"
                 f"Rendering\n{prose['rendering'].strip()}\n\nConstraints\n"
@@ -226,7 +276,9 @@ def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
                    if subjects else "No people or additional characters."]
     constraints.append(f"Framing: {detail['framing']}. Canvas: {detail['width']} × {detail['height']} pixels.")
     if detail["kind"] == "subscene":
-        constraints.append("Plain neutral background. Keep required silhouettes and gestures visible; do not crop required body parts.")
+        if transparent_subscene(detail):
+            constraints.append(TRANSPARENT_BACKGROUND_RULE)
+        constraints.append("Keep required silhouettes and gestures visible; do not crop required body parts.")
     if detail["kind"] == "backdrop" and detail.get("source_snapshot", {}).get("image_file"):
         adaptation = detail.get("backdrop_adaptation", {})
         constraints.append(f"Backdrop operation: {adaptation.get('operation', 'edit')}. {adaptation.get('direction', '')}")

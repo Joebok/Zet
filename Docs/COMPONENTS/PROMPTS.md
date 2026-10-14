@@ -48,6 +48,21 @@ and the strength of relative-height comparisons. Action belongs in scene; render
 visual treatment without repeating action. This is model guidance, not a guarantee of live output.
 Reference metadata does not establish physical height from source-image framing.
 
+Subscene `use_transparent_background` controls interview/synthesis context and
+deterministic final-prompt background constraints. Checked replaces the effective
+visible setting with transparency, retains authored settings as labeled context,
+and prioritizes genuine RGBA zero-alpha background over scenery prose. It retains
+required subjects/props/supports and their lighting. Unchecked uses saved context;
+neither branch imposes the former plain-neutral-background rule. Render does not
+append or rewrite these constraints: users must use Write Prompt to update saved
+text. Older frozen requests without the preference remain distinguishable.
+
+Assembly `harmonize_composite` requests integration of the supplied placed image
+while preserving layout, count, identities and complete groups. It refers to
+pictured subjects/positions rather than individual names and supplies no separate
+pair images. The full output survives; the finishing mode's prohibition on subject
+redrawing is not used. [Narrative](NARRATIVE.md) owns mode/result handling and limits.
+
 `_bind_reference_names` tags only the first mention of each reference label across scene then
 rendering prose. The complete References section remains authoritative for frozen image order.
 Case-insensitive duplicate labels still fail; longer names match before shorter ones, possessives

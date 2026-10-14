@@ -70,6 +70,7 @@ hashes before resuming. Configuration changes apply only to new submissions.
 ## 11. Narrative owns its records and frozen job inputs
 
 - **Rule/why:** Narrative authoring/generation must not call Scene Builder creation/loading/staging. Jobs pin reference bytes and assembly inputs; source changes must not silently alter a submitted job. Selected/locked images require protection checks before deletion. Server-owned layer filenames/metadata cannot be accepted as arbitrary client paths.
+- **Background and assembly policy:** new subscene text jobs freeze the transparency preference; mismatched or legacy-absent flags cannot automatically replace current prompt/review state. Render sends entered prompt text unchanged. Harmonization preserves the placed composite as a frozen reference/comparison, but retains the full output rather than enforcing pixel protection; finishing retains its original protection contract.
 - **Implementation/impact:** [NarrativeRepository](../zet/repositories/narrative_repository.py), [NarrativeGenerationService](../zet/services/narrative_generation_service.py), [NarrativeAssemblyService](../zet/services/narrative_assembly_service.py), [NarrativeSceneService](../zet/services/narrative_scene_service.py), router.
 - **Verify:** S1/S3 operate exclusively through Narrative UI/API/storage and verify persisted assembly publication/display. Inspect source freezing, layer binding, protected deletion and attempt checks directly; the fast suite does not assert every protection/provenance case.
 

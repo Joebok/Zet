@@ -284,6 +284,8 @@ class NarrativeGenerationService:
     @staticmethod
     def _same_mode(record, frozen):
         return (record.get("assembly_mode", "finish_composite") == frozen.get("assembly_mode", "finish_composite")
+                and (record.get("kind") != "subscene"
+                     or record.get("use_transparent_background", True) == frozen.get("use_transparent_background"))
                 and record.get("backdrop_adaptation", {}) == frozen.get("backdrop_adaptation", {})
                 and record.get("source_snapshot", {}).get("snapshot_id") == frozen.get("source_snapshot", {}).get("snapshot_id"))
 

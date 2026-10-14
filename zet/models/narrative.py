@@ -53,6 +53,7 @@ class NarrativeTarget:
     narrative: str = ""
     staging: str = ""
     physical_context: str = ""
+    use_transparent_background: bool = True
     framing: str = "Full body, complete silhouettes"
     width: int = 1216
     height: int = 832

@@ -15,7 +15,7 @@ from zet.services.atomic_file_service import write_bytes_atomic
 from zet.services.narrative_scene_service import VISUAL_FIELDS
 from zet.services.workflow_storage import validate_image
 
-INPUT_FIELDS = ("narrative", "staging", "physical_context", "framing", "width", "height")
+INPUT_FIELDS = ("narrative", "staging", "physical_context", "framing", "width", "height", "use_transparent_background")
 
 
 class NarrativeReferenceService:
