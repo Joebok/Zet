@@ -220,6 +220,7 @@ const imageGenerationImg2img = document.querySelector("#image-generation-img2img
 const imageGenerationReferenceSlotsElement = document.querySelector("#image-generation-reference-slots");
 const imageGenerationReferenceList = document.querySelector("#image-generation-reference-list");
 const imageGenerationPrompt = document.querySelector("#image-generation-prompt");
+const imageGenerationAddUniverseArtStyle = document.querySelector("#image-generation-add-universe-art-style");
 const imageGenerationNegative = document.querySelector("#image-generation-negative");
 const imageGenerationWidth = document.querySelector("#image-generation-width");
 const imageGenerationHeight = document.querySelector("#image-generation-height");
@@ -12019,6 +12020,16 @@ imageGenerationImg2img.addEventListener("click", () => { setImageGenerationMode(
 imageGenerationForm.addEventListener("submit", submitImageGeneration);
 imageGenerationFill.addEventListener("click", () => void submitImageGenerationForSlots());
 imageGenerationClear.addEventListener("click", clearImageGenerationResults);
+imageGenerationAddUniverseArtStyle.addEventListener("click", () => {
+  const artStyle = state.universes.find((universe) => universe.universe_id === state.universeId)?.canonical_art_style?.trim();
+  if (!artStyle) {
+    showMessageElement(imageGenerationMessage, "The selected universe has no canonical art style.", "warning");
+    return;
+  }
+  imageGenerationPrompt.value = `Art style: ${artStyle}\n${imageGenerationPrompt.value}`;
+  imageGenerationPrompt.dispatchEvent(new Event("input", { bubbles: true }));
+  imageGenerationPrompt.focus();
+});
 renderImageGenerationReferenceSlots();
 for (const input of [imageGenerationPrompt, imageGenerationNegative, imageGenerationWidth, imageGenerationHeight]) {
   input.addEventListener("input", saveImageGenerationState);
@@ -12308,6 +12319,8 @@ async function saveUniverseSettings() {
     return false;
   }
   state.savedUniverseArtStyle = payload.universe.canonical_art_style || "";
+  const universe = state.universes.find((item) => item.universe_id === payload.universe.universe_id);
+  if (universe) universe.canonical_art_style = state.savedUniverseArtStyle;
   setUniverseMessage("universe-settings-message", "Settings saved.", "success");
   return true;
 }
