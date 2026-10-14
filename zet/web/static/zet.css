@@ -2026,6 +2026,15 @@ button.danger-action:not(:disabled):hover {
   padding: 8px 10px;
 }
 
+.action-message ul {
+  margin: 6px 0 0;
+  padding-left: 22px;
+}
+
+.action-message li + li {
+  margin-top: 4px;
+}
+
 .action-message.info {
   background: var(--info-soft);
   border: 1px solid #bfdbfe;

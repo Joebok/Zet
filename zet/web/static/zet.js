@@ -1148,6 +1148,7 @@ async function fetchJson(url, options = {}) {
     if (requestUniverse && requestUniverse !== state.universeId) throw new RequestCancelledError();
     if (!response.ok) {
       let detail = `${response.status} ${response.statusText}`;
+      let structuredDetail = null;
       try {
         const payload = await response.json();
         if (Array.isArray(payload.detail)) {
@@ -1155,6 +1156,7 @@ async function fetchJson(url, options = {}) {
             .map((item) => item?.msg ? `${(item.loc || []).join(".")}: ${item.msg}` : JSON.stringify(item))
             .join("; ");
         } else if (payload.detail && typeof payload.detail === "object") {
+          structuredDetail = payload.detail;
           detail = JSON.stringify(payload.detail);
         } else {
           detail = payload.detail || detail;
@@ -1162,7 +1164,9 @@ async function fetchJson(url, options = {}) {
       } catch {
         // Keep HTTP detail.
       }
-      throw new Error(detail);
+      const error = new Error(detail);
+      if (structuredDetail) error.detail = structuredDetail;
+      throw error;
     }
     const payload = await response.json();
     if (bindToPage && pageGeneration !== state.pageGeneration) throw new RequestCancelledError();
@@ -1852,6 +1856,45 @@ function showIdentityKeyMessage(message, kind = "info") {
 
 function showCostumeMessage(message, kind = "info") {
   showMessageElement(costumeMessage, message, kind);
+}
+
+function showCostumeReferenceConflict(detail) {
+  showCostumeMessage(detail.message || "Narrative references prevent deleting this costume.", "error");
+  const references = Array.isArray(detail.references) ? detail.references : [];
+  if (!references.length) return;
+
+  const list = document.createElement("ul");
+  for (const reference of references) {
+    const item = document.createElement("li");
+    const label = [reference.story_title, reference.scene_title, reference.target_title]
+      .filter(Boolean)
+      .join(" / ");
+    if (reference.story_id && reference.scene_id) {
+      const link = document.createElement("a");
+      const params = new URLSearchParams({
+        page: "narrative",
+        workspace: "story",
+        universe_id: state.universeId || "",
+        story_slug: reference.story_id,
+        scene_slug: reference.scene_id,
+      });
+      link.href = `/?${params.toString()}`;
+      link.textContent = label || "Open Narrative scene";
+      item.append(link);
+    } else {
+      item.textContent = label || reference.consumer_id || "Narrative scene reference";
+    }
+    const context = [reference.reference_key, reference.asset_id, reference.locator]
+      .filter(Boolean)
+      .join(" · ");
+    if (context) {
+      const details = document.createElement("span");
+      details.textContent = ` — ${context}`;
+      item.append(details);
+    }
+    list.append(item);
+  }
+  costumeMessage.append(list);
 }
 
 function showSceneAppearanceMessage(message, kind = "info") {
@@ -4473,7 +4516,8 @@ async function deleteSelectedCostume() {
     showCostumeMessage(payload.message || "Costume moved to deleted storage.");
     await loadAssets();
   } catch (error) {
-    showCostumeMessage(error.message, "error");
+    if (error.detail?.references) showCostumeReferenceConflict(error.detail);
+    else showCostumeMessage(error.message, "error");
   } finally {
     costumeDelete.disabled = false;
   }

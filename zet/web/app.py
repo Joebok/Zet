@@ -31,6 +31,7 @@ from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.image_catalog_service import ImageCatalogReferenceConflict
 from zet.services.manual_render_metrics_service import ManualRenderMetricsService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
+from zet.services.library_deletion_service import NarrativeUsageBlockedError
 from zet.services.performance_instrumentation import PerformanceInstrumentation
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
@@ -2569,6 +2570,11 @@ def create_app(
                 "destination": destination,
                 "message": f"Moved costume {costume_slug} and its related assets to deleted storage.",
             }
+        except NarrativeUsageBlockedError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": str(exc), "references": exc.references},
+            ) from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
