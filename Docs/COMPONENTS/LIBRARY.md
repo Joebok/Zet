@@ -20,6 +20,7 @@ Reconciliation scans authored/queue sources, fingerprints content, reuses cached
 - Wrong universe/request context can target the wrong store; queue/results must remain owned by the bound universe.
 - Older or incomplete record catalogs fail validation with a migration instruction. Entity initialization can migrate an older database with a backup; it rejects a newer unsupported version.
 - Usage protection can block archive/replace/merge operations. Preserve logical-reference semantics and operation previews rather than bypassing protections with raw SQL/file deletion.
+- Phase and costume deletion preserve current Narrative consumers; a blocked costume deletion reports each Story/Scene reference and links to the editable scene when its record IDs resolve.
 - Derived index corruption or stale generations can affect discovery while authored files remain intact. Inspect error/freshness reporting before choosing an authorized rebuild; CLI scripts do not universally bind a universe through `ZetApp`.
 - Add new reusable library actions in focused services and expose them through existing app/router patterns. Add indexed discovery kinds through source scanning and list providers; inspect pagination/freshness contracts in source and obtain approval for any new coverage. Do not make candidates searchable approved images merely by adding them to a folder scan.
 
@@ -34,7 +35,7 @@ Reconciliation scans authored/queue sources, fingerprints content, reuses cached
 Narrative scene/target JSON participates in entity usage discovery. Live element
 asset IDs, logical keys and legacy-image bindings protect catalog images; archived
 source documents in migration provenance are not live consumers. Authoring changes
-refresh usages. Phase/costume deletion checks Narrative consumers before moving files.
+refresh usages. Phase/costume deletion checks current Narrative consumers before moving files. A blocked costume delete includes each Story/Scene title, reference locator and a Narrative scene link when the authored records can be resolved; unreadable records retain their usage path and locator in the reported context.
 
 Migration imports use `legacy_scene` and `legacy_reference` origins and stable origin
 keys; character pipeline reconciliation cannot obsolete them. Imports preserve bytes,
