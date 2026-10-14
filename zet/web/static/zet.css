@@ -84,6 +84,8 @@ body {
   max-width: 132px;
   opacity: 0.8;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .workspace-switch {

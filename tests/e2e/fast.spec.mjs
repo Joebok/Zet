@@ -21,7 +21,9 @@ test.afterEach(async ({ page }, testInfo) => {
 test("library and narrative authoring save and reload through the dashboard", async ({ page }) => {
   const context = await (await page.request.get("/__test/context")).json();
   await page.goto("/");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   await page.getByRole("button", { name: "Character Development" }).click();
+  await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Overview" }).click();
   await page.locator("#character-setup-details > summary").click();
   const character = page.locator("#onboarding-character");
