@@ -39,6 +39,17 @@ Use this map to select a narrow search, inspect the named entry point and caller
 3. For serialization changes inspect both producer and consumer plus [DATA_MODEL](DATA_MODEL.md). For async changes inspect the owning workflow and queue contract.
 4. Former scene experiment tools are preserved in [the offline archive](../Archive/scene-builder/README.md). They are not runtime workflows or maintained validation commands.
 
+## Narrative interview review and prompt indicators (2026-10-13)
+- [narrative_interview_service.py](../zet/services/narrative_interview_service.py) owns field purposes,
+  editable-field contracts and validated/legacy-normalized proposals; generation stores pending
+  reviews and preserves attempt fencing. `NarrativeSceneService.apply_interview` owns selected
+  replacements and Shared override clearing, via the target `/interview-review` POST route.
+- `llm_request` supplies shared/local/effective context and conflict/proposal guidance;
+  `_bind_reference_names` binds first mentions only. `narrative.js` owns Old/New selection UI,
+  local override save/effective display and candidate-prompt comparison badges.
+- S1/S3 retain authoring/lifecycle purposes; S3 now reviews and applies the interview before
+  synthesis. Additional field-action/indicator checks are disposable, not permanent scenarios.
+
 ## Fixed render-slot entry points (2026-10-12)
 - Character allocation/protection: [render_slot_service.py](../zet/services/render_slot_service.py), called by [local_image_workflow_service.py](../zet/services/local_image_workflow_service.py). The local router exposes view `/slots` generation and `/slots/{slot}/{operation}` actions. Adapter details/summaries use the shared active-candidate merger; Run All Remaining startup recovery reattaches persisted supplemental targets and independent slot collectors. Slot collection uses its own runner lock; ordinary batch runners exclude slot-managed additions.
 - Image Generation board: [image_generation_workspace_service.py](../zet/services/image_generation_workspace_service.py), via `/api/image-generation/workspace` detail/import/actions; [ad_hoc_image_generation_service.py](../zet/services/ad_hoc_image_generation_service.py) retains job APIs and child-index result application.

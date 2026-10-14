@@ -10,6 +10,7 @@ import threading
 from zet.models.narrative import NarrativeCandidate, new_id
 from zet.services.atomic_file_service import write_bytes_atomic
 from zet.services.narrative_prompt_service import assemble_prompt, llm_request
+from zet.services.narrative_interview_service import interview_review
 from zet.services.narrative_proxy_service import NarrativeProxyService
 from zet.services.narrative_codex_service import NarrativeCodexService
 from zet.services.workflow_storage import validate_image
@@ -183,6 +184,8 @@ class NarrativeGenerationService:
                     # Exact replay also retains original request wording and interview history.
                     if replay and replay.get("request"):
                         job["request"] = replay["request"]
+                        schema = deepcopy(replay.get("schema", schema))
+                        job["schema"] = schema
                     if job["provider"] == "ollama":
                         self.proxy.publish(story, scene, target, job, job["request"], schema=schema)
                     job["status"] = "QUEUED"
@@ -253,7 +256,7 @@ class NarrativeGenerationService:
                     else:
                         value = json.loads(result.decode("utf-8"))
                         if job["kind"] == "interview":
-                            self._apply_interview(record, job, value)
+                            self._store_interview_review(record, job, value)
                             job["result"] = value
                         else:
                             prompt = assemble_prompt(job["detail"], value, job["references"])
@@ -285,21 +288,15 @@ class NarrativeGenerationService:
                 and record.get("source_snapshot", {}).get("snapshot_id") == frozen.get("source_snapshot", {}).get("snapshot_id"))
 
     @staticmethod
-    def _apply_interview(record, job, result):
-        for key in ("narrative", "staging", "physical_context", "framing"):
-            if not isinstance(result.get(key), str):
-                raise ValueError("The interview returned invalid draft fields.")
-        questions = result.get("questions", [])
-        if not isinstance(questions, list) or any(not isinstance(item, str) for item in questions):
-            raise ValueError("The interview returned invalid questions.")
-        if (record["active_llm_job"] == job["id"]
-                and NarrativeGenerationService._same_mode(record, job["detail"])):
-            for key in ("narrative", "staging", "physical_context", "framing"):
-                if record[key] == job.get("baseline", job["detail"])[key]:
-                    record[key] = result[key]
-        record["interview"].append({"role": "assistant", "text": "\n".join(questions[:2]),
+    def _store_interview_review(record, job, result):
+        review = interview_review(result, job["detail"], job["id"])
+        if (record["active_llm_job"] != job["id"]
+                or not NarrativeGenerationService._same_mode(record, job["detail"])):
+            review["status"] = "superseded"
+        job["review"] = review
+        record["interview"].append({"role": "assistant", "text": "\n".join(review["questions"]),
                                     "job_id": job["id"], "provenance": job.get("provenance", {}),
-                                    "draft": {key: result[key] for key in ("narrative", "staging", "physical_context", "framing")}})
+                                    "conflicts": review["conflicts"]})
 
     @staticmethod
     def _fail(record, job, error):

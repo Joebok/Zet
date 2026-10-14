@@ -6,9 +6,9 @@ from pathlib import Path
 from zet.models.narrative import NarrativeElement, NarrativeScene, NarrativeStory, NarrativeTarget
 from zet.repositories.narrative_repository import NarrativeRepository
 from zet.services.entity_library_service import EntityLibraryServiceError
+from zet.services.narrative_interview_service import FIELD_PURPOSES, MOMENT_FIELDS, VISUAL_FIELDS
 
 
-VISUAL_FIELDS = ("setting", "camera", "perspective", "lighting", "style")
 TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing", "width", "height",
                  "element_ids", "visual_overrides", "prompt", "interview_model", "prompt_model", "layers", "assembly_mode",
                  "backdrop_adaptation")
@@ -76,7 +76,7 @@ class NarrativeSceneService:
     def scene(self, story: str, scene: str) -> dict:
         record = self.repository.read(story, scene)
         record["elements"] = [self.element_detail(element) for element in record["elements"]]
-        return {**record, "targets": self.list_targets(story, scene)}
+        return {**record, "targets": self.list_targets(story, scene), "field_purposes": FIELD_PURPOSES}
 
     def element_asset(self, element: dict) -> dict | None:
         if element.get("reference_key"):
@@ -248,6 +248,7 @@ class NarrativeSceneService:
         inherited = {key: parent[key] for key in VISUAL_FIELDS}
         effective = {key: record["visual_overrides"].get(key) or value for key, value in inherited.items()}
         detail = {**record, "elements": elements, "inherited_context": inherited, "context": effective,
+                  "field_purposes": FIELD_PURPOSES,
                   "scene_title": parent["title"], "effective_models": {
                       key: record[key] or self.app.config.ai_narrative_scene_model
                       for key in ("interview_model", "prompt_model")}}
@@ -256,6 +257,58 @@ class NarrativeSceneService:
             detail["source_groups"] = [{"title": layer["label"], "narrative": layer.get("narrative", ""),
                                         "role": layer["role"]} for layer in record["layers"] if layer["visible"]]
         return detail
+
+    def apply_interview(self, story: str, scene: str, target: str, data: dict) -> dict:
+        """Apply selected server-owned replacements, preserving unrelated current fields."""
+        with self.repository.lock():
+            record = self.repository.read(story, scene, target)
+            job = record["jobs"].get(data.get("job_id", ""), {})
+            review = job.get("review", {})
+            if job.get("kind") != "interview" or job.get("status") != "COMPLETE":
+                raise ValueError("Choose a completed interview review.")
+            if review.get("status") == "applied":
+                return self.target(story, scene, target)
+            if review.get("status") != "pending":
+                raise ValueError("This interview has no pending review.")
+            choices = data.get("choices")
+            rows = review["proposals"]
+            if not isinstance(choices, dict) or set(choices) != {row["id"] for row in rows}:
+                raise ValueError("Choose an action for every proposal.")
+            parent = self.repository.read(story, scene)
+            elements = {item["id"]: item for item in parent["elements"]}
+            scene_changed = False
+            for row in rows:
+                choice = choices[row["id"]]
+                allowed = ("override", "shared", "reject") if row["scope"] == "visual" else ("accept", "reject")
+                if choice not in allowed:
+                    raise ValueError("Choose a valid proposal action.")
+                if choice == "reject":
+                    continue
+                key = row["field"]
+                if row["scope"] == "moment" and key in MOMENT_FIELDS:
+                    record[key] = row["text"]
+                elif row["scope"] == "appearance" and key == "appearance":
+                    if row["element_id"] not in record["element_ids"] or row["element_id"] not in elements:
+                        raise ValueError("A proposed element is no longer assigned to this target.")
+                    elements[row["element_id"]]["appearance"] = row["text"]
+                    scene_changed = True
+                elif row["scope"] == "visual" and key in VISUAL_FIELDS:
+                    if choice == "shared":
+                        parent[key] = row["text"]
+                        record["visual_overrides"].pop(key, None)
+                        scene_changed = True
+                    else:
+                        record["visual_overrides"][key] = row["text"]
+                else:
+                    raise ValueError("The proposal is outside interview editing authority.")
+            self._validate_target(record, parent)
+            # Validate every choice before writing either file. If a write fails, retrying
+            # applies the same replacements; per-file atomic writes are not a transaction.
+            if scene_changed:
+                self.persist(parent, story, scene)
+            review.update(status="applied", choices=choices)
+            self.persist(record, story, scene, target)
+            return self.target(story, scene, target)
 
     def references(self, detail: dict) -> list[dict]:
         refs = []

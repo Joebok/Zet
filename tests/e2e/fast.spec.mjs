@@ -87,9 +87,14 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
   await page.locator("#narrative-direction").fill("Show the traveler reaching the forest gate.");
   await page.getByRole("button", { name: "Continue interview" }).click();
   await answerJob(page, scene, ids.subscene, "interview", {
-    narrative: "The traveler reaches a forest gate.", staging: "Standing beside the gate.",
-    physical_context: "Pine forest.", framing: "Full body.", questions: [],
+    proposals: Object.entries({narrative: "The traveler reaches a forest gate.", staging: "Standing beside the gate.",
+      physical_context: "Pine forest.", framing: "Full body."}).map(([field,text]) =>
+      ({scope:"moment", field, element_id:"", text, reason:"Describe the arrival."})),
+    conflicts: [], questions: [],
   });
+  await expect(page.locator("#narrative-narrative")).toHaveValue(details[1].narrative);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.locator("#narrative-narrative")).toHaveValue("The traveler reaches a forest gate.");
   await page.getByRole("button", { name: "Write Prompt" }).click();
   await answerJob(page, scene, ids.subscene, "synthesize", { scene: "A traveler reaches a forest gate.", rendering: "Soft daylight." });
 

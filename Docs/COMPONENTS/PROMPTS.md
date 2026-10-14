@@ -42,6 +42,18 @@ The same machine table configures the Qwen prefix cache (`cache_device` accepts
 `int4`). Metadata records configured placement/precision separately from whether
 ComfyUI inserted and ran the cache node.
 
+Narrative text synthesis requests the shortest complete scene/rendering prose rather than fixed
+word/character limits. It explicitly retains equipment exclusions, anatomy, gesture ownership
+and the strength of relative-height comparisons. Action belongs in scene; rendering supplies
+visual treatment without repeating action. This is model guidance, not a guarantee of live output.
+Reference metadata does not establish physical height from source-image framing.
+
+`_bind_reference_names` tags only the first mention of each reference label across scene then
+rendering prose. The complete References section remains authoritative for frozen image order.
+Case-insensitive duplicate labels still fail; longer names match before shorter ones, possessives
+are preserved and backdrop-source offsets remain intact. Assembly/source-specific rules remain
+separate. Interview proposal/review semantics are owned by [Narrative](NARRATIVE.md).
+
 ## Shared contract, failure modes, extension points
 
 [chatgpt_prompt_contract.py](../../zet/services/chatgpt_prompt_contract.py) owns current prompt schema 2, valid render modes (`generate`, `edit`, `composite`), input roles, contract/diagnostic helpers, and reference mappings. Attachment order links prompt citations to exact frozen bytes; preserve it through compile, queue publication, and backend submission. See [INVARIANTS](../INVARIANTS.md).

@@ -61,6 +61,16 @@
 .narrative-slot .placeholder { height:180px; background:var(--surface-subtle); display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
 .narrative-slot button, .narrative-slot a { font-size:.8rem; padding:.3rem .4rem; }
 .narrative-slot .error { color:var(--danger); font-size:.85rem; overflow-wrap:anywhere; }
+.narrative-prompt-indicator { color:var(--text-muted); font-size:.72rem; font-weight:normal; margin-left:.3rem; }
+.narrative-field-role, .narrative-field-help { display:block; color:var(--text-muted); font-size:.78rem; font-weight:normal; }
+#narrative-interview-review { width:calc(100vw - 3rem); max-width:1200px; }
+.narrative-proposal { border-top:1px solid var(--border); padding:1rem 0; }
+.narrative-proposal-comparison { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:1rem; }
+.narrative-proposal-comparison section { min-width:0; }
+.narrative-proposal-comparison pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; color:var(--text); background:var(--surface-subtle); padding:.75rem; }
+.narrative-proposal [aria-pressed="true"] { background:var(--primary); color:var(--on-primary, white); border-color:var(--primary); }
+.narrative-review-footer { position:sticky; bottom:0; padding:.75rem 0; background:var(--surface); }
+@media (max-width:650px) { .narrative-proposal-comparison { grid-template-columns:minmax(0,1fr); } }
 .narrative-app dialog { border:1px solid var(--border); border-radius:8px; max-width:900px; width:calc(100% - 3rem); max-height:90vh; overflow:auto; padding:1.5rem; }
 .narrative-app dialog::backdrop { background:rgba(15,23,42,.55); }
 .narrative-library-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.7rem; max-height:55vh; overflow:auto; margin-top:1rem; }

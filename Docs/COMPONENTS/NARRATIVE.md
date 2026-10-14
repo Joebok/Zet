@@ -10,6 +10,7 @@ Narrative provides prose-oriented authoring and generation independent of Scene 
 | [NarrativeSceneService](../../zet/services/narrative_scene_service.py) | Authoring CRUD, scene elements, targets, references, image selection/locking and protected deletion; `ZetApp.narrative_scene_service` |
 | [NarrativeGenerationService](../../zet/services/narrative_generation_service.py) | `start`/detail polling, persisted interview/synthesis/render jobs, candidate slots, retry/replay and background poller |
 | [narrative_prompt_service.py](../../zet/services/narrative_prompt_service.py) | `llm_request`, `assemble_prompt`, structured request schemas and deterministic prompt/reference packaging |
+| [narrative_interview_service.py](../../zet/services/narrative_interview_service.py) | Field purposes/authority, old-reply normalization and validated whole-field review proposals |
 | [NarrativeProxyService](../../zet/services/narrative_proxy_service.py), [NarrativeCodexService](../../zet/services/narrative_codex_service.py) | Proxy text/image dispatch and durable Codex CLI text attempts; [narrative_qwen_workflow.py](../../zet/services/narrative_qwen_workflow.py) supplies image workflows |
 | [NarrativeReferenceService](../../zet/services/narrative_reference_service.py) | Pinned backdrop inputs, local reuse/crop actions and independent imported subscenes |
 | [NarrativeAssemblyService](../../zet/services/narrative_assembly_service.py) | Source/layer binding, editable extraction/cutouts, deterministic composition and frozen assembly snapshots |
@@ -23,8 +24,47 @@ Inputs include scene intent/visual settings, named elements/library asset IDs, t
 2. `start` chooses interview/synthesis/generate/render or a supported replay action. Text models with `codex:` dispatch to Codex; otherwise text work uses the proxy/Ollama path. Jobs persist model/provider provenance and a baseline for result application.
 3. Submission snapshots ordered reference bytes. Assembly submission binds server-owned source layers and freezes an assembly snapshot; replay uses saved job inputs. Backdrop crop/unchanged operations use local actions instead of requesting generation.
    Qwen Image 2.1 render references are prepared in the local render-job workspace under the configured per-image and aggregate pixel budgets. Prepared source hashes/order and effective machine settings accompany the saved graph; pending ComfyUI submissions resume that graph and its snapshots after configuration changes.
-4. Proxy/Codex results advance jobs and candidate slots. Background polling starts/stops with app lifespan; Codex attempts receive fresh attempt ownership after restart so old attempt outputs cannot apply.
+4. Proxy/Codex results advance jobs and candidate slots. Interviews store pending proposals without changing authored inputs; the user reviews and applies selected replacements. Background polling starts/stops with app lifespan; Codex attempts receive fresh attempt ownership after restart so old attempt outputs cannot apply.
 5. The user selects/locks outputs. Protected deletion and pinned sources prevent accidental removal/mutation of images used by the workflow.
+
+## Interview review and field guidance
+
+Appearance notes hold identity, anatomy, clothing, intrinsic size and equipment changes shared
+across targets using an element. The moment holds the visible event, individual expression,
+pose, gaze, gestures, interaction, arrangement and relative heights. Physical context describes
+ground, contact, support and conditions affecting the action; framing describes cropping and
+required visibility. These are prose guidance, not restrictions on editing.
+
+The interview receives assigned elements, shared visual values, local overrides and their
+effective values/sources. It proposes moment, assigned-element appearance and visual-context
+replacements, with conflict findings and up to two questions. A local override intentionally
+replaces shared context; that difference alone is not a conflict. Text requests receive
+reference metadata, not images, and cannot verify visual anatomy, pose or height.
+
+The Old/New review defaults moment/appearance rows to Accept and visual rows to Override.
+Buttons select actions; Apply commits complete field replacements. Bulk Accept All (override),
+Accept All (shared) and Reject All affect only rows without an explicit user choice. Shared
+writes the scene value and clears the corresponding override on this target. Appearance
+acceptance affects every target using that element. No extra confirmation or generation gate
+is added. Closed pending reviews can be reopened; selections survive polling and close/reopen
+within the mount. Reload keeps the pending review but resets uncommitted choices to defaults.
+
+`POST /api/narrative/stories/{story}/scenes/{scene}/targets/{target}/interview-review`
+delegates to `NarrativeSceneService.apply_interview`, taking `job_id` and proposal-ID/action
+`choices`. It validates choices before writing selected current fields under the repository
+lock. Repeating a successfully applied request is harmless. Individual files use atomic writes;
+multi-file updates are not a transaction. A failed write leaves the persisted review pending
+for retry. Old completed interviews remain historical; newly received old-format replies become
+review proposals. Superseded attempts cannot expose an applicable review.
+
+Local overrides include Save inputs for all dirty target fields and a collapsed active-field
+summary. Shared/effective visual values update after saves, polling and review application.
+
+Completed image tiles and image reviews show a muted Different prompt label when their recorded
+prompt differs from the current editor text, including unsaved edits. Only line endings are
+normalized. Reverting text removes the label. Missing prompts show Prompt not recorded;
+local crop/reuse is labeled separately. This is text comparison, not a reference, input or
+render-quality check. See [ADR 0009](../DECISIONS/0009-narrative-interview-review.md).
 
 ## Assembly and reference boundaries
 
@@ -46,7 +86,7 @@ Add Narrative fields to model defaults, author patch/validation lists, prompt/jo
 
 ## Tests and design notes
 
-[fast.spec.mjs](../../tests/e2e/fast.spec.mjs) S1 saves/reloads story, scene and element authoring; S3 runs interview/synthesis, prepared backdrop/subscene renders, a failure/retry, source selection/locking and final assembly through persisted publication/display. The [live check](../../tests/e2e/live.spec.mjs) uses prepared prerequisites then real final-assembly synthesis/rendering. These scenarios do not exhaustively verify frozen-input rejection, protected deletion, source import or Codex restart branches. See [Testing](../Testing.md) for live opt-in and coverage approval and [DEVELOPMENT](../DEVELOPMENT.md) for results.
+[fast.spec.mjs](../../tests/e2e/fast.spec.mjs) S1 saves/reloads story, scene and element authoring; S3 runs interview proposal/review/Apply and synthesis, prepared backdrop/subscene renders, a failure/retry, source selection/locking and final assembly through persisted publication/display. The [live check](../../tests/e2e/live.spec.mjs) uses prepared prerequisites then real final-assembly synthesis/rendering. These scenarios do not exhaustively verify frozen-input rejection, protected deletion, source import or Codex restart branches. See [Testing](../Testing.md) for live opt-in and coverage approval and [DEVELOPMENT](../DEVELOPMENT.md) for results.
 
 [Narrative approach](../../Docs-Joe/Narrative_Scene_Approach.md), [phase 1](../../Docs-Joe/Narrative_Scenes_Phase_1.md), [phase 2](../../Docs-Joe/Narrative_Scenes_Phase_2.md), and [references](../../Docs-Joe/Narrative_Scene_References.md) preserve intent and specifications; check code before treating recommendations as implemented behavior.
 

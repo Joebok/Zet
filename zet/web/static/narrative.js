@@ -25,6 +25,8 @@ let modelOptions = {model:'general:latest', codex_models:[]};
 let knownModels = [];
 let historySignature = '';
 let interviewReplies = 0;
+let interviewReviewId = null;
+const interviewChoices = new Map();
 let llmSubmitting = false;
 let layerDrag = null;
 let brush = null;
@@ -40,9 +42,14 @@ const assemblyModeName = mode => mode === 'assemble_references' ? 'Assemble from
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 const title = key => key.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
 const targetsWithAssemblyLast = targets => [...targets.filter(target => target.kind !== 'assembly'), ...targets.filter(target => target.kind === 'assembly')];
-const label = (key, value, textarea = true, name = title(key)) => `<label class="narrative-field">${esc(name)}${textarea
+const label = (key, value, textarea = true, name = title(key)) => {
+  const helpKey = key.startsWith('override_') || visualFields.includes(key) ? 'visual_context' : key;
+  const help = detail?.field_purposes?.[helpKey];
+  const inputOnly = route.target && ['title','width','height'].includes(key);
+  return `<label class="narrative-field">${esc(name)}${help ? '<small class="narrative-field-role">Interview input · Interview may propose changes</small>' : inputOnly ? '<small class="narrative-field-role">Interview input · Edited here only</small>' : key === 'prompt' ? '<small class="narrative-field-role">Prompt output · Editable before rendering</small>' : ''}${textarea
   ? `<textarea data-field="${key}" id="narrative-${key}">${esc(value)}</textarea>`
-  : `<input data-field="${key}" id="narrative-${key}" ${['width','height'].includes(key) ? 'type="number" step="32" min="256" max="4096"' : ''} value="${esc(value)}">`}</label>`;
+  : `<input data-field="${key}" id="narrative-${key}" ${['width','height'].includes(key) ? 'type="number" step="32" min="256" max="4096"' : ''} value="${esc(value)}">`}${help ? `<small class="narrative-field-help">${esc(help)}</small>` : ''}</label>`;
+};
 
 function status(text, error = false) { if (disposed) return; message.textContent = text; message.classList.toggle('error', error); }
 function href(next) {
@@ -136,6 +143,8 @@ async function action(callback) {
     busy = false; root.querySelectorAll('button, #narrative-target-select').forEach(control => { control.disabled = false; }); if (route.target && detail) updateLive(); renderImageReview();
     const reviewError = host.querySelector('#narrative-review-error');
     if (reviewError) reviewError.textContent = actionError;
+    const interviewError = host.querySelector('#narrative-interview-review-error');
+    if (interviewError) interviewError.textContent = actionError;
   }
 }
 
@@ -182,6 +191,8 @@ async function loadPage() {
 
 async function loadPageContent() {
   host.querySelector('#image-dialog').close();
+  host.querySelector('#narrative-interview-review').close();
+  interviewReviewId = null;
   reviewCandidate = null;
   clearTimeout(saveTimer);
   const query = new URLSearchParams(location.search);
@@ -242,7 +253,7 @@ async function loadPageContent() {
 function elementsHtml(elements, target) {
   return elements.map(element=>`<article class="narrative-reference">
     ${(element.reference?.asset_id || element.asset_id) ? `<img src="${esc(assetUrl(element.reference?.asset_id || element.asset_id))}" alt="${esc(element.name)} reference">` : ''}
-    <div><h3>${esc(element.name)}</h3><p class="narrative-muted">${esc(element.kind)} · ${esc(element.reference_role)}</p><p>${esc(element.appearance)}</p>
+    <div><h3>${esc(element.name)}</h3><p class="narrative-muted">${esc(element.kind)} · ${esc(element.reference_role)}</p><small class="narrative-field-role">Name and reference metadata: interview input · Edited here only</small><small class="narrative-field-role">Appearance: interview input · Interview may propose changes</small><p>${esc(element.appearance)}</p>
       ${element.reference_error ? `<p class="error">${esc(element.reference_error)}</p>` : ''}
       <div class="narrative-actions"><button data-edit-element="${element.id}">Edit</button>
       <button data-${target ? 'remove' : 'delete'}-element="${element.id}">${target ? 'Remove from subscene' : 'Delete element'}</button></div></div></article>`).join('') || '<p class="narrative-muted">No elements assigned.</p>';
@@ -467,16 +478,17 @@ function renderTarget(targets) {
     ${sourcePanelHtml()}
     ${assembly ? assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
-    <section class="narrative-card"><h2>Shared visual context</h2><dl class="narrative-context">${visualFields.map(key=>`<dt>${title(key)}</dt><dd>${esc(detail.inherited_context[key] || 'Not specified')}</dd>`).join('')}</dl>
-      <details><summary>Local overrides</summary>${visualFields.map(key=>label(`override_${key}`,detail.visual_overrides[key] || '',true,`${title(key)} override (blank inherits)`)).join('')}</details></section>
+    <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input · Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
+      <dl class="narrative-context">${visualFields.map(key=>`<dt>${title(key)} · Shared</dt><dd data-shared-visual="${key}"></dd><dt>${title(key)} · Effective</dt><dd data-effective-visual="${key}"></dd>`).join('')}</dl>
+      <details><summary id="narrative-overrides-summary">Local overrides</summary>${visualFields.map(key=>label(`override_${key}`,detail.visual_overrides[key] || '',true,`${title(key)} override (blank inherits)`)).join('')}<button data-action="save">Save inputs</button></details></section>
     <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
       <label class="narrative-field">Answer or direct a revision<textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea></label>
-      <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button></div><p class="narrative-muted">Answers are optional. Edit directly or generate whenever you are ready.</p></section></div>
+      <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready.</p></section></div>
     <div><section class="narrative-card"><h2>Prompt and generation</h2>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
       <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
       <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
-      <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div>
+      <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div><p id="narrative-prompt-pending" class="narrative-muted"></p>
       <div class="narrative-actions"><button class="primary" data-action="render" data-count="1">Render 1</button><button class="primary" data-action="render" data-count="4">Render 4</button><button data-action="refresh">Refresh</button></div>
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></section>
@@ -489,25 +501,95 @@ function renderTarget(targets) {
   if (sourceImage) { listen(sourceImage,'load',drawCropBox); drawCropBox(); }
 }
 
+function pendingInterviews() {
+  return Object.values(detail.jobs).filter(job=>job.status === 'COMPLETE' && job.review?.status === 'pending');
+}
+
+function reviewChoices(job) {
+  const key = `${universe}:${base()}:${job.id}`;
+  if (!interviewChoices.has(key)) interviewChoices.set(key, Object.fromEntries(job.review.proposals.map(row=>[row.id, {action:row.scope === 'visual' ? 'override' : 'accept', explicit:false}])));
+  return interviewChoices.get(key);
+}
+
+function openInterviewReview(id) {
+  if (!detail.jobs[id]?.review || detail.jobs[id].review.status !== 'pending') return;
+  interviewReviewId = id;
+  renderInterviewReview();
+  const dialog = host.querySelector('#narrative-interview-review');
+  if (!dialog.open) dialog.showModal();
+}
+
+function renderInterviewReview() {
+  const job = detail.jobs[interviewReviewId];
+  if (!job?.review) return;
+  const choices = reviewChoices(job);
+  const review = job.review;
+  host.querySelector('#narrative-interview-review').innerHTML = `<h2 id="interview-review-title">Review interview proposals</h2>
+    <p class="narrative-muted">Choose whole-field replacements below. Nothing changes until Apply.</p>
+    ${review.conflicts.length ? `<section><h3>Conflicts and resolutions</h3>${review.conflicts.map(text=>`<p>${esc(text)}</p>`).join('')}</section>` : ''}
+    ${review.questions.length ? `<section><h3>Questions for the next interview</h3>${review.questions.map(text=>`<p>${esc(text)}</p>`).join('')}</section>` : ''}
+    <div class="narrative-actions"><button data-review-bulk="override">Accept All (override)</button><button data-review-bulk="shared">Accept All (shared)</button><button data-review-bulk="reject">Reject All</button></div>
+    <p class="narrative-muted">Bulk choices affect only rows you have not explicitly chosen.</p>
+    ${review.proposals.map(row=>`<article class="narrative-proposal" data-proposal-id="${row.id}"><h3>${esc(row.element_name ? row.element_name+' · Appearance notes' : title(row.field))}</h3>
+      <p>${esc(row.reason)}</p>${row.scope === 'appearance' ? '<p class="narrative-muted">Shared appearance: affects every subscene using this element.</p>' : ''}
+      ${row.scope === 'visual' ? `<p class="narrative-muted">Shared: ${esc(job.detail.inherited_context?.[row.field] || 'Not specified')}<br>Local override: ${esc(job.detail.visual_overrides?.[row.field] || 'None — inherits shared')}</p>` : ''}
+      <div class="narrative-proposal-comparison"><section><h4>Old${row.scope === 'visual' ? ' · Effective' : ''}</h4><pre>${esc(row.old)}</pre></section><section><h4>New</h4><pre>${esc(row.text)}</pre></section></div>
+      <div class="narrative-actions" role="group" aria-label="${esc(row.element_name || title(row.field))} action">${(row.scope === 'visual' ? ['override','shared','reject'] : ['accept','reject']).map(choice=>`<button data-proposal="${row.id}" data-proposal-choice="${choice}" aria-pressed="${choices[row.id].action === choice}">${title(choice)}</button>`).join('')}</div></article>`).join('') || '<p>No field changes proposed.</p>'}
+    <div class="narrative-actions narrative-review-footer"><button class="primary" data-apply-interview="${job.id}">Apply</button><button data-close="narrative-interview-review">Close</button></div>
+    <p id="narrative-interview-review-error" class="error" role="status"></p>`;
+}
+
+function refreshVisualContext() {
+  const overrides = visualFields.filter(key=>Boolean(host.querySelector(`[data-field="override_${key}"]`)?.value));
+  host.querySelector('#narrative-overrides-summary').textContent = `Local overrides${overrides.length ? ` · ${overrides.length}: ${overrides.map(title).join(', ')}` : ' · None'}`;
+  for (const key of visualFields) {
+    const override = host.querySelector(`[data-field="override_${key}"]`).value;
+    host.querySelector(`[data-shared-visual="${key}"]`).textContent = detail.inherited_context[key] || 'Not specified';
+    host.querySelector(`[data-effective-visual="${key}"]`).textContent = `${override || detail.inherited_context[key] || 'Not specified'} · ${override ? 'Local override' : 'Shared'}`;
+  }
+}
+
+function promptIndicator(candidate) {
+  if (!candidate?.image || candidate.status !== 'COMPLETE') return '';
+  const operation = candidate.backdrop_adaptation?.operation;
+  if (candidate.source_snapshot && ['crop','unchanged'].includes(operation)) return `<span class="narrative-prompt-indicator">${operation === 'crop' ? 'Local crop' : 'Local reuse'}</span>`;
+  if (typeof candidate.prompt !== 'string' || !candidate.prompt) return '<span class="narrative-prompt-indicator">Prompt not recorded</span>';
+  const normalize = text=>text.replace(/\r\n?/g,'\n');
+  const current = host.querySelector('#narrative-prompt')?.value ?? detail.prompt;
+  return normalize(candidate.prompt) === normalize(current) ? '' : '<span class="narrative-prompt-indicator" title="Rendered with a different prompt than the current prompt." aria-label="Rendered with a different prompt than the current prompt.">Different prompt</span>';
+}
+
+function updatePromptIndicators() {
+  for (const node of host.querySelectorAll('[data-prompt-indicator]')) {
+    const html = promptIndicator(detail.candidates[node.dataset.promptIndicator]);
+    if (node.innerHTML !== html) node.innerHTML = html;
+  }
+}
+
 function updateLive() {
   if (disposed) return;
   const history = host.querySelector('#narrative-interview');
   if (!history) return;
   const jobs = Object.values(detail.jobs);
-  const signatureHistory = JSON.stringify([detail.interview, jobs.filter(job=>job.kind!=='image').map(job=>[job.id,job.status,job.result])]);
+  refreshVisualContext();
+  const pending = pendingInterviews();
+  host.querySelector('#narrative-pending-reviews').innerHTML = pending.map(job=>`<button data-interview-review="${job.id}">Review interview proposals · ${job.review.proposals.length} changes</button>`).join('');
+  host.querySelector('#narrative-prompt-pending').textContent = pending.length ? `${pending.length} interview review${pending.length === 1 ? '' : 's'} pending. Write Prompt uses saved, applied inputs.` : '';
+  const signatureHistory = JSON.stringify([detail.interview, jobs.filter(job=>job.kind!=='image').map(job=>[job.id,job.status,job.result,job.review?.status])]);
   if (signatureHistory !== historySignature) {
     const replies = detail.interview.filter(item=>item.role === 'assistant').length;
     const newReply = Boolean(historySignature) && replies > interviewReplies;
     interviewReplies = replies;
     historySignature = signatureHistory;
-    history.innerHTML = detail.interview.map(item=>`<article class="narrative-history-entry"><p><strong>${item.role === 'user' ? 'You' : `Illustrator · ${esc(modelName(item.provenance))}`}</strong><br>${esc(item.text || 'Draft updated. Continue editing or generate.')}</p>${item.draft ? `<details><summary>Generated draft</summary><dl>${Object.entries(item.draft).map(([key,value])=>`<dt>${title(key)}</dt><dd>${esc(value)}</dd>`).join('')}</dl></details>` : ''}</article>`).join('');
+    history.innerHTML = detail.interview.map(item=>`<article class="narrative-history-entry"><p><strong>${item.role === 'user' ? 'You' : `Illustrator · ${esc(modelName(item.provenance))}`}</strong><br>${esc(item.text || (item.draft ? 'Draft updated.' : item.role === 'assistant' ? 'Interview proposals received.' : 'Continue the interview.'))}</p>${(item.conflicts || []).map(text=>`<p>${esc(text)}</p>`).join('')}${item.draft ? `<details><summary>Generated draft</summary><dl>${Object.entries(item.draft).map(([key,value])=>`<dt>${title(key)}</dt><dd>${esc(value)}</dd>`).join('')}</dl></details>` : ''}</article>`).join('');
     if (newReply) {
       const latest = history.lastElementChild;
       latest.classList.add('narrative-new-reply');
       history.scrollTop = latest.offsetTop;
       const notice = host.querySelector('#narrative-interview-status');
-      notice.textContent = 'New interview answer received — shown below.';
+      notice.textContent = 'New interview proposals received — ready for review.';
       notice.className = 'narrative-complete';
+      if (pending.length) openInterviewReview(pending.at(-1).id);
     }
     const select = host.querySelector('#narrative-prompt-history');
     const value = select.value;
@@ -548,12 +630,13 @@ function updateLive() {
   const failures = lastAuthorJob?.status === 'FAILED' ? [lastAuthorJob] : [];
   host.querySelector('#narrative-job-status').innerHTML = `<p class="${working.length || llmSubmitting ? 'narrative-pending' : 'narrative-muted'}">${working.length ? working.map(job=>`${esc(job.kind)}: ${esc(job.status.toLowerCase())}${job.kind !== 'image' ? ' · '+esc(job.model || 'Model not recorded') : ''}`).join(' · ') : llmSubmitting ? 'Submitting LLM request…' : 'Ready'}${llmWorking ? ' · Final prompt is unavailable until the LLM finishes.' : ''}</p>`+
     failures.filter(job=>job.kind !== 'image').map(job=>`<div class="narrative-failure">${esc(modelName(job.provenance))} · ${esc(job.error)}${job.kind === 'interview' ? ` <button data-retry-job="${job.id}">Retry</button>` : ''}</div>`).join('');
+  updatePromptIndicators();
   const signature = JSON.stringify([detail.slots,detail.candidates,detail.selected_id]);
   if (signature === slotSignature) return;
   slotSignature = signature;
   host.querySelector('#narrative-slots').innerHTML = detail.slots.map((id,index)=>{
     const candidate = id ? detail.candidates[id] : null;
-    return `<article class="narrative-slot ${id && id === detail.selected_id ? 'selected' : ''}"><h3>Slot ${index+1}</h3>
+    return `<article class="narrative-slot ${id && id === detail.selected_id ? 'selected' : ''}"><h3>Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
       ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${esc(candidate?.status.toLowerCase() || 'Empty')}</div>`}
       ${candidate ? `<p class="narrative-muted">${esc(candidate.status.toLowerCase())}${id === detail.selected_id ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
       ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
@@ -585,7 +668,7 @@ function renderImageReview() {
   host.querySelector('#review-image').alt = `Slot ${candidate.slot} candidate`;
   host.querySelector('#narrative-review-prev').disabled = busy || index === 0;
   host.querySelector('#narrative-review-next').disabled = busy || index === images.length - 1;
-  host.querySelector('#narrative-review-panel').innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot}</h2>
+  host.querySelector('#narrative-review-panel').innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
     <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
       <button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected ? 'disabled' : ''}>Select</button>
@@ -604,6 +687,14 @@ function mergeTarget(updated) {
   for (const key of targetFields) {
     const field = root.querySelector(`[data-field="${key}"]`);
     if (field && !dirty.has(key) && (document.activeElement !== field || field.disabled)) field.value = updated[key];
+  }
+  for (const key of visualFields) {
+    const field = root.querySelector(`[data-field="override_${key}"]`);
+    if (field && !dirty.has(`override_${key}`) && document.activeElement !== field) field.value = updated.visual_overrides[key] || '';
+  }
+  if (JSON.stringify(detail.elements) !== JSON.stringify(updated.elements)) {
+    const list = root.querySelector('#narrative-elements');
+    if (list) list.innerHTML = elementsHtml(updated.elements,true);
   }
   detail = updated;
   updateLive();
@@ -688,7 +779,7 @@ async function editElement(id) {
   dialog.innerHTML = `<h2>${id ? 'Edit' : 'New'} element</h2><form id="element-form">
     <label class="narrative-field">Name<input name="name" required value="${esc(elementDraft.name)}"></label>
     <label class="narrative-field">Type<select name="kind">${['subject','prop','environment'].map(kind=>`<option ${kind===elementDraft.kind ? 'selected' : ''}>${kind}</option>`).join('')}</select></label>
-    <label class="narrative-field">Appearance notes<textarea name="appearance">${esc(elementDraft.appearance)}</textarea></label>
+    <label class="narrative-field">Appearance notes<small class="narrative-field-role">Interview input · Interview may propose changes · Shared across subscenes</small><textarea name="appearance">${esc(elementDraft.appearance)}</textarea><small class="narrative-field-help">${esc(scene.field_purposes.appearance)}</small></label>
     <label class="narrative-field">Reference role<select name="reference_role">${['appearance','costume','object shape','environment','style'].map(role=>`<option ${role===elementDraft.reference_role ? 'selected' : ''}>${role}</option>`).join('')}</select></label>
     <p id="element-reference-label">${elementDraft.reference_key ? 'Current reference: '+esc(elementDraft.reference_key) : elementDraft.asset_id ? 'Reference image attached' : 'Text only — no reference image'}</p>
     <div class="narrative-actions"><button type="button" id="choose-reference">Choose library image</button><button type="button" id="remove-reference">Remove reference</button></div>
@@ -760,6 +851,30 @@ listen(host,'click',event=>{
     return;
   }
   if (button.dataset.close) { document.getElementById(button.dataset.close).close(); return; }
+  if (button.dataset.interviewReview) { openInterviewReview(button.dataset.interviewReview); return; }
+  if (button.dataset.proposalChoice) {
+    const choices = reviewChoices(detail.jobs[interviewReviewId]);
+    choices[button.dataset.proposal] = {action:button.dataset.proposalChoice, explicit:true};
+    for (const control of button.parentElement.querySelectorAll('button')) control.setAttribute('aria-pressed',String(control === button));
+    return;
+  }
+  if (button.dataset.reviewBulk) {
+    const job = detail.jobs[interviewReviewId], choices = reviewChoices(job);
+    for (const row of job.review.proposals) if (!choices[row.id].explicit) choices[row.id].action = button.dataset.reviewBulk === 'reject' ? 'reject' : row.scope === 'visual' ? button.dataset.reviewBulk : 'accept';
+    renderInterviewReview(); return;
+  }
+  if (button.dataset.applyInterview) {
+    action(async()=>{
+      const job = detail.jobs[button.dataset.applyInterview];
+      const choices = Object.fromEntries(Object.entries(reviewChoices(job)).map(([id,choice])=>[id,choice.action]));
+      await save();
+      mergeTarget(await api(base()+'/interview-review','POST',{job_id:job.id, choices}));
+      host.querySelector('#narrative-interview-review').close();
+      interviewReviewId = null;
+      status('Interview choices applied');
+    });
+    return;
+  }
   if (button.id === 'new-story-button') {
     host.querySelector('#new-story').reset();
     host.querySelector('#story-dialog').showModal(); return;

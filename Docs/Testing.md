@@ -12,7 +12,7 @@ All three are implemented in [fast.spec.mjs](../tests/e2e/fast.spec.mjs). The S1
 | --- | --- | --- |
 | S1 — `library and narrative authoring save and reload through the dashboard` | Upload/restore the Traveler character template; edit/restore costume name; save story title, scene setting, and element appearance; reload and display the reference image; inspect persisted source files | Uses seeded library images/records. Does not cover every catalog operation, merge, migration or universe lifecycle |
 | S2 — `character-to-costume workflow previews prerequisites and creates a real run` | API preview/create/start a front-only Character-Assembly run; deliver prepared image/gate responses; wait for ranking; select/lock; repeat for Costume-Dressing using the assembly prerequisite and verify costume availability | Seeds Body/Head locks and uses one front candidate. Does not generate Body/Head batches or test all views, ranking comparisons, cancellation or recovery |
-| S3 — `narrative interview, prompt, render, retry, and final assembly persist` | Dashboard interview/synthesis; render backdrop/subscene; fail and retry a subscene render; select/lock sources; add assembly layers, synthesize/render/select/lock final assembly; reload and verify story summary/image availability | Prepared text/image answers exercise persisted job/application flow, not actual LLM synthesis, image quality, or every provenance/protection case |
+| S3 — `narrative interview, prompt, render, retry, and final assembly persist` | Dashboard interview proposals, review/Apply and synthesis; render backdrop/subscene; fail and retry a subscene render; select/lock sources; add assembly layers, synthesize/render/select/lock final assembly; reload and verify story summary/image availability | Prepared text/image answers exercise persisted job/application flow, not actual LLM synthesis, image quality, or every provenance/protection case |
 
 The suite mixes browser actions, API calls, and filesystem assertions. In particular S2 is primarily API-driven; do not describe it as a complete browser journey through every character control. [CODE_MAP.md](CODE_MAP.md) maps capabilities to these scenarios and their gaps.
 
@@ -97,6 +97,24 @@ Joe explicitly approves each new test, scenario, or material coverage expansion.
 For a change, locate the relevant S1–S3 assertions, run the approved baseline, and inspect uncovered contracts in authoritative code. Do not add tests for retiring Scene Builder/local scene-batch workflows. Plan/test references must distinguish scenario coverage from source-only verification. [DEVELOPMENT.md](DEVELOPMENT.md) records actual command outcomes; [ADR 0004](DECISIONS/0004-local-task-testing-baseline.md) records the policy change.
 
 The existing `/narrative` test links redirect into the mounted dashboard editor. The approved S1–S3 scenarios retain their purpose. The 2026-10-12 retirement used separate disposable/manual migration and Candidates checks; these are not additional maintained tests. No live rendering was performed.
+
+## Narrative interview review checks (2026-10-13)
+
+S3 now verifies that a prepared interview leaves the narrative unchanged until Apply, then
+continues its existing prompt/render/assembly journey. The maintained scenario count and
+purpose are unchanged. Disposable backend checks used a copy of Group Photo JSON records,
+checking review validation, old-reply normalization and exact replay schema, selected apply/
+reject/override/Shared behavior, repeat application and first-mention reference bindings.
+Original source record hashes remained unchanged. Prompt prose checks used prepared text;
+they do not establish live LLM fidelity or rendered height/pose accuracy.
+
+Disposable Chromium checks covered row defaults, explicit choices versus all three bulk actions,
+pending-review reload/polling/close/reopen, Shared override clearing, override Save inputs and
+collapsed indicators. Prompt comparison checks included unsaved edits, reversion, generated
+replacement, reload, an open image review, missing prompts, local crop/reuse and line endings.
+Desktop/narrow screenshots were inspected; comparison text contrast was checked after correcting
+an inherited code-block color. These scripts/screenshots are ignored `test-results` artifacts,
+not additional maintained scenarios. No live model or render services were used.
 
 ## Approved disposable slot-fix checks (2026-10-12)
 Joe approved four one-time check groups for reported issues: costume batch-link restoration, card containment, current-prompt/Recompile behavior, and overlapping slot actions. The disposable fixture used a separate Test library/private queue, prepared images/gates/rankings, and no live models. All groups passed, including Image Generation containment at 1365/850/640 pixels and preserving an unsaved review choice while images arrived. Scripts/results are ignored `test-results` artifacts, not new maintained scenarios. The approved S1–S3 suite remains unchanged and passed afterward (3 tests, 23.0 seconds). See the [completed plan](../plans/completed/standard-render-slots.md) for limits and exact observations.

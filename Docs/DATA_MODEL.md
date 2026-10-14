@@ -81,6 +81,15 @@ reservations. These stores are universe-scoped. Historical source snapshots are 
 editable generation state. `NARRATIVE` tags bind story/scene/target/candidate IDs;
 legacy `SCENE`/`SCENE_RENDER` tags are read-only image compatibility.
 
+Narrative interview jobs may include a `review` record built by
+[interview_review](../zet/services/narrative_interview_service.py): validated whole-field proposals
+with server-bound IDs/old values, conflicts/questions and pending/applied/superseded status.
+Applied reviews retain chosen actions. Authored fields change only through the explicit
+`NarrativeSceneService.apply_interview` operation. No global Narrative schema version or migration
+is introduced; old completed drafts remain readable, and incoming legacy replies normalize to
+proposals. UI-only field-purpose metadata is not a new authored scene field. Candidate `prompt`
+already records submitted render text; freshness indicators derive from it without stored flags.
+
 ## Render slot ownership (2026-10-12)
 Character `spec.json` retains initial candidate definitions and initial `slots_by_view`. `state.json` can override slot maps and owns `slot_version=1`, `added_candidates` definitions, mutable `candidates` updates, `detached_candidates`, and persisted supplemental target IDs. New independent slot submissions use `slot_render_ids`, `slot_review_views`, and per-candidate `slot_managed`; older `target_candidate_ids` remain supported for interrupted batch-runner work. Shared merging excludes detached identities from execution/review and active counts. Slots refer to stable candidate IDs, independently of ranking. Existing >8-candidate views remain legacy galleries; compatibility never truncates them. Per-candidate `render_input` freezes prompt text, ordered copied reference paths/hashes and preset for new render attempts.
 

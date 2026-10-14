@@ -2,6 +2,8 @@
 import json
 import re
 
+from zet.services.narrative_interview_service import FIELD_PURPOSES, MOMENT_FIELDS, VISUAL_FIELDS
+
 
 def object_schema(properties: dict) -> dict:
     return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
@@ -9,21 +11,30 @@ def object_schema(properties: dict) -> dict:
 
 TEXT = {"type": "string"}
 INTERVIEW_SCHEMA = object_schema({
-    "narrative": TEXT, "staging": TEXT, "physical_context": TEXT, "framing": TEXT,
+    "proposals": {"type": "array", "items": object_schema({
+        "scope": {"type": "string", "enum": ["moment", "appearance", "visual"]},
+        "field": {"type": "string", "enum": [*MOMENT_FIELDS, "appearance", *VISUAL_FIELDS]},
+        "element_id": TEXT, "text": TEXT, "reason": TEXT,
+    })},
+    "conflicts": {"type": "array", "items": TEXT},
     "questions": {"type": "array", "maxItems": 2, "items": TEXT},
 })
-PROMPT_SCHEMA = object_schema({"scene": {"type": "string", "maxLength": 1600},
-                               "rendering": {"type": "string", "maxLength": 1000}})
+PROMPT_SCHEMA = object_schema({"scene": TEXT, "rendering": TEXT})
 
 
 def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
     # Whole-scene intent can describe actors and events outside this target.
     # Supply only this target's direction and the inherited visual context.
     context = {key: detail[key] for key in ("title", "kind", "narrative", "staging", "physical_context", "framing", "context")}
+    context["shared_visual_context"] = detail.get("inherited_context", detail["context"])
+    context["local_overrides"] = detail.get("visual_overrides", {})
+    context["visual_sources"] = {key: "override" if context["local_overrides"].get(key) else "shared" for key in VISUAL_FIELDS}
+    context["field_purposes"] = FIELD_PURPOSES
+    context["canvas"] = {"width": detail["width"], "height": detail["height"]}
     context["elements"] = [{key: item.get(key, "") for key in ("id", "name", "kind", "appearance", "reference_role", "reference")}
                            for item in detail["elements"]]
     context["reference_images"] = [{"image_index": index, "name": item["name"], "role": item["reference_role"]}
-                                   for index, item in enumerate((el for el in detail["elements"] if el["asset_id"]), 1)]
+                                   for index, item in enumerate((el for el in detail["elements"] if el.get("reference")), 1)]
     backdrop_source = detail["kind"] == "backdrop" and detail.get("source_snapshot", {}).get("image_file")
     if backdrop_source:
         source = detail["source_snapshot"]
@@ -50,7 +61,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "by scene context or references, technical fields, coordinates, or approval of your writing. Questions are optional; "
             "produce usable draft fields even when asking questions. Do not invent significant props, identities or costumes. "
             "Apply the user's latest direction and use interview history to avoid repeating answered questions. "
-            "Return narrative, staging, physical_context, framing and questions as JSON."
+            "Return proposals, conflicts and questions as JSON."
         )
         context["history"] = detail["interview"]
         schema = INTERVIEW_SCHEMA
@@ -63,11 +74,17 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "Use exact supplied element names when introducing participants and describing their actions. "
             "Repeat the actor's name for gestures, held objects, effects and interactions whenever ownership could be ambiguous. "
             "Avoid ownerless action fragments and ambiguous pronouns; clearly name whose hand holds an object or creates an effect. "
-            "References preserve identity and costume, not source pose, gaze or camera. Do not invent extra people or significant props. "
+            "References preserve identity and costume, not source pose, gaze or camera. Authored equipment omissions or "
+            "changes take precedence over reference gear. Do not invent extra people or significant props. "
             "Only reference_images identifies supplied images. Other elements have text directions only. Do not claim that a "
             "text-only prop or subject has a supplied image. Do not mention image numbers or describe reference bindings in your paragraphs. "
-            "Keep the scene paragraph under 150 words and the rendering paragraph under 80 words. "
-            "Use inherited camera, perspective, lighting and style. For a subscene omit surrounding architecture except surfaces "
+            "Write the shortest complete prompt without weakening or dropping supplied facts. Preserve explicit equipment "
+            "and weapon exclusions, anatomy, gesture ownership and the strength of every relative-height comparison "
+            "(for example 'head and shoulders taller', not just 'taller'). Explain height using supplied comparisons, "
+            "ground plane and depth; never infer physical height from reference-image framing. Put action in scene and "
+            "visual treatment in rendering, without repeating action in rendering. "
+            "Use effective camera, perspective, lighting and style from context, which already applies local overrides. "
+            "Do not reintroduce shared values replaced by an active override. For a subscene omit surrounding architecture except surfaces "
             "necessary for the action and use a plain neutral background. For a backdrop depict the environment and only the "
             "deliberately assigned subjects. Eliminate redundant or contradictory wording. Do not write reference bindings or "
             "add master-canvas placement coordinates; these are supplied separately."
@@ -79,7 +96,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "poses, props, camera, scale, placement and environment. Describe the overall visible moment and coherent "
             "lighting, joins and contact shadows. Do not restage, redraw or add participants. Do not request a neutral "
             "background or describe numeric layer coordinates. The supplied image is the placed final composition. "
-            + ("Return narrative, staging, physical_context, framing and at most two optional questions as JSON."
+            + ("Return proposals, conflicts and at most two optional questions as JSON."
                if kind == "interview" else "Return concise scene and rendering paragraphs as JSON. Do not write image bindings.")
         )
         if detail.get("assembly_mode") == "assemble_references":
@@ -90,7 +107,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
                 "Follow the supplied source rectangle placement, scale, backdrop fit and back-to-front order; "
                 "do not restage or add participants. Source groups without reference_images are planning context only. "
                 "Do not claim a composite image is supplied. Numeric placement and image bindings are appended separately. "
-                + ("Return narrative, staging, physical_context, framing and at most two optional questions as JSON."
+                + ("Return proposals, conflicts and at most two optional questions as JSON."
                    if kind == "interview" else "Return concise scene and rendering paragraphs as JSON. Do not write image bindings.")
             )
     if backdrop_source:
@@ -101,11 +118,28 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
                          "Source text is historical context; current destination direction takes precedence. "
                          "Do not preserve source framing when a viewpoint or expansion change is requested. "
                          "Describe an image edit rather than creating an unrelated environment. Do not add people unless deliberately assigned.")
+    if kind == "interview":
+        instructions += (
+            " Propose whole-field replacements only for moment fields (narrative, staging, physical_context, framing), "
+            "assigned elements' appearance, or visual fields (setting, camera, perspective, lighting, style). "
+            "For appearance use scope='appearance', field='appearance' and the assigned element_id; for moment or visual "
+            "use the corresponding scope/field and an empty element_id. text is the complete replacement; reason briefly "
+            "explains the change. Omit unchanged fields. Keep identity, anatomy, clothing, intrinsic size and equipment "
+            "changes in shared appearance notes; propose moving poses, expressions and interactions to moment fields. "
+            "When moving information, propose both affected fields and explain the relationship. Analyze all supplied "
+            "text for conflicting instructions, identifying fields in conflicts. Active local overrides intentionally "
+            "replace shared values, so that difference alone is not a conflict. Resolve clear conflicts using the latest "
+            "explicit user direction; preserve unresolved facts and ask at most two material questions when intent is "
+            "unclear. Preserve weapon exclusions and exact relative-height comparisons. Current saved inputs are "
+            "authoritative: history may contain rejected or unapplied proposals. Reference metadata is text only; you "
+            "cannot inspect image anatomy, height or pose. Do not change names, references, membership, dimensions, models, "
+            "assembly placement or source snapshots. Return proposals, conflicts and questions as JSON."
+        )
     return instructions + "\n\nCurrent inputs:\n" + json.dumps(context, ensure_ascii=False) + "\n\nLatest direction:\n" + message, schema
 
 
 def _bind_reference_names(prose: dict, references: list[dict]) -> dict:
-    """Bind element mentions using the frozen order sent to the image encoder."""
+    """Bind first element mentions using the frozen order sent to the image encoder."""
     tags = {}
     names = []
     for index, reference in enumerate(references, 1):
@@ -124,9 +158,14 @@ def _bind_reference_names(prose: dict, references: list[dict]) -> dict:
         r"(?<!\w)(?P<name>" + "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
         + r")(?!\w)(?P<possessive>['’]s(?!\w))?(?:[ \t]*<image\d+>)*", re.IGNORECASE)
 
+    bound = set()
+
     def bind(match):
         name = match.group("name")
-        return name + (match.group("possessive") or "") + " " + tags[name.casefold()]
+        key = name.casefold()
+        suffix = "" if key in bound else " " + tags[key]
+        bound.add(key)
+        return name + (match.group("possessive") or "") + suffix
 
     return {**prose, **{key: pattern.sub(bind, prose[key]) for key in ("scene", "rendering")}}
 
