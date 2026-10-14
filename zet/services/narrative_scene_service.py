@@ -171,6 +171,8 @@ class NarrativeSceneService:
                 record.width, record.height, record.framing = 1344, 768, "Final scene"
                 record.narrative = parent["intent"]
             record = asdict(record)
+            if kind == "assembly":
+                record["assembly_mode"] = "harmonize_composite"
             self._patch(record, data, TARGET_FIELDS)
             self._validate_target(record, parent)
             if kind == "assembly":

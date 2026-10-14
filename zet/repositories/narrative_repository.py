@@ -38,6 +38,8 @@ class NarrativeRepository:
         if target:
             from zet.models.narrative import NarrativeTarget
             for key, value in asdict(NarrativeTarget(record["title"], record["kind"])).items():
+                if key == "assembly_mode" and record["kind"] == "assembly":
+                    value = "harmonize_composite"
                 record.setdefault(key, value)
         elif scene:
             from zet.models.narrative import NarrativeScene

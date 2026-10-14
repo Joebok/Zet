@@ -70,7 +70,7 @@ render-quality check. See [ADR 0009](../DECISIONS/0009-narrative-interview-revie
 
 ## Assembly and reference boundaries
 
-Layer controls/identifiers come from the client, but filenames, metadata, and source-byte binding are server owned. Assembly modes influence prompt provenance; a prompt generated for one mode cannot silently render another. `finish_composite` is the model's default assembly mode; inspect the service for supported alternatives. Extraction uses OpenCV/NumPy/Pillow and its own lock. Imported subscenes/backdrops retain independent snapshots; they are not live links to another target's changing candidate.
+Layer controls/identifiers come from the client, but filenames, metadata, and source-byte binding are server owned. Assembly modes influence prompt provenance; a prompt generated for one mode cannot silently render another. New final assemblies and older records without a saved mode default to `harmonize_composite` (Harmonize placed composite); other target kinds default to `finish_composite`. Extraction uses OpenCV/NumPy/Pillow and its own lock. Imported subscenes/backdrops retain independent snapshots; they are not live links to another target's changing candidate.
 
 `harmonize_composite` (Harmonize placed composite) freezes the same placed image,
 including extraction corrections, tolerance, scale, fit and depth. Qwen receives
