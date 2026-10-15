@@ -627,19 +627,29 @@
         <div id="qc-message" class="status-text" role="status" aria-live="polite"></div>
         <section id="qc-intake">
           <div class="qc-controls"><label>Name<input id="qc-name" maxlength="200"></label><label>Framing<select id="qc-framing"><option value="full_body">Full body</option><option value="portrait">Head-and-shoulders portrait</option></select></label><label>Angled views<select id="qc-side"><option value="left">Left side</option><option value="right">Right side</option></select></label></div>
-          <label>Description and instructions<textarea id="qc-notes" rows="3" placeholder="Describe what to preserve or change."></textarea></label>
+          <label>Style<select id="qc-style-mode"><option value="universe">Reconstruct in universe style</option><option value="preserve_source">Keep source style</option></select></label>
+          <label>Analysis model<select id="qc-model"></select></label>
+          <p id="qc-style-summary" class="status-text"></p>
+          <label>Preserve<textarea id="qc-preserve" rows="2" placeholder="Identity, hair silhouette and length, costume details…"></textarea></label>
+          <label>Change (one instruction per line)<textarea id="qc-changes" rows="3" placeholder="Remove the axe; leave both hands naturally empty."></textarea></label>
+          <label>Additional direction<textarea id="qc-notes" rows="3" placeholder="Any other requirements or context."></textarea></label>
           <div id="qc-reference-slots" class="qc-grid"></div>
           <button id="qc-create" class="primary-action" type="button">Analyze references</button>
         </section>
         <section id="qc-draft" hidden>
+          <p id="qc-next-step" class="status-text" role="status"></p>
           <div id="qc-source-images" class="qc-grid"></div>
           <div id="qc-questions"></div><button id="qc-answer" type="button" hidden>Submit answers</button>
+          <details><summary>Adjust description and generation details</summary>
+          <p id="qc-target-style" class="status-text"></p>
+          <div id="qc-target-controls" class="qc-grid"><label>Preserve<textarea id="qc-draft-preserve" rows="3"></textarea></label><label>Required changes<textarea id="qc-draft-changes" rows="3"></textarea></label></div>
           <div class="qc-grid"><section><h3>Observed details</h3><ul id="qc-observations"></ul></section><section><h3>Proposed missing details</h3><ul id="qc-proposals"></ul></section></div>
-          <label>Proposed details to use (one per line; correct or remove before approving)<textarea id="qc-proposed-details" rows="3"></textarea></label>
+          <label>Proposed details to use (one per line; edit as needed)<textarea id="qc-proposed-details" rows="3"></textarea></label>
           <label>Character description<textarea id="qc-description" rows="6"></textarea></label>
           <label>Prompt identity<textarea id="qc-identity" rows="2"></textarea></label>
-          <label><input id="qc-approved" type="checkbox"> I have reviewed the description and approved or corrected the proposed details.</label>
+          <input id="qc-approved" type="checkbox" hidden>
           <div class="button-row"><button id="qc-save-draft" type="button">Save description</button><button id="qc-reanalyze" type="button">Retry analysis</button></div>
+          </details>
           <div id="qc-views" class="qc-grid"></div>
           <div class="button-row"><button id="qc-accept" class="primary-action" type="button" disabled>Save three views to library</button><button id="qc-abandon" type="button">Abandon draft</button></div>
           <div id="qc-publication"></div>
@@ -1646,6 +1656,8 @@
             <label>Analysis model<select id="image-reconstruction-model"></select></label>
             <p id="image-reconstruction-style" class="status-text"></p>
             <label>Additional artistic direction<textarea id="image-reconstruction-notes" rows="2"></textarea></label>
+            <label>Preserve<textarea id="image-reconstruction-preserve" rows="2" placeholder="Stable identity and visible design except requested changes."></textarea></label>
+            <label>Required changes (one instruction per line)<textarea id="image-reconstruction-changes" rows="3" placeholder="Remove the axe; keep both hands naturally empty."></textarea></label>
             <button id="image-reconstruction-generate" class="primary-action" type="button">Reconstruct &amp; Generate</button>
             <p id="image-reconstruction-status" class="status-text" aria-live="polite"></p>
             <details><summary>Description and rendered prompt</summary>
@@ -1687,6 +1699,15 @@
         </form>
         <section class="control-panel image-generation-results" aria-label="Generated images">
           <h2>Results · 8 slots</h2>
+          <div class="button-row"><button id="image-reconstruction-selected" type="button" disabled>Reconstruct selected image in universe style</button><button id="image-true-up-compare" type="button" disabled>Compare selected reconstruction</button></div>
+          <section id="image-true-up-panel" hidden aria-label="Compare and true up selected image">
+            <p id="image-true-up-status" class="status-text" role="status"></p>
+            <div id="image-true-up-pair" class="qc-comparison-pair"></div>
+            <p>Review the images and choose which suggestions to apply. Add custom feedback for anything else, then review the next result. Repeat as needed; keep or import the image when it is close enough.</p>
+            <details><summary>Suggested changes</summary><div id="image-true-up-findings"></div></details>
+            <label>Additional correction<textarea id="image-true-up-instructions" rows="2" placeholder="Correct drift while retaining the brief's intentional changes."></textarea></label>
+            <button id="image-true-up-apply" type="button" disabled>Apply corrections / custom feedback</button>
+          </section>
           <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
           <div class="button-row"><button id="image-generation-review-import" class="primary-action" type="button" disabled>Add to Image Inventory</button><button id="image-generation-review-update" type="button" hidden disabled>Update Image Inventory</button></div>
           <dialog id="image-generation-review" class="image-generation-review" aria-label="Image result review">

@@ -15,6 +15,7 @@
   const refinements = new Map();
   const history = new Map();
   const answers = new Map();
+  const selectedCorrections = new Map();
 
   function node(tag, text = "", className = "") {
     const item = document.createElement(tag);
@@ -107,9 +108,12 @@
   }
   function reset() {
     epoch++; clearTimeout(timer); session = null; dirty = false;
-    refinements.clear(); history.clear(); answers.clear();
+    refinements.clear(); history.clear(); answers.clear(); selectedCorrections.clear();
     $("qc-name").value = ""; $("qc-notes").value = "";
     $("qc-framing").value = "full_body"; $("qc-side").value = "left";
+    $("qc-style-mode").value = "universe";
+    $("qc-preserve").value = "Preserve original identity, hair silhouette and length, body build and visible costume except requested changes.";
+    $("qc-changes").value = "";
     $("qc-intake").hidden = false; $("qc-draft").hidden = true;
     $("qc-publication").replaceChildren();
     buildSlots(); message(""); updateButtons();
@@ -123,11 +127,15 @@
     universe = bridge.universe(); reset(); dialog.showModal();
     if (asset) { $("qc-name").value = asset.label || ""; setAsset(0, asset); }
     await loadSessions();
+    const options = await api("/options");
+    $("qc-model").replaceChildren(...options.models.map((value) => new Option(value, value)));
+    if (options.models.includes(options.default_model)) $("qc-model").value = options.default_model;
+    $("qc-style-summary").textContent = `Universe style: ${options.style.text || "Set a canonical art style before reconstructing."}`;
   }
   function terminal() { return session && ["ACCEPTED", "ABANDONED"].includes(session.status); }
   function updateButtons() {
     const blocked = pending || Boolean(session?.busy) || Boolean(terminal());
-    for (const id of ["qc-save-draft", "qc-reanalyze", "qc-answer", "qc-description", "qc-identity", "qc-proposed-details", "qc-approved"])
+    for (const id of ["qc-save-draft", "qc-reanalyze", "qc-answer", "qc-description", "qc-identity", "qc-proposed-details", "qc-approved", "qc-draft-preserve", "qc-draft-changes"])
       $(id).disabled = blocked;
     if (session?.questions.length) for (const id of ["qc-save-draft", "qc-description", "qc-identity", "qc-proposed-details", "qc-approved"])
       $(id).disabled = true;
@@ -137,18 +145,20 @@
     $("qc-abandon").disabled = pending || Boolean(terminal());
     $("qc-accept").disabled = blocked || dirty || !session?.proposals_approved || !session.views.every((v) => session.selected[v]);
     for (const button of $("qc-views").querySelectorAll("button"))
-      button.disabled = blocked || button.dataset.available !== "true" || (dirty && button.dataset.select === "true");
+      button.disabled = blocked || button.dataset.available !== "true" || (dirty && ["true", "correction"].includes(button.dataset.select));
   }
   async function saveDraft() {
     const response = await api(`/${session.session_id}/draft`, "PATCH", { revision_id: session.revision_id,
       description: $("qc-description").value, identity: $("qc-identity").value,
-      proposals: $("qc-proposed-details").value.split("\n").map((text) => text.trim()).filter(Boolean), proposals_approved: $("qc-approved").checked });
+      preserve: $("qc-draft-preserve").value, changes: $("qc-draft-changes").value,
+      proposals: $("qc-proposed-details").value.split("\n").map((text) => text.trim()).filter(Boolean), proposals_approved: true });
     dirty = false; showSession(response.session);
   }
   async function renderView(view, refine = false, candidateId = "") {
     if (dirty || !session.proposals_approved) await saveDraft();
     const response = await api(`/${session.session_id}/${refine ? "refine" : "render"}`, "POST", {
-      revision_id: session.revision_id, view, instructions: refinements.get(view) || "", candidate_id: candidateId });
+      revision_id: session.revision_id, view, instructions: refine ? refinements.get(view) || "" : "", candidate_id: candidateId,
+      item_ids: refine ? [...(selectedCorrections.get(candidateId) || [])] : [] });
     history.delete(view); showSession(response.session);
   }
   function actionButton(text, available, operation, select = false) {
@@ -167,21 +177,58 @@
         const picker = node("select"); picker.setAttribute("aria-label", `${view} candidate history`);
         for (const [index, c] of candidates.entries()) picker.add(new Option(`Attempt ${index + 1} · ${c.stale ? "stale" : c.status.toLowerCase().replaceAll("_", " ")}${session.selected[view] === c.candidate_id ? " · approved" : ""}`, c.candidate_id));
         picker.value = choice.candidate_id;
-        picker.addEventListener("change", () => { history.set(view, picker.value); renderViews(); updateButtons(); }); card.append(picker);
-        if (choice.image_url) { const img = node("img"); img.src = imageUrl(choice.image_url); img.alt = `${session.name} ${view}`; card.append(img); }
+        picker.addEventListener("change", () => { history.set(view, picker.value); renderViews(); updateButtons(); });
+        if (candidates.length > 1) {
+          const previous = node("details"); previous.append(node("summary", "Other attempts"), picker); card.append(previous);
+        }
+        if (choice.image_url) {
+          const pair = node("div", "", "qc-comparison-pair");
+          const images = [[session.references[0].url, "Original identity evidence"], [choice.image_url, `${session.name} ${view}`]];
+          for (const [url, caption] of images) {
+            const figure = node("figure"); const img = node("img"); img.src = imageUrl(url); img.alt = caption;
+            const full = node("a", "Inspect full size / face and hair"); full.href = img.src; full.target = "_blank"; full.rel = "noopener";
+            figure.append(img, node("figcaption", caption), full); pair.append(figure);
+          }
+          card.append(pair);
+        }
         card.append(node("p", choice.error || choice.review || choice.status.toLowerCase().replaceAll("_", " ")));
-        if (choice.refinements.length) { const list = node("ul"); choice.refinements.forEach((text) => list.append(node("li", text))); card.append(list); }
+        if (choice.comparison) {
+          const suggestions = node("details"); suggestions.append(node("summary", "Suggested changes"));
+          suggestions.append(node("p", "Use any suggestions you find helpful, or describe your own changes below."));
+          const selected = selectedCorrections.get(choice.candidate_id) || new Set();
+          selectedCorrections.set(choice.candidate_id, selected);
+          for (const item of choice.comparison.items) {
+            const finding = node("div", "", "qc-finding");
+            finding.append(node("strong", `${item.feature} · ${item.category.replaceAll("_", " ")}`),
+              node("p", `Expected: ${item.expected}`), node("p", `Observed: ${item.observed}`), node("p", item.evidence));
+            if (item.correction) {
+              const label = node("label", item.correction); const input = node("input"); input.type = "checkbox";
+              input.checked = selected.has(item.id);
+              input.addEventListener("change", () => input.checked ? selected.add(item.id) : selected.delete(item.id));
+              label.prepend(input); finding.append(label);
+            }
+            suggestions.append(finding);
+          }
+          card.append(suggestions);
+        } else if (choice.refinements.length) { const list = node("ul"); choice.refinements.forEach((text) => list.append(node("li", text))); card.append(list); }
         if (session.selected[view] === choice.candidate_id) { card.classList.add("qc-selected"); card.append(node("p", "Approved")); }
-        card.append(actionButton(view === "FRONT" ? "Approve front" : "Approve view", choice.status === "READY" && !choice.stale && choice.revision_id === session.revision_id,
+        card.append(actionButton(view === "FRONT" ? "Use this front" : "Use this view", ["READY", "REVIEW_FAILED"].includes(choice.status) && !choice.stale && choice.revision_id === session.revision_id,
           async () => showSession((await api(`/${session.session_id}/select`, "POST", { revision_id: session.revision_id, candidate_id: choice.candidate_id })).session), true));
         if (choice.status === "REVIEW_FAILED") card.append(actionButton("Retry image review", !choice.stale && choice.revision_id === session.revision_id,
           async () => showSession((await api(`/${session.session_id}/review`, "POST", { revision_id: session.revision_id, candidate_id: choice.candidate_id })).session)));
+        if (choice.can_retry_render) card.append(actionButton("Retry failed render with saved inputs", !choice.stale && choice.revision_id === session.revision_id,
+          async () => showSession((await api(`/${session.session_id}/retry-render`, "POST", { revision_id: session.revision_id, candidate_id: choice.candidate_id })).session)));
       }
       const allowed = !session.questions.length && Boolean(session.description) && (view === "FRONT" || Boolean(session.selected.FRONT));
       card.append(actionButton(candidates.length ? "Generate another" : "Generate view", allowed, () => renderView(view)));
-      const label = node("label", "Refinement instructions"); const textarea = node("textarea"); textarea.rows = 2; textarea.value = refinements.get(view) || "";
+      const label = node("label", "What would you like to change?"); const textarea = node("textarea"); textarea.rows = 2; textarea.value = refinements.get(view) || "";
+      textarea.placeholder = "Keep the details you like; describe only what should change in the next attempt.";
       textarea.setAttribute("aria-label", `${view} refinement`); textarea.addEventListener("input", () => refinements.set(view, textarea.value)); label.append(textarea); card.append(label);
-      card.append(actionButton("Refine this view", allowed && Boolean(choice) && !choice.stale && ["READY", "REVIEW_FAILED"].includes(choice.status), () => renderView(view, true, choice.candidate_id)));
+      const correct = actionButton("Try these changes",
+        allowed && Boolean(choice) && !choice.stale && choice.revision_id === session.revision_id &&
+          ["READY", "REVIEW_FAILED"].includes(choice.status),
+        () => renderView(view, true, choice.candidate_id));
+      correct.dataset.select = "correction"; card.append(correct);
       $("qc-views").append(card);
     }
   }
@@ -196,7 +243,16 @@
       $("qc-identity").value = session.identity;
       $("qc-proposed-details").value = session.proposals.join("\n");
       $("qc-approved").checked = session.proposals_approved;
+      $("qc-draft-preserve").value = session.preserve || "";
+      $("qc-draft-changes").value = session.changes || "";
     }
+    $("qc-target-controls").hidden = session.style_mode !== "universe";
+    $("qc-target-style").textContent = session.target_brief ? `Frozen destination style: ${session.target_brief.style.text}` : "Source style is preserved for this draft.";
+    $("qc-next-step").textContent = session.questions.length ? "Answer the questions, then review the brief."
+      : !session.proposals_approved ? "Generate a front image to start. You can adjust the description if needed."
+      : !session.selected.FRONT ? "Review the front image. Use suggested corrections or custom feedback as needed, then approve it when it is close enough."
+      : !session.views.every((view) => session.selected[view]) ? "Generate and compare the other views using your approved front."
+      : "All three views are approved. Save the reference set when ready.";
     $("qc-source-images").replaceChildren();
     for (const [index, ref] of session.references.entries()) {
       const card = node("figure", "", "qc-card"); const img = node("img"); img.src = imageUrl(ref.url); img.alt = ref.caption;
@@ -236,7 +292,7 @@
       }, 2000);
     }
   }
-  for (const id of ["qc-description", "qc-identity", "qc-proposed-details", "qc-approved"]) $(id).addEventListener("input", () => { dirty = true; updateButtons(); });
+  for (const id of ["qc-description", "qc-identity", "qc-proposed-details", "qc-approved", "qc-draft-preserve", "qc-draft-changes"]) $(id).addEventListener("input", () => { dirty = true; updateButtons(); });
   $("quick-character-wizard-open").addEventListener("click", () => act(() => open()));
   $("quick-character-wizard-from-asset").addEventListener("click", () => act(() => {
     const asset = bridge.selectedAsset();
@@ -265,6 +321,8 @@
     if (references.some((ref) => !ref.caption)) throw new Error("Describe what each reference conveys.");
     if (primaryIndex < 0) throw new Error("Choose a supplied image as primary identity.");
     showSession((await api("", "POST", { name: $("qc-name").value, notes: $("qc-notes").value,
+      style_mode: $("qc-style-mode").value, model: $("qc-model").value,
+      preserve: $("qc-preserve").value, changes: $("qc-changes").value,
       framing: $("qc-framing").value, side: $("qc-side").value, primary_index: primaryIndex,
       references: references.map(({ slotIndex, ...ref }) => ref) })).session);
     await loadSessions();

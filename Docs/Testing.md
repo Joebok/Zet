@@ -94,6 +94,8 @@ It preflights the Zet and AI Proxy Python runtimes, the configured Ollama model,
 
 Joe explicitly approves each new test, scenario, or material coverage expansion. The approval must identify the user task and why the existing scenarios are insufficient. Existing tests can be repaired to preserve their approved purpose. Do not add exhaustive cases, snapshots, coverage targets, test frameworks, or dependencies without that approval.
 
+Shared reconstruction/true-up (2026-10-15) has no maintained scenario. Ignored disposable prepared-response checks exercise intent-aware reports, original-source render exclusion, corrections/retry, three-view wizard publication, front replacement, selected-result ancestry and stale selection. A disposable browser check exercises both new controls and resume/dirty-field behavior. These checks use isolated storage/prepared models and images; Freydis's actual identity/style quality requires separate visual acceptance. Maintained S1–S3 remain unchanged.
+
 For a change, locate the relevant S1–S3 assertions, run the approved baseline, and inspect uncovered contracts in authoritative code. Do not add tests for retiring Scene Builder/local scene-batch workflows. Plan/test references must distinguish scenario coverage from source-only verification. [DEVELOPMENT.md](DEVELOPMENT.md) records actual command outcomes; [ADR 0004](DECISIONS/0004-local-task-testing-baseline.md) records the policy change.
 
 The existing `/narrative` test links redirect into the mounted dashboard editor. The approved S1–S3 scenarios retain their purpose. The 2026-10-12 retirement used separate disposable/manual migration and Candidates checks; these are not additional maintained tests. No live rendering was performed.
