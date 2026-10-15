@@ -108,17 +108,21 @@ class EntityLibraryService:
             return
         items = self.pipeline_provider()
         active_origin_keys = set()
+        local_origin_keys = set()
+        local_image_paths = set()
         for item in items:
             source_type = str(getattr(item, "source_type", ""))
             source_path = Path(str(getattr(item, "image_path", "")))
             if source_type == "local-pipeline" and source_path.is_file():
+                local_image_paths.add(source_path.resolve())
                 checksum = hashlib.sha256(source_path.read_bytes()).hexdigest()
                 origin_key = (f"local:{getattr(item, 'pipeline', '')}:{getattr(item, 'character', '')}:"
                               f"{getattr(item, 'phase', '')}:")
                 legacy_origin_key = origin_key + checksum
                 if str(getattr(item, "pipeline", "")).casefold() == "costume-dressing":
                     origin_key += f"{str(getattr(item, 'costume', '')).casefold()}:{str(getattr(item, 'view', '')).upper()}:"
-                active_origin_keys.update((legacy_origin_key, origin_key + checksum))
+                local_origin_keys.update((legacy_origin_key, origin_key + checksum))
+        active_origin_keys.update(local_origin_keys)
         for item in items:
             if (
                 getattr(item, "source_type", "") != "pipeline"
@@ -188,6 +192,8 @@ class EntityLibraryService:
             self._pipeline_signatures[origin_key] = signature
         stamp = _now()
         with self.repository.transaction() as connection:
+            self._restore_local_pipeline_assets(connection, local_origin_keys, stamp,
+                                                verified_paths=local_image_paths)
             if active_origin_keys:
                 placeholders = ",".join("?" for _ in active_origin_keys)
                 archived = connection.execute(
@@ -209,6 +215,35 @@ class EntityLibraryService:
                     (stamp,),
                 )
             self._deactivate_asset_references(connection, [row["asset_id"] for row in archived], stamp)
+
+    def _restore_local_pipeline_assets(self, connection, origin_keys: set[str], stamp: str,
+                                       *, verified_paths: set[Path] | None = None) -> None:
+        """Recover archived publications only when their verified source and blob agree."""
+        if not origin_keys:
+            return
+        placeholders = ",".join("?" for _ in origin_keys)
+        rows = connection.execute(
+            f"SELECT asset_id,file_name,checksum,origin_key FROM assets "
+            f"WHERE origin='pipeline' AND status='archived' AND origin_key IN ({placeholders})",
+            tuple(sorted(origin_keys)),
+        ).fetchall()
+        for row in rows:
+            path = self._image_path(row["asset_id"], row["file_name"])
+            if verified_paths is not None and path.resolve() not in verified_paths:
+                continue
+            if (row["origin_key"].rsplit(":", 1)[-1] != row["checksum"]
+                    or not path.is_file()
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != row["checksum"]):
+                continue
+            connection.execute(
+                "UPDATE assets SET status='approved',updated_at=? WHERE asset_id=?",
+                (stamp, row["asset_id"]),
+            )
+            connection.execute(
+                "UPDATE logical_references SET status='active',updated_at=? "
+                "WHERE asset_id=? AND status='inactive'",
+                (stamp, row["asset_id"]),
+            )
 
     @staticmethod
     def _deactivate_asset_references(connection, asset_ids: list[str], stamp: str) -> None:
@@ -464,6 +499,12 @@ class EntityLibraryService:
             key += f"{str(costume).casefold()}:{str(view).upper()}:"
         key += checksum
         asset = self.import_asset(label, mime_type, data, origin="pipeline", origin_key=key, notes="Locked local pipeline image")
+        if asset["status"] == "archived":
+            with self.repository.transaction() as connection:
+                self._restore_local_pipeline_assets(connection, {key}, _now())
+            asset = self.get_asset(asset["asset_id"])
+            if asset["status"] == "archived":
+                raise EntityLibraryServiceError(f"Published pipeline image is missing or has changed: {asset['asset_id']}")
         if str(pipeline).casefold() == "costume-dressing" and costume and view:
             return self.classify_costume_image(asset["asset_id"], character=character, phase=phase,
                                                 costume=costume, view=view, reference_key=reference_key)
