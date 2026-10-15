@@ -138,29 +138,63 @@ Keep this plan active: local implementation is not proof of artistic style unifi
 
 Local implementation and isolated verification are complete. Additional checks passed for stale library sources, malformed analysis responses, cross-universe job lookup, preservation of saved-prompt style provenance at render time, settings rebind while analysis is active, and changing the analysis model without applying a late reply over edited text. Legacy migration explicitly retains its authored style.
 
-Joe authorized publication and deployment in chat on 2026-10-15. The scoped change is being isolated for publication through the normal feature PR and deployment workflow. No release was published or promoted, no issue-worker guard was bypassed, and no live render job was submitted. Keep WP9 active pending rollout, the three-view dressed batches and Joe's image review.
+Publication/deployment authorization requested in chat because the existing dashboard serves an immutable release and AGENTS requires approval for external writes. No release was published or promoted, no issue-worker guard was bypassed, and no live render job was submitted. Keep WP9 active pending rollout, the three-view dressed batches and Joe's image review.
 
-## Authorized rollout — 2026-10-15
+## Publication and deployment checkpoint â€” 2026-10-15
 
-Joe authorized publication and deployment, followed by the approved three-view batches. A managed release checkout excludes unrelated workspace changes (including the earlier CODE_MAP/LIBRARY edits). In that isolated checkout, S1–S3 passed (28.6s), disposable backend and browser reconstruction checks passed, JavaScript syntax checks passed, and diff whitespace checks passed. Scoped review confirmed saved-prompt style provenance, legacy scene compatibility, analysis-only source references, reservation fencing and frozen retries. Publication and deployment are in progress; live artistic acceptance remains pending.
+Joe authorized publication/deployment. The isolated style change passed S1â€“S3 (28.6s), disposable backend/browser checks and syntax/diff checks; PR #68 (https://github.com/Joebok/Zet/pull/68) merged as `29a62d2663d8da7c681408231c2f6830ed3e5239`. Deployment operation `dbd17da87d494a5eb3f63b5d18ff3918` failed before stopping production: the old runtime has the previously installed `entity_library_service.py` inventory-recovery hotfix as an uncommitted tracked edit. The same fix exists in the working checkout. Do not drop the hotfix or bypass the deployment guard. A separate scoped publication is prepared; authorization to include that prerequisite has been requested. Production remains on revision `2e3ad3517bc46e61f6c57ced46163ef06a3ce97c`; no live style-unification batches have been submitted.
+
+## Live rollout started â€” 2026-10-15
+
+Joe approved the separate Inventory recovery publication. PR #69 merged as `c14e12ffde1faf9fbadbbc6d0a63c3db9c767c54`, containing PR #68. The exact installed hotfix was backed up and committed in the previous runtime as `ca09edb` without altering source bytes, preserving rollback. Deployment `0c9ba147e32c4f5cb0f25266bf6e7448` succeeded through the normal staged checks. Health is ready on `c14e12f`, new boot `b2de2aaa39014acb9b4dd3cf2ed90f35`.
+
+Live FRONT Body batch `20261015_042323_241465` and Head batch `20261015_042325_741265` started via the production APIs and AI Proxy. Both frozen FRONT render inputs have zero image references; Head front_source is empty. The first images are rendered; complete-batch review and provisional source selection remain pending. Only the three approved views will be executed; no published locks are needed. Receipts/details are retained in ignored test-results.
 
 ## Discovered live dependency: render output handoff
 
 The first live trial exposed an existing Head/Assembly/Dressing handoff race: candidate state used a fixed candidate filename while the staged render and background harvester used a timestamped target_output_file. A runner could wait after successful harvesting. Three Head FL outputs and two Dressing FRONT outputs were recovered by verifying exact current ask receipts, matching seeds and candidate-contained PNG paths, then copying unchanged bytes to the expected paths. No rerender or published lock change occurred.
 
-### WP9a — Align candidate and harvester output paths
+### WP9a â€” Align candidate and harvester output paths
 - Files: local_head_image_service.py, local_character_asset_pipeline_service.py; LOCAL_CHARACTERS and this plan.
 - Dependency: live evidence from WP9.
-- Work: use the staged ask’s target_output_file in candidate state, preserving the legacy fallback for prepared responses.
+- Work: use the staged askâ€™s target_output_file in candidate state, preserving the legacy fallback for prepared responses.
 - Acceptance: the runner and generic harvester wait/write the same candidate-contained file; prompts, seeds, ordered references and queue ownership are unchanged.
-- Validation: approved S1–S3 plus disposable prepared-ask path assertions. Deploy after active render work drains to preserve in-flight runners.
+- Validation: approved S1â€“S3 plus disposable prepared-ask path assertions. Deploy after active render work drains to preserve in-flight runners.
 
-WP9a validation passed: S1–S3 (3 passed, 29.2s), disposable staged-ask filename assertions for Head/Assembly/Dressing, and diff whitespace checks. This changes only candidate destination tracking; no prompt, reference or renderer setting changes.
+WP9a validation passed: S1â€“S3 (3 passed, 29.2s), disposable staged-ask filename assertions for Head/Assembly/Dressing, and diff whitespace checks. This changes only candidate destination tracking; no prompt, reference or renderer setting changes.
 
-Rollout context: PR #68 (`29a62d2`) and the separately authorized Inventory recovery PR #69 (`c14e12f`) are merged and deployed. Health reports ready on `c14e12f`, boot `b2de2aaa39014acb9b4dd3cf2ed90f35`. Body run `20261015_042323_241465`, Head `20261015_042325_741265`, Assembly `7d95c65e40d244738f9aa41c6b1125e0`, Dressing `5af2e119bc6849779727004290528cba` contain the live trial. FRONT source selections are Body F-002, Head F-006, Assembly F-008. Body FL-001 and Head FL-002 feed three-quarter Assembly; remaining batches are in progress. Current gates are disabled by saved settings; Luna rankings and visual inspection guide provisional selection. No published locks were added.
+## Live handoff dependency â€” WP9a
 
-## Review-gallery access repair — 2026-10-15
+The live trial exposed an existing filename race in Head and generic Assembly/Dressing: background harvesting used the staged timestamped target_output_file, while runners waited on a different fixed candidate filename. Matched current successful ask receipts, seeds and candidate-contained PNGs allowed recovery without rerendering or changing pixels/locks. Candidate state now follows the staged filename. PR #70 merged as `ac9328e`; approved S1â€“S3 passed (29.2s), disposable staged-path checks for all three adapters and diff checks passed. Deploy after in-flight work drains. Bodyâ€™s three review views are rendered and provisionally selected; FRONT Head/Assembly/Dressing are rendered. Remaining three-quarter/rear work continues.
 
-Joe reported that the finished Dressing batch could not open. Its saved costume is `Canonical_Adventure_Gear`, while the existing page requests display name `Canonical Adventure Gear`. Listing already normalizes the directory, but detail lookup used strict raw equality and returned not found. Repair packet: normalize the qualifier for detail/image/action lookup and resolve display-name/slug links in the existing selector. Files: local_character_asset_pipeline_service.py, local_asset_pipeline.js, LOCAL_CHARACTERS and this plan. Acceptance: both aliases show the same fixture/live batch and images, a different costume remains rejected, no creative files change. Validation: S1–S3, disposable alias and browser checks, syntax and diff checks. Publish/deploy through the already authorized normal workflow.
+## First image review checkpoint â€” 2026-10-15
 
-Gallery repair validation: S1–S3 passed (28.6s); disposable backend checks passed for display/slug detail, listing and image paths with different-costume rejection; browser checks opened both link forms and displayed the seeded image with no page errors. JavaScript syntax and diff checks passed.
+Implementation and rollout are delivered through PRs #68, #69 and #70. Final deployment `6aee2576f3d14dbd840842182b50938e` succeeded on `ac9328e0ffee4c544d69e93c4a131f3c9d43873f`, boot `aab118b5cdfe48f297d9b63b1549e6d9`. The controller ran its normal isolated baseline before promotion. S1â€“S3 also passed locally for the final code (29.2s); disposable handoff checks passed for Head/Assembly/Dressing. No runtime hotpatch was used for the filename fix.
+
+All four existing pipeline galleries now contain exactly the requested rendered review subset: 8 FRONT, 4 FRONT_LEFT_3_4, 4 BACK_RIGHT_3_4 (64 images total). Other views remain unsubmitted. Runs are named `Style unification - pass 1 - three views`:
+- Body: `20261015_042323_241465`; provisional sources F-002, FL-001, BR-004.
+- Head: `20261015_042325_741265`; provisional sources F-006, FL-002, BR-003.
+- Assembly: `7d95c65e40d244738f9aa41c6b1125e0`; provisional sources F-008, FL-001, BR-002.
+- Canonical Adventure Gear Dressing: `5af2e119bc6849779727004290528cba`; FRONT F-006 selected provisionally for view continuity; no final winner/lock published.
+
+The disposable live audit passed for all 64 images and complete three-view rankings, reference checksums, zero FRONT Body/Head references, current local character anchors, and only jewelry/embroidery library inputs. Rear jewelry is the existing separate rear-design binding. No trial batch owns a published lock. Current configured gates were disabled; rankings and direct inspection guided provisional selection. Human review/rating fields were not presented as Joe's approval. Alternatives remain in the existing galleries.
+
+Visual inspection across every candidate shows a consistent naturalistic direction, dimensional adult faces and body shading, and differentiated cloth/leather/metal/gemstone treatment surviving Dressing. Artistic uniformity with the rest of the cast still requires Joe's collective batch review. Costume neckline, hem and embroidery placement vary; some FRONT heads have a fuller/longer bob. These are review findings, not fixture-test guarantees.
+
+Rear orientation remains an unmet artistic acceptance check: Head rear sources are rear-biased, but all four Assembly rear outputs independently turn the head toward the camera despite the explicit shared-orientation lock; Dressing preserves that drift. Head BR-003 was chosen over the ranking's BR-002 to avoid its visible eye. Assembly BR-002 was the least-drifting available output, chosen over top-ranked BR-003; the ranked winner showed more face. Thus rankings alone are insufficient for rear-view correctness. Do not treat the rear samples as orientation-approved or publish them as final locks.
+
+WP1â€“WP8 and the first WP9 rendered review set are delivered. Keep the plan active for Joe's image assessment and subsequent artistic iteration; do not claim full style or view acceptance. Remaining views/outfits and the Narrative group regeneration/frozen-layer refresh are still deferred until the direction is accepted. No live Narrative test was run. Ignored `test-results/style-unification-live-audit.json` and the render reconciliation receipt retain hashes and trial provenance.
+
+## Gallery access repair â€” 2026-10-15
+
+Joe could not open the trial batch because the page requested display name `Canonical Adventure Gear`, while the API-created batch saved `Canonical_Adventure_Gear`. The existing list normalized folders, but detail access compared raw strings. Normalize detail lookup with the existing qualifier and resolve display/slug links in the existing costume selector. PR #71 merged as `e23377f`; S1â€“S3 passed (28.6s), disposable backend alias/isolation/image checks and browser gallery checks passed, as did syntax/diff checks. Deployment is in progress; no creative image, selection or lock was changed.
+
+Gallery repair rollout complete: deployment `53554bdbf2204829bb6437f841adc566` succeeded on `e23377f`, boot `25bb2ac4de3c49a1a292ee2da30cba8c`. A read-only live browser check opened the exact batch through both costume aliases, selected the correct batch/control, loaded all 16 candidate images, and reported no browser errors. Existing gallery access is restored; no rerender or creative-data change was needed.
+
+## Accepted style direction and repository reconciliation
+
+Joe locked the FRONT character image and regenerated the group assembly. Final assembly slots 3â€“6 use universe style; Joe judged the progress excellent and identified Rin, Peri, Galen and Snarlspark as the remaining legacy-style subjects. Keep the accepted universe/Tsaeytte direction steady for that next reconstruction pass; the rear-view orientation finding remains separate.
+
+The local `Style Unification Part 1` commit was rebased onto the published fixes through PR #71. The two add/add plan conflicts were resolved by preserving completed local rollout/image-review evidence and the published work-packet/publication notes. The separately committed portable-path/process changes are retained. Original commit `a8bed1d` is preserved on `codex/style-unification-part1-backup`.
+
+Reconciliation validation: tracked code, prompt templates and shared authoring templates match original commit `a8bed1d` exactly. Published style/recovery/handoff/gallery fixes are retained as ancestors. Python syntax checks passed for the four additional code files, and `git diff --check` passed. The first baseline run passed S1/S3 but the character scenario hit a Windows permission error reading fixture state.json, followed by a locked runner file during failure capture; the trace is retained in ignored test-results/reconciliation-file-lock-trace.zip. A clean rerun passed all three approved scenarios (28.4s). No code or permanent tests were changed to resolve the documentation conflicts.

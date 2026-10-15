@@ -14,6 +14,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cwd", type=Path, required=True)
     parser.add_argument("--command-json", required=True)
+    parser.add_argument("--after-command-json")
     parser.add_argument("--pid", type=int, action="append", default=[])
     args = parser.parse_args()
 
@@ -37,6 +38,13 @@ def main() -> None:
     command = json.loads(args.command_json)
     subprocess.Popen(command, cwd=str(args.cwd), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                      start_new_session=platform.system() != "Windows")
+    if args.after_command_json:
+        # Let the dashboard bind its port and enter startup before starting the
+        # companion worker. Both processes use the same managed config.
+        time.sleep(1)
+        subprocess.Popen(json.loads(args.after_command_json), cwd=str(args.cwd),
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                         start_new_session=platform.system() != "Windows")
 
 
 if __name__ == "__main__":

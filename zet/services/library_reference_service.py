@@ -23,6 +23,9 @@ _LIBRARY_ROOTS = frozenset({
     "PipelineCandidates", "Pipelines", "Stories", "_state", "images",
 })
 _FORMAT_FIELD = "library_path_format_version"
+_OUTPUT_DESTINATION_FIELDS = frozenset({
+    "target_output_dir", "target_output_file", "output_path", "artifact_output_dir",
+})
 
 
 class LibraryReferenceError(ValueError):
@@ -137,9 +140,15 @@ def migrate_library_document(
                     continue
             except (ValueError, OSError):
                 continue
+            # Explicit former roots are commonly library-container roots while
+            # ``current`` is the owning universe root. Drop that universe
+            # directory only in this known container-to-universe mapping.
+            # A former root that already names the universe has no such prefix.
+            if old_root != current and relative.parts and relative.parts[0].casefold() == current.name.casefold():
+                relative = Path(*relative.parts[1:])
             if old_root != current:
                 target = current.joinpath(*relative.parts)
-                if field not in {"target_output_file", "output_path", "artifact_output_dir"} and not target.exists():
+                if field not in _OUTPUT_DESTINATION_FIELDS and not target.exists():
                     unresolved.append(f"{field}: {value}")
                     return value
             else:
@@ -161,7 +170,7 @@ def migrate_library_document(
             try:
                 resolved = current.joinpath(*value.replace("\\", "/").split("/")).resolve()
                 if (not resolved.is_relative_to(current)
-                        or field not in {"target_output_file", "output_path", "artifact_output_dir"} and not resolved.exists()):
+                        or field not in _OUTPUT_DESTINATION_FIELDS and not resolved.exists()):
                     unresolved.append(f"{field}: {value}")
             except OSError:
                 unresolved.append(f"{field}: {value}")

@@ -77,7 +77,7 @@ Preserve universe isolation, path containment, image checksums, image bytes, loc
 - Work: load ConfigService and universe descriptors without constructing ZetApp; process recognized operational JSON fields in all configured universes; accept repeated `--old-library-root` and `--route-root`; scan configured local and legacy route stores; use atomic per-file writes and a compact resumable progress/result record with no backup payloads. Exclude backups, deleted folders, historical journals, logs, free-text errors, and immutable transport artifacts. Verify path existence/hash when required, report exact unresolved fields, and mark each universe complete only after verification. Refuse concurrent updates and require affected server/harvesters stopped.
 - Acceptance: idempotent rerun; interrupted runs resume; malformed, ambiguous, unsupported, and missing operational references return nonzero with actionable diagnostics; command default applies then verifies.
 - Validation: disposable migration with interrupted write, rerun, hashes/bytes preserved, and already-normalized records unchanged.
-- Status: implementation complete. Disposable full apply/verify, image-hash verification, route conversion, completion marker, fingerprint report, untyped historical-occurrence count and byte-stable idempotent rerun passed. Live process-quiescence behavior was not exercised against production; the command checks it before any mutation.
+- Status: complete. A disposable regression check verified that explicit former-container roots map through the configured universe and that missing future output directories are allowed while missing images remain blockers. Production conversion stopped all Zet processes, corrected the container-to-universe mapping, excluded `_backup` snapshots, and converted 11,182 references followed by 59 allowed future output directories. After Joe explicitly waived the 66 absent references in three old FirstDay batches and four Tsaeytte test-render records, the final pass reported zero unresolved references and wrote the Moonsea format-v1 marker. The 66 original field values remain unchanged and are listed separately in the update report.
 
 ### WP7 — Compatibility, documentation, and completion
 - Dependencies: WP1–6.
@@ -85,22 +85,27 @@ Preserve universe isolation, path containment, image checksums, image bytes, loc
 - Work: ensure converted libraries cannot be started by an old reader or rolled back by code alone. Document command invocation, quiescence, compatibility and recovery using the user's retained copy. Record exact implementation validation, update owned documentation, and move this plan to `plans/completed/` only after acceptance.
 - Acceptance: deployment refuses incompatible library format; docs accurately describe stored references and updater; final diff contains no unrelated changes.
 - Validation: disposable compatibility check; approved `npm run test:e2e`; `git diff --check`; final diff review.
-- Status: implementation and documentation complete. Compatibility checks, ADR and rollout instructions are present. `npm run test:e2e` passed all 3 scenarios once before the final shared-writer updates; the latest run passed S2/S3 but S1 timed out because the Narrative list returned an ID different from the fixture context and its detail returned 404. This needs investigation before archiving the plan.
+- Status: complete. Compatibility checks, ADR and rollout instructions are present. The approved `npm run test:e2e` baseline passed all 3 scenarios and `git diff --check` passed. Production restarted on the active release and reported healthy. A representative Valindia costume image and its character-assembly source both returned HTTP 200; no generation jobs were submitted.
 
 ## Validation
 
-Use disposable fixtures only. Demonstrate moving a fixture library, making the original unavailable, changing config, and verifying image display/source resolution, locks, Narrative snapshots, and queued result application. Verify post-restart writes remain relative and a second relocation needs only config. Verify idempotence and preservation of bytes, bindings, order, and decisions. Run the approved three-scenario E2E baseline and `git diff --check`. Production endpoint/lock checks and migration are a separate rollout after review; no live migration or production restart is authorized here.
+Use disposable fixtures only. Demonstrate moving a fixture library, making the original unavailable, changing config, and verifying image display/source resolution, locks, Narrative snapshots, and queued result application. Verify post-restart writes remain relative and a second relocation needs only config. Verify idempotence and preservation of bytes, bindings, order, and decisions. Run the approved three-scenario E2E baseline and `git diff --check`. Production conversion and verification completed with the user's explicit 66-reference waiver; the completion marker is present, the active release is healthy, and representative image/source endpoints returned HTTP 200.
 
 ## Risks and alternatives
 
-Some of the roughly 10,900 old-root strings are historical or point to pre-migration layouts; only typed operational fields are eligible for conversion. Missing or ambiguous active references must be reported and left unchanged rather than guessed. An older release cannot read converted references, so apply only after compatible code is installed and use the retained library copy for old-release recovery.
+Some of the roughly 10,900 old-root strings are historical or point to pre-migration layouts; only typed operational fields are eligible for conversion. Missing or ambiguous active references are reported and left unchanged rather than guessed. For this production conversion, Joe explicitly waived the 66 absent references in three identified old FirstDay batches and four specific Tsaeytte `Local_Test_Renders` records; they remain unchanged and are listed in the update report. An older release cannot read converted references, so recovery with an older release requires Joe's retained library copy.
 
 ## Progress and decisions
 
 - User selected a direct offline apply-and-verify command without preview or backup payloads.
 - Existing config already selects E: in both development and active production release.
-- Initial repository state was clean. No live library/queue files changed.
+- Initial repository state was clean.
 - Implemented path format version 1, owning storage boundaries, producer-local routes, offline updater, release checks and the affected documentation.
 - Python 3.14.6 compile, disposable relocation/updater checks, and `git diff --check` passed. No permanent tests, scenarios, dependencies or live renders were added.
-- The final approved baseline's S1 mismatch is unresolved, so the plan remains active and is not archived as complete.
-- No live library or shared queue data was changed; production restart and migration remain separate rollout actions.
+- User authorized stopping production, converting the library, exempting these named missing references, and resuming the active release. Two stale old-release harvesters were terminated; the other four original processes had exited before the stop action.
+- Final report: `%LOCALAPPDATA%/Zet/LibraryReferenceUpdates/16c0c61571177370d8eb.json`; 8,781 records scanned, 0 changed on the final idempotent verification pass, 66 approved historical references listed separately, 0 unresolved references, 0 errors, and 30 untyped historical occurrences. The Moonsea format-v1 marker is present.
+- Production release `2e3ad3517bc46e61f6c57ced46163ef06a3ce97c` restarted and `/api/health` reported ready. Valindia Loungewear candidate image and character-assembly source endpoints both returned HTTP 200.
+
+## Final results
+
+Portable version-1 library references, format-specific conversion, runtime compatibility, and the apply-and-verify updater are implemented and documented. The live E: library and producer-local routes were converted while services were stopped; the approved absent FirstDay/test-render references remain untouched and are reported as waivers. The compatible active release is running. `npm run test:e2e` passed all 3 approved scenarios, the disposable exemption-boundary check passed, and `git diff --check` passed. No generation jobs were submitted.
