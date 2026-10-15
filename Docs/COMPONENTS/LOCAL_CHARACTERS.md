@@ -81,3 +81,9 @@ Select this image establishes a working choice. A selected, unlocked front can g
 Inventory launches open the owning Minor Character for published outputs, or offer create/continue for other images. Continuing never silently replaces references. See [ADR 0014](../DECISIONS/0014-minor-character-workspaces.md) and [data model](../DATA_MODEL.md). The legacy wizard routes remain compatibility adapters; no new major-character pipeline is introduced.
 
 Minor Character suggestions run separately from rendering, so pending/failed review does not delay subsequent generation. Reference image URLs use stable reference IDs. Local implementation and disposable service/browser validation are complete; no production rollout or live image-quality claim is implied.
+
+### Prompt iterations and comparison review
+
+Generate and Try these changes each start a prompt iteration with one render in a four-slot board. The top strip switches iterations for the current view. Add renders fills empty slots; Regenerate replaces one slot using the saved render payload, including reference pixels and refinement direction, with fresh seeds. Workspace edits apply to new iterations. Clear removes only board membership, preserving candidate files, working selections and Inventory locks. Earlier candidates adopt individual iterations.
+
+Inspect full size and slot thumbnails open one paired review dialog: designated original on the left, candidate on the right, with Select candidate below it. Previous/next buttons and left/right arrow keys navigate rendered slots within the active iteration only. Selection remains separate from locking. The comparison picker changes display only. Slot actions use POST /api/minor-characters/{sid}/iterations/{iteration_id}/slots; allocation and prompt reuse belong to MinorCharacterService.

@@ -68,6 +68,11 @@ def create_minor_character_router(provider):
     def analyze(sid: str, data: dict = Body(default={})):
         return {"character": call(lambda s: s.analyze(sid, answers=data.get("answers")))}
 
+    @router.post("/{sid}/iterations/{iteration_id}/slots")
+    def slots(sid: str, iteration_id: str, data: dict = Body(...)):
+        return {"character": call(lambda s: s.iteration_slots(sid, iteration_id,
+            data.get("action"), data.get("slot"), data.get("count", 1)))}
+
     @router.post("/{sid}/select")
     def select(sid: str, data: dict = Body(...)):
         return {"character": call(lambda s: s.select(sid, "", str(data.get("candidate_id", ""))))}

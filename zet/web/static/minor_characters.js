@@ -11,6 +11,7 @@
   let patch = {}, saving = null, saveTimer = null, pollTimer = null, pending = false, generation = 0;
   let view = "FRONT", preview = "", referenceSignature = "";
   let waitingForCandidate = null;
+  let iterationId = "";
   const feedback = new Map(), suggestions = new Map();
   const element = (tag, text = "", cls = "") => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
   const button = (text, action) => { const b = element("button", text); b.type = "button"; b.addEventListener("click", () => act(action)); return b; };
@@ -26,7 +27,7 @@
     if (pending) return;
     pending = true; updateButtons();
     try { await operation(); } catch (error) { message(error.message, true); }
-    finally { pending = false; updateButtons(); }
+    finally { pending = false; if (character) renderImages(); updateButtons(); }
   }
   function route(id, replace = false) {
     const target = new URL(location.href); target.searchParams.set("page", "minor-characters");
@@ -77,18 +78,18 @@
     $("mc-inventory-entry").hidden = !entryAsset; await refreshList(); message("");
   }
   async function open(id) {
+    $("mc-review").close(); iterationId = "";
     await flush(); generation++; clearTimeout(pollTimer); patch = {}; feedback.clear(); suggestions.clear();
     const result = await api(`/${id}`); character = result.character;
     references = character.references; referenceSignature = "";
     view = character.views.includes(character.active_view) ? character.active_view : "FRONT";
-    preview = character.preview_candidate_id || ""; route(character.character_id);
+    preview = character.preview_candidate_id || ""; iterationId=character.active_iteration_id || ""; route(character.character_id);
     $("mc-list-panel").hidden = true; $("mc-editor").hidden = false; $("mc-back").hidden = false;
     show(character); message("");
   }
   function imageFigure(source, caption) {
     const figure = element("figure"); const img = document.createElement("img"); img.src = url(source); img.alt = caption;
-    const full = element("a", "Inspect full size"); full.href = img.src; full.target = "_blank"; full.rel = "noopener";
-    figure.append(img, element("figcaption", caption), full); return figure;
+    figure.append(img, element("figcaption", caption)); return figure;
   }
   function referencePayload() {
     return references.map(r => ({...(r.reference_id ? {reference_id:r.reference_id} : {}),
@@ -134,28 +135,80 @@
     }
   }
   function choice() { return character?.candidates.find(c=>c.candidate_id===preview && c.view===view); }
+  function iteration() { return character?.iterations.find(i=>i.iteration_id===iterationId && i.view===view); }
+  function occupied() { return (iteration()?.slots || []).map(id=>character.candidates.find(c=>c.candidate_id===id)).filter(c=>c?.image_url); }
+  async function selectCandidate(id = preview) {
+    await flush(); show((await api(`/${character.character_id}/select`,"POST",{candidate_id:id})).character);
+  }
+  async function slotAction(action, slot, count = 1) {
+    await flush(); show((await api(`/${character.character_id}/iterations/${iterationId}/slots`,"POST",{action,slot,count})).character);
+  }
+  function renderReview() {
+    if (!$("mc-review").open) return;
+    const list = occupied(), candidate = choice(), index = list.findIndex(c=>c.candidate_id===preview);
+    const ref = references.find(r=>r.reference_id===(patch.comparison_reference_id || character.comparison_reference_id)) || references[0];
+    $("mc-review-pair").replaceChildren();
+    if (ref?.url) $("mc-review-pair").append(imageFigure(ref.url,"Original reference"));
+    if (candidate?.image_url && index>=0) {
+      const figure = imageFigure(candidate.image_url,`${character.name} · ${label(view)} · ${index+1} of ${list.length}`);
+      const select = button(character.selected[view]===preview ? "Selected candidate" : "Select candidate",()=>selectCandidate(candidate.candidate_id));
+      select.disabled = pending || character.selected[view]===preview; figure.append(select); $("mc-review-pair").append(figure);
+    }
+    $("mc-review-prev").disabled = index<=0;
+    $("mc-review-next").disabled = index<0 || index>=list.length-1;
+  }
+  function navigateReview(direction) {
+    const list=occupied(), index=list.findIndex(c=>c.candidate_id===preview), next=list[index+direction];
+    if (next) { preview=next.candidate_id; changed("preview_candidate_id",preview); renderImages(); updateButtons(); }
+  }
+  function inspect(id = preview) {
+    preview=id; changed("preview_candidate_id",preview); renderImages(); if (!$("mc-review").open) $("mc-review").showModal(); renderReview();
+  }
   function renderImages() {
     if (!character.views.includes(view)) view = "FRONT";
     const candidates = character.candidates.filter(c=>c.view===view);
     if (waitingForCandidate?.view===view && candidates.length>waitingForCandidate.count) {
-      preview=candidates.at(-1).candidate_id; waitingForCandidate=null; changed("preview_candidate_id",preview);
+      preview=candidates.at(-1).candidate_id; iterationId=candidates.at(-1).iteration_id;
+      waitingForCandidate=null; changed("preview_candidate_id",preview); changed("active_iteration_id",iterationId);
     }
-    if (!choice()) preview = candidates.find(c=>c.candidate_id===character.selected[view])?.candidate_id || candidates.at(-1)?.candidate_id || "";
+    const iterations=character.iterations.filter(i=>i.view===view);
+    if (choice() && (waitingForCandidate===null) && !iteration()) iterationId=choice().iteration_id;
+    if (!iteration()) iterationId=iterations.at(-1)?.iteration_id || "";
+    if (!iteration()?.slots.includes(preview)) preview=iteration()?.slots.find(id=>id===character.selected[view]) || iteration()?.slots.find(Boolean) || "";
     $("mc-tabs").replaceChildren();
     for (const target of character.views) {
-      const tab = button(label(target), async () => { view = target; preview = ""; renderImages(); changed("active_view", view); changed("preview_candidate_id", preview); updateButtons(); });
+      const tab = button(label(target), async () => { view = target; preview = ""; iterationId=""; renderImages(); changed("active_view", view); changed("preview_candidate_id", preview); updateButtons(); });
       tab.setAttribute("role", "tab"); tab.setAttribute("aria-selected", String(view===target)); $("mc-tabs").append(tab);
     }
     $("mc-candidates").replaceChildren();
-    for (const candidate of candidates) {
-      const tile = button("", async () => { preview = candidate.candidate_id; renderImages(); changed("preview_candidate_id", preview); updateButtons(); });
-      tile.className = "mc-candidate"; tile.setAttribute("aria-label", `Preview candidate ${candidates.indexOf(candidate)+1}`); tile.setAttribute("aria-pressed",String(preview===candidate.candidate_id));
+    for (const [index, item] of iterations.entries()) {
+      const candidate=character.candidates.find(c=>c.candidate_id===(item.slots.find(id=>id===character.selected[view]) || item.slots.find(Boolean) || item.template_candidate_id));
+      const tile = button("", async () => { iterationId=item.iteration_id; preview=item.slots.find(Boolean) || ""; renderImages(); changed("active_iteration_id",iterationId); changed("preview_candidate_id", preview); updateButtons(); });
+      tile.className = "mc-candidate"; tile.setAttribute("aria-label", `Iteration ${index+1}`); tile.setAttribute("aria-pressed",String(iterationId===item.iteration_id));
       if (candidate.image_url) { const img = document.createElement("img"); img.src = url(candidate.image_url); img.alt = `${label(view)} candidate`; tile.append(img); }
       else tile.append(element("span", candidate.status.toLowerCase().replaceAll("_"," ")));
-      if (character.selected[view]===candidate.candidate_id) tile.append(element("span","Selected"));
-      if (character.locked[view]?.candidate_id===candidate.candidate_id) tile.append(element("span","Locked"));
+      tile.append(element("span",`Iteration ${index+1}`));
+      if (item.slots.includes(character.selected[view])) tile.append(element("span","Selected"));
+      if (item.slots.includes(character.locked[view]?.candidate_id)) tile.append(element("span","Locked"));
       $("mc-candidates").append(tile);
     }
+    $("mc-slots").replaceChildren(); $("mc-add-renders").replaceChildren();
+    const board=iteration();
+    for (let slot=0;slot<4;slot++) {
+      const candidate=character.candidates.find(c=>c.candidate_id===board?.slots[slot]);
+      const card=element("section","","mc-slot"); card.append(element("strong",`Slot ${slot+1}`));
+      if (candidate?.image_url) {
+        const thumb=button("",()=>inspect(candidate.candidate_id)); thumb.className="mc-slot-image";
+        const img=document.createElement("img"); img.src=url(candidate.image_url); img.alt=`Slot ${slot+1} candidate`; thumb.append(img); card.append(thumb);
+        const select=button(character.selected[view]===candidate.candidate_id ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
+        select.disabled=pending; card.append(select);
+      } else card.append(element("p",candidate ? candidate.error || candidate.status.toLowerCase() : "Empty"));
+      const controls=element("div","","button-row");
+      const regen=button("Regenerate",()=>slotAction("regenerate",slot)); regen.disabled=pending || character.busy || !board;
+      const clear=button("Clear",()=>slotAction("clear",slot)); clear.disabled=pending || !candidate || ["QUEUING","QUEUED","RUNNING"].includes(candidate.status);
+      controls.append(regen,clear); card.append(controls); $("mc-slots").append(card);
+    }
+    if (board) $("mc-add-renders").append(window.ZetRenderSlots.countControl(board.slots.filter(id=>!id).length,count=>act(()=>slotAction("add",undefined,count)),{disabled:pending || character.busy}));
     const candidate = choice(); const refId = patch.comparison_reference_id || character.comparison_reference_id;
     const reference = references.find(r=>r.reference_id===refId) || references[0];
     $("mc-comparison").replaceChildren();
@@ -177,6 +230,8 @@
       }
     } else if (candidate?.review) $("mc-findings").append(element("p", candidate.review));
     $("mc-open-locked").hidden = !character.locked[view];
+    $("mc-inspect").disabled = !candidate?.image_url;
+    renderReview();
   }
   function updateButtons() {
     const busy = pending || character?.busy;
@@ -187,6 +242,7 @@
     $("mc-lock").disabled = pending || !choice()?.image_url || character?.selected[view]!==preview;
     $("mc-analyze").disabled = !character || busy || !references.length;
     $("mc-add-reference").disabled = pending || references.length>=3; $("mc-upload").disabled = references.length>=3;
+    if (character) renderReview();
   }
   async function addReference(reference) {
     if (references.length>=3) throw new Error("Use up to three original references.");
@@ -202,7 +258,9 @@
     waitingForCandidate={view,count:character.candidates.filter(c=>c.view===view).length};
     const result = await api(`/${character.character_id}/generate`,"POST",{view,
       ...(refine ? {candidate_id:preview,instructions:feedback.get(view)||"",item_ids:[...(suggestions.get(preview)||[])]} : {})});
-    preview = result.character.candidates.filter(c=>c.view===view).at(-1)?.candidate_id || ""; show(result.character);
+    const latest=result.character.candidates.filter(c=>c.view===view).at(-1);
+    preview = latest?.candidate_id || ""; iterationId=latest?.iteration_id || ""; show(result.character);
+    changed("active_iteration_id",iterationId);
   }
   async function load() {
     if (universe!==bridge.universe()) { generation++; clearTimeout(pollTimer); character=null; patch={}; universe=bridge.universe(); entryAsset=null; }
@@ -238,7 +296,16 @@
   $("mc-continue").addEventListener("click",()=>act(async()=>{entryAsset=null;await open($("mc-continue-choice").value);}));
   $("mc-generate").addEventListener("click",()=>act(()=>generateImage(false)));
   $("mc-refine").addEventListener("click",()=>act(()=>generateImage(true)));
-  $("mc-select").addEventListener("click",()=>act(async()=>{await flush();show((await api(`/${character.character_id}/select`,"POST",{candidate_id:preview})).character);}));
+  $("mc-select").addEventListener("click",()=>act(()=>selectCandidate()));
+  $("mc-inspect").addEventListener("click",()=>inspect());
+  $("mc-review-close").addEventListener("click",()=>$("mc-review").close());
+  $("mc-review-prev").addEventListener("click",()=>navigateReview(-1));
+  $("mc-review-next").addEventListener("click",()=>navigateReview(1));
+  document.addEventListener("keydown",event=>{
+    if ($("mc-review").open && ["ArrowLeft","ArrowRight"].includes(event.key) && !["INPUT","TEXTAREA","SELECT"].includes(event.target.tagName)) {
+      event.preventDefault(); navigateReview(event.key==="ArrowLeft" ? -1 : 1);
+    }
+  });
   $("mc-lock").addEventListener("click",()=>act(async()=>{await flush();show((await api(`/${character.character_id}/lock`,"POST",{view})).character);message("Locked image saved to Inventory.");}));
   $("mc-open-locked").addEventListener("click",()=>act(async()=>{const id=character.locked[view].asset_id;await flush();await bridge.activatePage("auxiliary-resources");await bridge.openAsset(id);}));
   $("mc-analyze").addEventListener("click",()=>act(async()=>{await flush();show((await api(`/${character.character_id}/analyze`,"POST",{})).character);}));

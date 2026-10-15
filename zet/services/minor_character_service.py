@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4, uuid5, NAMESPACE_URL
@@ -50,6 +51,12 @@ class MinorCharacterService(QuickCharacterWizardService):
                 "set_id": publication.get("set_id"), "locked_at": value.get("updated_at", ""), "source_session_id": sid})
         if value["status"] == "ACCEPTED":
             value["status"] = "REVIEW_READY"
+        iterations = value.setdefault("iterations", [])
+        for candidate in value["candidates"]:
+            if not candidate.get("iteration_id"):
+                candidate["iteration_id"] = candidate["candidate_id"]
+                iterations.append({"iteration_id": candidate["candidate_id"], "view": candidate["view"],
+                    "template_candidate_id": candidate["candidate_id"], "slots": [candidate["candidate_id"], None, None, None]})
         return value
 
     def _write(self, session):
@@ -266,7 +273,7 @@ class MinorCharacterService(QuickCharacterWizardService):
             for key in ("primary_reference_id", "comparison_reference_id"):
                 requested = payload.get(key, session.get(key))
                 session[key] = requested if requested in ids else (ids[0] if ids else "")
-            for key in ("active_view", "preview_candidate_id"):
+            for key in ("active_view", "preview_candidate_id", "active_iteration_id"):
                 if key in payload:
                     session[key] = text(payload[key], key)
             if before != self._signature(session):
@@ -359,8 +366,64 @@ class MinorCharacterService(QuickCharacterWizardService):
                 candidate["instructions"] = instructions
                 candidate["correction_report_id"] = ""
         session["candidates"].append(candidate)
+        candidate["iteration_id"] = candidate["candidate_id"]
+        session["iterations"].append({"iteration_id": candidate["iteration_id"], "view": view,
+            "template_candidate_id": candidate["candidate_id"], "slots": [candidate["candidate_id"], None, None, None]})
         session.update(status="RENDERING", job={"kind": "render", "status": "COMPLETE", "error": ""})
         return candidate
+
+    def iteration_slots(self, sid, iteration_id, action, slot=None, count=1):
+        """Manage a four-slot board; rerenders replay submitted inputs, never current form inputs."""
+        sid = self._canonical(sid)["session_id"]
+        with self._lock(sid):
+            session = self._read(sid)
+            iteration = next((i for i in session["iterations"] if i["iteration_id"] == iteration_id), None)
+            if not iteration or action not in {"add", "regenerate", "clear"}:
+                raise QuickCharacterWizardError("Choose an iteration and slot action.")
+            if action != "add" and (type(slot) is not int or not 0 <= slot < 4):
+                raise QuickCharacterWizardError("Choose a slot from 1 to 4.")
+            by_id = {c["candidate_id"]: c for c in session["candidates"]}
+            if action == "clear":
+                old = by_id.get(iteration["slots"][slot])
+                if old and old["status"] in {"QUEUING", "QUEUED", "RUNNING"}:
+                    raise QuickCharacterWizardConflict("Wait for this slot to finish rendering.")
+                iteration["slots"][slot] = None
+                self._write(session)
+                return self._public(session)
+            if self._busy(session):
+                raise QuickCharacterWizardConflict("An image task is already running.")
+            template = by_id[iteration["template_candidate_id"]]
+            if not template.get("render_payload"):
+                raise QuickCharacterWizardError("This iteration has no submitted prompt. Generate a new iteration.")
+            empty = [n for n, cid in enumerate(iteration["slots"]) if not cid]
+            if action == "add" and (type(count) is not int or not 1 <= count <= len(empty)):
+                raise QuickCharacterWizardError("Choose a render count within the empty slots.")
+            targets = empty[:count] if action == "add" else [slot]
+            candidates = []
+            for target in targets:
+                candidate = {key: deepcopy(template[key]) for key in (
+                    "view", "revision_id", "anchor_id", "refinement_base_id", "instructions", "inputs",
+                    "reconstruction_id", "target_hash", "view_context", "correction_report_id") if key in template}
+                candidate.update(candidate_id=uuid4().hex, iteration_id=iteration_id, request_id="",
+                    status="QUEUING", error="", review="", refinements=[], stale=False, created_at=self._now())
+                session["candidates"].append(candidate)
+                iteration["slots"][target] = candidate["candidate_id"]
+                candidates.append(candidate)
+            session.update(status="RENDERING", job={"kind": "render", "status": "COMPLETE", "error": ""})
+            self._write(session)
+            self._submit(sid, self._render_slots, candidates, deepcopy(template["render_payload"]))
+            return self._public(session)
+
+    def _render_slots(self, sid, candidates, payload):
+        for candidate in candidates:
+            try:
+                self._dispatch_candidate(sid, candidate, payload)
+            except Exception as exc:
+                with self._lock(sid):
+                    session = self._read(sid)
+                    target = next(c for c in session["candidates"] if c["candidate_id"] == candidate["candidate_id"])
+                    target.update(status="FAILED", error=str(exc))
+                    self._write(session)
 
     def render(self, sid, revision_id, view, instructions="", candidate_id="", item_ids=None):
         sid = self._canonical(sid)["session_id"]

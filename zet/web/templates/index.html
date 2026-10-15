@@ -783,11 +783,14 @@
           </aside>
           <section class="mc-images">
             <div id="mc-tabs" class="button-row" role="tablist" aria-label="Character views"></div>
-            <div id="mc-candidates" class="mc-candidates" aria-label="Candidates"></div>
+            <h3>Prompt iterations</h3>
+            <div id="mc-candidates" class="mc-candidates" aria-label="Prompt iterations"></div>
+            <div id="mc-add-renders"></div>
+            <div id="mc-slots" class="mc-slots" aria-label="Current iteration render slots"></div>
             <label>Comparison reference<select id="mc-comparison-reference"></select></label>
             <div id="mc-comparison" class="qc-comparison-pair"></div>
             <p id="mc-candidate-status" role="status"></p>
-            <div class="button-row"><button id="mc-select" type="button">Select this image</button><button id="mc-lock" type="button">Lock selected image</button><button id="mc-open-locked" type="button" hidden>Open locked image in Inventory</button></div>
+            <div class="button-row"><button id="mc-inspect" type="button">Inspect full size</button><button id="mc-select" type="button">Select this image</button><button id="mc-lock" type="button">Lock selected image</button><button id="mc-open-locked" type="button" hidden>Open locked image in Inventory</button></div>
             <details id="mc-suggestions"><summary>Suggested changes</summary><div id="mc-findings"></div></details>
           </section>
         </div>
@@ -2147,7 +2150,11 @@ Add prompt language here.
   <script src="/static/task_attention.js?v=20261013-github"></script>
   <script src="/static/render_slots.js?v=20261012"></script>
   <script src="/static/zet.js?v=20261013-github"></script>
-  <script src="/static/minor_characters.js?v=20261015"></script>
+  <dialog id="mc-review" class="mc-review">
+    <div class="button-row"><button id="mc-review-close" type="button">Close review</button><button id="mc-review-prev" type="button" aria-label="Previous candidate">← Previous</button><button id="mc-review-next" type="button" aria-label="Next candidate">Next →</button></div>
+    <div id="mc-review-pair" class="qc-comparison-pair"></div>
+  </dialog>
+  <script src="/static/minor_characters.js?v=20261015-slots"></script>
   <script src="/static/local_asset_pipeline.js?v=20261013-github"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
 
