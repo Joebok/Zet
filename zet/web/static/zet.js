@@ -1482,6 +1482,7 @@ async function pollImageGenerationWorkspace() {
   try { applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace")); await pollImageReconstruction(); }
   catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, `Unable to check renders: ${error.message}. Retrying automatically.`, "error"); }
   finally { imageGenerationWorkspacePolling = false; }
+  await pollImageTrueUp();
 }
 
 async function imageGenerationSlotAction(operation, slot, inputs) {
@@ -1524,7 +1525,7 @@ async function loadImageReconstructionOptions() {
     imageReconstructionUniverse = universe;
     reconstructionField("source").textContent = "No source selected.";
     reconstructionField("preview").hidden = true;
-    for (const name of ["description", "prompt", "notes"]) reconstructionField(name).value = "";
+    for (const name of ["description", "prompt", "notes", "preserve", "changes"]) reconstructionField(name).value = "";
     reconstructionField("uncertainties").textContent = "";
     reconstructionField("status").textContent = "";
   }
@@ -1539,7 +1540,7 @@ async function loadImageReconstructionOptions() {
 }
 
 function reconstructionBaseline() {
-  return {description: reconstructionField("description").value, prompt: reconstructionField("prompt").value};
+  return Object.fromEntries(["description", "prompt", "preserve", "changes"].map(name => [name, reconstructionField(name).value]));
 }
 
 function setImageReconstructionSource(source, preview) {
@@ -1571,6 +1572,11 @@ async function pollImageReconstruction() {
       if (reconstructionField("description").value === fieldBaseline.description) reconstructionField("description").value = job.content_prompt || "";
       if (reconstructionField("prompt").value === fieldBaseline.prompt) reconstructionField("prompt").value = job.prompt || "";
       reconstructionField("uncertainties").textContent = (job.uncertainties || []).join(" · ");
+      for (const name of ["preserve", "changes"]) {
+        if (job.target && reconstructionField(name).value === fieldBaseline[name]) {
+          reconstructionField(name).value = job.target[name === "changes" ? "change_text" : name];
+        }
+      }
     }
   } catch (error) {
     if (state.universeId === universe && imageReconstructionJob?.id === id) reconstructionField("status").textContent = error.message;
@@ -1596,7 +1602,8 @@ async function startImageReconstruction() {
       headers: {"Content-Type": "application/json"}, body: JSON.stringify({...source, model,
         count: Number(document.querySelector("#image-generation-count").value),
         width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value),
-        notes: reconstructionField("notes").value})});
+        notes: reconstructionField("notes").value, preserve: reconstructionField("preserve").value,
+        changes: reconstructionField("changes").value})});
     if (state.universeId !== universe) return;
     // The job continues independently; selecting another source must not replace that form.
     window.localStorage.setItem(`zet:reconstruction-job:${universe}`, job.id);
@@ -1664,7 +1671,7 @@ reconstructionField("use-text").addEventListener("click", () => {
   if (!imageReconstructionJob?.content_prompt || !reconstructionField("prompt").value.trim()) return;
   imageGenerationPrompt.value = reconstructionField("prompt").value;
   imageGenerationPrompt.dataset.managedStyle = `Art style:\n${imageReconstructionJob.style.text}\n\n`;
-  imageGenerationReconstruction = Object.fromEntries(["id", "model", "source", "style", "instruction_version", "content_prompt", "uncertainties", "notes", "prompt"].map(key => [key, imageReconstructionJob[key]]));
+  imageGenerationReconstruction = Object.fromEntries(["id", "version", "model", "source", "style", "instruction_version", "content_prompt", "uncertainties", "notes", "prompt", "target", "target_hash"].map(key => [key, imageReconstructionJob[key]]));
   imageGenerationReconstruction.edited_content_prompt = reconstructionField("description").value;
   setImageGenerationMode("txt2img");
   imageGenerationSource.hidden = true;
@@ -1856,6 +1863,134 @@ async function generateEntityIdentity() {
 
 const imageGenerationTerminalStatuses = new Set(["COMPLETE", "PARTIAL", "FAILED", "ERROR"]);
 
+let imageTrueUpReport = null;
+let imageTrueUpSelection = "";
+let imageTrueUpBusy = false;
+let imageTrueUpPolling = false;
+const imageTrueUpItems = new Set();
+
+function currentTrueUpSelection() {
+  return JSON.stringify([state.universeId, imageGenerationSlots[imageGenerationSelectedSlot] || null]);
+}
+
+function syncImageTrueUpSelection() {
+  const signature = currentTrueUpSelection();
+  if (signature === imageTrueUpSelection) return;
+  imageTrueUpSelection = signature;
+  imageTrueUpReport = null; imageTrueUpItems.clear();
+  document.querySelector("#image-true-up-panel").hidden = true;
+  document.querySelector("#image-true-up-instructions").value = "";
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(`zet:true-up:${state.universeId}`) || "null");
+    if (saved?.selection === signature) {
+      imageTrueUpReport = {id: saved.id, task_id: saved.task_id, status: "RUNNING", items: []};
+    }
+  } catch { /* A malformed local draft must not affect the server-owned selection. */ }
+}
+
+function renderImageTrueUp() {
+  const panel = document.querySelector("#image-true-up-panel");
+  const report = imageTrueUpReport;
+  panel.hidden = !report;
+  if (!report) return;
+  document.querySelector("#image-true-up-status").textContent = report.error || report.summary || "Comparing the selected image…";
+  const pair = document.querySelector("#image-true-up-pair"); pair.replaceChildren();
+  const selected = imageGenerationResult(imageGenerationSelectedSlot);
+  if (selected) {
+    for (const [url, label] of [[`/api/image-generation/reconstructions/${encodeURIComponent(report.task_id)}/sources/0?universe_id=${encodeURIComponent(state.universeId)}`, "Original identity evidence"], [selected.image.url, "Selected candidate"]]) {
+      const figure = document.createElement("figure"); const image = document.createElement("img");
+      image.src = url; image.alt = label;
+      const link = document.createElement("a"); link.href = url; link.target = "_blank"; link.rel = "noopener"; link.textContent = `${label} · inspect full size`;
+      figure.append(image, link); pair.append(figure);
+    }
+  }
+  const findings = document.querySelector("#image-true-up-findings"); findings.replaceChildren();
+  for (const item of report.items || []) {
+    const finding = document.createElement("div"); finding.className = "qc-finding";
+    const heading = document.createElement("strong"); heading.textContent = `${item.feature} · ${item.category.replaceAll("_", " ")}`;
+    finding.append(heading);
+    for (const line of [`Expected: ${item.expected}`, `Observed: ${item.observed}`, item.evidence]) {
+      const p = document.createElement("p"); p.textContent = line; finding.append(p);
+    }
+    if (item.correction) {
+      const label = document.createElement("label"); const input = document.createElement("input"); input.type = "checkbox";
+      input.checked = imageTrueUpItems.has(item.id);
+      input.addEventListener("change", () => input.checked ? imageTrueUpItems.add(item.id) : imageTrueUpItems.delete(item.id));
+      label.append(input, document.createTextNode(item.correction)); finding.append(label);
+    }
+    findings.append(finding);
+  }
+  const apply = document.querySelector("#image-true-up-apply");
+  apply.disabled = !canApplyImageTrueUp();
+  apply.title = imageGenerationSlots.some(slot => !slot) ? "Creates a new result; keeps the selected input." : "Clear an unselected slot to make space for a correction.";
+}
+
+function canApplyImageTrueUp() {
+  const custom = document.querySelector("#image-true-up-instructions").value.trim();
+  return !imageTrueUpBusy && Boolean(imageTrueUpReport) && imageGenerationSlots.some(slot => !slot) &&
+    (imageTrueUpReport.status === "COMPLETE" || (Boolean(custom) && imageTrueUpItems.size === 0));
+}
+
+document.querySelector("#image-true-up-instructions").addEventListener("input", () => {
+  document.querySelector("#image-true-up-apply").disabled = !canApplyImageTrueUp();
+});
+
+async function pollImageTrueUp() {
+  if (!imageTrueUpReport || imageTrueUpReport.status !== "RUNNING" || imageTrueUpPolling) return;
+  imageTrueUpPolling = true;
+  const signature = imageTrueUpSelection, report = imageTrueUpReport;
+  try {
+    const next = await fetchJson(`/api/image-generation/reconstructions/${encodeURIComponent(report.task_id)}/reports/${encodeURIComponent(report.id)}`);
+    if (currentTrueUpSelection() !== signature || imageTrueUpReport?.id !== report.id) return;
+    imageTrueUpReport = next; renderImageTrueUp();
+  } catch (error) {
+    if (currentTrueUpSelection() === signature && !isRequestCancellation(error)) {
+      document.querySelector("#image-true-up-status").textContent = `${error.message}. Use Compare again to retry.`;
+    }
+  } finally { imageTrueUpPolling = false; }
+}
+
+document.querySelector("#image-reconstruction-selected").addEventListener("click", () => {
+  const selected = imageGenerationResult(imageGenerationSelectedSlot);
+  if (!selected) return;
+  const expected = imageGenerationSlots[imageGenerationSelectedSlot];
+  setImageReconstructionSource({selected_result: {...expected}, label: `Selected result · slot ${imageGenerationSelectedSlot + 1}`}, selected.image.url);
+  reconstructionField("preserve").value = selected.job.reconstruction?.target?.preserve || "Preserve stable identity and visible design except requested changes.";
+  reconstructionField("changes").value = selected.job.reconstruction?.target?.change_text || "";
+  document.querySelector("#image-reconstruction-panel").open = true;
+  reconstructionField("changes").focus();
+});
+
+document.querySelector("#image-true-up-compare").addEventListener("click", async () => {
+  if (imageTrueUpBusy) return;
+  imageTrueUpBusy = true;
+  const signature = currentTrueUpSelection();
+  try {
+    const report = await fetchJson("/api/image-generation/comparisons", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({selected_result: imageGenerationSlots[imageGenerationSelectedSlot]})});
+    if (currentTrueUpSelection() !== signature) return;
+    imageTrueUpReport = report; imageTrueUpItems.clear(); renderImageTrueUp();
+    window.localStorage.setItem(`zet:true-up:${state.universeId}`, JSON.stringify({selection: signature, id: report.id, task_id: report.task_id}));
+  } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
+  finally { imageTrueUpBusy = false; renderImageGenerationStatus(); }
+});
+
+document.querySelector("#image-true-up-apply").addEventListener("click", async () => {
+  if (!canApplyImageTrueUp()) return;
+  imageTrueUpBusy = true; renderImageTrueUp();
+  try {
+    const job = await fetchJson("/api/image-generation/corrections", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({selected_result: imageGenerationSlots[imageGenerationSelectedSlot], task_id: imageTrueUpReport.task_id,
+        report_id: imageTrueUpReport.id, item_ids: [...imageTrueUpItems], instructions: document.querySelector("#image-true-up-instructions").value,
+        width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value)})});
+    imageReconstructionJob = {...job, fieldBaseline: reconstructionBaseline()};
+    window.localStorage.setItem(`zet:reconstruction-job:${state.universeId}`, job.id);
+    applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace"));
+    document.querySelector("#image-true-up-status").textContent = "Preparing a correction in a new slot. The selected input is retained.";
+  } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
+  finally { imageTrueUpBusy = false; renderImageGenerationStatus(); }
+});
+
 function renderImageGenerationStatus() {
   const busy = imageGenerationPending;
   const emptyCount = imageGenerationSlots.filter(item => !item).length;
@@ -1866,6 +2001,10 @@ function renderImageGenerationStatus() {
   const completed = imageGenerationReviewableSlots().length;
   imageGenerationProgress.textContent = `${completed} of ${IMAGE_GENERATION_SLOT_COUNT} slots filled`;
   const selected = imageGenerationResult(imageGenerationSelectedSlot);
+  syncImageTrueUpSelection();
+  document.querySelector("#image-reconstruction-selected").disabled = busy || !selected;
+  document.querySelector("#image-true-up-compare").disabled = imageTrueUpBusy || !selected?.job.reconstruction?.target_hash;
+  renderImageTrueUp();
   imageGenerationReviewImport.disabled = !selected;
   imageGenerationReviewUpdate.hidden = !imageGenerationSource.dataset.assetId;
   imageGenerationReviewUpdate.disabled = !selected || !selected.job.source_asset_id;

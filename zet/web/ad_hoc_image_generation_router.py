@@ -57,6 +57,36 @@ def create_ad_hoc_image_generation_router(
         except (KeyError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @router.get("/reconstructions/{job_id}/sources/{index}")
+    def reconstruction_source(job_id: str, index: int):
+        try:
+            core = service_provider().reconstruction
+            contents, mime = core.source_image(job_id, index)
+            return Response(content=contents, media_type=mime, headers={"Cache-Control": "no-store"})
+        except (KeyError, ValueError, IndexError, OSError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.post("/comparisons")
+    def compare_selected(payload: dict[str, Any] = Body(...)):
+        try:
+            return service_provider().reconstruction.start_comparison(payload)
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/reconstructions/{job_id}/reports/{report_id}")
+    def comparison_status(job_id: str, report_id: str):
+        try:
+            return service_provider().reconstruction.report(job_id, report_id)
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.post("/corrections")
+    def correct_selected(payload: dict[str, Any] = Body(...)):
+        try:
+            return service_provider().reconstruction.correct_selected(payload)
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @router.post("/jobs")
     def submit(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:

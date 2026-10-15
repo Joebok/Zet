@@ -57,11 +57,30 @@ class ImageGenerationWorkspace:
             board["imported_browser_state"] = True
             write_json_atomic(self.path, board)
 
-    def submit_reconstruction(self, request_id, inputs):
+    def selected_result(self, expected):
+        """Resolve an exact completed selection in this universe, never a client path."""
+        with file_lock(self.lock), self.generator._lock:
+            board = self._load()
+            position = board["selected_slot"]
+            assignment = board["slots"][position] if position is not None else None
+            if (not isinstance(expected, dict) or not assignment or assignment != expected
+                    or type(expected.get("index")) is not int):
+                raise RenderSlotConflict("The selected image changed. Select the current image and try again.")
+            self.generator.status(assignment["requestId"])
+            contents, _, provenance = self.generator.library_result(assignment["requestId"], assignment["index"])
+            return contents, {"request_id": assignment["requestId"], "image_index": assignment["index"],
+                              "asset_id": "", "label": "Selected Image Generation result",
+                              "reconstruction": provenance.get("reconstruction", {})}
+
+    def submit_reconstruction(self, request_id, inputs, expected_source=None):
         with file_lock(self.lock), self.generator._lock:
             if request_id in self.generator._jobs:
                 return
             board = self._load()
+            if expected_source is not None:
+                selected = board["selected_slot"]
+                if selected is None or board["slots"][selected] != expected_source:
+                    raise RenderSlotConflict("The selected source changed during analysis. Start again.")
             children = {item["index"] for item in board["slots"] if item and item["requestId"] == request_id}
             if children != set(range(inputs["count"])):
                 raise RenderSlotConflict("Reconstruction slots changed during analysis. Start a new reconstruction.")

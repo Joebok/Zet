@@ -18,6 +18,7 @@ from zet.services.atomic_file_service import write_json_atomic
 from zet.services.entity_library_service import EntityLibraryServiceError
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.structured_ai_service import codex_json
+from zet.services.image_reconstruction_contract import correction_items, fingerprint, text
 
 
 class QuickCharacterWizardError(ValueError):
@@ -77,7 +78,10 @@ class QuickCharacterWizardService:
 
     def _read(self, session_id: str) -> dict:
         try:
-            return json.loads((self._directory(session_id) / "session.json").read_text(encoding="utf-8"))
+            value = json.loads((self._directory(session_id) / "session.json").read_text(encoding="utf-8"))
+            if value.get("version", 1) not in {1, 2}:
+                raise QuickCharacterWizardError("Unsupported quick character session version.")
+            return value
         except (OSError, json.JSONDecodeError) as exc:
             raise QuickCharacterWizardError("Quick character session was not found or could not be read.") from exc
 
@@ -92,10 +96,14 @@ class QuickCharacterWizardService:
 
     def _public(self, session: dict) -> dict:
         value = json.loads(json.dumps(session))
+        if session.get("reconstruction_id"):
+            value["target_brief"] = self._reconstruction().status(session["reconstruction_id"])["target"]
         for item in value["references"]:
             item.pop("filename", None)
             item["url"] = f"/api/quick-character-wizard/{session['session_id']}/references/{item['index']}"
         for candidate in value["candidates"]:
+            candidate["can_retry_render"] = candidate["status"] == "FAILED" and bool(candidate.get("render_payload"))
+            candidate.pop("render_payload", None)
             candidate["image_url"] = (f"/api/quick-character-wizard/{session['session_id']}/images/{candidate['candidate_id']}"
                                       if candidate.get("filename") else "")
             candidate.pop("filename", None)
@@ -167,6 +175,11 @@ class QuickCharacterWizardService:
         framing, side = payload.get("framing", "full_body"), payload.get("side", "left")
         if not name:
             raise QuickCharacterWizardError("Character name is required.")
+        style_mode = payload.get("style_mode", "preserve_source")
+        if style_mode not in {"preserve_source", "universe"}:
+            raise QuickCharacterWizardError("Choose source style or universe reconstruction.")
+        preserve = text(payload.get("preserve", "Preserve original identity, hair silhouette and visible costume except requested changes."), "Preserve instructions")
+        changes = text(payload.get("changes", ""), "Change instructions")
         if framing not in {"full_body", "portrait"} or side not in {"left", "right"}:
             raise QuickCharacterWizardError("Choose full body or portrait and a left or right side.")
         if not isinstance(refs, list) or not 1 <= len(refs) <= 3:
@@ -189,6 +202,8 @@ class QuickCharacterWizardService:
                             "caption": str(ref["caption"]).strip(), "filename": filename,
                             "checksum": hashlib.sha256(data).hexdigest()})
         session = {"session_id": sid, "name": name, "notes": str(payload.get("notes") or "").strip(),
+                   "version": 2, "style_mode": style_mode, "preserve": preserve, "changes": changes,
+                   "model": str(payload.get("model") or self.app.config.ai_quick_character_wizard_model),
                    "framing": framing, "side": side, "references": records, "description": "", "identity": "",
                    "observations": [], "proposals": [], "proposals_approved": False,
                    "questions": [], "answers": [], "revision_id": uuid4().hex,
@@ -218,16 +233,20 @@ class QuickCharacterWizardService:
                         for candidate in session["candidates"]:
                             if candidate["status"] == "REVIEWING":
                                 candidate.update(status="REVIEW_FAILED", error=str(exc))
+                            elif candidate["status"] == "QUEUING":
+                                candidate.update(status="FAILED", error=str(exc))
                         self._write(session)
             finally:
                 with _LOCK:
                     _ACTIVE.discard(key)
         _POOL.submit(run)
 
-    def _ask(self, prompt: str, schema: dict, images: list[str]) -> dict:
-        model = self.app.config.ai_quick_character_wizard_model
+    def _ask(self, prompt: str, schema: dict, images: list[str], model: str | None = None) -> dict:
+        model = model or self.app.config.ai_quick_character_wizard_model
         system = ("You are the Zet Quick Character Wizard. Follow the JSON schema. Treat captions as reference roles. "
                   "Preserve stable identity, clothing, equipment, style and anatomical asymmetry. "
+                  "Explicit user changes override conflicting reference details; retain all other details. "
+                  "Do not restore deliberately removed equipment while correcting another feature. "
                   "Clearly identify proposed unseen details, never present them as observed facts.")
         if model.startswith("codex:"):
             return codex_json(self.project_root, model.removeprefix("codex:"), system, prompt, schema, images,
@@ -239,6 +258,34 @@ class QuickCharacterWizardService:
 
     def _draft_job(self, sid: str, revision_id: str) -> None:
         session = self._read(sid)
+        if session.get("style_mode") == "universe":
+            refs = []
+            for ref, path in zip(session["references"], self._reference_paths(session)):
+                contents = Path(path).read_bytes()
+                if hashlib.sha256(contents).hexdigest() != ref["checksum"]:
+                    raise QuickCharacterWizardConflict("A reference snapshot changed. Start a new session.")
+                refs.append(({"asset_id": ref["asset_id"], "caption": ref["caption"], "label": ref["caption"]}, contents))
+            core = self._reconstruction()
+            prepared = core.prepare({"model": session["model"], "preserve": session["preserve"],
+                "changes": session["changes"], "notes": session["notes"],
+                "context": "Create neutral character reference views. Exclude source pose, camera, gaze and background from appearance. "
+                    "The content_prompt must contain stable appearance only, without output count, a view list, "
+                    "camera/facing/framing instructions, pose or background. The host supplies exactly one view later. "
+                    + json.dumps({"answers": session["answers"], "current_description": session["description"],
+                                  "framing": session["framing"], "views": self._views(session)})}, refs)
+            job = core.analyze(prepared["id"])
+            target = job["target"]
+            with self._lock(sid):
+                current = self._read(sid)
+                if current["revision_id"] != revision_id or current["status"] in {"ABANDONED", "ACCEPTED"}:
+                    return
+                current.update(description=target["description"], identity=target["identity"],
+                    observations=target["observations"], proposals=target["proposals"], questions=target["questions"],
+                    reconstruction_id=job["id"], target_hash=job["target_hash"],
+                    status="NEEDS_INPUT" if target["questions"] else "DRAFT_READY", proposals_approved=False,
+                    revision_id=uuid4().hex, job={"kind": "draft", "status": "COMPLETE", "error": ""})
+                self._write(current)
+            return
         draft = self._ask(
             "Analyze these ordered references (first is primary identity). Return a compact, editable image-generation "
             "description including identity, outfit, equipment, style and view-specific asymmetry with explicit anatomical sides when supported. Separate observations "
@@ -248,7 +295,8 @@ class QuickCharacterWizardService:
             "No character biography or full template. Honor user notes and answers.\n" + json.dumps({
                 "captions": [r["caption"] for r in session["references"]], "notes": session["notes"],
                 "answers": session["answers"], "framing": session["framing"], "side": session["side"],
-                "current_description": session["description"]}), _DRAFT_SCHEMA, self._reference_paths(session))
+                "current_description": session["description"], "preserve": session.get("preserve", ""),
+                "required_changes": session.get("changes", "")}), _DRAFT_SCHEMA, self._reference_paths(session), session.get("model"))
         if any(not isinstance(draft.get(key), str) or not draft[key].strip() for key in ("description", "identity")):
             raise QuickCharacterWizardError("The model returned an empty description or identity. Retry analysis.")
         if any(not isinstance(draft.get(key), list) or any(not isinstance(value, str) for value in draft[key])
@@ -298,7 +346,22 @@ class QuickCharacterWizardService:
             if not isinstance(proposals, list) or any(not isinstance(p, str) for p in proposals):
                 raise QuickCharacterWizardError("Proposed details must be a list of descriptions.")
             proposals = [p.strip() for p in proposals if p.strip()]
+            if session.get("style_mode") == "universe":
+                preserve = text(payload.get("preserve", session["preserve"]), "Preserve instructions")
+                changes = text(payload.get("changes", session["changes"]), "Change instructions")
+                if preserve != session["preserve"] or changes != session["changes"]:
+                    session.update(preserve=preserve, changes=changes, description=description, identity=identity,
+                                   revision_id=uuid4().hex, selected={}, proposals_approved=False, status="DRAFTING",
+                                   job={"kind": "draft", "status": "RUNNING", "error": ""})
+                    for candidate in session["candidates"]:
+                        candidate["stale"] = True
+                    self._write(session)
+                    self._submit(sid, self._draft_job, session["revision_id"])
+                    return self._public(session)
             changed = description != session["description"] or identity != session["identity"] or proposals != session["proposals"]
+            if changed and session.get("reconstruction_id"):
+                revised = self._reconstruction().revise(session["reconstruction_id"], description, identity, proposals)
+                session.update(reconstruction_id=revised["id"], target_hash=revised["target_hash"])
             session.update(description=description, identity=identity, proposals=proposals, proposals_approved=approved)
             if changed:
                 session.update(revision_id=uuid4().hex, selected={})
@@ -314,7 +377,14 @@ class QuickCharacterWizardService:
             self.generation_service = AdHocImageGenerationService(self.app, self.project_root)
         return self.generation_service
 
-    def render(self, sid: str, revision_id: str, view: str, instructions: str = "", candidate_id: str = "") -> dict:
+    def _reconstruction(self):
+        return self._generation().reconstruction
+
+    def reconstruction_options(self):
+        return {**self._reconstruction().options(), "default_model": self.app.config.ai_quick_character_wizard_model}
+
+    def render(self, sid: str, revision_id: str, view: str, instructions: str = "", candidate_id: str = "",
+               item_ids: list | None = None) -> dict:
         with self._lock(sid):
             session = self._read(sid)
             self._editable(session, revision_id)
@@ -326,56 +396,143 @@ class QuickCharacterWizardService:
             if view != "FRONT" and not anchor:
                 raise QuickCharacterWizardConflict("Approve a front image before generating other views.")
             refinement_base = None
-            if instructions:
+            if instructions or item_ids:
                 eligible = [c for c in session["candidates"] if c["view"] == view and not c["stale"]
                             and c["revision_id"] == revision_id and c["status"] in {"READY", "REVIEW_FAILED"}]
                 refinement_base = next((c for c in eligible if c["candidate_id"] == candidate_id), None) if candidate_id else (eligible[-1] if eligible else None)
                 if not refinement_base:
                     raise QuickCharacterWizardConflict("Choose a current image to refine.")
+                if view != "FRONT" and refinement_base["anchor_id"] != anchor:
+                    raise QuickCharacterWizardConflict("This view used a previous front. Generate it again.")
+            if session.get("reconstruction_id") and refinement_base:
+                if not refinement_base.get("comparison") and not text(instructions, "Refinement"):
+                    raise QuickCharacterWizardConflict("Retry image review before applying a correction.")
+                comparison = refinement_base.get("comparison") or {"items": []}
+                correction_items(comparison, item_ids or [], text(instructions, "Refinement"))
+                correction_key = fingerprint([session["revision_id"], refinement_base["candidate_id"],
+                    comparison.get("id"), sorted(item_ids or []), instructions, anchor])
+                if any(c.get("correction_key") == correction_key and c["status"] != "FAILED" for c in session["candidates"]):
+                    return self._public(session)
             candidate = {"candidate_id": uuid4().hex, "view": view, "revision_id": revision_id,
                          "anchor_id": anchor if view != "FRONT" else None, "request_id": "",
                          "status": "QUEUING", "error": "", "review": "", "refinements": [],
                          "stale": False, "instructions": str(instructions or "").strip(), "created_at": self._now()}
             candidate["refinement_base_id"] = refinement_base["candidate_id"] if refinement_base else None
+            if session.get("reconstruction_id"):
+                candidate.update(reconstruction_id=session["reconstruction_id"], target_hash=session["target_hash"])
+                if refinement_base:
+                    candidate["correction_key"] = correction_key
             session["candidates"].append(candidate)
             session["status"] = "RENDERING"
             self._write(session)
-            try:
-                paths = self._reference_paths(session)
-                labels = [r["caption"] for r in session["references"]]
-                if view != "FRONT":
-                    front = next(c for c in session["candidates"] if c["candidate_id"] == anchor)
-                    paths.insert(0, str(self._directory(sid) / front["filename"]))
-                    labels.insert(0, "Approved front: preserve this identity, clothing, equipment and style; change only viewing angle")
+            self._submit(sid, self._render_job, candidate["candidate_id"], item_ids)
+            return self._public(session)
+
+    def _render_job(self, sid: str, candidate_id: str, item_ids: list | None) -> None:
+        session = self._read(sid)
+        candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
+        view = candidate["view"]
+        anchor = candidate["anchor_id"]
+        instructions = candidate["instructions"]
+        refinement_base = next((c for c in session["candidates"] if c["candidate_id"] == candidate["refinement_base_id"]), None)
+        try:
+            paths = self._reference_paths(session)
+            labels = [r["caption"] for r in session["references"]]
+            if view != "FRONT":
+                front = next(c for c in session["candidates"] if c["candidate_id"] == anchor)
+                paths.insert(0, str(self._directory(sid) / front["filename"]))
+                labels.insert(0, "Approved front: preserve this identity, clothing, equipment and style; change only viewing angle")
+            if refinement_base:
+                paths.insert(0, str(self._directory(sid) / refinement_base["filename"]))
+                labels.insert(0, "Edit this previous candidate for the requested view: apply the correction and preserve other details")
+            framing = "head-to-toe full body, feet visible" if session["framing"] == "full_body" else "head-and-shoulders portrait"
+            angles = {"FRONT": "straight front, zero-degree rotation, face centered and both shoulders equally visible",
+                      "FRONT_LEFT_3_4": "front-left three-quarter, camera on the subject's anatomical left; head and body face screen-left at 45 degrees, near anatomical-left side visible",
+                      "FRONT_RIGHT_3_4": "front-right three-quarter, camera on the subject's anatomical right; head and body face screen-right at 45 degrees, near anatomical-right side visible",
+                      "LEFT_PROFILE": "strict left profile, camera on the subject's anatomical left; head and body face screen-left at 90 degrees, only anatomical-left eye visible",
+                      "RIGHT_PROFILE": "strict right profile, camera on the subject's anatomical right; head and body face screen-right at 90 degrees, only anatomical-right eye visible"}
+            prompt = (f"One character, {framing}; {angles[view]}. Neutral pose and plain neutral background. "
+                      "Preserve the reference art style, identity, outfit, equipment and anatomical asymmetry. "
+                      "Rotate head and body together; gaze follows the facing direction, without turning the face back toward camera. "
+                      "The requested view overrides any source pose or angle mentioned below. References provide appearance, "
+                      "not a camera angle to copy. Do not mirror the character or make a multi-view sheet.\n"
+                      + "Identity: " + session["identity"] + "\nApproved description: " + session["description"]
+                      + "\nApproved completion details: " + "\n".join(session["proposals"])
+                      + "\nExplicit changes override conflicting source details: " + session.get("changes", "")
+                      + "\nRefinement: " + candidate["instructions"])
+            width, height = (832, 1216) if session["framing"] == "full_body" else (1024, 1024)
+            payload = {"mode": "img2img", "count": 1, "prompt": prompt,
+                "negative_prompt": "multiple characters, extra limbs, mirrored asymmetry, text, labels, collage",
+                "width": width, "height": height, "reference_images": [
+                    {"label": label, "image": base64.b64encode(Path(path).read_bytes()).decode("ascii")}
+                    for path, label in zip(paths, labels)]}
+            if session.get("reconstruction_id"):
+                # Legacy source pixels are analysis-only; use only styled candidate/front renders here.
+                refs = []
                 if refinement_base:
-                    paths.insert(0, str(self._directory(sid) / refinement_base["filename"]))
-                    labels.insert(0, "Edit this previous candidate for the requested view: apply the correction and preserve other details")
-                framing = "head-to-toe full body, feet visible" if session["framing"] == "full_body" else "head-and-shoulders portrait"
-                angles = {"FRONT": "straight front, zero-degree rotation, face centered and both shoulders equally visible",
-                          "FRONT_LEFT_3_4": "front-left three-quarter, camera on the subject's anatomical left; head and body face screen-left at 45 degrees, near anatomical-left side visible",
-                          "FRONT_RIGHT_3_4": "front-right three-quarter, camera on the subject's anatomical right; head and body face screen-right at 45 degrees, near anatomical-right side visible",
-                          "LEFT_PROFILE": "strict left profile, camera on the subject's anatomical left; head and body face screen-left at 90 degrees, only anatomical-left eye visible",
-                          "RIGHT_PROFILE": "strict right profile, camera on the subject's anatomical right; head and body face screen-right at 90 degrees, only anatomical-right eye visible"}
-                prompt = (f"One character, {framing}; {angles[view]}. Neutral pose and plain neutral background. "
-                          "Preserve the reference art style, identity, outfit, equipment and anatomical asymmetry. "
-                          "Rotate head and body together; gaze follows the facing direction, without turning the face back toward camera. "
-                          "The requested view overrides any source pose or angle mentioned below. References provide appearance, "
-                          "not a camera angle to copy. Do not mirror the character or make a multi-view sheet.\n"
-                          + "Identity: " + session["identity"] + "\nApproved description: " + session["description"]
-                          + "\nApproved completion details: " + "\n".join(session["proposals"])
-                          + "\nRefinement: " + candidate["instructions"])
-                candidate["prompt"] = prompt
-                width, height = (832, 1216) if session["framing"] == "full_body" else (1024, 1024)
-                result = self._generation().submit({"mode": "img2img", "count": 1, "prompt": prompt,
-                    "negative_prompt": "multiple characters, extra limbs, mirrored asymmetry, text, labels, collage",
-                    "width": width, "height": height, "reference_images": [
-                        {"label": label, "image": base64.b64encode(Path(path).read_bytes()).decode("ascii")}
-                        for path, label in zip(paths, labels)]})
-                candidate.update(request_id=result["request_id"], status="QUEUED")
-            except Exception as exc:
-                candidate.update(status="FAILED", error=str(exc))
-                session["status"] = "FAILED"
+                    refs.append(("Candidate to correct; retain unaffected target appearance",
+                        self.image_path(sid, candidate_id=refinement_base["candidate_id"]).read_bytes()))
+                elif view != "FRONT":
+                    refs.append(("Approved styled front; change camera angle only",
+                        self.image_path(sid, candidate_id=anchor).read_bytes()))
+                context = (f"One character, {framing}; {angles[view]}. Neutral pose, plain neutral background. "
+                    "Rotate head and body together; gaze follows facing direction. Do not mirror anatomical "
+                    "asymmetry or turn toward camera to show hidden features. One view, no sheet.")
+                payload = {**self._reconstruction().render_spec(session["reconstruction_id"], context, refs,
+                    report_id=refinement_base["comparison"]["id"] if refinement_base and refinement_base.get("comparison") else "",
+                    item_ids=item_ids, instructions=instructions), "width": width, "height": height,
+                    "negative_prompt": "multiple characters, extra limbs, mirrored asymmetry, text, labels, collage"}
+                candidate["view_context"] = context
+            self._dispatch_candidate(sid, candidate, payload)
+        except Exception as exc:
+            with self._lock(sid):
+                current = self._read(sid)
+                if current["status"] not in {"ABANDONED", "ACCEPTED"}:
+                    target = next(c for c in current["candidates"] if c["candidate_id"] == candidate_id)
+                    target.update(status="FAILED", error=str(exc))
+                    current["status"] = "FAILED"
+                    self._write(current)
+
+    def _dispatch_candidate(self, sid, candidate, payload, seeds=None):
+        with self._lock(sid):
+            current = self._read(sid)
+            if (current["status"] in {"ABANDONED", "ACCEPTED"} or current["revision_id"] != candidate["revision_id"]
+                    or (candidate["view"] != "FRONT" and current["selected"].get("FRONT") != candidate["anchor_id"])):
+                return
+            target = next(c for c in current["candidates"] if c["candidate_id"] == candidate["candidate_id"])
+            target.update(prompt=payload["prompt"], render_payload=payload, render_request_id=uuid4().hex)
+            if candidate.get("view_context"):
+                target["view_context"] = candidate["view_context"]
+            self._write(current)
+            result = self._generation().submit(payload, request_id=target["render_request_id"], seeds=seeds)
+            target.update(request_id=result["request_id"], status="QUEUED")
+            self._write(current)
+
+    def retry_render(self, sid, revision_id, candidate_id):
+        with self._lock(sid):
+            session = self._read(sid)
+            self._editable(session, revision_id)
+            old = next((c for c in session["candidates"] if c["candidate_id"] == candidate_id), None)
+            if (not old or old["status"] != "FAILED" or not old.get("render_payload") or old["stale"]
+                    or old["revision_id"] != revision_id
+                    or (old["view"] != "FRONT" and old["anchor_id"] != session["selected"].get("FRONT"))):
+                raise QuickCharacterWizardConflict("Choose a failed current render with saved inputs.")
+            previous = self._generation()._jobs.get(old.get("render_request_id"))
+            if previous and self._generation().status(previous["request_id"])["status"] in {"QUEUED", "RUNNING", "COMPLETE"}:
+                old.update(status="QUEUED", request_id=previous["request_id"], error="")
+                self._write(session)
+                return self._public(session)
+            candidate = {key: old[key] for key in ("view", "revision_id", "anchor_id", "refinement_base_id", "instructions")}
+            candidate.update(candidate_id=uuid4().hex, request_id="", status="QUEUING", stale=False,
+                             error="", review="", refinements=[], retry_of=candidate_id, created_at=self._now())
+            for key in ("reconstruction_id", "target_hash", "view_context"):
+                if key in old:
+                    candidate[key] = old[key]
+            session["candidates"].append(candidate)
+            session["status"] = "RENDERING"
             self._write(session)
+            seeds = [previous["children"][0]["seed"]] if previous and previous.get("children") else None
+            self._submit(sid, self._dispatch_candidate, candidate, old["render_payload"], seeds)
             return self._public(session)
 
     def _review_job(self, sid: str, candidate_id: str) -> None:
@@ -385,16 +542,38 @@ class QuickCharacterWizardService:
         if candidate["anchor_id"]:
             front = next(c for c in session["candidates"] if c["candidate_id"] == candidate["anchor_id"])
             paths.append(str(self._directory(sid) / front["filename"]))
-        review = self._ask("Review the first image against the other reference images and this approved description. "
+        comparison = None
+        if candidate.get("reconstruction_id"):
+            feedback = []
+            current = candidate
+            candidates = {c["candidate_id"]: c for c in session["candidates"]}
+            while current:
+                if current.get("instructions"):
+                    feedback.append(current["instructions"])
+                current = candidates.get(current.get("refinement_base_id"))
+            context = candidate["view_context"]
+            if feedback:
+                context += "\nOperator feedback, oldest to newest (latest takes precedence):\n" + "\n".join(reversed(feedback))
+            comparison = self._reconstruction().compare(candidate["reconstruction_id"], self.image_path(sid, candidate_id=candidate_id).read_bytes(),
+                {"session_id": sid, "candidate_id": candidate_id, "revision_id": candidate["revision_id"],
+                 "anchor_id": candidate["anchor_id"]}, context,
+                Path(paths[-1]).read_bytes() if candidate["anchor_id"] else None)
+            review = {"review": comparison["summary"],
+                      "refinements": [item["correction"] for item in comparison["items"] if item["correction"]]}
+        else:
+            review = self._ask("Review the first image against the other reference images and this approved edited description. "
+                           "Explicit changes in the requested prompt override source details; do not restore removed equipment. "
                            "Check identity, requested viewing angle, framing, clothing, equipment, anatomical asymmetry "
                            "and consistency with the approved front when supplied. Only report visible mismatches; "
-                           "give concise actionable refinements.\nRequested prompt: " + candidate["prompt"], _REVIEW_SCHEMA, paths)
+                               "give concise actionable refinements.\nRequested prompt: " + candidate["prompt"], _REVIEW_SCHEMA, paths, session.get("model"))
         with self._lock(sid):
             current = self._read(sid)
             if current["status"] == "ABANDONED" or current["revision_id"] != candidate["revision_id"]:
                 return
             target = next(c for c in current["candidates"] if c["candidate_id"] == candidate_id)
             target.update(status="READY", review=review["review"], refinements=review["refinements"], error="")
+            if comparison:
+                target["comparison"] = comparison
             current.update(status="REVIEW_READY", job={"kind": "review", "status": "COMPLETE", "error": ""})
             self._write(current)
 
@@ -412,10 +591,16 @@ class QuickCharacterWizardService:
                     if c["status"] == "REVIEWING":
                         c["status"] = "REVIEW_FAILED"
                 self._write(session)
+            if active:
+                return self._public(session)
             for c in session["candidates"]:
                 if c["status"] == "QUEUING":
-                    c.update(status="FAILED", error="Submission was interrupted. Check Image Generation before retrying.")
-                    session["status"] = "FAILED"
+                    request_id = c.get("render_request_id")
+                    if request_id and request_id in self._generation()._jobs:
+                        c.update(status="QUEUED", request_id=request_id)
+                    else:
+                        c.update(status="FAILED", error="Submission was interrupted. Generate another candidate to retry.")
+                        session["status"] = "FAILED"
                     self._write(session)
                 if c["status"] not in {"QUEUED", "RUNNING"}:
                     continue
@@ -424,13 +609,13 @@ class QuickCharacterWizardService:
                     if result["status"] in {"QUEUED", "RUNNING"}:
                         c["status"] = result["status"]
                     elif result["status"] == "COMPLETE" and result["images"]:
-                        contents, mime = self._generation().image(c["request_id"], result["images"][0]["index"])
+                        contents, mime, generation = self._generation().library_result(c["request_id"], result["images"][0]["index"])
                         suffix = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[mime]
                         c["filename"] = f"renders/{c['candidate_id']}.{suffix}"
                         path = self._directory(sid) / c["filename"]
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.write_bytes(contents)
-                        c.update(status="REVIEWING", mime_type=mime)
+                        c.update(status="REVIEWING", mime_type=mime, sha256=hashlib.sha256(contents).hexdigest(), seed=generation.get("seed"))
                         session["job"] = {"kind": "review", "status": "RUNNING", "error": ""}
                         self._write(session)
                         self._submit(sid, self._review_job, c["candidate_id"])
@@ -462,8 +647,8 @@ class QuickCharacterWizardService:
             session = self._read(sid)
             self._editable(session, revision_id)
             candidate = next((c for c in session["candidates"] if c["candidate_id"] == candidate_id), None)
-            if not candidate or candidate["status"] != "READY" or candidate["stale"] or candidate["revision_id"] != revision_id:
-                raise QuickCharacterWizardConflict("Choose a reviewed image from the current revision.")
+            if not candidate or candidate["status"] not in {"READY", "REVIEW_FAILED"} or candidate["stale"] or candidate["revision_id"] != revision_id:
+                raise QuickCharacterWizardConflict("Choose a rendered image from the current draft.")
             view = candidate["view"]
             if view == "FRONT" and session["selected"].get(view) != candidate_id:
                 session["selected"] = {view: candidate_id}
@@ -520,4 +705,7 @@ class QuickCharacterWizardService:
         path = self._directory(sid) / record["filename"]
         if not path.resolve().is_relative_to(self._directory(sid).resolve()) or not path.is_file():
             raise QuickCharacterWizardError("Wizard image is unavailable.")
+        expected = record.get("sha256") or record.get("checksum")
+        if expected and hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise QuickCharacterWizardConflict("A wizard image changed outside the session.")
         return path

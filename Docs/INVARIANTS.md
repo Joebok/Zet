@@ -118,6 +118,12 @@ Character slot changes hold the state lock and persist pending candidate IDs bef
 - **Implementation/impact:** [LibraryReferenceService](../zet/services/library_reference_service.py), [PathService](../zet/services/path_service.py), the storage owners listed in [DATA_MODEL](DATA_MODEL.md), and [normalize_library_references](../zet/scripts/normalize_library_references.py).
 - **Verify:** Run the updater only while Zet servers and harvesters are stopped. It applies atomically per record, verifies operational references and saved image hashes, and writes a universe marker only after the full scan and route verification succeed. The approved S1-S3 baseline does not prove every relocation branch; use disposable fixtures for those checks.
 
+## 17. Reconstruction corrections retain explicit intent
+
+Source observations and intended output have different authority. Explicit changes override conflicting source facts; destination style controls rendering treatment. A true-up cannot treat deliberately removed equipment as identity drift. Changed target intent gets new task/revision identity and invalidates old approvals; a corrected front requires explicit selection before downstream views become current.
+
+Original reconstruction sources are analysis-only. Styled candidates may enter true-up img2img renders; selected styled fronts may anchor character views. Reports/corrections bind universe, target hash, exact candidate bytes and host selection/front identity. Repeated application reuses an existing attempt; retries retain submitted inputs/seed. Image Generation reserves additional slots and checks the selected source again at dispatch. See [ADR 0013](DECISIONS/0013-shared-reconstruction-target-and-true-up.md). Model reports are optional artistic advice: custom feedback needs no compatibility approval and takes precedence over earlier direction. Failed review does not block choosing a rendered wizard image. Software validation does not prove visual compliance.
+
 ## GitHub capture and production promotion
 
 Frozen reports bind request IDs to repository/content hashes. Uncertain creation

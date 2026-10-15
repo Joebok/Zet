@@ -45,8 +45,8 @@ def publish_quick_character(app, session: dict, directory: Path) -> dict:
     for view in ("FRONT", f"FRONT_{side}_3_4", f"{side}_PROFILE"):
         candidate_id = session["selected"][view]
         candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
-        if candidate["revision_id"] != revision or candidate["stale"] or candidate["status"] != "READY":
-            raise QuickCharacterWizardConflict("All selected images must be reviewed and current.")
+        if candidate["revision_id"] != revision or candidate["stale"] or candidate["status"] not in {"READY", "REVIEW_FAILED"}:
+            raise QuickCharacterWizardConflict("Choose a current rendered image for each view.")
         asset_id = stable_id(view)
         outputs[view] = asset_id
         assets.append({"asset_id": asset_id, "label": session["name"] + " · " + view.replace("_3_4", " 3/4").replace("_", " ").title(),
@@ -104,6 +104,14 @@ def publish_quick_character(app, session: dict, directory: Path) -> dict:
                            "request_id": asset["candidate"]["request_id"],
                            "references": [{k: r[k] for k in ("asset_id", "checksum", "caption")} for r in session["references"]],
                            "description": session["description"], "proposals": session["proposals"]}
+                if session.get("reconstruction_id"):
+                    core = app.quick_character_wizard_service._reconstruction()
+                    details["reconstruction"] = asset["candidate"].get("render_payload", {}).get("reconstruction") or core.metadata(core.status(session["reconstruction_id"]))
+                    details["comparison"] = asset["candidate"].get("comparison")
+                    details["refinement_base_id"] = asset["candidate"].get("refinement_base_id")
+                    details["retry_of"] = asset["candidate"].get("retry_of")
+                    details["seed"] = asset["candidate"].get("seed")
+                    details["source_role"] = "identity evidence; not an approved transformed output"
                 connection.execute("INSERT OR IGNORE INTO provenance VALUES(?,?,?,?,?,?)",
                                    (stable_id(f"provenance:{view}"), aid, "generated_from", source_id, json.dumps(details), stamp))
                 connection.execute("INSERT OR IGNORE INTO descriptors VALUES(?,?,?,?,?,?,?,?,?)",

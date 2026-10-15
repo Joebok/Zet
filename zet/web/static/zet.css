@@ -5493,6 +5493,22 @@ dd {
 #quick-character-wizard-dialog .qc-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
 #quick-character-wizard-dialog .qc-selected { border: 2px solid var(--accent, #7389d8); }
 @media (max-width: 760px) { #quick-character-wizard-dialog .qc-grid { grid-template-columns: 1fr; } }
+.qc-comparison-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.qc-comparison-pair figure { margin: 0; min-width: 0; }
+.qc-comparison-pair img { display: block; width: 100%; max-height: 430px; object-fit: contain; }
+.qc-comparison-pair a { display: block; overflow-wrap: anywhere; }
+.qc-finding { border-top: 1px solid var(--border, #777); padding: 12px 0; overflow-wrap: anywhere; }
+.qc-finding p { margin: 6px 0; }
+.qc-finding input[type="checkbox"] { width: auto; margin-right: 8px; }
+.qc-finding label { display: flex; flex-direction: row; align-items: flex-start; gap: 8px; font-size: inherit; }
+.qc-finding label input[type="checkbox"] { flex: 0 0 auto; margin-top: 3px; }
+#image-reconstruction-preserve, #image-reconstruction-changes, #image-reconstruction-notes,
+#image-true-up-instructions { min-height: 70px; height: auto; }
+#quick-character-wizard-dialog #qc-views { grid-template-columns: 1fr; }
+#quick-character-wizard-dialog #qc-target-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) {
+  #quick-character-wizard-dialog #qc-target-controls { grid-template-columns: 1fr; }
+}
 
 .batch-status-card[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
 

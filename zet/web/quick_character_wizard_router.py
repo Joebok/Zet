@@ -20,12 +20,16 @@ def create_quick_character_wizard_router(provider: Callable[[], QuickCharacterWi
             return operation(provider())
         except QuickCharacterWizardConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except (QuickCharacterWizardError, KeyError, TypeError) as exc:
+        except (ValueError, KeyError, TypeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.get("")
     def sessions():
         return {"sessions": call(lambda service: service.list_sessions())}
+
+    @router.get("/options")
+    def options():
+        return call(lambda service: service.reconstruction_options())
 
     @router.post("")
     async def create(request: Request):
@@ -73,10 +77,11 @@ def create_quick_character_wizard_router(provider: Callable[[], QuickCharacterWi
     @router.post("/{sid}/refine")
     def refine(sid: str, payload: dict = Body(...)):
         instructions = str(payload.get("instructions") or "").strip()
-        if not instructions:
+        if not instructions and not payload.get("item_ids"):
             raise HTTPException(status_code=400, detail="Enter refinement instructions.")
         return {"session": call(lambda s: s.render(sid, str(payload.get("revision_id") or ""),
-                                                  str(payload.get("view") or ""), instructions, str(payload.get("candidate_id") or "")))}
+                                                  str(payload.get("view") or ""), instructions, str(payload.get("candidate_id") or ""),
+                                                  payload.get("item_ids")))}
 
     @router.post("/{sid}/select")
     def select(sid: str, payload: dict = Body(...)):
@@ -85,6 +90,10 @@ def create_quick_character_wizard_router(provider: Callable[[], QuickCharacterWi
     @router.post("/{sid}/review")
     def review(sid: str, payload: dict = Body(...)):
         return {"session": call(lambda s: s.retry_review(sid, str(payload.get("revision_id") or ""), str(payload.get("candidate_id") or "")))}
+
+    @router.post("/{sid}/retry-render")
+    def retry_render(sid: str, payload: dict = Body(...)):
+        return {"session": call(lambda s: s.retry_render(sid, str(payload.get("revision_id") or ""), str(payload.get("candidate_id") or "")))}
 
     @router.post("/{sid}/accept")
     def accept(sid: str, payload: dict = Body(...)):
