@@ -710,6 +710,7 @@ class LocalCharacterAssetPipelineService:
             image_generation="comfyui", reference_files=render_references,
         )
         ask = self._read(ask_path / "ask_manifest.json")
+        target = render_root / str(ask.get("target_output_file") or target.name)
         ref_hashes = {
             str(ref.get("image_index") or index + 1): self._hash(Path(ref["path"]))
             for index, ref in enumerate(render_references)
