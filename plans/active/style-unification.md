@@ -143,3 +143,18 @@ Joe authorized publication and deployment in chat on 2026-10-15. The scoped chan
 ## Authorized rollout — 2026-10-15
 
 Joe authorized publication and deployment, followed by the approved three-view batches. A managed release checkout excludes unrelated workspace changes (including the earlier CODE_MAP/LIBRARY edits). In that isolated checkout, S1–S3 passed (28.6s), disposable backend and browser reconstruction checks passed, JavaScript syntax checks passed, and diff whitespace checks passed. Scoped review confirmed saved-prompt style provenance, legacy scene compatibility, analysis-only source references, reservation fencing and frozen retries. Publication and deployment are in progress; live artistic acceptance remains pending.
+
+## Discovered live dependency: render output handoff
+
+The first live trial exposed an existing Head/Assembly/Dressing handoff race: candidate state used a fixed candidate filename while the staged render and background harvester used a timestamped target_output_file. A runner could wait after successful harvesting. Three Head FL outputs and two Dressing FRONT outputs were recovered by verifying exact current ask receipts, matching seeds and candidate-contained PNG paths, then copying unchanged bytes to the expected paths. No rerender or published lock change occurred.
+
+### WP9a — Align candidate and harvester output paths
+- Files: local_head_image_service.py, local_character_asset_pipeline_service.py; LOCAL_CHARACTERS and this plan.
+- Dependency: live evidence from WP9.
+- Work: use the staged ask’s target_output_file in candidate state, preserving the legacy fallback for prepared responses.
+- Acceptance: the runner and generic harvester wait/write the same candidate-contained file; prompts, seeds, ordered references and queue ownership are unchanged.
+- Validation: approved S1–S3 plus disposable prepared-ask path assertions. Deploy after active render work drains to preserve in-flight runners.
+
+WP9a validation passed: S1–S3 (3 passed, 29.2s), disposable staged-ask filename assertions for Head/Assembly/Dressing, and diff whitespace checks. This changes only candidate destination tracking; no prompt, reference or renderer setting changes.
+
+Rollout context: PR #68 (`29a62d2`) and the separately authorized Inventory recovery PR #69 (`c14e12f`) are merged and deployed. Health reports ready on `c14e12f`, boot `b2de2aaa39014acb9b4dd3cf2ed90f35`. Body run `20261015_042323_241465`, Head `20261015_042325_741265`, Assembly `7d95c65e40d244738f9aa41c6b1125e0`, Dressing `5af2e119bc6849779727004290528cba` contain the live trial. FRONT source selections are Body F-002, Head F-006, Assembly F-008. Body FL-001 and Head FL-002 feed three-quarter Assembly; remaining batches are in progress. Current gates are disabled by saved settings; Luna rankings and visual inspection guide provisional selection. No published locks were added.

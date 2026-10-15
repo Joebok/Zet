@@ -469,6 +469,7 @@ class LocalHeadImageService:
             image_generation="comfyui", reference_files=references,
         )
         ask = self._read_json((ask_path / "ask_manifest.json"))
+        output_path = render_dir / str(ask.get("target_output_file") or output_name)
         reference_images = [{"role": str(reference.get("role") or ""),
                              "label": str(reference.get("label") or ""),
                              "path": str(reference.get("path") or ""),
