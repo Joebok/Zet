@@ -85,13 +85,15 @@ def publish_quick_character(app, session: dict, directory: Path, *, views=None) 
         with library.repository.transaction() as connection:
             for asset in assets:
                 aid, view = asset["asset_id"], asset["view"]
+                origin_key = (f"minor-character:{sid}:{asset.get('candidate', {}).get('candidate_id', asset['checksum'])}:{view}"
+                    if session.get("minor_character") else f"quick-character:{sid}:{revision}:{view}")
                 connection.execute(
                     "INSERT OR IGNORE INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,"
                     "status,notes,prompt,negative_prompt,derived_from_asset_id,created_at,updated_at) "
                     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (aid, asset["label"], asset["checksum"], asset["path"].name, asset["mime_type"],
                      asset["width"], asset["height"], "import" if view == "source" else "imagegen",
-                     f"quick-character:{sid}:{revision}:{view}", "approved", "", asset["prompt"], asset["negative"],
+                     origin_key, "approved", "", asset["prompt"], asset["negative"],
                      None if view == "source" else source_id, stamp, stamp))
                 for link in source_links:
                     # SQLite composite keys permit repeated NULL variants.

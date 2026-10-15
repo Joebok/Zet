@@ -76,3 +76,5 @@ Use this map to select a narrow search, inspect the named entry point and caller
 - See [ADR 0014](DECISIONS/0014-minor-character-workspaces.md), [data model](DATA_MODEL.md) and [local characters](COMPONENTS/LOCAL_CHARACTERS.md). Maintained S1-S3 remain regression checks; disposable feature journeys use isolated prepared responses.
 
 Minor Character prompt-iteration boards and paired full-size review live in `minor_characters.js`, using the shared `render_slots.js` count control. `MinorCharacterService.iteration_slots` owns four-slot allocation, clear/regenerate and frozen-payload replay; `minor_character_router.py` exposes its slot action endpoint. Review arrows cycle rendered slots within one iteration.
+
+Minor Character slot actions queue independently while renders run; workspace locking serializes allocation/submission without waiting for image completion. Card/review Lock calls accept a candidate ID; the publication service uses candidate-scoped origin keys for repeated same-iteration publication. The editor keeps comparison choice on the left and expanded findings under cards.

@@ -384,14 +384,9 @@ class MinorCharacterService(QuickCharacterWizardService):
                 raise QuickCharacterWizardError("Choose a slot from 1 to 4.")
             by_id = {c["candidate_id"]: c for c in session["candidates"]}
             if action == "clear":
-                old = by_id.get(iteration["slots"][slot])
-                if old and old["status"] in {"QUEUING", "QUEUED", "RUNNING"}:
-                    raise QuickCharacterWizardConflict("Wait for this slot to finish rendering.")
                 iteration["slots"][slot] = None
                 self._write(session)
                 return self._public(session)
-            if self._busy(session):
-                raise QuickCharacterWizardConflict("An image task is already running.")
             template = by_id[iteration["template_candidate_id"]]
             if not template.get("render_payload"):
                 raise QuickCharacterWizardError("This iteration has no submitted prompt. Generate a new iteration.")
@@ -409,10 +404,12 @@ class MinorCharacterService(QuickCharacterWizardService):
                 session["candidates"].append(candidate)
                 iteration["slots"][target] = candidate["candidate_id"]
                 candidates.append(candidate)
-            session.update(status="RENDERING", job={"kind": "render", "status": "COMPLETE", "error": ""})
+            session["status"] = "RENDERING"
             self._write(session)
-            self._submit(sid, self._render_slots, candidates, deepcopy(template["render_payload"]))
-            return self._public(session)
+            # Submission only packages work into the queue; it does not wait for rendering.
+            # Keep allocation/submission atomic to readers without a workspace-wide task fence.
+            self._render_slots(sid, candidates, deepcopy(template["render_payload"]))
+            return self._public(self._read(sid))
 
     def _render_slots(self, sid, candidates, payload):
         for candidate in candidates:
@@ -452,15 +449,17 @@ class MinorCharacterService(QuickCharacterWizardService):
             self._write(session)
             return self._public(session)
 
-    def lock_view(self, sid, view):
+    def lock_view(self, sid, view, candidate_id=""):
         from zet.services.quick_character_publication_service import publish_quick_character
         sid = self._canonical(sid)["session_id"]
         records = self._records()
         with self._lock(sid):
             session = self._with_legacy_locks(self._read(sid), records)
-            candidate = next((c for c in session["candidates"] if c["candidate_id"] == session["selected"].get(view) and c.get("filename")), None)
+            candidate = next((c for c in session["candidates"] if c["candidate_id"] == (candidate_id or session["selected"].get(view))
+                and c["view"] == view and c.get("filename")), None)
             if not candidate:
                 raise QuickCharacterWizardError("Select an image for this view first.")
+            session["selected"][view] = candidate["candidate_id"]
             frozen = {**session, **candidate.get("inputs", {})}
             published = publish_quick_character(self.app, frozen, self._directory(sid), views=[view])
             session["minor_set_id"] = published["set_id"]

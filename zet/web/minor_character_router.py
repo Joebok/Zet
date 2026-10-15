@@ -79,7 +79,7 @@ def create_minor_character_router(provider):
 
     @router.post("/{sid}/lock")
     def lock(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.lock_view(sid, str(data.get("view", "FRONT"))))}
+        return {"character": call(lambda s: s.lock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", ""))))}
 
     @router.get("/{sid}/references/{reference_id}")
     def reference(sid: str, reference_id: str):

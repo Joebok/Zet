@@ -13,8 +13,9 @@
   let waitingForCandidate = null;
   let iterationId = "";
   const feedback = new Map(), suggestions = new Map();
+  const slotPending = new Set();
   const element = (tag, text = "", cls = "") => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
-  const button = (text, action) => { const b = element("button", text); b.type = "button"; b.addEventListener("click", () => act(action)); return b; };
+  const button = (text, action, run = act) => { const b = element("button", text); b.type = "button"; b.addEventListener("click", () => run(action)); return b; };
   const url = value => value + (value.includes("?") ? "&" : "?") + "universe_id=" + encodeURIComponent(universe);
   const message = (text, error = false) => { $("mc-message").textContent = text; $("mc-message").classList.toggle("error", error); };
   const label = value => value === "FRONT" ? "Front" : value.includes("3_4") ? "Three-quarter" : "Profile";
@@ -141,7 +142,20 @@
     await flush(); show((await api(`/${character.character_id}/select`,"POST",{candidate_id:id})).character);
   }
   async function slotAction(action, slot, count = 1) {
-    await flush(); show((await api(`/${character.character_id}/iterations/${iterationId}/slots`,"POST",{action,slot,count})).character);
+    const id=character.character_id, target=iterationId, key=`${id}:${target}:${slot ?? "add"}`;
+    if (slotPending.has(key)) return;
+    slotPending.add(key); renderImages();
+    try {
+      await flush();
+      const result=await api(`/${id}/iterations/${target}/slots`,"POST",{action,slot,count});
+      if (character?.character_id===id) show(result.character);
+    } catch (error) { message(error.message,true); }
+    finally { slotPending.delete(key); if (character?.character_id===id) {renderImages();updateButtons();} }
+  }
+  async function lockCandidate(candidate) {
+    await flush();
+    show((await api(`/${character.character_id}/lock`,"POST",{view:candidate.view,candidate_id:candidate.candidate_id})).character);
+    message("Locked image saved to Inventory.");
   }
   function renderReview() {
     if (!$("mc-review").open) return;
@@ -152,7 +166,11 @@
     if (candidate?.image_url && index>=0) {
       const figure = imageFigure(candidate.image_url,`${character.name} · ${label(view)} · ${index+1} of ${list.length}`);
       const select = button(character.selected[view]===preview ? "Selected candidate" : "Select candidate",()=>selectCandidate(candidate.candidate_id));
-      select.disabled = pending || character.selected[view]===preview; figure.append(select); $("mc-review-pair").append(figure);
+      const lock=button(character.locked[view]?.candidate_id===preview ? "Locked" : "Lock",()=>lockCandidate(candidate));
+      lock.disabled=pending || character.locked[view]?.candidate_id===preview;
+      select.disabled = pending || character.selected[view]===preview;
+      const actions=element("div","","button-row mc-review-actions");actions.append(select,lock);
+      figure.append(actions); $("mc-review-pair").append(figure);
     }
     $("mc-review-prev").disabled = index<=0;
     $("mc-review-next").disabled = index<0 || index>=list.length-1;
@@ -197,27 +215,26 @@
     for (let slot=0;slot<4;slot++) {
       const candidate=character.candidates.find(c=>c.candidate_id===board?.slots[slot]);
       const card=element("section","","mc-slot"); card.append(element("strong",`Slot ${slot+1}`));
+      card.classList.toggle("mc-slot-preview",candidate?.candidate_id===preview);
       if (candidate?.image_url) {
-        const thumb=button("",()=>inspect(candidate.candidate_id)); thumb.className="mc-slot-image";
+        const thumb=button("",()=>inspect(candidate.candidate_id)); thumb.className="mc-slot-image"; thumb.title="Inspect full size";
         const img=document.createElement("img"); img.src=url(candidate.image_url); img.alt=`Slot ${slot+1} candidate`; thumb.append(img); card.append(thumb);
-        const select=button(character.selected[view]===candidate.candidate_id ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
-        select.disabled=pending; card.append(select);
       } else card.append(element("p",candidate ? candidate.error || candidate.status.toLowerCase() : "Empty"));
-      const controls=element("div","","button-row");
-      const regen=button("Regenerate",()=>slotAction("regenerate",slot)); regen.disabled=pending || character.busy || !board;
-      const clear=button("Clear",()=>slotAction("clear",slot)); clear.disabled=pending || !candidate || ["QUEUING","QUEUED","RUNNING"].includes(candidate.status);
-      controls.append(regen,clear); card.append(controls); $("mc-slots").append(card);
+      const controls=element("div","","button-row mc-slot-actions");
+      const submitting=slotPending.has(`${character.character_id}:${iterationId}:${slot}`);
+      const regen=button(candidate ? "Regen" : "Generate",()=>slotAction("regenerate",slot),operation=>operation()); regen.disabled=submitting || !board;
+      const clear=button("Clear",()=>slotAction("clear",slot),operation=>operation()); clear.disabled=submitting || !candidate;
+      const select=button(candidate && character.selected[view]===candidate.candidate_id ? "Selected" : "Select",async()=>{
+        preview=candidate.candidate_id;changed("preview_candidate_id",preview);await selectCandidate(candidate.candidate_id);
+      }); select.disabled=pending || !candidate?.image_url;
+      const lock=button(character.locked[view]?.candidate_id===candidate?.candidate_id && candidate ? "Locked" : "Lock",()=>lockCandidate(candidate));
+      lock.disabled=pending || !candidate?.image_url || character.locked[view]?.candidate_id===candidate?.candidate_id;
+      controls.append(clear,regen,select,lock); card.append(controls); $("mc-slots").append(card);
     }
-    if (board) $("mc-add-renders").append(window.ZetRenderSlots.countControl(board.slots.filter(id=>!id).length,count=>act(()=>slotAction("add",undefined,count)),{disabled:pending || character.busy}));
-    const candidate = choice(); const refId = patch.comparison_reference_id || character.comparison_reference_id;
-    const reference = references.find(r=>r.reference_id===refId) || references[0];
-    $("mc-comparison").replaceChildren();
-    if (reference?.url) $("mc-comparison").append(imageFigure(reference.url, "Original reference"));
-    else $("mc-comparison").append(element("p", "Add an original reference on the left."));
-    if (candidate?.image_url) $("mc-comparison").append(imageFigure(candidate.image_url, `${character.name} · ${label(view)}`));
-    else $("mc-comparison").append(element("p", candidate ? "Generating image…" : "Generate an image to compare here."));
+    if (board) $("mc-add-renders").append(window.ZetRenderSlots.countControl(board.slots.filter(id=>!id).length,count=>slotAction("add",undefined,count),{disabled:slotPending.has(`${character.character_id}:${iterationId}:add`)}));
+    const candidate = choice();
     $("mc-feedback").value = feedback.get(view) || "";
-    $("mc-candidate-status").textContent = candidate?.error || (character.busy ? "Working…" : candidate?.image_url ? "Choose this image or try another change." : "");
+    $("mc-suggestions-title").textContent = candidate ? `Suggested changes · Slot ${(board?.slots.indexOf(preview) ?? -1)+1}` : "Suggested changes";
     $("mc-findings").replaceChildren();
     if (candidate?.comparison) {
       $("mc-findings").append(element("p", candidate.review));
@@ -228,18 +245,15 @@
           input.addEventListener("change",()=>input.checked ? selected.add(item.id) : selected.delete(item.id)); labelNode.prepend(input); row.append(labelNode); }
         $("mc-findings").append(row);
       }
-    } else if (candidate?.review) $("mc-findings").append(element("p", candidate.review));
-    $("mc-open-locked").hidden = !character.locked[view];
-    $("mc-inspect").disabled = !candidate?.image_url;
+    } else $("mc-findings").append(element("p",candidate?.review || candidate?.error || (candidate?.status==="REVIEWING" ? "Suggested changes are being prepared. You can keep generating or choose an image." : "Inspect a candidate to see its suggested changes here.")));
     renderReview();
   }
   function updateButtons() {
     const busy = pending || character?.busy;
-    $("mc-generate").textContent = "Generate " + label(view).toLowerCase();
+    $("mc-generate").textContent = "New " + label(view).toLowerCase() + " iteration";
+    $("mc-generate-help").textContent = "Creates a new iteration from the inputs above" + (view==="FRONT" ? " and original references." : " and selected front.") + " Analyzes references when needed. Existing images are kept. Use Try these changes to refine the previewed candidate, or Generate/Regen on a slot to reuse its iteration's prompt.";
     $("mc-generate").disabled = !character || busy || !references.length || (view!=="FRONT" && !character.selected.FRONT);
     $("mc-refine").disabled = !character || busy || !choice()?.image_url;
-    $("mc-select").disabled = pending || !choice()?.image_url;
-    $("mc-lock").disabled = pending || !choice()?.image_url || character?.selected[view]!==preview;
     $("mc-analyze").disabled = !character || busy || !references.length;
     $("mc-add-reference").disabled = pending || references.length>=3; $("mc-upload").disabled = references.length>=3;
     if (character) renderReview();
@@ -296,8 +310,6 @@
   $("mc-continue").addEventListener("click",()=>act(async()=>{entryAsset=null;await open($("mc-continue-choice").value);}));
   $("mc-generate").addEventListener("click",()=>act(()=>generateImage(false)));
   $("mc-refine").addEventListener("click",()=>act(()=>generateImage(true)));
-  $("mc-select").addEventListener("click",()=>act(()=>selectCandidate()));
-  $("mc-inspect").addEventListener("click",()=>inspect());
   $("mc-review-close").addEventListener("click",()=>$("mc-review").close());
   $("mc-review-prev").addEventListener("click",()=>navigateReview(-1));
   $("mc-review-next").addEventListener("click",()=>navigateReview(1));
@@ -306,8 +318,6 @@
       event.preventDefault(); navigateReview(event.key==="ArrowLeft" ? -1 : 1);
     }
   });
-  $("mc-lock").addEventListener("click",()=>act(async()=>{await flush();show((await api(`/${character.character_id}/lock`,"POST",{view})).character);message("Locked image saved to Inventory.");}));
-  $("mc-open-locked").addEventListener("click",()=>act(async()=>{const id=character.locked[view].asset_id;await flush();await bridge.activatePage("auxiliary-resources");await bridge.openAsset(id);}));
   $("mc-analyze").addEventListener("click",()=>act(async()=>{await flush();show((await api(`/${character.character_id}/analyze`,"POST",{})).character);}));
   $("mc-add-reference").addEventListener("click",()=>act(()=>bridge.openLibraryPicker(asset=>act(()=>addReference({asset_id:asset.asset_id,caption:asset.label || "Identity reference"})))));
   $("mc-upload").addEventListener("change",()=>act(async()=>{await upload($("mc-upload").files[0]);$("mc-upload").value="";}));

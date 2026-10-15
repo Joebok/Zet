@@ -5493,13 +5493,17 @@ dd {
 .mc-inputs .button-row { flex-wrap: wrap; }
 .mc-inputs .mc-upload { width: 100%; min-width: 0; }
 .mc-upload input { width: 100%; min-width: 0; box-sizing: border-box; }
-.mc-images { min-width: 0; position: sticky; top: 12px; }
+.mc-images { min-width: 0; }
 .mc-images > label { display: block; margin: 12px 0; }
 .mc-images .qc-comparison-pair img { max-height: 65vh; }
 .mc-candidates { display: flex; gap: 10px; overflow-x: auto; padding: 12px 0; }
 .mc-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
 .mc-slot { min-width: 0; border: 1px solid var(--border-color, #bbb); border-radius: 6px; padding: 8px; }
 .mc-slot .button-row { flex-wrap: wrap; gap: 4px; }
+.mc-slot .mc-slot-actions { display: flex; }
+.mc-slot-actions button { flex: 0 0 auto; min-width: 0; width: auto; padding: 5px 7px; font-size: 13px; }
+.mc-slot-preview { outline: 2px solid var(--accent, #377c91); outline-offset: -2px; }
+.mc-review-actions { justify-content: center; flex-wrap: wrap; }
 .mc-slot-image { display: block; width: 100%; margin: 8px 0; }
 .mc-slot-image img { width: 100%; height: 180px; object-fit: contain; }
 .mc-review { width: 96vw; max-width: 1800px; height: 94vh; max-height: 94vh; box-sizing: border-box; overflow: auto; }
