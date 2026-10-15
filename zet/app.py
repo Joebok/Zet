@@ -28,7 +28,7 @@ from zet.services.config_service import ConfigService
 from zet.services.task_service import TaskService
 from zet.services.costume_service import CostumeCreateResult, CostumeService, CostumeServiceError, CostumeUpdateResult
 from zet.services.costume_wizard_service import CostumeWizardService
-from zet.services.quick_character_wizard_service import QuickCharacterWizardService
+from zet.services.minor_character_service import MinorCharacterService
 from zet.services.expression_service import ExpressionCreateResult, ExpressionService, ExpressionUpdateResult
 from zet.services.housekeeping_service import HousekeepingService
 from zet.services.identity_key_service import IdentityKeyPreview, IdentityKeyService
@@ -199,7 +199,8 @@ class ZetApp:
         self.identity_key_service = identity_key_service
         self.costume_service = costume_service
         self.costume_wizard_service = CostumeWizardService(self, Path(__file__).resolve().parents[1])
-        self.quick_character_wizard_service = QuickCharacterWizardService(self, Path(__file__).resolve().parents[1])
+        self.minor_character_service = MinorCharacterService(self, Path(__file__).resolve().parents[1])
+        self.quick_character_wizard_service = self.minor_character_service
         self.scene_appearance_service = scene_appearance_service
         self.expression_service = expression_service
         self.character_onboarding_service = character_onboarding_service

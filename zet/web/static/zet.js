@@ -193,7 +193,7 @@ const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
 const IMAGE_GENERATION_STORAGE_KEY = "zet:image-generation";
 
-const CHARACTER_PAGES = new Set(["onboarding", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
+const CHARACTER_PAGES = new Set(["onboarding", "minor-characters", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
 const STORY_PAGES = new Set(["narrative", "scene-candidates", "zine"]);
 const LOCAL_PAGES = new Set([
   "local-overview", "local-batch-status", "local-body-reference", "local-head-image", "local-character-assembly",
@@ -2951,6 +2951,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
     ["onboarding", "Overview"], ["local-body-reference", "Assets"], ["identity-keys", "Identity Keys"],
     ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
+    ["minor-characters", "Minor Characters"],
   ],
   story: [
     ["narrative", "Stories"], ["scene-candidates", "Candidates"], ["zine", "Zines"],
@@ -2960,6 +2961,7 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 const RESPONSIVE_TOOL_PAGES = [
   ["local-batch-status", "Batches"],
   ["image-generation", "Image Generation"],
+  ["minor-characters", "Minor Characters"],
   ["auxiliary-resources", "Image Inventory"], ["template-editor", "Template Editor"], ["ai-controls", "AI Queue"],
   ["pipeline-controls", "Pipeline Controls"],
   ["help", "Template Instruction Manuals"],
@@ -3575,6 +3577,10 @@ function browserRouteUrl() {
     return '/?'+current;
   }
   if (page) params.set("page", page);
+  if (page === "minor-characters") {
+    const id = new URLSearchParams(location.search).get("minor_character");
+    if (id) params.set("minor_character", id);
+  }
   if (page === "scene-batches") {
     const batch = new URLSearchParams(window.location.search).get("batch");
     if (batch) params.set("batch", batch);
@@ -4199,6 +4205,7 @@ async function openTemplateManual(manualId) {
 }
 
 async function activatePage(page, options = {}) {
+  if (activePageName() === "minor-characters" && page !== "minor-characters") await window.zetMinorCharacters?.flush();
   const retiredPage = ["render-console", "render-review"].includes(page);
   const retiredRoute = new URLSearchParams(window.location.search);
   page = canonicalDashboardPage(page);
@@ -4216,7 +4223,7 @@ async function activatePage(page, options = {}) {
     !phaseReady
     && !hasRequestedLocalBatch
     && ((state.workspace === "character"
-      && ((CHARACTER_PAGES.has(page) && !["onboarding", "phase-comparison"].includes(page)) || PRODUCTION_PAGES.has(page)))
+      && ((CHARACTER_PAGES.has(page) && !["onboarding", "phase-comparison", "minor-characters"].includes(page)) || PRODUCTION_PAGES.has(page)))
       || LOCAL_ASSET_PAGES.has(page))
   ) {
     page = "onboarding";
@@ -4254,6 +4261,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#turnarounds-page").classList.toggle("active", page === "turnarounds");
   document.querySelector("#identity-keys-page").classList.toggle("active", page === "identity-keys");
   document.querySelector("#auxiliary-resources-page").classList.toggle("active", page === "auxiliary-resources");
+  document.querySelector("#minor-characters-page").classList.toggle("active", page === "minor-characters");
   document.querySelector("#phase-comparison-page").classList.toggle("active", page === "phase-comparison");
   document.querySelector("#costumes-page").classList.toggle("active", page === "costumes");
   document.querySelector("#scene-appearances-page").classList.toggle("active", page === "scene-appearances");
@@ -4329,6 +4337,7 @@ async function activatePage(page, options = {}) {
   if (page === "auxiliary-resources") {
     await loadEntityLibraryInventory();
   }
+  if (page === "minor-characters") await window.zetMinorCharacters?.load();
   if (page === "phase-comparison") {
     initializePhaseComparisonControls();
     await loadPhaseComparison();
@@ -12655,6 +12664,7 @@ async function saveUniverseSettings() {
 }
 
 async function selectUniverse(universeId) {
+  await window.zetMinorCharacters?.flush();
   const response = await fetch("/api/universes/select", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Zet-Universe": state.universeId },
@@ -13317,6 +13327,7 @@ window.ZetTaskCapture.registerProvider(() => {
     source_url: source.href, universe_id: state.universeId || null, selections, workflow_status: local?.workflow_status || null };
 });
 window.zetQuickCharacterWizard = {
+  activatePage,
   fetchJson,
   selectedAsset: () => entityLibrarySelectedAsset,
   universe: () => state.universeId,

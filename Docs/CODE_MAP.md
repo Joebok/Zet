@@ -65,6 +65,12 @@ Use this map to select a narrow search, inspect the named entry point and caller
 ## Shared reconstruction and true-up (2026-10-15)
 
 - `image_reconstruction_contract.py` owns frozen v2 target intent/precedence and report validation; `image_true_up_service.py` owns intent-aware comparison and direct composition of selected suggestions/custom feedback. `image_reconstruction_service.py` exposes shared prepare/analyze/revise/render-spec/compare operations independently of board allocation, plus Image Generation wrappers.
-- `quick_character_wizard_service.py` owns universe-style opt-in, target links, front/side candidates and asynchronous render/review. `quick_character_publication_service.py` records selected outputs. The primary UI exposes generate, custom feedback, try again and use image; analysis, suggestions and prior attempts are optional details. A successful model review is not required to choose a rendered image.
+- `quick_character_wizard_service.py` owns the reusable analysis/render/review engine. `minor_character_service.py` extends its existing store with named ongoing workspaces, legacy adoption, reference selection, working selection and per-view locking. `quick_character_publication_service.py` publishes locked views without replacing prior image bytes. A successful model review is not required to select or lock a rendered image.
 - Image Generation adds selected-result reconstruction, `/api/image-generation/comparisons`, report polling, source image reads and `/corrections`; workspace ownership revalidates the selected input during handoff. `zet.js` owns presentation and dirty refinement state.
 - S1–S3 remain regression coverage only. Disposable prepared-response/browser checks cover the new flow; Freydis artistic acceptance remains pending. See [ADR 0013](DECISIONS/0013-shared-reconstruction-target-and-true-up.md).
+
+## Minor Characters page (2026-10-15)
+
+- `ZetApp.minor_character_service` is also exposed through the legacy wizard service property. `minor_character_router.py` owns `/api/minor-characters`; old wizard routes remain adapters and image-serving URLs stay readable.
+- `minor_characters.js`, the Minor Characters page in `index.html` and scoped CSS own name-first creation, autosave, tabs/thumbnails, preview versus select/lock, designated-reference comparison and Inventory owner/create/continue handoffs. `zet.js` owns page navigation, route restoration and save-before-navigation/universe changes. The dialog script is retired.
+- See [ADR 0014](DECISIONS/0014-minor-character-workspaces.md), [data model](DATA_MODEL.md) and [local characters](COMPONENTS/LOCAL_CHARACTERS.md). Maintained S1-S3 remain regression checks; disposable feature journeys use isolated prepared responses.

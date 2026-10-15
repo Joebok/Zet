@@ -34,6 +34,8 @@ flowchart TD
 
 The required web/backend boundary is defined in [AGENTS](../AGENTS.md); it is a constraint on new changes, not a claim that every existing route is already minimal. [CODE_MAP](CODE_MAP.md) locates capabilities and tests.
 
+Minor Characters use an ongoing named workspace independent of the major character/phase pipelines. `MinorCharacterService` extends the existing wizard analysis/render engine; the publication service owns per-view Inventory writes. The page/router handle presentation and service calls. Working selections and locked library outputs have separate lifetimes; comparison-reference changes are display-only. See [ADR 0014](DECISIONS/0014-minor-character-workspaces.md).
+
 ## Initialization and lifetime
 
 1. [zet/web/app.py](../zet/web/app.py) `main` parses config/host/port and calls Uvicorn with `create_app`. There is no separate frontend build needed for normal startup; static assets are served locally.

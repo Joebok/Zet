@@ -96,6 +96,7 @@ class QuickCharacterWizardService:
 
     def _public(self, session: dict) -> dict:
         value = json.loads(json.dumps(session))
+        value.pop("analysis_inputs", None)
         if session.get("reconstruction_id"):
             value["target_brief"] = self._reconstruction().status(session["reconstruction_id"])["target"]
         for item in value["references"]:
@@ -104,6 +105,7 @@ class QuickCharacterWizardService:
         for candidate in value["candidates"]:
             candidate["can_retry_render"] = candidate["status"] == "FAILED" and bool(candidate.get("render_payload"))
             candidate.pop("render_payload", None)
+            candidate.pop("inputs", None)
             candidate["image_url"] = (f"/api/quick-character-wizard/{session['session_id']}/images/{candidate['candidate_id']}"
                                       if candidate.get("filename") else "")
             candidate.pop("filename", None)
@@ -253,14 +255,22 @@ class QuickCharacterWizardService:
                               label="Quick Character Wizard", error_type=QuickCharacterWizardError)
         return self.ollama.generate_json(model, system, prompt, schema, images=images)
 
+    @staticmethod
+    def _ordered_references(session: dict) -> list[dict]:
+        primary = session.get("primary_reference_id")
+        return sorted(session["references"], key=lambda r: r.get("reference_id") != primary) if primary else session["references"]
+
     def _reference_paths(self, session: dict) -> list[str]:
-        return [str(self._directory(session["session_id"]) / ref["filename"]) for ref in session["references"]]
+        return [str(self._directory(session["session_id"]) / ref["filename"]) for ref in self._ordered_references(session)]
+
+    def _draft_session(self, sid):
+        return self._read(sid)
 
     def _draft_job(self, sid: str, revision_id: str) -> None:
-        session = self._read(sid)
+        session = self._draft_session(sid)
         if session.get("style_mode") == "universe":
             refs = []
-            for ref, path in zip(session["references"], self._reference_paths(session)):
+            for ref, path in zip(self._ordered_references(session), self._reference_paths(session)):
                 contents = Path(path).read_bytes()
                 if hashlib.sha256(contents).hexdigest() != ref["checksum"]:
                     raise QuickCharacterWizardConflict("A reference snapshot changed. Start a new session.")
@@ -293,7 +303,7 @@ class QuickCharacterWizardService:
             "Keep source camera angle, gaze direction, pose, crop and background out of the reusable description and "
             "observations; include only stable appearance and design facts. "
             "No character biography or full template. Honor user notes and answers.\n" + json.dumps({
-                "captions": [r["caption"] for r in session["references"]], "notes": session["notes"],
+                "captions": [r["caption"] for r in self._ordered_references(session)], "notes": session["notes"],
                 "answers": session["answers"], "framing": session["framing"], "side": session["side"],
                 "current_description": session["description"], "preserve": session.get("preserve", ""),
                 "required_changes": session.get("changes", "")}), _DRAFT_SCHEMA, self._reference_paths(session), session.get("model"))
@@ -431,13 +441,14 @@ class QuickCharacterWizardService:
     def _render_job(self, sid: str, candidate_id: str, item_ids: list | None) -> None:
         session = self._read(sid)
         candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
+        session = {**session, **candidate.get("inputs", {})}
         view = candidate["view"]
         anchor = candidate["anchor_id"]
         instructions = candidate["instructions"]
         refinement_base = next((c for c in session["candidates"] if c["candidate_id"] == candidate["refinement_base_id"]), None)
         try:
             paths = self._reference_paths(session)
-            labels = [r["caption"] for r in session["references"]]
+            labels = [r["caption"] for r in self._ordered_references(session)]
             if view != "FRONT":
                 front = next(c for c in session["candidates"] if c["candidate_id"] == anchor)
                 paths.insert(0, str(self._directory(sid) / front["filename"]))
@@ -478,9 +489,10 @@ class QuickCharacterWizardService:
                 context = (f"One character, {framing}; {angles[view]}. Neutral pose, plain neutral background. "
                     "Rotate head and body together; gaze follows facing direction. Do not mirror anatomical "
                     "asymmetry or turn toward camera to show hidden features. One view, no sheet.")
+                report_id = candidate.get("correction_report_id",
+                    refinement_base["comparison"]["id"] if refinement_base and refinement_base.get("comparison") else "")
                 payload = {**self._reconstruction().render_spec(session["reconstruction_id"], context, refs,
-                    report_id=refinement_base["comparison"]["id"] if refinement_base and refinement_base.get("comparison") else "",
-                    item_ids=item_ids, instructions=instructions), "width": width, "height": height,
+                    report_id=report_id, item_ids=item_ids if report_id else [], instructions=candidate["instructions"]), "width": width, "height": height,
                     "negative_prompt": "multiple characters, extra limbs, mirrored asymmetry, text, labels, collage"}
                 candidate["view_context"] = context
             self._dispatch_candidate(sid, candidate, payload)
@@ -496,8 +508,9 @@ class QuickCharacterWizardService:
     def _dispatch_candidate(self, sid, candidate, payload, seeds=None):
         with self._lock(sid):
             current = self._read(sid)
-            if (current["status"] in {"ABANDONED", "ACCEPTED"} or current["revision_id"] != candidate["revision_id"]
-                    or (candidate["view"] != "FRONT" and current["selected"].get("FRONT") != candidate["anchor_id"])):
+            if (current["status"] in {"ABANDONED", "ACCEPTED"} or (not current.get("minor_character") and
+                    (current["revision_id"] != candidate["revision_id"] or
+                     (candidate["view"] != "FRONT" and current["selected"].get("FRONT") != candidate["anchor_id"])))):
                 return
             target = next(c for c in current["candidates"] if c["candidate_id"] == candidate["candidate_id"])
             target.update(prompt=payload["prompt"], render_payload=payload, render_request_id=uuid4().hex)
@@ -538,6 +551,7 @@ class QuickCharacterWizardService:
     def _review_job(self, sid: str, candidate_id: str) -> None:
         session = self._read(sid)
         candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
+        session = {**session, **candidate.get("inputs", {})}
         paths = [str(self._directory(sid) / candidate["filename"]), *self._reference_paths(session)]
         if candidate["anchor_id"]:
             front = next(c for c in session["candidates"] if c["candidate_id"] == candidate["anchor_id"])
@@ -568,14 +582,18 @@ class QuickCharacterWizardService:
                                "give concise actionable refinements.\nRequested prompt: " + candidate["prompt"], _REVIEW_SCHEMA, paths, session.get("model"))
         with self._lock(sid):
             current = self._read(sid)
-            if current["status"] == "ABANDONED" or current["revision_id"] != candidate["revision_id"]:
+            if current["status"] == "ABANDONED" or (not current.get("minor_character") and current["revision_id"] != candidate["revision_id"]):
                 return
             target = next(c for c in current["candidates"] if c["candidate_id"] == candidate_id)
             target.update(status="READY", review=review["review"], refinements=review["refinements"], error="")
             if comparison:
                 target["comparison"] = comparison
-            current.update(status="REVIEW_READY", job={"kind": "review", "status": "COMPLETE", "error": ""})
+            if not current.get("minor_character"):
+                current.update(status="REVIEW_READY", job={"kind": "review", "status": "COMPLETE", "error": ""})
             self._write(current)
+
+    def _start_review(self, sid, candidate_id):
+        self._submit(sid, self._review_job, candidate_id)
 
     def get_session(self, sid: str) -> dict:
         with self._lock(sid):
@@ -618,7 +636,7 @@ class QuickCharacterWizardService:
                         c.update(status="REVIEWING", mime_type=mime, sha256=hashlib.sha256(contents).hexdigest(), seed=generation.get("seed"))
                         session["job"] = {"kind": "review", "status": "RUNNING", "error": ""}
                         self._write(session)
-                        self._submit(sid, self._review_job, c["candidate_id"])
+                        self._start_review(sid, c["candidate_id"])
                         return self._public(self._read(sid))
                     else:
                         c.update(status="FAILED", error=result.get("error") or "The render did not produce an image.")

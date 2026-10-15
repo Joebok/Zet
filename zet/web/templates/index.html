@@ -81,6 +81,7 @@
           <button class="tab workflow-tab" data-page="local-costume-dressing">Costume-Dressing</button>
         </div>
       </div>
+      <button class="tab workflow-tab" data-page="minor-characters">Minor Characters</button>
       <button class="tab workflow-tab" data-page="identity-keys">Identity Keys</button>
       <button class="tab workflow-tab" data-page="turnarounds">Turnarounds</button>
       <button class="tab workflow-tab" data-page="costumes">Costumes</button>
@@ -108,6 +109,7 @@
       <div class="toolbar-menu">
         <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
         <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
+          <button class="tab workflow-tab" data-page="minor-characters">Minor Characters</button>
           <button class="tab workflow-tab" data-page="image-generation">Image Generation</button>
           <button class="tab workflow-tab" data-page="auxiliary-resources">Image Inventory</button>
           <button class="tab workflow-tab" data-page="template-editor">Template Editor</button>
@@ -501,7 +503,7 @@
           <label class="visually-hidden" for="entity-library-search">Search images</label>
           <input id="entity-library-search" type="search" placeholder="Search by name, subject, set, tag, or facet" autocomplete="off">
           <button id="entity-library-refresh" class="primary-action" type="submit">Search</button>
-          <button id="quick-character-wizard-open" type="button">Quick Character Wizard</button>
+          <button id="quick-character-wizard-open" type="button">Minor Character</button>
         </form>
         <div class="entity-library-layout">
         <aside class="entity-library-sidebar">
@@ -595,7 +597,7 @@
             <label>Preferred reference key<input id="entity-library-edit-reference" placeholder="tsaeytte.jewelry.front_side" disabled><small>Stable key for &#123;&#123;LIB:REF:key&#125;&#125; in templates. Use lowercase letters, numbers, dots, underscores, or hyphens.</small></label>
           </section>
           <section class="inventory-detail-group inventory-detail-actions"><h3>Image actions</h3>
-            <button id="quick-character-wizard-from-asset" type="button">Quick Character Wizard</button>
+            <button id="quick-character-wizard-from-asset" type="button">Minor Character</button>
             <button id="entity-library-modify-generated" class="primary-action" type="button" hidden>Modify with Image Generator</button>
             <span id="entity-library-modify-status" class="status-text" role="status"></span>
             <label>Replacement image<input id="entity-library-replacement-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled></label>
@@ -620,41 +622,7 @@
         <h2>Review merge</h2><div id="entity-library-merge-content"></div>
         <div class="button-row"><button id="entity-library-merge-cancel" type="button">Cancel</button><button id="entity-library-merge-confirm" class="primary-action" type="button" disabled>Merge records</button></div>
       </dialog>
-      <dialog id="quick-character-wizard-dialog" class="inventory-dialog" aria-labelledby="quick-character-wizard-title">
-        <div class="button-row"><h2 id="quick-character-wizard-title">Quick Character Wizard</h2><button id="qc-close" type="button">Close</button></div>
-        <p>Create front, front 3/4 and profile images from references. Closing keeps your draft.</p>
-        <div class="button-row"><label>Resume draft<select id="qc-sessions"><option value="">Choose a draft</option></select></label><button id="qc-resume" type="button">Resume</button><button id="qc-new" type="button">New draft</button></div>
-        <div id="qc-message" class="status-text" role="status" aria-live="polite"></div>
-        <section id="qc-intake">
-          <div class="qc-controls"><label>Name<input id="qc-name" maxlength="200"></label><label>Framing<select id="qc-framing"><option value="full_body">Full body</option><option value="portrait">Head-and-shoulders portrait</option></select></label><label>Angled views<select id="qc-side"><option value="left">Left side</option><option value="right">Right side</option></select></label></div>
-          <label>Style<select id="qc-style-mode"><option value="universe">Reconstruct in universe style</option><option value="preserve_source">Keep source style</option></select></label>
-          <label>Analysis model<select id="qc-model"></select></label>
-          <p id="qc-style-summary" class="status-text"></p>
-          <label>Preserve<textarea id="qc-preserve" rows="2" placeholder="Identity, hair silhouette and length, costume details…"></textarea></label>
-          <label>Change (one instruction per line)<textarea id="qc-changes" rows="3" placeholder="Remove the axe; leave both hands naturally empty."></textarea></label>
-          <label>Additional direction<textarea id="qc-notes" rows="3" placeholder="Any other requirements or context."></textarea></label>
-          <div id="qc-reference-slots" class="qc-grid"></div>
-          <button id="qc-create" class="primary-action" type="button">Analyze references</button>
-        </section>
-        <section id="qc-draft" hidden>
-          <p id="qc-next-step" class="status-text" role="status"></p>
-          <div id="qc-source-images" class="qc-grid"></div>
-          <div id="qc-questions"></div><button id="qc-answer" type="button" hidden>Submit answers</button>
-          <details><summary>Adjust description and generation details</summary>
-          <p id="qc-target-style" class="status-text"></p>
-          <div id="qc-target-controls" class="qc-grid"><label>Preserve<textarea id="qc-draft-preserve" rows="3"></textarea></label><label>Required changes<textarea id="qc-draft-changes" rows="3"></textarea></label></div>
-          <div class="qc-grid"><section><h3>Observed details</h3><ul id="qc-observations"></ul></section><section><h3>Proposed missing details</h3><ul id="qc-proposals"></ul></section></div>
-          <label>Proposed details to use (one per line; edit as needed)<textarea id="qc-proposed-details" rows="3"></textarea></label>
-          <label>Character description<textarea id="qc-description" rows="6"></textarea></label>
-          <label>Prompt identity<textarea id="qc-identity" rows="2"></textarea></label>
-          <input id="qc-approved" type="checkbox" hidden>
-          <div class="button-row"><button id="qc-save-draft" type="button">Save description</button><button id="qc-reanalyze" type="button">Retry analysis</button></div>
-          </details>
-          <div id="qc-views" class="qc-grid"></div>
-          <div class="button-row"><button id="qc-accept" class="primary-action" type="button" disabled>Save three views to library</button><button id="qc-abandon" type="button">Abandon draft</button></div>
-          <div id="qc-publication"></div>
-        </section>
-      </dialog>
+
       <div id="aux-resource-message" class="action-message" hidden></div>
       <div class="image-catalog-layout" hidden>
         <aside class="image-catalog-sidebar">
@@ -779,6 +747,51 @@
           </section>
         </aside>
       </div>
+    </section>
+
+    <section id="minor-characters-page" class="page">
+      <div class="page-title-row"><h1>Minor Characters</h1><button id="mc-back" type="button" hidden>All Minor Characters</button></div>
+      <div id="mc-message" class="status-text" role="status" aria-live="polite"></div>
+      <section id="mc-list-panel">
+        <form id="mc-create-form" class="button-row"><label>New Minor Character name<input id="mc-new-name" maxlength="200" required></label><button type="submit">New Minor Character</button></form>
+        <div id="mc-name-match"></div>
+        <section id="mc-inventory-entry" hidden><p>Create a named character using this image, or continue an existing character without changing its references.</p><img id="mc-entry-image" alt="Starting image"><label>Continue existing<select id="mc-continue-choice"></select></label><button id="mc-continue" type="button">Continue existing</button></section>
+        <div id="mc-list"></div>
+      </section>
+      <section id="mc-editor" hidden>
+        <div class="mc-workspace">
+          <aside class="control-panel mc-inputs">
+            <label>Name<input id="mc-name" maxlength="200" required></label><div id="mc-rename-match"></div>
+            <h3>Original references</h3><div id="mc-references"></div>
+            <div class="button-row"><button id="mc-add-reference" type="button">Choose from Inventory</button><label class="mc-upload">Upload image<input id="mc-upload" type="file" accept="image/png,image/jpeg,image/webp"></label></div>
+            <div id="mc-paste" class="paste-zone" tabindex="0">Click here and paste a reference image</div>
+            <label>Primary identity reference<select id="mc-primary"></select></label>
+            <label>Style<select id="mc-style"><option value="universe">Reconstruct in universe style</option><option value="preserve_source">Keep source style</option></select></label>
+            <div class="mc-control-row"><label>Framing<select id="mc-framing"><option value="full_body">Full body</option><option value="portrait">Portrait</option></select></label><label>Angled views<select id="mc-side"><option value="left">Left</option><option value="right">Right</option></select></label></div>
+            <label>Preserve<textarea id="mc-preserve" rows="2"></textarea></label>
+            <label>Required changes<textarea id="mc-changes" rows="2"></textarea></label>
+            <label>Additional direction<textarea id="mc-notes" rows="2"></textarea></label>
+            <button id="mc-generate" type="button" class="primary-action">Generate front</button>
+            <label>What would you like to change?<textarea id="mc-feedback" rows="3" placeholder="Keep the details you like; describe what should change."></textarea></label>
+            <button id="mc-refine" type="button">Try these changes</button>
+            <details id="mc-analysis"><summary>Description and generation details</summary>
+              <label>Analysis model<select id="mc-model"></select></label><p id="mc-style-text"></p>
+              <label>Description<textarea id="mc-description" rows="5"></textarea></label><label>Identity<textarea id="mc-identity" rows="3"></textarea></label>
+              <label>Proposed details<textarea id="mc-proposals" rows="3"></textarea></label>
+              <div id="mc-questions"></div><button id="mc-analyze" type="button">Analyze references</button>
+            </details>
+          </aside>
+          <section class="mc-images">
+            <div id="mc-tabs" class="button-row" role="tablist" aria-label="Character views"></div>
+            <div id="mc-candidates" class="mc-candidates" aria-label="Candidates"></div>
+            <label>Comparison reference<select id="mc-comparison-reference"></select></label>
+            <div id="mc-comparison" class="qc-comparison-pair"></div>
+            <p id="mc-candidate-status" role="status"></p>
+            <div class="button-row"><button id="mc-select" type="button">Select this image</button><button id="mc-lock" type="button">Lock selected image</button><button id="mc-open-locked" type="button" hidden>Open locked image in Inventory</button></div>
+            <details id="mc-suggestions"><summary>Suggested changes</summary><div id="mc-findings"></div></details>
+          </section>
+        </div>
+      </section>
     </section>
 
     <section id="phase-comparison-page" class="page">
@@ -1814,7 +1827,7 @@
               <p class="managed-llm-description">Analyzes costume references, drafts templates, and reviews test renders. Defaults to Codex GPT-6 Luna.</p>
             </article>
             <article class="managed-llm-role">
-              <label>Quick Character Wizard model<select id="setting-quick-character-wizard-model" form="automation-form"></select></label>
+              <label>Minor Character model<select id="setting-quick-character-wizard-model" form="automation-form"></select></label>
               <p class="managed-llm-description">Analyzes character references and reviews three-view drafts. Defaults to Codex GPT-6 Luna.</p>
             </article>
             <article class="managed-llm-role" data-llm-role="scene_builder">
@@ -2134,7 +2147,7 @@ Add prompt language here.
   <script src="/static/task_attention.js?v=20261013-github"></script>
   <script src="/static/render_slots.js?v=20261012"></script>
   <script src="/static/zet.js?v=20261013-github"></script>
-  <script src="/static/quick_character_wizard.js?v=20261009"></script>
+  <script src="/static/minor_characters.js?v=20261015"></script>
   <script src="/static/local_asset_pipeline.js?v=20261013-github"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
 

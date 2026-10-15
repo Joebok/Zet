@@ -51,3 +51,4 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 | [0012 — Universe style and text-only reconstruction](0012-universe-style-and-reconstruction.md) | How do shared artistic rules, Narrative inheritance and image-to-text reconstruction preserve their separate contracts? | Accepted 2026-10-14 |
 
 | [0013 — Shared reconstruction target and true-up](0013-shared-reconstruction-target-and-true-up.md) | How do both image workflows preserve intentional edits while correcting drift? | Accepted locally 2026-10-15; artistic acceptance pending |
+| [0014 - Persistent Minor Character workspaces](0014-minor-character-workspaces.md) | How do named ongoing workspaces separate working selection, Inventory locking and visual comparison? | Accepted locally 2026-10-15 |

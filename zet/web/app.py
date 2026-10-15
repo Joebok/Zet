@@ -45,6 +45,7 @@ from zet.services.local_gate_registry_service import LocalGateRegistryService
 from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
 from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
 from zet.web.quick_character_wizard_router import create_quick_character_wizard_router
+from zet.web.minor_character_router import create_minor_character_router
 from zet.web.narrative_router import create_narrative_router
 from zet.web.task_router import create_task_router, render_task_capture_page
 from zet.services.source_editor_service import SourceEditorService
@@ -1202,6 +1203,7 @@ def create_app(
         return service
 
     app.include_router(create_quick_character_wizard_router(quick_character_wizard_service))
+    app.include_router(create_minor_character_router(quick_character_wizard_service))
     app.include_router(create_narrative_router(lambda: _app(app.state.config_path)))
     # A captured report belongs to its frozen universe, not the current UI selection.
     app.include_router(create_task_router(lambda: app.state.zet_app, lambda: app.state.worker_bridge_service))

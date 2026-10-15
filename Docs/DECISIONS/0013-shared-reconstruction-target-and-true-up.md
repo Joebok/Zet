@@ -2,6 +2,8 @@
 Status: accepted for local implementation and operator trial; rollout pending
 Date: 2026-10-15
 
+The wizard workspace lifecycle and publication rules below are superseded by [ADR 0014](0014-minor-character-workspaces.md): ongoing named Minor Characters separate selection from per-view Inventory locking and retain images across input/front changes. Shared reconstruction and original-pixel reference policies remain in effect.
+
 ## Context
 
 The Quick Character Wizard preserved source style/equipment, while phase-1 Image Generation reconstruction separated content from style but had no corrective comparison. Freydis needs Moonsea style and original identity/hair length while deliberately losing her axe. An unconditional source-match review could undo that edit.

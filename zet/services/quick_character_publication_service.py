@@ -14,15 +14,23 @@ from zet.services.entity_library_service import EntityLibraryServiceError
 from zet.services.quick_character_wizard_service import QuickCharacterWizardConflict
 
 
-def publish_quick_character(app, session: dict, directory: Path) -> dict:
+def publish_quick_character(app, session: dict, directory: Path, *, views=None) -> dict:
     library = app.entity_library_service
     sid, revision = session["session_id"], session["revision_id"]
 
     def stable_id(part: str) -> str:
+        if session.get("minor_character"):
+            if part == "set" and session.get("minor_set_id"):
+                return session["minor_set_id"]
+            if part in session["selected"]:
+                return str(uuid5(NAMESPACE_URL, f"zet:minor-character:{sid}:{session['selected'][part]}:{part}"))
+            suffix = (primary["checksum"] if part == "source" else
+                      session["selected"].get(part.split(":", 1)[1], "") if part.startswith(("provenance:", "identity:")) else "")
+            return str(uuid5(NAMESPACE_URL, f"zet:minor-character:{sid}:{part}:{suffix}"))
         return str(uuid5(NAMESPACE_URL, f"zet:quick-character:{sid}:{revision}:{part}"))
 
     set_id = stable_id("set")
-    primary = session["references"][0]
+    primary = next((r for r in session["references"] if r.get("reference_id") == session.get("primary_reference_id")), session["references"][0])
     source_id = primary["asset_id"] or stable_id("source")
     source_links = []
     if primary["asset_id"]:
@@ -42,10 +50,11 @@ def publish_quick_character(app, session: dict, directory: Path) -> dict:
                        "filename": primary["filename"], "view": "source", "prompt": "", "negative": ""})
     outputs = {}
     side = session["side"].upper()
-    for view in ("FRONT", f"FRONT_{side}_3_4", f"{side}_PROFILE"):
+    for view in views if views is not None else ("FRONT", f"FRONT_{side}_3_4", f"{side}_PROFILE"):
         candidate_id = session["selected"][view]
         candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
-        if candidate["revision_id"] != revision or candidate["stale"] or candidate["status"] not in {"READY", "REVIEW_FAILED"}:
+        if not candidate.get("filename") or (not session.get("minor_character") and
+                (candidate["revision_id"] != revision or candidate["stale"] or candidate["status"] not in {"READY", "REVIEW_FAILED"})):
             raise QuickCharacterWizardConflict("Choose a current rendered image for each view.")
         asset_id = stable_id(view)
         outputs[view] = asset_id
@@ -104,6 +113,8 @@ def publish_quick_character(app, session: dict, directory: Path) -> dict:
                            "request_id": asset["candidate"]["request_id"],
                            "references": [{k: r[k] for k in ("asset_id", "checksum", "caption")} for r in session["references"]],
                            "description": session["description"], "proposals": session["proposals"]}
+                if session.get("minor_character"):
+                    details["minor_character_id"] = sid
                 if session.get("reconstruction_id"):
                     core = app.quick_character_wizard_service._reconstruction()
                     details["reconstruction"] = asset["candidate"].get("render_payload", {}).get("reconstruction") or core.metadata(core.status(session["reconstruction_id"]))
@@ -120,7 +131,19 @@ def publish_quick_character(app, session: dict, directory: Path) -> dict:
                                (set_id, f"{session['name']} · Quick Character {sid[:8]}", "identity",
                                 session["description"], source_links[0]["entity_id"] if len(source_links) == 1 else None, stamp, stamp))
             for order, (view, asset_id) in enumerate([("source", source_id), *outputs.items()]):
+                if session.get("minor_character"):
+                    order = 0 if view == "source" else 1 if view == "FRONT" else 2 if "3_4" in view else 3
+                if session.get("minor_character"):
+                    connection.execute("DELETE FROM reference_set_assets WHERE set_id=? AND role=?", (set_id, view.lower()))
                 connection.execute("INSERT OR IGNORE INTO reference_set_assets VALUES(?,?,?,?)", (set_id, asset_id, view.lower(), order))
+            if session.get("minor_character"):
+                for view, locked in session.get("locked", {}).items():
+                    if view not in outputs:
+                        connection.execute("DELETE FROM reference_set_assets WHERE set_id=? AND role=?", (set_id, view.lower()))
+                        connection.execute("INSERT OR IGNORE INTO reference_set_assets VALUES(?,?,?,?)",
+                            (set_id, locked["asset_id"], view.lower(), 1 if view == "FRONT" else 2 if "3_4" in view else 3))
+                connection.execute("UPDATE reference_sets SET name=?,description=?,updated_at=? WHERE set_id=?",
+                                   (f"{session['name']} · Minor Character {sid[:8]}", session["description"], stamp, set_id))
     except Exception:
         for path in created_files:
             path.unlink(missing_ok=True)
