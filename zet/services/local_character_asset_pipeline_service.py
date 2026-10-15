@@ -148,10 +148,14 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError("Invalid local pipeline run ID.")
         # Glob only below this pipeline workspace. The requested costume narrows Dressing lookup.
         pattern = f"*/*/{self.definition['workspace']}/*/{run_id}" if self.definition["qualifies"] else f"*/*/{self.definition['workspace']}/{run_id}"
+        requested_costume = self._qualifier(costume) if costume and self.definition["qualifies"] else costume
         for path in self.root.glob(pattern):
             if (path / "spec.json").is_file():
                 spec = self._read(path / "spec.json")
-                if spec.get("kind") == self.pipeline and (not costume or spec.get("costume") == costume):
+                stored_costume = spec.get("costume")
+                if stored_costume and self.definition["qualifies"]:
+                    stored_costume = self._qualifier(stored_costume)
+                if spec.get("kind") == self.pipeline and (not costume or stored_costume == requested_costume):
                     return path
         raise LocalCharacterAssetPipelineError(f"Local {self.definition['label']} run not found: {run_id}")
 

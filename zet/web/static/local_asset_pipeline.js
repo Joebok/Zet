@@ -919,7 +919,8 @@
     select.replaceChildren(...(data.costumes || []).map((item) => new Option(item.name, item.name)));
     if (!select.options.length) select.add(new Option("No costumes available", ""));
     const routeCostume = new URLSearchParams(window.location.search).get("local_costume") || "";
-    const preferred = routeCostume || previous;
+    const routedCostume = (data.costumes || []).find((item) => item.name === routeCostume || item.slug === routeCostume);
+    const preferred = routedCostume?.name || routeCostume || previous;
     if (Array.from(select.options).some((item) => item.value === preferred)) select.value = preferred;
     else if (routeCostume && restoreParams.get("task_context") === "1") {
       window.ZetTaskCapture.notice(`Recorded costume "${routeCostume}" is unavailable. Showing an available costume, if any.`);
