@@ -212,6 +212,13 @@ let imageGenerationSelectedSlot = -1;
 let imageGenerationJobIds = [];
 const imageGenerationJobs = new Map();
 let imageGenerationPending = false;
+let imageReconstructionSource = null;
+let imageReconstructionSourceVersion = 0;
+let imageReconstructionUniverse = "";
+let imageReconstructionJob = null;
+let imageReconstructionPolling = false;
+let imageGenerationReconstruction = null;
+const reconstructionField = name => document.querySelector(`#image-reconstruction-${name}`);
 
 const characterSelect = document.querySelector("#character-select");
 const imageGenerationForm = document.querySelector("#image-generation-form");
@@ -1336,6 +1343,8 @@ function saveImageGenerationState() {
       referenceLabels: imageGenerationReferenceSlots.map((reference) => reference.label),
       sourceAssetId: imageGenerationSource.dataset.assetId || "",
       sourceChecksum: imageGenerationSource.dataset.checksum || "",
+      managedStyle: imageGenerationPrompt.dataset.managedStyle || "",
+      reconstruction: imageGenerationReconstruction,
     }));
   } catch (error) {
     showMessageElement(imageGenerationMessage, "Unable to save Image Generation state in this browser.", "warning");
@@ -1372,6 +1381,8 @@ async function restoreImageGenerationInputs() {
   imageGenerationSlots = Array(8).fill(null);
   imageGenerationSelectedSlot = -1; imageGenerationJobIds = []; imageGenerationJobs.clear();
   imageGenerationPrompt.value = ""; imageGenerationNegative.value = "";
+  imageGenerationPrompt.dataset.managedStyle = "";
+  imageGenerationReconstruction = null;
   imageGenerationSource.dataset.assetId = ""; imageGenerationSource.dataset.checksum = ""; imageGenerationSource.hidden = true;
   imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
   let saved = null;
@@ -1383,6 +1394,8 @@ async function restoreImageGenerationInputs() {
   }
   if (saved && typeof saved === "object") {
     imageGenerationPrompt.value = saved.prompt || "";
+    imageGenerationPrompt.dataset.managedStyle = saved.managedStyle || "";
+    imageGenerationReconstruction = saved.reconstruction || null;
     imageGenerationNegative.value = saved.negativePrompt || "";
     if (saved.width) imageGenerationWidth.value = saved.width;
     if (saved.height) imageGenerationHeight.value = saved.height;
@@ -1466,7 +1479,7 @@ async function restoreImageGenerationJob() {
 async function pollImageGenerationWorkspace() {
   if (imageGenerationWorkspacePolling || imageGenerationPending || !document.querySelector("#image-generation-page").classList.contains("active")) return;
   imageGenerationWorkspacePolling = true;
-  try { applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace")); }
+  try { applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace")); await pollImageReconstruction(); }
   catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, `Unable to check renders: ${error.message}. Retrying automatically.`, "error"); }
   finally { imageGenerationWorkspacePolling = false; }
 }
@@ -1499,6 +1512,173 @@ function imageGenerationDimensionFromSource(value) {
   return Math.min(4096, Math.max(256, Math.round(dimension / 32) * 32));
 }
 
+async function loadImageReconstructionOptions() {
+  const universe = state.universeId;
+  const options = await fetchJson("/api/image-generation/reconstructions/options");
+  if (state.universeId !== universe) return;
+  if (imageReconstructionUniverse !== universe) {
+    imageReconstructionSourceVersion += 1;
+    imageReconstructionSource = null;
+    imageReconstructionJob = null;
+    imageGenerationReconstruction = null;
+    imageReconstructionUniverse = universe;
+    reconstructionField("source").textContent = "No source selected.";
+    reconstructionField("preview").hidden = true;
+    for (const name of ["description", "prompt", "notes"]) reconstructionField(name).value = "";
+    reconstructionField("uncertainties").textContent = "";
+    reconstructionField("status").textContent = "";
+  }
+  const model = reconstructionField("model");
+  const previous = window.localStorage.getItem(`zet:reconstruction-model:${universe}`) || options.default_model;
+  model.replaceChildren(...options.models.map(value => new Option(value, value)));
+  if (options.models.includes(previous)) model.value = previous;
+  reconstructionField("style").textContent = `Destination style: ${options.style.text || 'No universe style set.'}`;
+  const saved = window.localStorage.getItem(`zet:reconstruction-job:${universe}`);
+  if (saved && !imageReconstructionJob) imageReconstructionJob = {id: saved, fieldBaseline: reconstructionBaseline()};
+  await pollImageReconstruction();
+}
+
+function reconstructionBaseline() {
+  return {description: reconstructionField("description").value, prompt: reconstructionField("prompt").value};
+}
+
+function setImageReconstructionSource(source, preview) {
+  imageReconstructionSourceVersion += 1;
+  imageReconstructionSource = {...source, universe: state.universeId};
+  imageReconstructionJob = null;
+  reconstructionField("source").textContent = source.label || "Source image";
+  reconstructionField("preview").src = preview;
+  reconstructionField("preview").hidden = false;
+  reconstructionField("status").textContent = "Ready. The source is used for analysis only.";
+  window.localStorage.removeItem(`zet:reconstruction-job:${state.universeId}`);
+}
+
+async function pollImageReconstruction() {
+  if (!imageReconstructionJob || imageReconstructionPolling) return;
+  const universe = state.universeId;
+  const id = imageReconstructionJob.id;
+  if (["SUBMITTED", "FAILED"].includes(imageReconstructionJob.status)) return;
+  imageReconstructionPolling = true;
+  try {
+    const job = await fetchJson(`/api/image-generation/reconstructions/${encodeURIComponent(id)}`);
+    if (state.universeId !== universe || imageReconstructionJob?.id !== id) return;
+    const fieldBaseline = imageReconstructionJob.fieldBaseline || reconstructionBaseline();
+    imageReconstructionJob = {...job, fieldBaseline};
+    reconstructionField("status").textContent = job.status === "FAILED" ? job.error
+      : job.status === "SUBMITTED" ? "Analysis complete. Rendering in the existing result slots."
+      : "Analyzing source; the batch will render automatically…";
+    if (["SUBMITTED", "FAILED"].includes(job.status)) {
+      if (reconstructionField("description").value === fieldBaseline.description) reconstructionField("description").value = job.content_prompt || "";
+      if (reconstructionField("prompt").value === fieldBaseline.prompt) reconstructionField("prompt").value = job.prompt || "";
+      reconstructionField("uncertainties").textContent = (job.uncertainties || []).join(" · ");
+    }
+  } catch (error) {
+    if (state.universeId === universe && imageReconstructionJob?.id === id) reconstructionField("status").textContent = error.message;
+  } finally { imageReconstructionPolling = false; }
+}
+
+async function startImageReconstruction() {
+  const source = imageReconstructionSource;
+  const universe = state.universeId;
+  if (!source || source.universe !== universe) {
+    reconstructionField("status").textContent = "Choose an analysis source first.";
+    return;
+  }
+  const button = reconstructionField("generate");
+  if (button.disabled) return;
+  button.disabled = true;
+  const fieldBaseline = reconstructionBaseline();
+  reconstructionField("status").textContent = "Starting reconstruction…";
+  try {
+    const model = reconstructionField("model").value;
+    window.localStorage.setItem(`zet:reconstruction-model:${universe}`, model);
+    const job = await fetchJson("/api/image-generation/reconstructions", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({...source, model,
+        count: Number(document.querySelector("#image-generation-count").value),
+        width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value),
+        notes: reconstructionField("notes").value})});
+    if (state.universeId !== universe) return;
+    // The job continues independently; selecting another source must not replace that form.
+    window.localStorage.setItem(`zet:reconstruction-job:${universe}`, job.id);
+    if (imageReconstructionSource !== source) return;
+    imageReconstructionJob = {...job, fieldBaseline};
+    setImageGenerationMode("txt2img");
+    imageGenerationSource.hidden = true;
+    delete imageGenerationSource.dataset.assetId;
+    delete imageGenerationSource.dataset.checksum;
+    saveImageGenerationState();
+    reconstructionField("status").textContent = "Analyzing source; the batch will render automatically…";
+    applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace"));
+  } catch (error) {
+    if (state.universeId === universe && imageReconstructionSource === source) reconstructionField("status").textContent = error.message;
+  } finally { button.disabled = false; }
+}
+
+reconstructionField("generate").addEventListener("click", () => void startImageReconstruction());
+reconstructionField("model").addEventListener("change", () => {
+  window.localStorage.setItem(`zet:reconstruction-model:${state.universeId}`, reconstructionField("model").value);
+  if (imageReconstructionJob && imageReconstructionJob.model !== reconstructionField("model").value) {
+    imageReconstructionJob = null;
+    window.localStorage.removeItem(`zet:reconstruction-job:${state.universeId}`);
+    reconstructionField("status").textContent = "Analysis model changed. Existing batches continue in their result slots.";
+  }
+});
+reconstructionField("library").addEventListener("click", () => {
+  const universe = state.universeId;
+  const version = ++imageReconstructionSourceVersion;
+  void window.zetQuickCharacterWizard.openLibraryPicker(async item => {
+    const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(item.asset_id)}`);
+    if (state.universeId !== universe || version !== imageReconstructionSourceVersion) return;
+    const asset = payload.asset;
+    setImageReconstructionSource({asset_id: asset.asset_id, label: asset.label || asset.file_name}, fileUrl(asset.image_path, asset.checksum));
+  });
+});
+reconstructionField("file").addEventListener("change", async event => {
+  const file = event.target.files[0];
+  const universe = state.universeId;
+  if (!file) return;
+  const version = ++imageReconstructionSourceVersion;
+  const data = await readImageGenerationReference(file);
+  if (state.universeId === universe && version === imageReconstructionSourceVersion) setImageReconstructionSource({image: data, label: file.name}, data);
+});
+reconstructionField("paste").addEventListener("click", () => reconstructionField("paste").focus());
+reconstructionField("paste").addEventListener("paste", async event => {
+  const blob = imageBlobFromPasteEvent(event);
+  if (!blob) return;
+  event.preventDefault();
+  const universe = state.universeId;
+  const version = ++imageReconstructionSourceVersion;
+  const data = await readImageGenerationReference(blob);
+  if (state.universeId === universe && version === imageReconstructionSourceVersion) setImageReconstructionSource({image: data, label: "Pasted source"}, data);
+});
+reconstructionField("remove").addEventListener("click", () => {
+  imageReconstructionSourceVersion += 1;
+  imageReconstructionSource = null;
+  imageReconstructionJob = null;
+  reconstructionField("source").textContent = "No source selected.";
+  reconstructionField("preview").hidden = true;
+  reconstructionField("file").value = "";
+  window.localStorage.removeItem(`zet:reconstruction-job:${state.universeId}`);
+});
+reconstructionField("use-text").addEventListener("click", () => {
+  if (!imageReconstructionJob?.content_prompt || !reconstructionField("prompt").value.trim()) return;
+  imageGenerationPrompt.value = reconstructionField("prompt").value;
+  imageGenerationPrompt.dataset.managedStyle = `Art style:\n${imageReconstructionJob.style.text}\n\n`;
+  imageGenerationReconstruction = Object.fromEntries(["id", "model", "source", "style", "instruction_version", "content_prompt", "uncertainties", "notes", "prompt"].map(key => [key, imageReconstructionJob[key]]));
+  imageGenerationReconstruction.edited_content_prompt = reconstructionField("description").value;
+  setImageGenerationMode("txt2img");
+  imageGenerationSource.hidden = true;
+  delete imageGenerationSource.dataset.assetId;
+  delete imageGenerationSource.dataset.checksum;
+  imageGenerationPrompt.dispatchEvent(new Event("input", {bubbles: true}));
+});
+reconstructionField("description").addEventListener("input", () => {
+  if (!imageReconstructionJob?.style) return;
+  reconstructionField("prompt").value = [`Art style:\n${imageReconstructionJob.style.text}`,
+    reconstructionField("description").value,
+    imageReconstructionJob.notes ? `Additional artistic direction:\n${imageReconstructionJob.notes}` : ""].filter(Boolean).join("\n\n");
+});
+
 async function modifyEntityLibraryImageWithGenerator() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
@@ -1518,6 +1698,8 @@ async function modifyEntityLibraryImageWithGenerator() {
       imageGenerationReferenceSlots[0] = {label: "source image", data};
       renderImageGenerationReferenceSlots();
       imageGenerationPrompt.value = asset.prompt || "";
+      imageGenerationReconstruction = null;
+      imageGenerationPrompt.dataset.managedStyle = "";
       imageGenerationNegative.value = asset.negative_prompt || "";
       const sourceWidth = imageGenerationDimensionFromSource(asset.width);
       const sourceHeight = imageGenerationDimensionFromSource(asset.height);
@@ -1783,6 +1965,7 @@ function currentImageGenerationInputs() {
     width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value),
     reference_images: references.map(({label, data}) => ({label: label.trim(), image: data})),
     source_asset_id: imageGenerationSource.dataset.assetId || "", source_checksum: imageGenerationSource.dataset.checksum || "",
+    ...(imageGenerationReconstruction ? {reconstruction: imageGenerationReconstruction} : {}),
   };
 }
 
@@ -1804,6 +1987,7 @@ async function loadImageGenerationOptions() {
       imageGenerationHeight.value = payload.default_height || 1024;
       imageGenerationOptionsLoaded = true;
       await restoreImageGenerationInputs();
+      await loadImageReconstructionOptions();
     } catch (error) {
       showMessageElement(imageGenerationMessage, `Unable to load generation settings: ${error.message}`, "error");
     }
@@ -12026,7 +12210,13 @@ imageGenerationAddUniverseArtStyle.addEventListener("click", () => {
     showMessageElement(imageGenerationMessage, "The selected universe has no canonical art style.", "warning");
     return;
   }
-  imageGenerationPrompt.value = `Art style: ${artStyle}\n${imageGenerationPrompt.value}`;
+  let content = imageGenerationPrompt.value;
+  const previous = imageGenerationPrompt.dataset.managedStyle;
+  if (previous && content.startsWith(previous)) content = content.slice(previous.length);
+  else if (content.startsWith(`Art style: ${artStyle}\n`)) content = content.slice(`Art style: ${artStyle}\n`.length);
+  const prefix = `Art style: ${artStyle}\n\n`;
+  imageGenerationPrompt.dataset.managedStyle = prefix;
+  imageGenerationPrompt.value = prefix + content.trimStart();
   imageGenerationPrompt.dispatchEvent(new Event("input", { bubbles: true }));
   imageGenerationPrompt.focus();
 });

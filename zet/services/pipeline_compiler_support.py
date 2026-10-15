@@ -9,6 +9,7 @@ from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Library_Paths import character_root, resolve_library_path
 from zet.services.prompt_template_service import PromptTemplateService
 from zet.services.view_service import UnknownViewError, ViewService
+from zet.services.universe_style_service import universe_style
 
 
 def universe_art_style(universe_root: str | Path | None) -> tuple[str, dict[str, dict]]:
@@ -17,9 +18,7 @@ def universe_art_style(universe_root: str | Path | None) -> tuple[str, dict[str,
         return "", {}
     marker = Path(universe_root).expanduser().resolve() / "universe.json"
     try:
-        data = json.loads(marker.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return "", {}
+        style = universe_style(universe_root)
     except (OSError, json.JSONDecodeError) as exc:
         raise TemplateCompileError("INVALID_CONFIG", f"Cannot read universe descriptor {marker}: {exc}") from exc
     sources = {
@@ -31,7 +30,7 @@ def universe_art_style(universe_root: str | Path | None) -> tuple[str, dict[str,
             "editable": True,
         }
     }
-    return str(data.get("canonical_art_style") or "").strip(), sources
+    return style["text"], sources
 
 
 def with_universe_art_style(ir: dict, universe_root: str | Path | None) -> dict:

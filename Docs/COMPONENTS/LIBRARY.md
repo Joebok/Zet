@@ -60,3 +60,7 @@ tracking defects were addressed in the [entity usage integrity plan](../../plans
 to their direct asset, and refresh reports invalid endpoints while retaining valid
 ones. The audit also records an active key bound to an archived image in the live
 catalog; that pre-existing record was not repaired by the code change.
+
+## Reconstruction imports (2026-10-14)
+
+Image Generation reconstruction imports use the existing new-asset flow. They retain analysis source identity/hash, model, extracted content, destination style, final render prompt and result seed. Analysis provenance does not set the editable-source/replacement binding and cannot update a pipeline lock through the source-update action. Existing checksum deduplication still applies. See [data model](../DATA_MODEL.md#style-and-reconstruction-records-2026-10-14).

@@ -39,6 +39,8 @@ Create one clean head reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
 {{LOCAL_VISIBLE_CHARACTER_FACTS}}
 
 Show the complete head, hairstyle, and neck against a plain transparent background. Render in {{LOCAL_STYLE_INSTRUCTION}}.
+
+Build dimensional facial planes around the cheeks, nose, mouth and eyes using gradual light and shadow. Render naturally seated eyes with defined eyelids and restrained corneal highlights, subtle skin-color variation, and hair grouped into strands with natural highlights. Preserve authored age and distinctive features without oversized anime eyes, flat cel shading, heavy outlines or plastic skin. Apply these details only to surfaces visible in the requested view; do not turn the head to reveal hidden features.
 <!-- ZET:END LOCAL_PIPELINE_ONLY -->
 <!-- ZET:END IMAGE_PROMPT_ONLY -->
 

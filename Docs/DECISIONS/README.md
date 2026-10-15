@@ -47,3 +47,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 | [0008 — GitHub tasks and production releases](0008-github-tasks-and-production-releases.md) | Who owns delivery, evidence, claims and promotion? | Accepted 2026-10-13 |
 | [0009 — Narrative interview review](0009-narrative-interview-review.md) | How are wider interview edits reviewed, routed to shared/local fields and applied? | Accepted 2026-10-13 |
 | [0011 — Portable library references](0011-portable-library-references.md) | How do library-owned file references survive a library relocation? | Accepted 2026-10-14 |
+
+| [0012 — Universe style and text-only reconstruction](0012-universe-style-and-reconstruction.md) | How do shared artistic rules, Narrative inheritance and image-to-text reconstruction preserve their separate contracts? | Accepted 2026-10-14 |

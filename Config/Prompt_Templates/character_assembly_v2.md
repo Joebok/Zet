@@ -36,6 +36,7 @@ Judge the candidate image against the visible requirements below and the supplie
 - Preserve Image 2's face, hair, ears, apparent age, and gaze.
 - Keep the face, hair, ears, and apparent age of the head exactly as they are.
 - Change only the head/neck junction and the minimum style integration needed for a natural join.
+- Preserve the sources' dimensional facial planes, skin variation and hair detail at the output scale. Preserving identity and geometry does not require copying incidental contour strokes or mismatched surface shading; surface adjustments remain limited by the selected assembly style mode.
 
 # Subject Details
 

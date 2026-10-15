@@ -229,6 +229,9 @@ async function loadPageContent() {
     contextLabels = {story:story.title, scene:detail.title};
     root.innerHTML = `<h1>${esc(detail.title)}</h1><div class="narrative-editor"><section class="narrative-card"><h2>Shared scene direction</h2>
       ${label('title',detail.title,false)}${label('intent',detail.intent)}${visualFields.map(key=>label(key,detail[key])).join('')}${label('canvas',detail.canvas,false)}
+      <label><input type="checkbox" data-field="use_universe_style" ${detail.use_universe_style ? 'checked' : ''}> Use universe style</label>
+      <p class="narrative-muted">When checked, the universe style replaces the saved scene style above. Local target style overrides still apply. Write Prompt adopts changes.</p>
+      <p class="narrative-muted">Universe style: ${esc(detail.universe_style?.text || 'No universe style set.')}</p>
       <div class="narrative-actions"><button data-action="save">Save scene</button><button class="danger" data-action="delete">Delete scene</button></div>
       ${detail.migration?.kind ? `<div class="narrative-migration-note"><p>Migrated starting point — review inputs before generating.</p>${(detail.migration.review_issues || []).map(issue=>`<p>${esc(issue)}</p>`).join('')}</div>` : ''}
       ${detail.legacy_image?.asset_id ? `<figure class="narrative-legacy-image"><figcaption>Legacy image</figcaption><a href="${esc(artifactUrl('legacy-image'))}" target="_blank" rel="noopener"><img src="${esc(artifactUrl('legacy-image'))}" alt="Legacy image for ${esc(detail.title)}" loading="lazy"></a></figure>` : ''}</section><div>
@@ -481,6 +484,7 @@ function renderTarget(targets) {
     ${assembly ? assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
     <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input · Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
+      <p class="narrative-muted">Style source: ${esc(detail.style_source || 'saved scene')}</p>
       <dl class="narrative-context">${visualFields.map(key=>`<dt>${title(key)} · Shared</dt><dd data-shared-visual="${key}"></dd><dt>${title(key)} · Effective</dt><dd data-effective-visual="${key}"></dd>`).join('')}</dl>
       <details><summary id="narrative-overrides-summary">Local overrides</summary>${visualFields.map(key=>label(`override_${key}`,detail.visual_overrides[key] || '',true,`${title(key)} override (blank inherits)`)).join('')}<button data-action="save">Save inputs</button></details></section>
     <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>

@@ -39,10 +39,33 @@ class ImageGenerationWorkspace:
                 try:
                     jobs[request_id] = self.generator.status(request_id)
                 except KeyError:
-                    jobs[request_id] = {"request_id": request_id, "status": "FAILED", "images": [],
-                        "error": "Render submission was interrupted. Clear this slot and generate again.", "results": []}
+                    pending = self.generator.reconstruction.pending(request_id)
+                    jobs[request_id] = {"request_id": request_id, "status": pending.get("status", "FAILED"), "images": [],
+                        "error": pending.get("error", "Render submission was interrupted. Clear this slot and generate again."),
+                        "results": [], "prompt": pending.get("prompt", "")}
             busy |= jobs[request_id]["status"] in {"QUEUED", "RUNNING"}
         return {**board, "jobs": list(jobs.values()), "busy": busy, "empty_count": board["slots"].count(None)}
+
+    def reserve_reconstruction(self, request_id, count):
+        with file_lock(self.lock), self.generator._lock:
+            board = self._load()
+            indices = [i for i, value in enumerate(board["slots"]) if value is None][:count]
+            if len(indices) != count:
+                raise RenderSlotConflict("Not enough empty slots. Clear slots before reconstructing.")
+            for child, position in enumerate(indices):
+                board["slots"][position] = {"requestId": request_id, "index": child}
+            board["imported_browser_state"] = True
+            write_json_atomic(self.path, board)
+
+    def submit_reconstruction(self, request_id, inputs):
+        with file_lock(self.lock), self.generator._lock:
+            if request_id in self.generator._jobs:
+                return
+            board = self._load()
+            children = {item["index"] for item in board["slots"] if item and item["requestId"] == request_id}
+            if children != set(range(inputs["count"])):
+                raise RenderSlotConflict("Reconstruction slots changed during analysis. Start a new reconstruction.")
+            self.generator.submit(inputs, request_id=request_id)
 
     def import_browser(self, payload):
         with file_lock(self.lock), self.generator._lock:
@@ -108,6 +131,8 @@ class ImageGenerationWorkspace:
                             raise RenderSlotConflict("Retry requires a failed render.")
                         indices = [index]
                         inputs = deepcopy(payload.get("inputs") or job["render_payload"]) if operation == "regenerate" else deepcopy(job["render_payload"])
+                        if job.get("reconstruction") and "reconstruction" not in inputs:
+                            inputs["reconstruction"] = deepcopy(job["reconstruction"])
                         seeds = [child["seed"]] if operation == "retry" and child and "seed" in child else None
                     inputs["count"] = len(indices)
                     request_id = uuid4().hex

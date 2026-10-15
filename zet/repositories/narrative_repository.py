@@ -43,6 +43,8 @@ class NarrativeRepository:
                 record.setdefault(key, value)
         elif scene:
             from zet.models.narrative import NarrativeScene
+            # Existing scenes keep their authored style until explicitly switched.
+            record.setdefault("use_universe_style", False)
             for key, value in asdict(NarrativeScene(record["title"])).items():
                 record.setdefault(key, value)
             for element in record["elements"]:

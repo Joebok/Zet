@@ -39,6 +39,24 @@ def create_ad_hoc_image_generation_router(
     def options() -> dict[str, Any]:
         return service_provider().options()
 
+    @router.get("/reconstructions/options")
+    def reconstruction_options():
+        return service_provider().reconstruction.options()
+
+    @router.post("/reconstructions")
+    def reconstruct(payload: dict[str, Any] = Body(...)):
+        try:
+            return service_provider().reconstruction.start(payload)
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/reconstructions/{job_id}")
+    def reconstruction_status(job_id: str):
+        try:
+            return service_provider().reconstruction.status(job_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @router.post("/jobs")
     def submit(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:

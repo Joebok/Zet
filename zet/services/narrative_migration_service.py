@@ -139,7 +139,8 @@ class NarrativeMigrationService:
         scene.update(intent=source["scene"].get("story_beat", ""), setting=review["backdrop"],
                      lighting=review.get("lighting") or environment.get("lighting", ""),
                      camera=review.get("camera", "Eye level"), perspective=review.get("perspective", "Natural perspective"),
-                     style=review.get("style") or style or "Painterly semi-realistic fantasy illustration")
+                     style=review.get("style") or style or "Painterly semi-realistic fantasy illustration",
+                     use_universe_style=False)
         issues = list(review.get("issues", []))
         id_map = {}
         aggregate_ids = {sub.get("element_id") for sub in source.get("subscenes", []) if sub.get("element_id")}
