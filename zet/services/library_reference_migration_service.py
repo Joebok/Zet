@@ -25,11 +25,22 @@ from zet.services.workflow_storage import file_lock
 _DATA_FOLDERS = ("Assets", "Characters", "ImageCatalog", "NarrativeStories", "PipelineCandidates",
                  "_state", "images")
 _EXCLUDED_PARTS = {
-    ".git", "backups", "deleted", "archive", "_archive", "_trash", "legacy_review_v1",
+    ".git", "backups", "_backup", "deleted", "archive", "_archive", "_trash", "legacy_review_v1",
     "logs", "log", "debug", "transport", "bundles", "narrativemigration", "universemigration",
 }
 _ROUTE_FIELDS = {"target_output_dir", "artifact_output_dir", "prompt_condense_template",
                  "pipeline_path", "target_output_file"}
+_WAIVED_FIRSTDAY_BATCHES = {
+    "a1ed3b000f824a14892001cf69d4bbec",
+    "cdfddb1726d94299b43ac5a2c9045c9b",
+    "b0eb6b5b168e49c9bfaf64ec4ac9fd36",
+}
+_WAIVED_TEST_RENDER_RECORDS = {
+    "pipelinecandidates/character-pipeline/tsaeytte/adult/costume-dressing/formal_gown/beaf20c0a6724dd9acfd61f222f1fbb1/state.json",
+    "pipelinecandidates/character-pipeline/tsaeytte/adult/costume-dressing/paladin/26fb60482f6a47b38ac2316627780125/state.json",
+    "pipelinecandidates/character-pipeline/tsaeytte/adult/costume-dressing/romulan_dress/e2d138272b044178b3b9370ced4fa891/state.json",
+    "pipelinecandidates/character-pipeline/tsaeytte/elder/costume-dressing/everyday/ac469f53f1244434b59d7967089b4dab/state.json",
+}
 
 
 class LibraryReferenceMigrationError(RuntimeError):
@@ -54,6 +65,26 @@ class LibraryReferenceMigrationService:
     @staticmethod
     def _excluded(path: Path) -> bool:
         return any(part.casefold() in _EXCLUDED_PARTS for part in path.parts)
+
+    @staticmethod
+    def _is_approved_historical_reference(path: Path, root: Path, reference: str) -> bool:
+        """Keep Joe-approved missing FirstDay/test-render references out of blockers."""
+        field, separator, value = reference.partition(": ")
+        if not separator:
+            return False
+        try:
+            record = path.relative_to(root).as_posix().casefold()
+        except ValueError:
+            return False
+        target = value.replace("\\", "/").casefold()
+        if field in {"path", "source_path"} and record.startswith("pipelinecandidates/stories/firstday/"):
+            for batch_id in _WAIVED_FIRSTDAY_BATCHES:
+                batch = f"/local_batches/{batch_id}/"
+                if batch in record and batch in target:
+                    return True
+        if field == "image_path" and record in _WAIVED_TEST_RENDER_RECORDS:
+            return "/local_test_renders/" in target
+        return False
 
     def _universe_roots(self) -> list[tuple[str, Path]]:
         result = []
@@ -90,7 +121,11 @@ class LibraryReferenceMigrationService:
             report["errors"].append({"path": str(path), "error": str(exc)})
             return
         for value in unresolved:
-            report["unresolved"].append({"path": str(path), "reference": value})
+            item = {"path": str(path), "reference": value}
+            if self._is_approved_historical_reference(path, root, value):
+                report["exempted_historical_references"].append(item)
+            else:
+                report["unresolved"].append(item)
         before = deepcopy(raw)
         if fields is not None:
             raw.update(converted)
@@ -185,7 +220,7 @@ class LibraryReferenceMigrationService:
                 "progress": "starting", "fingerprint": hashlib.sha256(b"").hexdigest(),
                 "universes": [], "scanned_records": 0, "changed_records": 0,
                 "converted_references": 0, "excluded_historical_occurrences": 0,
-                "unresolved": [], "errors": []}
+                "exempted_historical_references": [], "unresolved": [], "errors": []}
 
     def apply(self) -> dict[str, Any]:
         if not self.container.is_dir():
@@ -225,7 +260,9 @@ class LibraryReferenceMigrationService:
             report["fingerprint"] = self._fingerprinter.hexdigest()
             report["historical_excluded"] = (
                 "Backup/deleted/archive/legacy-review/migration-journal/log/debug folders and immutable queue bundles "
-                "are not rewritten; untyped strings in scanned JSON are counted and left unchanged."
+                "are not rewritten; untyped strings in scanned JSON are counted and left unchanged. Joe explicitly "
+                "approved preserving missing references in three old FirstDay local batches and four Tsaeytte "
+                "Local_Test_Renders state records; these are listed in exempted_historical_references."
             )
             write_json_atomic(self.report_path, report)
             return report

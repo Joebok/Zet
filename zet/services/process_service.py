@@ -157,7 +157,26 @@ class ProcessService:
             if str(self.project_root).lower() not in text:
                 return False
             path = self.project_root / path
-        return os.path.normcase(str(path.resolve())) == os.path.normcase(str(self.config_path))
+        return self._same_managed_config(path)
+
+    def _same_managed_config(self, candidate: Path) -> bool:
+        candidate = candidate.resolve()
+        if os.path.normcase(str(candidate)) == os.path.normcase(str(self.config_path)):
+            return True
+        # Production release configs live at Runtime.Root/releases/<revision>/.
+        # Keep workers from older revisions manageable while restricting the
+        # wider match to that one runtime's release directory.
+        active = self.config_path
+        if active.name != "config.runtime.toml" or candidate.name != active.name:
+            return False
+        active_releases = active.parent.parent
+        candidate_releases = candidate.parent.parent
+        return (
+            active_releases.name == "releases"
+            and candidate_releases.name == "releases"
+            and os.path.normcase(str(active_releases.resolve()))
+            == os.path.normcase(str(candidate_releases.resolve()))
+        )
 
     def statuses(self) -> list[ManagedProcessStatus]:
         with self._statuses_cache_lock:
@@ -231,12 +250,17 @@ class ProcessService:
         self._invalidate_statuses()
         return len(matches)
 
-    def restart(self, process_id: str) -> int:
+    def restart(self, process_id: str, *, harvester_already_stopped: bool = False) -> int:
         spec = self._spec_by_id(process_id)
         matches = [process for process in self.list_processes() if self._matches(process, spec)]
         if process_id == "zet_web" and any(process.pid == os.getpid() for process in matches):
-            self._schedule_self_restart(spec, matches)
-            self.start_if_stopped("auto_harvest")
+            # The detached helper must wait until this server has exited before
+            # launching its replacement harvester. Starting it here races the
+            # shutdown and can leave a worker from the old runtime behind.
+            harvester = self._spec_by_id("auto_harvest")
+            if not harvester_already_stopped:
+                self.stop("auto_harvest")
+            self._schedule_self_restart(spec, matches, after_command=harvester.command)
             return len(matches)
         stopped = self.stop(process_id)
         self.start(process_id)
@@ -244,10 +268,16 @@ class ProcessService:
 
     def restart_zet(self) -> tuple[int, int]:
         harvester_stopped = self.stop("auto_harvest")
-        dashboard_stopped = self.restart("zet_web")
+        dashboard_stopped = self.restart("zet_web", harvester_already_stopped=True)
         return harvester_stopped, dashboard_stopped
 
-    def _schedule_self_restart(self, spec: ManagedProcessSpec, matches: list[ProcessInfo]) -> None:
+    def _schedule_self_restart(
+        self,
+        spec: ManagedProcessSpec,
+        matches: list[ProcessInfo],
+        *,
+        after_command: tuple[str, ...] | None = None,
+    ) -> None:
         if spec.command is None or spec.cwd is None:
             raise ValueError(f"{spec.label} has no configured start command.")
         command = [
@@ -260,6 +290,8 @@ class ProcessService:
             "--command-json",
             json.dumps(spec.command),
         ]
+        if after_command:
+            command.extend(["--after-command-json", json.dumps(after_command)])
         for process in matches:
             command.extend(["--pid", str(process.pid)])
         kwargs = {

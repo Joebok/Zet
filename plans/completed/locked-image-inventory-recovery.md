@@ -128,6 +128,6 @@ Local code/documentation and the approved running installation/catalog repair ar
 complete. `git diff --check` passes. Existing unrelated checkout changes remain
 intact. Joe can now refresh the dashboard and test locking FRONT himself.
 
-## Git publication — 2026-10-15
+## Git publication â€” 2026-10-15
 
-Joe authorized publishing the existing recovery hotfix separately so deployment can preserve it. The scoped release checkout passes S1–S3 (3 passed, 27.0s) and the disposable relocated-catalog recovery check. The fixture explicitly seeds archived states on its disposable copy because the live catalog has already been repaired and Joe has since changed lock state. Live source data remains unchanged. Runtime reconciliation will preserve the exact installed hotfix in Git before the normal deployment controller promotes merged main.
+Joe authorized publishing the existing recovery hotfix separately so deployment can preserve it. The scoped release checkout passes S1â€“S3 (3 passed, 27.0s) and the disposable relocated-catalog recovery check. The fixture explicitly seeds archived states on its disposable copy because the live catalog has already been repaired and Joe has since changed lock state. Live source data remains unchanged. Runtime reconciliation will preserve the exact installed hotfix in Git before the normal deployment controller promotes merged main.
