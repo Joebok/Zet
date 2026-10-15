@@ -21,7 +21,9 @@ Use this manual when an existing character design and one or more approved image
 
 ## Metadata
 
-Metadata identifies the character and selects global behavior. Character Phase controls phase-specific assets and technical modesty. Gender Presentation affects modesty only for phases containing `adult`. Canonical Art Style should be a compact render-facing style directive.
+Metadata identifies the character and selects global behavior. Character Phase controls phase-specific assets and technical modesty. Gender Presentation affects modesty only for phases containing `adult`. Canonical Art Style is a fallback; the selected universe owns the active local rendering style. Keep identity facts independent of medium, linework and shading conventions. Describe distinctive facial proportions explicitly rather than using anime or photographic style labels as identity. Describe supported material construction and texture without inventing scars, wear or decorative detail.
+
+Use the same granular visibility controls as costume authoring: one independently taggable fact per bullet, `head` or `body` domains, and visibility groups such as `[head:face_visible]`, `[head:rearish]` and `[body:front_torso_visible]`. A stable fact is not necessarily visible in every view. Preserve recognizable geometry without requiring hidden features to face the camera or freezing incidental rendering strokes.
 
 Enter optional body measurements as feet and inches (for example, `5 ft 8 in` or `5' 8\"`). Use measured standing barefoot height for 3D character scale; eye height, shoulder width, and body depth refine camera and pawn previews. Leave unknown measurements blank rather than estimating them from prose.
 

@@ -37,6 +37,7 @@ class NarrativeScene:
     perspective: str = "Natural perspective"
     lighting: str = "Soft daylight from the upper left"
     style: str = ""
+    use_universe_style: bool = True
     canvas: str = "16:9"
     elements: list[dict] = field(default_factory=list)
     target_ids: list[str] = field(default_factory=list)

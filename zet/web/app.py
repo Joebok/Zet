@@ -1015,6 +1015,7 @@ def create_app(
     app.state.worker_bridge_service = app.state.zet_app.worker_bridge_service
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
     app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
+    app.state.zet_app._image_generation_service = app.state.image_generation_service
     app.state.zet_app.quick_character_wizard_service.generation_service = app.state.image_generation_service
     app.state.image_prompt_generation_service = ImagePromptGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.universe_lock = threading.RLock()
@@ -1110,6 +1111,11 @@ def create_app(
             previous.narrative_generation_service.stop_background()
             previous.library_index_reconciler.stop()
         replacement = ZetApp.from_config(app.state.config_path, universe_id=selected)
+        generation = getattr(previous, "_image_generation_service", None)
+        if generation is not None and Path(previous.config.base_library_path) == Path(replacement.config.base_library_path):
+            generation.rebind_app(replacement)
+            replacement._image_generation_service = generation
+            replacement.quick_character_wizard_service.generation_service = generation
         replacement.library_index_reconciler.start()
         replacement.narrative_generation_service.start_background()
         app.state.universe_apps[selected] = replacement
@@ -1176,13 +1182,23 @@ def create_app(
     )
     app.include_router(create_pipeline_inspection_router(lambda: _app(app.state.config_path)))
     app.include_router(create_local_character_asset_pipeline_router(lambda: _app(app.state.config_path), PROJECT_ROOT))
-    app.include_router(create_ad_hoc_image_generation_router(lambda: app.state.image_generation_service))
+    def _image_generation_service():
+        selected = _app(app.state.config_path)
+        with app.state.universe_lock:
+            if not hasattr(selected, "_image_generation_service"):
+                selected._image_generation_service = AdHocImageGenerationService(selected, PROJECT_ROOT)
+                selected.quick_character_wizard_service.generation_service = selected._image_generation_service
+            if selected is app.state.zet_app:
+                app.state.image_generation_service = selected._image_generation_service
+            return selected._image_generation_service
+
+    app.include_router(create_ad_hoc_image_generation_router(_image_generation_service))
 
     def quick_character_wizard_service():
         service = _app(app.state.config_path).quick_character_wizard_service
         # Share the durable render transport; references are session snapshots,
         # while drafts and publication remain bound to the requested universe.
-        service.generation_service = app.state.image_generation_service
+        service.generation_service = _image_generation_service()
         return service
 
     app.include_router(create_quick_character_wizard_router(quick_character_wizard_service))

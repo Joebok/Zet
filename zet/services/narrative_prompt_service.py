@@ -39,8 +39,11 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
     # Supply only this target's direction and the inherited visual context.
     context = {key: detail[key] for key in ("title", "kind", "narrative", "staging", "physical_context", "framing", "context")}
     context["shared_visual_context"] = detail.get("inherited_context", detail["context"])
+    context["style_source"] = detail.get("style_source", "saved scene")
     context["local_overrides"] = detail.get("visual_overrides", {})
     context["visual_sources"] = {key: "override" if context["local_overrides"].get(key) else "shared" for key in VISUAL_FIELDS}
+    if detail.get("style_source") == "universe":
+        context["visual_sources"]["style"] = "universe"
     context["field_purposes"] = FIELD_PURPOSES
     if detail["kind"] == "subscene":
         context["use_transparent_background"] = detail.get("use_transparent_background", False)
@@ -136,7 +139,9 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
                 "coherent illumination, color, shading, cutout-edge and background-remnant repair, natural ground "
                 "contact, contact shadows and foreground integration. Allow appearance changes needed for that "
                 "integration while preserving the existing layout and setting. Do not request pixel-identical subjects "
-                "or forbid relighting them. Do not request a neutral background or numeric placement coordinates. "
+                "or forbid relighting them. Apply the effective style from context, including its facial-plane, "
+                "material-detail and edge-treatment rules, to unify the finish without changing identities or layout. "
+                "Do not request a neutral background or numeric placement coordinates. "
                 + ("Return proposals, conflicts and at most two optional questions as JSON."
                    if kind == "interview" else "Return concise scene and rendering paragraphs as JSON. Do not write image bindings.")
             )

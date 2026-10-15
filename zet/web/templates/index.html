@@ -1635,6 +1635,26 @@
       <div id="image-generation-message" class="action-message" aria-live="polite" hidden></div>
       <div class="image-generation-layout">
         <form id="image-generation-form" class="control-panel image-generation-form">
+          <details id="image-reconstruction-panel">
+            <summary>Reconstruct an image in universe style</summary>
+            <p class="status-text">Describe the source with an analysis model, then automatically render a new batch from text using this universe's style.</p>
+            <div class="button-row compact"><button id="image-reconstruction-library" type="button">Choose from Image Inventory</button><button id="image-reconstruction-remove" type="button">Remove source</button></div>
+            <label>Upload source<input id="image-reconstruction-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+            <div id="image-reconstruction-paste" class="paste-zone" tabindex="0">Click here, then Ctrl+V to paste a source image</div>
+            <p id="image-reconstruction-source" class="status-text">No source selected.</p>
+            <img id="image-reconstruction-preview" class="image-generation-reference-thumb" alt="Reconstruction analysis source" hidden>
+            <label>Analysis model<select id="image-reconstruction-model"></select></label>
+            <p id="image-reconstruction-style" class="status-text"></p>
+            <label>Additional artistic direction<textarea id="image-reconstruction-notes" rows="2"></textarea></label>
+            <button id="image-reconstruction-generate" class="primary-action" type="button">Reconstruct &amp; Generate</button>
+            <p id="image-reconstruction-status" class="status-text" aria-live="polite"></p>
+            <details><summary>Description and rendered prompt</summary>
+              <label>Content description<textarea id="image-reconstruction-description" rows="5"></textarea></label>
+              <p id="image-reconstruction-uncertainties" class="status-text"></p>
+              <label>Effective prompt<textarea id="image-reconstruction-prompt" rows="5"></textarea></label>
+              <button id="image-reconstruction-use-text" type="button">Use edited prompt for another render</button>
+            </details>
+          </details>
           <label>
             Prompt
             <textarea id="image-generation-prompt" rows="6" required placeholder="Describe the prop, creature, or image you want to generate."></textarea>

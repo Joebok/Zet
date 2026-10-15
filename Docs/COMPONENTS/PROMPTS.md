@@ -86,3 +86,9 @@ configuration, and uses its explicit persistent universe-selection path. This
 prevents code-relative config.toml from resolving production data during isolated
 worker checks or ignoring config.runtime.toml in a release. Standalone scripts
 retain their project-relative default when no active config is supplied.
+
+## Shared visual style and reconstruction (2026-10-14)
+
+`universe_style_service.py` reads the existing `canonical_art_style` and returns text/source/SHA-256; `compose_style` combines separate destination style, content and optional notes. The compiler adapter retains editable universe source-map attribution. Body/Head prompts establish dimensional form and material response, with mannequin-head/fitment simplification scoped explicitly. Assembly/Dressing preserve those details and assign supporting images to their stated design roles. Existing style modes and geometry/view contracts remain unchanged.
+
+`image_reconstruction_service.py` extracts visible content without source rendering conventions and automatically dispatches Qwen txt2img. It uses existing Codex execution/Ollama vision discovery; its source snapshot is analysis-only. The Image Generation page offers a job-specific model, library/upload/paste sources, optional notes and optional text editing. No prompt-review gate precedes rendering. See [ADR 0012](../DECISIONS/0012-universe-style-and-reconstruction.md) and [data model](../DATA_MODEL.md).

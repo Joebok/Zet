@@ -110,6 +110,12 @@ class NarrativeGenerationService:
                    "references": refs, "candidate_ids": [], "result": None, "baseline": baseline,
                    "model": model, "provider": "codex" if model.startswith("codex:") else "ollama",
                    "provenance": {"model": model, "provider": "codex" if model.startswith("codex:") else "ollama"}}
+            job["provenance"]["visual_style"] = {"source": detail.get("style_source", "saved scene"),
+                                                  "text": detail["context"].get("style", ""),
+                                                  "universe": detail.get("universe_style")}
+            if kind == "render":
+                job["provenance"]["visual_style"] = deepcopy(detail.get("prompt_provenance", {}).get(
+                    "visual_style", {"source": "saved prompt; style metadata unavailable", "text": ""}))
             if detail["kind"] == "assembly":
                 mode = detail.get("assembly_mode", "finish_composite")
                 job["assembly_mode"] = job["provenance"]["assembly_mode"] = mode

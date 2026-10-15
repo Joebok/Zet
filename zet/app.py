@@ -625,6 +625,10 @@ class ZetApp:
         data, mime_type, generation = generation_service.library_result(request_id, result_index)
         prompt = str(generation.get("prompt") or "")
         negative_prompt = str(generation.get("negative_prompt") or "")
+        reconstruction = generation.get("reconstruction") or {}
+        if reconstruction:
+            provenance = json.dumps({"details": provenance, "reconstruction": reconstruction,
+                                     "render_prompt": prompt, "seed": generation.get("seed")}, ensure_ascii=False)
         if entity_id:
             return self._indexed_write(lambda: self.entity_library_service.import_generated_image(
                 label, mime_type, data, entity_id=entity_id, reference_role=reference_role,
@@ -634,7 +638,8 @@ class ZetApp:
             origin_key=f"imagegen:{hashlib.sha256(data).hexdigest()}",
             prompt=prompt, negative_prompt=negative_prompt,
             provenance_details={"source": "local_image_generation", "request_id": request_id,
-                                "result_index": result_index, "details": provenance}))
+                                "result_index": result_index, "details": provenance,
+                                "reconstruction": reconstruction, "seed": generation.get("seed")}))
 
     def entity_library_create_entity(self, data: dict):
         return self._indexed_write(lambda: self.entity_library_service.create_entity(data))

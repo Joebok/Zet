@@ -55,9 +55,20 @@ class AdHocImageGenerationService:
         self._load_jobs()
         self.cleanup_abandoned()
         self.slot_workspace = ImageGenerationWorkspace(self)
+        from zet.services.image_reconstruction_service import ImageReconstructionService
+        self.reconstruction = ImageReconstructionService(self)
 
     def start(self) -> None:
         return None
+
+    def rebind_app(self, zet_app) -> None:
+        """Keep in-flight analyses and renders alive across a settings reload."""
+        if self.results_root != Path(zet_app.config.base_library_path) / "_state" / "ImageGeneration":
+            raise ValueError("A generation service cannot be rebound to another universe root.")
+        with self._lock:
+            self.zet_app = zet_app
+            self.reconstruction.app = zet_app
+            self.reconstruction.analyzer.zet_app = zet_app
 
     def stop(self) -> None:
         return None
@@ -265,7 +276,8 @@ class AdHocImageGenerationService:
     @staticmethod
     def _request_details(payload, width, height, prompt):
         return {
-            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "reference_images", "reference_image", "source_asset_id", "source_checksum") if key in payload},
+            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "reference_images", "reference_image", "source_asset_id", "source_checksum", "reconstruction") if key in payload},
+            "reconstruction": payload.get("reconstruction", {}),
             "prompt": prompt,
             "negative_prompt": str(payload.get("negative_prompt") or "").strip(),
             "width": width,
@@ -311,6 +323,7 @@ class AdHocImageGenerationService:
                 "negative_prompt": job.get("negative_prompt", ""),
                 "source_asset_id": job.get("source_asset_id", ""),
                 "source_checksum": job.get("source_checksum", ""),
+                "reconstruction": job.get("reconstruction", {}),
                 "results": [{"index": index, "status": "COMPLETE" if index < len(job["images"]) and job["images"][index] is not None else next((child.get("status", "QUEUED") for child in job["children"] if child["index"] == index), "FAILED"),
                              "error": next((child.get("error", "") for child in job["children"] if child["index"] == index), job.get("error", ""))}
                             for index in range(job["count"])],
@@ -337,6 +350,8 @@ class AdHocImageGenerationService:
                 "prompt": job.get("prompt", ""), "negative_prompt": job.get("negative_prompt", ""),
                 "source_asset_id": job.get("source_asset_id", ""),
                 "source_checksum": job.get("source_checksum", ""),
+                "reconstruction": job.get("reconstruction", {}),
+                "seed": next((child.get("seed") for child in job["children"] if child["index"] == index), None),
             }
 
     def import_into_library(self, request_id: str, index: int, data: dict[str, Any]) -> dict[str, Any]:
@@ -499,6 +514,7 @@ class AdHocImageGenerationService:
         record["image_slots_version"] = job.get("image_slots_version", 0)
         record["source_asset_id"] = job.get("source_asset_id", "")
         record["source_checksum"] = job.get("source_checksum", "")
+        record["reconstruction"] = job.get("reconstruction", {})
         record.update({"workspace": str(job["workspace"]), "prompt_path": str(job["prompt_path"]),
                        "images": image_records})
         temporary = directory / "job.json.tmp"

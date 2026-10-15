@@ -166,3 +166,9 @@ changes only provenance, preserving authored fields and target images.
 Selected final assemblies feed discovery, story summaries and zines through
 `finished_sources`; `NARRATIVE` image tags bind an explicit candidate. Legacy images
 are separately labeled and never count as newly completed assemblies.
+
+## Universe-style adoption (2026-10-14)
+
+Scene `use_universe_style` defaults true on creation; records missing the flag normalize false to preserve their saved style. Legacy scene migration also explicitly retains its authored style. The scene editor retains saved custom style and displays the universe alternative. When enabled, current universe style supplies inherited style; a nonblank target override replaces it. Target detail reports the effective source and universe style snapshot. Applying an interview style proposal to Shared explicitly chooses that custom scene style and disables universe inheritance.
+
+Synthesis, including composite harmonization, receives the effective style. Job detail/provenance freeze that source and text; retries reuse frozen inputs. A Render job attributes style to its saved prompt provenance, rather than claiming to adopt newer settings. Write Prompt is required to adopt subsequent style changes. Rendering does not silently rewrite existing prompts. See [ADR 0012](../DECISIONS/0012-universe-style-and-reconstruction.md). Existing S1/S3 and disposable compatibility/override checks passed; live artistic fidelity is unverified.

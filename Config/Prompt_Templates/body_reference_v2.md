@@ -37,6 +37,8 @@ Create one new full-body technical body reference for {{CHARACTER_NAME}}, {{CHAR
 
 <!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 Render in the Canonical Art Style: {{CANONICAL_ART_STYLE}}
+
+Give the exposed body dimensional anatomical form, gradual light and shadow, subtle natural skin-color variation, and restrained skin highlights. Keep surface detail legible at full-body scale. The simplified head and simple fitment clothing below are task-specific exceptions, not instructions to flatten or simplify the exposed body.
 <!-- ZET:END IMAGE_PROMPT_ONLY -->
 
 ## Body and stance

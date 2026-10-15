@@ -7,13 +7,14 @@ from zet.models.narrative import NarrativeElement, NarrativeScene, NarrativeStor
 from zet.repositories.narrative_repository import NarrativeRepository
 from zet.services.entity_library_service import EntityLibraryServiceError
 from zet.services.narrative_interview_service import FIELD_PURPOSES, MOMENT_FIELDS, VISUAL_FIELDS
+from zet.services.universe_style_service import universe_style
 
 
 TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing", "width", "height",
                  "use_transparent_background",
                  "element_ids", "visual_overrides", "prompt", "interview_model", "prompt_model", "layers", "assembly_mode",
                  "backdrop_adaptation")
-SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas")
+SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas", "use_universe_style")
 
 
 class ProtectedNarrativeImages(ValueError):
@@ -77,7 +78,8 @@ class NarrativeSceneService:
     def scene(self, story: str, scene: str) -> dict:
         record = self.repository.read(story, scene)
         record["elements"] = [self.element_detail(element) for element in record["elements"]]
-        return {**record, "targets": self.list_targets(story, scene), "field_purposes": FIELD_PURPOSES}
+        return {**record, "targets": self.list_targets(story, scene), "field_purposes": FIELD_PURPOSES,
+                "universe_style": universe_style(self.app.config.base_library_path)}
 
     def element_asset(self, element: dict) -> dict | None:
         if element.get("reference_key"):
@@ -251,8 +253,14 @@ class NarrativeSceneService:
             element = self.element_detail(by_id[element_id])
             elements.append(element)
         inherited = {key: parent[key] for key in VISUAL_FIELDS}
+        style = universe_style(self.app.config.base_library_path) if parent.get("use_universe_style") else None
+        if style is not None:
+            inherited["style"] = style["text"]
         effective = {key: record["visual_overrides"].get(key) or value for key, value in inherited.items()}
         detail = {**record, "elements": elements, "inherited_context": inherited, "context": effective,
+                  "style_source": ("target override" if record["visual_overrides"].get("style") else
+                                   "universe" if style is not None else "saved scene"),
+                  "universe_style": style,
                   "field_purposes": FIELD_PURPOSES,
                   "scene_title": parent["title"], "effective_models": {
                       key: record[key] or self.app.config.ai_narrative_scene_model
@@ -300,6 +308,8 @@ class NarrativeSceneService:
                 elif row["scope"] == "visual" and key in VISUAL_FIELDS:
                     if choice == "shared":
                         parent[key] = row["text"]
+                        if key == "style":
+                            parent["use_universe_style"] = False
                         record["visual_overrides"].pop(key, None)
                         scene_changed = True
                     else:
@@ -433,6 +443,8 @@ class NarrativeSceneService:
         for key in fields:
             if key in data:
                 value = data[key]
+                if isinstance(record[key], bool) and not isinstance(value, bool):
+                    raise ValueError(f"{key} must be a boolean.")
                 if isinstance(record[key], str) and not isinstance(value, str):
                     raise ValueError(f"{key} must be text.")
                 if key == "title" and not str(value).strip():
