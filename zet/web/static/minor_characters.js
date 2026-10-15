@@ -12,7 +12,8 @@
   let view = "FRONT", preview = "", referenceSignature = "";
   let waitingForCandidate = null;
   let iterationId = "";
-  const feedback = new Map(), suggestions = new Map();
+  let feedback = "";
+  const suggestions = new Map();
   const slotPending = new Set();
   const element = (tag, text = "", cls = "") => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
   const button = (text, action, run = act) => { const b = element("button", text); b.type = "button"; b.addEventListener("click", () => run(action)); return b; };
@@ -80,7 +81,7 @@
   }
   async function open(id) {
     $("mc-review").close(); iterationId = "";
-    await flush(); generation++; clearTimeout(pollTimer); patch = {}; feedback.clear(); suggestions.clear();
+    await flush(); generation++; clearTimeout(pollTimer); patch = {}; feedback = ""; suggestions.clear();
     const result = await api(`/${id}`); character = result.character;
     references = character.references; referenceSignature = "";
     view = character.views.includes(character.active_view) ? character.active_view : "FRONT";
@@ -233,7 +234,7 @@
     }
     if (board) $("mc-add-renders").append(window.ZetRenderSlots.countControl(board.slots.filter(id=>!id).length,count=>slotAction("add",undefined,count),{disabled:slotPending.has(`${character.character_id}:${iterationId}:add`)}));
     const candidate = choice();
-    $("mc-feedback").value = feedback.get(view) || "";
+    $("mc-feedback").value = feedback;
     $("mc-suggestions-title").textContent = candidate ? `Suggested changes · Slot ${(board?.slots.indexOf(preview) ?? -1)+1}` : "Suggested changes";
     $("mc-findings").replaceChildren();
     if (candidate?.comparison) {
@@ -271,7 +272,7 @@
     await flush();
     waitingForCandidate={view,count:character.candidates.filter(c=>c.view===view).length};
     const result = await api(`/${character.character_id}/generate`,"POST",{view,
-      ...(refine ? {candidate_id:preview,instructions:feedback.get(view)||"",item_ids:[...(suggestions.get(preview)||[])]} : {})});
+      ...(refine ? {candidate_id:preview,instructions:feedback,item_ids:[...(suggestions.get(preview)||[])]} : {})});
     const latest=result.character.candidates.filter(c=>c.view===view).at(-1);
     preview = latest?.candidate_id || ""; iterationId=latest?.iteration_id || ""; show(result.character);
     changed("active_iteration_id",iterationId);
@@ -298,7 +299,7 @@
     if (key==="name") { const match=characters.find(c=>c.character_id!==character?.character_id && c.name.trim().toLocaleLowerCase()===value.trim().toLocaleLowerCase());
       $("mc-rename-match").replaceChildren(); if(match) $("mc-rename-match").append(button(`Open existing ${match.name}`,async()=>{delete patch.name;await open(match.character_id);})); }
   });
-  $("mc-feedback").addEventListener("input",()=>feedback.set(view,$("mc-feedback").value));
+  $("mc-feedback").addEventListener("input",()=>{feedback=$("mc-feedback").value;});
   $("mc-new-name").addEventListener("input",nameMatch);
   $("mc-create-form").addEventListener("submit",event=>{event.preventDefault();act(async()=>{
     const result=await api("","POST",{name:$("mc-new-name").value}); const asset=entryAsset;

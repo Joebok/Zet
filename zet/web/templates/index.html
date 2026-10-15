@@ -774,8 +774,6 @@
             <label>Additional direction<textarea id="mc-notes" rows="2"></textarea></label>
             <button id="mc-generate" type="button" class="primary-action" aria-describedby="mc-generate-help">New front iteration</button>
             <p id="mc-generate-help" class="muted"></p>
-            <label>What would you like to change?<textarea id="mc-feedback" rows="3" placeholder="Keep the details you like; describe what should change."></textarea></label>
-            <button id="mc-refine" type="button">Try these changes</button>
             <details id="mc-analysis"><summary>Description and generation details</summary>
               <label>Analysis model<select id="mc-model"></select></label><p id="mc-style-text"></p>
               <label>Description<textarea id="mc-description" rows="5"></textarea></label><label>Identity<textarea id="mc-identity" rows="3"></textarea></label>
@@ -789,7 +787,11 @@
             <div id="mc-candidates" class="mc-candidates" aria-label="Prompt iterations"></div>
             <div id="mc-add-renders"></div>
             <div id="mc-slots" class="mc-slots" aria-label="Current iteration render slots"></div>
-            <section id="mc-suggestions" aria-labelledby="mc-suggestions-title"><h3 id="mc-suggestions-title">Suggested changes</h3><div id="mc-findings"></div></section>
+            <section id="mc-suggestions" aria-labelledby="mc-suggestions-title">
+              <h3 id="mc-suggestions-title">Suggested changes</h3><div id="mc-findings"></div>
+              <label class="mc-feedback-label">What else would you like to change?<textarea id="mc-feedback" rows="3" placeholder="Add any changes beyond the checked suggestions."></textarea></label>
+              <button id="mc-refine" type="button">Try these changes</button>
+            </section>
           </section>
         </div>
       </section>
@@ -2152,7 +2154,7 @@ Add prompt language here.
     <div class="button-row"><button id="mc-review-close" type="button">Close review</button><button id="mc-review-prev" type="button" aria-label="Previous candidate">← Previous</button><button id="mc-review-next" type="button" aria-label="Next candidate">Next →</button></div>
     <div id="mc-review-pair" class="qc-comparison-pair"></div>
   </dialog>
-  <script src="/static/minor_characters.js?v=20261015-independent-slots"></script>
+  <script src="/static/minor_characters.js?v=20261015-refinement-controls"></script>
   <script src="/static/local_asset_pipeline.js?v=20261013-github"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
 
