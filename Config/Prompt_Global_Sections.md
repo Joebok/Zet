@@ -114,9 +114,9 @@ Use simple neutral fitment clothing.
 
 Clothing rules:
 
-* olive green sleeveless tank top.
-* olive green compression shorts.
-* Minimal detail and no additional garments.
+* Beige sleeveless tank top.
+* Beige compression shorts.
+* No additional garments.
 * Keep the body silhouette readable.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER_DEFAULT -->
@@ -127,9 +127,9 @@ Use simple neutral fitment clothing.
 
 Clothing rules:
 
-* olive green tube top.
-* olive green compression shorts.
-* Minimal detail and no additional garments.
+* Translucent beige tube top.
+* Beige compression shorts.
+* No additional garments.
 * Keep the body silhouette readable.
 
 <!-- ZET:END TECHNICAL_MODESTY_LAYER_ADULT_FEMININE -->
