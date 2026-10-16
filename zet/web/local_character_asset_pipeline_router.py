@@ -148,7 +148,12 @@ def create_local_character_asset_pipeline_router(
                         continue
                     for reference in candidate.get("reference_images", []):
                         path = str(reference.get("path") or "")
-                        key = (str(reference.get("role") or ""), path)
+                        digest = str(reference.get("sha256") or "")
+                        key = ("sha256", digest) if digest else (
+                            str(reference.get("role") or ""),
+                            str(reference.get("prompt_role") or ""),
+                            str(reference.get("label") or reference.get("tag") or ""),
+                        )
                         if path and key not in seen:
                             seen.add(key)
                             references.append(reference)

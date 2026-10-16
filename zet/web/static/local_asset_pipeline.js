@@ -613,7 +613,9 @@
       const seenReferences = new Set();
       for (const candidate of candidates) {
         for (const reference of candidate.reference_images || []) {
-          const key = `${reference.role || ""}\u0000${reference.path || ""}`;
+          const key = reference.sha256
+            ? `sha256:${reference.sha256}`
+            : `${reference.role || ""}\u0000${reference.prompt_role || ""}\u0000${reference.label || reference.tag || ""}`;
           if (reference.path && !seenReferences.has(key)) {
             seenReferences.add(key);
             referenceImages.push(reference);
