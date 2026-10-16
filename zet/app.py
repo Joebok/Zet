@@ -187,6 +187,7 @@ class ZetApp:
         self.asset_repository = asset_repository
         self.pipeline_repository = pipeline_repository
         self.asset_service = asset_service
+        self.ai_proxy_service = asset_service.ai_proxy_service
         self.ai_queue_lifecycle_service = asset_service.ai_answer_harvester.ai_proxy_path_service.lifecycle
         self.prompt_review_service = prompt_review_service
         self.reference_service = reference_service
@@ -401,7 +402,6 @@ class ZetApp:
             story_service,
             config_path,
         )
-        app.ai_proxy_service = ai_proxy_service
         app.universe_service = universe_service
         app.universe_id = selected_id
         app.ai_proxy_service.manual_render_publication_service = app.manual_render_publication_service
