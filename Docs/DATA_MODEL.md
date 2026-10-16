@@ -143,3 +143,10 @@ Candidates freeze inputs, accepted direction, selected correction text, kind, st
 Undo restores one previous recipe/edit state and frozen findings, empties all slots, clears working selection and consumes its snapshot. A private restored-source binding permits different corrections without exposing that source as a working image. Public boards expose prompt, findings, edit state and action availability, omitting undo internals and payloads. Expected revisions reject stale mutations; late results cannot restore discarded membership. Review is advisory.
 
 Publication retains immutable candidate IDs/origin keys and per-view reference-set replacement. Catalog tables are unchanged. Workspace deletion uses deleted_at/ABANDONED and preserves published assets. See [ADR 0015](DECISIONS/0015-minor-character-alignment.md).
+
+## Shared AI lifecycle records (2026-10-16)
+The existing machine-local queue/producer root now contains compact `Jobs/` request
+records, registered `Workflows/` continuations, and `StructuredResults/`, alongside
+Inbox/Receipts/Routes. They are producer-local lifecycle state, not library assets or
+the derived library index. Native request payload version 1 extends the unchanged
+File Proxy protocol-v1 envelope. [Shared AI jobs](COMPONENTS/AI_JOBS.md) owns interfaces.

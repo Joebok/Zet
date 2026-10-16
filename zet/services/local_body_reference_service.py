@@ -8,8 +8,6 @@ from pathlib import Path
 import random
 import re
 import shutil
-import subprocess
-import tempfile
 import threading
 import time
 from typing import Any
@@ -1522,32 +1520,11 @@ Do not explain your reasoning."""
         mutate_local_run_state(root, apply)
 
     def _proxy_answer(self, ask_id: str) -> tuple[str, dict[str, Any]]:
-        paths = self.app.ai_proxy_service.ai_proxy_path_service
-        receipt = paths.lifecycle.read_receipt(ask_id)
-        if receipt:
-            return "HARVESTED", {"ask_id": ask_id, "status": receipt.get("answer_status", receipt.get("status", "")),
-                                  "error_message": receipt.get("error_message", "")}
-        roots = (("QUEUED", paths.ask_root()), ("RUNNING", paths.running_root()),
-                 ("ANSWERED", paths.answer_root()))
-        for status, root in roots:
-            record = root / ask_id
-            if record.is_dir():
-                try:
-                    answer = self._read_json((record / "answer_manifest.json"))
-                except (OSError, json.JSONDecodeError):
-                    answer = {}
-                return status, answer
-        for record in paths.harvested_archive_root().glob(f"*/{ask_id}"):
-            try:
-                answer = self._read_json((record / "answer_manifest.json"))
-            except (OSError, json.JSONDecodeError):
-                answer = {}
-            return "HARVESTED", answer
-        return "UNKNOWN", {}
+        return self.app.ai_proxy_service.ai_proxy_path_service.jobs.execution_status(ask_id)
 
     def _harvest_local_body_reference_answer(self, run_id: str, candidate_id: str, ask_id: str, target: Path) -> None:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
-        answer_path = paths.answer_root() / ask_id
+        answer_path = paths.answer_path(ask_id)
         if not answer_path.is_dir():
             return
         if not (answer_path / "answer_manifest.json").is_file():
@@ -1565,7 +1542,7 @@ Do not explain your reasoning."""
         if (ask.get("local_body_reference_run_id") != run_id or ask.get("candidate_id") != candidate_id) and not render_source:
             raise LocalBodyReferenceError("AI Proxy answer does not belong to this Local Body-Reference candidate.")
         status = str(answer.get("status") or "").upper()
-        if status in {"ERROR", "RETRY_LATER"}:
+        if status in {"ERROR", "RETRY_LATER", "FAILED"}:
             raise LocalBodyReferenceError(str(answer.get("error_message") or "AI Proxy job failed."))
         if status != "SUCCESS":
             return
@@ -1594,10 +1571,7 @@ Do not explain your reasoning."""
         source = answer_path / expected
         if not source.is_file() or source.stat().st_size == 0:
             raise LocalBodyReferenceError("AI Proxy answer is missing its output file.")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_name(target.name + f".{os.getpid()}.tmp")
-        shutil.copy2(source, temporary)
-        temporary.replace(target)
+        paths.jobs.copy_result(ask_id, target, image=target.suffix.lower() in {".png", ".jpg", ".webp"})
 
     def _preflight(self) -> None:
         backend = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"))
@@ -1821,7 +1795,7 @@ Do not explain your reasoning."""
                 return None
             self._harvest_local_body_reference_answer(run_id, candidate_id, str(gate.get("ask_id") or ""), output)
             proxy_status, answer = self._proxy_answer(str(gate.get("ask_id") or ""))
-            if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER"}:
+            if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalBodyReferenceError(str(answer.get("error_message") or f"{gate_key} gate failed."))
             if proxy_status == "RUNNING" and gate.get("status") != "RUNNING":
                 gate["status"] = "RUNNING"
@@ -1999,7 +1973,7 @@ Do not explain your reasoning."""
                     pending.setdefault(run_id, []).append(candidate["candidate_id"])
                     continue
                 answer_status = str(answer.get("status") or "").upper()
-                if answer_status in {"ERROR", "RETRY_LATER"}:
+                if answer_status in {"ERROR", "RETRY_LATER", "FAILED"}:
                     failed_runs.add(run_id)
                     message = str(answer.get("error_message") or "Face-gate analysis failed.")
                     self._candidate_update(run_id, candidate["candidate_id"], {
@@ -2275,13 +2249,6 @@ Do not explain your reasoning."""
                        "model": "deterministic-single-survivor", "recorded_at": self._now()}
         else:
             try:
-                codex_executable = shutil.which("codex")
-                if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-                    installs = list((Path(os.environ["LOCALAPPDATA"]) / "OpenAI" / "Codex" / "bin").glob("*/codex.exe"))
-                    if installs:
-                        codex_executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
-                if not codex_executable:
-                    raise LocalBodyReferenceError("Codex CLI is unavailable for Luna ranking.")
                 image_labels: list[str] = []
                 reference_images = []
                 if view != FRONT_VIEW and anchor_image:
@@ -2308,9 +2275,8 @@ Do not explain your reasoning."""
                     candidate_ids=[item["candidate_id"] for item in survivors],
                     image_paths=[item["image_path"] for item in survivors],
                     reference_image_paths=reference_images,
-                    executable=codex_executable,
-                    runner=subprocess.run,
-                    environment=self._luna_environment(),
+                    paths=self.app.ai_proxy_service.ai_proxy_path_service,
+                    owner={"run_id": run_id, "view": view, "pipeline": 'Body-Reference', "evaluation_id": evaluation_id},
                 )
                 ranking = {"status": "COMPLETE", "evaluation_id": evaluation_id,
                            "ordered_candidate_ids": [item["candidate_id"] for item in entries],
@@ -2673,7 +2639,7 @@ Do not explain your reasoning."""
                 return False
             self._harvest_local_body_reference_answer(run_id, candidate_id, str(candidate.get("ask_id") or ""), image)
             proxy_status, answer = self._proxy_answer(str(candidate.get("ask_id") or ""))
-            if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER"}:
+            if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalBodyReferenceError(str(answer.get("error_message") or "AI Proxy render failed"))
             if proxy_status == "RUNNING" and candidate.get("status") != "RUNNING":
                 self._candidate_update(run_id, candidate_id, {"status": "RUNNING"})
@@ -2696,7 +2662,7 @@ Do not explain your reasoning."""
                 return False
             self._harvest_local_body_reference_answer(run_id, candidate_id, job["ask_id"], output)
             proxy_status, answer = self._proxy_answer(job["ask_id"])
-            if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER"}:
+            if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalBodyReferenceError(str(answer.get("error_message") or "Local image analysis failed"))
             if proxy_status == "RUNNING" and job["status"] != "RUNNING":
                 job["status"] = "RUNNING"
@@ -3079,46 +3045,16 @@ Do not explain your reasoning."""
             if anchor_image is None or not anchor_image.is_file():
                 raise LocalBodyReferenceError("Select a completed front anchor before reviewing other views.")
             images = [anchor_image, image]
-        schema_fd, schema_name = tempfile.mkstemp(prefix="zet_body_reference_schema_", suffix=".json")
-        output_fd, output_name = tempfile.mkstemp(prefix="zet_body_reference_luna_", suffix=".json")
-        os.close(schema_fd)
-        os.close(output_fd)
-        schema_file = Path(schema_name)
-        output_file = Path(output_name)
-        schema_file.write_text(json.dumps(self.analysis_schema()), encoding="utf-8")
-        codex_executable = None
-        if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-            installs = list((Path(os.environ["LOCALAPPDATA"]) / "OpenAI" / "Codex" / "bin").glob("*/codex.exe"))
-            if installs:
-                codex_executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
-        codex_executable = codex_executable or shutil.which("codex")
-        if not codex_executable:
-            raise LocalBodyReferenceError("Codex CLI is unavailable for Luna analysis.")
-        command = [codex_executable, "-a", "never", "-s", "read-only", "-m", self.app.config.codex_default_model,
-                   "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root), "exec",
-                   "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema", str(schema_file),
-                   "--output-last-message", str(output_file)]
-        for path in images:
-            command.extend(["--image", str(path)])
         prompt = self.analysis_prompt(candidate, anchor=candidate["view"] != FRONT_VIEW,
                                       facts=self._review_facts(run, candidate["view"]))
         started = time.perf_counter()
-        try:
-            completed = subprocess.run(command, input=prompt, capture_output=True, text=True, timeout=1800,
-                                       check=False, env=self._luna_environment())
-            if completed.returncode != 0:
-                raise LocalBodyReferenceError((completed.stderr or completed.stdout or "Luna analysis failed")[-2000:])
-            result = self._read_json(output_file)
-            if not isinstance(result, dict):
-                raise LocalBodyReferenceError("Luna analysis output must be a JSON object.")
-            hashes = {"candidate": self._hash(image), "front_anchor": self._hash(images[0]) if len(images) == 2 else ""}
-            self.record_analysis(run_id, candidate_id, "luna", result, hashes)
-            return {"provider": "luna", "status": "COMPLETE", "elapsed_seconds": round(time.perf_counter() - started, 3), "result": result}
-        except (OSError, json.JSONDecodeError) as exc:
-            raise LocalBodyReferenceError(f"Luna analysis output was invalid: {exc}") from exc
-        finally:
-            schema_file.unlink(missing_ok=True)
-            output_file.unlink(missing_ok=True)
+        result, _ = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
+            "codex:" + self.app.config.codex_default_model.removeprefix("codex:"), "", prompt,
+            self.analysis_schema(), images, task_type="local_body_reference_review",
+            owner={"run_id": run_id, "candidate_id": candidate_id})
+        hashes = {"candidate": self._hash(image), "front_anchor": self._hash(images[0]) if len(images) == 2 else ""}
+        self.record_analysis(run_id, candidate_id, "luna", result, hashes)
+        return {"provider": "luna", "status": "COMPLETE", "elapsed_seconds": round(time.perf_counter() - started, 3), "result": result}
 
     def set_lineup(self, run_id: str, method: str, selections: dict[str, str]) -> dict[str, Any]:
         if method != METHOD_FRONT_CONDITIONED:

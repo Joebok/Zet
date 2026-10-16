@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
@@ -14,7 +13,6 @@ from zet.services.quick_character_wizard_service import (
 from zet.services.workflow_storage import file_lock
 from zet.services.minor_character_workflow_service import MinorCharacterWorkflow
 
-_REVIEWS = ThreadPoolExecutor(max_workers=1, thread_name_prefix="minor-character-review")
 _REVIEW_ACTIVE = set()
 
 
@@ -111,7 +109,7 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             for candidate in record["candidates"]:
                 key = (self._key(canonical["session_id"]), candidate["candidate_id"])
                 with _LOCK:
-                    reviewing = key in _REVIEW_ACTIVE
+                    reviewing = key in _REVIEW_ACTIVE or self._pending_workflow(canonical["session_id"])
                 if candidate["status"] == "REVIEWING" and not reviewing:
                     candidate.update(status="REVIEW_FAILED", error="Suggestions were interrupted. You can continue with this image.")
                     interrupted = True
@@ -161,7 +159,8 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             finally:
                 with _LOCK:
                     _REVIEW_ACTIVE.discard(key)
-        _REVIEWS.submit(review)
+        from zet.services.ai_workflow_service import AIWorkflowService
+        AIWorkflowService(self.app).submit(self._review_job, [sid, candidate_id], service="minor", initial=review)
 
     def create_character(self, payload):
         name = text(payload.get("name", ""), "Character name").strip()

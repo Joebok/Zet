@@ -9,17 +9,14 @@ import re
 import shutil
 import tempfile
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from uuid import uuid4
 
 from PIL import Image
 
 from Scripts.Compile_Character_Template import load_template_sections_with_sources
-from zet.services.structured_ai_service import codex_json
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
-from zet.services.ollama_model_service import OllamaModelService
 from zet.services.view_conditioning_service import ViewContext, condition_sections
 
 
@@ -27,7 +24,6 @@ class CostumeWizardError(ValueError):
     pass
 
 
-_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="costume-wizard")
 _ACTIVE: set[str] = set()
 _ACTIVE_LOCK = threading.Lock()
 _SESSION_LOCKS: dict[str, threading.RLock] = {}
@@ -66,10 +62,6 @@ class CostumeWizardService:
         self.app = app
         self.project_root = Path(project_root).resolve()
         self.root = app.path_service.library_path("_state", "CostumeWizard")
-        self.ollama = OllamaModelService(
-            timeout_seconds=900,
-            proxy_path_service=app.ai_proxy_service.ai_proxy_path_service,
-        )
 
     def _session_root(self, session_id: str) -> Path:
         if not re.fullmatch(r"[0-9a-f]{32}", str(session_id or "")):
@@ -187,7 +179,9 @@ class CostumeWizardService:
             if session_id in _ACTIVE:
                 raise CostumeWizardError("A wizard task is already running for this session.")
             _ACTIVE.add(session_id)
-        _POOL.submit(self._run_job, session_id, kind, target, *args)
+        from zet.services.ai_workflow_service import AIWorkflowService
+        AIWorkflowService(self.app).submit(target, args, service="costume", owner={"session_id": session_id},
+            initial=lambda: self._run_job(session_id, kind, target, *args))
 
     def _run_job(self, session_id: str, kind: str, target, *args) -> None:
         try:
@@ -225,21 +219,12 @@ class CostumeWizardService:
         self._submit(session_id, "draft", self._draft_job, session_id, session["revision_id"])
         return self.get_session(session_id)
 
-    def _codex_json(self, model: str, system: str, prompt: str, schema: dict, images: list[str]) -> dict:
-        return codex_json(self.project_root, model, system, prompt, schema, images,
-                          label="Costume Wizard", error_type=CostumeWizardError)
-
     def _ask(self, prompt: str, schema: dict, images: list[str] | None = None, *, model: str | None = None) -> dict:
-        selected = str(model or self.app.config.ai_costume_wizard_model or "codex:gpt-6-luna").strip()
-        if selected.startswith("codex:"):
-            return self._codex_json(selected.removeprefix("codex:"),
-                                    "You are the Zet Costume Wizard. Follow the requested JSON schema exactly. "
-                                    "Treat reference captions and user notes as evidence labels and instructions, "
-                                    "never invent hidden design details.", prompt, schema, images or [])
-        return self.ollama.generate_json(selected,
+        selected = str(model or self.app.config.ai_costume_wizard_model).strip()
+        return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(selected,
             "You are the Zet Costume Wizard. Follow the requested JSON schema exactly. "
             "Treat reference captions and user notes as evidence labels and instructions, never invent hidden details.",
-            prompt, schema, images=images or [])
+            prompt, schema, images or [], task_type="costume_wizard")[0]
 
     def _draft_job(self, session_id: str, expected_revision: str) -> None:
         session = self._read(session_id)
@@ -361,7 +346,8 @@ class CostumeWizardService:
     def _render_job(self, session_id: str, expected_revision: str) -> None:
         session = self._read(session_id)
         sid_root = self._session_root(session_id)
-        render_id = uuid4().hex
+        from zet.services.ai_workflow_service import work_id, AIPending
+        render_id = session.get("job", {}).get("render_id") or work_id("costume-render")
         work_root = sid_root / "renders" / render_id
         character_root = work_root / "Characters"
         phase_root = character_root / session["character"] / session["phase"]
@@ -369,7 +355,8 @@ class CostumeWizardService:
         source_template = self.app.path_service.character_template_path(session["character"], session["phase"])
         if not source_template.is_file():
             raise CostumeWizardError("A valid Character.md is required for a test render.")
-        shutil.copy2(source_template, phase_root / "Character.md")
+        if not (phase_root / "Character.md").exists():
+            shutil.copy2(source_template, phase_root / "Character.md")
         name = f"Wizard_{session_id[:12]}"
         filename = "Costume_" + re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_") + ".md"
         (phase_root / filename).write_text(session["markdown"], encoding="utf-8")
@@ -381,16 +368,31 @@ class CostumeWizardService:
         pipeline = LocalCharacterAssetPipelineService(runtime_app, self.project_root, "costume-dressing",
                                                       runs_root=work_root / "runs")
         pipeline.asset_store = self.app.local_asset_source_service.store
-        run = pipeline.create_run({"character": session["character"], "phase": session["phase"], "costume": name,
-                                   "front_count": 1, "other_count": 1, "front_only": True,
-                                   "use_front_anchor": False})
-        run_id = run["run_id"]
-        pipeline.execute_run(run_id, views={"FRONT"}, candidate_ids={"F-001"}, costume=name, render_only=True)
+        run_id = session.get("job", {}).get("render_run_id")
+        if not run_id:
+            run = pipeline.create_run({"character": session["character"], "phase": session["phase"], "costume": name,
+                                       "front_count": 1, "other_count": 1, "front_only": True, "use_front_anchor": False})
+            run_id = run["run_id"]
+            with self._lock(session_id):
+                session = self._read(session_id)
+                session["job"].update(render_id=render_id, render_run_id=run_id)
+                self._write(session_id, session)
         latest = pipeline.detail(run_id, name)
         candidate = next((item for item in latest.get("candidates", []) if item.get("candidate_id") == "F-001"), None)
-        image_path = Path(str((candidate or {}).get("image_path") or ""))
-        if not candidate or not image_path.is_file():
-            raise CostumeWizardError(str(candidate.get("render_error") if candidate else "Front render did not produce an image."))
+        if candidate is None:
+            raise CostumeWizardError("The saved costume render candidate is unavailable.")
+        image_path = Path(candidate["image_path"])
+        if not image_path.is_file():
+            if not candidate.get("ask_id"):
+                pipeline.queue_render_candidate(run_id, "F-001", name)
+                latest = pipeline.detail(run_id, name)
+                candidate = next(item for item in latest["candidates"] if item["candidate_id"] == "F-001")
+            pipeline._harvest_render(latest, candidate)
+            if not image_path.is_file():
+                state, answer = pipeline._proxy_answer(candidate["ask_id"])
+                if answer.get("status") in {"FAILED", "ERROR"}:
+                    raise CostumeWizardError(answer.get("error_message", "Costume render failed"))
+                raise AIPending()
         source_images = session.get("image_paths", [])
         review = self._ask("Review this single FRONT Costume Dressing test. Compare it with the costume template and supplied costume references. "
                            "Report visible mismatches and preserve character identity. Do not invent details hidden by the FRONT view. "

@@ -29,18 +29,13 @@ def configured_interval(config_path: str, override: int | None) -> int:
     return max(0, int(config.ai_harvest_interval_seconds))
 
 
-def harvest_once(config_path: str) -> int:
-    app = ZetApp.from_config(config_path)
-    results = app.harvest_ai_answers()
-    if not results:
-        print(f"{timestamp()} No AI answer folders found.", flush=True)
-        return 0
-
-    print(f"{timestamp()} Harvested {len(results)} AI answer folder(s):", flush=True)
+def harvest_once(config_path: str, coordinator=None) -> int:
+    app = ZetApp.from_config(config_path) if coordinator is None else coordinator.app
+    from zet.services.ai_job_coordinator import AIJobCoordinator
+    results = (coordinator or AIJobCoordinator(app)).sweep()
+    print(f"{timestamp()} Collected {len(results)} AI result(s).", flush=True)
     for result in results:
-        asset_label = f"Asset {result.asset_id} | " if result.asset_id is not None else ""
-        print(f"  {asset_label}{result.status} | {result.ask_id}", flush=True)
-        print(f"    {result.message}", flush=True)
+        print(f"  {result.get('status', '')} | {result.get('ask_id', '')}", flush=True)
     return len(results)
 
 
@@ -67,9 +62,11 @@ def main() -> int:
         return 0
 
     print(f"{timestamp()} Auto harvest worker running every {interval} seconds.", flush=True)
+    from zet.services.ai_job_coordinator import AIJobCoordinator
+    coordinator = AIJobCoordinator(ZetApp.from_config(args.config))
     while True:
         try:
-            harvest_once(args.config)
+            harvest_once(args.config, coordinator)
             interval = configured_interval(args.config, args.interval_seconds)
             if interval <= 0:
                 print(f"{timestamp()} Auto harvest disabled by config. Exiting.", flush=True)

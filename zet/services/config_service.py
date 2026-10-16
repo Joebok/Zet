@@ -59,7 +59,7 @@ class Config:
     zine_width: int = 3300
     turnaround_width: int = 3960
     ai_harvest_auto_enabled: bool = True
-    ai_harvest_interval_seconds: int = 300
+    ai_harvest_interval_seconds: int = 2
     ai_harvest_archive_path: str = ""
     ai_queue_debug: bool = False
     ai_queue_debug_retention_days: int = 7
@@ -294,7 +294,7 @@ class ConfigService:
                 zine_width=int(zine.get("Width", 3300)),
                 turnaround_width=int(turnaround.get("Width", 3960)),
                 ai_harvest_auto_enabled=bool(ai_harvest.get("AutoEnabled", True)),
-                ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 300)),
+                ai_harvest_interval_seconds=int(ai_harvest.get("IntervalSeconds", 2)),
                 ai_harvest_archive_path=ConfigService._normalize_path_value(
                     ai_harvest.get("ArchivePath", "Zet_File_Proxy_State/Archive/Harvested")
                 ),

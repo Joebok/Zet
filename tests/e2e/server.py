@@ -81,11 +81,9 @@ def start_private_proxy(root: Path, config: Path, comfy_url: str):
     registry = root / "registry"
     registry.mkdir(parents=True, exist_ok=True)
     registry_data = {"subscriber_id": "zet", "workers": {
-        "ollama_generate": {"backend": "ollama", "command": [sys.executable, "-m", "AI_Manager.ollama_proxy_worker"],
-                            "working_directory": str(PROJECT_ROOT), "timeout_seconds": 1200},
-        "local_image_render": {"backend": "comfyui", "command": [sys.executable, "-m", "AI_Manager.local_image_proxy_worker", "--config", str(config)],
-                               "working_directory": str(PROJECT_ROOT), "timeout_seconds": 1200},
-    }}
+        name: {"backend": provider, "command": [str(proxy_python), "-m", "file_proxy.ai_worker", "--provider", provider],
+               "working_directory": str(proxy_root), "timeout_seconds": 7600}
+        for name, provider in (("ai_ollama", "ollama"), ("ai_codex", "codex"), ("ai_comfyui", "comfyui"))}}
     (registry / "zet.json").write_text(json.dumps(registry_data, indent=2), encoding="utf-8")
     runtime = {"runtime_dir": str(root / "AI_Proxy_Runtime"),
                "managed_comfyui": {"enabled": False, "upstream": comfy_url},
@@ -167,6 +165,22 @@ def build_app(config: Path, index_root: Path):
     from zet.services.ollama_model_service import OllamaModelService
     from zet.services import local_prompt_improvement_service
 
+    def seed_catalog():
+        from zet.services.atomic_file_service import write_json_atomic
+        models = [{"id": value, "name": value, "provider": "ollama", "capabilities": ["text", "vision", "structured_json"]}
+                  for value in ("general:latest", "image-analysis:latest", "image-analysis-alt:latest")]
+        models.append({"id": "codex:gpt-6-luna", "name": "gpt-6-luna", "provider": "codex", "capabilities": ["text", "vision", "structured_json"]})
+        models.append({"id": "text-only:latest", "name": "text-only:latest", "provider": "ollama", "capabilities": ["text"]})
+        models.append({"id": "qwen_image_2.1_int8_convrot.safetensors", "name": "qwen_image_2.1_int8_convrot.safetensors",
+                       "provider": "comfyui", "capabilities": ["image_generation"]})
+        write_json_atomic(config.parent / "Queue/File_Proxy/Control/model_catalog.json", {
+            "version": 1, "models": models, "refreshed_at": "2026-10-16T00:00:00Z", "errors": {},
+            "comfyui_node_types": ["UNETLoader", "CLIPLoader", "VAELoader", "LoadImage", "TextEncodeQwenImage21",
+                                    "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage", "QwenImage21Cache"]})
+
+    seed_catalog()
+    catalog_fixture = json.loads((config.parent / "Queue/File_Proxy/Control/model_catalog.json").read_text(encoding="utf-8"))
+
     LibraryIndexRepository.default_index_root = staticmethod(lambda: index_root)
     OllamaModelService.refresh_model_catalog = lambda self: {"models": [], "vision_models": []}
 
@@ -201,6 +215,7 @@ def build_app(config: Path, index_root: Path):
     )
     ids = seed_narrative(author, asset["asset_id"])
     application = create_app(config, validate_catalog_on_create=False)
+    application.state.ai_catalog_fixture = catalog_fixture
     application.state.test_ids = {
         **ids,
         "asset": asset["asset_id"], "library": str(config.parent / "Library"),
@@ -283,11 +298,33 @@ def main() -> int:
     def live_test_preflight():
         return {"ready": not app.state.live_blockers, "blockers": app.state.live_blockers}
 
+    @app.post("/__test/ai-submit")
+    def submit_ai_fixture(data: dict):
+        from fastapi import HTTPException
+        universe = data.get("universe", "Test")
+        if universe == "TestOther":
+            other = config.parent / "Library/TestOther"
+            if not other.exists():
+                shutil.copytree(SEED / "Test", other)
+                marker = json.loads((other / "universe.json").read_text(encoding="utf-8"))
+                marker.update(universe_id="TestOther", name="Other test universe")
+                (other / "universe.json").write_text(json.dumps(marker), encoding="utf-8")
+        runtime = app.state.ai_job_coordinator.resolve_app(universe)
+        try:
+            job_id = runtime.ai_proxy_service.ai_proxy_path_service.jobs.submit_text(
+                data.get("model", "general:latest"), "Return JSON", "Prepared unified queue check",
+                {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]},
+                images=[runtime.entity_library_asset(app.state.test_ids["asset"])["image_path"]] if data.get("vision") and universe == "Test" else [],
+                task_type="unified_queue_check")
+            return {"ask_id": job_id}
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     @app.post("/__test/reset")
     def reset_test_scenario():
         nonlocal scenario_number
         runtime = app.state.zet_app
-        runtime.narrative_generation_service.stop_background()
+        app.state.ai_job_coordinator.stop()
         previous = app.state.test_ids
         author = runtime.narrative_scene_service
         protected = author.protected_images(previous["story"])
@@ -302,6 +339,9 @@ def main() -> int:
                 raise RuntimeError(f"Refusing to remove unexpected test data: {target}")
             shutil.rmtree(target, ignore_errors=True)
         shutil.rmtree(Path(previous["queue"]) / "File_Proxy", ignore_errors=True)
+        from zet.services.atomic_file_service import write_json_atomic
+        catalog = app.state.ai_catalog_fixture
+        write_json_atomic(Path(previous["queue"]) / "File_Proxy/Control/model_catalog.json", catalog)
         scenario_number += 1
         ids = seed_narrative(runtime.narrative_scene_service, previous["asset"])
         app.state.test_ids = {**previous, **ids}
@@ -314,7 +354,7 @@ def main() -> int:
             (batch / "spec.json").write_text(json.dumps({"kind": pipeline, "run_id": batch_id}), encoding="utf-8")
             store.lock_batch_selection("Traveler", "Adult", pipeline, "FRONT", candidate_id=f"seed-{pipeline.lower()}",
                                        image_path=test_root / "images" / "traveler-reference.png", batch_id=batch_id)
-        runtime.narrative_generation_service.start_background()
+        app.state.ai_job_coordinator.start()
         return {"reset": True, "scenario": scenario_number}
 
     @app.post("/__test/retain-failure")

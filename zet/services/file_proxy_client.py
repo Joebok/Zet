@@ -20,6 +20,7 @@ class FileProxyClient:
     subscriber_id = "zet"
     worker_names = {
         "ollama_generate": "ollama",
+        "codex_generate": "codex",
         "local_image_render": "local_image",
     }
 
@@ -63,12 +64,30 @@ class FileProxyClient:
         return staging
 
     def publish(self, staging: Path, job_id: str, worker_type: str) -> Path:
+        from zet.services.workflow_storage import file_lock
+        number = int(hashlib.sha256(job_id.encode()).hexdigest()[:8], 16) % 64
+        lock_path = queue_local_state_root(self.base_queue_path) / "Locks" / f"workflow-{number:02d}.lock"
+        with file_lock(lock_path):
+            return self._publish(staging, job_id, worker_type)
+
+    def _publish(self, staging: Path, job_id: str, worker_type: str) -> Path:
+        initial = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
+        if worker_type == "ollama_generate" and str(initial.get("ollama_model") or initial.get("model") or "").startswith("codex:"):
+            worker_type = "codex_generate"
+            initial["worker_type"] = worker_type
+            (staging / "ask_manifest.json").write_text(json.dumps(initial, indent=2) + "\n", encoding="utf-8")
         worker = self.worker_names.get(worker_type)
         if worker is None:
             raise ValueError(f"Unsupported Zet file-proxy worker type: {worker_type}")
+        from zet.services.ai_request_preparation_service import prepare_request
+        prepare_request(staging, worker_type, getattr(self, "config", None))
+        if (staging / "ai_request.json").is_file():
+            worker = {"ollama_generate": "ai_ollama", "codex_generate": "ai_codex", "local_image_render": "ai_comfyui"}[worker_type]
         route_required = self._externalize_routes(staging, job_id)
         resource_key = self._resource_key(staging, worker_type)
         ask_manifest = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
+        # All submissions, including compatibility producers, leave a durable local identity.
+        from zet.repositories.ai_job_repository import AIJobRepository
         job_manifest = {
             "protocol_version": 1,
             "job_id": job_id,
@@ -81,6 +100,8 @@ class FileProxyClient:
             "resource_key": resource_key,
             "priority": ask_manifest.get("queue_priority", 0),
         }
+        request = json.loads((staging / "ai_request.json").read_text(encoding="utf-8")) if (staging / "ai_request.json").is_file() else None
+        AIJobRepository(queue_local_state_root(self.base_queue_path)).register(job_id, ask_manifest, job_manifest, request)
         temp = staging / ".job.json.tmp"
         temp.write_text(json.dumps(job_manifest, indent=2) + "\n", encoding="utf-8")
         self._replace_with_retry(temp, staging / "job.json")
@@ -91,9 +112,9 @@ class FileProxyClient:
     @staticmethod
     def _resource_key(staging: Path, worker_type: str) -> str:
         manifest = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
-        if worker_type == "ollama_generate":
+        if worker_type in {"ollama_generate", "codex_generate"}:
             model = str(manifest.get("ollama_model") or "").strip() or "general:latest"
-            return f"ollama:{model}"
+            return f"codex:{model.removeprefix('codex:')}" if worker_type == "codex_generate" else f"ollama:{model}"
         backend = str(manifest.get("image_generation") or "").strip().lower() or "comfyui"
         checkpoint = str(manifest.get("checkpoint") or "").strip() or "default"
         return f"image:{backend}:{checkpoint}"
@@ -334,6 +355,14 @@ class FileProxyClient:
         return list(self.task_paths("answer"))
 
     def remove_answer(self, job_id: str) -> bool:
+        answer = getattr(self, "lifecycle", None)
+        if answer is not None:
+            local = answer.inbox_root / job_id
+            source = local if local.is_dir() else self.answer_root / job_id
+            if source.is_dir():
+                answer.finish_answer(source, {"status": "APPLIED"})
+                return True
+            return False
         answer = self.answer_root / job_id
         if not answer.exists():
             return False

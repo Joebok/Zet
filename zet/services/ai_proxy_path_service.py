@@ -38,6 +38,14 @@ class AIProxyPathService:
     def answer_root(self) -> Path:
         return self.file_proxy_client.answer_root
 
+    @property
+    def jobs(self):
+        from zet.services.ai_job_service import AIJobService
+        return AIJobService(self)
+
+    def answer_path(self, job_id: str) -> Path:
+        return self.jobs.ready_answer(job_id) or self.answer_root() / (".pending-" + job_id)
+
     def archive_root(self) -> Path:
         """Return the AI proxy archive root."""
         return Path(self.config.base_ai_queue_path) / "Zet_File_Proxy_State" / "Archive"

@@ -1231,16 +1231,8 @@ class ZetApp:
         return self.ai_proxy_service.harvested_answer_count()
 
     def recent_ai_harvests(self, limit: int = 20):
-        recent = self.ai_proxy_service.recent_harvests(limit)
-        rows = self.library_index_service.repository.query_job_history(
-            harvested_only=True, limit=limit
-        ).items
-        indexed = [json.loads(str(row.get("payload_json") or "{}")) for row in rows]
-        by_id = {str(row.get("ask_id") or ""): row for row in indexed}
-        by_id.update({str(row.get("ask_id") or ""): row for row in recent})
-        combined = list(by_id.values())
-        combined.sort(key=lambda row: str(row.get("harvested_at") or ""), reverse=True)
-        return combined[:max(0, limit)]
+        from zet.services.ai_queue_query_service import AIQueueQueryService
+        return AIQueueQueryService(self.ai_proxy_service.ai_proxy_path_service).query(history=True, limit=limit)["items"]
 
     def backfill_ai_harvest_history(self, batch_size: int = 200) -> dict:
         return self.library_index_service.backfill_history(batch_size=batch_size)

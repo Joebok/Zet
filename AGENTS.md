@@ -74,6 +74,10 @@ Zet is a local creative-production dashboard for character references, illustrat
 - `architecture_reviewer`: when the user explicitly requests a deep review, cleanup assessment, architectural review, or refactoring plan, it may inspect broadly; identify dead or duplicate code; compare data models; and propose deletions, migrations, abstractions, or staged refactoring. This is analysis only unless implementation is explicitly authorized.
 - `refactoring_implementer`: may implement only a user-approved phase from a written review or plan. Keep the phase testable, run or add relevant tests, exclude unrelated cleanup, and stop after that phase. Approval never carries to later phases.
 
+## Ollama, Local LLMs, Local Image Generation
+
+- All Zet useage of ollama, ComfyUI, and other local LLM calls needs to go through AI_Proxy and use common services and interfaces within Zet.
+
 ## ComfyUI
 
 - Normally ComfyUI is only available via AI_Proxy. If needed to run directly, stop and ask to have ComfyUI Desktop started.

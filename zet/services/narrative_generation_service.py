@@ -2,17 +2,14 @@
 from dataclasses import asdict
 from copy import deepcopy
 import json
-import logging
 from pathlib import Path
 import random
-import threading
 
 from zet.models.narrative import NarrativeCandidate, new_id
 from zet.services.atomic_file_service import write_bytes_atomic
 from zet.services.narrative_prompt_service import assemble_prompt, llm_request
 from zet.services.narrative_interview_service import interview_review
 from zet.services.narrative_proxy_service import NarrativeProxyService
-from zet.services.narrative_codex_service import NarrativeCodexService
 from zet.services.workflow_storage import validate_image
 
 
@@ -24,47 +21,7 @@ class NarrativeGenerationService:
         self.author = author
         self.repository = author.repository
         self.proxy = NarrativeProxyService(author.app)
-        self.codex = NarrativeCodexService(self.repository)
         self.assembly = author.app.narrative_assembly_service
-        self._stop = threading.Event()
-        self._thread = None
-        self._thread_lock = threading.Lock()
-
-    def start_background(self):
-        with self._thread_lock:
-            if self._thread and self._thread.is_alive():
-                return
-            self._stop.clear()
-            self.codex._closed.clear()
-            self._thread = threading.Thread(target=self._poll_loop, name="zet-narrative-jobs", daemon=True)
-            self._thread.start()
-
-    def stop_background(self):
-        self._stop.set()
-        self.codex.close()
-        if self._thread:
-            self._thread.join(timeout=5)
-
-    def _poll_loop(self):
-        while not self._stop.is_set():
-            try:
-                self.poll_pending()
-            except Exception:
-                logging.getLogger(__name__).exception("Unable to refresh narrative jobs")
-            self._stop.wait(2)
-
-    def poll_pending(self):
-        for story in self.repository.stories():
-            for scene in story["scene_ids"]:
-                try:
-                    for target in self.repository.read(story["id"], scene)["target_ids"]:
-                        record = self.repository.read(story["id"], scene, target)
-                        if any(job["status"] in ACTIVE for job in record["jobs"].values()):
-                            self.detail(story["id"], scene, target)
-                except KeyError:
-                    # An author can delete a scene while the sweep is running.
-                    continue
-
     def detail(self, story: str, scene: str, target: str) -> dict:
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
@@ -192,8 +149,7 @@ class NarrativeGenerationService:
                         job["request"] = replay["request"]
                         schema = deepcopy(replay.get("schema", schema))
                         job["schema"] = schema
-                    if job["provider"] == "ollama":
-                        self.proxy.publish(story, scene, target, job, job["request"], schema=schema)
+                    self.proxy.publish(story, scene, target, job, job["request"], schema=schema)
                     job["status"] = "QUEUED"
             except Exception as exc:
                 self._fail(record, job, str(exc))
@@ -241,8 +197,7 @@ class NarrativeGenerationService:
             if job["status"] not in ACTIVE:
                 release.append(job)
                 continue
-            state, result = (self.codex.poll(story, scene, target, job) if job.get("provider") == "codex"
-                             else self.proxy.poll(story, scene, target, job))
+            state, result = self.proxy.poll(story, scene, target, job)
             job["status"] = state
             candidate = record["candidates"].get(job.get("candidate_id"))
             if candidate and candidate["job_id"] == job["id"]:
@@ -284,8 +239,7 @@ class NarrativeGenerationService:
                 release.append(job)
         self.repository.write(record, story, scene, target)
         for job in release:
-            if job.get("provider") != "codex":
-                self.proxy.release(story, scene, target, job)
+            self.proxy.release(story, scene, target, job)
 
     @staticmethod
     def _same_mode(record, frozen):

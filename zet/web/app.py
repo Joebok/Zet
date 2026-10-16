@@ -752,7 +752,6 @@ def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
         "queue": _jsonable(queue_snapshot),
         "queue_counts": {key: len(value) for key, value in queue_snapshot.items()},
         "manual_render_asks": _jsonable(manual_render_asks),
-        "codex_jobs": zet_app.codex_jobs(),
         "processes": [status.to_dict() for status in zet_app.process_statuses()],
     }
 
@@ -989,19 +988,19 @@ def create_app(
             import os
             application.state.worker_bridge_service.publish(os.environ.get("ZET_WEB_PORT", "8081"), app.state.boot_id)
         for zet_app in application.state.universe_apps.values():
-            zet_app.narrative_generation_service.start_background()
             zet_app.image_catalog_service.repository.load()
             zet_app.library_index_reconciler.start()
             _schedule_recovery(zet_app)
+        application.state.ai_job_coordinator.start()
         try:
             yield
         finally:
+            application.state.ai_job_coordinator.stop()
             application.state.image_generation_service.stop()
             application.state.task_status_service.stop()
             if config.github_repository and config.runtime_role != "development":
                 application.state.worker_bridge_service.close()
             for zet_app in application.state.universe_apps.values():
-                zet_app.narrative_generation_service.stop_background()
                 zet_app.library_index_reconciler.stop()
 
     app = FastAPI(title="Zet Web", lifespan=lifespan)
@@ -1020,6 +1019,7 @@ def create_app(
     app.state.zet_app._image_generation_service = app.state.image_generation_service
     app.state.zet_app.quick_character_wizard_service.generation_service = app.state.image_generation_service
     app.state.image_prompt_generation_service = ImagePromptGenerationService(app.state.zet_app, PROJECT_ROOT)
+    app.state.zet_app._image_prompt_generation_service = app.state.image_prompt_generation_service
     app.state.universe_lock = threading.RLock()
     app.state.recovery_lock = threading.Lock()
     app.state.recovery_statuses = {}
@@ -1087,10 +1087,19 @@ def create_app(
             if existing is None:
                 existing = ZetApp.from_config(app.state.config_path, universe_id=universe_id)
                 existing.library_index_reconciler.start()
-                existing.narrative_generation_service.start_background()
                 _schedule_recovery(existing)
                 app.state.universe_apps[universe_id] = existing
             return existing
+
+    def resolve_job_app(universe_id):
+        token = current_universe.set(universe_id)
+        try:
+            return _app(app.state.config_path)
+        finally:
+            current_universe.reset(token)
+
+    from zet.services.ai_job_coordinator import AIJobCoordinator
+    app.state.ai_job_coordinator = AIJobCoordinator(app.state.zet_app, resolve_job_app)
 
     @app.middleware("http")
     async def bind_universe(request: Request, call_next):
@@ -1110,7 +1119,6 @@ def create_app(
         selected = current_universe.get() or app.state.zet_app.universe_id
         previous = app.state.universe_apps.get(selected)
         if previous:
-            previous.narrative_generation_service.stop_background()
             previous.library_index_reconciler.stop()
         replacement = ZetApp.from_config(app.state.config_path, universe_id=selected)
         generation = getattr(previous, "_image_generation_service", None)
@@ -1119,7 +1127,6 @@ def create_app(
             replacement._image_generation_service = generation
             replacement.quick_character_wizard_service.generation_service = generation
         replacement.library_index_reconciler.start()
-        replacement.narrative_generation_service.start_background()
         app.state.universe_apps[selected] = replacement
         if selected == app.state.zet_app.universe_id:
             app.state.zet_app = replacement
@@ -3301,9 +3308,9 @@ def create_app(
     def ai_controls_harvest() -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
         try:
-            results = zet_app.harvest_ai_answers()
+            results = app.state.ai_job_coordinator.sweep(retry_failed=True)
             payload = _ai_controls_payload(zet_app)
-            failed_count = sum(1 for result in results if result.status == "HARVEST_FAILED")
+            failed_count = sum(1 for result in results if "FAIL" in result.get("status", ""))
             if not results:
                 payload["message"] = "No AI answer folders found."
             elif failed_count:
@@ -3360,25 +3367,15 @@ def create_app(
         limit: int = Query(50, ge=1, le=200), cursor: str = Query("")
     ) -> dict[str, Any]:
         zet_app = _app(app.state.config_path)
-        try:
-            page = zet_app.library_index_service.repository.query_job_history(
-                harvested_only=True, cursor=cursor or None, limit=limit
-            )
-            if cursor:
-                items = []
-                for item in page.items:
-                    try:
-                        items.append(json.loads(str(item.get("payload_json") or "{}")))
-                    except json.JSONDecodeError:
-                        items.append({})
-            else:
-                # Include producer-local receipts before the background index scan sees them.
-                items = zet_app.recent_ai_harvests(limit)
-            payload = _indexed_page_payload(page, items=_jsonable(items))
-            payload["total"] = max(page.total, len(items))
-            return payload
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        from zet.services.ai_queue_query_service import AIQueueQueryService
+        return AIQueueQueryService(zet_app.ai_proxy_service.ai_proxy_path_service).query(history=True, cursor=cursor, limit=limit)
+
+    @app.get("/api/ai/jobs")
+    def ai_jobs(universe_filter: str = "", provider: str = "", workflow: str = "", status: str = "",
+                cursor: str = "", limit: int = Query(50, ge=1, le=200)):
+        from zet.services.ai_queue_query_service import AIQueueQueryService
+        return AIQueueQueryService(_app(app.state.config_path).ai_proxy_service.ai_proxy_path_service).query(
+            universe=universe_filter, provider=provider, workflow=workflow, status=status, cursor=cursor, limit=limit)
 
     @app.post("/api/library-index/history-backfill")
     def library_index_history_backfill(
@@ -3430,7 +3427,7 @@ def create_app(
         try:
             zet_app = _app(app.state.config_path)
             profiles_path = zet_app.config.state_file(Path(app.state.config_path).resolve().parent, "Local_Render_Presets.json")
-            service = LocalRenderBackendService(profiles_path)
+            service = LocalRenderBackendService(profiles_path, zet_app.config.base_ai_queue_path)
             server_url = zet_app.config.comfyui_server_url if backend == "comfyui" else ""
             return {
                 "checkpoints": service.list_checkpoints(preset, backend=backend, server_url=server_url),
@@ -3438,6 +3435,16 @@ def create_app(
             }
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/api/ai/models")
+    def ai_models():
+        from zet.services.ai_model_catalog_service import AIModelCatalogService
+        return AIModelCatalogService(_app(app.state.config_path).config.base_ai_queue_path).catalog()
+
+    @app.post("/api/ai/models")
+    def refresh_ai_models():
+        from zet.services.ai_model_catalog_service import AIModelCatalogService
+        return AIModelCatalogService(_app(app.state.config_path).config.base_ai_queue_path).catalog(refresh=True)
 
     @app.get("/api/ai-controls/ollama-models")
     def ai_controls_ollama_models() -> dict[str, Any]:

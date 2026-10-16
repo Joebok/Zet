@@ -3,19 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
-import threading
 from typing import Any
 from uuid import uuid4
 import zipfile
 
 from zet.models.ai_proxy import AI_PROXY_PROTOCOL_VERSION
 from zet.services.atomic_file_service import write_json_atomic
-from zet.services.local_body_reference_service import LocalBodyReferenceService
 from zet.services.local_gate_registry_service import LocalGateRegistryService
 
 
@@ -79,8 +75,6 @@ class GateTestRigService:
         model = str(value.get("model") or "").strip()
         if not model or model == "codex:":
             raise GateTestRigError("Choose an Ollama model or GPT-6 Luna.")
-        if model.startswith("codex:") and model != "codex:gpt-6-luna":
-            raise GateTestRigError("GPT-6 Luna is the only supported Codex model in the Gate Test Rig.")
         api = str(value.get("api") or "generate").lower()
         if api not in {"generate", "chat"}:
             raise GateTestRigError("API endpoint must be generate or chat.")
@@ -91,40 +85,6 @@ class GateTestRigService:
         elif think is not None and not isinstance(think, bool):
             raise GateTestRigError("Ollama thinking must be true, false, or model default.")
         return {"model": model, "api": api, "think": think}
-
-    def _codex_executable(self) -> str:
-        import shutil as shutil_module
-        executable = shutil_module.which("codex")
-        if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-            installs = list((Path(os.environ["LOCALAPPDATA"]) / "OpenAI" / "Codex" / "bin").glob("*/codex.exe"))
-            if installs:
-                executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
-        if not executable:
-            raise GateTestRigError("Codex CLI is unavailable for GPT-6 Luna.")
-        return executable
-
-    def _run_codex_attempt(self, *, config: dict[str, Any], prompt: str,
-                           images: list[tuple[str, Path]], output: Path) -> None:
-        model = config["model"].removeprefix("codex:")
-        command = [self._codex_executable(), "-a", "never", "-s", "read-only", "-m", model,
-                   "-c", f'model_reasoning_effort="{config["think"]}"', "-C", str(self.project_root), "exec",
-                   "--ignore-user-config", "--skip-git-repo-check", "--ephemeral",
-                   "--output-last-message", str(output)]
-        for _, image in images:
-            command.extend(["--image", str(image)])
-        completed = subprocess.run(command, input=prompt, capture_output=True, text=True,
-                                   timeout=1800, check=False,
-                                   env=LocalBodyReferenceService._luna_environment())
-        if completed.returncode != 0:
-            raise GateTestRigError((completed.stderr or completed.stdout or "GPT-6 Luna request failed")[-2000:])
-
-    def _run_codex_attempt_background(self, *, config: dict[str, Any], prompt: str,
-                                      images: list[tuple[str, Path]], output: Path,
-                                      error_path: Path) -> None:
-        try:
-            self._run_codex_attempt(config=config, prompt=prompt, images=images, output=output)
-        except Exception as exc:
-            write_json_atomic(error_path, {"error": str(exc)})
 
     def start_test(self, payload: dict[str, Any]) -> dict[str, Any]:
         pipeline = self.registry.pipeline(str(payload.get("pipeline") or ""))
@@ -219,18 +179,6 @@ class GateTestRigService:
                        "case_snapshot": str(case_dir)}
             record["attempts"].append(attempt)
             write_json_atomic(record_path, record)
-            if config["model"].startswith("codex:"):
-                error_path = root / f"{attempt_id}.codex-error.json"
-                attempt.update(status="RUNNING", codex_error_path=str(error_path))
-                write_json_atomic(record_path, record)
-                image_mapping = "\n".join(f"Image {index}: {name}" for index, (name, _) in enumerate(images, 1))
-                codex_prompt = (f"{prompt}\n\nEvaluate this {pipeline.key} {gate} gate case. Return PASS or FAIL "
-                                f"as a single verdict.\n\nImage mapping:\n{image_mapping}")
-                threading.Thread(target=self._run_codex_attempt_background,
-                                 kwargs={"config": config, "prompt": codex_prompt, "images": images,
-                                         "output": output, "error_path": error_path},
-                                 name=f"gate-case-{attempt_id}", daemon=True).start()
-                continue
             staging = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.create_staging(ask_id)
             for filename, source in images:
                 shutil.copy2(source, staging / filename)
@@ -239,7 +187,7 @@ class GateTestRigService:
                 "version": AI_PROXY_PROTOCOL_VERSION, "ask_id": ask_id, "asset_id": None,
                 "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "pipeline": "Gate-Test-Rig", "pipeline_stage": f"GATE_TEST_{gate.upper()}",
-                "worker_type": "ollama_generate", "ollama_model": config["model"],
+                "worker_type": "codex_generate" if config["model"].startswith("codex:") else "ollama_generate", "ollama_model": config["model"],
                 "ollama_chat": config["api"] == "chat", "ollama_force_generate": config["api"] == "generate",
                 "ollama_think": config["think"], "ollama_allow_unmanaged_model": True,
                 "prompt_file": self.PROMPT_FILE, "image_files": [name for name, _ in images],
@@ -255,7 +203,7 @@ class GateTestRigService:
             attempt.update(status="QUEUED", answer_manifest_path="")
             write_json_atomic(record_path, record)
             try:
-                self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.publish(staging, ask_id, "ollama_generate")
+                self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.publish(staging, ask_id, manifest["worker_type"])
             except Exception as exc:
                 shutil.rmtree(staging, ignore_errors=True)
                 attempt.update(status="FAILED", error=f"Could not queue AI Proxy request: {exc}")

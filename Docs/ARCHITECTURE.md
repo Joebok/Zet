@@ -15,7 +15,6 @@ flowchart TD
     Characters --> Prompts[Shared compilers and prompt contracts]
     Characters --> Queue[File Proxy / manual queues]
     Narrative --> Queue
-    Narrative --> Codex[Codex subprocess integration]
     App --> Tasks[TaskService: frozen dashboard reports]
     Tasks --> Kanban[External Zet Kanban intake]
     Queue <--> Proxy[External AI Proxy workers]
@@ -40,8 +39,8 @@ Minor Characters use named workspaces independent of major character/phase pipel
 
 1. [zet/web/app.py](../zet/web/app.py) `main` parses config/host/port and calls Uvicorn with `create_app`. There is no separate frontend build needed for normal startup; static assets are served locally.
 2. [ConfigService.load](../zet/services/config_service.py) reads TOML with platform overrides. [UniverseService](../zet/services/universe_service.py) binds the selected universe's paths; `ZetApp.from_config` constructs repositories/services, initializes entity SQLite, optionally validates the record catalog, refreshes usages, and wires write/reconciliation callbacks. **Constructing a real app can write persistent state.**
-3. `create_app` caches apps by universe. Request middleware uses `x-zet-universe` or `universe_id` with a `ContextVar`, validates the selection, and lazily constructs an app for another universe under a lock. Reload stops the previous app's Narrative poller and index reconciler before replacement.
-4. Lifespan refreshes Ollama's model catalog on a daemon thread, starts ad hoc image generation, Narrative job polling, and index reconciliation, and schedules local-character/review recovery. Ollama refresh failure retains the saved catalog. Shutdown stops generation/polling/reconciliation services. Recovery status is separately tracked; an HTTP-ready server does not prove that every recovered job or external backend is ready.
+3. `create_app` caches apps by universe. Request middleware uses `x-zet-universe` or `universe_id` with a `ContextVar`, validates the selection, and lazily constructs an app for another universe under a lock. Reload replaces the universe-bound app while the common AI coordinator resolves its current instance.
+4. Lifespan requests a background refresh of AI_Proxy's capability catalog, starts the shared AI collection coordinator and index reconciliation, and schedules local-character/review recovery. Proxy discovery failure retains the last-known-good shared cache. Shutdown stops generation/polling/reconciliation services. Recovery status is separately tracked; an HTTP-ready server does not prove that every recovered job or external backend is ready.
 
 CLI modules under [zet/scripts/](../zet/scripts/) are separate operations; some use raw container config rather than `ZetApp` universe binding. Inspect the CLI before operating on a specific universe.
 
@@ -58,7 +57,7 @@ CLI modules under [zet/scripts/](../zet/scripts/) are separate operations; some 
 
 [DATA_MODEL](DATA_MODEL.md) owns storage layouts. File updates use repository transactions/atomic writes; workflow locks span threads and processes, and attempts/receipts fence stale or repeated results. Atomic replacement of one file is not a transaction across every artifact.
 
-AI Proxy is a separate project communicating through shared queues. Ollama performs text/vision work; current production local rendering is ComfyUI with registered Qwen Image 2.1 profiles. Direct ComfyUI utility code and historical Stable Matrix adapters remain present; they do not override [production policy](../zet/services/local_render_policy.py) or AGENTS' requirement to ask before using ComfyUI directly. Narrative additionally has a [Codex integration](../zet/services/narrative_codex_service.py). Live integration availability is not verified by unit fixtures.
+AI Proxy is a separate project communicating through shared queues. Ollama performs text/vision work; current production local rendering is ComfyUI with registered Qwen Image 2.1 profiles. Direct ComfyUI utility code and historical Stable Matrix adapters remain present; they do not override [production policy](../zet/services/local_render_policy.py) or AGENTS' requirement to ask before using ComfyUI directly. Creative Codex calls use the same [AI job service](../zet/services/ai_job_service.py) and File Proxy as local providers. The proxy owns a separate cloud lane; Zet owns domain result application. Live integration availability is not verified by unit fixtures.
 
 Important complexity: a large composition facade/web module, callbacks between story/catalog/index services, retained traditional records alongside local run state, and independent scene generations. Treat these as impact-analysis concerns, not authorization for cleanup. [Decisions](DECISIONS/README.md) explain durable boundaries where evidence exists; historical motives not present in code/design notes remain unknown.
 
@@ -70,3 +69,5 @@ Important complexity: a large composition facade/web module, callbacks between s
 
 ## Render slot presentation and ownership (2026-10-12)
 Character adapters share [render_slot_service.py](../zet/services/render_slot_service.py) for fixed positions, supplemental candidate merging and protected mutations through the local workflow service. Image Generation's [workspace service](../zet/services/image_generation_workspace_service.py) persists universe-owned assignments over its existing jobs. Shared [render_slots.js](../zet/web/static/render_slots.js) provides presentation controls only. Active browser pages poll and patch results during review; Narrative continues owning its independent target records. No new event transport or production dependency is introduced. See [ADR 0007](DECISIONS/0007-stable-render-slots.md).
+
+The shared request, continuation, model catalog and all-universe activity interfaces are owned by [Shared AI jobs](COMPONENTS/AI_JOBS.md).

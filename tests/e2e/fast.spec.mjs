@@ -229,7 +229,8 @@ async function deliverEnvelope(page, id, output, failed = false) {
   const manifest = JSON.parse(await readFile(path.join(ask, "ask_manifest.json"), "utf8"));
   if (output && !Buffer.isBuffer(output)) output = Buffer.from(JSON.stringify(output));
   await mkdir(answer, { recursive: true });
-  await writeFile(path.join(answer, "ask_manifest.json"), JSON.stringify(manifest));
+  // Keep the immutable request bytes, including 64-bit seeds, intact.
+  await writeFile(path.join(answer, "ask_manifest.json"), await readFile(path.join(ask, "ask_manifest.json")));
   await writeFile(path.join(answer, "job.json"), await readFile(path.join(ask, "job.json")));
   if (output) await writeFile(path.join(answer, manifest.expected_output), output);
   const outputFiles = output ? [{ path: manifest.expected_output, size: output.length, sha256: createHash("sha256").update(output).digest("hex") }] : [];
@@ -285,4 +286,51 @@ async function answerLocalEnvelope(queue, id, output) {
     ask_id: id, status: "SUCCESS", expected_output: manifest.expected_output,
     worker_id: "local-test-worker", ollama_attempt_id: id,
   }));
+  await writeFile(path.join(answer, "proxy_result.json"), JSON.stringify({ status: "SUCCEEDED", output_files: [
+    { path: manifest.expected_output, size: output.length, sha256: createHash("sha256").update(output).digest("hex") },
+  ] }));
 }
+
+
+test("unified AI queue collects all universes in the background and shares model selection", async ({ page }) => {
+  const context = await (await page.request.get("/__test/context")).json();
+  const submit = async (universe, model) => {
+    const response = await page.request.post("/__test/ai-submit", { data: { universe, model } });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    return (await response.json()).ask_id;
+  };
+  const first = await submit("Test", "codex:gpt-6-luna");
+  const second = await submit("TestOther", "general:latest");
+  await page.goto("/?page=ai-controls");
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toContainText("QUEUED");
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${second}"]`)).toContainText("TestOther");
+  await page.goto("/?page=auxiliary-resources");
+  await deliverEnvelope(page, first, Buffer.from(JSON.stringify({ summary: "Cloud prepared answer" })));
+  await deliverEnvelope(page, second, Buffer.from(JSON.stringify({ summary: "Local prepared answer" })));
+  await expect.poll(async () => {
+    const payload = await (await page.request.get("/api/ai/jobs")).json();
+    return [first, second].every(id => payload.items.some(item => item.ask_id === id && item.status === "COMPLETE"));
+  }, { timeout: 12000 }).toBe(true);
+  await page.goto("/?page=ai-controls");
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toContainText("COMPLETE");
+  await expect(page.locator("#recent-harvest-table")).toContainText(first);
+  await page.reload();
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${second}"]`)).toContainText("COMPLETE");
+  await page.locator("#ai-filter-universe").selectOption("TestOther");
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${first}"]`)).toHaveCount(0);
+  await expect(page.locator(`#ai-jobs-table tr[data-job-id="${second}"]`)).toBeVisible();
+  // The same popup is used by controls; capability filtering is also enforced on submission.
+  await page.evaluate(() => { void window.ZetModelPicker.open({ value: "codex:gpt-6-luna", required: ["vision"] }); });
+  const dialog = page.locator("#ai-model-picker");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-provider="codex"]')).toHaveValue("codex:gpt-6-luna");
+  await expect(dialog.locator('[data-provider="ollama"] option[value="text-only:latest"]')).toHaveCount(0);
+  await dialog.locator('[data-provider="ollama"]').selectOption("image-analysis:latest");
+  await expect(dialog.locator('[data-provider="codex"]')).toHaveValue("");
+  await dialog.locator('[data-provider="codex"]').selectOption("codex:gpt-6-luna");
+  await expect(dialog.locator('[data-provider="ollama"]')).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  const invalid = await page.request.post("/__test/ai-submit", { data: { universe: "Test", model: "text-only:latest", vision: true } });
+  expect(invalid.status()).toBe(400);
+});

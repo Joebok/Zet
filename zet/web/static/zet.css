@@ -5605,3 +5605,10 @@ dd {
 }
 
 .image-generation-form > .button-row.compact { flex-wrap: wrap; align-items: end; }
+
+.ai-model-picker { width: min(560px, 92vw); padding: 1.5rem; border-radius: 12px; }
+.ai-model-picker label { display: grid; gap: .4rem; margin: 1rem 0; }
+.ai-model-picker select { width: 100%; }
+.ai-model-picker::backdrop { background: #0008; }
+.ai-model-control { text-align: left; }
+#ai-jobs-table td { vertical-align: top; overflow-wrap: anywhere; }

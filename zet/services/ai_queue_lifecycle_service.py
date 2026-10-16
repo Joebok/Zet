@@ -45,6 +45,11 @@ class AIQueueLifecycleService:
         write_json_atomic(self.receipt_path(job_id), receipt)
 
     def drain_answer(self, source: Path, client: FileProxyClient) -> Path:
+        from zet.services.workflow_storage import file_lock
+        with file_lock(self.lock_path(source.name)):
+            return self._drain_answer(source, client)
+
+    def _drain_answer(self, source: Path, client: FileProxyClient) -> Path:
         """Copy a complete local-producer result to disk before unlinking Dropbox."""
         if source.parent.resolve() != client.answer_root.resolve():
             raise ValueError("Only direct File_Proxy answers can be drained.")
@@ -98,10 +103,29 @@ class AIQueueLifecycleService:
         return drained
 
     def finish_answer(self, answer_path: Path, receipt: dict) -> None:
+        from zet.services.workflow_storage import file_lock
+        with file_lock(self.lock_path(answer_path.name)):
+            self._finish_answer(answer_path, receipt)
+
+    def _finish_answer(self, answer_path: Path, receipt: dict) -> None:
         """Persist completion before removing a duplicate payload or route."""
         job_id = answer_path.name
+        from zet.repositories.ai_job_repository import AIJobRepository
+        ask = self._json(answer_path / "ask_manifest.json")
+        answer = self._json(answer_path / "answer_manifest.json")
+        record = AIJobRepository(self.root).get(job_id)
+        receipt = {"universe_id": ask.get("universe_id", record.get("universe_id", "")),
+                   "task_type": ask.get("task_type", record.get("task_type", "")),
+                   "provider": record.get("provider", ""), "model": record.get("model", ""),
+                   "effective_model": answer.get("effective_model") or answer.get("runtime", {}).get("effective_model", ""),
+                   "runtime": answer.get("runtime", answer.get("ollama_runtime", {})),
+                   "asset_id": ask.get("asset_id"), "owner": record.get("owner", {}),
+                   "answer_status": answer.get("status", ""), "error_message": answer.get("error_message", ""),
+                   "completed_at": answer.get("completed_at", ""), **receipt}
         receipt = {**receipt, "ask_id": job_id, "recorded_at": datetime.now(timezone.utc).isoformat()}
         self.write_receipt(job_id, receipt)
+        AIJobRepository(self.root).update(job_id, harvest_state=receipt.get("status", "APPLIED"),
+                                          completed_at=receipt["recorded_at"])
         try:
             if self.debug_enabled:
                 self.debug_root.mkdir(parents=True, exist_ok=True)
@@ -219,9 +243,12 @@ class AIQueueLifecycleService:
         return self.root / "Locks" / f"workflow-{number:02d}.lock"
 
     def file_proxy_client(self) -> FileProxyClient:
-        return FileProxyClient(self.queue_root, route_root=self.route_root,
+        client = FileProxyClient(self.queue_root, route_root=self.route_root,
                                library_root=self.config.base_library_path,
                                universe_id=getattr(self.config, "universe_id", ""))
+        client.lifecycle = self
+        client.config = self.config
+        return client
 
     def inbox_answers(self) -> list[Path]:
         if not self.inbox_root.is_dir():

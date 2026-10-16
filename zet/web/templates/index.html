@@ -1607,7 +1607,16 @@
             <h2>Queue</h2>
           </div>
           <div id="queue-counts" class="summary-bar"></div>
-          <div class="queue-tables">
+          <div class="button-row">
+            <label>Universe<select id="ai-filter-universe"><option value="">All universes</option></select></label>
+            <label>Provider<select id="ai-filter-provider"><option value="">All providers</option><option>codex</option><option>ollama</option><option>comfyui</option><option>manual</option></select></label>
+            <label>Workflow<select id="ai-filter-workflow"><option value="">All workflows</option></select></label>
+            <label>Status<select id="ai-filter-status"><option value="">All states</option><option>QUEUED</option><option>HELD</option><option>RUNNING</option><option>AWAITING_HARVEST</option><option>HARVESTING</option><option>TRANSFERRING</option><option>HARVEST_FAILED</option><option>RECONCILING</option><option>COMPLETE</option><option>FAILED</option><option>SUPERSEDED</option><option>MANUAL</option></select></label>
+          </div>
+          <p id="ai-jobs-status" role="status"></p>
+          <div class="table-scroll"><table id="ai-jobs-table"><thead><tr><th>Universe</th><th>Workflow / target</th><th>Task</th><th>Model</th><th>Status</th><th>Created</th><th>Details</th></tr></thead><tbody></tbody></table></div>
+          <button id="ai-jobs-more" type="button" hidden>Load more</button>
+          <div class="queue-tables" hidden>
             <section>
               <h3>Running</h3>
               <table id="queue-running-table"><tbody></tbody></table>
@@ -1621,14 +1630,6 @@
               <table id="queue-answer-table"><tbody></tbody></table>
             </section>
           </div>
-        </section>
-        <section class="control-panel ai-render-console-panel">
-          <h2>Codex Jobs · Body-Reference Luna Reviews</h2>
-          <div id="codex-job-counts" class="summary-bar"></div>
-          <table id="codex-jobs-table">
-            <thead><tr><th>batch</th><th>candidate</th><th>character</th><th>view</th><th>status</th><th>details</th></tr></thead>
-            <tbody></tbody>
-          </table>
         </section>
         <section class="control-panel ai-render-console-panel" hidden>
           <h2>Render Console</h2>
@@ -1771,8 +1772,8 @@
         <section class="control-panel ai-automation-panel local-image-config-panel">
           <h2>Project Automation</h2>
           <form id="automation-form" class="settings-form">
-            <label><input id="setting-ai-harvest-auto" type="checkbox"> Auto harvest enabled</label>
-            <label>Auto harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="30"></label>
+            <label><input id="setting-ai-harvest-auto" type="checkbox"> Standalone harvest host enabled</label>
+            <label>Standalone harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="1"></label>
             <label><input id="setting-ai-prompt-analysis-auto-queue-on-render" type="checkbox"> Auto-queue prompt analysis when rendering a scene</label>
             <label>
               Final render backend
@@ -1788,19 +1789,13 @@
           <div class="review-header">
             <div>
               <h2>Managed LLM Roles</h2>
-              <p class="status-text">Each task uses the selected Ollama model. Markdown instructions can be opened in the Template Editor.</p>
+              <p class="status-text">Each task uses the selected compatible Codex or Ollama model. Markdown instructions can be opened in the Template Editor.</p>
             </div>
             <button id="refresh-ollama-models" type="button">Refresh Models</button>
           </div>
           <div class="managed-llm-grid">
             <article class="managed-llm-role">
-              <label>Codex default model<select id="setting-codex-default-model" form="automation-form">
-                <option value="gpt-6-luna">GPT-6 Luna (High)</option>
-                <option value="gpt-6-sol">GPT-6 Sol (High)</option>
-                <option value="gpt-6-astra">GPT-6 Astra (High)</option>
-                <option value="gpt-5.6-sol">GPT-5.6 Sol (High)</option>
-                <option value="gpt-5.6-terra">GPT-5.6 Terra (High)</option>
-              </select></label>
+              <label>Codex default model<select id="setting-codex-default-model" form="automation-form"><option value="">Select a model</option></select></label>
               <p class="managed-llm-description">Codex CLI runs this model with high reasoning effort.</p>
             </article>
             <article class="managed-llm-role" data-llm-role="asset_workflow">
@@ -2152,6 +2147,8 @@ Add prompt language here.
   <script src="/static/task_capture.js?v=20261013-github"></script>
   <script src="/static/task_attention.js?v=20261013-github"></script>
   <script src="/static/render_slots.js?v=20261012"></script>
+  <script src="/static/ai_model_picker.js?v=20261016"></script>
+  <script src="/static/ai_queue.js?v=20261016"></script>
   <script src="/static/zet.js?v=20261013-github"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>

@@ -1,0 +1,138 @@
+"""Complete producer-local AI activity, independent of page visits and index lag."""
+from __future__ import annotations
+
+import json
+import socket
+
+from zet.repositories.ai_job_repository import AIJobRepository
+
+
+class AIQueueQueryService:
+    TERMINAL = {"APPLIED", "COMPLETE", "FAILED", "SUPERSEDED"}
+
+    def __init__(self, paths):
+        self.paths = paths
+        self.repository = AIJobRepository(paths.lifecycle.root)
+
+    def rows(self):
+        rows = {row["ask_id"]: {**row, "status": "RECONCILING", "details": row.get("error", "")}
+                for row in self.repository.all()}
+        client = self.paths.file_proxy_client
+        try:
+            execution = json.loads((client.root / "Control/execution_status.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            execution = {}
+        locations = [(client.ask_root, "QUEUED"), (client.running_root, "RUNNING"),
+                     (client.answer_root, "AWAITING_HARVEST"), (self.paths.lifecycle.inbox_root, "AWAITING_HARVEST"),
+                     (self.paths.manual_ask_root(), "MANUAL"), (self.paths.manual_answer_root(), "AWAITING_HARVEST")]
+        for root, status in locations:
+            if not root.is_dir():
+                continue
+            for path in root.iterdir():
+                if not path.is_dir() or path.name.startswith("."):
+                    continue
+                try:
+                    ask = json.loads((path / "ask_manifest.json").read_text(encoding="utf-8"))
+                    envelope = json.loads((path / "job.json").read_text(encoding="utf-8")) if (path / "job.json").is_file() else {}
+                    producer = str(envelope.get("producer_id") or "")
+                    if producer and producer.casefold() != socket.gethostname().casefold():
+                        continue
+                    model = str(ask.get("model") or ask.get("ollama_model") or ask.get("checkpoint") or "")
+                    provider = "manual" if status == "MANUAL" else "codex" if model.startswith("codex:") else "comfyui" if ask.get("worker_type") == "local_image_render" else "ollama"
+                    row = {**rows.get(path.name, {}), "ask_id": path.name, "status": status,
+                           "universe_id": ask.get("universe_id", ""), "provider": provider, "model": model,
+                           "task_type": ask.get("task_type", ""), "worker_type": ask.get("worker_type", ""),
+                           "created_at": envelope.get("created_at", rows.get(path.name, {}).get("created_at", "")),
+                           "owner": {key: value for key, value in ask.items() if key.endswith("_id") or key in {"character", "phase", "view", "costume"}}, "details": ""}
+                    if status == "QUEUED" and provider in {"ollama", "comfyui"} and execution.get("local_execution_blocked"):
+                        row.update(status="HELD", details=execution.get("reason", "Local execution is blocked"))
+                    if root == self.paths.manual_ask_root():
+                        from zet.services.workflow_storage import task_state_path
+                        if task_state_path(self.paths.lifecycle.queue_root, "Superseded", path.name).is_file():
+                            row["status"] = "SUPERSEDED"
+                        elif (path / "submission.json").is_file():
+                            row["status"] = "AWAITING_HARVEST"
+                    marker = path / "harvest_manifest.json"
+                    if marker.is_file():
+                        harvested = json.loads(marker.read_text(encoding="utf-8"))
+                        if harvested.get("status") != "HARVESTED_FOR_EXTERNAL_CONSUMER":
+                            row.update(status="FAILED" if "FAIL" in str(harvested.get("status", "")) else "COMPLETE",
+                                       harvested_at=harvested.get("harvested_at", ""), details=harvested.get("message", ""))
+                    if status == "AWAITING_HARVEST" and root in {client.answer_root, self.paths.lifecycle.inbox_root}:
+                        reason = client.answer_blocked_reason(path)
+                        if reason:
+                            row.update(status="TRANSFERRING", details=reason)
+                    if rows.get(path.name, {}).get("harvest_state") == "HARVEST_FAILED":
+                        row.update(status="HARVEST_FAILED", details=rows[path.name].get("error", ""))
+                    elif rows.get(path.name, {}).get("harvest_state") == "HARVESTING":
+                        row["status"] = "HARVESTING"
+                    rows[path.name] = row
+                except (OSError, ValueError):
+                    rows.setdefault(path.name, {"ask_id": path.name, "status": "TRANSFERRING", "details": "Waiting for complete metadata"})
+        for _, receipt in self.paths.lifecycle.iter_receipts() or ():
+            job_id = receipt.get("ask_id")
+            if not job_id:
+                continue
+            status = str(receipt.get("status", "APPLIED"))
+            normalized = "FAILED" if "FAIL" in status or receipt.get("answer_status") in {"FAILED", "ERROR"} else "SUPERSEDED" if "SUPERSEDED" in status else "COMPLETE"
+            rows[job_id] = {**rows.get(job_id, {}), **receipt, "status": normalized,
+                           "harvested_at": receipt.get("harvested_at") or receipt.get("recorded_at", ""),
+                           "details": receipt.get("error_message") or receipt.get("message", "")}
+        for row in rows.values():
+            owner = row.get("owner") or {}
+            row["workflow"] = row.get("workflow") or row.get("task_type") or row.get("consumer") or row.get("worker_type", "")
+            row["target"] = " / ".join(str(owner[key]) for key in ("character", "phase", "session_id", "run_id", "narrative_story_id", "narrative_scene_id", "narrative_target_id", "candidate_id", "view") if owner.get(key))
+            row["workflow_url"] = self.workflow_url(row, owner)
+            for internal in ("request", "manifest", "input_inventory"):
+                row.pop(internal, None)
+        return sorted(rows.values(), key=lambda row: (row["status"] not in self.TERMINAL,
+                      row.get("harvested_at") or row.get("created_at") or "", row["ask_id"]), reverse=True)
+
+    @staticmethod
+    def workflow_url(row, owner):
+        from urllib.parse import urlencode
+        params = {"task_universe": row.get("universe_id", "")}
+        if owner.get("narrative_story_id"):
+            params.update(page="narrative", story=owner["narrative_story_id"], scene=owner.get("narrative_scene_id", ""), target=owner.get("narrative_target_id", ""))
+        elif owner.get("session_id"):
+            params.update(page="minor-characters", minor_character=owner["session_id"])
+        elif any(owner.get(key) for key in ("local_body_reference_run_id", "local_head_image_run_id", "local_character_asset_run_id")):
+            pipeline = row.get("workflow", "").lower()
+            if owner.get("local_body_reference_run_id"):
+                page, batch = "local-body-reference", owner["local_body_reference_run_id"]
+            elif owner.get("local_head_image_run_id"):
+                page, batch = "local-head-image", owner["local_head_image_run_id"]
+            else:
+                page = "local-costume-dressing" if "dressing" in pipeline else "local-character-assembly"
+                batch = owner["local_character_asset_run_id"]
+            params.update(page=page, local_batch=batch, task_context="1")
+            for key in ("character", "phase"):
+                if owner.get(key):
+                    params["task_" + key] = owner[key]
+        else:
+            return ""
+        return "/?" + urlencode(params)
+
+    def query(self, *, universe="", provider="", workflow="", status="", cursor="", limit=50, history=False):
+        all_rows = self.rows()
+        rows = [row for row in all_rows if (not universe or row.get("universe_id") == universe)
+                and (not provider or row.get("provider") == provider)
+                and (not workflow or row.get("workflow") == workflow)
+                and (not status or row["status"] == status)
+                and (not history or row["status"] in self.TERMINAL)]
+        offset = 0
+        if cursor:
+            offset = next((index + 1 for index, row in enumerate(rows) if row["ask_id"] == cursor), len(rows))
+        items = rows[offset:offset + limit]
+        return {"items": items, "total": len(rows), "next_cursor": items[-1]["ask_id"] if offset + limit < len(rows) else None,
+                "recent_harvests": [row for row in all_rows if row["status"] in self.TERMINAL][:20],
+                "counts": {state: sum(row["status"] == state for row in all_rows) for state in
+                           {row["status"] for row in all_rows}},
+                "facets": {"universes": sorted({row.get("universe_id", "") for row in all_rows} - {""}),
+                           "workflows": sorted({row.get("workflow", "") for row in all_rows} - {""})}}
+
+    def snapshot(self):
+        rows = self.rows()
+        return {"ask": [row for row in rows if row["status"] in {"QUEUED", "HELD", "MANUAL", "RECONCILING"}],
+                "running": [row for row in rows if row["status"] == "RUNNING"],
+                "answer": [row for row in rows if row["status"] in {"AWAITING_HARVEST", "HARVESTING", "TRANSFERRING", "HARVEST_FAILED"}]}

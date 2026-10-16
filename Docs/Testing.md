@@ -1,6 +1,6 @@
 # Local testing
 
-Zet maintains exactly **three fast Playwright task scenarios** and **one separately invoked live Narrative check**. This is the validation owner for the agent knowledge base. The recovered commits `b3d695a`, `3f6acbe`, and `257fdeb` retired the former Python/browser suites and GitHub Actions gates in favor of representative local tasks. See [AGENTS.md](../AGENTS.md) and the [delivery workflow](../.github/CODEX_WORKFLOW.md). Old test paths in tickets refer agents to this baseline; they are not instructions to recreate deleted tests.
+Zet maintains exactly **four fast Playwright task scenarios** and **one separately invoked live Narrative check**. This is the validation owner for the agent knowledge base. The recovered commits `b3d695a`, `3f6acbe`, and `257fdeb` retired the former Python/browser suites and GitHub Actions gates in favor of representative local tasks. See [AGENTS.md](../AGENTS.md) and the [delivery workflow](../.github/CODEX_WORKFLOW.md). Old test paths in tickets refer agents to this baseline; they are not instructions to recreate deleted tests.
 
 Minor Characters (2026-10-15) were verified with disposable prepared-response service/browser journeys, including selected versus locked views, nonblocking advisory review, source/candidate comparison and Inventory handoffs. Those checks are not maintained scenarios. All three approved scenarios passed (26.7s); see the [completed plan](../plans/completed/minor-characters-workspace.md) for evidence and scope limits.
 
@@ -14,13 +14,21 @@ The current style alignment -> selected style -> independent view alignment -> s
 
 ## Approved fast scenarios
 
-All three are implemented in [fast.spec.mjs](../tests/e2e/fast.spec.mjs). The S1–S3 names below are navigation labels for those existing scenarios, not extra tests.
+All four are implemented in [fast.spec.mjs](../tests/e2e/fast.spec.mjs). The S1–S4 names below are navigation labels for those existing scenarios, not extra tests.
 
 | Label / exact test title | User task and assertions | Scope limit |
 | --- | --- | --- |
 | S1 — `library and narrative authoring save and reload through the dashboard` | Upload/restore the Traveler character template; edit/restore costume name; save story title, scene setting, and element appearance; reload and display the reference image; inspect persisted source files | Uses seeded library images/records. Does not cover every catalog operation, merge, migration or universe lifecycle |
 | S2 — `character-to-costume workflow previews prerequisites and creates a real run` | API preview/create/start a front-only Character-Assembly run; deliver prepared image/gate responses; wait for ranking; select/lock; repeat for Costume-Dressing using the assembly prerequisite and verify costume availability | Seeds Body/Head locks and uses one front candidate. Does not generate Body/Head batches or test all views, ranking comparisons, cancellation or recovery |
 | S3 — `narrative interview, prompt, render, retry, and final assembly persist` | Dashboard interview proposals, review/Apply and synthesis; render backdrop/subscene; fail and retry a subscene render; select/lock sources; add assembly layers, synthesize/render/select/lock final assembly; reload and verify story summary/image availability | Prepared text/image answers exercise persisted job/application flow, not actual LLM synthesis, image quality, or every provenance/protection case |
+
+S4 — `unified AI queue collects all universes in the background and shares model selection`
+was explicitly approved on 2026-10-16. It submits prepared Codex/Ollama work across
+Test/TestOther universes, verifies automatic queue loading and filtering, leaves
+source pages while collection runs, checks durable history after reload, and verifies
+popup mutual exclusion/vision filtering plus server-side capability rejection.
+No real AI execution occurs. Fixture envelopes preserve original request bytes and
+include terminal output inventories.
 
 The suite mixes browser actions, API calls, and filesystem assertions. In particular S2 is primarily API-driven; do not describe it as a complete browser journey through every character control. [CODE_MAP.md](CODE_MAP.md) maps capabilities to these scenarios and their gaps.
 
@@ -104,7 +112,7 @@ Joe explicitly approves each new test, scenario, or material coverage expansion.
 
 Shared reconstruction/true-up (2026-10-15) has no maintained scenario. Ignored disposable prepared-response checks exercise intent-aware reports, original-source render exclusion, corrections/retry, three-view wizard publication, front replacement, selected-result ancestry and stale selection. A disposable browser check exercises both new controls and resume/dirty-field behavior. These checks use isolated storage/prepared models and images; Freydis's actual identity/style quality requires separate visual acceptance. Maintained S1–S3 remain unchanged.
 
-For a change, locate the relevant S1–S3 assertions, run the approved baseline, and inspect uncovered contracts in authoritative code. Do not add tests for retiring Scene Builder/local scene-batch workflows. Plan/test references must distinguish scenario coverage from source-only verification. [DEVELOPMENT.md](DEVELOPMENT.md) records actual command outcomes; [ADR 0004](DECISIONS/0004-local-task-testing-baseline.md) records the policy change.
+For a change, locate the relevant S1–S4 assertions, run the approved baseline, and inspect uncovered contracts in authoritative code. Do not add tests for retiring Scene Builder/local scene-batch workflows. Plan/test references must distinguish scenario coverage from source-only verification. [DEVELOPMENT.md](DEVELOPMENT.md) records actual command outcomes; [ADR 0004](DECISIONS/0004-local-task-testing-baseline.md) records the policy change.
 
 The existing `/narrative` test links redirect into the mounted dashboard editor. The approved S1–S3 scenarios retain their purpose. The 2026-10-12 retirement used separate disposable/manual migration and Candidates checks; these are not additional maintained tests. No live rendering was performed.
 

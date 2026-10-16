@@ -86,3 +86,11 @@ Undo true-up restores one prior prompt/supporting state, including frozen findin
 Paired review has independent navigation. Right arrows/keyboard keys move among rendered current slots. Small left arrows loop through original and occupied style slots during style work; during view work they loop through original, selected style and selected other views. Images deduplicate by checksum and unavailable entries are skipped. Comparison choice affects display only, independently of primary identity and reference order.
 
 Main Minor Characters navigation saves edits and opens the complete list, including from an editor. Direct character links/history and Inventory handoffs remain. The All Minor Characters button and iteration history are removed. Board actions use `/api/minor-characters/{sid}/boards/{view}/{action}` and `/boards/{view}/slots/action`; mutations carry expected board revisions and services enforce eligibility. See [data model](../DATA_MODEL.md) and [prompts](PROMPTS.md). Disposable checks cover this workflow; S1-S3 are regression coverage, not artistic acceptance.
+
+## Unified AI jobs (2026-10-16)
+Local gates, ranking, prompt observations and Minor Character analysis/review/render
+requests use the common AI job boundary. Generic execution moved to AI_Proxy;
+Minor Character continuations persist and resume without session-page reads.
+Domain eligibility, immutable publication, revisions and image binding rules stay
+here. [Shared AI jobs](AI_JOBS.md) owns collection/receipts, queue activity and the
+capability-aware model popup.

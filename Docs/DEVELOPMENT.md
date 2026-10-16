@@ -106,3 +106,16 @@ After the first explicit promotion, run_zet_runtime.bat starts that release. Mer
 main must contain the new deployment contract before first promotion. Inspect
 runtime/state operation records and production.log for recovery; do not reset local
 edits or move/rebuild creative data to bypass a blocker.
+
+
+## Unified AI jobs validation (2026-10-16)
+
+`npm.cmd run test:e2e`: **4 passed (34.2s)**. The explicitly approved new isolated scenario
+is included. Python AST and changed browser-script syntax checks, introduced Markdown
+links, and `git diff --check` passed. Disposable prepared-response checks covered
+restart continuation, duplicate application, incomplete transfer, retained harvest
+failure/retry, ownership fencing, offline/malformed model catalogs and recoverable
+history. A transient Windows state-read sharing violation was found and repaired
+before the final Zet baseline passed. No dependencies or live backend calls were
+added. Upgrade AI_Proxy registrations before migrated Zet; no production rollout
+was performed. See the [completed plan](../plans/completed/unified-ai-jobs.md).

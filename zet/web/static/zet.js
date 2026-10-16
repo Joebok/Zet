@@ -4315,6 +4315,10 @@ async function activatePage(page, options = {}) {
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
   placeholderTitle.textContent = activeButton?.textContent || "Page";
   try {
+  if (page === "ai-controls") {
+    window.ZetAIQueue?.start();
+    await loadAiControls();
+  } else window.ZetAIQueue?.stop();
   if (page === "image-generation") {
     setImageGenerationMode(imageGenerationMode);
     await loadImageGenerationOptions();
@@ -10070,14 +10074,6 @@ function renderAiControls(payload) {
   renderRows(queueAskTableBody, payload.queue?.ask || [], ["ask_id", "asset_id", "pipeline_stage", "worker_type", "task_type"]);
   renderRows(queueRunningTableBody, payload.queue?.running || [], ["ask_id", "asset_id", "worker_type", "task_type"]);
   renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id", "recovery"]);
-  const codexJobs = payload.codex_jobs || [];
-  const codexCounts = Object.fromEntries(["PENDING", "RUNNING", "COMPLETE", "FAILED"].map(
-    (status) => [status, codexJobs.filter((job) => job.status === status).length]
-  ));
-  document.querySelector("#codex-job-counts").textContent =
-    `Pending: ${codexCounts.PENDING} | Running: ${codexCounts.RUNNING} | Done: ${codexCounts.COMPLETE} | Failed: ${codexCounts.FAILED}`;
-  renderRows(document.querySelector("#codex-jobs-table tbody"), codexJobs,
-    ["run_id", "candidate_id", "character", "view", "status", "details"]);
   renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
   manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
   renderProcessRows(payload.processes || []);
@@ -10444,17 +10440,15 @@ function setOllamaModelValue(control, value) {
 
 async function refreshOllamaModelOptions(refresh = false) {
   const current = new Map(ollamaModelControls().map((control) => [control, control.value]));
+  let codexModels = [];
   const addCodexPromptModels = (control) => {
-    for (const model of ["gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra"]) {
-      if (!Array.from(control.options).some((option) => option.value === "codex:" + model)) {
-        control.add(new Option("Codex · " + model, "codex:" + model));
-      }
-    }
+    for (const model of codexModels) if (!Array.from(control.options).some(item => item.value === model)) control.add(new Option(model, model));
   };
   try {
     const payload = await fetchJson(refresh
       ? "/api/ai-controls/ollama-models/refresh"
       : "/api/ai-controls/ollama-models", { method: refresh ? "POST" : "GET" });
+    codexModels = payload.codex_models || [];
     for (const control of ollamaModelControls()) {
       setSelectOptions(control, control === settingImagePromptGenerationModel
         ? (payload.vision_models || []) : (payload.models || []));

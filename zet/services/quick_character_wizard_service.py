@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 from io import BytesIO
@@ -16,8 +15,6 @@ from PIL import Image
 
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.entity_library_service import EntityLibraryServiceError
-from zet.services.ollama_model_service import OllamaModelService
-from zet.services.structured_ai_service import codex_json
 from zet.services.image_reconstruction_contract import correction_items, fingerprint, text
 
 
@@ -29,7 +26,6 @@ class QuickCharacterWizardConflict(QuickCharacterWizardError):
     pass
 
 
-_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="quick-character")
 _LOCK = threading.RLock()
 _SESSION_LOCKS: dict[str, threading.RLock] = {}
 _ACTIVE: set[str] = set()
@@ -58,10 +54,6 @@ class QuickCharacterWizardService:
         self.project_root = Path(project_root).resolve()
         self.root = app.path_service.state_path("QuickCharacterWizard")
         self.generation_service = generation_service
-        self.ollama = OllamaModelService(
-            timeout_seconds=900,
-            proxy_path_service=app.ai_proxy_service.ai_proxy_path_service,
-        )
 
     def _directory(self, session_id: str) -> Path:
         if not re.fullmatch(r"[0-9a-f]{32}", str(session_id)):
@@ -115,6 +107,10 @@ class QuickCharacterWizardService:
         value["views"] = self._views(session)
         value["busy"] = self._busy(session)
         return value
+
+    def _pending_workflow(self, sid):
+        from zet.services.ai_workflow_service import AIWorkflowService
+        return AIWorkflowService(self.app).pending(sid)
 
     def _busy(self, session: dict) -> bool:
         if session["status"] in {"ACCEPTED", "ABANDONED"}:
@@ -244,7 +240,8 @@ class QuickCharacterWizardService:
             finally:
                 with _LOCK:
                     _ACTIVE.discard(key)
-        _POOL.submit(run)
+        from zet.services.ai_workflow_service import AIWorkflowService
+        AIWorkflowService(self.app).submit(target, [sid, *args], service="minor", initial=run)
 
     def _ask(self, prompt: str, schema: dict, images: list[str], model: str | None = None) -> dict:
         model = model or self.app.config.ai_quick_character_wizard_model
@@ -253,10 +250,8 @@ class QuickCharacterWizardService:
                   "Explicit user changes override conflicting reference details; retain all other details. "
                   "Do not restore deliberately removed equipment while correcting another feature. "
                   "Clearly identify proposed unseen details, never present them as observed facts.")
-        if model.startswith("codex:"):
-            return codex_json(self.project_root, model.removeprefix("codex:"), system, prompt, schema, images,
-                              label="Quick Character Wizard", error_type=QuickCharacterWizardError)
-        return self.ollama.generate_json(model, system, prompt, schema, images=images)
+        return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
+            model, system, prompt, schema, images, task_type="character_analysis")[0]
 
     @staticmethod
     def _ordered_references(session: dict) -> list[dict]:
@@ -388,8 +383,8 @@ class QuickCharacterWizardService:
 
     def _generation(self):
         if self.generation_service is None:
-            from zet.services.ad_hoc_image_generation_service import AdHocImageGenerationService
-            self.generation_service = AdHocImageGenerationService(self.app, self.project_root)
+            from zet.services.ai_job_coordinator import image_services
+            self.generation_service = image_services(self.app)[0]
         return self.generation_service
 
     def _reconstruction(self):
@@ -518,10 +513,21 @@ class QuickCharacterWizardService:
                      (candidate["view"] != "FRONT" and current["selected"].get("FRONT") != candidate["anchor_id"])))):
                 return
             target = next(c for c in current["candidates"] if c["candidate_id"] == candidate["candidate_id"])
+            previous = target.get("render_request_id")
+            if previous:
+                try:
+                    result = self._generation().status(previous)
+                    target.update(request_id=previous, status="QUEUED" if result["status"] in {"QUEUED", "RUNNING", "COMPLETE"} else "FAILED")
+                    self._write(current)
+                    return
+                except KeyError:
+                    pass
             target.update(prompt=payload["prompt"], render_payload=payload, render_request_id=uuid4().hex)
             if candidate.get("view_context"):
                 target["view_context"] = candidate["view_context"]
             self._write(current)
+            payload = {**payload, "ai_owner": {"session_id": sid, "candidate_id": candidate["candidate_id"]},
+                       "ai_workflow": "Minor Characters"}
             result = self._generation().submit(payload, request_id=target["render_request_id"], seeds=seeds)
             target.update(request_id=result["request_id"], status="QUEUED")
             self._write(current)
@@ -606,7 +612,7 @@ class QuickCharacterWizardService:
             if session["status"] in {"ACCEPTED", "ABANDONED"}:
                 return self._public(session)
             with _LOCK:
-                active = self._key(sid) in _ACTIVE
+                active = self._key(sid) in _ACTIVE or self._pending_workflow(sid)
             if session["job"]["status"] == "RUNNING" and not active:
                 session["job"].update(status="FAILED", error="Analysis was interrupted. Retry analysis or image review.")
                 session["status"] = "FAILED"

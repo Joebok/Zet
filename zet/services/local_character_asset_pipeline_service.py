@@ -9,7 +9,6 @@ from pathlib import Path
 import random
 import re
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -747,24 +746,12 @@ class LocalCharacterAssetPipelineService:
         mutate_local_run_state(root, apply)
 
     def _proxy_answer(self, ask_id: str) -> tuple[str, dict[str, Any]]:
-        paths = self.app.ai_proxy_service.ai_proxy_path_service
-        receipt = paths.lifecycle.read_receipt(ask_id)
-        if receipt:
-            return "HARVESTED", {"ask_id": ask_id, "status": receipt.get("answer_status", receipt.get("status", "")),
-                                  "error_message": receipt.get("error_message", "")}
-        for status, folder in (("QUEUED", paths.ask_root()), ("RUNNING", paths.running_root()), ("ANSWERED", paths.answer_root())):
-            path = folder / ask_id
-            if path.is_dir():
-                try:
-                    return status, self._read(path / "answer_manifest.json")
-                except LocalCharacterAssetPipelineError:
-                    return status, {}
-        return "UNKNOWN", {}
+        return self.app.ai_proxy_service.ai_proxy_path_service.jobs.execution_status(ask_id)
 
     def _harvest_render(self, run: dict[str, Any], candidate: dict[str, Any]) -> None:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
         ask_id = str(candidate.get("ask_id") or "")
-        answer_dir = paths.answer_root() / ask_id
+        answer_dir = paths.answer_path(ask_id)
         if not answer_dir.is_dir() or not (answer_dir / "answer_manifest.json").is_file():
             return
         ask, answer = self._read(answer_dir / "ask_manifest.json"), self._read(answer_dir / "answer_manifest.json")
@@ -772,7 +759,7 @@ class LocalCharacterAssetPipelineService:
         if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
                 or ask.get("pipeline") != expected_pipeline or not self._ask_belongs_to_run(ask, run)):
             raise LocalCharacterAssetPipelineError("AI Proxy answer does not belong to this candidate.")
-        if answer.get("status") in {"ERROR", "RETRY_LATER"}:
+        if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
             raise LocalCharacterAssetPipelineError(str(answer.get("error_message") or "Local render failed."))
         if answer.get("status") != "SUCCESS" or Path(str(answer.get("expected_output") or "")).name != answer.get("expected_output"):
             return
@@ -780,8 +767,7 @@ class LocalCharacterAssetPipelineService:
         target = Path(str(candidate.get("image_path") or ""))
         if not source.is_file() or not target.resolve().is_relative_to(Path(run["root"]).resolve()):
             raise LocalCharacterAssetPipelineError("AI Proxy returned an invalid candidate image.")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        paths.jobs.copy_result(ask_id, target, image=True)
         elapsed_seconds = answer.get("elapsed_seconds")
         if elapsed_seconds is None:
             try:
@@ -814,7 +800,7 @@ class LocalCharacterAssetPipelineService:
             if target.is_file():
                 break
             _, answer = self._proxy_answer(str(candidate.get("ask_id") or ""))
-            if answer.get("status") in {"ERROR", "RETRY_LATER"}:
+            if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalCharacterAssetPipelineError(str(answer.get("error_message") or "Local render failed."))
             if time.monotonic() >= deadline:
                 raise LocalCharacterAssetPipelineError("Timed out waiting for the local render.")
@@ -1091,16 +1077,16 @@ class LocalCharacterAssetPipelineService:
         while not output.is_file():
             if self.detail(run_id, costume).get("stop_requested"):
                 raise LocalCharacterAssetPipelineError("Review stopped by user.")
-            folder = self.app.ai_proxy_service.ai_proxy_path_service.answer_root() / str(record.get("ask_id") or "")
+            folder = self.app.ai_proxy_service.ai_proxy_path_service.answer_path(str(record.get("ask_id") or ""))
             if folder.is_dir() and (folder / "answer_manifest.json").is_file():
                 ask = self._read(folder / "ask_manifest.json")
                 answer = self._read(folder / "answer_manifest.json")
                 if (ask.get("ask_id") != record.get("ask_id") or answer.get("ask_id") != record.get("ask_id")
-                        or not self._ask_belongs_to_run(ask, run)
+                        or not self._ask_belongs_to_run(ask, self.detail(run_id, costume))
                         or ask.get("local_character_asset_run_id") != run_id
                         or ask.get("candidate_id") != candidate_id or ask.get("task_type") != "local_character_asset_gate"):
                     raise LocalCharacterAssetPipelineError("AI Proxy gate answer does not match this local candidate.")
-                if answer.get("status") in {"ERROR", "RETRY_LATER"}:
+                if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                     raise LocalCharacterAssetPipelineError(str(answer.get("error_message") or "Gate failed."))
                 if answer.get("status") == "SUCCESS":
                     expected_name = str(ask.get("target_output_file") or "")
@@ -1110,8 +1096,7 @@ class LocalCharacterAssetPipelineService:
                     if expected_output != (Path(self.detail(run_id, costume)["root"]) / "analyses" / candidate_id / expected_name).resolve():
                         raise LocalCharacterAssetPipelineError("AI Proxy gate output path does not match its local candidate.")
                     if source.is_file() and Path(source_name).name == source_name and source_name == expected_name:
-                        output.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(source, output)
+                        self.app.ai_proxy_service.ai_proxy_path_service.jobs.copy_result(str(record["ask_id"]), output)
             if output.is_file():
                 break
             if time.monotonic() >= deadline:
@@ -1222,16 +1207,15 @@ class LocalCharacterAssetPipelineService:
                 reference_image_paths.append(str(anchor["image_path"]))
             image_paths = [str(item["image_path"]) for item in survivors]
             try:
-                executable = shutil.which("codex") or "codex"
                 entries, model = rank_images_with_luna(
                     project_root=self.project_root,
                     model=str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
                     prompt=prompt,
                     candidate_ids=list(hashes),
                     image_paths=image_paths,
-                    executable=executable,
+                    paths=self.app.ai_proxy_service.ai_proxy_path_service,
+                    owner={"run_id": run["run_id"], "view": view, "pipeline": self.pipeline, "evaluation_id": str((run.get("evaluations") or {}).get(view, {}).get("evaluation_id") or "")},
                     reference_image_paths=reference_image_paths,
-                    runner=subprocess.run,
                 )
             except Exception as exc:
                 raise LocalCharacterAssetPipelineError(str(exc)) from exc

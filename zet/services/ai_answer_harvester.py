@@ -491,6 +491,10 @@ class AIAnswerHarvester:
     def apply_answer_folder(self, answer_path: Path) -> HarvestResult:
         queue_root = Path(self.path_service.config.base_ai_queue_path)
         with file_lock(self.ai_proxy_path_service.lifecycle.lock_path(answer_path.name)):
+            receipt = self.ai_proxy_path_service.lifecycle.read_receipt(answer_path.name)
+            if receipt:
+                return HarvestResult(answer_path, answer_path.name, receipt.get("asset_id"),
+                                     "ALREADY_APPLIED", receipt.get("message", "Result already applied."))
             manifest = self._load_ask_manifest(answer_path)
             character, phase = manifest.get("character"), manifest.get("phase")
             transaction = self.asset_repository.transaction(character, phase) if character and phase else nullcontext()
@@ -615,7 +619,7 @@ class AIAnswerHarvester:
             self._write_harvest_manifest(answer_path, result)
             return result
 
-        if answer.status == "ERROR":
+        if answer.status in {"ERROR", "FAILED"}:
             if asset.actor != "AI_AGENT" or asset.pipeline_stage != ask_manifest.get("pipeline_stage"):
                 raise AIAnswerHarvesterError("Failed answer no longer matches the asset stage; retained for recovery.")
             updated_asset = replace(asset)
@@ -671,6 +675,10 @@ class AIAnswerHarvester:
             return []
 
         for answer_path in answer_paths:
+            from zet.repositories.ai_job_repository import AIJobRepository
+            job_repository = AIJobRepository(self.ai_proxy_path_service.lifecycle.root)
+            if job_repository.get(answer_path.name).get("harvest_state") == "HARVEST_FAILED":
+                continue
             if self._has_external_consumer(answer_path):
                 continue
             try:
@@ -696,6 +704,7 @@ class AIAnswerHarvester:
                 if (answer_path / "harvest_manifest.json").is_file():
                     self._finish_lifecycle(answer_path)
             except Exception as exc:
+                job_repository.update(answer_path.name, harvest_state="HARVEST_FAILED", error=str(exc))
                 result = HarvestResult(
                     answer_path=answer_path,
                     ask_id=answer_path.name,

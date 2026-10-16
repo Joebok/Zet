@@ -34,6 +34,7 @@ The V5 history recovery on 2026-10-11 restored the approved three-scenario local
 | [COMPONENTS/PROMPTS.md](COMPONENTS/PROMPTS.md) | Template compilation, view conditioning, attachment contracts | Prompt changes |
 | [COMPONENTS/SCENE_BUILDER.md](COMPONENTS/SCENE_BUILDER.md) | Retiring structured scenes, targets, layout, render and review | Retired workflow, migration history and offline geometry archive; no maintained scenario |
 | [COMPONENTS/NARRATIVE.md](COMPONENTS/NARRATIVE.md) | Independent narrative authoring, jobs, references and assembly | Narrative workflows |
+| [COMPONENTS/AI_JOBS.md](COMPONENTS/AI_JOBS.md) | Shared AI request/collection, queue activity, cached capability catalog and model popup | Any active AI workflow |
 | [COMPONENTS/QUEUES.md](COMPONENTS/QUEUES.md) | File Proxy/manual protocol, harvesting, receipts, process recovery | Async work and integrations |
 | [DECISIONS/README.md](DECISIONS/README.md) | ADR convention and evidence-backed decision records | Significant design choices |
 | [plans/README.md](../plans/README.md) | Executable plans, Luna sized packets, active/completed lifecycle | Substantial implementation |

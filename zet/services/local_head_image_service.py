@@ -4,12 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 import hashlib
 import json
-import os
 from pathlib import Path
 import random
 import re
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -485,24 +483,12 @@ class LocalHeadImageService:
         return self.detail(run_id)
 
     def _proxy_answer(self, ask_id: str) -> tuple[str, dict[str, Any]]:
-        paths = self.app.ai_proxy_service.ai_proxy_path_service
-        receipt = paths.lifecycle.read_receipt(ask_id)
-        if receipt:
-            return "HARVESTED", {"ask_id": ask_id, "status": receipt.get("answer_status", receipt.get("status", "")),
-                                  "error_message": receipt.get("error_message", "")}
-        for status, folder in (("QUEUED", paths.ask_root()), ("RUNNING", paths.running_root()), ("ANSWERED", paths.answer_root())):
-            path = folder / ask_id
-            if path.is_dir():
-                try:
-                    return status, self._read_json((path / "answer_manifest.json"))
-                except (OSError, json.JSONDecodeError):
-                    return status, {}
-        return "UNKNOWN", {}
+        return self.app.ai_proxy_service.ai_proxy_path_service.jobs.execution_status(ask_id)
 
     def _harvest(self, run_id: str, candidate: dict[str, Any]) -> None:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
         ask_id = str(candidate.get("ask_id") or "")
-        answer_dir = paths.answer_root() / ask_id
+        answer_dir = paths.answer_path(ask_id)
         if not answer_dir.is_dir() or not (answer_dir / "answer_manifest.json").is_file():
             return
         ask = self._read_json((answer_dir / "ask_manifest.json"))
@@ -511,7 +497,7 @@ class LocalHeadImageService:
         if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
                 or ask.get("pipeline") != "Local-Head-Image" or not self._ask_belongs_to_run(ask, run)):
             raise LocalHeadImageError("AI Proxy answer does not belong to this Local Head-Image candidate.")
-        if answer.get("status") in {"ERROR", "RETRY_LATER"}:
+        if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
             raise LocalHeadImageError(str(answer.get("error_message") or "AI Proxy render failed."))
         if answer.get("status") != "SUCCESS" or Path(str(answer.get("expected_output") or "")).name != answer.get("expected_output"):
             return
@@ -519,8 +505,7 @@ class LocalHeadImageService:
         target = Path(str(candidate.get("image_path") or ""))
         if not source.is_file() or not target.resolve().is_relative_to(self._run_root(run_id).resolve()):
             raise LocalHeadImageError("AI Proxy returned an invalid candidate image.")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        paths.jobs.copy_result(ask_id, target, image=True)
 
     def _wait_render(self, run_id: str, candidate_id: str) -> bool:
         candidate = next((item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id), None)
@@ -538,7 +523,7 @@ class LocalHeadImageService:
             if target.is_file():
                 break
             _, answer = self._proxy_answer(str(candidate.get("ask_id") or ""))
-            if answer.get("status") in {"ERROR", "RETRY_LATER"}:
+            if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalHeadImageError(str(answer.get("error_message") or "ComfyUI render failed."))
             if time.monotonic() >= deadline:
                 raise LocalHeadImageError("Timed out waiting for the ComfyUI render.")
@@ -637,7 +622,7 @@ class LocalHeadImageService:
     def _harvest_gate(self, run_id: str, candidate_id: str, record: dict[str, Any]) -> None:
         ask_id = str(record.get("ask_id") or "")
         paths = self.app.ai_proxy_service.ai_proxy_path_service
-        folder = paths.answer_root() / ask_id
+        folder = paths.answer_path(ask_id)
         if not folder.is_dir() or not (folder / "answer_manifest.json").is_file():
             return
         ask = self._read_json((folder / "ask_manifest.json"))
@@ -646,7 +631,7 @@ class LocalHeadImageService:
                 or not self._ask_belongs_to_run(ask, self.detail(run_id))
                 or ask.get("candidate_id") != candidate_id or ask.get("task_type") != "local_head_image_gate"):
             raise LocalHeadImageError("AI Proxy gate answer does not match its Local Head-Image candidate.")
-        if answer.get("status") in {"ERROR", "RETRY_LATER"}:
+        if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
             raise LocalHeadImageError(str(answer.get("error_message") or "Head gate failed."))
         if answer.get("status") != "SUCCESS":
             return
@@ -657,8 +642,7 @@ class LocalHeadImageService:
         if (expected.resolve() != target.resolve() or not target.resolve().is_relative_to(self._run_root(run_id).resolve())
                 or not source.is_file() or Path(str(answer.get("expected_output") or "")).name != answer.get("expected_output")):
             raise LocalHeadImageError("AI Proxy gate output path is invalid.")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        paths.jobs.copy_result(ask_id, target)
 
     def _wait_gate(self, run_id: str, candidate_id: str, gate_key: str) -> tuple[str, str]:
         candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
@@ -672,7 +656,7 @@ class LocalHeadImageService:
             if output.is_file():
                 break
             _, answer = self._proxy_answer(str(record.get("ask_id") or ""))
-            if answer.get("status") in {"ERROR", "RETRY_LATER"}:
+            if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalHeadImageError(str(answer.get("error_message") or f"{gate_key} gate failed."))
             if time.monotonic() >= deadline:
                 raise LocalHeadImageError(f"Timed out waiting for the {gate_key} gate.")
@@ -1101,13 +1085,6 @@ class LocalHeadImageService:
             prompt = (f"Rank all rendered head-image candidates for {view}. Gates and human reviews are independent advice; assess every image on its visual merits. Compare orientation, clear identity, complete head and hair silhouette, "
                       "character details, and usefulness as a reference. Return each candidate once with a concise reason. Candidate IDs: "
                       + ", ".join(item["candidate_id"] for item in survivors))
-            executable = shutil.which("codex")
-            if not executable and os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-                installs = list((Path(os.environ["LOCALAPPDATA"]) / "OpenAI" / "Codex" / "bin").glob("*/codex.exe"))
-                if installs:
-                    executable = str(max(installs, key=lambda p: p.stat().st_mtime_ns))
-            if not executable:
-                raise LocalHeadImageError("Codex CLI is unavailable for Luna ranking.")
             try:
                 model = str(getattr(self.app.config, "codex_default_model", "gpt-6-luna"))
                 entries, model = rank_images_with_luna(
@@ -1117,8 +1094,8 @@ class LocalHeadImageService:
                     candidate_ids=[item["candidate_id"] for item in survivors],
                     image_paths=[item["image_path"] for item in survivors],
                     reference_image_paths=([anchor_path] if view != FRONT else []),
-                    executable=executable,
-                    runner=subprocess.run,
+                    paths=self.app.ai_proxy_service.ai_proxy_path_service,
+                    owner={"run_id": run_id, "view": view, "pipeline": 'Head-Image', "evaluation_id": evaluation_id},
                 )
             except Exception as exc:
                 raise LocalHeadImageError(str(exc)) from exc

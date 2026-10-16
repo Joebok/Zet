@@ -137,3 +137,12 @@ stolen; original report/images remain acceptance inputs. Unknown quota pauses wo
 Production process/config identity and new-boot/revision health fence promotion.
 Authored-data migration gates differ from code rollback; no library/queue/catalog
 reset is implied. [GitHub task workflow](GitHub_Task_Workflow.md) owns details.
+
+## Shared creative AI ownership (2026-10-16)
+All new creative provider execution is proxy-owned. Trusted Codex registrations
+use a separate bounded cloud lane; local backend preparation and non-preemption
+remain intact. Zet verifies the producer/universe/original request and complete
+inventory before application, persists results/receipts before cleanup, and never
+replays an ambiguous execution. Foreground and background collection share locks
+and handlers. Model restrictions come from one cached capability catalog and are
+validated on submission as well as in the popup. See [Shared AI jobs](COMPONENTS/AI_JOBS.md).

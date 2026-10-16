@@ -19,6 +19,7 @@ from PIL import Image
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_render_policy import require_qwen_profile
 from zet.services.workflow_storage import validate_image
+from zet.services.workflow_storage import file_lock
 from zet.services.image_generation_workspace_service import ImageGenerationWorkspace
 from zet.services.library_reference_service import read_library_json, serialize_library_document
 
@@ -180,6 +181,9 @@ class AdHocImageGenerationService:
             checkpoint = str(self._preset(preset_name).get("diffusion_model") or "")
 
         request_id = request_id or uuid4().hex
+        self.proxy_paths.jobs.validate_id(request_id)
+        if request_id in self._jobs or (self.results_root / request_id / "job.json").is_file():
+            return self.status(request_id)
         workspace = self.workspace_root / request_id
         workspace.mkdir(parents=True, exist_ok=False)
         prompt_path = workspace / "Final_Image_Prompt.md"
@@ -221,7 +225,8 @@ class AdHocImageGenerationService:
             for child in children:
                 seed = child["seed"]
                 staged = self.zet_app.ai_proxy_service.stage_render_task_local_render_ask(
-                    {"ask_id": f"adhoc_{request_id}", "ad_hoc_request_id": request_id},
+                    {"ask_id": f"adhoc_{request_id}", "ad_hoc_request_id": request_id,
+                     "workflow": payload.get("ai_workflow", "Image Generation"), "ai_owner": payload.get("ai_owner", {})},
                     prompt_path,
                     workspace,
                     allow_parallel=True,
@@ -305,6 +310,14 @@ class AdHocImageGenerationService:
         return result
 
     def status(self, request_id: str) -> dict[str, Any]:
+        self.proxy_paths.jobs.validate_id(request_id)
+        with self._lock, file_lock(self.results_root / request_id / ".collect.lock"):
+            saved = self._read_saved_job(request_id)
+            if saved is not None:
+                self._jobs[request_id] = saved
+            return self._status(request_id)
+
+    def _status(self, request_id: str) -> dict[str, Any]:
         with self._lock:
             job = self._jobs.get(request_id)
             if job is None:
@@ -415,7 +428,7 @@ class AdHocImageGenerationService:
                 job["failures"] += 1
                 job["error"] = job["error"] or child["error"]
                 continue
-            answer_path = self.proxy_paths.answer_root() / ask_id
+            answer_path = self.proxy_paths.answer_path(ask_id)
             running_path = self.proxy_paths.running_root() / ask_id
             ask_path = self.proxy_paths.ask_root() / ask_id
             if answer_path.is_dir():
@@ -425,6 +438,7 @@ class AdHocImageGenerationService:
                     transfer_message = f"Waiting for AI_Proxy to finish transferring an image: {blocked}"
                     continue
                 owned_answer = False
+                execution_failed = False
                 try:
                     ask = self.proxy_paths.read_ask_manifest(answer_path).to_dict()
                     if (ask.get("ask_id") != ask_id
@@ -437,6 +451,7 @@ class AdHocImageGenerationService:
                             or answer.get("expected_output") != ask.get("expected_output")):
                         raise AdHocImageGenerationError("AI_Proxy returned an answer for another job.")
                     if answer.get("status") != "SUCCESS":
+                        execution_failed = True
                         raise AdHocImageGenerationError(str(answer.get("error_message") or "AI_Proxy render failed."))
                     filename = str(answer.get("expected_output") or "")
                     if not filename or Path(filename).name != filename:
@@ -451,26 +466,27 @@ class AdHocImageGenerationService:
                     else:
                         job["images"].append((image_bytes, content_type))
                     child["status"] = "COMPLETE"
+                    child.pop("error", None)
                 except Exception as exc:
-                    child.update(status="FAILED", error=str(exc))
-                    job["failures"] += 1
+                    child.update(status="FAILED" if execution_failed else "HARVEST_FAILED", error=str(exc))
+                    if execution_failed:
+                        job["failures"] += 1
+                    else:
+                        self.proxy_paths.jobs.repository.update(ask_id, harvest_state="HARVEST_FAILED", error=str(exc))
                     if not job["error"]:
                         job["error"] = str(exc)
                 finally:
-                    if owned_answer:
-                        self.proxy_client.remove_answer(ask_id)
-                        self.proxy_client.remove_route(ask_id)
-                    child["done"] = True
+                    child["done"] = child["status"] in {"COMPLETE", "FAILED"}
                     self._save_job(job)
+                    if owned_answer and child["done"]:
+                        self.proxy_paths.jobs.finish(ask_id, status="FAILED" if child["status"] == "FAILED" else "APPLIED", message=child.get("error", ""))
             elif running_path.is_dir():
                 child["status"] = "RUNNING"
                 running += 1
             elif ask_path.is_dir():
                 child["status"] = "QUEUED"
             else:
-                job["failures"] += 1
-                job["error"] = job["error"] or "AI_Proxy no longer has this queued image job."
-                child.update(done=True, status="FAILED", error=job["error"])
+                child.update(status="RECONCILING", error="Waiting for a complete AI_Proxy state transition.")
 
         if running or any(not child.get("done") for child in job["children"]):
             job["status"] = "RUNNING" if running else "QUEUED"
@@ -484,6 +500,7 @@ class AdHocImageGenerationService:
             job["status"] = "FAILED"
         else:
             job["status"] = "COMPLETE"
+            job["error"] = ""
         job["finished_at"] = time.time()
         shutil.rmtree(job["workspace"], ignore_errors=True)
         self._save_job(job)
@@ -523,18 +540,24 @@ class AdHocImageGenerationService:
 
     def _load_jobs(self) -> None:
         for directory in self.results_root.iterdir():
-            record_path = directory / "job.json"
-            if not directory.is_dir() or not record_path.is_file():
+            if not directory.is_dir() or not (directory / "job.json").is_file():
                 continue
             try:
-                record = read_library_json(record_path, self.zet_app.config.base_library_path)
-                images = [((directory / item["filename"]).read_bytes(), str(item["content_type"])) if item else None
-                          for item in record.get("images", [])]
-                job = {**record, "workspace": Path(record["workspace"]),
-                       "prompt_path": Path(record["prompt_path"]), "images": images}
-                self._jobs[str(job["request_id"])] = job
-            except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                job = self._read_saved_job(directory.name)
+                if job is not None:
+                    self._jobs[str(job["request_id"])] = job
+            except (OSError, ValueError, KeyError, TypeError):
                 continue
+
+    def _read_saved_job(self, request_id):
+        directory = self.results_root / request_id
+        path = directory / "job.json"
+        if not path.is_file():
+            return None
+        record = read_library_json(path, self.zet_app.config.base_library_path)
+        images = [((directory / item["filename"]).read_bytes(), str(item["content_type"])) if item else None
+                  for item in record.get("images", [])]
+        return {**record, "workspace": Path(record["workspace"]), "prompt_path": Path(record["prompt_path"]), "images": images}
 
     def cleanup_abandoned(self) -> None:
         known_children = {child["ask_id"] for job in self._jobs.values() for child in job.get("children", [])}
@@ -544,8 +567,8 @@ class AdHocImageGenerationService:
             except (OSError, ValueError, json.JSONDecodeError):
                 continue
             if ask.get("consumer") == IMAGE_GENERATION_CONSUMER and answer_path.name not in known_children:
-                self.proxy_client.remove_answer(answer_path.name)
-                self.proxy_client.remove_route(answer_path.name)
+                self.proxy_paths.jobs.repository.update(answer_path.name, harvest_state="HARVEST_FAILED",
+                    error="Image result has no matching saved request; retained for recovery.")
         self.workspace_root.mkdir(parents=True, exist_ok=True)
         for workspace in self.workspace_root.iterdir():
             try:

@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import json
 import hashlib
-import os
 from pathlib import Path
-import shutil
-import subprocess
-import tempfile
 import threading
 from uuid import uuid4
 
 from zet.services.ollama_model_service import OllamaModelService
+from zet.services.atomic_file_service import write_json_atomic
+from zet.services.ai_workflow_service import AIWorkflowService
+from zet.services.workflow_storage import file_lock
 
 
 class ImagePromptGenerationService:
@@ -43,16 +42,23 @@ class ImagePromptGenerationService:
         "or details that are not visible. Use one compact sentence or phrase. Return only the requested JSON object."
     )
 
-    def __init__(self, zet_app, project_root: str | Path, model_service=None, runner=subprocess.run):
+    def __init__(self, zet_app, project_root: str | Path, model_service=None):
         self.zet_app = zet_app
         self.project_root = Path(project_root)
         self.model_service = model_service or OllamaModelService(
             timeout_seconds=600,
             proxy_path_service=zet_app.ai_proxy_service.ai_proxy_path_service,
         )
-        self.runner = runner
         self._lock = threading.RLock()
         self._jobs: dict[str, dict] = {}
+        self.records_root = Path(zet_app.config.base_library_path) / "_state/ImagePromptJobs"
+        if self.records_root.is_dir():
+            for path in self.records_root.glob("*.json"):
+                try:
+                    value = json.loads(path.read_text(encoding="utf-8"))
+                    self._jobs[value["job_id"]] = value
+                except (OSError, ValueError, KeyError):
+                    continue
 
     def start(self, asset_id: str) -> dict:
         return self._start(asset_id, "prompt")
@@ -72,12 +78,17 @@ class ImagePromptGenerationService:
                "existing_negative_prompt": asset.get("negative_prompt", "")}
         with self._lock:
             self._jobs[job_id] = job
-        thread = threading.Thread(target=self._run, args=(job_id, asset), daemon=True)
-        thread.start()
+        write_json_atomic(self.records_root / f"{job_id}.json", job)
+        AIWorkflowService(self.zet_app).submit(self._run, [job_id, asset], service="image_prompt",
+                                             owner={"asset_id": asset_id})
         return self.status(job_id)
 
     def status(self, job_id: str) -> dict:
-        with self._lock:
+        self.zet_app.ai_proxy_service.ai_proxy_path_service.jobs.validate_id(job_id)
+        with self._lock, file_lock(self.records_root / f"{job_id}.lock"):
+            path = self.records_root / f"{job_id}.json"
+            if path.is_file():
+                self._jobs[job_id] = json.loads(path.read_text(encoding="utf-8"))
             job = self._jobs.get(job_id)
             if not job:
                 raise KeyError("Image prompt analysis job not found.")
@@ -95,11 +106,17 @@ class ImagePromptGenerationService:
         return result
 
     def _run(self, job_id: str, asset: dict) -> None:
+        with self._lock, file_lock(self.records_root / f"{job_id}.lock"):
+            self._execute_analysis(job_id, asset)
+
+    def _execute_analysis(self, job_id: str, asset: dict) -> None:
+        if job_id not in self._jobs:
+            self._jobs[job_id] = json.loads((self.records_root / f"{job_id}.json").read_text(encoding="utf-8"))
         try:
             with self._lock:
                 kind = self._jobs[job_id]["kind"]
             if kind == "identity":
-                draft = self._codex("gpt-6-luna", asset["image_path"],
+                draft = self._codex(self.zet_app.config.codex_default_model, asset["image_path"],
                                     instructions=self.IDENTITY_INSTRUCTIONS, schema=self.IDENTITY_SCHEMA)
                 identity = draft.get("identity")
                 if not isinstance(identity, str) or not identity.strip():
@@ -108,13 +125,8 @@ class ImagePromptGenerationService:
                     self._jobs[job_id].update(status="COMPLETE", draft={"identity": identity.strip()})
                 return
             model = str(self.zet_app.config.ai_image_prompt_generation_model or "image-analysis:latest").strip()
-            if model.startswith("codex:"):
-                draft = self._codex(model.removeprefix("codex:"), asset["image_path"])
-            else:
-                draft = self.model_service.generate_json(
-                    model, "You describe image content for image generation.",
-                    self.INSTRUCTIONS, self.SCHEMA, images=[asset["image_path"]],
-                )
+            draft = self.model_service.generate_json(model, "You describe image content for image generation.",
+                                                     self.INSTRUCTIONS, self.SCHEMA, images=[asset["image_path"]])
             prompt = draft.get("prompt")
             negative = draft.get("negative_prompt")
             if not isinstance(prompt, str) or not isinstance(negative, str):
@@ -131,35 +143,11 @@ class ImagePromptGenerationService:
         except Exception as exc:
             with self._lock:
                 self._jobs[job_id].update(status="FAILED", error=str(exc))
-
-    @staticmethod
-    def _codex_executable() -> str:
-        executable = shutil.which("codex")
-        if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-            installs = list((Path(os.environ["LOCALAPPDATA"]) / "OpenAI" / "Codex" / "bin").glob("*/codex.exe"))
-            if installs:
-                executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
-        if not executable:
-            raise RuntimeError("Codex CLI is unavailable for image analysis.")
-        return executable
+        finally:
+            write_json_atomic(self.records_root / f"{job_id}.json", self._jobs[job_id])
 
     def _codex(self, model: str, image_path: str, *, instructions: str | None = None,
                schema: dict | None = None) -> dict:
-        with tempfile.TemporaryDirectory(prefix="zet_image_prompt_") as temporary:
-            root = Path(temporary)
-            schema_path = root / "schema.json"
-            output = root / "draft.json"
-            schema_path.write_text(json.dumps(schema or self.SCHEMA), encoding="utf-8")
-            command = [self._codex_executable(), "-a", "never", "-s", "read-only",
-                       "-m", model, "-c", 'model_reasoning_effort="high"',
-                       "-C", str(self.project_root), "exec", "--ignore-user-config",
-                       "--skip-git-repo-check", "--ephemeral", "--output-schema", str(schema_path),
-                       "--output-last-message", str(output), "--image", str(image_path)]
-            result = self.runner(command, input=instructions or self.INSTRUCTIONS, capture_output=True,
-                                 text=True, timeout=900, check=False)
-            if result.returncode:
-                raise RuntimeError((result.stderr or result.stdout or "Codex image analysis failed")[-2000:])
-            value = json.loads(output.read_text(encoding="utf-8"))
-            if not isinstance(value, dict):
-                raise RuntimeError("Codex returned an invalid image analysis draft.")
-            return value
+        return self.zet_app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
+            "codex:" + model.removeprefix("codex:"), "", instructions or self.INSTRUCTIONS,
+            schema or self.SCHEMA, [image_path], task_type="image_prompt_analysis")[0]

@@ -285,8 +285,18 @@ def resolve_library_document(document: dict[str, Any], library_root: str | Path)
 
 def read_library_json(path: str | Path, library_root: str | Path) -> dict[str, Any]:
     import json
+    import time
 
-    value = json.loads(Path(path).read_text(encoding="utf-8"))
+    # Windows may briefly deny an open while a background handler replaces state.
+    deadline = time.monotonic() + 1.0
+    while True:
+        try:
+            value = json.loads(Path(path).read_text(encoding="utf-8"))
+            break
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.025)
     return resolve_library_document(value, library_root) if isinstance(value, dict) else value
 
 

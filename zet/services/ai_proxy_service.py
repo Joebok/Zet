@@ -762,6 +762,9 @@ class AIProxyService:
             consumer,
         )
         ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
+        ask_manifest["workflow"] = manifest.get("workflow") or ask_manifest.get("pipeline") or "Image Generation"
+        ask_manifest.update({key: value for key, value in manifest.get("ai_owner", {}).items()
+                             if key in {"session_id", "candidate_id", "revision_id"}})
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)
         self._write_text_atomic(ask_path / prompt_path.name, submitted_prompt)
         if scene_render_ir_path is not None:
@@ -897,83 +900,5 @@ class AIProxyService:
             return {}
 
     def queue_snapshot(self) -> dict:
-        self._ensure_queue_dirs()
-        snapshot: dict[str, list[dict]] = {
-            "ask": [],
-            "running": [],
-            "answer": [],
-        }
-
-        for ask_path in self.ai_proxy_path_service.task_paths("ask"):
-            payload = self._read_json_if_exists(ask_path / "ask_manifest.json")
-            snapshot["ask"].append(
-                {
-                    "ask_id": payload.get("ask_id") or ask_path.name,
-                    "asset_id": payload.get("asset_id"),
-                    "pipeline_stage": payload.get("pipeline_stage"),
-                    "worker_type": payload.get("worker_type"),
-                    "task_type": payload.get("task_type"),
-                    "source_ask_id": payload.get("source_ask_id"),
-                    "ollama_attempt_id": payload.get("ollama_attempt_id"),
-                }
-            )
-
-        for running_path in self.ai_proxy_path_service.task_paths("running"):
-            payload = self._read_json_if_exists(running_path / "ask_manifest.json")
-            snapshot["running"].append(
-                {
-                    "ask_id": payload.get("ask_id") or running_path.name,
-                    "asset_id": payload.get("asset_id"),
-                    "pipeline_stage": payload.get("pipeline_stage"),
-                    "worker_type": payload.get("worker_type"),
-                    "task_type": payload.get("task_type"),
-                    "source_ask_id": payload.get("source_ask_id"),
-                    "ollama_attempt_id": payload.get("ollama_attempt_id"),
-                }
-            )
-
-        for answer_path in self.ai_proxy_path_service.task_paths("answer"):
-            payload = self._read_json_if_exists(answer_path / "answer_manifest.json")
-            ask_payload = self._read_json_if_exists(answer_path / "ask_manifest.json")
-            harvest_payload = self._read_json_if_exists(answer_path / "harvest_manifest.json")
-            if harvest_payload:
-                continue
-            snapshot["answer"].append(
-                {
-                    "ask_id": payload.get("ask_id") or answer_path.name,
-                    "asset_id": payload.get("asset_id"),
-                    "status": payload.get("status"),
-                    "worker_id": payload.get("worker_id"),
-                    "recovery": self._read_json_if_exists(answer_path / "harvest_error.json").get("message", ""),
-                    "task_type": ask_payload.get("task_type"),
-                    "source_ask_id": ask_payload.get("source_ask_id"),
-                    "ollama_attempt_id": payload.get("ollama_attempt_id"),
-                }
-            )
-
-        for root in (self.ai_proxy_path_service.answer_root(), self.ai_proxy_path_service.manual_answer_root()):
-            if not root.exists():
-                continue
-            known = {item["ask_id"] for item in snapshot["answer"]}
-            for path in root.iterdir():
-                if not path.is_dir() or path.name in known or (path / "harvest_manifest.json").exists():
-                    continue
-                reason = ("Interrupted publication. Original task is preserved; retry the image upload."
-                          if path.name.startswith(".") else
-                          self.ai_proxy_path_service.file_proxy_client.answer_blocked_reason(path)
-                          if root == self.ai_proxy_path_service.answer_root() else
-                          "Answer manifest missing. Original task is preserved; retry the image upload.")
-                if reason:
-                    snapshot["answer"].append({"ask_id": path.name, "asset_id": None, "status": "RECOVERY_NEEDED",
-                                               "worker_id": "", "recovery": reason})
-        known_answers = {item["ask_id"] for item in snapshot["answer"]}
-        for _, receipt in self.ai_proxy_path_service.lifecycle.iter_receipts() or ():
-            ask_id = str(receipt.get("ask_id") or "")
-            if receipt.get("queue_visible") and ask_id and ask_id not in known_answers:
-                snapshot["answer"].append({
-                    "ask_id": ask_id, "asset_id": receipt.get("asset_id"),
-                    "status": "FAILED", "worker_id": receipt.get("producer_id", ""),
-                    "recovery": receipt.get("message", ""),
-                })
-                known_answers.add(ask_id)
-        return snapshot
+        from zet.services.ai_queue_query_service import AIQueueQueryService
+        return AIQueueQueryService(self.ai_proxy_path_service).snapshot()

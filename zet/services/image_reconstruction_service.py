@@ -8,13 +8,12 @@ from io import BytesIO
 from pathlib import Path
 import re
 import threading
-from uuid import uuid4
+from zet.services.ai_workflow_service import work_id
 from PIL import Image
 
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.image_prompt_generation_service import ImagePromptGenerationService
-from zet.services.narrative_codex_service import CODEX_MODELS
-from zet.services.ollama_model_service import OllamaModelService
+from zet.services.ai_model_catalog_service import AIModelCatalogService
 from zet.services.render_slot_service import render_count
 from zet.services.universe_style_service import compose_style, universe_style
 from zet.services.workflow_storage import file_lock, validate_image
@@ -22,7 +21,6 @@ from zet.services.image_reconstruction_contract import (
     correction_items, fingerprint, target_brief, target_instructions, text, validate_draft,
 )
 from zet.services.image_true_up_service import ImageTrueUpService
-from zet.services.structured_ai_service import codex_json
 
 
 class ImageReconstructionService:
@@ -53,19 +51,15 @@ class ImageReconstructionService:
         self.app = generator.zet_app
         self.root = Path(self.app.config.base_library_path) / "_state" / "ImageReconstruction"
         self.analyzer = analyzer or ImagePromptGenerationService(self.app, generator.project_root)
-        self.catalog = catalog or OllamaModelService(cache_path=self.app.config.state_file(
-            generator.project_root, "ollama-models-cache.json"))
+        self.catalog = catalog or AIModelCatalogService(self.app.config.base_ai_queue_path)
         self._active = set()
         self._guard = threading.RLock()
         self.true_up = ImageTrueUpService(self._ask)
 
     def _ask(self, model, prompt, schema, images):
-        if model.startswith("codex:"):
-            return codex_json(self.generator.project_root, model[6:],
-                              "Follow the target contract and return the requested JSON.",
-                              prompt, schema, images, label="Image reconstruction")
-        return self.analyzer.model_service.generate_json(model,
-            "Follow the target contract and return the requested JSON.", prompt, schema, images=images)
+        return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(model,
+            "Follow the target contract and return the requested JSON.", prompt, schema, images,
+            task_type="image_reconstruction")[0]
 
     def _snapshot(self, directory, filename, contents):
         if not contents or len(contents) > 20 * 1024 * 1024:
@@ -128,7 +122,7 @@ class ImageReconstructionService:
             raise ValueError("Set the destination universe's Canonical Art Style before reconstructing.")
         if references is None:
             references, payload = self._sources(payload)
-        job_id = uuid4().hex
+        job_id = work_id("reconstruction")
         directory = self._path(job_id).parent
         directory.mkdir(parents=True, exist_ok=False)
         sources = []
@@ -267,7 +261,7 @@ class ImageReconstructionService:
     def compare(self, job_id, contents, candidate, context, anchor=None, *, report_id=None, anchor_role="Approved front: completed design and style"):
         job = self._read(job_id)
         self.validate_sources(job)
-        report_id = report_id or uuid4().hex
+        report_id = report_id or work_id("reconstruction")
         path = self._report_path(job_id, report_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         filename, checksum = self._snapshot(path.parent, "candidate", contents)
@@ -299,7 +293,7 @@ class ImageReconstructionService:
         path = self._report_path(job_id, report_id)
         value = json.loads(path.read_text(encoding="utf-8"))
         with self._guard:
-            active = report_id in self._active
+            active = report_id in self._active or self._pending_workflow(report_id)
         if value["status"] == "RUNNING" and not active:
             value.update(status="FAILED", error="Comparison was interrupted. Compare the selected image again.")
             write_json_atomic(path, value)
@@ -313,25 +307,16 @@ class ImageReconstructionService:
         job = self._read(job_id)
         if job.get("version") != 2 or metadata.get("target_hash") != job.get("target_hash"):
             raise ValueError("Reconstruct this image with a current target brief before comparing it.")
-        report_id = uuid4().hex
+        report_id = work_id("reconstruction")
         report = {"id": report_id, "task_id": job_id, "status": "RUNNING", "items": [], "error": ""}
         write_json_atomic(self._report_path(job_id, report_id), report)
         with self._guard:
             self._active.add(report_id)
 
-        def run():
-            try:
-                self.compare(job_id, contents, {"selected_result": expected},
-                    "Preserve the selected result's intended composition. Actual rendered prompt: "
-                    + self.generator.status(expected["requestId"])["prompt"], report_id=report_id)
-            except Exception as exc:
-                failed = json.loads(self._report_path(job_id, report_id).read_text(encoding="utf-8"))
-                failed.update(status="FAILED", error=str(exc))
-                write_json_atomic(self._report_path(job_id, report_id), failed)
-            finally:
-                with self._guard:
-                    self._active.discard(report_id)
-        threading.Thread(target=run, daemon=True).start()
+        filename, _ = self._snapshot(self._report_path(job_id, report_id).parent, "requested-candidate", contents)
+        from zet.services.ai_workflow_service import AIWorkflowService
+        AIWorkflowService(self.app).submit(self._comparison_task, [job_id, report_id, expected, filename],
+            service="reconstruction", owner={"report_id": report_id})
         return report
 
     def correct_selected(self, payload):
@@ -381,25 +366,47 @@ class ImageReconstructionService:
             with self._guard:
                 self._active.add(new["id"])
 
-        def run():
-            try:
-                spec = self.render_spec(job_id, report["context"], [("Styled candidate to correct", contents)],
-                                        report_id=report_id, item_ids=item_ids, instructions=instructions)
-                new.update(prompt=spec["prompt"], status="DISPATCHING")
-                spec["reconstruction"].update(self.metadata(new), parent_task_id=job_id)
-                new["render_payload"] = spec
-                self._save(new)
-                self.generator.slot_workspace.submit_reconstruction(new["id"],
-                    {**spec, "width": new["width"], "height": new["height"]}, expected)
-                new["status"] = "SUBMITTED"
-            except Exception as exc:
-                new.update(status="FAILED", error=str(exc))
-            finally:
-                self._save(new)
-                with self._guard:
-                    self._active.discard(new["id"])
-        threading.Thread(target=run, daemon=True).start()
+        filename, _ = self._snapshot(self._path(new["id"]).parent, "requested-correction", contents)
+        from zet.services.ai_workflow_service import AIWorkflowService
+        AIWorkflowService(self.app).submit(self._correction_task,
+            [new["id"], job_id, report_id, item_ids, instructions, expected, filename],
+            service="reconstruction", owner={"reconstruction_id": new["id"]})
         return new
+
+    def _comparison_task(self, job_id, report_id, expected, filename):
+        try:
+            contents = (self._report_path(job_id, report_id).parent / filename).read_bytes()
+            self.compare(job_id, contents, {"selected_result": expected},
+                "Preserve the selected result's intended composition. Actual rendered prompt: "
+                + self.generator.status(expected["requestId"])["prompt"], report_id=report_id)
+        except Exception as exc:
+            path = self._report_path(job_id, report_id)
+            report = json.loads(path.read_text(encoding="utf-8"))
+            report.update(status="FAILED", error=str(exc)); write_json_atomic(path, report)
+        finally:
+            with self._guard:
+                self._active.discard(report_id)
+
+    def _correction_task(self, new_id, job_id, report_id, item_ids, instructions, expected, filename):
+        new = self._read(new_id)
+        report = self.report(job_id, report_id)
+        try:
+            contents = (self._path(new_id).parent / filename).read_bytes()
+            spec = self.render_spec(job_id, report["context"], [("Styled candidate to correct", contents)],
+                                    report_id=report_id, item_ids=item_ids, instructions=instructions)
+            new.update(prompt=spec["prompt"], status="DISPATCHING")
+            spec["reconstruction"].update(self.metadata(new), parent_task_id=job_id)
+            new["render_payload"] = spec
+            self._save(new)
+            self.generator.slot_workspace.submit_reconstruction(new_id,
+                {**spec, "width": new["width"], "height": new["height"]}, expected)
+            new["status"] = "SUBMITTED"
+        except Exception as exc:
+            new.update(status="FAILED", error=str(exc))
+        finally:
+            self._save(new)
+            with self._guard:
+                self._active.discard(new_id)
 
     def _path(self, job_id):
         if not re.fullmatch(r"[a-f0-9]{32}", job_id):
@@ -421,15 +428,8 @@ class ImageReconstructionService:
         write_json_atomic(self._path(job["id"]), job)
 
     def options(self):
-        catalog = self.catalog.cached_models()
-        if catalog is None:
-            try:
-                catalog = self.catalog.refresh_model_catalog()
-            except Exception:
-                catalog = {"vision_models": []}
-        models = ["codex:" + value for value in CODEX_MODELS] + catalog.get("vision_models", [])
-        default = self.app.config.ai_image_prompt_generation_model
-        return {"models": list(dict.fromkeys(models)), "default_model": default,
+        return {"models": [item["id"] for item in self.catalog.models(required=["vision"])],
+                "default_model": self.app.config.ai_image_prompt_generation_model,
                 "style": universe_style(self.app.config.base_library_path)}
 
     def start(self, payload):
@@ -449,7 +449,9 @@ class ImageReconstructionService:
             with self._guard:
                 self._active.discard(job["id"])
             raise
-        threading.Thread(target=self._run, args=(job["id"],), daemon=True).start()
+        from zet.services.ai_workflow_service import AIWorkflowService
+        AIWorkflowService(self.app).submit(self._run, [job["id"]], service="reconstruction",
+                                         owner={"reconstruction_id": job["id"]})
         return job
 
     def _run(self, job_id):
@@ -469,13 +471,9 @@ class ImageReconstructionService:
                 job["status"] = "SUBMITTED"
                 return
             image = str(self._path(job_id).parent / job["source_file"])
-            if job["model"].startswith("codex:"):
-                draft = self.analyzer._codex(job["model"][6:], image,
-                                            instructions=self.INSTRUCTIONS, schema=self.SCHEMA)
-            else:
-                draft = self.analyzer.model_service.generate_json(job["model"],
-                    "Describe visible content independently of rendering style.", self.INSTRUCTIONS,
-                    self.SCHEMA, images=[image])
+            draft = self.analyzer.model_service.generate_json(job["model"],
+                "Describe visible content independently of rendering style.", self.INSTRUCTIONS,
+                self.SCHEMA, images=[image])
             content = draft.get("content_prompt")
             uncertainties = draft.get("uncertainties")
             if (not isinstance(content, str) or not content.strip() or not isinstance(uncertainties, list)
@@ -503,6 +501,10 @@ class ImageReconstructionService:
             with self._guard:
                 self._active.discard(job_id)
 
+    def _pending_workflow(self, job_id):
+        from zet.services.ai_workflow_service import AIWorkflowService
+        return AIWorkflowService(self.app).pending(job_id)
+
     def pending(self, job_id):
         try:
             job = self.status(job_id)
@@ -513,7 +515,7 @@ class ImageReconstructionService:
     def status(self, job_id):
         with self._guard:
             job = self._read(job_id)
-            active = job_id in self._active
+            active = job_id in self._active or self._pending_workflow(job_id)
         if not active and job["status"] in {"RUNNING", "DISPATCHING"}:
             # A persisted render job is authoritative after a crash at the handoff.
             if job_id in self.generator._jobs:

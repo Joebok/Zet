@@ -8,10 +8,10 @@ Narrative provides prose-oriented authoring and generation independent of Scene 
 | --- | --- |
 | [models/narrative.py](../../zet/models/narrative.py), [NarrativeRepository](../../zet/repositories/narrative_repository.py) | Story, scene, element, target and candidate defaults; atomic JSON persistence, constrained IDs and repository workflow lock |
 | [NarrativeSceneService](../../zet/services/narrative_scene_service.py) | Authoring CRUD, scene elements, targets, references, image selection/locking and protected deletion; `ZetApp.narrative_scene_service` |
-| [NarrativeGenerationService](../../zet/services/narrative_generation_service.py) | `start`/detail polling, persisted interview/synthesis/render jobs, candidate slots, retry/replay and background poller |
+| [NarrativeGenerationService](../../zet/services/narrative_generation_service.py) | `start`/detail polling, persisted interview/synthesis/render jobs, candidate slots, retry/replay and domain result application |
 | [narrative_prompt_service.py](../../zet/services/narrative_prompt_service.py) | `llm_request`, `assemble_prompt`, structured request schemas and deterministic prompt/reference packaging |
 | [narrative_interview_service.py](../../zet/services/narrative_interview_service.py) | Field purposes/authority, old-reply normalization and validated whole-field review proposals |
-| [NarrativeProxyService](../../zet/services/narrative_proxy_service.py), [NarrativeCodexService](../../zet/services/narrative_codex_service.py) | Proxy text/image dispatch and durable Codex CLI text attempts; [narrative_qwen_workflow.py](../../zet/services/narrative_qwen_workflow.py) supplies image workflows |
+| [NarrativeProxyService](../../zet/services/narrative_proxy_service.py) | Common proxy dispatch/collection for every text/image provider; [narrative_qwen_workflow.py](../../zet/services/narrative_qwen_workflow.py) supplies image workflows |
 | [NarrativeReferenceService](../../zet/services/narrative_reference_service.py) | Pinned backdrop inputs, local reuse/crop actions and independent imported subscenes |
 | [NarrativeAssemblyService](../../zet/services/narrative_assembly_service.py) | Source/layer binding, editable extraction/cutouts, deterministic composition and frozen assembly snapshots |
 | [narrative_router.py](../../zet/web/narrative_router.py), [narrative.html](../../zet/web/templates/narrative.html), [narrative.js](../../zet/web/static/narrative.js) | HTTP/browser presentation and calls into Narrative services; context capture integrates with shared [task_capture.js](../../zet/web/static/task_capture.js) |
@@ -23,10 +23,10 @@ Narrative JSON persistence uses the shared portable library-path codec for expli
 Inputs include scene intent/visual settings, named elements/library asset IDs, target narrative/staging/physical context/framing, model selection, candidate slot controls, and assembly layers. Targets include backdrop/subscene/assembly behavior. Outputs are authored prose, generated prompts with provenance, durable job/candidate records, image files, selections and locked images. Storage is under universe `NarrativeStories/`; [DATA_MODEL](../DATA_MODEL.md) owns identifiers/formats.
 
 1. Author creates a story, scenes, elements, and targets with stable IDs. Target visual settings combine scene defaults and target overrides.
-2. `start` chooses interview/synthesis/generate/render or a supported replay action. Text models with `codex:` dispatch to Codex; otherwise text work uses the proxy/Ollama path. Jobs persist model/provider provenance and a baseline for result application.
+2. `start` chooses interview/synthesis/generate/render or a supported replay action. All text/image work uses File Proxy; its trusted registration selects Codex, Ollama or ComfyUI execution. Jobs persist model/provider provenance and a baseline for result application.
 3. Submission snapshots ordered reference bytes. Assembly submission binds server-owned source layers and freezes an assembly snapshot; replay uses saved job inputs. Backdrop crop/unchanged operations use local actions instead of requesting generation.
    Qwen Image 2.1 render references are prepared in the local render-job workspace under the configured per-image and aggregate pixel budgets. Prepared source hashes/order and effective machine settings accompany the saved graph; pending ComfyUI submissions resume that graph and its snapshots after configuration changes.
-4. Proxy/Codex results advance jobs and candidate slots. Interviews store pending proposals without changing authored inputs; the user reviews and applies selected replacements. Background polling starts/stops with app lifespan; Codex attempts receive fresh attempt ownership after restart so old attempt outputs cannot apply.
+4. Proxy/Codex results advance jobs and candidate slots. Interviews store pending proposals without changing authored inputs; the user reviews and applies selected replacements. The shared AI coordinator collects in the background, including when this page/universe is not open. Published attempts survive dashboard restart; ambiguous execution is never silently replayed. Matching legacy Codex attempt outputs can be adopted without execution.
 5. The user selects/locks outputs. Protected deletion and pinned sources prevent accidental removal/mutation of images used by the workflow.
 
 ## Interview review and field guidance
@@ -116,7 +116,7 @@ records configured cache device/precision separately from ComfyUI's runtime stat
 
 ## Failure modes and extensions
 
-Unknown record IDs, missing selected source files, stale jobs/results, occupied slots, protected images, unavailable Codex executable, external proxy errors, invalid structured text results, and assembly-mode/provenance mismatch are relevant failure cases. Inspect persisted target job errors and text-attempt artifacts before retrying. An HTTP read can reconcile job state, so it is not necessarily a pure file read.
+Unknown record IDs, missing selected source files, stale jobs/results, occupied slots, protected images, unavailable proxy-side Codex executable, external proxy errors, invalid structured text results, and assembly-mode/provenance mismatch are relevant failure cases. Inspect persisted target job errors and text-attempt artifacts before retrying. An HTTP read can reconcile job state, so it is not necessarily a pure file read.
 
 Add Narrative fields to model defaults, author patch/validation lists, prompt/job snapshots, result application and UI together. Keep queue protocol changes in shared infrastructure and Narrative-specific job semantics here. The retired Scene Builder staging facade has been removed; do not recreate it as a shortcut.
 
@@ -172,3 +172,5 @@ are separately labeled and never count as newly completed assemblies.
 Scene `use_universe_style` defaults true on creation; records missing the flag normalize false to preserve their saved style. Legacy scene migration also explicitly retains its authored style. The scene editor retains saved custom style and displays the universe alternative. When enabled, current universe style supplies inherited style; a nonblank target override replaces it. Target detail reports the effective source and universe style snapshot. Applying an interview style proposal to Shared explicitly chooses that custom scene style and disables universe inheritance.
 
 Synthesis, including composite harmonization, receives the effective style. Job detail/provenance freeze that source and text; retries reuse frozen inputs. A Render job attributes style to its saved prompt provenance, rather than claiming to adopt newer settings. Write Prompt is required to adopt subsequent style changes. Rendering does not silently rewrite existing prompts. See [ADR 0012](../DECISIONS/0012-universe-style-and-reconstruction.md). Existing S1/S3 and disposable compatibility/override checks passed; live artistic fidelity is unverified.
+
+Shared transport, receipts, foreground/background collection and model selection are owned by [Shared AI jobs](AI_JOBS.md).

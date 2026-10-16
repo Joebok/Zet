@@ -21,7 +21,7 @@ class NarrativeProxyService:
 
     def publish(self, story: str, scene: str, target: str, job: dict, prompt: str,
                 *, schema: dict | None = None, references: list[dict] | None = None, width=1216, height=832, seed=0):
-        worker = "ollama_generate" if schema else "local_image_render"
+        worker = ("codex_generate" if str(job.get("model", "")).startswith("codex:") else "ollama_generate") if schema else "local_image_render"
         staging = self.client.create_staging(job["id"])
         manifest = {
             "version": 1, "ask_id": job["id"], "consumer": CONSUMER, "worker_type": worker,
@@ -30,6 +30,7 @@ class NarrativeProxyService:
             "ollama_attempt_id": job["id"], "prompt_file": "prompt.md",
             "expected_output": "answer.json" if schema else "image.png", "auxiliary": True,
             "task_type": "narrative_" + job["kind"], "queue_priority": 100,
+            "workflow": "Narrative",
         }
         if schema:
             manifest.update(ollama_model=job.get("model") or self.config.ai_narrative_scene_model, ollama_chat=True, json_output=True,
@@ -52,7 +53,17 @@ class NarrativeProxyService:
             raise
 
     def poll(self, story: str, scene: str, target: str, job: dict) -> tuple[str, bytes | str | None]:
-        answer = self.client.answer_root / job["id"]
+        if job.get("codex_attempt"):
+            legacy = self.app.narrative_scene_service.repository.folder(story, scene, target) / "text-jobs" / job["id"] / (job["codex_attempt"] + ".json")
+            imported = json.loads(legacy.read_text(encoding="utf-8")) if legacy.is_file() else {}
+            if imported.get("attempt") == job["codex_attempt"] or not imported:
+                self.app.ai_proxy_service.ai_proxy_path_service.jobs.adopt_legacy_text(job["id"], {
+                    "version": 1, "ask_id": job["id"], "consumer": CONSUMER, "universe_id": self.config.universe_id,
+                    "narrative_story_id": story, "narrative_scene_id": scene, "narrative_target_id": target,
+                    "worker_type": "codex_generate", "ollama_model": job["model"], "expected_output": "answer.json",
+                    "task_type": "narrative_" + job["kind"]}, imported.get("result"), str(imported.get("error") or ""),
+                    created_at=job.get("created_at", ""))
+        answer = self.app.ai_proxy_service.ai_proxy_path_service.answer_path(job["id"])
         if answer.is_dir():
             blocked = self.client.answer_blocked_reason(answer)
             if blocked:
@@ -74,7 +85,7 @@ class NarrativeProxyService:
                     provenance = job.setdefault("provenance", {})
                     if ask.get("ollama_model"):
                         job.setdefault("model", ask["ollama_model"])
-                        provenance.update(model=job["model"], provider="ollama")
+                        provenance.update(model=job["model"], provider="codex" if job["model"].startswith("codex:") else "ollama")
                     if result.get("ollama_runtime"):
                         provenance["runtime"] = result["ollama_runtime"]
                         provenance["effective_model"] = result["ollama_runtime"].get("effective_alias", "")
@@ -88,10 +99,10 @@ class NarrativeProxyService:
             return "RUNNING", None
         if (self.client.ask_root / job["id"]).is_dir():
             return "QUEUED", None
-        return "FAILED", "AI_Proxy no longer has this job; retry it."
+        return "QUEUED", None
 
     def release(self, story: str, scene: str, target: str, job: dict) -> None:
-        answer = self.client.answer_root / job["id"]
+        answer = self.app.ai_proxy_service.ai_proxy_path_service.answer_path(job["id"])
         if not answer.is_dir() or self.client.answer_blocked_reason(answer):
             return
         try:

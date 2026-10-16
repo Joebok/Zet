@@ -7,8 +7,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
-import subprocess
 import tempfile
 import threading
 from typing import Any
@@ -150,8 +148,9 @@ class LocalPromptImprovementService:
     def detail(self, run_id: str, costume: str = "", *, upgrade_legacy: bool = False) -> dict[str, Any]:
         run = self._run(run_id, costume, upgrade_legacy=upgrade_legacy)
         root = self._root(run)
-        spec = json.loads((root / "spec.json").read_text(encoding="utf-8"))
-        state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+        library_root = pipeline_library_root_for_path(root)
+        spec = read_library_json(root / "spec.json", library_root)
+        state = read_library_json(root / "state.json", library_root)
         if not state.get("prompt_improvement_migrated"):
             ensure_view_reviews(root, spec, state)
             run = self._run(run_id, costume)
@@ -255,34 +254,16 @@ class LocalPromptImprovementService:
             if {item["candidate_id"]: _hash(path) for item, path in images} != hashes:
                 raise ValueError("View images changed before analysis started.")
             self._save_ai(run, view, job_id, {"status": "RUNNING", "started_at": _now()})
-            executable = shutil.which("codex")
-            if not executable and os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-                installs = list((Path(os.environ["LOCALAPPDATA"]) / "OpenAI" / "Codex" / "bin").glob("*/codex.exe"))
-                if installs:
-                    executable = str(max(installs, key=lambda path: path.stat().st_mtime_ns))
-            if not executable:
-                raise ValueError("Codex CLI is unavailable for Luna observations.")
             prompt = self._analysis_prompt(run, view, images, missing)
             schema = {"type": "object", "properties": {"observations": {"type": "string"}},
                       "required": ["observations"], "additionalProperties": False}
-            with tempfile.TemporaryDirectory(prefix="zet_prompt_improvement_") as temp:
-                schema_path, output_path = Path(temp) / "schema.json", Path(temp) / "answer.json"
-                schema_path.write_text(json.dumps(schema), encoding="utf-8")
-                command = [executable, "-a", "never", "-s", "read-only", "-m",
-                           str(getattr(self.adapter.app.config, "codex_default_model", "gpt-6-luna")),
-                           "-c", 'model_reasoning_effort="high"', "-C", str(self.project_root), "exec",
-                           "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--output-schema",
-                           str(schema_path), "--output-last-message", str(output_path)]
-                for _, path in images:
-                    command.extend(["--image", str(path)])
-                completed = subprocess.run(command, input=prompt, capture_output=True, text=True,
-                                           encoding="utf-8", errors="replace", timeout=1800, check=False)
-                if completed.returncode:
-                    raise ValueError((completed.stderr or completed.stdout or "Luna observations failed")[-2000:])
-                answer = json.loads(output_path.read_text(encoding="utf-8"))
-                observations = str(answer.get("observations") or "").strip()
-                if not observations:
-                    raise ValueError("Luna returned empty observations.")
+            answer, _ = self.adapter.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
+                "codex:" + self.adapter.app.config.codex_default_model.removeprefix("codex:"), "", prompt,
+                schema, [path for _, path in images], task_type="local_prompt_improvement",
+                owner={"run_id": run_id, "view": view, "analysis_id": job_id})
+            observations = str(answer.get("observations") or "").strip()
+            if not observations:
+                raise ValueError("The model returned empty observations.")
             latest = self.detail(run_id, costume)
             current, _ = self._images(latest, view)
             current_hashes = {item["candidate_id"]: _hash(path) for item, path in current}
