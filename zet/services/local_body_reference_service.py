@@ -2868,7 +2868,8 @@ Do not explain your reasoning."""
         update = {"status": "QUEUED", "ask_id": ask["ask_id"], "queued_at": self._now(),
                   "reference_images": [{"role": str(item.get("role") or ""),
                                         "label": str(item.get("label") or ""),
-                                        "path": str(item.get("path") or "")}
+                                        "path": str(item.get("path") or ""),
+                                        "sha256": self._hash(Path(str(item.get("path") or "")))}
                                        for item in references],
                   "image_path": str(candidate_dir / "Local_Test_Renders" / ask["expected_output"])}
         state = self._read_json((root / "state.json"))
