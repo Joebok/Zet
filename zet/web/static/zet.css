@@ -5537,7 +5537,7 @@ dd {
 .mc-reference { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px 12px; margin: 12px 0; align-items: start; }
 .mc-reference img { width: 80px; max-height: 150px; object-fit: contain; grid-row: span 2; }
 .mc-reference-caption { min-width: 0; overflow-wrap: anywhere; padding: 4px 0; }
-.mc-reference button { grid-column: 1; justify-self: start; }
+.mc-reference button { grid-column: 2; justify-self: start; }
 .mc-control-row { display: flex; gap: 10px; }
 .mc-control-row label { min-width: 0; flex: 1; }
 #mc-entry-image { max-width: 150px; max-height: 180px; object-fit: contain; }

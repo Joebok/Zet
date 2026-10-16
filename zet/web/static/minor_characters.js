@@ -10,7 +10,7 @@
   let character = null, universe = "", characters = [], references = [], entryAsset = null;
   let patch = {}, saving = null, saveTimer = null, pollTimer = null, pending = false, generation = 0;
   let view = "STYLE", preview = "", referenceSignature = "";
-  let feedback = "";
+  let feedback = "", feedbackDirty = false;
   const suggestions = new Map();
   let comparisonId = "";
   const slotPending = new Set();
@@ -78,13 +78,13 @@
     if (found) $("mc-name-match").append(button(`Open existing ${found.name}`, () => open(found.character_id)));
   }
   async function list() {
-    await flush(); generation++; clearTimeout(pollTimer); character = null; patch = {}; route("");
+    await flush(); generation++; clearTimeout(pollTimer); character = null; patch = {}; feedbackDirty = false; route("");
     $("mc-editor").hidden = true; $("mc-review").close(); $("mc-list-panel").hidden = false;
     $("mc-inventory-entry").hidden = !entryAsset; await refreshList(); message("");
   }
   async function open(id) {
     $("mc-review").close(); comparisonId = "";
-    await flush(); generation++; clearTimeout(pollTimer); patch = {}; feedback = ""; suggestions.clear();
+    await flush(); generation++; clearTimeout(pollTimer); patch = {}; feedback = ""; feedbackDirty = false; suggestions.clear();
     const result = await api(`/${id}`); character = result.character;
     references = character.references; referenceSignature = "";
     view = character.views.includes(character.active_view) ? character.active_view : "STYLE";
@@ -102,6 +102,9 @@
   function imageFigure(source, caption) {
     const figure = element("figure"); const img = document.createElement("img"); img.src = url(source); img.alt = caption;
     figure.append(img, element("figcaption", caption)); return figure;
+  }
+  function awaitingResponse() {
+    return Boolean(character?.busy || character?.candidates.some(candidate => candidate.status === "REVIEWING"));
   }
   function referencePayload() {
     return references.map(r => ({...(r.reference_id ? {reference_id:r.reference_id} : {}),
@@ -138,13 +141,13 @@
     for (const question of character.questions) $("mc-questions").append(element("p", question));
     if (!patch.board_edit) {
       const edit = board()?.edit;
-      feedback = edit?.instructions || "";
+      if (!feedbackDirty) feedback = edit?.instructions || "";
       if (edit?.candidate_id) suggestions.set(edit.candidate_id, new Set(edit.item_ids));
     }
     renderImages(); updateButtons();
     if (character.job.error) message(character.job.error, true);
     clearTimeout(pollTimer);
-    if ((character.busy || character.candidates.some(c=>c.status==="REVIEWING")) && $("minor-characters-page").classList.contains("active")) {
+    if (awaitingResponse() && $("minor-characters-page").classList.contains("active")) {
       const id = character.character_id, current = generation;
       pollTimer = setTimeout(async () => {
         try { const result = await api(`/${id}`); if (current === generation && character?.character_id === id) show(result.character); }
@@ -238,7 +241,7 @@
     if (next) { previewCandidate(next.candidate_id); renderImages(); updateButtons(); }
   }
   function previewCandidate(id) {
-    if (preview!==id) feedback=board().edit.candidate_id===id ? board().edit.instructions : "";
+    if (preview!==id) { feedback=board().edit.candidate_id===id ? board().edit.instructions : ""; feedbackDirty=false; }
     preview=id;changed("preview_candidate_id",preview);persistEdit();
   }
   function inspect(id = preview) {
@@ -251,7 +254,7 @@
     $("mc-tabs").replaceChildren();
     for (const target of character.views) {
       const tab=button(label(target),async()=>{
-        await flush();view=target;preview="";comparisonId="";feedback=character.boards[target]?.edit.instructions || "";
+        await flush();view=target;preview="";comparisonId="";feedback=character.boards[target]?.edit.instructions || "";feedbackDirty=false;
         changed("active_view",view);show(character);
       });
       tab.disabled=target!=="STYLE" && !character.selected.STYLE && !character.boards[target]?.slots.some(Boolean);
@@ -348,6 +351,7 @@
     const source=choice()?.candidate_id || board().edit.candidate_id;
     const result=await api(`/${character.character_id}/generate`,"POST",{view,revision:board().revision,
       ...(refine ? {candidate_id:source,instructions:feedback,item_ids:[...(suggestions.get(source)||[])]} : {})});
+    feedbackDirty=false;
     preview=result.character.boards[view].template_candidate_id;show(result.character);
   }
   async function boardAction(action) {
@@ -377,7 +381,7 @@
     if (key==="name") { const match=characters.find(c=>c.character_id!==character?.character_id && c.name.trim().toLocaleLowerCase()===value.trim().toLocaleLowerCase());
       $("mc-rename-match").replaceChildren(); if(match) $("mc-rename-match").append(button(`Open existing ${match.name}`,async()=>{delete patch.name;await open(match.character_id);})); }
   });
-  $("mc-feedback").addEventListener("input",()=>{feedback=$("mc-feedback").value;persistEdit();});
+  $("mc-feedback").addEventListener("input",()=>{feedback=$("mc-feedback").value;feedbackDirty=true;persistEdit();});
   $("mc-new-name").addEventListener("input",nameMatch);
   $("mc-create-form").addEventListener("submit",event=>{event.preventDefault();act(async()=>{
     const result=await api("","POST",{name:$("mc-new-name").value}); const asset=entryAsset;
