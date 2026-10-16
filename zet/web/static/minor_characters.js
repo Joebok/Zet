@@ -114,9 +114,7 @@
     references.forEach((ref, index) => {
       const card = element("section", "", "mc-reference");
       if (ref.url || ref.image) { const img = document.createElement("img"); img.src = ref.image || url(ref.url); img.alt = `Reference ${index+1}`; card.append(img); }
-      const caption = document.createElement("textarea"); caption.value = ref.caption; caption.rows = 2; caption.setAttribute("aria-label", `Reference ${index+1} role`);
-      caption.addEventListener("input", () => { ref.caption = caption.value; changed("references", referencePayload()); });
-      card.append(caption, button("Remove", async () => { references.splice(index, 1); referenceSignature = ""; changed("references", referencePayload()); drawReferences(); await flush(); }));
+      card.append(element("figcaption", ref.caption, "mc-reference-caption"), button("Remove", async () => { references.splice(index, 1); referenceSignature = ""; changed("references", referencePayload()); drawReferences(); await flush(); }));
       $("mc-references").append(card);
     });
   }
@@ -265,6 +263,10 @@
     for(let slot=0;slot<4;slot++) {
       const candidate=character.candidates.find(c=>c.candidate_id===current?.slots[slot]);
       const card=element("section","","mc-slot");card.append(element("strong",`Slot ${slot+1}`));
+      card.addEventListener("click",event=>{
+        if (!candidate?.image_url || event.target.closest("button")) return;
+        previewCandidate(candidate.candidate_id);renderImages();updateButtons();
+      });
       card.classList.toggle("mc-slot-preview",candidate?.candidate_id===preview);
       if(candidate && current.prior_selection_id===candidate.candidate_id) card.append(element("span","Prior selection","mc-prior-selection"));
       if(candidate?.image_url) {
@@ -273,15 +275,23 @@
       } else card.append(element("p",candidate ? candidate.error || candidate.status.toLowerCase() : "Empty"));
       const controls=element("div","","button-row mc-slot-actions");
       const submitting=slotPending.size>0;
-      const regen=button(candidate ? "Regen" : "Generate",()=>slotAction("regenerate",slot),operation=>operation());
+      const regen=button(candidate ? "Regen" : "Generate",async()=>{
+        if(candidate) previewCandidate(candidate.candidate_id);
+        await slotAction("regenerate",slot);
+      },operation=>operation());
       regen.disabled=pending || submitting || !current?.template_candidate_id;
-      const clear=button("Clear",()=>slotAction("clear",slot),operation=>operation());clear.disabled=pending || submitting || !candidate;
+      const clear=button("Clear",async()=>{
+        if(candidate) previewCandidate(candidate.candidate_id);
+        await slotAction("clear",slot);
+      },operation=>operation());clear.disabled=pending || submitting || !candidate;
       const select=button(candidate && character.selected[view]===candidate.candidate_id ? "Selected" : "Select",async()=>{
         previewCandidate(candidate.candidate_id);await selectCandidate(candidate.candidate_id);
       });select.disabled=pending || !candidate?.image_url;
       controls.append(clear,regen,select);
       if(candidate?.can_lock) {
-        const lock=button(character.locked[view]?.candidate_id===candidate.candidate_id ? "Locked" : "Lock",()=>lockCandidate(candidate));
+        const lock=button(character.locked[view]?.candidate_id===candidate.candidate_id ? "Locked" : "Lock",async()=>{
+          previewCandidate(candidate.candidate_id);await lockCandidate(candidate);
+        });
         lock.disabled=pending || character.locked[view]?.candidate_id===candidate.candidate_id;controls.append(lock);
       }
       card.append(controls);$("mc-slots").append(card);
@@ -318,7 +328,9 @@
     $("mc-continue-true-ups").disabled=busy || !current?.can_continue;
     $("mc-undo").disabled=busy || !current?.can_undo;
     $("mc-analyze").disabled = !character || busy || !references.length;
-    $("mc-add-reference").disabled = pending || references.length>=3; $("mc-upload").disabled = references.length>=3;
+    $("mc-add-reference").disabled = pending || references.length>=3;
+    $("mc-upload-trigger").disabled = references.length>=3;
+    $("mc-upload").disabled = references.length>=3;
     $("mc-delete").disabled=pending || !character;
     if (character) renderReview();
   }
@@ -389,6 +401,7 @@
   });
   $("mc-analyze").addEventListener("click",()=>act(async()=>{await flush();show((await api(`/${character.character_id}/analyze`,"POST",{})).character);}));
   $("mc-add-reference").addEventListener("click",()=>act(()=>bridge.openLibraryPicker(asset=>act(()=>addReference({asset_id:asset.asset_id,caption:asset.label || "Identity reference"})))));
+  $("mc-upload-trigger").addEventListener("click",()=>$("mc-upload").click());
   $("mc-upload").addEventListener("change",()=>act(async()=>{await upload($("mc-upload").files[0]);$("mc-upload").value="";}));
   $("mc-paste").addEventListener("click",()=>$("mc-paste").focus());
   $("mc-paste").addEventListener("paste",event=>{const item=[...(event.clipboardData?.items||[])].find(i=>i.type.startsWith("image/"));if(item){event.preventDefault();act(()=>upload(item.getAsFile()));}});
