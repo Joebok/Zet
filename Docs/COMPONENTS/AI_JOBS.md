@@ -102,7 +102,9 @@ the recorded universe and target identifiers. Manual tasks are labeled separatel
 every two seconds while visible; navigation stops its timer and aborts its request.
 Errors preserve previous rows and display an unavailable message. Queue counters
 and recent harvests use the same durable feed, independent of index reconciliation.
-The former Body-Reference-only Codex panel is removed.
+The activity table displays Universe, Status, Workflow / target, Task, Model,
+Created and Details, in that order. The former Body-Reference-only Codex panel is
+removed.
 
 ## Model catalog and shared control
 
