@@ -131,6 +131,13 @@
     if (!patch.references) references = character.references;
     for (const [key, id] of Object.entries(fields)) {
       if (["primary_reference_id","comparison_reference_id"].includes(key)) continue;
+      if (key === "model") {
+        const control = $(id), value = patch.model ?? character.model ?? "";
+        if (value && ![...control.options].some(option => option.value === value)) control.add(new Option(`${value} (unavailable)`, value));
+        control.value = value;
+        window.ZetModelPicker?.sync(control);
+        continue;
+      }
       if (!(key in patch) && document.activeElement !== $(id)) $(id).value = key === "proposals" ? character.proposals.join("\n") : character[key] || "";
     }
     for (const [key, id] of [["primary_reference_id","mc-primary"],["comparison_reference_id","mc-comparison-reference"]]) {

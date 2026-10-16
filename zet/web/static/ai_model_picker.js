@@ -92,6 +92,13 @@
     catch (error) { dialog.querySelector("[data-model-error]").textContent = error.message; }
     return answer;
   }
+  function syncControl(control) {
+    const button = attached.get(control);
+    if (button) {
+      button.textContent = control.value || "Use configured default";
+      button.disabled = control.disabled;
+    }
+  }
   function attach(control, settings = {}) {
     if (attached.has(control)) return;
     const button = document.createElement("button");
@@ -100,7 +107,7 @@
     button.dataset.modelFor = control.id;
     control.hidden = true;
     control.after(button);
-    const sync = () => { button.textContent = control.value || "Use configured default"; button.disabled = control.disabled; };
+    const sync = () => syncControl(control);
     button.addEventListener("click", async () => {
       const value = await open({ ...settings, value: settings.bareCodex && control.value ? `codex:${control.value}` : control.value });
       if (value === null) return;
@@ -123,7 +130,7 @@
       attach(control, { ...(gate ? { required: ["vision"] } : {}), ...(known[control.id] || {}), ...(narrative ? { allowDefault: true } : {}) });
     });
   }
-  window.ZetModelPicker = { open, attach, refresh: () => load(true) };
+  window.ZetModelPicker = { open, attach, refresh: () => load(true), sync: syncControl };
   new MutationObserver(discover).observe(document.body, { childList: true, subtree: true });
   discover();
 })();

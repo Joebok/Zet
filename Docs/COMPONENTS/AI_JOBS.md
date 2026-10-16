@@ -78,7 +78,10 @@ options API uses the same catalog. No selector discovers models directly.
 
 [ai_model_picker.js](../../zet/web/static/ai_model_picker.js) exposes `open` and
 `attach` with `value`, `providers`, `required`, `allowDefault` and compatibility
-`bareCodex` options. Its Codex and Ollama dropdowns are mutually exclusive; Apply
+`bareCodex` options. Call `sync(control)` after restoring a backing field programmatically
+so the popup button reflects the saved selection. Minor Characters does this after
+loading its workspace, including saved models missing from the current catalog.
+Its Codex and Ollama dropdowns are mutually exclusive; Apply
 commits, Cancel/Escape preserve the original, and inherited fields have an explicit
 default action. Vision restrictions use catalog capabilities and are validated
 again on submission. Unknown/unavailable saved choices are retained visibly, not
