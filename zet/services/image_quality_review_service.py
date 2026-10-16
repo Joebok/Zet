@@ -22,9 +22,13 @@ class ImageQualityReviewService:
         self,
         project_root: str | Path,
         model_service: OllamaModelService | None = None,
+        proxy_path_service=None,
     ):
         self.project_root = Path(project_root).resolve()
-        self.model_service = model_service or OllamaModelService(timeout_seconds=600)
+        self.model_service = model_service or OllamaModelService(
+            timeout_seconds=600,
+            proxy_path_service=proxy_path_service,
+        )
 
     def _rubric(self) -> dict[str, Any]:
         path = self.project_root / "Config" / "Image_Quality_Rubric.json"

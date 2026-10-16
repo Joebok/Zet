@@ -66,7 +66,10 @@ class CostumeWizardService:
         self.app = app
         self.project_root = Path(project_root).resolve()
         self.root = app.path_service.library_path("_state", "CostumeWizard")
-        self.ollama = OllamaModelService(timeout_seconds=900)
+        self.ollama = OllamaModelService(
+            timeout_seconds=900,
+            proxy_path_service=app.ai_proxy_service.ai_proxy_path_service,
+        )
 
     def _session_root(self, session_id: str) -> Path:
         if not re.fullmatch(r"[0-9a-f]{32}", str(session_id or "")):

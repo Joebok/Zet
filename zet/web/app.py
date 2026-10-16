@@ -1008,10 +1008,11 @@ def create_app(
     from uuid import uuid4
     app.state.boot_id = uuid4().hex
     app.state.config_path = str(config_path)
-    app.state.ollama_model_service = OllamaModelService(
-        cache_path=config.state_file(config_path.resolve().parent, "ollama-models-cache.json")
-    )
     app.state.zet_app = ZetApp.from_config(config_path, validate_catalog=validate_catalog_on_create)
+    app.state.ollama_model_service = OllamaModelService(
+        cache_path=config.state_file(config_path.resolve().parent, "ollama-models-cache.json"),
+        proxy_path_service=app.state.zet_app.ai_proxy_service.ai_proxy_path_service,
+    )
     app.state.task_status_service = app.state.zet_app.task_status_service
     app.state.worker_bridge_service = app.state.zet_app.worker_bridge_service
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}

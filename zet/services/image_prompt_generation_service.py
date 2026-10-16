@@ -46,7 +46,10 @@ class ImagePromptGenerationService:
     def __init__(self, zet_app, project_root: str | Path, model_service=None, runner=subprocess.run):
         self.zet_app = zet_app
         self.project_root = Path(project_root)
-        self.model_service = model_service or OllamaModelService(timeout_seconds=600)
+        self.model_service = model_service or OllamaModelService(
+            timeout_seconds=600,
+            proxy_path_service=zet_app.ai_proxy_service.ai_proxy_path_service,
+        )
         self.runner = runner
         self._lock = threading.RLock()
         self._jobs: dict[str, dict] = {}

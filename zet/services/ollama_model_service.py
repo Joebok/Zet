@@ -1,25 +1,27 @@
 from __future__ import annotations
 
-import base64
 import json
 from pathlib import Path
 import re
 import threading
+import time
 from urllib import request
 
 
 class OllamaModelService:
-    """Discover locally available Ollama models and their capabilities."""
+    """Discover model metadata and submit structured inference through AI_Proxy."""
 
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
         timeout_seconds: float = 5.0,
         cache_path: str | Path | None = None,
+        proxy_path_service=None,
     ):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.cache_path = Path(cache_path) if cache_path is not None else None
+        self.proxy_path_service = proxy_path_service
         self._catalog_lock = threading.Lock()
 
     def cached_models(self) -> dict | None:
@@ -113,48 +115,95 @@ class OllamaModelService:
         *,
         images: list[str | Path] | None = None,
     ) -> tuple[dict, dict]:
-        """Generate one structured JSON response with a local Ollama model."""
-        user_message: dict = {"role": "user", "content": prompt}
-        if images:
-            user_message["images"] = [
-                base64.b64encode(Path(path).read_bytes()).decode("ascii")
-                for path in images
-            ]
-        response = self._request_json(
-            "/api/chat",
-            {
-                "model": model,
-                "stream": False,
-                "think": False,
-                "format": schema,
-                "messages": [
-                    {"role": "system", "content": system},
-                    user_message,
-                ],
-                "options": {"temperature": 0.2},
-            },
-        )
-        content = response.get("message", {}).get("content")
-        if not isinstance(content, str):
-            raise RuntimeError("Ollama returned no structured response.")
+        """Stage one structured JSON request through AI_Proxy and return its result."""
+        if self.proxy_path_service is None:
+            raise RuntimeError("Ollama inference requires the configured AI_Proxy queue.")
+
+        from uuid import uuid4
+
+        paths = self.proxy_path_service
+        proxy = paths.file_proxy_client
+        ask_id = f"Ask_ZetOllama_{uuid4().hex}"
+        staging = proxy.create_staging(ask_id)
+        prompt_file = "OLLAMA_PROMPT.md"
+        output_file = "OLLAMA_RESPONSE.json"
+        image_files: list[str] = []
+        for index, image in enumerate(images or []):
+            source = Path(image)
+            suffix = source.suffix.lower()
+            if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+                suffix = ".img"
+            filename = f"image_{index + 1}{suffix}"
+            (staging / filename).write_bytes(source.read_bytes())
+            image_files.append(filename)
+        (staging / prompt_file).write_text(prompt, encoding="utf-8")
+        config = paths.config
+        manifest = {
+            "version": 1,
+            "ask_id": ask_id,
+            "ollama_attempt_id": ask_id,
+            "worker_type": "ollama_generate",
+            "ollama_model": model,
+            "ollama_chat": True,
+            "ollama_think": False,
+            "ollama_temperature": 0.2,
+            "ollama_request_options": {"system": system},
+            "prompt_file": prompt_file,
+            "image_files": image_files,
+            "json_output": True,
+            "response_schema": schema,
+            "expected_output": output_file,
+            "task_type": "structured_ollama_inference",
+            "consumer": "zet_ollama_model_service",
+            "universe_id": str(getattr(config, "universe_id", "Moonsea")),
+        }
+        (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        proxy.publish(staging, ask_id, "ollama_generate")
+
+        answer_path = proxy.answer_root / ask_id
+        deadline = time.monotonic() + self.timeout_seconds
+        while not proxy.answer_is_ready(answer_path):
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"Timed out waiting for AI_Proxy Ollama job {ask_id}.")
+            time.sleep(min(1.0, max(0.1, deadline - time.monotonic())))
+        try:
+            answer = json.loads((answer_path / "answer_manifest.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"AI_Proxy returned an invalid answer manifest for {ask_id}.") from exc
+        if answer.get("ask_id") != ask_id or answer.get("expected_output") != output_file:
+            raise RuntimeError(f"AI_Proxy returned a mismatched answer for {ask_id}.")
+        status = str(answer.get("status") or "").upper()
+        if status != "SUCCESS":
+            raise RuntimeError(str(answer.get("error_message") or f"AI_Proxy Ollama job {status or 'failed'}."))
+        try:
+            content = (answer_path / output_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise RuntimeError("AI_Proxy returned no structured response.") from exc
         try:
             value = json.loads(content)
         except json.JSONDecodeError as exc:
             raise RuntimeError("Ollama returned invalid JSON.") from exc
         if not isinstance(value, dict):
             raise RuntimeError("Ollama JSON response must be an object.")
-        return value, self.runtime_evidence(model, response)
+        runtime = answer.get("ollama_runtime")
+        runtime = runtime if isinstance(runtime, dict) else {}
+        paths.lifecycle.finish_answer(answer_path, {
+            "status": "APPLIED",
+            "answer_status": status,
+            "task_type": manifest["task_type"],
+            "worker_type": manifest["worker_type"],
+            "completed_at": answer.get("completed_at", ""),
+        })
+        return value, runtime
 
     def runtime_evidence(self, requested_alias: str, response: dict | None = None) -> dict:
-        """Resolve the active managed alias artifact and its Modelfile-owned runtime limits."""
+        """Resolve managed alias evidence for the AI_Proxy worker."""
         tags = self._request_json("/api/tags").get("models", [])
         show = self._request_json("/api/show", {"model": requested_alias})
         effective_alias = str((response or {}).get("model") or requested_alias)
         digest = ""
         requested_names = {requested_alias, effective_alias}
-        requested_names.update(
-            f"{name}:latest" for name in tuple(requested_names) if ":" not in name
-        )
+        requested_names.update(f"{name}:latest" for name in tuple(requested_names) if ":" not in name)
         for item in tags if isinstance(tags, list) else []:
             if not isinstance(item, dict):
                 continue

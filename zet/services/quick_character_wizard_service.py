@@ -58,7 +58,10 @@ class QuickCharacterWizardService:
         self.project_root = Path(project_root).resolve()
         self.root = app.path_service.state_path("QuickCharacterWizard")
         self.generation_service = generation_service
-        self.ollama = OllamaModelService(timeout_seconds=900)
+        self.ollama = OllamaModelService(
+            timeout_seconds=900,
+            proxy_path_service=app.ai_proxy_service.ai_proxy_path_service,
+        )
 
     def _directory(self, session_id: str) -> Path:
         if not re.fullmatch(r"[0-9a-f]{32}", str(session_id)):
