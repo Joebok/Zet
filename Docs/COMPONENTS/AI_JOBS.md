@@ -74,7 +74,11 @@ AI_Proxy publishes `File_Proxy/Control/model_catalog.json` and serves
 Zet's [AIModelCatalogService](../../zet/services/ai_model_catalog_service.py) keeps
 a producer-local last-known-good copy. `GET /api/ai/models` reads it; `POST` requests
 a proxy refresh through `Control/refresh-models.json`. The compatibility Ollama
-options API uses the same catalog. No selector discovers models directly.
+options API uses the same catalog. No selector discovers models directly. ComfyUI
+metadata is best-effort while its managed process is stopped; render preparation
+does not require a checkpoint to appear in that catalog. Registered Qwen profiles
+are checked locally, then AI_Proxy admits the render and reports any actual
+missing-model or backend failure as a job result.
 
 [ai_model_picker.js](../../zet/web/static/ai_model_picker.js) exposes `open` and
 `attach` with `value`, `providers`, `required`, `allowDefault` and compatibility
@@ -85,7 +89,9 @@ Its Codex and Ollama dropdowns are mutually exclusive; Apply
 commits, Cancel/Escape preserve the original, and inherited fields have an explicit
 default action. Vision restrictions use catalog capabilities and are validated
 again on submission. Unknown/unavailable saved choices are retained visibly, not
-silently replaced. ComfyUI profile/checkpoint controls read cached render metadata.
+silently replaced. ComfyUI profile/checkpoint controls read cached render metadata;
+the catalog is not treated as proof that a render checkpoint is currently
+available.
 
 Dashboard collection always runs while the dashboard runs. `AIHarvest.AutoEnabled`
 and its interval control the optional standalone host; its default interval is now

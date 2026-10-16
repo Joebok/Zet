@@ -84,8 +84,9 @@ def prepare_render(staging, ask, config):
                 "seed": compilation.seed, "resolved_seed": compilation.seed, "width": compilation.width,
                 "height": compilation.height, "prompts": compilation.prompts, "qwen_reference_preparation": preparation,
                 "qwen_reference_cache": compilation.debug.get("qwen_reference_cache")}
-    AIModelCatalogService(config.base_ai_queue_path).validate(
-        metadata["checkpoint"], required=["image_generation"], providers=["comfyui"])
+    # Managed ComfyUI may be stopped until this request is admitted. Treat its
+    # checkpoint as available here; the proxy reports actual model failures from
+    # the submitted job.
     write_json_atomic(staging / "ComfyUI_Workflow_API.json", compilation.workflow)
     write_json_atomic(staging / "ComfyUI_Compilation_Debug.json", {**compilation.debug, **metadata})
     return {"version": 1, "provider": "comfyui", "model": metadata["checkpoint"], "workflow": compilation.workflow,
