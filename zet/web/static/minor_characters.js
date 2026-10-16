@@ -19,6 +19,8 @@
   const url = value => value + (value.includes("?") ? "&" : "?") + "universe_id=" + encodeURIComponent(universe);
   const message = (text, error = false) => { $("mc-message").textContent = text; $("mc-message").classList.toggle("error", error); };
   const label = value => value === "STYLE" ? "Style alignment" : value === "FRONT" ? "Front" : value.includes("3_4") ? "Three-quarter" : "Profile";
+  const restartLabel = value => value === "STYLE" ? "Style alignment" : value === "FRONT" ? "Front"
+    : `${value.startsWith("RIGHT") ? "Right" : "Left"} ${value.includes("3_4") ? "three-quarter" : "profile"}`;
   async function api(path = "", method = "GET", body) {
     if (universe !== bridge.universe()) throw new Error("The active universe changed. Reopen Minor Characters.");
     return bridge.fetchJson("/api/minor-characters" + path, {method, bindToPage:false,
@@ -262,6 +264,7 @@
       tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(view===target));$("mc-tabs").append(tab);
     }
     $("mc-stage-status").textContent=label(view)+(view==="STYLE" ? " · Select a style image to enable views" : current?.mode==="true_up" ? " · True-ups" : " · View alignment: select an image, then continue");
+    $("mc-restart").textContent=`Restart ${restartLabel(view)}`;
     $("mc-slots").replaceChildren();$("mc-add-renders").replaceChildren();
     for(let slot=0;slot<4;slot++) {
       const candidate=character.candidates.find(c=>c.candidate_id===current?.slots[slot]);
@@ -302,6 +305,8 @@
     if(current?.template_candidate_id) $("mc-add-renders").append(window.ZetRenderSlots.countControl(current.slots.filter(id=>!id).length,count=>slotAction("add",undefined,count),{disabled:pending || slotPending.size>0}));
     const candidate=choice(), source=candidate || current?.findings;
     $("mc-feedback").value=feedback;
+    $("mc-current-prompt").textContent=current?.prompt || "";
+    $("mc-current-prompt-panel").hidden=!current?.prompt;
     $("mc-suggestions-title").textContent=candidate ? `Suggested changes · Slot ${current.slots.indexOf(preview)+1}` : "Suggested changes";
     $("mc-findings").replaceChildren();
     if(source?.comparison) {
@@ -330,6 +335,7 @@
     $("mc-continue-true-ups").hidden=view==="STYLE" || current?.mode==="true_up";
     $("mc-continue-true-ups").disabled=busy || !current?.can_continue;
     $("mc-undo").disabled=busy || !current?.can_undo;
+    $("mc-restart").disabled=busy || !character || (view==="STYLE" ? !references.length : !character.selected.STYLE);
     $("mc-analyze").disabled = !character || busy || !references.length;
     $("mc-add-reference").disabled = pending || references.length>=3;
     $("mc-upload-trigger").disabled = references.length>=3;
@@ -358,6 +364,24 @@
     await flush();
     const result=await api(`/${character.character_id}/boards/${view}/${action}`,"POST",{revision:board().revision});
     preview="";show(result.character);
+  }
+  function viewWorkStarted() {
+    return character.views.some(target=>{
+      if (target==="STYLE") return false;
+      const current=character.boards[target];
+      return Boolean(current?.template_candidate_id || current?.slots.some(Boolean) || current?.selected_id
+        || current?.mode==="true_up" || current?.can_undo);
+    });
+  }
+  async function restartCurrentOperation() {
+    const target=view, confirmViews=target==="STYLE" && viewWorkStarted();
+    if (confirmViews && !window.confirm("Restarting Style alignment will discard all view images and revisions. Continue?")) return;
+    await flush();
+    const result=await api(`/${character.character_id}/boards/${target}/restart`,"POST",{
+      revision:board().revision, confirm_views_discarded:confirmViews});
+    patch={}; feedback=""; feedbackDirty=false; suggestions.clear(); comparisonId="";
+    view=target; preview=target==="STYLE" ? "" : result.character.boards[target].template_candidate_id;
+    show(result.character);
   }
   async function load() {
     if (universe!==bridge.universe()) { generation++; clearTimeout(pollTimer); character=null; patch={}; universe=bridge.universe(); entryAsset=null; }
@@ -391,6 +415,7 @@
   });});
   $("mc-continue-true-ups").addEventListener("click",()=>act(()=>boardAction("continue")));
   $("mc-undo").addEventListener("click",()=>act(()=>boardAction("undo")));
+  $("mc-restart").addEventListener("click",()=>act(restartCurrentOperation));
   $("mc-delete").addEventListener("click",()=>act(()=>deleteCharacter(character.character_id,character.name)));
   $("mc-continue").addEventListener("click",()=>act(async()=>{entryAsset=null;await open($("mc-continue-choice").value);}));
   $("mc-generate").addEventListener("click",()=>act(()=>generateImage(false)));

@@ -247,6 +247,7 @@ class MinorCharacterWorkflow:
     def board_action(self, sid, view, action, expected=None, data=None):
         sid = self._canonical(sid)["session_id"]
         data = data or {}
+        restart_style = False
         with self._lock(sid):
             session = self._read(sid)
             board = self._board(session, view, expected)
@@ -267,11 +268,54 @@ class MinorCharacterWorkflow:
                 board.clear()
                 board.update(restored, slots=[None] * 4, selected_id="", prior_selection_id="", undo=None, revision=revision)
                 board["restored_source_id"] = board["edit"]["candidate_id"]
+            elif action == "restart":
+                if self._busy(session):
+                    raise QuickCharacterWizardConflict("Wait for the current image task to finish before restarting.")
+                if view == "STYLE":
+                    if not session["references"]:
+                        raise QuickCharacterWizardError("Add at least one reference image before restarting Style alignment.")
+                    views_started = any(
+                        other["template_candidate_id"] or any(other["slots"]) or other["selected_id"]
+                        or other["mode"] == "true_up" or other["undo"]
+                        for target, other in session["boards"].items() if target != "STYLE")
+                    if views_started and data.get("confirm_views_discarded") is not True:
+                        raise QuickCharacterWizardConflict(
+                            "Restarting Style alignment discards all view images and revisions. Confirm to continue.")
+                    for target in self._views(session):
+                        revision = session["boards"][target]["revision"] + 1
+                        session["boards"][target] = self._empty_board(session, target)
+                        session["boards"][target]["revision"] = revision
+                    session.update(selected={}, notes="", changes="", description="", identity="",
+                        observations=[], proposals=[], questions=[], answers=[], proposals_approved=False,
+                        needs_analysis=True, revision_id=uuid4().hex, status="DRAFT_READY",
+                        job={"kind": "draft", "status": "COMPLETE", "error": ""},
+                        active_view="STYLE", preview_candidate_id="")
+                    for key in ("reconstruction_id", "target_hash", "description_override", "analysis_inputs"):
+                        session.pop(key, None)
+                    self._write(session)
+                    restart_style = True
+                else:
+                    if not session["selected"].get("STYLE"):
+                        raise QuickCharacterWizardConflict("Select a style-alignment image before restarting this view.")
+                    revision = board["revision"] + 1
+                    board.clear()
+                    board.update(self._empty_board(session, view))
+                    board["revision"] = revision
+                    session["selected"].pop(view, None)
+                    session["preview_candidate_id"] = ""
+                    session["active_view"] = view
+                    candidate = self._new_candidate(session, view)
+                    session.update(status="RENDERING", job={"kind": "render", "status": "COMPLETE", "error": ""})
+                    self._write(session)
+                    self._submit(sid, self._render_job, candidate["candidate_id"], [])
+                    return self._public(session)
             else:
                 raise QuickCharacterWizardError("Choose a board action.")
-            board["revision"] += 1
-            self._write(session)
-            return self._public(session)
+            if not restart_style:
+                board["revision"] += 1
+                self._write(session)
+                return self._public(session)
+        return self._analyze(sid)
 
     @staticmethod
     def _edit_board(board, data):

@@ -126,6 +126,8 @@ Original reconstruction sources are analysis-only. Styled candidates may enter t
 
 Minor Characters use fresh named universe-local workspaces with one current board for style and each view. Selected style enables independent view alignment; selecting an aligned view gates its true-ups. Only generated view true-ups can lock; carry does not change eligibility. Selection requires current slot membership; immutable Inventory locks survive slot replacement, refinement, undo and deletion. Refinement carries at most one selected image in its same slot and clears other slots. One undo per board restores prompt/supporting state with empty slots and no redo. Private frozen sources support replay without image history. Revisions fence stale mutations; late results cannot restore discarded membership. Comparison is display-only. Retired records are excluded without migration. See [ADR 0015](DECISIONS/0015-minor-character-alignment.md); queue ownership and image integrity remain applicable.
 
+Restarting a view removes only that view's current working membership and selection, then creates a fresh alignment from the selected style image. Restarting STYLE resets all stage boards and analysis-derived inputs, while retaining original references and immutable Inventory locks. When any view work exists, the STYLE restart API requires explicit confirmation. Every reset increments board revisions; late results from discarded candidates cannot restore membership.
+
 ## GitHub capture and production promotion
 
 Frozen reports bind request IDs to repository/content hashes. Uncertain creation
