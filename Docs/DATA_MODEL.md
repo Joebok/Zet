@@ -151,6 +151,13 @@ Inbox/Receipts/Routes. They are producer-local lifecycle state, not library asse
 the derived library index. Native request payload version 1 extends the unchanged
 File Proxy protocol-v1 envelope. [Shared AI jobs](COMPONENTS/AI_JOBS.md) owns interfaces.
 
+`DeletedJobs/<sha256(job_id)>.json` version 1 is a producer-local deletion fence:
+job/producer/universe identity, deletion timestamp, cleanup-complete flag and an
+optional cleanup error. It precedes payload deletion; incomplete cleanup is visible
+and retryable. Completed deletions are excluded from activity/history and cannot be
+republished or collected under the same identity. This marker and shared locks
+survive cleanup; authored workflow/library records are not deletion targets.
+
 Collection diagnostics add `failure_stage`, `exception_type`, `affected_path` and
 `failed_at` to local job records. Receipts retain `execution_status` separately
 from `answer_status`; image application can include `applied_artifact` with its

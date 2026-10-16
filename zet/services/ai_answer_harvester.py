@@ -494,6 +494,8 @@ class AIAnswerHarvester:
     def apply_answer_folder(self, answer_path: Path) -> HarvestResult:
         queue_root = Path(self.path_service.config.base_ai_queue_path)
         with file_lock(self.ai_proxy_path_service.lifecycle.lock_path(answer_path.name)):
+            if self.ai_proxy_path_service.jobs.repository.is_deleted(answer_path.name):
+                return HarvestResult(answer_path, answer_path.name, None, "DELETED", "Job was explicitly deleted.")
             receipt = self.ai_proxy_path_service.lifecycle.read_receipt(answer_path.name)
             if receipt:
                 return HarvestResult(answer_path, answer_path.name, receipt.get("asset_id"),

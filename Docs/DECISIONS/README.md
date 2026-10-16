@@ -1,5 +1,8 @@
 # Architectural decision records
 
+[0019 — Failed AI job deletion retains a local fence](0019-failed-ai-job-deletion.md)
+records confirmed queue cleanup and replay fencing (2026-10-16).
+
 [0017 — Durable image harvest admits dependent analysis](0017-image-harvest-admission.md)
 records the image completion barrier and continuation publication identities
 (accepted 2026-10-16).

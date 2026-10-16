@@ -3228,6 +3228,15 @@ def create_app(
         return AIQueueQueryService(_app(app.state.config_path).ai_proxy_service.ai_proxy_path_service).query(
             universe=universe_filter, provider=provider, workflow=workflow, status=status, cursor=cursor, limit=limit)
 
+    @app.delete("/api/ai/jobs/{job_id}")
+    def delete_failed_ai_job(job_id: str):
+        try:
+            return _app(app.state.config_path).delete_failed_ai_job(job_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (OSError, TimeoutError) as exc:
+            raise HTTPException(status_code=409, detail=f"Cleanup incomplete; retry Delete job. {exc}") from exc
+
     @app.post("/api/library-index/history-backfill")
     def library_index_history_backfill(
         batch_size: int = Query(200, ge=1, le=200),

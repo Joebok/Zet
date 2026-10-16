@@ -51,6 +51,9 @@ class AIQueueLifecycleService:
 
     def _drain_answer(self, source: Path, client: FileProxyClient) -> Path:
         """Copy a complete local-producer result to disk before unlinking Dropbox."""
+        from zet.repositories.ai_job_repository import AIJobRepository
+        if AIJobRepository(self.root).is_deleted(source.name):
+            raise ValueError("Job was explicitly deleted.")
         if source.parent.resolve() != client.answer_root.resolve():
             raise ValueError("Only direct File_Proxy answers can be drained.")
         if source.is_symlink():
@@ -111,6 +114,8 @@ class AIQueueLifecycleService:
         """Persist completion before removing a duplicate payload or route."""
         job_id = answer_path.name
         from zet.repositories.ai_job_repository import AIJobRepository
+        if AIJobRepository(self.root).is_deleted(job_id):
+            return
         ask = self._json(answer_path / "ask_manifest.json")
         answer = self._json(answer_path / "answer_manifest.json")
         outcome = self._json(answer_path / "proxy_result.json")
@@ -164,9 +169,12 @@ class AIQueueLifecycleService:
         return client
 
     def inbox_answers(self) -> list[Path]:
+        from zet.repositories.ai_job_repository import AIJobRepository
         if not self.inbox_root.is_dir():
             return []
-        return sorted(path for path in self.inbox_root.iterdir() if path.is_dir() and not path.name.startswith("."))
+        repository = AIJobRepository(self.root)
+        return sorted(path for path in self.inbox_root.iterdir() if path.is_dir() and not path.name.startswith(".")
+                      and not repository.is_deleted(path.name))
 
     def recent_receipts(self, limit: int = 20) -> list[dict]:
         if not self.receipt_root.is_dir() or limit <= 0:

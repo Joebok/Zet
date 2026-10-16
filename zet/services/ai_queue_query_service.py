@@ -30,7 +30,7 @@ class AIQueueQueryService:
             if not root.is_dir():
                 continue
             for path in root.iterdir():
-                if not path.is_dir() or path.name.startswith("."):
+                if not path.is_dir() or path.name.startswith(".") or self.repository.is_deleted(path.name):
                     continue
                 try:
                     ask = json.loads((path / "ask_manifest.json").read_text(encoding="utf-8"))
@@ -79,19 +79,29 @@ class AIQueueQueryService:
                                     "created_at": ""})
         for _, receipt in self.paths.lifecycle.iter_receipts() or ():
             job_id = receipt.get("ask_id")
-            if not job_id:
+            if not job_id or self.repository.is_deleted(job_id):
                 continue
             status = str(receipt.get("status", "APPLIED"))
             normalized = "FAILED" if "FAIL" in status or receipt.get("answer_status") in {"FAILED", "ERROR"} else "SUPERSEDED" if "SUPERSEDED" in status else "COMPLETE"
             rows[job_id] = {**rows.get(job_id, {}), **receipt, "status": normalized,
                            "harvested_at": receipt.get("harvested_at") or receipt.get("recorded_at", ""),
                            "details": receipt.get("error_message") or receipt.get("message", "")}
+        deleted_root = self.repository.root.parent / "DeletedJobs"
+        for path in deleted_root.glob("*.json"):
+            try:
+                deleted = json.loads(path.read_text(encoding="utf-8"))
+                if not deleted.get("cleanup_complete"):
+                    rows[deleted["ask_id"]] = {**deleted, "status": "HARVEST_FAILED",
+                        "failure_stage": "deletion", "details": deleted.get("error") or "Cleanup interrupted; retry Delete job.",
+                        "created_at": deleted.get("deleted_at", "")}
+            except (OSError, ValueError, KeyError):
+                continue
         for row in rows.values():
             try:
                 row["age_seconds"] = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(str(row.get("created_at") or "").replace("Z", "+00:00"))).total_seconds()))
             except (ValueError, TypeError):
                 row["age_seconds"] = None
-            row["recovery_action"] = ({"HARVEST_FAILED": "Fix the collection error, then retry harvesting this retained answer.",
+            row["recovery_action"] = "Retry Delete job to finish removing files." if row.get("failure_stage") == "deletion" else ({"HARVEST_FAILED": "Fix the collection error, then retry harvesting this retained answer.",
                 "RECOVERY_REQUIRED": "Inspect the recovery report and restore verified ownership/routes before retrying.",
                 "TRANSFERRING": "Wait for complete files and matching checksums; preserve the payload.",
                 "RECONCILING": "Inspect request and receipt evidence before creating another attempt.",

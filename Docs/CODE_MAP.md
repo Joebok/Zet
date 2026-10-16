@@ -46,6 +46,14 @@ Use this map to select a narrow search, inspect the named entry point and caller
 
 ## Search and impact routine
 
+Failed AI job deletion: [AIJobCleanupService](../zet/services/ai_job_cleanup_service.py)
+owns status/producer/path validation, job-scoped payload cleanup and retryable
+partial failure under coordinator/job locks. `ZetApp.delete_failed_ai_job`,
+`DELETE /api/ai/jobs/{job_id}` and `ai_queue.js` expose the confirmed action.
+`AIJobRepository.DeletedJobs` fences queries, publication and collection against
+late/replayed answers. Disposable service/API/browser checks cover cleanup; S4
+remains queue/background/history regression coverage, without a new scenario.
+
 1. Search the capability's named symbol with `rg -n '<symbol>' zet Scripts tests` to find real consumers; do not assume all entry points go through a facade method.
 2. Read the relevant approved E2E scenario and [fixture server](../tests/e2e/server.py) as well as implementation. Fast fixtures isolate their library and replace external model/render responses; they do not prove live-service correctness. Obtain explicit approval before adding scenarios.
 3. For serialization changes inspect both producer and consumer plus [DATA_MODEL](DATA_MODEL.md). For async changes inspect the owning workflow and queue contract.

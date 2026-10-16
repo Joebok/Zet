@@ -20,6 +20,12 @@ class AIJobRepository:
     def path(self, job_id):
         return self.root / (hashlib.sha256(str(job_id).encode()).hexdigest() + ".json")
 
+    def deletion_path(self, job_id):
+        return self.root.parent / "DeletedJobs" / self.path(job_id).name
+
+    def is_deleted(self, job_id):
+        return self.deletion_path(job_id).exists()
+
     def get(self, job_id):
         try:
             value = json.loads(self.path(job_id).read_text(encoding="utf-8"))
@@ -28,6 +34,8 @@ class AIJobRepository:
             return {}
 
     def put(self, job_id, record):
+        if self.is_deleted(job_id):
+            return
         write_json_atomic(self.path(job_id), {**record, "ask_id": job_id, "updated_at": timestamp()})
 
     def update(self, job_id, **changes):
@@ -46,7 +54,7 @@ class AIJobRepository:
             for path in self.root.glob("*.json"):
                 try:
                     value = json.loads(path.read_text(encoding="utf-8"))
-                    if isinstance(value, dict):
+                    if isinstance(value, dict) and not self.is_deleted(value.get("ask_id", "")):
                         yield value
                 except (OSError, ValueError):
                     continue

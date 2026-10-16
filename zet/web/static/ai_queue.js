@@ -1,6 +1,7 @@
 /* Live activity is read from the durable job feed, never inferred from an empty table. */
 (() => {
   let timer = null, request = null, cursor = null, rows = [], generation = 0;
+  let deleting = false, actionError = "";
   const filters = { universe_filter: "ai-filter-universe", provider: "ai-filter-provider", workflow: "ai-filter-workflow", status: "ai-filter-status" };
   const active = () => document.querySelector("#ai-controls-page")?.classList.contains("active");
   function render() {
@@ -19,12 +20,38 @@
         const link = document.createElement("a"); link.href = item.workflow_url; link.textContent = row.children[1].textContent;
         row.children[1].replaceChildren(link);
       }
+      const actions = document.createElement("td");
+      if (["HARVEST_FAILED", "RECOVERY_REQUIRED"].includes(item.status)) {
+        const button = document.createElement("button");
+        button.type = "button"; button.textContent = "Delete job"; button.disabled = deleting;
+        button.addEventListener("click", () => void deleteJob(item));
+        actions.append(button);
+      }
+      row.append(actions);
       body.append(row);
     }
     document.querySelector("#ai-jobs-more").hidden = !cursor;
   }
+  async function deleteJob(item) {
+    if (deleting || !window.confirm(`Permanently delete AI job ${item.ask_id}?\n\nThis removes its queue files, prompts, answers and local recovery records. Library images and workflow records are preserved. The answer cannot be recovered.`)) return;
+    deleting = true; actionError = "";
+    generation++; request?.abort(); request = null;
+    render();
+    document.querySelector("#ai-jobs-status").textContent = `Deleting ${item.ask_id}…`;
+    try {
+      const response = await fetch(`/api/ai/jobs/${encodeURIComponent(item.ask_id)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error((await response.json()).detail || `Delete failed (${response.status})`);
+      cursor = null;
+    } catch (error) {
+      actionError = `Delete failed: ${error.message}`;
+    } finally {
+      deleting = false;
+      render();
+      await load();
+    }
+  }
   async function load(more = false) {
-    if (!active() || request) return;
+    if (!active() || request || deleting) return;
     const version = generation;
     const controller = new AbortController(); request = controller;
     const status = document.querySelector("#ai-jobs-status");
@@ -57,7 +84,7 @@
         recent.append(row);
       }
       document.querySelector("#recent-harvest-count").textContent = `${(payload.recent_harvests || []).length} recent harvested job(s)`;
-      status.textContent = rows.length ? `${payload.total} job(s) · Updated ${new Date().toLocaleTimeString()}` : "No AI jobs match these filters.";
+      status.textContent = actionError || (rows.length ? `${payload.total} job(s) · Updated ${new Date().toLocaleTimeString()}` : "No AI jobs match these filters.");
     } catch (error) {
       if (error.name !== "AbortError") status.textContent = `${rows.length ? "Showing previous activity. " : ""}Queue unavailable: ${error.message}`;
     } finally { if (request === controller) request = null; }

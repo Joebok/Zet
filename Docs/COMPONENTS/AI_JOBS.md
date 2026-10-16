@@ -106,6 +106,28 @@ The activity table displays Universe, Status, Workflow / target, Task, Model,
 Created and Details, in that order. The former Body-Reference-only Codex panel is
 removed.
 
+### Deleting retained failures
+
+`DELETE /api/ai/jobs/{job_id}`, through `ZetApp.delete_failed_ai_job`, delegates
+to [AIJobCleanupService](../../zet/services/ai_job_cleanup_service.py). AI Queue
+offers a confirmed **Delete job** action on `HARVEST_FAILED` and
+`RECOVERY_REQUIRED` rows. The service rechecks current status under the coordinator
+and common job locks, refuses Ask/Running work, verifies local producer evidence,
+rejects conflicting job identities and linked/junction paths, and removes only
+known job-scoped transport/local-state files. Missing files are harmless. Shared
+jobs without verifiable ownership need their metadata restored before deletion.
+
+Cleanup includes Answer, Inbox, Debug, manual queue payloads, matching archived
+payloads, staging/partial transfers, Jobs, Routes, Receipts, StructuredResults and
+parent Followup reservations/queue markers. It never follows output destinations
+into the library or deletes domain workflow records, images or shared lock files.
+Busy files leave a visible `HARVEST_FAILED` deletion row with a retry action.
+
+A minimal hashed `DeletedJobs` marker is committed before payload removal. Queries,
+collection, adoption and publication fence the deleted identity, including late
+synced answers and deterministic continuation replay. Start a new workflow attempt
+to request replacement work. See [ADR 0019](../DECISIONS/0019-failed-ai-job-deletion.md).
+
 ## Model catalog and shared control
 
 AI_Proxy publishes `File_Proxy/Control/model_catalog.json` and serves

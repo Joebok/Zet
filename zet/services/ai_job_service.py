@@ -33,6 +33,9 @@ class AIJobService:
     def inspect(self, job_id):
         """Inspect durable state without collecting, registering, or modifying a job."""
         self.validate_id(job_id)
+        if self.repository.is_deleted(job_id):
+            return {"ask_id": job_id, "status": "DELETED", "location": "", "path": "",
+                    "blocking_reason": "Job was explicitly deleted."}
         record = self.repository.get(job_id)
         receipt = self.lifecycle.read_receipt(job_id)
         info = {"ask_id": job_id, "status": "RECONCILING", "location": "", "path": "",
@@ -121,6 +124,8 @@ class AIJobService:
         job_id = job_id or "AI_" + uuid4().hex
         self.validate_id(job_id)
         with (admission() if admission else nullcontext()), file_lock(self.lifecycle.lock_path(job_id)):
+            if self.repository.is_deleted(job_id):
+                raise AIExecutionError("This AI job was deleted. Start a new attempt to retry.")
             if self.repository.get(job_id) or (self.client.ask_root / job_id).exists() or (self.client.running_root / job_id).exists():
                 return job_id
             from zet.services.ai_model_catalog_service import AIModelCatalogService
@@ -152,6 +157,8 @@ class AIJobService:
         """Only verified, matching, durably copied answers reach a workflow handler."""
         self.validate_id(job_id)
         with file_lock(self.lifecycle.lock_path(job_id)):
+            if self.repository.is_deleted(job_id):
+                return None
             inbox = self.lifecycle.inbox_root / job_id
             source = self.client.answer_root / job_id
             if self.lifecycle.read_receipt(job_id):
@@ -230,6 +237,8 @@ class AIJobService:
         envelope = {"protocol_version": 1, "job_id": job_id, "subscriber_id": "zet", "worker": "legacy-codex",
                     "producer_id": socket.gethostname(), "created_at": created_at, "files": [], "route_required": False}
         with file_lock(self.lifecycle.lock_path(job_id)):
+            if self.repository.is_deleted(job_id):
+                return
             self.repository.register(job_id, ask, envelope)
             if result is None and not error:
                 return
@@ -261,6 +270,8 @@ class AIJobService:
             return self._result(job_id)
 
     def _result(self, job_id):
+        if self.repository.is_deleted(job_id):
+            raise AIExecutionError("This AI job was deleted. Start a new attempt to retry.")
         path = self.ready_answer(job_id)
         if path is None:
             return None

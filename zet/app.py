@@ -1231,6 +1231,10 @@ class ZetApp:
         """Archive harvested AI answer folders."""
         return self._indexed_write(self.ai_proxy_service.archive_harvested_answers)
 
+    def delete_failed_ai_job(self, job_id: str) -> dict:
+        from zet.services.ai_job_cleanup_service import AIJobCleanupService
+        return AIJobCleanupService(self.ai_proxy_service.ai_proxy_path_service).delete(job_id)
+
     def cleanup_ai_queue(self) -> dict:
         """Report legacy queue cleanup candidates without deleting files."""
         return self.ai_proxy_service.cleanup_ai_queue()

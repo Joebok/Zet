@@ -71,6 +71,9 @@ class FileProxyClient:
             return self._publish(staging, job_id, worker_type)
 
     def _publish(self, staging: Path, job_id: str, worker_type: str) -> Path:
+        from zet.repositories.ai_job_repository import AIJobRepository
+        if AIJobRepository(queue_local_state_root(self.base_queue_path)).is_deleted(job_id):
+            raise ValueError("This AI job was deleted. Start a new attempt to retry.")
         initial = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
         if worker_type == "ollama_generate" and str(initial.get("ollama_model") or initial.get("model") or "").startswith("codex:"):
             worker_type = "codex_generate"
@@ -225,6 +228,9 @@ class FileProxyClient:
 
     def answer_block(self, answer: Path) -> dict:
         """Read-only classification; missing routes are not an in-flight transfer."""
+        from zet.repositories.ai_job_repository import AIJobRepository
+        if AIJobRepository(queue_local_state_root(self.base_queue_path)).is_deleted(answer.name):
+            return {"status": "DELETED", "reason_code": "DELETED", "blocking_reason": "Job was explicitly deleted."}
         reason = self.answer_blocked_reason(answer)
         if not reason:
             return {}
@@ -240,6 +246,9 @@ class FileProxyClient:
                 "status": "TRANSFERRING" if code == "INCOMPLETE_TRANSFER" else "RECOVERY_REQUIRED"}
 
     def answer_blocked_reason(self, answer: Path) -> str:
+        from zet.repositories.ai_job_repository import AIJobRepository
+        if AIJobRepository(queue_local_state_root(self.base_queue_path)).is_deleted(answer.name):
+            return "Job was explicitly deleted."
         if (answer / "harvest_manifest.json").is_file():
             return ""
         try:

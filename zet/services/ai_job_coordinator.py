@@ -199,7 +199,7 @@ class AIJobCoordinator:
                 if producer and producer.casefold() != socket.gethostname().casefold():
                     continue
                 job_id = ask.get("ask_id") or harvest.get("ask_id")
-                if not job_id or paths.lifecycle.read_receipt(job_id) or harvest.get("status") == "HARVESTED_FOR_EXTERNAL_CONSUMER":
+                if not job_id or self.repository.is_deleted(job_id) or paths.lifecycle.read_receipt(job_id) or harvest.get("status") == "HARVESTED_FOR_EXTERNAL_CONSUMER":
                     continue
                 answer_path = path.parent / "answer_manifest.json"
                 answer = json.loads(answer_path.read_text(encoding="utf-8")) if answer_path.is_file() else {}
@@ -240,6 +240,8 @@ class AIJobCoordinator:
             logging.getLogger(__name__).exception("Legacy collection failed for %s; continuing other consumers", app.universe_id)
         for record in records:
             job_id = record["ask_id"]
+            if self.repository.is_deleted(job_id):
+                continue
             if paths.lifecycle.read_receipt(job_id):
                 continue
             if record.get("harvest_state") == "HARVEST_FAILED":
