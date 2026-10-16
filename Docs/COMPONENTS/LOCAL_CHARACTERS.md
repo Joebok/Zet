@@ -33,6 +33,8 @@ with pending workflow artifacts so retries keep the original edit inputs.
 
 Preserve the review semantics, live-batch/checksum lock requirements, universe ownership, and immutable dependent locks in [INVARIANTS](../INVARIANTS.md). Failure modes include unavailable external rendering/review models, stale gate/rank results, changed/missing source snapshots, invalid batch IDs, missing `spec.json`, missing locked bytes, and interrupted runners. Stop/resume/rerun and recovery must respect superseded work; do not reset persisted state blindly.
 
+Deleting a Body-Reference batch is blocked while its runner still owns the durable runner lock. A persisted active status with no live runner is interrupted work and can be deleted without first changing it to cancelled/stopped; queued asks are withdrawn during deletion.
+
 For a new gate, update shared policy/registry and the owning pipeline inputs/prompts and relevant approved scenario assertions; new coverage requires approval. For a new local asset operation use the local store/services and downstream source provider, not `Assets.json` stage mutation. Data formats belong to [DATA_MODEL](../DATA_MODEL.md); prompt mechanics belong to [PROMPTS](PROMPTS.md).
 
 ## Verification and decisions

@@ -1126,11 +1126,6 @@ Do not explain your reasoning."""
                 or not root.is_relative_to(runs_root)):
             raise LocalBodyReferenceError("Invalid Local Body-Reference batch location.")
         run = self.detail(run_id)
-        state_path = root / "state.json"
-        try:
-            state = self._read_json(state_path) if state_path.is_file() else {}
-        except (OSError, ValueError, json.JSONDecodeError):
-            state = {}
         candidates = {item["candidate_id"]: item for item in run.get("candidates", [])}
         active_selections = {
             view: candidate_id
@@ -1154,13 +1149,8 @@ Do not explain your reasoning."""
         if any(record.get("selected") and record.get("batch_id") == run_id and not record.get("locked")
                for record in run.get("local_assets", {}).values()):
             raise LocalBodyReferenceError("Lock or unselect this batch's local assets before deleting it.")
-        if state_path.is_file():
-            try:
-                state = self._read_json(state_path)
-            except (OSError, ValueError, json.JSONDecodeError):
-                state = {}
-            if state.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
-                raise LocalBodyReferenceError("Stop the batch and wait for it to finish before deleting it.")
+        if self._runner_is_active(run_id):
+            raise LocalBodyReferenceError("Wait for the batch runner to finish before deleting it.")
         self._withdraw_queued_asks(run_id)
         shutil.rmtree(root)
         return {"deleted": True, "run_id": run_id}
