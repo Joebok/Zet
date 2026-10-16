@@ -4452,6 +4452,7 @@ function setupTabs() {
       closeToolbarSettingsMenu();
       closeHelpMenu();
       try {
+        if (button.dataset.page === "minor-characters") await window.zetMinorCharacters?.navigateList();
         const changed = await runGuardedTransition(() => activatePage(button.dataset.page, {
           skipAutosave: true,
           universeId: button.dataset.universeId || "",
@@ -11765,6 +11766,7 @@ document.addEventListener("click", (event) => {
 responsiveSectionMenu.addEventListener("change", async () => {
   const page = responsiveSectionMenu.value;
   if (!page) return;
+  if (page === "minor-characters") await window.zetMinorCharacters?.navigateList();
   if (!(await runGuardedTransition(() => activatePage(page, { skipAutosave: true })))) {
     renderResponsiveSectionMenu();
   }

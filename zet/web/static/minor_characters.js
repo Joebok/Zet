@@ -9,17 +9,16 @@
     primary_reference_id:"mc-primary", comparison_reference_id:"mc-comparison-reference"};
   let character = null, universe = "", characters = [], references = [], entryAsset = null;
   let patch = {}, saving = null, saveTimer = null, pollTimer = null, pending = false, generation = 0;
-  let view = "FRONT", preview = "", referenceSignature = "";
-  let waitingForCandidate = null;
-  let iterationId = "";
+  let view = "STYLE", preview = "", referenceSignature = "";
   let feedback = "";
   const suggestions = new Map();
+  let comparisonId = "";
   const slotPending = new Set();
   const element = (tag, text = "", cls = "") => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
   const button = (text, action, run = act) => { const b = element("button", text); b.type = "button"; b.addEventListener("click", () => run(action)); return b; };
   const url = value => value + (value.includes("?") ? "&" : "?") + "universe_id=" + encodeURIComponent(universe);
   const message = (text, error = false) => { $("mc-message").textContent = text; $("mc-message").classList.toggle("error", error); };
-  const label = value => value === "FRONT" ? "Front" : value.includes("3_4") ? "Three-quarter" : "Profile";
+  const label = value => value === "STYLE" ? "Style alignment" : value === "FRONT" ? "Front" : value.includes("3_4") ? "Three-quarter" : "Profile";
   async function api(path = "", method = "GET", body) {
     if (universe !== bridge.universe()) throw new Error("The active universe changed. Reopen Minor Characters.");
     return bridge.fetchJson("/api/minor-characters" + path, {method, bindToPage:false,
@@ -34,7 +33,7 @@
   function route(id, replace = false) {
     const target = new URL(location.href); target.searchParams.set("page", "minor-characters");
     if (id) target.searchParams.set("minor_character", id); else target.searchParams.delete("minor_character");
-    history[replace ? "replaceState" : "pushState"]({}, "", target);
+    if (target.href !== location.href) history[replace ? "replaceState" : "pushState"]({}, "", target);
   }
   function changed(key, value) {
     patch[key] = value; clearTimeout(saveTimer); message("Saving…");
@@ -48,6 +47,7 @@
     saving = api(`/${id}`, "PATCH", data).then(({character:next}) => {
       if (character?.character_id !== id) return;
       for (const key of Object.keys(data)) if (patch[key] === data[key]) delete patch[key];
+      if (patch.board_edit) patch.board_edit.revision = next.boards[patch.board_edit.view].revision;
       if (data.references && !patch.references) references = next.references;
       show(next); message("Saved");
     }).finally(() => { saving = null; });
@@ -79,32 +79,25 @@
   }
   async function list() {
     await flush(); generation++; clearTimeout(pollTimer); character = null; patch = {}; route("");
-    $("mc-editor").hidden = true; $("mc-back").hidden = true; $("mc-list-panel").hidden = false;
+    $("mc-editor").hidden = true; $("mc-review").close(); $("mc-list-panel").hidden = false;
     $("mc-inventory-entry").hidden = !entryAsset; await refreshList(); message("");
   }
   async function open(id) {
-    $("mc-review").close(); iterationId = "";
+    $("mc-review").close(); comparisonId = "";
     await flush(); generation++; clearTimeout(pollTimer); patch = {}; feedback = ""; suggestions.clear();
     const result = await api(`/${id}`); character = result.character;
     references = character.references; referenceSignature = "";
-    view = character.views.includes(character.active_view) ? character.active_view : "FRONT";
-    preview = character.preview_candidate_id || ""; iterationId=character.active_iteration_id || ""; route(character.character_id);
-    $("mc-list-panel").hidden = true; $("mc-editor").hidden = false; $("mc-back").hidden = false;
+    view = character.views.includes(character.active_view) ? character.active_view : "STYLE";
+    preview = character.preview_candidate_id || ""; route(character.character_id);
+    $("mc-list-panel").hidden = true; $("mc-editor").hidden = false;
     show(character); message("");
   }
   async function deleteCharacter(id, name) {
     if (!window.confirm(`Delete Minor Character “${name}”? Published Inventory images will be kept.`)) return;
     await flush();generation++;clearTimeout(pollTimer);
     await api(`/${id}`,"DELETE");
-    $("mc-review").close();character=null;patch={};entryAsset=null;waitingForCandidate=null;
+    $("mc-review").close();character=null;patch={};entryAsset=null;
     await list();message(`Deleted ${name}.`);
-  }
-  async function deleteIteration(id, number) {
-    if (!window.confirm(`Delete iteration ${number}? Its working selection will be cleared. Published Inventory images will be kept.`)) return;
-    await flush();generation++;clearTimeout(pollTimer);$("mc-review").close();waitingForCandidate=null;
-    const result=await api(`/${character.character_id}/iterations/${id}`,"DELETE");
-    preview=result.character.preview_candidate_id || "";iterationId=result.character.active_iteration_id || "";
-    show(result.character);message(`Deleted iteration ${number}.`);
   }
   function imageFigure(source, caption) {
     const figure = element("figure"); const img = document.createElement("img"); img.src = url(source); img.alt = caption;
@@ -128,6 +121,9 @@
     });
   }
   function show(next) {
+    const edit=patch.board_edit, previous=edit && character?.boards[edit.view], incoming=edit && next.boards[edit.view];
+    if (previous && incoming && previous.template_candidate_id===incoming.template_candidate_id
+        && incoming.revision>=edit.revision) edit.revision=incoming.revision;
     character = next;
     if (!patch.references) references = character.references;
     for (const [key, id] of Object.entries(fields)) {
@@ -142,6 +138,11 @@
     $("mc-style-text").textContent = character.target_brief?.style?.text || "";
     $("mc-questions").replaceChildren();
     for (const question of character.questions) $("mc-questions").append(element("p", question));
+    if (!patch.board_edit) {
+      const edit = board()?.edit;
+      feedback = edit?.instructions || "";
+      if (edit?.candidate_id) suggestions.set(edit.candidate_id, new Set(edit.item_ids));
+    }
     renderImages(); updateButtons();
     if (character.job.error) message(character.job.error, true);
     clearTimeout(pollTimer);
@@ -154,128 +155,168 @@
     }
   }
   function choice() { return character?.candidates.find(c=>c.candidate_id===preview && c.view===view); }
-  function iteration() { return character?.iterations.find(i=>i.iteration_id===iterationId && i.view===view); }
-  function occupied() { return (iteration()?.slots || []).map(id=>character.candidates.find(c=>c.candidate_id===id)).filter(c=>c?.image_url); }
+  function board() { return character?.boards[view]; }
+  function occupied() { return (board()?.slots || []).map(id=>character.candidates.find(c=>c.candidate_id===id)).filter(c=>c?.image_url); }
+  function persistEdit() {
+    const source = choice()?.candidate_id || board()?.edit.candidate_id || "";
+    changed("board_edit", {view, revision:board().revision, candidate_id:source,
+      item_ids:[...(suggestions.get(source) || [])], instructions:feedback});
+  }
   async function selectCandidate(id = preview) {
-    await flush(); show((await api(`/${character.character_id}/select`,"POST",{candidate_id:id})).character);
+    await flush(); show((await api(`/${character.character_id}/select`,"POST",{candidate_id:id,revision:board().revision})).character);
   }
   async function slotAction(action, slot, count = 1) {
-    const id=character.character_id, target=iterationId, current=generation, key=`${id}:${target}:${slot ?? "add"}`;
+    const id=character.character_id, target=view, current=generation, key=`${id}:${target}:${slot ?? "add"}`;
     if (slotPending.has(key)) return;
     slotPending.add(key); renderImages();
     try {
       await flush();
-      const result=await api(`/${id}/iterations/${target}/slots`,"POST",{action,slot,count});
+      const result=await api(`/${id}/boards/${target}/slots/action`,"POST",{action,slot,count,revision:board().revision});
       if (character?.character_id===id && current===generation) show(result.character);
     } catch (error) { message(error.message,true); }
     finally { slotPending.delete(key); if (character?.character_id===id) {renderImages();updateButtons();} }
   }
   async function lockCandidate(candidate) {
     await flush();
-    show((await api(`/${character.character_id}/lock`,"POST",{view:candidate.view,candidate_id:candidate.candidate_id})).character);
+    show((await api(`/${character.character_id}/lock`,"POST",{view:candidate.view,candidate_id:candidate.candidate_id,revision:board().revision})).character);
     message("Locked image saved to Inventory.");
+  }
+  function comparisons() {
+    const result = [], seen = new Set();
+    const add = (id, source, caption, checksum) => {
+      if (!source || seen.has(checksum || id)) return;
+      seen.add(checksum || id); result.push({id, source, caption});
+    };
+    const original = references.find(r=>r.reference_id===(patch.comparison_reference_id || character.comparison_reference_id)) || references[0];
+    if (original) add(original.reference_id, original.url, "Designated original", original.checksum);
+    const addCandidate = (id, caption) => {
+      const candidate = character.candidates.find(c=>c.candidate_id===id);
+      if (candidate) add(id, candidate.image_url, caption, candidate.sha256);
+    };
+    if (view==="STYLE") {
+      for (const id of character.boards.STYLE.slots) addCandidate(id,"Style-alignment candidate");
+    } else {
+      addCandidate(character.selected.STYLE,"Selected style alignment");
+      for (const other of character.views.filter(v=>v!=="STYLE" && v!==view)) addCandidate(character.selected[other],`Selected ${label(other).toLowerCase()}`);
+    }
+    return result;
   }
   function renderReview() {
     if (!$("mc-review").open) return;
     const list = occupied(), candidate = choice(), index = list.findIndex(c=>c.candidate_id===preview);
-    const ref = references.find(r=>r.reference_id===(patch.comparison_reference_id || character.comparison_reference_id)) || references[0];
     const previous=$("mc-review-prev"), next=$("mc-review-next");
     $("mc-review-navigation").append(previous,next);
     $("mc-review-pair").replaceChildren();
-    if (ref?.url) $("mc-review-pair").append(imageFigure(ref.url,"Original reference"));
-    if (candidate?.image_url && index>=0) {
-      const figure = imageFigure(candidate.image_url,`${character.name} · ${label(view)} · ${index+1} of ${list.length}`);
-      const select = button(character.selected[view]===preview ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
-      const lock=button(character.locked[view]?.candidate_id===preview ? "Locked" : "Lock",()=>lockCandidate(candidate));
-      lock.disabled=pending || character.locked[view]?.candidate_id===preview;
-      select.disabled = pending || character.selected[view]===preview;
-      const actions=element("div","","button-row mc-review-actions");actions.append(previous,select,lock,next);
-      figure.append(actions); $("mc-review-pair").append(figure);
+    const sources = comparisons();
+    const ref = sources.find(r=>r.id===comparisonId) || sources[0];
+    comparisonId = ref?.id || "";
+    if (ref) {
+      const figure=imageFigure(ref.source,ref.caption), arrows=element("div","","button-row mc-comparison-arrows");
+      for (const [text,direction] of [["‹",-1],["›",1]]) {
+        const arrow=button(text,()=>{
+          comparisonId=sources[(sources.indexOf(ref)+direction+sources.length)%sources.length].id;
+          renderReview();
+        }, operation=>operation());
+        arrow.setAttribute("aria-label",direction<0 ? "Previous comparison image" : "Next comparison image");
+        arrow.disabled=sources.length<2; arrows.append(arrow);
+      }
+      figure.append(arrows); $("mc-review-pair").append(figure);
     }
-    $("mc-review-prev").disabled = index<=0;
-    $("mc-review-next").disabled = index<0 || index>=list.length-1;
+    if (candidate?.image_url && index>=0) {
+      const figure=imageFigure(candidate.image_url,`${character.name} · ${label(view)} · Slot ${board().slots.indexOf(preview)+1}`);
+      const select=button(character.selected[view]===preview ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
+      select.disabled=pending || character.selected[view]===preview;
+      const actions=element("div","","button-row mc-review-actions");actions.append(previous,select);
+      if (candidate.can_lock) {
+        const lock=button(character.locked[view]?.candidate_id===preview ? "Locked" : "Lock",()=>lockCandidate(candidate));
+        lock.disabled=pending || character.locked[view]?.candidate_id===preview; actions.append(lock);
+      }
+      actions.append(next);figure.append(actions);$("mc-review-pair").append(figure);
+    }
+    previous.disabled=index<=0;next.disabled=index<0 || index>=list.length-1;
   }
   function navigateReview(direction) {
     const list=occupied(), index=list.findIndex(c=>c.candidate_id===preview), next=list[index+direction];
-    if (next) { preview=next.candidate_id; changed("preview_candidate_id",preview); renderImages(); updateButtons(); }
+    if (next) { previewCandidate(next.candidate_id); renderImages(); updateButtons(); }
+  }
+  function previewCandidate(id) {
+    if (preview!==id) feedback=board().edit.candidate_id===id ? board().edit.instructions : "";
+    preview=id;changed("preview_candidate_id",preview);persistEdit();
   }
   function inspect(id = preview) {
-    preview=id; changed("preview_candidate_id",preview); renderImages(); if (!$("mc-review").open) $("mc-review").showModal(); renderReview();
+    previewCandidate(id);renderImages(); if (!$("mc-review").open) $("mc-review").showModal(); renderReview();
   }
   function renderImages() {
-    if (!character.views.includes(view)) view = "FRONT";
-    const candidates = character.candidates.filter(c=>c.view===view);
-    if (waitingForCandidate?.view===view && candidates.length>waitingForCandidate.count) {
-      preview=candidates.at(-1).candidate_id; iterationId=candidates.at(-1).iteration_id;
-      waitingForCandidate=null; changed("preview_candidate_id",preview); changed("active_iteration_id",iterationId);
-    }
-    const iterations=character.iterations.filter(i=>i.view===view);
-    if (choice() && (waitingForCandidate===null) && !iteration()) iterationId=choice().iteration_id;
-    if (!iteration()) iterationId=iterations.at(-1)?.iteration_id || "";
-    if (!iteration()?.slots.includes(preview)) preview=iteration()?.slots.find(id=>id===character.selected[view]) || iteration()?.slots.find(Boolean) || "";
+    if (!character.views.includes(view)) view="STYLE";
+    const current=board();
+    if (!current?.slots.includes(preview)) preview=current?.slots.find(id=>id===character.selected[view]) || current?.slots.find(Boolean) || "";
     $("mc-tabs").replaceChildren();
     for (const target of character.views) {
-      const tab = button(label(target), async () => { view = target; preview = ""; iterationId=""; renderImages(); changed("active_view", view); changed("preview_candidate_id", preview); updateButtons(); });
-      tab.setAttribute("role", "tab"); tab.setAttribute("aria-selected", String(view===target)); $("mc-tabs").append(tab);
+      const tab=button(label(target),async()=>{
+        await flush();view=target;preview="";comparisonId="";feedback=character.boards[target]?.edit.instructions || "";
+        changed("active_view",view);show(character);
+      });
+      tab.disabled=target!=="STYLE" && !character.selected.STYLE && !character.boards[target]?.slots.some(Boolean);
+      tab.title=tab.disabled ? "Select a style-alignment image first" : "";
+      tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(view===target));$("mc-tabs").append(tab);
     }
-    $("mc-candidates").replaceChildren();
-    for (const [index, item] of iterations.entries()) {
-      const candidate=character.candidates.find(c=>c.candidate_id===(item.slots.find(id=>id===character.selected[view]) || item.slots.find(Boolean) || item.template_candidate_id));
-      const tile = button("", async () => { iterationId=item.iteration_id; preview=item.slots.find(Boolean) || ""; renderImages(); changed("active_iteration_id",iterationId); changed("preview_candidate_id", preview); updateButtons(); });
-      tile.className = "mc-candidate"; tile.setAttribute("aria-label", `Iteration ${index+1}`); tile.setAttribute("aria-pressed",String(iterationId===item.iteration_id));
-      if (candidate.image_url) { const img = document.createElement("img"); img.src = url(candidate.image_url); img.alt = `${label(view)} candidate`; tile.append(img); }
-      else tile.append(element("span", candidate.status.toLowerCase().replaceAll("_"," ")));
-      tile.append(element("span",`Iteration ${index+1}`));
-      if (item.slots.includes(character.selected[view])) tile.append(element("span","Selected"));
-      if (item.slots.includes(character.locked[view]?.candidate_id)) tile.append(element("span","Locked"));
-      const remove=button("Delete",()=>deleteIteration(item.iteration_id,index+1));remove.className="danger";
-      remove.setAttribute("aria-label",`Delete iteration ${index+1}`);remove.disabled=pending;
-      const entry=element("div","","mc-iteration-card");entry.append(tile,remove);$("mc-candidates").append(entry);
-    }
-    $("mc-slots").replaceChildren(); $("mc-add-renders").replaceChildren();
-    const board=iteration();
-    for (let slot=0;slot<4;slot++) {
-      const candidate=character.candidates.find(c=>c.candidate_id===board?.slots[slot]);
-      const card=element("section","","mc-slot"); card.append(element("strong",`Slot ${slot+1}`));
+    $("mc-stage-status").textContent=label(view)+(view==="STYLE" ? " · Select a style image to enable views" : current?.mode==="true_up" ? " · True-ups" : " · View alignment: select an image, then continue");
+    $("mc-slots").replaceChildren();$("mc-add-renders").replaceChildren();
+    for(let slot=0;slot<4;slot++) {
+      const candidate=character.candidates.find(c=>c.candidate_id===current?.slots[slot]);
+      const card=element("section","","mc-slot");card.append(element("strong",`Slot ${slot+1}`));
       card.classList.toggle("mc-slot-preview",candidate?.candidate_id===preview);
-      if (candidate?.image_url) {
-        const thumb=button("",()=>inspect(candidate.candidate_id)); thumb.className="mc-slot-image"; thumb.title="Inspect full size";
-        const img=document.createElement("img"); img.src=url(candidate.image_url); img.alt=`Slot ${slot+1} candidate`; thumb.append(img); card.append(thumb);
+      if(candidate && current.prior_selection_id===candidate.candidate_id) card.append(element("span","Prior selection","mc-prior-selection"));
+      if(candidate?.image_url) {
+        const thumb=button("",()=>inspect(candidate.candidate_id));thumb.className="mc-slot-image";thumb.title="Inspect full size";
+        const img=document.createElement("img");img.src=url(candidate.image_url);img.alt=`Slot ${slot+1} candidate`;thumb.append(img);card.append(thumb);
       } else card.append(element("p",candidate ? candidate.error || candidate.status.toLowerCase() : "Empty"));
       const controls=element("div","","button-row mc-slot-actions");
-      const submitting=slotPending.has(`${character.character_id}:${iterationId}:${slot}`);
-      const regen=button(candidate ? "Regen" : "Generate",()=>slotAction("regenerate",slot),operation=>operation()); regen.disabled=submitting || !board;
-      const clear=button("Clear",()=>slotAction("clear",slot),operation=>operation()); clear.disabled=submitting || !candidate;
+      const submitting=slotPending.size>0;
+      const regen=button(candidate ? "Regen" : "Generate",()=>slotAction("regenerate",slot),operation=>operation());
+      regen.disabled=pending || submitting || !current?.template_candidate_id;
+      const clear=button("Clear",()=>slotAction("clear",slot),operation=>operation());clear.disabled=pending || submitting || !candidate;
       const select=button(candidate && character.selected[view]===candidate.candidate_id ? "Selected" : "Select",async()=>{
-        preview=candidate.candidate_id;changed("preview_candidate_id",preview);await selectCandidate(candidate.candidate_id);
-      }); select.disabled=pending || !candidate?.image_url;
-      const lock=button(character.locked[view]?.candidate_id===candidate?.candidate_id && candidate ? "Locked" : "Lock",()=>lockCandidate(candidate));
-      lock.disabled=pending || !candidate?.image_url || character.locked[view]?.candidate_id===candidate?.candidate_id;
-      controls.append(clear,regen,select,lock); card.append(controls); $("mc-slots").append(card);
+        previewCandidate(candidate.candidate_id);await selectCandidate(candidate.candidate_id);
+      });select.disabled=pending || !candidate?.image_url;
+      controls.append(clear,regen,select);
+      if(candidate?.can_lock) {
+        const lock=button(character.locked[view]?.candidate_id===candidate.candidate_id ? "Locked" : "Lock",()=>lockCandidate(candidate));
+        lock.disabled=pending || character.locked[view]?.candidate_id===candidate.candidate_id;controls.append(lock);
+      }
+      card.append(controls);$("mc-slots").append(card);
     }
-    if (board) $("mc-add-renders").append(window.ZetRenderSlots.countControl(board.slots.filter(id=>!id).length,count=>slotAction("add",undefined,count),{disabled:slotPending.has(`${character.character_id}:${iterationId}:add`)}));
-    const candidate = choice();
-    $("mc-feedback").value = feedback;
-    $("mc-suggestions-title").textContent = candidate ? `Suggested changes · Slot ${(board?.slots.indexOf(preview) ?? -1)+1}` : "Suggested changes";
+    if(current?.template_candidate_id) $("mc-add-renders").append(window.ZetRenderSlots.countControl(current.slots.filter(id=>!id).length,count=>slotAction("add",undefined,count),{disabled:pending || slotPending.size>0}));
+    const candidate=choice(), source=candidate || current?.findings;
+    $("mc-feedback").value=feedback;
+    $("mc-suggestions-title").textContent=candidate ? `Suggested changes · Slot ${current.slots.indexOf(preview)+1}` : "Suggested changes";
     $("mc-findings").replaceChildren();
-    if (candidate?.comparison) {
-      $("mc-findings").append(element("p", candidate.review));
-      const selected = suggestions.get(preview) || new Set(); suggestions.set(preview, selected);
-      for (const item of candidate.comparison.items) {
-        const row = element("div", "", "qc-finding"); row.append(element("strong",item.feature),element("p",`Expected: ${item.expected}`),element("p",`Observed: ${item.observed}`));
-        if (item.correction) { const labelNode = element("label",item.correction); const input = document.createElement("input"); input.type="checkbox"; input.checked=selected.has(item.id);
-          input.addEventListener("change",()=>input.checked ? selected.add(item.id) : selected.delete(item.id)); labelNode.prepend(input); row.append(labelNode); }
+    if(source?.comparison) {
+      $("mc-findings").append(element("p",source.review));
+      const id=candidate?.candidate_id || current.edit.candidate_id;
+      const selected=suggestions.get(id) || new Set();suggestions.set(id,selected);
+      for(const item of source.comparison.items) {
+        const row=element("div","","qc-finding");row.append(element("strong",item.feature),element("p",`Expected: ${item.expected}`),element("p",`Observed: ${item.observed}`));
+        if(item.correction) {
+          const labelNode=element("label",item.correction),input=document.createElement("input");input.type="checkbox";input.checked=selected.has(item.id);
+          input.addEventListener("change",()=>{input.checked ? selected.add(item.id) : selected.delete(item.id);persistEdit();});labelNode.prepend(input);row.append(labelNode);
+        }
         $("mc-findings").append(row);
       }
-    } else $("mc-findings").append(element("p",candidate?.review || candidate?.error || (candidate?.status==="REVIEWING" ? "Suggested changes are being prepared. You can keep generating or choose an image." : "Inspect a candidate to see its suggested changes here.")));
+    } else $("mc-findings").append(element("p",source?.review || source?.error || (candidate?.status==="REVIEWING" ? "Suggested changes are being prepared. Selection and custom refinement remain available." : "Inspect a candidate to see suggested changes.")));
     renderReview();
   }
   function updateButtons() {
     const busy = pending || character?.busy;
-    $("mc-generate").textContent = "New " + label(view).toLowerCase() + " iteration";
-    $("mc-generate-help").textContent = "Creates a new iteration from the inputs above" + (view==="FRONT" ? " and original references." : " and selected front.") + " Analyzes references when needed. Existing images are kept. Use Try these changes to refine the previewed candidate, or Generate/Regen on a slot to reuse its iteration's prompt.";
-    $("mc-generate").disabled = !character || busy || !references.length || (view!=="FRONT" && !character.selected.FRONT);
-    $("mc-refine").disabled = !character || busy || !choice()?.image_url;
+    const current=board();
+    $("mc-generate").textContent=view==="STYLE" ? "Generate style alignment" : "Generate view alignment";
+    $("mc-generate-help").textContent=view==="STYLE" ? "Establish style and character details without requiring an official view. Select an image before generating views." : "Uses only the selected style image and a short orientation prompt. A new alignment replaces this view's working board.";
+    $("mc-generate").disabled=!character || busy || (view==="STYLE" ? !references.length : !character.selected.STYLE);
+    $("mc-refine").disabled=!character || busy || (!choice()?.image_url && !current?.edit.candidate_id) || (view!=="STYLE" && current?.mode!=="true_up");
+    $("mc-refine").title=view!=="STYLE" && current?.mode!=="true_up" ? "Select an aligned image and continue to true-ups first" : "";
+    $("mc-continue-true-ups").hidden=view==="STYLE" || current?.mode==="true_up";
+    $("mc-continue-true-ups").disabled=busy || !current?.can_continue;
+    $("mc-undo").disabled=busy || !current?.can_undo;
     $("mc-analyze").disabled = !character || busy || !references.length;
     $("mc-add-reference").disabled = pending || references.length>=3; $("mc-upload").disabled = references.length>=3;
     $("mc-delete").disabled=pending || !character;
@@ -292,12 +333,15 @@
   }
   async function generateImage(refine) {
     await flush();
-    waitingForCandidate={view,count:character.candidates.filter(c=>c.view===view).length};
-    const result = await api(`/${character.character_id}/generate`,"POST",{view,
-      ...(refine ? {candidate_id:preview,instructions:feedback,item_ids:[...(suggestions.get(preview)||[])]} : {})});
-    const latest=result.character.candidates.filter(c=>c.view===view).at(-1);
-    preview = latest?.candidate_id || ""; iterationId=latest?.iteration_id || ""; show(result.character);
-    changed("active_iteration_id",iterationId);
+    const source=choice()?.candidate_id || board().edit.candidate_id;
+    const result=await api(`/${character.character_id}/generate`,"POST",{view,revision:board().revision,
+      ...(refine ? {candidate_id:source,instructions:feedback,item_ids:[...(suggestions.get(source)||[])]} : {})});
+    preview=result.character.boards[view].template_candidate_id;show(result.character);
+  }
+  async function boardAction(action) {
+    await flush();
+    const result=await api(`/${character.character_id}/boards/${view}/${action}`,"POST",{revision:board().revision});
+    preview="";show(result.character);
   }
   async function load() {
     if (universe!==bridge.universe()) { generation++; clearTimeout(pollTimer); character=null; patch={}; universe=bridge.universe(); entryAsset=null; }
@@ -321,7 +365,7 @@
     if (key==="name") { const match=characters.find(c=>c.character_id!==character?.character_id && c.name.trim().toLocaleLowerCase()===value.trim().toLocaleLowerCase());
       $("mc-rename-match").replaceChildren(); if(match) $("mc-rename-match").append(button(`Open existing ${match.name}`,async()=>{delete patch.name;await open(match.character_id);})); }
   });
-  $("mc-feedback").addEventListener("input",()=>{feedback=$("mc-feedback").value;});
+  $("mc-feedback").addEventListener("input",()=>{feedback=$("mc-feedback").value;persistEdit();});
   $("mc-new-name").addEventListener("input",nameMatch);
   $("mc-create-form").addEventListener("submit",event=>{event.preventDefault();act(async()=>{
     const result=await api("","POST",{name:$("mc-new-name").value}); const asset=entryAsset;
@@ -329,7 +373,8 @@
     if(asset && !result.character.existing) await addReference({asset_id:asset.asset_id,caption:asset.label || "Identity reference"});
     entryAsset=null; if(result.character.existing) message("Opened the existing Minor Character.");
   });});
-  $("mc-back").addEventListener("click",()=>act(list));
+  $("mc-continue-true-ups").addEventListener("click",()=>act(()=>boardAction("continue")));
+  $("mc-undo").addEventListener("click",()=>act(()=>boardAction("undo")));
   $("mc-delete").addEventListener("click",()=>act(()=>deleteCharacter(character.character_id,character.name)));
   $("mc-continue").addEventListener("click",()=>act(async()=>{entryAsset=null;await open($("mc-continue-choice").value);}));
   $("mc-generate").addEventListener("click",()=>act(()=>generateImage(false)));
@@ -349,5 +394,5 @@
   $("mc-paste").addEventListener("paste",event=>{const item=[...(event.clipboardData?.items||[])].find(i=>i.type.startsWith("image/"));if(item){event.preventDefault();act(()=>upload(item.getAsFile()));}});
   $("quick-character-wizard-open").addEventListener("click",()=>act(async()=>{route("");await bridge.activatePage("minor-characters");}));
   $("quick-character-wizard-from-asset").addEventListener("click",()=>act(fromInventory));
-  window.zetMinorCharacters={load,flush,characterId:()=>character?.character_id || ""};
+  window.zetMinorCharacters={load,flush,navigateList:async()=>{await flush();route("");},characterId:()=>character?.character_id || ""};
 })();

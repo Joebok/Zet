@@ -52,3 +52,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 
 | [0013 — Shared reconstruction target and true-up](0013-shared-reconstruction-target-and-true-up.md) | How do both image workflows preserve intentional edits while correcting drift? | Accepted locally 2026-10-15; artistic acceptance pending |
 | [0014 - Persistent Minor Character workspaces](0014-minor-character-workspaces.md) | How do named ongoing workspaces separate working selection, Inventory locking and visual comparison? | Accepted locally 2026-10-15 |
+
+| [0015 - Minor Character alignment and current boards](0015-minor-character-alignment.md) | How do style/view selection gates, simple prompts and one-level undo replace iteration history? | Accepted locally 2026-10-15 |

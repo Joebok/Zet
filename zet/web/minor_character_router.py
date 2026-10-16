@@ -66,31 +66,30 @@ def create_minor_character_router(provider):
     def delete(sid: str):
         return call(lambda s: s.delete_character(sid))
 
-    @router.delete("/{sid}/iterations/{iteration_id}")
-    def delete_iteration(sid: str, iteration_id: str):
-        return {"character": call(lambda s: s.delete_iteration(sid, iteration_id))}
-
     @router.post("/{sid}/generate")
     def generate(sid: str, data: dict = Body(...)):
         return {"character": call(lambda s: s.render(sid, "", str(data.get("view", "FRONT")),
-            str(data.get("instructions", "")), str(data.get("candidate_id", "")), data.get("item_ids", [])))}
+            str(data.get("instructions", "")), str(data.get("candidate_id", "")), data.get("item_ids", []), expected=data["revision"]))}
+
+    @router.post("/{sid}/boards/{view}/{action}")
+    def board_action(sid: str, view: str, action: str, data: dict = Body(...)):
+        return {"character": call(lambda s: s.board_action(sid, view, action, data["revision"], data))}
+
+    @router.post("/{sid}/boards/{view}/slots/action")
+    def board_slots(sid: str, view: str, data: dict = Body(...)):
+        return {"character": call(lambda s: s.view_slots(sid, view, data))}
 
     @router.post("/{sid}/analyze")
     def analyze(sid: str, data: dict = Body(default={})):
         return {"character": call(lambda s: s.analyze(sid, answers=data.get("answers")))}
 
-    @router.post("/{sid}/iterations/{iteration_id}/slots")
-    def slots(sid: str, iteration_id: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.iteration_slots(sid, iteration_id,
-            data.get("action"), data.get("slot"), data.get("count", 1)))}
-
     @router.post("/{sid}/select")
     def select(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.select(sid, "", str(data.get("candidate_id", ""))))}
+        return {"character": call(lambda s: s.select(sid, "", str(data.get("candidate_id", "")), expected=data["revision"]))}
 
     @router.post("/{sid}/lock")
     def lock(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.lock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", ""))))}
+        return {"character": call(lambda s: s.lock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"]))}
 
     @router.get("/{sid}/references/{reference_id}")
     def reference(sid: str, reference_id: str):

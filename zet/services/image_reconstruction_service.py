@@ -264,7 +264,7 @@ class ImageReconstructionService:
             raise ValueError("Invalid comparison ID.")
         return self._path(job_id).parent / "reports" / report_id / "report.json"
 
-    def compare(self, job_id, contents, candidate, context, anchor=None, *, report_id=None):
+    def compare(self, job_id, contents, candidate, context, anchor=None, *, report_id=None, anchor_role="Approved front: completed design and style"):
         job = self._read(job_id)
         self.validate_sources(job)
         report_id = report_id or uuid4().hex
@@ -283,7 +283,7 @@ class ImageReconstructionService:
             roles = ["candidate", *[r["caption"] for r in job["target"]["sources"]]]
             if anchor:
                 anchor_file, anchor_hash = self._snapshot(path.parent, "front", anchor)
-                images.append(str(path.parent / anchor_file)); roles.append("Approved front: completed design and style")
+                images.append(str(path.parent / anchor_file)); roles.append(anchor_role)
                 report["anchor_sha256"] = anchor_hash
             report.update(self.true_up.compare(job["model"], job["target"], images,
                                                {"roles": roles, "task": context}))

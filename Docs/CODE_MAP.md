@@ -69,14 +69,10 @@ Use this map to select a narrow search, inspect the named entry point and caller
 - Image Generation adds selected-result reconstruction, `/api/image-generation/comparisons`, report polling, source image reads and `/corrections`; workspace ownership revalidates the selected input during handoff. `zet.js` owns presentation and dirty refinement state.
 - S1–S3 remain regression coverage only. Disposable prepared-response/browser checks cover the new flow; Freydis artistic acceptance remains pending. See [ADR 0013](DECISIONS/0013-shared-reconstruction-target-and-true-up.md).
 
-## Minor Characters page (2026-10-15)
+## Minor Characters alignment workspace (2026-10-15)
 
-- `ZetApp.minor_character_service` is also exposed through the legacy wizard service property. `minor_character_router.py` owns `/api/minor-characters`; old wizard routes remain adapters and image-serving URLs stay readable.
-- `minor_characters.js`, the Minor Characters page in `index.html` and scoped CSS own name-first creation, autosave, tabs/thumbnails, preview versus select/lock, designated-reference comparison and Inventory owner/create/continue handoffs. `zet.js` owns page navigation, route restoration and save-before-navigation/universe changes. The dialog script is retired.
-- See [ADR 0014](DECISIONS/0014-minor-character-workspaces.md), [data model](DATA_MODEL.md) and [local characters](COMPONENTS/LOCAL_CHARACTERS.md). Maintained S1-S3 remain regression checks; disposable feature journeys use isolated prepared responses.
-
-Minor Character prompt-iteration boards and paired full-size review live in `minor_characters.js`, using the shared `render_slots.js` count control. `MinorCharacterService.iteration_slots` owns four-slot allocation, clear/regenerate and frozen-payload replay; `minor_character_router.py` exposes its slot action endpoint. Review arrows cycle rendered slots within one iteration.
-
-Minor Character slot actions queue independently while renders run; workspace locking serializes allocation/submission without waiting for image completion. Card/review Lock calls accept a candidate ID; the publication service uses candidate-scoped origin keys for repeated same-iteration publication. The editor keeps comparison choice on the left and expanded findings under cards.
-
-MinorCharacterService.delete_character/delete_iteration own logical deletion, legacy alias cleanup and working-selection cleanup; minor_character_router.py exposes the DELETE routes. minor_characters.js owns list/editor/iteration Delete controls and confirmations. Internal candidate files and published Inventory assets remain; UI records and stale mutation paths respect deletion markers.
+- `minor_character_service.py` owns fresh named workspaces, reference inputs, analysis and publication. `minor_character_workflow_service.py:MinorCharacterWorkflow` owns stage render/review, short prompts, four-slot boards, revisions, selection gates, carry and one-level recipe-only undo. Retired workspaces are excluded without migration.
+- `minor_character_router.py` exposes `/api/minor-characters` and stage board actions. `quick_character_publication_service.py` independently rejects alignment/style publication and retains immutable candidate-based assets.
+- `minor_characters.js`, `index.html` and scoped CSS own stage tabs, slots, advisory findings, prior-selection badges, undo and looping left comparisons. `zet.js` saves edits and opens the complete list on main navigation; direct links and Inventory handoffs retain character routing.
+- Shared reconstruction adds an optional anchor label for stage-aware reviews; Image Generation behavior stays unchanged. See [ADR 0015](DECISIONS/0015-minor-character-alignment.md), [local characters](COMPONENTS/LOCAL_CHARACTERS.md) and [data model](DATA_MODEL.md).
+- Disposable service/API/browser checks cover gates, publication, carry, undo/replay/reload, revisions/late results, carousel wrapping and navigation. S1-S3 remain regression checks; real image quality is unverified.

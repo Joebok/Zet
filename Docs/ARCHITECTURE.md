@@ -34,7 +34,7 @@ flowchart TD
 
 The required web/backend boundary is defined in [AGENTS](../AGENTS.md); it is a constraint on new changes, not a claim that every existing route is already minimal. [CODE_MAP](CODE_MAP.md) locates capabilities and tests.
 
-Minor Characters use an ongoing named workspace independent of the major character/phase pipelines. `MinorCharacterService` extends the existing wizard analysis/render engine; the publication service owns per-view Inventory writes. The page/router handle presentation and service calls. Working selections and locked library outputs have separate lifetimes; comparison-reference changes are display-only. See [ADR 0014](DECISIONS/0014-minor-character-workspaces.md).
+Minor Characters use named workspaces independent of major character/phase pipelines. MinorCharacterService owns naming/input analysis over the wizard engine; MinorCharacterWorkflow owns stage prompts, current boards, selection/undo and rendering/review. Style selection precedes independent view alignment, then view selection precedes true-ups. Publication accepts only generated view true-ups. Web code presents service actions and comparison navigation. Fresh records replace iteration/adoption semantics without migration; private sources support reproducibility. See [ADR 0015](DECISIONS/0015-minor-character-alignment.md).
 
 ## Initialization and lifetime
 

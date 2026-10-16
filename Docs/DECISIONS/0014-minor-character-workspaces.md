@@ -2,6 +2,8 @@
 
 Status: accepted for local implementation, 2026-10-15.
 
+Minor Character stage, history and adoption rules are superseded by [ADR 0015](0015-minor-character-alignment.md). Shared reconstruction and immutable publication remain applicable.
+
 ## Context
 
 The Quick Character Wizard's dialog and separate drafts made visual iteration awkward. Joe wants one named workspace per Minor Character, independent of existing character/phase pipelines, with inputs beside candidate/reference comparisons. Selection must enable subsequent generation without publishing images.

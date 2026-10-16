@@ -6,6 +6,12 @@ Minor Characters (2026-10-15) were verified with disposable prepared-response se
 
 Scene and story coverage uses `/narrative`, `/api/narrative`, and `NarrativeStories`. Scene Builder and local scene-batch execution are retired; their offline archive has no maintained scenario. Passing the baseline is not evidence of every subsystem contract or live rendering quality.
 
+## Minor Character alignment validation (2026-10-15)
+
+The current style alignment -> selected style -> independent view alignment -> selected view -> true-up workflow passed disposable prepared-response service/API and Chromium journeys. Checks cover one-reference short prompts, selection/lock gates, same-slot repeated carry, recipe-only undo and alternate corrections, regeneration after undo, reload, review failure, immutable publication, stale revisions/late results, excluded retired records, comparison looping, main navigation and feedback edits during an in-flight autosave. Desktop and 800px screenshots were inspected. These scripts/artifacts remain ignored under `test-results`; no maintained scenarios were added.
+
+`npm.cmd run test:e2e` passed all three existing scenarios in 27.7 seconds. Python AST checks, `node --check` for the changed dashboard scripts, and `git diff --check` passed. This establishes isolated software behavior, not live image quality; no live model/render calls or production deployment were performed. See [ADR 0015](DECISIONS/0015-minor-character-alignment.md) and the [completed plan](../plans/completed/minor-character-alignment.md).
+
 ## Approved fast scenarios
 
 All three are implemented in [fast.spec.mjs](../tests/e2e/fast.spec.mjs). The S1–S3 names below are navigation labels for those existing scenarios, not extra tests.

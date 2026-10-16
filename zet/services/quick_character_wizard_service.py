@@ -280,7 +280,9 @@ class QuickCharacterWizardService:
                 "changes": session["changes"], "notes": session["notes"],
                 "context": "Create neutral character reference views. Exclude source pose, camera, gaze and background from appearance. "
                     "The content_prompt must contain stable appearance only, without output count, a view list, "
-                    "camera/facing/framing instructions, pose or background. The host supplies exactly one view later. "
+                    "camera/facing/framing instructions, pose or background. "
+                    + ("This stage establishes style and details without imposing a view angle. " if session.get("minor_character")
+                       else "The host supplies exactly one view later. ")
                     + json.dumps({"answers": session["answers"], "current_description": session["description"],
                                   "framing": session["framing"], "views": self._views(session)})}, refs)
             job = core.analyze(prepared["id"])
