@@ -710,12 +710,11 @@
       const lunaOrder = ranking.status === "COMPLETE"
         ? (ranking.luna_ordered_candidate_ids?.length ? ranking.luna_ordered_candidate_ids : ranking.ordered_candidate_ids || [])
         : [];
+      const displayCandidateSlots = lunaOrder.length
+        ? sortCandidatesByDisplayOrder(run, view, candidateSlots, item => item.id, item => item.slot)
+        : candidateSlots;
       if (lunaOrder.length) {
-        const rankById = new Map(lunaOrder.map((id, index) => [id, index]));
-        candidateSlots.sort((left, right) =>
-          (rankById.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rankById.get(right.id) ?? Number.MAX_SAFE_INTEGER)
-          || left.slot - right.slot);
-        candidateSlots.forEach(({candidate, slot}) => gallery.append(renderCandidate(view, {...candidate, slot}, ranking, run)));
+        displayCandidateSlots.forEach(({candidate, slot}) => gallery.append(renderCandidate(view, {...candidate, slot}, ranking, run)));
         slots.forEach((id, index) => {
           if (!candidateSlots.some(item => item.slot === index + 1)) appendEmptySlot(index);
         });
@@ -1019,14 +1018,29 @@
     } else await loadRun(state.run?.run_id);
   }
 
+  function sortCandidatesByDisplayOrder(run, view, candidates, candidateId = item => item.candidate_id, slotNumber = item => item.slot || item.ordinal || 0) {
+    const ranking = run.rankings?.[view] || {};
+    const lunaOrder = ranking.status === "COMPLETE"
+      ? (ranking.luna_ordered_candidate_ids?.length ? ranking.luna_ordered_candidate_ids : ranking.ordered_candidate_ids || [])
+      : [];
+    const rankById = new Map(lunaOrder.map((id, index) => [id, index]));
+    return [...candidates].sort((left, right) =>
+      (rankById.get(candidateId(left)) ?? Number.MAX_SAFE_INTEGER) - (rankById.get(candidateId(right)) ?? Number.MAX_SAFE_INTEGER)
+      || slotNumber(left) - slotNumber(right));
+  }
+
+  function physicalSlotNumber(run, view, candidate) {
+    const slots = run.slots_by_view?.[view] || [];
+    const slotIndex = slots.indexOf(candidate.candidate_id);
+    return slotIndex >= 0 ? slotIndex + 1 : candidate.slot || candidate.ordinal || 0;
+  }
+
   function orderedReviewCandidates() {
-    const candidates = (state.run?.candidates || []).filter((item) => item.image_path);
-    const views = state.run?.views || [];
-    return candidates.sort((left, right) => {
-      const viewOrder = views.indexOf(left.view) - views.indexOf(right.view);
-      if (viewOrder) return viewOrder;
-      return (left.slot || left.ordinal) - (right.slot || right.ordinal);
-    });
+    const run = state.run;
+    const views = run?.views || [];
+    return views.flatMap(view => sortCandidatesByDisplayOrder(run, view,
+      (run?.candidates || []).filter(item => item.view === view && item.image_path),
+      item => item.candidate_id, item => physicalSlotNumber(run, view, item)));
   }
 
   async function saveReviewDecision(candidate) {
