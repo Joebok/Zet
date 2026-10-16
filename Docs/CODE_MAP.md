@@ -1,5 +1,16 @@
 # Capability code map
 
+AI collection/recovery additions (2026-10-16):
+[AIJobService](../zet/services/ai_job_service.py) owns read-only state inspection,
+dual-outcome checks and durable image receipt admission;
+[image_harvest_service](../zet/services/image_harvest_service.py) rechecks local
+candidate/evaluation ownership at publication;
+[AIJobRecoveryService](../zet/services/ai_job_recovery_service.py) owns read-only
+retained-answer reports and explicit fenced collection retry, exposed by
+[inspect_ai_recovery](../zet/scripts/inspect_ai_recovery.py). Domain handlers and
+request schemas retain their existing owners. S2/S4 are maintained regressions;
+crash/two-process/mixed-workload checks are disposable, not new maintained scenarios.
+
 Use this map to select a narrow search, inspect the named entry point and callers, and select approved scenario assertions. Paths and symbols are stable module references; the table is not an exhaustive class inventory. [Components](INDEX.md) explain workflows; [INVARIANTS](INVARIANTS.md) owns contracts.
 
 **Current validation:** [Testing](Testing.md#approved-fast-scenarios) defines S1 (library/Narrative authoring), S2 (front Assembly to Dressing), and S3 (Narrative lifecycle/final assembly), all in [fast.spec.mjs](../tests/e2e/fast.spec.mjs). L is the separately requested [live final-assembly check](../tests/e2e/live.spec.mjs). These are the only maintained scenarios; a mapped scenario covers only its stated assertions, not every contract of a capability. Deleted Python/browser test paths are not runnable checks.

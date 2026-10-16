@@ -238,7 +238,7 @@ async function deliverEnvelope(page, id, output, failed = false) {
     ask_id: id, status: failed ? "ERROR" : "SUCCESS", expected_output: manifest.expected_output,
     error_message: failed ? "Prepared render failure" : "", worker_id: "local-test-worker", ollama_attempt_id: id,
   }));
-  await writeFile(path.join(answer, "proxy_result.json"), JSON.stringify({ status: failed ? "FAILED" : "SUCCESS", output_files: outputFiles }));
+  await writeFile(path.join(answer, "proxy_result.json"), JSON.stringify({ status: failed ? "FAILED" : "SUCCEEDED", output_files: outputFiles }));
   await writeFile(path.join(answer, "harvest_manifest.json"), JSON.stringify({ status: "HARVESTED_FOR_EXTERNAL_CONSUMER" }));
 }
 

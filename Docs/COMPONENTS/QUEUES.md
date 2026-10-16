@@ -50,6 +50,13 @@ and recent-history APIs do not depend on derived library-index generations. See
 
 Failures include mismatched queue roots, absent workers, incomplete Dropbox sync, missing local routes, foreign producers/universes, superseded attempts, invalid output bytes, blocked Windows replacement, and failed archive/copy operations. Inspect `job.json`, ask/answer manifests, `proxy_result.json`, receipts, superseded markers, and owning workflow errors. Prefer service recovery/retry logic over moving/deleting folders manually. [INVARIANTS](../INVARIANTS.md) owns ordering, ownership, locking and stale-result contracts.
 
+Missing routes/ownership are shown as `RECOVERY_REQUIRED`; the queue displays
+collection stage, age, cause and recovery guidance. They are not evidence that a
+file transfer is currently progressing. A missing Body Reference run is isolated
+from other runs, and the coordinator calls only its bound universe's harvester.
+The common [AI job interface](AI_JOBS.md#collection-and-dependent-image-admission)
+owns read-only inspection and explicit retained-answer retry.
+
 When adding a task type, define producer manifest, input snapshots, worker/response contract, routing, owner/attempt checks, result application, restart/duplicate semantics, and cleanup together. A new router alone is insufficient. Live queue mutations and real rendering are separate operations from fixture-based tests.
 
 ## Tests and related decisions

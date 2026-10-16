@@ -113,6 +113,7 @@ class AIQueueLifecycleService:
         from zet.repositories.ai_job_repository import AIJobRepository
         ask = self._json(answer_path / "ask_manifest.json")
         answer = self._json(answer_path / "answer_manifest.json")
+        outcome = self._json(answer_path / "proxy_result.json")
         record = AIJobRepository(self.root).get(job_id)
         receipt = {"universe_id": ask.get("universe_id", record.get("universe_id", "")),
                    "task_type": ask.get("task_type", record.get("task_type", "")),
@@ -120,12 +121,14 @@ class AIQueueLifecycleService:
                    "effective_model": answer.get("effective_model") or answer.get("runtime", {}).get("effective_model", ""),
                    "runtime": answer.get("runtime", answer.get("ollama_runtime", {})),
                    "asset_id": ask.get("asset_id"), "owner": record.get("owner", {}),
+                   "execution_status": outcome.get("status", ""),
                    "answer_status": answer.get("status", ""), "error_message": answer.get("error_message", ""),
                    "completed_at": answer.get("completed_at", ""), **receipt}
         receipt = {**receipt, "ask_id": job_id, "recorded_at": datetime.now(timezone.utc).isoformat()}
         self.write_receipt(job_id, receipt)
         AIJobRepository(self.root).update(job_id, harvest_state=receipt.get("status", "APPLIED"),
-                                          completed_at=receipt["recorded_at"])
+                                          completed_at=receipt["recorded_at"], error="", failure_stage="",
+                                          collection_retry_at="")
         try:
             if self.debug_enabled:
                 self.debug_root.mkdir(parents=True, exist_ok=True)

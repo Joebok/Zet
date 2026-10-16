@@ -1,5 +1,9 @@
 # Architectural decision records
 
+[0017 — Durable image harvest admits dependent analysis](0017-image-harvest-admission.md)
+records the image completion barrier and continuation publication identities
+(accepted 2026-10-16).
+
 Record significant choices that affect future implementation: boundaries, persistent contracts, integration policy, or a design tradeoff that code alone cannot explain. Do not add an ADR for every small implementation detail. Existing design notes stay in `Docs-Joe/`; link them as evidence rather than relocating or rewriting them.
 
 | Record | Question answered | Status |

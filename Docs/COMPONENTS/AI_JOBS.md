@@ -53,6 +53,43 @@ visible as transferring/reconciling. Worker launch/interruption failures are
 normalized locally from terminal proxy outcomes. Application remains idempotent
 under domain and common job locks.
 
+### Collection and dependent-image admission
+
+`AIJobService.inspect()` is read-only: it distinguishes transport location,
+execution/worker outcomes, collection failure, and blocking reason without draining
+an answer. `HARVEST_FAILED` remains visible to Image Generation; missing routes or
+owner metadata use `RECOVERY_REQUIRED`, while incomplete inventories use
+`TRANSFERRING`. Job diagnostics record the failure stage, exception type, affected
+path and failure timestamp. A transport success requires `SUCCEEDED`; worker
+success independently requires `SUCCESS`.
+
+New filesystem collection failures schedule collection-only retry with a bounded
+2–30 second delay (`collection_retry_at`); provider execution is never replayed.
+Missing saved requests and ownership/identity errors still require explicit
+recovery. A temporarily unavailable library volume is not treated as an orphaned
+request. Successful receipts clear the active collection error.
+
+Image Generation loads requests from disk under its process-shared collection
+lock. Atomic image and child-state commits precede the receipt; restart can finish
+a saved child whose receipt was interrupted. `copy_result(image=True)` records the
+applied image checksum. Local image advice and Minor Character review require a
+successful receipt and matching image; admission rechecks current owner, candidate,
+cancellation and evaluation under the domain lock before request publication.
+Producer-local `Followups/` reservations and deterministic Minor review workflow
+IDs reuse published work after interrupted state commits. See
+[ADR 0017](../DECISIONS/0017-image-harvest-admission.md).
+
+Known queued/running/uncollected jobs outlive subscriber wait deadlines; AI_Proxy
+owns execution deadlines. A caller stopping its wait does not create a new attempt.
+Collection isolates legacy/run failures from other consumers and bound universes.
+
+`AIJobRecoveryService` reports retained answers without application changes.
+Its explicit per-job retry invokes the owning registered handler only for verified
+current requests; it never reconstructs missing routes or republishes execution.
+The read-only CLI is `python3 -B -m zet.scripts.inspect_ai_recovery --queue-root
+<queue> --library-root <universe-root> --universe <id>`. Live repair and deployment
+are separate operator actions; historical-job repair is not required for rollout.
+
 ## Activity APIs and UI
 
 `GET /api/ai/jobs` accepts `universe_filter`, `provider`, `workflow`, `status`,

@@ -790,19 +790,19 @@ class LocalCharacterAssetPipelineService:
             return True
         target = Path(str(candidate.get("image_path") or ""))
         deadline = time.monotonic() + 1860
-        while not target.is_file():
+        while not self.app.ai_proxy_service.ai_proxy_path_service.jobs.image_harvest_ready(str(candidate.get("ask_id") or ""), target):
             if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id, costume)["candidates"]):
                 return True
             run = self.detail(run_id, costume)
             if run.get("stop_requested"):
                 return False
             self._harvest_render(run, candidate)
-            if target.is_file():
+            if self.app.ai_proxy_service.ai_proxy_path_service.jobs.image_harvest_ready(str(candidate.get("ask_id") or ""), target):
                 break
             _, answer = self._proxy_answer(str(candidate.get("ask_id") or ""))
             if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalCharacterAssetPipelineError(str(answer.get("error_message") or "Local render failed."))
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(candidate.get("ask_id") or "")):
                 raise LocalCharacterAssetPipelineError("Timed out waiting for the local render.")
             time.sleep(max(.5, float(self.app.config.comfyui_poll_seconds)))
         self._update(run_id, candidate_id, costume, status="WAITING_FOR_GATES", image_sha256=self._hash(target), rendered_at=self._now())
@@ -851,6 +851,7 @@ class LocalCharacterAssetPipelineService:
                 return False
         return True
 
+    @serialize_local_run_state
     def _stage_candidate_gates(self, run_id: str, candidate_id: str, costume: str = "") -> bool:
         run = self.detail(run_id, costume)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
@@ -859,6 +860,7 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError("Candidate image is missing.")
         gates = dict(candidate.get("gates") or {})
         for definition in self.review_gates(self.pipeline, candidate["view"]):
+            record = dict(gates.get(definition.key) or {})
             policy = self._gate_policy(definition.key)
             hashes = {"candidate": self._hash(image)}
             for role in definition.input_roles:
@@ -1040,17 +1042,28 @@ class LocalCharacterAssetPipelineService:
 
     def _queue_gate(self, run: dict[str, Any], candidate: dict[str, Any], gate: ReviewGate,
                     hashes: dict[str, str]) -> dict[str, Any]:
+        from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
+        run = self.detail(run["run_id"], str(run.get("costume") or ""))
+        require_candidate_harvest(self.app, run, candidate)
         root = Path(run["root"])
         candidate_path = Path(candidate["image_path"])
         images = []
         for role in gate.input_roles:
             images.append((f"{role}.png", Path(run["sources"][candidate["view"]][role]["image_path"])))
         images.append(("candidate.png", candidate_path))
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        jobs = self.app.ai_proxy_service.ai_proxy_path_service.jobs
+        timestamp = jobs.followup_stamp(candidate["ask_id"], gate.key, {
+            "image": candidate["image_sha256"], "prompt": gate.prompt,
+            "inputs": hashes,
+            "evaluation": (run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id", "")})
         output = root / "analyses" / candidate["candidate_id"] / f"gate_{gate.key}_{timestamp}.txt"
         ask_id = f"Ask_LocalCharacterAsset_{run['run_id']}_{candidate['candidate_id']}_{gate.key}_{timestamp}"
         proxy = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client
-        staging = proxy.create_staging(ask_id)
+        previous = jobs.reuse_followup(ask_id, output, hashes, hashlib.sha256(gate.prompt.encode()).hexdigest())
+        if previous:
+            return previous
+        staging = proxy.staging_path(ask_id)
+        staging.mkdir(parents=True, exist_ok=True)
         for name, path in images:
             shutil.copy2(path, staging / name)
         (staging / "OLLAMA_PROMPT.md").write_text(gate.prompt, encoding="utf-8")
@@ -1063,8 +1076,9 @@ class LocalCharacterAssetPipelineService:
                     "json_output": False, "expected_output": output.name, "task_type": "local_character_asset_gate",
                     "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
                     "local_character_asset_run_id": run["run_id"], "candidate_id": candidate["candidate_id"],
-                    "gate": gate.key, "input_hashes": hashes, "prompt_sha256": hashlib.sha256(gate.prompt.encode()).hexdigest()}
+                    "render_ask_id": candidate["ask_id"], "gate": gate.key, "input_hashes": hashes, "prompt_sha256": hashlib.sha256(gate.prompt.encode()).hexdigest()}
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        require_candidate_harvest(self.app, self.detail(run["run_id"], str(run.get("costume") or "")), candidate)
         proxy.publish(staging, ask_id, "ollama_generate")
         return {"status": "QUEUED", "ask_id": ask_id, "output_path": str(output), "input_hashes": hashes,
                 "prompt_sha256": manifest["prompt_sha256"], "policy_status": self._gate_policy(gate.key)}
@@ -1099,7 +1113,7 @@ class LocalCharacterAssetPipelineService:
                         self.app.ai_proxy_service.ai_proxy_path_service.jobs.copy_result(str(record["ask_id"]), output)
             if output.is_file():
                 break
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(record.get("ask_id") or "")):
                 raise LocalCharacterAssetPipelineError(f"Timed out waiting for the {gate} gate.")
             time.sleep(1)
         answer = output.read_text(encoding="utf-8").strip()
@@ -1185,6 +1199,9 @@ class LocalCharacterAssetPipelineService:
     def _rank(self, run: dict[str, Any], view: str) -> dict[str, Any]:
         survivors = [item for item in run["candidates"] if item["view"] == view
                      and Path(str(item.get("image_path") or "")).is_file()]
+        from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
+        for survivor in survivors:
+            require_candidate_harvest(self.app, run, survivor)
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
         if not survivors:
             ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [], "input_hashes": {}, "recorded_at": self._now()}
@@ -1214,6 +1231,7 @@ class LocalCharacterAssetPipelineService:
                     candidate_ids=list(hashes),
                     image_paths=image_paths,
                     paths=self.app.ai_proxy_service.ai_proxy_path_service,
+                    admission=lambda: candidate_admission(self.app, lambda: self.detail(run["run_id"], str(run.get("costume") or "")), run, survivors),
                     owner={"run_id": run["run_id"], "view": view, "pipeline": self.pipeline, "evaluation_id": str((run.get("evaluations") or {}).get(view, {}).get("evaluation_id") or "")},
                     reference_image_paths=reference_image_paths,
                 )

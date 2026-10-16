@@ -52,6 +52,14 @@ These are supported by implementation and repository instructions, with earlier 
 
 ## 9. Reference order, view domains, and schema gates are contracts
 
+Dependent image analysis additionally requires a successful render harvest receipt,
+validated image bytes and the current domain image hash. Admission is fenced by
+the domain lock and current candidate/evaluation ownership; a loose output file
+does not admit analysis. Local ComfyUI/Ollama work stays non-preemptive and serial,
+while the two independent Codex slots may execute only requests already published
+by those domain owners. [ADR 0017](DECISIONS/0017-image-harvest-admission.md) records
+this completion barrier and its isolated validation boundary.
+
 - **Rule/why:** prompts, numbered image citations, `image_inputs`, and bundled bytes must share ordering. Render modes/roles and prompt schema are validated centrally. Body/head view conditioning is independent; anatomical left/right differs from screen left/right. Unsupported document/catalog versions fail rather than being guessed.
 - **Implementation/impact:** [chatgpt_prompt_contract.py](../zet/services/chatgpt_prompt_contract.py), [PromptTemplateService](../zet/services/prompt_template_service.py), [view_conditioning_service.py](../zet/services/view_conditioning_service.py), [ImageCatalogRepository](../zet/repositories/image_catalog_repository.py); compilers, queue snapshots, render adapters.
 - **Verify:** S2/S3 exercise limited compilation/attachment packaging. View-tag permutations, unsupported schemas and exhaustive ordering validation have no dedicated scenario. Inspect compilers and both producer/consumer; do not sort references after compilation.

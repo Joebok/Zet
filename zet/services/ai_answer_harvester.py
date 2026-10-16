@@ -358,7 +358,10 @@ class AIAnswerHarvester:
             else:
                 target_path.write_text(rendered_analysis, encoding="utf-8")
         else:
-            shutil.copy2(response_path, target_path)
+            if task_type == "local_test_render":
+                from zet.services.workflow_storage import validate_image
+                validate_image(response_path.read_bytes())
+            atomic_copy(response_path, target_path)
             metadata_path = answer_path / "LOCAL_RENDER_METADATA.json"
             if task_type == "local_test_render" and metadata_path.exists():
                 metadata = self._read_json(metadata_path)
@@ -704,7 +707,7 @@ class AIAnswerHarvester:
                 if (answer_path / "harvest_manifest.json").is_file():
                     self._finish_lifecycle(answer_path)
             except Exception as exc:
-                job_repository.update(answer_path.name, harvest_state="HARVEST_FAILED", error=str(exc))
+                job_repository.collection_failed(answer_path.name, exc, stage="domain_application", path=answer_path)
                 result = HarvestResult(
                     answer_path=answer_path,
                     ask_id=answer_path.name,

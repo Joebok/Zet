@@ -211,6 +211,13 @@ class MinorCharacterWorkflow:
         candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
         if candidate_id not in self._working_ids(session):
             return
+        if session.get("deleted_at"):
+            return
+        self._review_harvest(sid, candidate)
+        from zet.services.ai_workflow_service import current_workflow
+        context_state = current_workflow.get()
+        if context_state is not None:
+            context_state["admission"] = lambda: self._review_admission(sid, candidate)
         frozen = {**session, **candidate.get("inputs", {})}
         anchor = next((c for c in session["candidates"] if c["candidate_id"] == candidate.get("anchor_id")), None)
         context = candidate.get("view_context", "")

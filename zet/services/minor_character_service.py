@@ -140,6 +140,8 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 session["job"]["status"] = "COMPLETE"
             self._write(session)
             return
+        candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
+        self._review_harvest(sid, candidate)
         session["job"] = {"kind": "review", "status": "COMPLETE", "error": ""}
         session["status"] = "REVIEW_READY"
         key = (self._key(sid), candidate_id)
@@ -160,7 +162,8 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 with _LOCK:
                     _REVIEW_ACTIVE.discard(key)
         from zet.services.ai_workflow_service import AIWorkflowService
-        AIWorkflowService(self.app).submit(self._review_job, [sid, candidate_id], service="minor", initial=review)
+        workflow_key = uuid5(NAMESPACE_URL, f"minor-review:{self.app.universe_id}:{sid}:{candidate_id}:{candidate['sha256']}").hex
+        AIWorkflowService(self.app).submit(self._review_job, [sid, candidate_id], service="minor", key=workflow_key, initial=review)
 
     def create_character(self, payload):
         name = text(payload.get("name", ""), "Character name").strip()
@@ -318,6 +321,14 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         return self.analyze(sid, answers=answers)
 
     def _analyze_then_render(self, sid, revision_id, signature, pending):
+        from zet.services.ai_workflow_service import current_workflow
+        context = current_workflow.get()
+        continuation_id = context["id"] if context else ""
+        previous = self._read(sid).get("analysis_continuation") or {}
+        if continuation_id and previous.get("id") == continuation_id:
+            if previous.get("candidate_id"):
+                self._render_job(sid, previous["candidate_id"], (pending or {}).get("item_ids"))
+            return
         super()._draft_job(sid, revision_id)
         with self._lock(sid):
             session = self._read(sid)
@@ -332,12 +343,13 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                     session.update(reconstruction_id=job["id"], target_hash=job["target_hash"])
             session.pop("analysis_inputs", None)
             session["proposals_approved"] = True
-            self._write(session)
             if pending and not session["needs_analysis"] and not self._deleted_candidate(session, pending.get("candidate_id")):
                 candidate = self._new_candidate(session, **pending)
-                self._write(session)
             else:
                 candidate = None
+            if continuation_id:
+                session["analysis_continuation"] = {"id": continuation_id, "candidate_id": candidate["candidate_id"] if candidate else ""}
+            self._write(session)
         if candidate:
             self._render_job(sid, candidate["candidate_id"], pending["item_ids"])
 

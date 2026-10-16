@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import socket
+from datetime import datetime, timezone
 
 from zet.repositories.ai_job_repository import AIJobRepository
 
@@ -15,7 +16,7 @@ class AIQueueQueryService:
         self.repository = AIJobRepository(paths.lifecycle.root)
 
     def rows(self):
-        rows = {row["ask_id"]: {**row, "status": "RECONCILING", "details": row.get("error", "")}
+        rows = {row["ask_id"]: {**row, "status": "HARVEST_FAILED" if row.get("harvest_state") == "HARVEST_FAILED" else "RECONCILING", "details": row.get("error", "")}
                 for row in self.repository.all()}
         client = self.paths.file_proxy_client
         try:
@@ -59,16 +60,23 @@ class AIQueueQueryService:
                             row.update(status="FAILED" if "FAIL" in str(harvested.get("status", "")) else "COMPLETE",
                                        harvested_at=harvested.get("harvested_at", ""), details=harvested.get("message", ""))
                     if status == "AWAITING_HARVEST" and root in {client.answer_root, self.paths.lifecycle.inbox_root}:
-                        reason = client.answer_blocked_reason(path)
-                        if reason:
-                            row.update(status="TRANSFERRING", details=reason)
+                        block = client.answer_block(path)
+                        if block:
+                            row.update(block, details=block["blocking_reason"])
+                        elif not ask.get("universe_id") or not envelope.get("producer_id"):
+                            row.update(status="RECOVERY_REQUIRED", reason_code="MISSING_OWNER_METADATA",
+                                       details="Universe or producer ownership is missing; preserve this answer for recovery.")
                     if rows.get(path.name, {}).get("harvest_state") == "HARVEST_FAILED":
                         row.update(status="HARVEST_FAILED", details=rows[path.name].get("error", ""))
                     elif rows.get(path.name, {}).get("harvest_state") == "HARVESTING":
                         row["status"] = "HARVESTING"
                     rows[path.name] = row
                 except (OSError, ValueError):
-                    rows.setdefault(path.name, {"ask_id": path.name, "status": "TRANSFERRING", "details": "Waiting for complete metadata"})
+                    if not path.is_dir():
+                        continue
+                    rows.setdefault(path.name, {"ask_id": path.name, "status": "RECOVERY_REQUIRED",
+                                    "reason_code": "MISSING_OWNER_METADATA", "details": "Job ownership metadata is missing or unreadable; preserve the folder for recovery.",
+                                    "created_at": ""})
         for _, receipt in self.paths.lifecycle.iter_receipts() or ():
             job_id = receipt.get("ask_id")
             if not job_id:
@@ -79,6 +87,15 @@ class AIQueueQueryService:
                            "harvested_at": receipt.get("harvested_at") or receipt.get("recorded_at", ""),
                            "details": receipt.get("error_message") or receipt.get("message", "")}
         for row in rows.values():
+            try:
+                row["age_seconds"] = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(str(row.get("created_at") or "").replace("Z", "+00:00"))).total_seconds()))
+            except (ValueError, TypeError):
+                row["age_seconds"] = None
+            row["recovery_action"] = ({"HARVEST_FAILED": "Fix the collection error, then retry harvesting this retained answer.",
+                "RECOVERY_REQUIRED": "Inspect the recovery report and restore verified ownership/routes before retrying.",
+                "TRANSFERRING": "Wait for complete files and matching checksums; preserve the payload.",
+                "RECONCILING": "Inspect request and receipt evidence before creating another attempt.",
+                "FAILED": "Execution failed; explicitly retry the owning workflow when its cause is resolved."}).get(row["status"], "")
             owner = row.get("owner") or {}
             row["workflow"] = row.get("workflow") or row.get("task_type") or row.get("consumer") or row.get("worker_type", "")
             row["target"] = " / ".join(str(owner[key]) for key in ("character", "phase", "session_id", "run_id", "narrative_story_id", "narrative_scene_id", "narrative_target_id", "candidate_id", "view") if owner.get(key))
@@ -135,4 +152,4 @@ class AIQueueQueryService:
         rows = self.rows()
         return {"ask": [row for row in rows if row["status"] in {"QUEUED", "HELD", "MANUAL", "RECONCILING"}],
                 "running": [row for row in rows if row["status"] == "RUNNING"],
-                "answer": [row for row in rows if row["status"] in {"AWAITING_HARVEST", "HARVESTING", "TRANSFERRING", "HARVEST_FAILED"}]}
+                "answer": [row for row in rows if row["status"] in {"AWAITING_HARVEST", "HARVESTING", "TRANSFERRING", "HARVEST_FAILED", "RECOVERY_REQUIRED"}]}

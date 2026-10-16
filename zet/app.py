@@ -1094,16 +1094,28 @@ class ZetApp:
     def harvest_ai_answers(self):
         results = []
         for universe in self.universe_service.list_universes():
-            target = self if universe["universe_id"] == self.universe_id else ZetApp.from_config(
-                self.config_path, universe_id=universe["universe_id"]
-            )
-            results.extend(target._harvest_current_universe())
+            try:
+                target = self if universe["universe_id"] == self.universe_id else ZetApp.from_config(
+                    self.config_path, universe_id=universe["universe_id"]
+                )
+                results.extend(target._harvest_current_universe())
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("AI collection failed for %s", universe["universe_id"])
         return results
 
     def _harvest_current_universe(self):
-        results = self.asset_service.harvest_ai_answers()
+        import logging
+        results = []
+        try:
+            results.extend(self.asset_service.harvest_ai_answers())
+        except Exception:
+            logging.getLogger(__name__).exception("Asset answer collection failed for %s", self.universe_id)
         from zet.services.local_body_reference_service import LocalBodyReferenceService
-        LocalBodyReferenceService(self, Path(__file__).resolve().parents[1]).harvest_face_gate_jobs()
+        try:
+            LocalBodyReferenceService(self, Path(__file__).resolve().parents[1]).harvest_face_gate_jobs()
+        except Exception:
+            logging.getLogger(__name__).exception("Body gate collection failed for %s", self.universe_id)
         from zet.services.summary_cache import invalidate_summary_cache
         invalidate_summary_cache()
         self.refresh_library_index()

@@ -150,3 +150,20 @@ records, registered `Workflows/` continuations, and `StructuredResults/`, alongs
 Inbox/Receipts/Routes. They are producer-local lifecycle state, not library assets or
 the derived library index. Native request payload version 1 extends the unchanged
 File Proxy protocol-v1 envelope. [Shared AI jobs](COMPONENTS/AI_JOBS.md) owns interfaces.
+
+Collection diagnostics add `failure_stage`, `exception_type`, `affected_path` and
+`failed_at` to local job records. Receipts retain `execution_status` separately
+from `answer_status`; image application can include `applied_artifact` with its
+checksum, image flag and diagnostic destination path. Destination authorization
+still comes from the owning workflow, never that diagnostic path. Older receipts
+remain readable; dependent images also require the committed domain hash.
+
+New I/O collection failures also retain `collection_failures` and
+`collection_retry_at` for delayed collection-only retry. Historical failures
+without a scheduled retry stay unchanged until explicitly handled.
+
+`Followups/` stores immutable publication timestamp reservations keyed by parent
+render, analysis kind, frozen inputs and evaluation. Reconstruction's
+`preparation.json` fingerprints its owner and inputs. Wizard sessions may retain
+`draft_workflow_id` and `analysis_continuation` checkpoints, and candidates retain
+`render_harvest` evidence. Wire versions and catalog schemas are unchanged.

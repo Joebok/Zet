@@ -56,8 +56,6 @@ class AIJobCoordinator:
     def _images(app, record, jobs):
         generation = image_services(app)[0]
         request_id = record["manifest"]["ad_hoc_request_id"]
-        if request_id not in generation._jobs:
-            raise ValueError("Image result has no saved request; retained for recovery")
         generation.status(request_id)
 
     @staticmethod
@@ -143,6 +141,11 @@ class AIJobCoordinator:
         before = {row.get("ask_id") for _, row in lifecycle.iter_receipts() or ()}
         self.import_legacy_history()
         self.adopt()
+        records = list(self.repository.all())
+        for record in records:
+            retry_at = record.get("collection_retry_at")
+            if record.get("harvest_state") == "HARVEST_FAILED" and retry_at and retry_at <= timestamp():
+                self.repository.update(record["ask_id"], harvest_state="AWAITING_HARVEST", collection_retry_at="")
         records = list(self.repository.all())
         if retry_failed:
             for record in records:
@@ -231,7 +234,10 @@ class AIJobCoordinator:
     def _collect_app(self, app, records):
         paths = app.ai_proxy_service.ai_proxy_path_service
         jobs = paths.jobs
-        app.harvest_ai_answers()
+        try:
+            app._harvest_current_universe()
+        except Exception:
+            logging.getLogger(__name__).exception("Legacy collection failed for %s; continuing other consumers", app.universe_id)
         for record in records:
             job_id = record["ask_id"]
             if paths.lifecycle.read_receipt(job_id):
@@ -249,17 +255,22 @@ class AIJobCoordinator:
                 elif consumer != "zet" and jobs.ready_answer(job_id):
                     raise ValueError(f"No registered result handler for {consumer}; result retained")
             except Exception as exc:
-                if consumer in {"zet-structured", "zet_ollama_model_service"} and jobs.ready_answer(job_id):
+                from zet.services.ai_job_service import AIExecutionError
+                if consumer in {"zet-structured", "zet_ollama_model_service"} and isinstance(exc, AIExecutionError):
                     write_json_atomic(paths.lifecycle.root / "StructuredResults" / f"{job_id}.json", {"error": str(exc)})
                     jobs.finish(job_id, status="FAILED", message=str(exc))
                 else:
-                    jobs.repository.update(job_id, harvest_state="HARVEST_FAILED", error=str(exc))
+                    jobs.repository.collection_failed(job_id, exc, stage="consumer_application")
         # These handlers apply render/review transitions; they never run provider calls.
-        minor = app.minor_character_service
-        for session in minor._records():
-            if any(candidate.get("status") in {"QUEUING", "QUEUED", "RUNNING"} for candidate in session.get("candidates", [])):
+        try:
+            minor = app.minor_character_service
+            for session in minor._records():
+                if not any(candidate.get("status") in {"QUEUING", "QUEUED", "RUNNING", "REVIEWING"} for candidate in session.get("candidates", [])):
+                    continue
                 try:
                     minor.get_character(session["session_id"])
                 except Exception:
                     logging.getLogger(__name__).exception("Minor Character result application failed")
+        except Exception:
+            logging.getLogger(__name__).exception("Unable to discover Minor Character work")
         AIWorkflowService(app).resume()

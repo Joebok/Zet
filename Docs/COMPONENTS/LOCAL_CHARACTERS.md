@@ -94,3 +94,17 @@ Minor Character continuations persist and resume without session-page reads.
 Domain eligibility, immutable publication, revisions and image binding rules stay
 here. [Shared AI jobs](AI_JOBS.md) owns collection/receipts, queue activity and the
 capability-aware model popup.
+
+Image-based gates and ranking require the current render's successful harvest
+receipt, validated bytes and committed image hash. Gate staging uses the run's
+state lock and a durable publication reservation, so restart between publication
+and gate-state commit reuses its ask. Minor review uses a deterministic workflow
+identity and process-shared session locks; its candidate image is committed before
+review starts. Admission rechecks current membership, cancellation, hashes and
+evaluation immediately around publication. Queued render/gate work does not fail
+solely because a subscriber's 30-minute wait elapsed.
+
+Reconstruction preparation verifies its frozen input fingerprint and reuses its
+saved record after suspension. Draft-application and analysis-to-candidate
+checkpoints prevent replay from creating another reconstruction or candidate.
+See [AI jobs](AI_JOBS.md) for common lifecycle/receipt ownership.

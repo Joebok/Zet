@@ -17,6 +17,7 @@ def rank_images_with_luna(
     owner=None,
     reference_image_paths: list[str | Path] | None = None,
     timeout: int = 1800,
+    admission=None,
 ) -> tuple[list[dict[str, str]], str]:
     """Run the common structured ranking contract over the supplied image set."""
     if len(candidate_ids) != len(image_paths):
@@ -36,5 +37,5 @@ def rank_images_with_luna(
     }
     value, _ = paths.jobs.generate_json("codex:" + model.removeprefix("codex:"), "", prompt, schema,
                                       [*(reference_image_paths or []), *image_paths],
-                                      task_type="local_image_ranking", timeout=timeout, owner=owner or {})
+                                      task_type="local_image_ranking", timeout=timeout, owner=owner or {}, admission=admission)
     return validate_ranking(value, candidate_ids), model

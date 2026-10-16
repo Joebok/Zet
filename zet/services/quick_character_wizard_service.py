@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 from datetime import datetime, timezone
+from contextlib import contextmanager
 import hashlib
 from io import BytesIO
 import json
@@ -13,7 +14,8 @@ from uuid import uuid4
 
 from PIL import Image
 
-from zet.services.atomic_file_service import write_json_atomic
+from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
+from zet.services.workflow_storage import file_lock
 from zet.services.entity_library_service import EntityLibraryServiceError
 from zet.services.image_reconstruction_contract import correction_items, fingerprint, text
 
@@ -63,9 +65,12 @@ class QuickCharacterWizardService:
     def _key(self, session_id: str) -> str:
         return str(self._directory(session_id).resolve())
 
+    @contextmanager
     def _lock(self, session_id: str):
         with _LOCK:
-            return _SESSION_LOCKS.setdefault(self._key(session_id), threading.RLock())
+            lock = _SESSION_LOCKS.setdefault(self._key(session_id), threading.RLock())
+        with lock, file_lock(self._directory(session_id) / "session.lock"):
+            yield
 
     @staticmethod
     def _now() -> str:
@@ -265,6 +270,10 @@ class QuickCharacterWizardService:
         return self._read(sid)
 
     def _draft_job(self, sid: str, revision_id: str) -> None:
+        from zet.services.ai_workflow_service import current_workflow
+        context = current_workflow.get()
+        if context and self._read(sid).get("draft_workflow_id") == context["id"]:
+            return
         session = self._draft_session(sid)
         if session.get("style_mode") == "universe":
             refs = []
@@ -294,6 +303,8 @@ class QuickCharacterWizardService:
                     reconstruction_id=job["id"], target_hash=job["target_hash"],
                     status="NEEDS_INPUT" if target["questions"] else "DRAFT_READY", proposals_approved=False,
                     revision_id=uuid4().hex, job={"kind": "draft", "status": "COMPLETE", "error": ""})
+                if context:
+                    current["draft_workflow_id"] = context["id"]
                 self._write(current)
             return
         draft = self._ask(
@@ -323,6 +334,8 @@ class QuickCharacterWizardService:
             current.update(status="NEEDS_INPUT" if draft["questions"] else "DRAFT_READY",
                            proposals_approved=False, revision_id=uuid4().hex,
                            job={"kind": "draft", "status": "COMPLETE", "error": ""})
+            if context:
+                current["draft_workflow_id"] = context["id"]
             self._write(current)
 
     def generate_draft(self, sid: str, revision_id: str, answers: list | None = None) -> dict:
@@ -562,6 +575,10 @@ class QuickCharacterWizardService:
     def _review_job(self, sid: str, candidate_id: str) -> None:
         session = self._read(sid)
         candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
+        from zet.services.ai_workflow_service import current_workflow
+        context = current_workflow.get()
+        if context is not None:
+            context["admission"] = lambda: self._review_admission(sid, candidate)
         session = {**session, **candidate.get("inputs", {})}
         paths = [str(self._directory(sid) / candidate["filename"]), *self._reference_paths(session)]
         if candidate["anchor_id"]:
@@ -606,6 +623,30 @@ class QuickCharacterWizardService:
     def _start_review(self, sid, candidate_id):
         self._submit(sid, self._review_job, candidate_id)
 
+    def _review_harvest(self, sid, candidate):
+        generation = self._generation()
+        request = generation._read_saved_job(candidate.get("render_request_id") or candidate["request_id"])
+        if request is None:
+            raise QuickCharacterWizardError("Render request is unavailable for image review")
+        child = next((item for item in request["children"] if item.get("status") == "COMPLETE" and item.get("done")), None)
+        if child is None:
+            raise QuickCharacterWizardError("Image must be harvested before review")
+        return self.app.ai_proxy_service.ai_proxy_path_service.jobs.assert_image_harvest(
+            child["ask_id"], self._directory(sid) / candidate["filename"], candidate["sha256"])
+
+    @contextmanager
+    def _review_admission(self, sid, candidate):
+        with self._lock(sid):
+            session = self._read(sid)
+            current = next((item for item in session["candidates"] if item["candidate_id"] == candidate["candidate_id"]), None)
+            if (not current or session.get("deleted_at") or session["status"] in {"ABANDONED", "ACCEPTED"}
+                    or current.get("sha256") != candidate.get("sha256") or current.get("stale")
+                    or (session.get("minor_character") and candidate["candidate_id"] not in self._working_ids(session))
+                    or (not session.get("minor_character") and session["revision_id"] != candidate["revision_id"])):
+                raise QuickCharacterWizardConflict("Image review was superseded before publication")
+            self._review_harvest(sid, current)
+            yield
+
     def get_session(self, sid: str) -> dict:
         with self._lock(sid):
             session = self._read(sid)
@@ -614,23 +655,27 @@ class QuickCharacterWizardService:
             with _LOCK:
                 active = self._key(sid) in _ACTIVE or self._pending_workflow(sid)
             if session["job"]["status"] == "RUNNING" and not active:
-                session["job"].update(status="FAILED", error="Analysis was interrupted. Retry analysis or image review.")
+                reviewing = next((c for c in session["candidates"] if c["status"] == "REVIEWING"), None)
+                if reviewing is not None:
+                    self._start_review(sid, reviewing["candidate_id"])
+                    return self._public(self._read(sid))
+                session["job"].update(status="FAILED", error="Analysis was interrupted. Retry analysis.")
                 session["status"] = "FAILED"
-                for c in session["candidates"]:
-                    if c["status"] == "REVIEWING":
-                        c["status"] = "REVIEW_FAILED"
                 self._write(session)
             if active:
                 return self._public(session)
             for c in session["candidates"]:
                 if c["status"] == "QUEUING":
                     request_id = c.get("render_request_id")
-                    if request_id and request_id in self._generation()._jobs:
+                    if request_id and self._generation()._read_saved_job(request_id) is not None:
                         c.update(status="QUEUED", request_id=request_id)
                     else:
                         c.update(status="FAILED", error="Submission was interrupted. Generate another candidate to retry.")
                         session["status"] = "FAILED"
                     self._write(session)
+                if c["status"] == "REVIEWING":
+                    self._start_review(sid, c["candidate_id"])
+                    continue
                 if c["status"] not in {"QUEUED", "RUNNING"}:
                     continue
                 try:
@@ -643,15 +688,19 @@ class QuickCharacterWizardService:
                         c["filename"] = f"renders/{c['candidate_id']}.{suffix}"
                         path = self._directory(sid) / c["filename"]
                         path.parent.mkdir(parents=True, exist_ok=True)
-                        path.write_bytes(contents)
+                        write_bytes_atomic(path, contents)
                         c.update(status="REVIEWING", mime_type=mime, sha256=hashlib.sha256(contents).hexdigest(), seed=generation.get("seed"))
                         session["job"] = {"kind": "review", "status": "RUNNING", "error": ""}
+                        self._write(session)
+                        c["render_harvest"] = self._review_harvest(sid, c)
                         self._write(session)
                         self._start_review(sid, c["candidate_id"])
                         return self._public(self._read(sid))
                     else:
                         c.update(status="FAILED", error=result.get("error") or "The render did not produce an image.")
                         session["status"] = "FAILED"
+                except OSError as exc:
+                    c["error"] = f"Image collection is temporarily unavailable: {exc}"
                 except Exception as exc:
                     c.update(status="FAILED", error=str(exc))
                     session["status"] = "FAILED"

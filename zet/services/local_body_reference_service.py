@@ -1450,12 +1450,15 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"No current image prompt is saved for view {view}.")
         return self._qwen_prompt(path.read_text(encoding="utf-8"), view, anchor=view != FRONT_VIEW)
 
+    @serialize_local_run_state
     def queue_local_analysis(self, run_id: str, candidate_id: str, model: str = "") -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if (not candidate or candidate.get("status") not in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
                 or not Path(str(candidate.get("image_path") or "")).is_file()):
             raise LocalBodyReferenceError("A face-gate-approved candidate image is required for local analysis.")
+        from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
+        require_candidate_harvest(self.app, run, candidate)
         image = Path(candidate["image_path"])
         anchor_id = run.get("front_anchor")
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == anchor_id), None)
@@ -1725,6 +1728,8 @@ Do not explain your reasoning."""
     def _queue_review_gate(self, run_id: str, candidate_id: str, definition: ReviewGate) -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
+        from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
+        require_candidate_harvest(self.app, run, candidate)
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalBodyReferenceError("A completed candidate image is required for review gates.")
@@ -1733,11 +1738,15 @@ Do not explain your reasoning."""
         if definition.uses_anchor and (anchor_image is None or not anchor_image.is_file()):
             raise LocalBodyReferenceError("Select a completed front anchor before the body identity gate.")
 
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        root = self._root(run_id) / "analyses" / candidate_id
-        root.mkdir(parents=True, exist_ok=True)
         image_hash = self._hash(image)
         anchor_hash = self._hash(anchor_image) if definition.uses_anchor and anchor_image else ""
+        jobs = self.app.ai_proxy_service.ai_proxy_path_service.jobs
+        stamp = jobs.followup_stamp(candidate["ask_id"], definition.key, {
+            "image": candidate["image_sha256"], "prompt": definition.prompt,
+            "anchor": anchor_hash,
+            "evaluation": (run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id", "")})
+        root = self._root(run_id) / "analyses" / candidate_id
+        root.mkdir(parents=True, exist_ok=True)
         images: list[tuple[str, Path]] = []
         if definition.crop_head:
             crop = root / f"gate_face_{stamp}.png"
@@ -1750,7 +1759,11 @@ Do not explain your reasoning."""
 
         output = root / f"gate_{definition.key}_{stamp}.txt"
         ask_id = f"Ask_LocalBodyReference_{run_id}_{candidate_id}_{definition.key.upper()}_{stamp}"
-        staging = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.create_staging(ask_id)
+        previous = jobs.reuse_followup(ask_id, output, {"candidate": image_hash, "front_anchor": anchor_hash}, hashlib.sha256(definition.prompt.encode()).hexdigest())
+        if previous:
+            return previous
+        staging = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.staging_path(ask_id)
+        staging.mkdir(parents=True, exist_ok=True)
         for name, source in images:
             shutil.copy2(source, staging / name)
         (staging / "OLLAMA_PROMPT.md").write_text(definition.prompt, encoding="utf-8")
@@ -1765,13 +1778,14 @@ Do not explain your reasoning."""
             "json_output": False, "expected_output": output.name, "task_type": "local_body_reference_gate",
             "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
             "local_body_reference_run_id": run_id, "candidate_id": candidate_id,
-            "gate": definition.key,
+            "render_ask_id": candidate["ask_id"], "gate": definition.key,
             "input_hashes": {"candidate": image_hash, "front_anchor": anchor_hash},
             "prompt_sha256": hashlib.sha256(definition.prompt.encode()).hexdigest(),
         }
         if definition.key == "orientation":
             manifest.update(ollama_chat=True, ollama_think=False, ollama_temperature=1.0)
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        require_candidate_harvest(self.app, self.detail(run_id), candidate)
         self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.publish(staging, ask_id, "ollama_generate")
         record = {
             "status": "QUEUED", "ask_id": ask_id, "output_path": str(output), "model": model,
@@ -1800,7 +1814,7 @@ Do not explain your reasoning."""
             if proxy_status == "RUNNING" and gate.get("status") != "RUNNING":
                 gate["status"] = "RUNNING"
                 self._candidate_update(run_id, candidate_id, {"gates": {**(candidate.get("gates") or {}), gate_key: gate}})
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(gate.get("ask_id") or "")):
                 raise LocalBodyReferenceError(f"Timed out waiting for the {gate_key} gate.")
             time.sleep(max(0.5, float(getattr(self.app.config, "comfyui_poll_seconds", 1.0))))
         response = output.read_text(encoding="utf-8")
@@ -1810,6 +1824,7 @@ Do not explain your reasoning."""
             return _parse_passing_gate_verdict(response)
         return parse_rejection_verdict(response), ""
 
+    @serialize_local_run_state
     def _stage_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
         run = self.detail(run_id)
         candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
@@ -1934,7 +1949,13 @@ Do not explain your reasoning."""
         failed_runs: set[str] = set()
         for summary in self.list_runs():
             run_id = summary["run_id"]
-            for candidate in self.detail(run_id).get("candidates") or []:
+            try:
+                candidates = self.detail(run_id).get("candidates") or []
+            except (LocalBodyReferenceError, OSError) as exc:
+                import logging
+                logging.getLogger(__name__).warning("Cannot collect Body Reference %s: %s", run_id, exc)
+                continue
+            for candidate in candidates:
                 gate = candidate.get("face_gate") or {}
                 if candidate.get("status") != "WAITING_FOR_FACE_GATE" or not gate.get("ask_id"):
                     continue
@@ -2201,8 +2222,6 @@ Do not explain your reasoning."""
         if evaluation_id:
             # Body ranking uses gate eligibility; compare supplemental candidates
             # only after collection finishes, including on restart recovery.
-            from zet.services.local_image_evaluation_service import update_view_evaluation
-            deadline = time.monotonic() + 1860
             while True:
                 run = self.detail(run_id)
                 active = (run.get("evaluations") or {}).get(view) or {}
@@ -2210,10 +2229,6 @@ Do not explain your reasoning."""
                     return run
                 if active.get("gates_status") == "COMPLETE":
                     break
-                if time.monotonic() >= deadline:
-                    update_view_evaluation(self._root(run_id), view,
-                        {"ranking_status": "FAILED", "error": "Gate collection did not finish before ranking."}, evaluation_id=evaluation_id)
-                    return run
                 time.sleep(0.25)
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
         anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
@@ -2226,6 +2241,9 @@ Do not explain your reasoning."""
                           or item.get("human_review", {}).get("decision") == "keep")
                      and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
+        from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
+        for survivor in survivors:
+            require_candidate_harvest(self.app, run, survivor)
         root = self._root(run_id)
         state = self._read_json((root / "state.json"))
         previous = dict((state.get("rankings") or {}).get(view) or {})
@@ -2276,6 +2294,7 @@ Do not explain your reasoning."""
                     image_paths=[item["image_path"] for item in survivors],
                     reference_image_paths=reference_images,
                     paths=self.app.ai_proxy_service.ai_proxy_path_service,
+                    admission=lambda: candidate_admission(self.app, lambda: self.detail(run_id), run, survivors),
                     owner={"run_id": run_id, "view": view, "pipeline": 'Body-Reference', "evaluation_id": evaluation_id},
                 )
                 ranking = {"status": "COMPLETE", "evaluation_id": evaluation_id,
@@ -2632,7 +2651,7 @@ Do not explain your reasoning."""
             return True
         image = Path(str(candidate.get("image_path") or ""))
         deadline = time.monotonic() + 1860
-        while not image.is_file():
+        while not self.app.ai_proxy_service.ai_proxy_path_service.jobs.image_harvest_ready(str(candidate.get("ask_id") or ""), image):
             if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id)["candidates"]):
                 return True
             if self.detail(run_id)["stop_requested"]:
@@ -2644,7 +2663,7 @@ Do not explain your reasoning."""
             if proxy_status == "RUNNING" and candidate.get("status") != "RUNNING":
                 self._candidate_update(run_id, candidate_id, {"status": "RUNNING"})
                 candidate["status"] = "RUNNING"
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(candidate.get("ask_id") or "")):
                 raise LocalBodyReferenceError("Timed out waiting for the render; use Retry after checking AI Proxy.")
             time.sleep(max(0.5, float(self.app.config.comfyui_poll_seconds)))
         next_status = "WAITING_FOR_GATES" if self.detail(run_id).get("review_version", 1) >= 2 else "WAITING_FOR_FACE_GATE"
@@ -2667,7 +2686,7 @@ Do not explain your reasoning."""
             if proxy_status == "RUNNING" and job["status"] != "RUNNING":
                 job["status"] = "RUNNING"
                 self._candidate_update(run_id, candidate_id, {"local_job": job})
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(job.get("ask_id") or "")):
                 raise LocalBodyReferenceError("Timed out waiting for local image analysis.")
             time.sleep(2)
         try:

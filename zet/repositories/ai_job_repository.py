@@ -1,7 +1,7 @@
 """Producer-local request records; transport state remains AI_Proxy-owned."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -32,6 +32,14 @@ class AIJobRepository:
 
     def update(self, job_id, **changes):
         self.put(job_id, {**self.get(job_id), **changes})
+
+    def collection_failed(self, job_id, exc, *, stage="application", path=""):
+        attempts = int(self.get(job_id).get("collection_failures") or 0) + 1
+        retry_at = (datetime.now(timezone.utc) + timedelta(seconds=min(30, 2 ** min(attempts, 5)))).isoformat() if isinstance(exc, OSError) else ""
+        self.update(job_id, harvest_state="HARVEST_FAILED", error=str(exc),
+                    failure_stage=stage, exception_type=type(exc).__name__,
+                    affected_path=str(path or getattr(exc, "filename", "") or ""), failed_at=timestamp(),
+                    collection_failures=attempts, collection_retry_at=retry_at)
 
     def all(self):
         if self.root.is_dir():

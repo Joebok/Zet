@@ -10,7 +10,9 @@
       const row = document.createElement("tr");
       row.dataset.jobId = item.ask_id;
       for (const value of [item.universe_id, [item.workflow, item.target].filter(Boolean).join(" / "), item.task_type || item.ask_id,
-        `${item.provider || ""} · ${item.model || ""}`, item.status, item.created_at, item.details]) {
+        `${item.provider || ""} · ${item.model || ""}`, item.status, item.created_at,
+        [item.failure_stage && `Stage: ${item.failure_stage}`, item.details,
+          item.age_seconds != null && `Age: ${Math.floor(item.age_seconds / 60)} min`, item.recovery_action].filter(Boolean).join(" · ")]) {
         const cell = document.createElement("td"); cell.textContent = value || ""; row.append(cell);
       }
       if (item.workflow_url) {

@@ -8,10 +8,15 @@ from pathlib import Path
 import socket
 import time
 from uuid import uuid4
+from contextlib import nullcontext
 
 from zet.repositories.ai_job_repository import AIJobRepository, timestamp
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import file_lock
+
+
+class AIExecutionError(RuntimeError):
+    """A terminal provider/transport failure, distinct from collection failure."""
 
 
 class AIJobService:
@@ -25,13 +30,97 @@ class AIJobService:
         self.lifecycle = paths.lifecycle
         self.repository = AIJobRepository(self.lifecycle.root)
 
+    def inspect(self, job_id):
+        """Inspect durable state without collecting, registering, or modifying a job."""
+        self.validate_id(job_id)
+        record = self.repository.get(job_id)
+        receipt = self.lifecycle.read_receipt(job_id)
+        info = {"ask_id": job_id, "status": "RECONCILING", "location": "", "path": "",
+                "harvest_state": record.get("harvest_state", ""), "blocking_reason": record.get("error", ""),
+                **{key: record.get(key, "") for key in ("failure_stage", "exception_type", "affected_path", "failed_at")}}
+        if receipt:
+            return {**info, "status": str(receipt.get("status") or "APPLIED"), "location": "receipt",
+                    "execution_status": receipt.get("execution_status", ""), "answer_status": receipt.get("answer_status", ""),
+                    "blocking_reason": receipt.get("error_message") or receipt.get("message", "")}
+        for root, location, state in ((self.lifecycle.inbox_root, "inbox", "ANSWERED"),
+                                     (self.client.answer_root, "answer", "ANSWERED"),
+                                     (self.client.running_root, "running", "RUNNING"),
+                                     (self.client.ask_root, "ask", "QUEUED")):
+            path = root / job_id
+            if not path.is_dir():
+                continue
+            info.update(status=state, location=location, path=str(path))
+            if location in {"answer", "inbox"}:
+                info.update(self.client.answer_block(path))
+                for name, field in (("proxy_result.json", "execution_status"), ("answer_manifest.json", "answer_status")):
+                    try:
+                        info[field] = json.loads((path / name).read_text(encoding="utf-8")).get("status", "")
+                    except (OSError, ValueError):
+                        pass
+            break
+        if record.get("harvest_state") == "HARVEST_FAILED":
+            info.update(status="HARVEST_FAILED", blocking_reason=record.get("error", ""))
+        return info
+
+    def is_pending(self, job_id):
+        """Known unfinished requests do not expire while queued or being collected."""
+        return self.inspect(job_id)["status"] in {
+            "QUEUED", "RUNNING", "ANSWERED", "HARVESTING", "HARVEST_FAILED", "TRANSFERRING", "RECOVERY_REQUIRED"}
+
+    def assert_image_harvest(self, job_id, image_path, expected_hash=""):
+        """The durable receipt and exact image, never file existence alone, admit analysis."""
+        from zet.services.workflow_storage import validate_image
+        self.validate_id(job_id)
+        receipt = self.lifecycle.read_receipt(job_id)
+        status = str(receipt.get("status", ""))
+        if (not receipt or receipt.get("answer_status") != "SUCCESS"
+                or receipt.get("execution_status") not in {None, "", "SUCCEEDED"}
+                or not (status == "APPLIED" or status.endswith("_APPLIED"))):
+            raise ValueError("A successful image harvest receipt is required before analysis")
+        if receipt.get("universe_id") != self.paths.config.universe_id:
+            raise ValueError("Image harvest belongs to another universe")
+        contents = Path(image_path).read_bytes()
+        validate_image(contents)
+        digest = hashlib.sha256(contents).hexdigest()
+        evidence = receipt.get("applied_artifact") or {}
+        required = evidence.get("sha256") or expected_hash
+        if not required or digest != required or (expected_hash and digest != expected_hash):
+            raise ValueError("Harvested image does not match the current render attempt")
+        return {"ask_id": job_id, "sha256": digest, "path": str(image_path)}
+
+    def followup_stamp(self, parent_id, kind, inputs):
+        """Reserve one publication identity before creating an analysis envelope."""
+        from datetime import datetime, timezone
+        key = hashlib.sha256(json.dumps([parent_id, kind, inputs], sort_keys=True).encode()).hexdigest()
+        path = self.lifecycle.root / "Followups" / (key + ".json")
+        with file_lock(self.lifecycle.lock_path(key)):
+            if path.is_file():
+                return json.loads(path.read_text(encoding="utf-8"))["stamp"]
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+            write_json_atomic(path, {"parent_id": parent_id, "kind": kind, "stamp": stamp})
+            return stamp
+
+    def image_harvest_ready(self, job_id, image_path):
+        try:
+            digest = hashlib.sha256(Path(image_path).read_bytes()).hexdigest()
+            self.assert_image_harvest(job_id, image_path, digest)
+            return True
+        except (OSError, ValueError):
+            return False
+
+    def reuse_followup(self, job_id, output, hashes, prompt_hash):
+        if self.inspect(job_id)["location"]:
+            return {"status": "QUEUED", "ask_id": job_id, "output_path": str(output),
+                    "input_hashes": hashes, "prompt_sha256": prompt_hash}
+        return None
+
     def submit_text(self, model, system, prompt, schema=None, images=None, *, job_id=None,
-                    consumer="zet-structured", owner=None, task_type="structured_inference", options=None, workflow=None):
+                    consumer="zet-structured", owner=None, task_type="structured_inference", options=None, workflow=None, admission=None):
         model = str(model).strip()
         provider = "codex" if model.startswith("codex:") else "ollama"
         job_id = job_id or "AI_" + uuid4().hex
         self.validate_id(job_id)
-        with file_lock(self.lifecycle.lock_path(job_id)):
+        with (admission() if admission else nullcontext()), file_lock(self.lifecycle.lock_path(job_id)):
             if self.repository.get(job_id) or (self.client.ask_root / job_id).exists() or (self.client.running_root / job_id).exists():
                 return job_id
             from zet.services.ai_model_catalog_service import AIModelCatalogService
@@ -84,10 +173,15 @@ class AIJobService:
                 record = self.repository.get(job_id)
             expected = record.get("manifest", {})
             if any(ask.get(key) != value for key, value in expected.items()):
-                self.repository.update(job_id, harvest_state="HARVEST_FAILED", error="Answer request identity changed")
+                self.repository.collection_failed(job_id, ValueError("Answer request identity changed"),
+                                                  stage="identity", path=candidate)
                 return None
             if candidate == source:
-                candidate = self.lifecycle.drain_answer(source, self.client)
+                try:
+                    candidate = self.lifecycle.drain_answer(source, self.client)
+                except Exception as exc:
+                    self.repository.collection_failed(job_id, exc, stage="answer_transfer", path=source)
+                    raise
             if not (candidate / "answer_manifest.json").is_file():
                 outcome = json.loads((candidate / "proxy_result.json").read_text(encoding="utf-8"))
                 if outcome.get("status") in {"FAILED", "INVALID"}:
@@ -101,16 +195,7 @@ class AIJobService:
             return candidate
 
     def state(self, job_id):
-        receipt = self.lifecycle.read_receipt(job_id)
-        if receipt:
-            return str(receipt.get("status") or "APPLIED")
-        if self.ready_answer(job_id):
-            return "ANSWERED"
-        if (self.client.running_root / job_id).is_dir():
-            return "RUNNING"
-        if (self.client.ask_root / job_id).is_dir():
-            return "QUEUED"
-        return "RECONCILING"
+        return self.inspect(job_id)["status"]
 
     def execution_status(self, job_id):
         receipt = self.lifecycle.read_receipt(job_id)
@@ -118,7 +203,11 @@ class AIJobService:
             return "HARVESTED", {**receipt, "ask_id": job_id, "status": receipt.get("answer_status", "SUCCESS")}
         path = self.ready_answer(job_id)
         if path:
-            return "ANSWERED", json.loads((path / "answer_manifest.json").read_text(encoding="utf-8"))
+            answer = json.loads((path / "answer_manifest.json").read_text(encoding="utf-8"))
+            outcome = json.loads((path / "proxy_result.json").read_text(encoding="utf-8"))
+            if outcome.get("status") != "SUCCEEDED":
+                answer = {**answer, "status": "FAILED", "error_message": outcome.get("error_message") or "AI_Proxy execution failed"}
+            return "ANSWERED", answer
         return self.state(job_id), {}
 
     def copy_result(self, job_id, target, *, image=False):
@@ -132,7 +221,8 @@ class AIJobService:
             if image:
                 validate_image(contents)
             write_bytes_atomic(Path(target), contents)
-            self.finish(job_id)
+            self.finish(job_id, applied_artifact={"path": str(Path(target).resolve()),
+                        "sha256": hashlib.sha256(contents).hexdigest(), "image": image})
             return True
 
     def adopt_legacy_text(self, job_id, ask, result=None, error="", created_at=""):
@@ -158,13 +248,13 @@ class AIJobService:
             write_json_atomic(temporary / "proxy_result.json", {"status": "SUCCEEDED", "output_files": inventory})
             self.client._replace_with_retry(temporary, folder)
 
-    def finish(self, job_id, *, status="APPLIED", message=""):
+    def finish(self, job_id, *, status="APPLIED", message="", **evidence):
         with file_lock(self.lifecycle.lock_path(job_id)):
             path = self.lifecycle.inbox_root / job_id
             if not path.is_dir():
                 path = self.client.answer_root / job_id
             if path.is_dir():
-                self.lifecycle.finish_answer(path, {"status": status, "message": message})
+                self.lifecycle.finish_answer(path, {"status": status, "message": message, **evidence})
 
     def result(self, job_id):
         with file_lock(self.lifecycle.lock_path(job_id)):
@@ -176,10 +266,11 @@ class AIJobService:
             return None
         answer = json.loads((path / "answer_manifest.json").read_text(encoding="utf-8"))
         ask = json.loads((path / "ask_manifest.json").read_text(encoding="utf-8"))
+        outcome = json.loads((path / "proxy_result.json").read_text(encoding="utf-8"))
         if answer.get("ask_id") != job_id or answer.get("expected_output") != ask.get("expected_output"):
             raise ValueError("AI answer does not match the requested output")
-        if answer.get("status") != "SUCCESS":
-            raise RuntimeError(str(answer.get("error_message") or "AI execution failed"))
+        if outcome.get("status") != "SUCCEEDED" or answer.get("status") != "SUCCESS":
+            raise AIExecutionError(str(answer.get("error_message") or outcome.get("error_message") or "AI execution failed"))
         filename = str(answer["expected_output"])
         if Path(filename).name != filename:
             raise ValueError("AI output filename must be a direct child")
@@ -195,6 +286,7 @@ class AIJobService:
             metadata.setdefault("job_id", "AI_" + hashlib.sha256((context["id"] + signature).encode()).hexdigest()[:32])
             metadata.setdefault("owner", context["owner"])
             metadata.setdefault("workflow", context["service"])
+            metadata.setdefault("admission", context.get("admission"))
         elif (metadata.get("owner") or {}).get("evaluation_id"):
             signature = json.dumps([metadata["owner"], system, prompt, schema,
                 [hashlib.sha256(Path(image).read_bytes()).hexdigest() for image in images or []]], sort_keys=True)
@@ -207,7 +299,7 @@ class AIJobService:
                 raise RuntimeError(saved["error"])
             return saved["result"], saved.get("runtime", {})
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
+        while time.monotonic() < deadline or self.is_pending(job_id):
             if cache.is_file():
                 saved = json.loads(cache.read_text(encoding="utf-8"))
                 if saved.get("error"):
@@ -215,8 +307,13 @@ class AIJobService:
                 return saved["result"], saved.get("runtime", {})
             try:
                 result = self.result(job_id)
-            except Exception as exc:
+            except AIExecutionError as exc:
                 self.finish(job_id, status="FAILED", message=str(exc))
+                raise
+            except Exception as exc:
+                self.repository.collection_failed(job_id, exc, stage="structured_result")
+                if context is not None:
+                    raise AIPending()
                 raise
             if result is not None:
                 contents, answer = result

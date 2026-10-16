@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 
 from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
+from zet.services.ai_job_service import AIExecutionError
 
 
 CONSUMER = "zet-narrative-scenes"
@@ -92,9 +93,14 @@ class NarrativeProxyService:
                 filename = str(result["expected_output"])
                 if Path(filename).name != filename:
                     return "FAILED", "Invalid AI_Proxy output filename."
-                return "COMPLETE", (answer / filename).read_bytes()
-            except (OSError, ValueError, KeyError) as exc:
+                verified = self.app.ai_proxy_service.ai_proxy_path_service.jobs.result(job["id"])
+                return ("COMPLETE", verified[0]) if verified is not None else ("RUNNING", None)
+            except AIExecutionError as exc:
                 return "FAILED", f"Unable to read AI_Proxy answer: {exc}"
+            except (OSError, ValueError, KeyError) as exc:
+                self.app.ai_proxy_service.ai_proxy_path_service.jobs.repository.collection_failed(
+                    job["id"], exc, stage="narrative_collection", path=answer)
+                return "RUNNING", None
         if (self.client.running_root / job["id"]).is_dir():
             return "RUNNING", None
         if (self.client.ask_root / job["id"]).is_dir():

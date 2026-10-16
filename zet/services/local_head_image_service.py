@@ -513,19 +513,19 @@ class LocalHeadImageService:
             return True
         target = Path(str(candidate.get("image_path") or ""))
         deadline = time.monotonic() + 1860
-        while not target.is_file():
+        while not self.app.ai_proxy_service.ai_proxy_path_service.jobs.image_harvest_ready(str(candidate.get("ask_id") or ""), target):
             if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id)["candidates"]):
                 return True
             run = self.detail(run_id)
             if run.get("stop_requested"):
                 return False
             self._harvest(run_id, candidate)
-            if target.is_file():
+            if self.app.ai_proxy_service.ai_proxy_path_service.jobs.image_harvest_ready(str(candidate.get("ask_id") or ""), target):
                 break
             _, answer = self._proxy_answer(str(candidate.get("ask_id") or ""))
             if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalHeadImageError(str(answer.get("error_message") or "ComfyUI render failed."))
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(candidate.get("ask_id") or "")):
                 raise LocalHeadImageError("Timed out waiting for the ComfyUI render.")
             time.sleep(max(.5, float(self.app.config.comfyui_poll_seconds)))
         try:
@@ -580,6 +580,8 @@ class LocalHeadImageService:
     def _queue_gate(self, run_id: str, candidate: dict[str, Any], definition: ReviewGate) -> dict[str, Any]:
         run = self.detail(run_id)
         root = self._run_root(run_id)
+        from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
+        require_candidate_harvest(self.app, run, candidate)
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalHeadImageError("Candidate image is missing.")
@@ -596,11 +598,19 @@ class LocalHeadImageService:
         if definition.key == "source_identity":
             input_images.insert(0, ("front_source.png", Path(run["front_source"])))
             hashes["front_source"] = run.get("front_source_sha256", "")
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        jobs = self.app.ai_proxy_service.ai_proxy_path_service.jobs
+        timestamp = jobs.followup_stamp(candidate["ask_id"], definition.key, {
+            "image": candidate["image_sha256"], "prompt": definition.prompt,
+            "inputs": hashes,
+            "evaluation": (run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id", "")})
         output = root / "analyses" / candidate["candidate_id"] / f"gate_{definition.key}_{timestamp}.txt"
         ask_id = f"Ask_LocalHeadImage_{run_id}_{candidate['candidate_id']}_{definition.key}_{timestamp}"
         proxy = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client
-        staging = proxy.create_staging(ask_id)
+        previous = jobs.reuse_followup(ask_id, output, hashes, hashlib.sha256(definition.prompt.encode()).hexdigest())
+        if previous:
+            return previous
+        staging = proxy.staging_path(ask_id)
+        staging.mkdir(parents=True, exist_ok=True)
         for name, path in input_images:
             shutil.copy2(path, staging / name)
         (staging / "OLLAMA_PROMPT.md").write_text(definition.prompt, encoding="utf-8")
@@ -612,9 +622,10 @@ class LocalHeadImageService:
                     "json_output": False, "expected_output": output.name, "task_type": "local_head_image_gate",
                     "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
                     "local_head_image_run_id": run_id, "candidate_id": candidate["candidate_id"],
-                    "gate": definition.key, "input_hashes": hashes,
+                    "render_ask_id": candidate["ask_id"], "gate": definition.key, "input_hashes": hashes,
                     "prompt_sha256": hashlib.sha256(definition.prompt.encode()).hexdigest()}
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        require_candidate_harvest(self.app, self.detail(run_id), candidate)
         proxy.publish(staging, ask_id, "ollama_generate")
         return {"status": "QUEUED", "ask_id": ask_id, "output_path": str(output), "input_hashes": hashes,
                 "prompt_sha256": manifest["prompt_sha256"]}
@@ -658,7 +669,7 @@ class LocalHeadImageService:
             _, answer = self._proxy_answer(str(record.get("ask_id") or ""))
             if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalHeadImageError(str(answer.get("error_message") or f"{gate_key} gate failed."))
-            if time.monotonic() >= deadline:
+            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(record.get("ask_id") or "")):
                 raise LocalHeadImageError(f"Timed out waiting for the {gate_key} gate.")
             time.sleep(1)
         response = output.read_text(encoding="utf-8").strip()
@@ -667,6 +678,7 @@ class LocalHeadImageService:
             raise LocalHeadImageError(f"{gate_key} gate returned an invalid verdict.")
         return match.group(1).upper(), (match.group(2) or "").strip()
 
+    @serialize_local_run_state
     def _stage_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
         run = self.detail(run_id)
         candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
@@ -1068,6 +1080,9 @@ class LocalHeadImageService:
             return run
         survivors = [item for item in run["candidates"] if item["view"] == view
                      and Path(str(item.get("image_path") or "")).is_file()]
+        from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
+        for survivor in survivors:
+            require_candidate_harvest(self.app, run, survivor)
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
         if not survivors:
             anchor_hash = self._hash(anchor_path) if view != FRONT and anchor_path.is_file() else ""
@@ -1095,6 +1110,7 @@ class LocalHeadImageService:
                     image_paths=[item["image_path"] for item in survivors],
                     reference_image_paths=([anchor_path] if view != FRONT else []),
                     paths=self.app.ai_proxy_service.ai_proxy_path_service,
+                    admission=lambda: candidate_admission(self.app, lambda: self.detail(run_id), run, survivors),
                     owner={"run_id": run_id, "view": view, "pipeline": 'Head-Image', "evaluation_id": evaluation_id},
                 )
             except Exception as exc:

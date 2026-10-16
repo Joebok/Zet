@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 import re
 import threading
-from zet.services.ai_workflow_service import work_id
+from zet.services.ai_workflow_service import work_id, current_workflow
 from PIL import Image
 
 from zet.services.atomic_file_service import write_json_atomic
@@ -124,7 +124,40 @@ class ImageReconstructionService:
             references, payload = self._sources(payload)
         job_id = work_id("reconstruction")
         directory = self._path(job_id).parent
-        directory.mkdir(parents=True, exist_ok=False)
+        references = list(references)
+        context = current_workflow.get()
+        identity = fingerprint({"model": model, "payload": payload, "style": style,
+            "owner": {"universe_id": self.app.universe_id, "workflow_id": context["id"] if context else "",
+                      **(context["owner"] if context else {})},
+            "references": [{"metadata": metadata, "sha256": hashlib.sha256(contents).hexdigest()}
+                           for metadata, contents in references]})
+        with file_lock(directory / ".prepare.lock"):
+            marker = directory / "preparation.json"
+            if marker.is_file():
+                saved = json.loads(marker.read_text(encoding="utf-8"))
+                if saved.get("identity") != identity:
+                    raise ValueError("Reconstruction preparation inputs changed during continuation")
+            elif self._path(job_id).is_file():
+                # Old deterministic continuations have no preparation marker. Verify their
+                # original source/model/intent below before adopting the existing record.
+                old = self._read(job_id)
+                sources = [{**metadata, "filename": old["target"]["sources"][index]["filename"],
+                            "sha256": hashlib.sha256(contents).hexdigest()}
+                           for index, (metadata, contents) in enumerate(references)]
+                expected = target_brief(payload, style, sources)
+                actual = old["target"]
+                if (old["model"] != model or old["style"] != style or any(actual.get(k) != v for k, v in expected.items()
+                        if k not in {"description", "identity", "proposals", "questions", "observations"})):
+                    raise ValueError("Existing reconstruction does not match the frozen preparation")
+                self.validate_sources(old)
+            write_json_atomic(marker, {"identity": identity})
+            if self._path(job_id).is_file():
+                old = self._read(job_id)
+                self.validate_sources(old)
+                return old
+            return self._prepare_record(job_id, directory, payload, references, model, style)
+
+    def _prepare_record(self, job_id, directory, payload, references, model, style):
         sources = []
         for index, (metadata, contents) in enumerate(references):
             filename, checksum = self._snapshot(directory, f"sources/{index}", contents)
@@ -174,6 +207,8 @@ class ImageReconstructionService:
     def analyze(self, job_id):
         job = self._read(job_id)
         self.validate_sources(job)
+        if job.get("status") == "READY":
+            return job
         images = [str(self._path(job_id).parent / r["filename"]) for r in job["target"]["sources"]]
         draft = validate_draft(self._ask(job["model"], self.INSTRUCTIONS
             + "\nSeparate source observations from the intended target. The content_prompt and identity must "

@@ -1,5 +1,16 @@
 # Local testing
 
+AI job repair validation (2026-10-16): the four maintained fast scenarios passed
+in 33.4 seconds. The shared prepared-envelope helper now uses protocol terminal
+status `SUCCEEDED`; its scenario purpose is unchanged. Disposable isolated checks
+passed for read-only inspection, disk discovery by an existing collector, two OS
+processes collecting one answer, interrupted image/receipt commits, transport vs.
+worker failure, image/cancellation admission, deterministic follow-up identity,
+reconstruction replay, a render waiting beyond its caller deadline, and mixed
+Image Generation/Assembly/Minor Character work. An intentionally failing legacy
+collector did not block a registered handler. No live inference or production
+deployment was performed, and no permanent scenario was added.
+
 Zet maintains exactly **four fast Playwright task scenarios** and **one separately invoked live Narrative check**. This is the validation owner for the agent knowledge base. The recovered commits `b3d695a`, `3f6acbe`, and `257fdeb` retired the former Python/browser suites and GitHub Actions gates in favor of representative local tasks. See [AGENTS.md](../AGENTS.md) and the [delivery workflow](../.github/CODEX_WORKFLOW.md). Old test paths in tickets refer agents to this baseline; they are not instructions to recreate deleted tests.
 
 Minor Characters (2026-10-15) were verified with disposable prepared-response service/browser journeys, including selected versus locked views, nonblocking advisory review, source/candidate comparison and Inventory handoffs. Those checks are not maintained scenarios. All three approved scenarios passed (26.7s); see the [completed plan](../plans/completed/minor-characters-workspace.md) for evidence and scope limits.

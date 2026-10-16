@@ -223,6 +223,22 @@ class FileProxyClient:
     def answer_is_ready(self, answer: Path) -> bool:
         return not self.answer_blocked_reason(answer)
 
+    def answer_block(self, answer: Path) -> dict:
+        """Read-only classification; missing routes are not an in-flight transfer."""
+        reason = self.answer_blocked_reason(answer)
+        if not reason:
+            return {}
+        if "another producer" in reason:
+            code = "FOREIGN_PRODUCER"
+        elif "route is missing" in reason:
+            code = "MISSING_ROUTE"
+        elif not (answer / "ask_manifest.json").is_file():
+            code = "MISSING_OWNER_METADATA"
+        else:
+            code = "INCOMPLETE_TRANSFER"
+        return {"reason_code": code, "blocking_reason": reason,
+                "status": "TRANSFERRING" if code == "INCOMPLETE_TRANSFER" else "RECOVERY_REQUIRED"}
+
     def answer_blocked_reason(self, answer: Path) -> str:
         if (answer / "harvest_manifest.json").is_file():
             return ""

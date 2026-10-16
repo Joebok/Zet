@@ -98,14 +98,23 @@ class AIWorkflowService:
     def resume(self):
         if self.root.is_dir():
             for path in self.root.glob("*.json"):
-                record = self._read(path)
-                if record["universe_id"] == self.app.universe_id and record["status"] in {"WAITING", "RUNNING"}:
-                    _POOL.submit(self.run, record["id"])
+                try:
+                    record = self._read(path)
+                    if record["universe_id"] == self.app.universe_id and record["status"] in {"WAITING", "RUNNING"}:
+                        _POOL.submit(self.run, record["id"])
+                except (OSError, ValueError, KeyError):
+                    import logging
+                    logging.getLogger(__name__).exception("Unable to resume AI workflow %s", path)
 
     def pending(self, session_id):
         if self.root.is_dir():
-            return any(record["universe_id"] == self.app.universe_id
-                       and str(session_id) in {str(value) for value in record.get("owner", {}).values()}
-                       and record["status"] in {"WAITING", "RUNNING"}
-                       for path in self.root.glob("*.json") for record in [self._read(path)])
+            for path in self.root.glob("*.json"):
+                try:
+                    record = self._read(path)
+                    if (record["universe_id"] == self.app.universe_id
+                            and str(session_id) in {str(value) for value in record.get("owner", {}).values()}
+                            and record["status"] in {"WAITING", "RUNNING"}):
+                        return True
+                except (OSError, ValueError, KeyError):
+                    continue
         return False
