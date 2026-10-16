@@ -19,6 +19,10 @@ _REVIEWS = ThreadPoolExecutor(max_workers=1, thread_name_prefix="minor-character
 _REVIEW_ACTIVE = set()
 
 
+class MinorCharacterNotFound(QuickCharacterWizardError):
+    pass
+
+
 class MinorCharacterService(QuickCharacterWizardService):
     INPUTS = ("references", "primary_reference_id", "style_mode", "preserve", "changes", "model",
               "notes", "framing", "side", "description", "identity", "proposals", "answers",
@@ -68,7 +72,7 @@ class MinorCharacterService(QuickCharacterWizardService):
         for path in self.root.glob("*/session.json"):
             try:
                 value = self._read(path.parent.name)
-                if value["status"] != "ABANDONED" and (include_aliases or not value.get("minor_character_alias")):
+                if not value.get("deleted_at") and value["status"] != "ABANDONED" and (include_aliases or not value.get("minor_character_alias")):
                     records.append(value)
             except (QuickCharacterWizardError, KeyError, TypeError):
                 continue
@@ -76,6 +80,8 @@ class MinorCharacterService(QuickCharacterWizardService):
 
     def _canonical(self, sid):
         record = self._read(sid)
+        if record.get("deleted_at"):
+            raise MinorCharacterNotFound("This Minor Character has been deleted.")
         if record.get("minor_character_alias"):
             return self._canonical(record["minor_character_alias"])
         siblings = [s for s in self._records() if self.name_key(s["name"]) == self.name_key(record["name"])]
@@ -92,12 +98,56 @@ class MinorCharacterService(QuickCharacterWizardService):
 
     def _public(self, session):
         value = super()._public(session)
+        deleted = {i["iteration_id"] for i in value.get("iterations", []) if i.get("deleted_at")}
+        value["iterations"] = [i for i in value.get("iterations", []) if i["iteration_id"] not in deleted]
+        value["candidates"] = [c for c in value["candidates"] if c.get("iteration_id") not in deleted]
         value["character_id"] = value["session_id"]
         for ref in value["references"]:
             ref["url"] = f"/api/minor-characters/{value['session_id']}/references/{ref['reference_id']}"
         for view, locked in value.get("locked", {}).items():
             locked["image_url"] = f"/api/minor-characters/{value['session_id']}/locked/{view}"
         return value
+
+    def delete_character(self, sid):
+        with file_lock(self.root / "names.lock"):
+            record = self._canonical(sid)
+            records = self._records(include_aliases=True)
+            ids = {r["session_id"] for r in records if self.name_key(r["name"]) == self.name_key(record["name"])}
+            # Include aliases from earlier renames so old inventory handoffs cannot reopen them.
+            while True:
+                aliases = {r["session_id"] for r in records if r.get("minor_character_alias") in ids}
+                if aliases <= ids:
+                    break
+                ids.update(aliases)
+            for target in sorted(ids):
+                with self._lock(target):
+                    current = self._read(target)
+                    current.update(deleted_at=self._now(), status="ABANDONED",
+                        job={"kind": "delete", "status": "COMPLETE", "error": ""})
+                    self._write(current)
+        return {"deleted": True, "character_id": record["session_id"]}
+
+    def delete_iteration(self, sid, iteration_id):
+        sid = self._canonical(sid)["session_id"]
+        with self._lock(sid):
+            session = self._read(sid)
+            iteration = next((i for i in session["iterations"] if i["iteration_id"] == iteration_id and not i.get("deleted_at")), None)
+            if not iteration:
+                raise MinorCharacterNotFound("This iteration is no longer available.")
+            iteration["deleted_at"] = self._now()
+            ids = {c["candidate_id"] for c in session["candidates"] if c.get("iteration_id") == iteration_id}
+            session["selected"] = {view: cid for view, cid in session["selected"].items() if cid not in ids}
+            remaining = [i for i in session["iterations"] if i["view"] == iteration["view"] and not i.get("deleted_at")]
+            if session.get("active_iteration_id") == iteration_id or session.get("preview_candidate_id") in ids:
+                session["active_iteration_id"] = remaining[-1]["iteration_id"] if remaining else ""
+                session["preview_candidate_id"] = next((cid for cid in remaining[-1]["slots"] if cid), "") if remaining else ""
+            self._write(session)
+            return self._public(session)
+
+    @staticmethod
+    def _deleted_candidate(session, candidate_id):
+        deleted = {i["iteration_id"] for i in session.get("iterations", []) if i.get("deleted_at")}
+        return any(c["candidate_id"] == candidate_id and c.get("iteration_id") in deleted for c in session["candidates"])
 
     def list_characters(self):
         records = self._records()
@@ -141,11 +191,20 @@ class MinorCharacterService(QuickCharacterWizardService):
     def _busy(self, session):
         with _LOCK:
             active = self._key(session["session_id"]) in _ACTIVE
+        deleted = {i["iteration_id"] for i in session.get("iterations", []) if i.get("deleted_at")}
         return active or (session["job"]["kind"] == "draft" and session["job"]["status"] == "RUNNING") or any(
-            c["status"] in {"QUEUING", "QUEUED", "RUNNING"} for c in session["candidates"])
+            c["status"] in {"QUEUING", "QUEUED", "RUNNING"} and c.get("iteration_id") not in deleted
+            for c in session["candidates"])
 
     def _start_review(self, sid, candidate_id):
         session = self._read(sid)
+        if session.get("deleted_at") or self._deleted_candidate(session, candidate_id):
+            candidate = next(c for c in session["candidates"] if c["candidate_id"] == candidate_id)
+            candidate["status"] = "READY"
+            if session["job"]["kind"] == "review":
+                session["job"]["status"] = "COMPLETE"
+            self._write(session)
+            return
         session["job"] = {"kind": "review", "status": "COMPLETE", "error": ""}
         session["status"] = "REVIEW_READY"
         key = (self._key(sid), candidate_id)
@@ -182,7 +241,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                 "changes": "", "model": self.app.config.ai_quick_character_wizard_model,
                 "framing": "full_body", "side": "left", "references": [], "description": "", "identity": "",
                 "observations": [], "proposals": [], "proposals_approved": True, "questions": [], "answers": [],
-                "revision_id": uuid4().hex, "candidates": [], "selected": {}, "locked": {}, "status": "DRAFT_READY",
+                "revision_id": uuid4().hex, "candidates": [], "iterations": [], "selected": {}, "locked": {}, "status": "DRAFT_READY",
                 "needs_analysis": True, "primary_reference_id": "", "comparison_reference_id": "",
                 "job": {"kind": "draft", "status": "COMPLETE", "error": ""}, "created_at": self._now(), "publication": None}
             self._write(record)
@@ -325,6 +384,8 @@ class MinorCharacterService(QuickCharacterWizardService):
         super()._draft_job(sid, revision_id)
         with self._lock(sid):
             session = self._read(sid)
+            if session.get("deleted_at"):
+                return
             session["needs_analysis"] = signature != self._signature(session)
             overrides = session.pop("description_override", None)
             if overrides:
@@ -335,7 +396,7 @@ class MinorCharacterService(QuickCharacterWizardService):
             session.pop("analysis_inputs", None)
             session["proposals_approved"] = True
             self._write(session)
-            if pending and not session["needs_analysis"]:
+            if pending and not session["needs_analysis"] and not self._deleted_candidate(session, pending.get("candidate_id")):
                 candidate = self._new_candidate(session, **pending)
                 self._write(session)
             else:
@@ -344,6 +405,8 @@ class MinorCharacterService(QuickCharacterWizardService):
             self._render_job(sid, candidate["candidate_id"], pending["item_ids"])
 
     def _new_candidate(self, session, view, instructions="", candidate_id="", item_ids=None):
+        if session.get("deleted_at") or self._deleted_candidate(session, candidate_id):
+            raise MinorCharacterNotFound("This character or refinement iteration has been deleted.")
         if view not in self._views(session):
             raise QuickCharacterWizardError("Choose a character view.")
         anchor = session["selected"].get("FRONT")
@@ -377,7 +440,7 @@ class MinorCharacterService(QuickCharacterWizardService):
         sid = self._canonical(sid)["session_id"]
         with self._lock(sid):
             session = self._read(sid)
-            iteration = next((i for i in session["iterations"] if i["iteration_id"] == iteration_id), None)
+            iteration = next((i for i in session["iterations"] if i["iteration_id"] == iteration_id and not i.get("deleted_at")), None)
             if not iteration or action not in {"add", "regenerate", "clear"}:
                 raise QuickCharacterWizardError("Choose an iteration and slot action.")
             if action != "add" and (type(slot) is not int or not 0 <= slot < 4):
@@ -426,6 +489,8 @@ class MinorCharacterService(QuickCharacterWizardService):
         sid = self._canonical(sid)["session_id"]
         with self._lock(sid):
             session = self._read(sid)
+            if self._deleted_candidate(session, candidate_id):
+                raise MinorCharacterNotFound("This candidate's iteration has been deleted.")
             if self._busy(session):
                 raise QuickCharacterWizardConflict("An image task is already running.")
             if view != "FRONT" and not session["selected"].get("FRONT"):
@@ -442,6 +507,8 @@ class MinorCharacterService(QuickCharacterWizardService):
         sid = self._canonical(sid)["session_id"]
         with self._lock(sid):
             session = self._read(sid)
+            if self._deleted_candidate(session, candidate_id):
+                raise MinorCharacterNotFound("This candidate's iteration has been deleted.")
             candidate = next((c for c in session["candidates"] if c["candidate_id"] == candidate_id and c.get("filename")), None)
             if not candidate:
                 raise QuickCharacterWizardError("Choose a rendered image.")
@@ -449,12 +516,21 @@ class MinorCharacterService(QuickCharacterWizardService):
             self._write(session)
             return self._public(session)
 
+    def retry_render(self, sid, revision_id, candidate_id):
+        sid = self._canonical(sid)["session_id"]
+        with self._lock(sid):
+            if self._deleted_candidate(self._read(sid), candidate_id):
+                raise MinorCharacterNotFound("This candidate's iteration has been deleted.")
+            return super().retry_render(sid, revision_id, candidate_id)
+
     def lock_view(self, sid, view, candidate_id=""):
         from zet.services.quick_character_publication_service import publish_quick_character
         sid = self._canonical(sid)["session_id"]
         records = self._records()
         with self._lock(sid):
             session = self._with_legacy_locks(self._read(sid), records)
+            if self._deleted_candidate(session, candidate_id or session["selected"].get(view)):
+                raise MinorCharacterNotFound("This candidate's iteration has been deleted.")
             candidate = next((c for c in session["candidates"] if c["candidate_id"] == (candidate_id or session["selected"].get(view))
                 and c["view"] == view and c.get("filename")), None)
             if not candidate:

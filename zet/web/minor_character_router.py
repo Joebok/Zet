@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
 from zet.services.quick_character_wizard_service import QuickCharacterWizardConflict
+from zet.services.minor_character_service import MinorCharacterNotFound
 
 
 def create_minor_character_router(provider):
@@ -14,6 +15,8 @@ def create_minor_character_router(provider):
     def call(operation):
         try:
             return operation(provider())
+        except MinorCharacterNotFound as exc:
+            raise HTTPException(404, str(exc)) from exc
         except QuickCharacterWizardConflict as exc:
             raise HTTPException(409, str(exc)) from exc
         except (ValueError, KeyError, TypeError) as exc:
@@ -58,6 +61,14 @@ def create_minor_character_router(provider):
     async def update(sid: str, request: Request):
         data = await payload(request)
         return {"character": await run_in_threadpool(call, lambda s: s.update_character(sid, data))}
+
+    @router.delete("/{sid}")
+    def delete(sid: str):
+        return call(lambda s: s.delete_character(sid))
+
+    @router.delete("/{sid}/iterations/{iteration_id}")
+    def delete_iteration(sid: str, iteration_id: str):
+        return {"character": call(lambda s: s.delete_iteration(sid, iteration_id))}
 
     @router.post("/{sid}/generate")
     def generate(sid: str, data: dict = Body(...)):

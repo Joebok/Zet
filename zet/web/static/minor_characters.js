@@ -61,7 +61,10 @@
       const row = button("", () => open(item.character_id)); row.className = "mc-list-row";
       if (item.locked.FRONT) { const img = document.createElement("img"); img.src = url(item.locked.FRONT.image_url); img.alt = `${item.name} locked front`; row.append(img); }
       else row.append(element("span", "No locked front", "mc-no-front"));
-      row.append(element("strong", item.name)); $("mc-list").append(row);
+      row.append(element("strong", item.name));
+      const remove=button("Delete",()=>deleteCharacter(item.character_id,item.name));
+      remove.className="danger";remove.setAttribute("aria-label",`Delete ${item.name}`);
+      const entry=element("div","","mc-list-item");entry.append(row,remove);$("mc-list").append(entry);
       $("mc-continue-choice").add(new Option(item.name, item.character_id));
     }
     if (!characters.length) $("mc-list").append(element("p", "Create your first Minor Character."));
@@ -88,6 +91,20 @@
     preview = character.preview_candidate_id || ""; iterationId=character.active_iteration_id || ""; route(character.character_id);
     $("mc-list-panel").hidden = true; $("mc-editor").hidden = false; $("mc-back").hidden = false;
     show(character); message("");
+  }
+  async function deleteCharacter(id, name) {
+    if (!window.confirm(`Delete Minor Character “${name}”? Published Inventory images will be kept.`)) return;
+    await flush();generation++;clearTimeout(pollTimer);
+    await api(`/${id}`,"DELETE");
+    $("mc-review").close();character=null;patch={};entryAsset=null;waitingForCandidate=null;
+    await list();message(`Deleted ${name}.`);
+  }
+  async function deleteIteration(id, number) {
+    if (!window.confirm(`Delete iteration ${number}? Its working selection will be cleared. Published Inventory images will be kept.`)) return;
+    await flush();generation++;clearTimeout(pollTimer);$("mc-review").close();waitingForCandidate=null;
+    const result=await api(`/${character.character_id}/iterations/${id}`,"DELETE");
+    preview=result.character.preview_candidate_id || "";iterationId=result.character.active_iteration_id || "";
+    show(result.character);message(`Deleted iteration ${number}.`);
   }
   function imageFigure(source, caption) {
     const figure = element("figure"); const img = document.createElement("img"); img.src = url(source); img.alt = caption;
@@ -143,13 +160,13 @@
     await flush(); show((await api(`/${character.character_id}/select`,"POST",{candidate_id:id})).character);
   }
   async function slotAction(action, slot, count = 1) {
-    const id=character.character_id, target=iterationId, key=`${id}:${target}:${slot ?? "add"}`;
+    const id=character.character_id, target=iterationId, current=generation, key=`${id}:${target}:${slot ?? "add"}`;
     if (slotPending.has(key)) return;
     slotPending.add(key); renderImages();
     try {
       await flush();
       const result=await api(`/${id}/iterations/${target}/slots`,"POST",{action,slot,count});
-      if (character?.character_id===id) show(result.character);
+      if (character?.character_id===id && current===generation) show(result.character);
     } catch (error) { message(error.message,true); }
     finally { slotPending.delete(key); if (character?.character_id===id) {renderImages();updateButtons();} }
   }
@@ -162,15 +179,17 @@
     if (!$("mc-review").open) return;
     const list = occupied(), candidate = choice(), index = list.findIndex(c=>c.candidate_id===preview);
     const ref = references.find(r=>r.reference_id===(patch.comparison_reference_id || character.comparison_reference_id)) || references[0];
+    const previous=$("mc-review-prev"), next=$("mc-review-next");
+    $("mc-review-navigation").append(previous,next);
     $("mc-review-pair").replaceChildren();
     if (ref?.url) $("mc-review-pair").append(imageFigure(ref.url,"Original reference"));
     if (candidate?.image_url && index>=0) {
       const figure = imageFigure(candidate.image_url,`${character.name} · ${label(view)} · ${index+1} of ${list.length}`);
-      const select = button(character.selected[view]===preview ? "Selected candidate" : "Select candidate",()=>selectCandidate(candidate.candidate_id));
+      const select = button(character.selected[view]===preview ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
       const lock=button(character.locked[view]?.candidate_id===preview ? "Locked" : "Lock",()=>lockCandidate(candidate));
       lock.disabled=pending || character.locked[view]?.candidate_id===preview;
       select.disabled = pending || character.selected[view]===preview;
-      const actions=element("div","","button-row mc-review-actions");actions.append(select,lock);
+      const actions=element("div","","button-row mc-review-actions");actions.append(previous,select,lock,next);
       figure.append(actions); $("mc-review-pair").append(figure);
     }
     $("mc-review-prev").disabled = index<=0;
@@ -209,7 +228,9 @@
       tile.append(element("span",`Iteration ${index+1}`));
       if (item.slots.includes(character.selected[view])) tile.append(element("span","Selected"));
       if (item.slots.includes(character.locked[view]?.candidate_id)) tile.append(element("span","Locked"));
-      $("mc-candidates").append(tile);
+      const remove=button("Delete",()=>deleteIteration(item.iteration_id,index+1));remove.className="danger";
+      remove.setAttribute("aria-label",`Delete iteration ${index+1}`);remove.disabled=pending;
+      const entry=element("div","","mc-iteration-card");entry.append(tile,remove);$("mc-candidates").append(entry);
     }
     $("mc-slots").replaceChildren(); $("mc-add-renders").replaceChildren();
     const board=iteration();
@@ -257,6 +278,7 @@
     $("mc-refine").disabled = !character || busy || !choice()?.image_url;
     $("mc-analyze").disabled = !character || busy || !references.length;
     $("mc-add-reference").disabled = pending || references.length>=3; $("mc-upload").disabled = references.length>=3;
+    $("mc-delete").disabled=pending || !character;
     if (character) renderReview();
   }
   async function addReference(reference) {
@@ -308,6 +330,7 @@
     entryAsset=null; if(result.character.existing) message("Opened the existing Minor Character.");
   });});
   $("mc-back").addEventListener("click",()=>act(list));
+  $("mc-delete").addEventListener("click",()=>act(()=>deleteCharacter(character.character_id,character.name)));
   $("mc-continue").addEventListener("click",()=>act(async()=>{entryAsset=null;await open($("mc-continue-choice").value);}));
   $("mc-generate").addEventListener("click",()=>act(()=>generateImage(false)));
   $("mc-refine").addEventListener("click",()=>act(()=>generateImage(true)));

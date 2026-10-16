@@ -5497,13 +5497,20 @@ dd {
 .mc-images > label { display: block; margin: 12px 0; }
 .mc-images .qc-comparison-pair img { max-height: 65vh; }
 .mc-candidates { display: flex; gap: 10px; overflow-x: auto; padding: 12px 0; }
+.mc-iteration-card { flex: 0 0 100px; display: flex; flex-direction: column; gap: 6px; }
+.mc-iteration-card .mc-candidate { flex: 1; width: 100%; }
+.mc-list-item { display: flex; align-items: center; gap: 10px; }
+.mc-list-item .mc-list-row { flex: 1; min-width: 0; }
 .mc-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
 .mc-slot { min-width: 0; border: 1px solid var(--border-color, #bbb); border-radius: 6px; padding: 8px; }
 .mc-slot .button-row { flex-wrap: wrap; gap: 4px; }
 .mc-slot .mc-slot-actions { display: flex; }
 .mc-slot-actions button { flex: 0 0 auto; min-width: 0; width: auto; padding: 5px 7px; font-size: 13px; }
 .mc-slot-preview { outline: 2px solid var(--accent, #377c91); outline-offset: -2px; }
-.mc-review-actions { justify-content: center; flex-wrap: wrap; }
+.mc-review .mc-review-actions { display: flex; justify-content: center; flex-wrap: nowrap; gap: 6px; }
+.mc-review-actions button { flex: 0 0 auto; width: auto; min-width: 0; padding: 6px 10px; }
+.mc-review .mc-review-close-row { display: flex; justify-content: flex-end; }
+.mc-review-close-row button { flex: 0 0 auto; width: auto; }
 .mc-feedback-label { display: block; margin: 12px 0; }
 #mc-feedback { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; }
 .mc-slot-image { display: block; width: 100%; margin: 8px 0; }
