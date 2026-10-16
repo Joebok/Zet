@@ -16,7 +16,7 @@ from uuid import uuid4
 from PIL import Image
 
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
-from zet.services.candidate_review_contract import ReviewGate, parse_rejection_verdict
+
 from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
 from zet.services.local_image_ranking_service import rank_images_with_luna
 from zet.services.local_render_backend_service import LocalRenderBackendService
@@ -25,8 +25,8 @@ from zet.services.library_reference_service import read_library_json, write_libr
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_image_pipeline_policy import (
     ACTIVE_RUN_STATUSES, clear_candidate_artifacts, decorate_local_pipeline_detail, pipeline_page_config,
-    gate_result_is_current, mutate_local_run_state, resume_cancelled_autogenerate_state, serialize_local_run_state,
-    upgrade_legacy_review_v1, view_candidate_id,
+    mutate_local_run_state, resume_cancelled_autogenerate_state, serialize_local_run_state,
+    view_candidate_id,
 )
 from zet.services.render_slot_service import merge_candidates, render_count, slot_maps, frozen_input, verify_input
 from zet.services.workflow_storage import file_lock, supersede_task
@@ -112,23 +112,6 @@ ORIENTATION_VIEW_DEFINITIONS = {
 }
 
 
-def _parse_orientation_gate_verdict(value: str) -> tuple[str, str]:
-    """Convert TRUE for a match and FALSE for a mismatch to rejection verdicts."""
-    response = str(value or "").strip()
-    if response.upper() == "TRUE":
-        return "FALSE", ""
-    match = re.fullmatch(r"FALSE(?::[ \t]*([^\r\n]*))?", response, re.IGNORECASE)
-    if match:
-        return "TRUE", (match.group(1) or "").strip()
-    raise ValueError(f"Expected TRUE or FALSE: <brief visible reason>, received {response[:80]!r}.")
-
-
-def _parse_passing_gate_verdict(value: str) -> tuple[str, str]:
-    """Convert a positive gate answer to the shared rejection verdict."""
-    answer = parse_rejection_verdict(value)
-    return ("FALSE" if answer == "TRUE" else "TRUE"), ""
-
-
 FRONT_VIEW = "FRONT"
 METHOD_TEXT_FIRST = "text_first"
 METHOD_FRONT_CONDITIONED = "front_conditioned"
@@ -143,27 +126,6 @@ class LocalBodyReferenceService:
     deliberately does not mutate canonical Assets or pipeline state.
     """
 
-    FACE_GATE_PROMPT = """Inspect the head in the image.\n\nDoes the head contain clearly recognizable or rendered facial features, such as visible eyes, eyebrows, nose details, lips/mouth, or a human/elf-like facial expression?\n\nAnswer TRUE only if obvious facial features are visibly rendered.\nAnswer FALSE if the head is essentially a smooth mannequin head, even if it has basic face-plane geometry, ears, shallow construction marks, or minimal indications of feature placement.\n\nReturn only TRUE or FALSE."""
-    PROPORTION_GATE_PROMPT = """Inspect the figure's head-to-body proportions.\n\nAre the head-to-body proportions plausible for the depicted adult humanoid physique?\n\nAnswer TRUE if the proportions are plausible, borderline, or merely a matter of aesthetic preference.\nAnswer FALSE only if the head is clearly and materially too large or too small for the body.\n\nReturn only TRUE or FALSE."""
-    FRAMING_GATE_PROMPT = """Inspect the full-body framing of the figure.\n\nIs the figure substantially complete and usable as a full-body reference?\n\nConsider the full head, torso, arms, hands, legs, and feet.\n\nAnswer TRUE if the entire figure is substantially present, even if margins or centering are imperfect.\nAnswer FALSE only if meaningful body anatomy is visibly cropped, cut off, or missing.\n\nReturn only TRUE or FALSE."""
-    ORIENTATION_GATE_PROMPT = """TARGET: {VIEW}
-
-Authoritative visual definition:
-
-{VIEW_DEFINITION}
-
-Do not derive or reinterpret the view name.
-Judge only whether the visible image matches the definition above.
-Return TRUE when it matches. Return FALSE when it does not match.
-
-Return exactly one line:
-
-TRUE
-or
-FALSE: <brief visible reason>
-
-Do not explain your reasoning."""
-    BODY_IDENTITY_GATE_PROMPT = """Compare the body proportions and physique of the two figures.\n\nImage 1 is the accepted body-reference anchor. Image 2 is the candidate.\n\nIgnoring viewpoint, perspective, pose, foreshortening, clothing deformation, and small rendering differences, could these plausibly represent the same underlying body?\n\nConsider head-to-body scale, shoulder width, torso length, waist and hip structure, limb proportions, overall body mass, and general physique.\n\nAnswer TRUE if the physiques could plausibly be the same body viewed from different angles.\nAnswer FALSE only if they are clearly incompatible.\n\nReturn only TRUE or FALSE."""
     RANKING_SCHEMA = {
         "type": "object",
         "properties": {"ranking": {"type": "array", "items": {
@@ -212,7 +174,6 @@ Do not explain your reasoning."""
         exact_replacements = {
             "body_reference_qwen_experiment": "local_body_reference",
             "body_reference_analysis": "local_body_reference_analysis",
-            "body_reference_face_gate": "local_body_reference_face_gate",
         }
         key_replacements = {
             "body_reference_experiment_run_id": "local_body_reference_run_id",
@@ -502,11 +463,10 @@ Do not explain your reasoning."""
                         "prompt": candidate_prompt, "prompt_sha256": hashlib.sha256(candidate_prompt.encode()).hexdigest(),
                         "status": "PENDING", "image_path": "", "render_error": "",
                         "analyses": {}, "disposition": "pending", "human_review": {"decision": "undecided"},
-                        "gates": {},
                     })
                     seed_index += 1
         spec = {
-            "schema_version": 2, "review_version": 2, "kind": "local_body_reference", "run_id": run_id,
+            "schema_version": 2, "review_version": 3, "kind": "local_body_reference", "run_id": run_id,
             "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
             "batch_name": "",
             "created_at": self._now(), "status": "QUEUED", "character": plan["character"],
@@ -535,14 +495,11 @@ Do not explain your reasoning."""
                 return path
         raise LocalBodyReferenceError(f"Local Body-Reference not found: {run_id}")
 
-    def detail(self, run_id: str, *, upgrade_legacy: bool = False) -> dict[str, Any]:
+    def detail(self, run_id: str) -> dict[str, Any]:
         root = self._root(run_id)
         value = self._read_json((root / "spec.json"))
         with file_lock(root / "state.lock"):
             state = self._read_json((root / "state.json")) if (root / "state.json").is_file() else {}
-            if upgrade_legacy and upgrade_legacy_review_v1(root, value, state, active=self._runner_is_active(run_id)):
-                value = self._read_json((root / "spec.json"))
-                state = self._read_json((root / "state.json"))
         from zet.services.local_prompt_improvement_service import ensure_view_reviews
         value, state = ensure_view_reviews(root, value, state)
         candidates = merge_candidates(value, state)
@@ -578,73 +535,32 @@ Do not explain your reasoning."""
                     candidate["local_job"] = job
                 if candidate.get("luna_status") in {"QUEUED", "RUNNING"}:
                     candidate["luna_status"] = "INTERRUPTED"
-        for candidate in candidates.values():
-            if value["review_version"] >= 2:
-                continue
-            if candidate.get("status") != "COMPLETE":
-                continue
-            decision = (candidate.get("human_review") or {}).get("decision", "undecided")
-            gate = candidate.get("face_gate") or {}
-            analyses = candidate.get("analyses") or {}
-            if decision not in {"keep", "reject"} and gate.get("verdict") == "FALSE":
-                candidate["status"] = ("WAITING_FOR_HUMAN_REVIEW" if all(analyses.get(provider)
-                                    for provider in ("local", "luna")) else "WAITING_FOR_ANALYSIS")
-                candidate["completed_at"] = ""
         value["candidates"] = list(candidates.values())
-        if value["review_version"] >= 2:
-            by_id = value["candidates_by_id"] = dict(candidates)
-            stale_selections: list[str] = []
-            for view, ranking in value["rankings"].items():
-                if view not in value.get("views", []):
-                    continue
-                anchor = next((item for item in by_id.values()
-                               if item.get("candidate_id") == value.get("front_anchor")), None)
-                anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-                anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image and anchor_image.is_file() else ""
-                survivors = []
-                for candidate in by_id.values():
-                    if (candidate.get("view") != view
-                            or candidate.get("status") not in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                            or candidate.get("rejection_gate")
-                            ):
-                        continue
-                    image = Path(str(candidate.get("image_path") or ""))
-                    if not image.is_file():
-                        continue
-                    gates = candidate.get("gates") or {}
-                    current = True
-                    from zet.services.local_gate_registry_service import LocalGateRegistryService
-                    registry = LocalGateRegistryService(self.app, self.project_root)
-                    for gate in self.review_gates(view):
-                        record = gates.get(gate.key) or {}
-                        expected_hashes = {"candidate": self._hash(image),
-                                           "front_anchor": anchor_hash if gate.uses_anchor else ""}
-                        if not gate_result_is_current(
-                            record, input_hashes=expected_hashes,
-                            prompt_sha256=hashlib.sha256(gate.prompt.encode()).hexdigest(),
-                            policy_status=registry.status("body-reference", gate.key),
-                        ):
-                            current = False
-                            break
-                    if current:
-                        survivors.append(candidate)
-                survivor_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
-                                   for item in survivors}
-                is_stale = (ranking.get("status") == "COMPLETE" and (
-                    ranking.get("input_hashes") != survivor_hashes
-                    or ranking.get("anchor_hash", "") != anchor_hash
-                )) or (ranking.get("status") == "EMPTY" and bool(survivors))
-                if is_stale:
-                    ranking["status"] = "STALE"
-                    ranking["stale_reason"] = "Candidate image, survivor set, or FRONT anchor changed after ranking."
-                selected_id = (value.get("selected_views") or {}).get(view)
-                if selected_id and (ranking.get("status") != "COMPLETE"
-                                    or selected_id not in (ranking.get("ordered_candidate_ids") or [])):
-                    stale_selections.append(view)
-            value["stale_selections"] = stale_selections
-            value.pop("candidates_by_id", None)
-            if stale_selections and value["status"] not in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "ERROR"}:
-                value["status"] = "REVIEW_REQUIRED"
+        stale_selections: list[str] = []
+        by_id = {item["candidate_id"]: item for item in value["candidates"]}
+        for view, ranking in (value.get("rankings") or {}).items():
+            if view not in value.get("views", []):
+                continue
+            anchor = next((item for item in by_id.values() if item.get("candidate_id") == value.get("front_anchor")), None)
+            anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
+            anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image and anchor_image.is_file() else ""
+            candidates_for_view = [item for item in by_id.values() if item.get("view") == view
+                                   and item.get("human_review", {}).get("decision") != "reject"
+                                   and Path(str(item.get("image_path") or "")).is_file()]
+            current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in candidates_for_view}
+            if ranking.get("status") in {"COMPLETE", "EMPTY"} and (
+                    ranking.get("input_hashes") != current_hashes or ranking.get("anchor_hash", "") != anchor_hash):
+                ranking.update(status="STALE", stale_reason="Candidate set or FRONT anchor changed after ranking.")
+            selected_id = (value.get("selected_views") or {}).get(view)
+            selected = by_id.get(selected_id)
+            image = Path(str((selected or {}).get("image_path") or ""))
+            if selected_id and (not selected or not image.is_file() or ranking.get("status") != "COMPLETE"
+                                or selected_id not in (ranking.get("ordered_candidate_ids") or [])
+                                or ranking.get("input_hashes", {}).get(selected_id) != self._hash(image)):
+                stale_selections.append(view)
+        value["stale_selections"] = stale_selections
+        if stale_selections and value["status"] not in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "ERROR"}:
+            value["status"] = "REVIEW_REQUIRED"
         value["root"] = str(root)
         value["local_assets"] = self.asset_store.detail(
             str(value.get("character") or ""), str(value.get("phase") or "")
@@ -785,7 +701,7 @@ Do not explain your reasoning."""
                         "character": run.get("character", ""), "phase": run.get("phase", ""),
                         "status": status,
                         "details": str(ranking.get("error") or (
-                            "Waiting for gate-surviving candidates" if status == "PENDING" else ""
+                            "Waiting for rendered candidates" if status == "PENDING" else ""
                         )),
                     })
                 continue
@@ -870,8 +786,8 @@ Do not explain your reasoning."""
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
                 status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
-                render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
-                face_gate={}, face_gate_error="", disposition="pending",
+                render_error="", analyses={},
+                disposition="pending",
                 human_review={"decision": "undecided"}, local_job={},
                 luna_status="PENDING", luna_error="", review_history=[], analysis_history=[],
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
@@ -895,7 +811,7 @@ Do not explain your reasoning."""
         view = str(view or "").upper()
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
-        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}:
+        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
         if self._runner_is_active(run_id):
             raise LocalBodyReferenceError("This Local Body-Reference batch is running; try again when it finishes.")
@@ -923,7 +839,7 @@ Do not explain your reasoning."""
             state.setdefault("candidates", {}).setdefault(affected["candidate_id"], {}).update(
                 status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
-                render_error="", gates={}, failed_gate="", rejection_gate="", analyses={},
+                render_error="", analyses={},
                 disposition="pending", human_review={"decision": "undecided"},
                 retry_count=int(affected.get("retry_count") or 0) + 1,
             )
@@ -956,7 +872,7 @@ Do not explain your reasoning."""
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
-        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS"}:
+        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
         if self._runner_is_active(run_id):
             raise LocalBodyReferenceError("This Local Body-Reference batch is running; try again when it finishes.")
@@ -965,7 +881,7 @@ Do not explain your reasoning."""
             if candidate.get("view") != view:
                 return False
             if int(run.get("review_version") or 1) >= 2:
-                return (candidate.get("status") in {"GATE_REJECTED", "FAILED"}
+                return (candidate.get("status") in {"FAILED"}
                         or candidate.get("human_review", {}).get("decision") == "reject")
             if not Path(str(candidate.get("image_path") or "")).is_file():
                 return False
@@ -1005,8 +921,8 @@ Do not explain your reasoning."""
                 status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
                 image_path="", image_sha256="", ask_id="", queued_at="",
                 completed_at="", render_error="", analyses={}, analysis_history=[], review_history=[],
-                gate_history=[], gate_rejection_history=[], ranking_history=[], local_job={}, luna_status="",
-                luna_error="", face_gate={}, disposition="pending", human_review={"decision": "undecided"},
+                ranking_history=[], local_job={}, luna_status="",
+                luna_error="", disposition="pending", human_review={"decision": "undecided"},
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
             )
 
@@ -1054,13 +970,13 @@ Do not explain your reasoning."""
             target_views = [normalized_view]
         for target_view in target_views:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", target_view)
-        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}:
+        if run["status"] in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_ANALYSIS"}:
             raise LocalBodyReferenceError("Stop the active batch before re-evaluating it.")
         if self._runner_is_active(run_id):
             raise LocalBodyReferenceError("This Local Body-Reference batch is running; try again when it finishes.")
         if int(run.get("review_version") or 1) >= 2:
             completed = [item for item in run["candidates"] if item.get("view") in target_views
-                         and item.get("status") in {"COMPLETE", "WAITING_FOR_HUMAN_REVIEW", "GATE_REJECTED", "FAILED"}
+                         and item.get("status") in {"COMPLETE", "WAITING_FOR_HUMAN_REVIEW", "FAILED"}
                          and Path(str(item.get("image_path") or "")).is_file()]
         else:
             completed = [item for item in run["candidates"]
@@ -1086,7 +1002,7 @@ Do not explain your reasoning."""
                     )
             for candidate in completed:
                 update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
-                update.update(status="WAITING_FOR_GATES", gates={}, failed_gate="", rejection_gate="",
+                update.update(status="WAITING_FOR_HUMAN_REVIEW",
                               render_error="", completed_at="")
             (self._root(run_id) / "cancelled.json").unlink(missing_ok=True)
             state.update(status="REEVALUATING", review_only=True, target_views=target_views,
@@ -1282,7 +1198,7 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         image = Path(str(candidate.get("image_path") or ""))
         if candidate.get("status") not in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"} or not image.is_file():
-            raise LocalBodyReferenceError("Analysis requires an image that passed the face gate.")
+            raise LocalBodyReferenceError("Analysis requires a rendered candidate image.")
         if input_hashes.get("candidate") != self._hash(image):
             raise LocalBodyReferenceError("Analysis input hash does not match the candidate image.")
         if candidate["view"] != FRONT_VIEW:
@@ -1446,7 +1362,7 @@ Do not explain your reasoning."""
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if (not candidate or candidate.get("status") not in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
                 or not Path(str(candidate.get("image_path") or "")).is_file()):
-            raise LocalBodyReferenceError("A face-gate-approved candidate image is required for local analysis.")
+            raise LocalBodyReferenceError("A rendered candidate image is required for local analysis.")
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
         require_candidate_harvest(self.app, run, candidate)
         image = Path(candidate["image_path"])
@@ -1542,16 +1458,11 @@ Do not explain your reasoning."""
         expected = str(ask.get("expected_output") or "")
         if not expected or Path(expected).name != expected or answer.get("expected_output") != expected:
             raise LocalBodyReferenceError("AI Proxy answer output filename is invalid.")
-        if ask.get("task_type") in {"local_body_reference_analysis", "local_body_reference_face_gate", "body_reference_analysis", "body_reference_face_gate", "local_body_reference_gate"}:
+        if ask.get("task_type") in {"local_body_reference_analysis", "body_reference_analysis"}:
             filename = str(ask.get("target_output_file") or "")
             if ask.get("task_type") in {"local_body_reference_analysis", "body_reference_analysis"}:
                 if not re.fullmatch(r"local(?:_\d{8}_\d{6}_\d{6})?\.json", filename):
                     raise LocalBodyReferenceError("AI Proxy analysis output filename is invalid.")
-            elif ask.get("task_type") == "local_body_reference_gate":
-                if not re.fullmatch(r"gate_(?:face|proportion|framing|orientation|body_identity)_\d{8}_\d{6}_\d{6}\.txt", filename):
-                    raise LocalBodyReferenceError("AI Proxy gate output filename is invalid.")
-            elif not re.fullmatch(r"face_gate_\d{8}_\d{6}_\d{6}\.txt", filename):
-                raise LocalBodyReferenceError("AI Proxy face-gate output filename is invalid.")
             expected_target = self._root(run_id) / "analyses" / candidate_id / filename
             if ask.get("target_output_file") != target.name:
                 raise LocalBodyReferenceError("AI Proxy analysis output filename is invalid.")
@@ -1577,7 +1488,7 @@ Do not explain your reasoning."""
                     raise LocalBodyReferenceError(f"Render preset {name} is missing {key}.")
 
     def _render_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
-        """Render candidates and queue face gates without blocking on AI Proxy."""
+        """Render candidate images without blocking on AI Proxy."""
         run = self.detail(run_id)
         candidates = [item for item in run["candidates"] if item.get("view") == view and not item.get("slot_managed") and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
 
@@ -1618,87 +1529,15 @@ Do not explain your reasoning."""
             width, height = image.size
             image.crop((int(width * 0.25), 0, int(width * 0.75), int(height * 0.32))).save(crop_path, format="PNG")
 
-    def _run_face_gate(self, run_id: str, candidate_id: str) -> str:
-        candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
-        image = Path(str(candidate.get("image_path") or ""))
-        if not image.is_file():
-            raise LocalBodyReferenceError("A completed candidate image is required for the face gate.")
-        from zet.services.local_gate_registry_service import LocalGateRegistryService
-        policy = LocalGateRegistryService(self.app, self.project_root).status("body-reference", "face")
-        if policy == "Disabled":
-            crop_hash = ""
-            record = {"status": "DISABLED", "policy_status": policy, "verdict": "FALSE",
-                      "input_hashes": {"candidate": self._hash(image), "head_crop": crop_hash},
-                      "prompt_sha256": hashlib.sha256(self.FACE_GATE_PROMPT.encode()).hexdigest(),
-                      "completed_at": self._now()}
-            self._candidate_update(run_id, candidate_id, {
-                "status": "WAITING_FOR_ANALYSIS", "face_gate": record,
-            })
-            return "DISABLED"
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        root = self._root(run_id) / "analyses" / candidate_id
-        root.mkdir(parents=True, exist_ok=True)
-        crop = root / f"face_gate_{stamp}.png"
-        self._crop_head(image, crop)
-        output = root / f"face_gate_{stamp}.txt"
-        ask_id = f"Ask_LocalBodyReference_{run_id}_{candidate_id}_FACE_{stamp}"
-        proxy = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client
-        staging = proxy.create_staging(ask_id)
-        shutil.copy2(crop, staging / "head_crop.png")
-        (staging / "OLLAMA_PROMPT.md").write_text(self.FACE_GATE_PROMPT, encoding="utf-8")
-        model = str(getattr(self.app.config, "local_body_reference_face_gate_model", "image-analysis:latest") or "image-analysis:latest")
-        run = self.detail(run_id)
-        manifest = {
-            "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
-            "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
-            "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_FACE_GATE",
-            "worker_type": "ollama_generate", "ollama_model": model, "ollama_think": True,
-            "prompt_file": "OLLAMA_PROMPT.md", "image_files": ["head_crop.png"],
-            "json_output": False, "expected_output": output.name, "task_type": "local_body_reference_face_gate",
-            "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
-            "local_body_reference_run_id": run_id, "candidate_id": candidate_id,
-            "input_hashes": {"candidate": self._hash(image), "head_crop": self._hash(crop)},
-        }
-        (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-        proxy.publish(staging, ask_id, "ollama_generate")
-        gate = {"ask_id": ask_id, "status": "QUEUED", "policy_status": policy, "output_path": str(output),
-                "crop_path": str(crop), "image_path": str(image), "model": model,
-                "input_hashes": manifest["input_hashes"]}
-        self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_FACE_GATE", "face_gate": gate})
-        return "QUEUED"
 
-    @classmethod
-    def review_gates(cls, view: str) -> list[ReviewGate]:
-        """Return the Local Body-Reference gate policy for a requested view."""
-        gates = [
-            ReviewGate("face", cls.FACE_GATE_PROMPT, crop_head=True),
-            ReviewGate("proportion", cls.PROPORTION_GATE_PROMPT),
-            ReviewGate("framing", cls.FRAMING_GATE_PROMPT),
-            ReviewGate("orientation", cls.ORIENTATION_GATE_PROMPT.format(
-                VIEW=view,
-                VIEW_DEFINITION=ORIENTATION_VIEW_DEFINITIONS.get(view, ""),
-            )),
-        ]
-        if view != FRONT_VIEW:
-            gates.append(ReviewGate("body_identity", cls.BODY_IDENTITY_GATE_PROMPT, uses_anchor=True))
-        return gates
 
-    def gate_prompt(self, run_id: str, view: str, gate: str) -> str:
-        run = self.detail(run_id)
-        view = str(view or "").upper()
-        if view not in run.get("views", []):
-            raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
-        definition = next((item for item in self.review_gates(view) if item.key == gate), None)
-        if definition is None:
-            raise LocalBodyReferenceError(f"Unknown review gate: {gate}")
-        return definition.prompt
 
     def move_candidate_rank(self, run_id: str, view: str, candidate_id: str, direction: str) -> dict[str, Any]:
         """Move one reviewed candidate one place in the saved ranking."""
         run = self.detail(run_id)
         view = str(view or "").upper()
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
-        if run.get("review_version", 1) < 2 or view not in run.get("views", []):
+        if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
             raise LocalBodyReferenceError("Wait for the current operation to finish before changing rank.")
@@ -1715,315 +1554,11 @@ Do not explain your reasoning."""
         self._save_state(run_id, state)
         return self.detail(run_id)
 
-    def _queue_review_gate(self, run_id: str, candidate_id: str, definition: ReviewGate) -> dict[str, Any]:
-        run = self.detail(run_id)
-        candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
-        from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
-        require_candidate_harvest(self.app, run, candidate)
-        image = Path(str(candidate.get("image_path") or ""))
-        if not image.is_file():
-            raise LocalBodyReferenceError("A completed candidate image is required for review gates.")
-        anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
-        anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-        if definition.uses_anchor and (anchor_image is None or not anchor_image.is_file()):
-            raise LocalBodyReferenceError("Select a completed front anchor before the body identity gate.")
 
-        image_hash = self._hash(image)
-        anchor_hash = self._hash(anchor_image) if definition.uses_anchor and anchor_image else ""
-        jobs = self.app.ai_proxy_service.ai_proxy_path_service.jobs
-        stamp = jobs.followup_stamp(candidate["ask_id"], definition.key, {
-            "image": candidate["image_sha256"], "prompt": definition.prompt,
-            "anchor": anchor_hash,
-            "evaluation": (run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id", "")})
-        root = self._root(run_id) / "analyses" / candidate_id
-        root.mkdir(parents=True, exist_ok=True)
-        images: list[tuple[str, Path]] = []
-        if definition.crop_head:
-            crop = root / f"gate_face_{stamp}.png"
-            self._crop_head(image, crop)
-            images.append(("candidate_head.png", crop))
-        else:
-            images.append(("candidate.png", image))
-        if definition.uses_anchor and anchor_image:
-            images.insert(0, ("front_anchor.png", anchor_image))
 
-        output = root / f"gate_{definition.key}_{stamp}.txt"
-        ask_id = f"Ask_LocalBodyReference_{run_id}_{candidate_id}_{definition.key.upper()}_{stamp}"
-        previous = jobs.reuse_followup(ask_id, output, {"candidate": image_hash, "front_anchor": anchor_hash}, hashlib.sha256(definition.prompt.encode()).hexdigest())
-        if previous:
-            return previous
-        staging = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.staging_path(ask_id)
-        staging.mkdir(parents=True, exist_ok=True)
-        for name, source in images:
-            shutil.copy2(source, staging / name)
-        (staging / "OLLAMA_PROMPT.md").write_text(definition.prompt, encoding="utf-8")
-        model = str(getattr(self.app.config, "local_body_reference_face_gate_model", "image-analysis-alt:latest")
-                    or "image-analysis-alt:latest")
-        manifest = {
-            "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
-            "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
-            "pipeline": "Local-Body-Reference", "pipeline_stage": f"BODY_REFERENCE_{definition.key.upper()}_GATE",
-            "worker_type": "ollama_generate", "ollama_model": model, "ollama_think": True,
-            "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in images],
-            "json_output": False, "expected_output": output.name, "task_type": "local_body_reference_gate",
-            "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
-            "local_body_reference_run_id": run_id, "candidate_id": candidate_id,
-            "render_ask_id": candidate["ask_id"], "gate": definition.key,
-            "input_hashes": {"candidate": image_hash, "front_anchor": anchor_hash},
-            "prompt_sha256": hashlib.sha256(definition.prompt.encode()).hexdigest(),
-        }
-        if definition.key == "orientation":
-            manifest.update(ollama_chat=True, ollama_think=False, ollama_temperature=1.0)
-        (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-        require_candidate_harvest(self.app, self.detail(run_id), candidate)
-        self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.publish(staging, ask_id, "ollama_generate")
-        record = {
-            "status": "QUEUED", "ask_id": ask_id, "output_path": str(output), "model": model,
-            "prompt_sha256": manifest["prompt_sha256"], "input_hashes": manifest["input_hashes"],
-            "queued_at": self._now(),
-        }
-        self._candidate_update(run_id, candidate_id, {
-            "status": "WAITING_FOR_GATES", "gates": {**(candidate.get("gates") or {}), definition.key: record},
-        })
-        return record
 
-    def _wait_for_review_gate(self, run_id: str, candidate_id: str, gate_key: str) -> tuple[str, str] | None:
-        candidate = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
-        gate = dict((candidate.get("gates") or {}).get(gate_key) or {})
-        if not gate:
-            raise LocalBodyReferenceError(f"Gate {gate_key} was not queued.")
-        output = Path(str(gate.get("output_path") or ""))
-        deadline = time.monotonic() + 1800
-        while not output.is_file():
-            if self.detail(run_id)["stop_requested"]:
-                return None
-            self._harvest_local_body_reference_answer(run_id, candidate_id, str(gate.get("ask_id") or ""), output)
-            proxy_status, answer = self._proxy_answer(str(gate.get("ask_id") or ""))
-            if str(answer.get("status") or "").upper() in {"ERROR", "RETRY_LATER", "FAILED"}:
-                raise LocalBodyReferenceError(str(answer.get("error_message") or f"{gate_key} gate failed."))
-            if proxy_status == "RUNNING" and gate.get("status") != "RUNNING":
-                gate["status"] = "RUNNING"
-                self._candidate_update(run_id, candidate_id, {"gates": {**(candidate.get("gates") or {}), gate_key: gate}})
-            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(gate.get("ask_id") or "")):
-                raise LocalBodyReferenceError(f"Timed out waiting for the {gate_key} gate.")
-            time.sleep(max(0.5, float(getattr(self.app.config, "comfyui_poll_seconds", 1.0))))
-        response = output.read_text(encoding="utf-8")
-        if gate_key == "orientation":
-            return _parse_orientation_gate_verdict(response)
-        if gate_key in {"proportion", "framing", "body_identity"}:
-            return _parse_passing_gate_verdict(response)
-        return parse_rejection_verdict(response), ""
 
-    @serialize_local_run_state
-    def _stage_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
-        run = self.detail(run_id)
-        candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
-        image = Path(str(candidate.get("image_path") or ""))
-        if not image.is_file():
-            raise LocalBodyReferenceError("A completed candidate image is required for review gates.")
-        gates = dict(candidate.get("gates") or {})
-        from zet.services.local_gate_registry_service import LocalGateRegistryService
-        registry = LocalGateRegistryService(self.app, self.project_root)
-        for definition in self.review_gates(str(candidate.get("view") or "")):
-            if self.detail(run_id)["stop_requested"]:
-                return False
-            record = dict(gates.get(definition.key) or {})
-            anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
-            anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-            expected_hashes = {
-                "candidate": self._hash(image),
-                "front_anchor": self._hash(anchor_image) if definition.uses_anchor and anchor_image and anchor_image.is_file() else "",
-            }
-            policy = registry.status("body-reference", definition.key)
-            prompt_hash = hashlib.sha256(definition.prompt.encode()).hexdigest()
-            if policy == "Disabled":
-                if record and record.get("status") != "DISABLED":
-                    history = list(candidate.get("gate_history") or [])
-                    history.append({"archived_at": self._now(), "gates": {definition.key: record}})
-                    self._candidate_update(run_id, candidate_id, {"gate_history": history})
-                gates[definition.key] = {
-                    "status": "DISABLED", "policy_status": policy, "verdict": "FALSE",
-                    "input_hashes": expected_hashes,
-                    "prompt_sha256": prompt_hash,
-                    "completed_at": self._now(),
-                }
-                self._candidate_update(run_id, candidate_id, {"gates": gates})
-                candidate = next(item for item in self.detail(run_id)["candidates"]
-                                 if item["candidate_id"] == candidate_id)
-                continue
-            prompt_stale = record.get("prompt_sha256") != prompt_hash
-            if (record.get("policy_status") == policy and record.get("status") == "COMPLETE"
-                    and record.get("input_hashes") == expected_hashes and not prompt_stale):
-                record["evaluation_id"] = str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or "")
-                gates[definition.key] = record
-                self._candidate_update(run_id, candidate_id, {"gates": gates})
-                continue
-            if (record.get("policy_status") == policy and record.get("status") in {"QUEUED", "RUNNING"}
-                    and record.get("input_hashes") == expected_hashes and not prompt_stale):
-                record["evaluation_id"] = str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or "")
-                gates[definition.key] = record
-                self._candidate_update(run_id, candidate_id, {"gates": gates})
-                continue
-            try:
-                record = self._queue_review_gate(run_id, candidate_id, definition)
-                record.update(policy_status=policy,
-                    evaluation_id=str((run.get("evaluations") or {}).get(candidate["view"], {}).get("evaluation_id") or ""))
-                gates[definition.key] = record
-                self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_GATES", "gates": gates})
-            except Exception as exc:
-                gates[definition.key] = {**record, "status": "FAILED", "policy_status": policy,
-                    "input_hashes": expected_hashes, "prompt_sha256": prompt_hash, "error": str(exc)}
-                self._candidate_update(run_id, candidate_id, {"gates": gates})
-        return True
 
-    def _collect_candidate_gates(self, run_id: str, candidate_id: str, evaluation_id: str = "") -> bool:
-        run = self.detail(run_id)
-        candidate = next(item for item in run["candidates"] if item["candidate_id"] == candidate_id)
-        view = str(candidate.get("view") or "")
-        if evaluation_id:
-            evaluation = (run.get("evaluations") or {}).get(view, {})
-            if evaluation.get("evaluation_id") != evaluation_id or evaluation.get("status") not in {"RUNNING", "STAGING"}:
-                return False
-            image = Path(str(candidate.get("image_path") or ""))
-            if not image.is_file() or evaluation.get("input_hashes", {}).get(candidate_id) != self._hash(image):
-                return False
-        gates = dict(candidate.get("gates") or {})
-        definitions = self.review_gates(view)
-        for definition in definitions:
-            record = dict(gates.get(definition.key) or {})
-            if record.get("status") in {"COMPLETE", "DISABLED", "FAILED"} or not record.get("ask_id"):
-                continue
-            if self.detail(run_id).get("stop_requested"):
-                return False
-            if evaluation_id and record.get("evaluation_id") != evaluation_id:
-                continue
-            try:
-                result = self._wait_for_review_gate(run_id, candidate_id, definition.key)
-                if result is None:
-                    return False
-                verdict, reason = result
-                record.update(status="COMPLETE", verdict=verdict, reason=reason, completed_at=self._now())
-            except Exception as exc:
-                record.update(status="FAILED", error=str(exc), failed_at=self._now())
-            if evaluation_id:
-                latest_run = self.detail(run_id)
-                active = (latest_run.get("evaluations") or {}).get(view, {})
-                if active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}:
-                    return False
-                latest_candidate = next(item for item in latest_run["candidates"] if item["candidate_id"] == candidate_id)
-                gates = dict(latest_candidate.get("gates") or {})
-            gates[definition.key] = record
-            self._candidate_update(run_id, candidate_id, {"gates": gates})
-        if evaluation_id:
-            latest_run = self.detail(run_id)
-            active = (latest_run.get("evaluations") or {}).get(view, {})
-            if active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}:
-                return False
-        latest = next(item for item in self.detail(run_id)["candidates"] if item["candidate_id"] == candidate_id)
-        rejection = next((gate.key for gate in definitions
-            if (latest.get("gates") or {}).get(gate.key, {}).get("verdict") == "TRUE"
-            and (latest.get("gates") or {}).get(gate.key, {}).get("policy_status") == "Active"), "")
-        self._candidate_update(run_id, candidate_id, {
-            "status": "GATE_REJECTED" if rejection else "WAITING_FOR_HUMAN_REVIEW",
-            "rejection_gate": rejection, "failed_gate": "", "render_error": "",
-        })
-        return True
-
-    def _run_candidate_gates(self, run_id: str, candidate_id: str) -> bool:
-        self._stage_candidate_gates(run_id, candidate_id)
-        return self._collect_candidate_gates(run_id, candidate_id)
-
-    def harvest_face_gate_jobs(self) -> list[str]:
-        """Apply harvested face-gate verdicts and resume the affected candidates."""
-        pending: dict[str, list[str]] = {}
-        failed_runs: set[str] = set()
-        for summary in self.list_runs():
-            run_id = summary["run_id"]
-            try:
-                candidates = self.detail(run_id).get("candidates") or []
-            except (LocalBodyReferenceError, OSError) as exc:
-                import logging
-                logging.getLogger(__name__).warning("Cannot collect Body Reference %s: %s", run_id, exc)
-                continue
-            for candidate in candidates:
-                gate = candidate.get("face_gate") or {}
-                if candidate.get("status") != "WAITING_FOR_FACE_GATE" or not gate.get("ask_id"):
-                    continue
-                output = Path(str(gate.get("output_path") or ""))
-                proxy_status, answer = ("UNKNOWN", {})
-                if not output.is_file():
-                    proxy_status, answer = self._proxy_answer(str(gate["ask_id"]))
-                    if str(answer.get("status") or "").upper() == "SUCCESS":
-                        self._harvest_local_body_reference_answer(
-                            run_id, candidate["candidate_id"], str(gate["ask_id"]), output
-                        )
-                if output.is_file():
-                    verdict = output.read_text(encoding="utf-8").strip().upper()
-                    if verdict not in {"TRUE", "FALSE"}:
-                        failed_runs.add(run_id)
-                        self._candidate_update(run_id, candidate["candidate_id"], {
-                            "status": "FAILED", "render_error": f"Invalid face-gate response: {verdict[:80]!r}",
-                            "face_gate": {**gate, "status": "FAILED", "error": "Invalid face-gate response."},
-                        })
-                        continue
-                    gate.update(status="COMPLETE", verdict=verdict)
-                    from zet.services.local_gate_registry_service import LocalGateRegistryService
-                    policy = LocalGateRegistryService(self.app, self.project_root).status("body-reference", "face")
-                    gate["policy_status"] = policy
-                    if verdict == "TRUE" and policy == "Active":
-                        history = list(candidate.get("face_gate_history") or [])
-                        history.append(gate)
-                        self._candidate_update(run_id, candidate["candidate_id"], {
-                            "status": "GATE_REJECTED", "rejection_gate": "face",
-                            "face_gate": gate, "face_gate_history": history,
-                        })
-                    else:
-                        self._candidate_update(run_id, candidate["candidate_id"], {
-                            "status": "WAITING_FOR_HUMAN_REVIEW", "face_gate": gate,
-                        })
-                    pending.setdefault(run_id, []).append(candidate["candidate_id"])
-                    continue
-                answer_status = str(answer.get("status") or "").upper()
-                if answer_status in {"ERROR", "RETRY_LATER", "FAILED"}:
-                    failed_runs.add(run_id)
-                    message = str(answer.get("error_message") or "Face-gate analysis failed.")
-                    self._candidate_update(run_id, candidate["candidate_id"], {
-                        "status": "WAITING_FOR_HUMAN_REVIEW", "review_error": message,
-                        "face_gate": {**gate, "status": "FAILED", "error": message},
-                    })
-                elif proxy_status == "RUNNING" and gate.get("status") != "RUNNING":
-                    gate["status"] = "RUNNING"
-                    self._candidate_update(run_id, candidate["candidate_id"], {"face_gate": gate})
-
-        for run_id in failed_runs - pending.keys():
-            run = self.detail(run_id)
-            waiting = [item for item in run["candidates"] if item.get("status") in {
-                "WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"
-            }]
-            if waiting:
-                waiting_status = next(status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
-                                      if any(item.get("status") == status for item in waiting))
-                self._run_update(run_id, status=waiting_status)
-            else:
-                self._run_update(run_id, status="ERROR", error="One or more face-gate jobs failed.",
-                                 target_views=[], target_candidate_ids=[])
-
-        for run_id, candidate_ids in pending.items():
-            run = self.detail(run_id)
-            state = self._read_json((self._root(run_id) / "state.json"))
-            current_by_id = {item["candidate_id"]: item for item in run["candidates"]}
-            candidate_ids = list(dict.fromkeys(
-                list(state.get("target_candidate_ids") or []) + candidate_ids
-            ))
-            candidate_ids = [candidate_id for candidate_id in candidate_ids if candidate_id in current_by_id]
-            views = sorted(set(state.get("target_views") or []) | {
-                current_by_id[candidate_id]["view"] for candidate_id in candidate_ids
-            })
-            state.update(status="RUNNING", stop_requested=False, target_views=views,
-                         target_candidate_ids=candidate_ids, review_only=False, updated_at=self._now())
-            self._save_state(run_id, state)
-            threading.Thread(target=self._execute_after_current_run, args=(run_id,), daemon=True).start()
-        return list(pending)
 
     def _execute_after_current_run(self, run_id: str) -> None:
         """Resume after another serialized batch operation releases the runner lock."""
@@ -2031,155 +1566,73 @@ Do not explain your reasoning."""
             time.sleep(1)
         self.execute_run(run_id)
 
-    def stage_view_evaluation(self, run_id: str, view: str, *,
-                              candidate_ids: set[str] | None = None) -> dict[str, Any]:
-        from zet.services.local_image_evaluation_service import local_image_evaluation_service
+    def stage_view_evaluation(self, run_id: str, view: str, *, candidate_ids: set[str] | None = None) -> dict[str, Any]:
+        from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service, update_view_evaluation
         view = str(view or "").upper()
         run = self.detail(run_id)
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
-        evaluation_id = uuid4().hex
         hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in candidates}
         previous = (run.get("evaluations") or {}).get(view) or {}
-        if previous.get("status") in {"STAGING", "RUNNING"} and previous.get("input_hashes") == hashes:
+        if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
             self.reconcile_review_jobs(run_id)
             return previous
-        from zet.services.local_image_evaluation_service import update_view_evaluation
-        update_view_evaluation(self._root(run_id), view, {
-            "evaluation_id": evaluation_id, "status": "STAGING", "input_hashes": hashes,
-            "started_at": self._now(),
-        })
-
-        def stage() -> None:
-            if run.get("review_version", 1) < 2:
-                return
-            for item in candidates:
-                if self.detail(run_id).get("stop_requested"):
-                    return
-                try:
-                    self._stage_candidate_gates(run_id, item["candidate_id"])
-                except Exception as exc:
-                    self._candidate_update(run_id, item["candidate_id"], {"review_error": str(exc)})
-
-        def collect() -> None:
-            current = self.detail(run_id)
-            if (current.get("evaluations") or {}).get(view, {}).get("evaluation_id") == evaluation_id and \
-                    current["evaluations"][view].get("gates_status") == "COMPLETE":
-                return
-            if run.get("review_version", 1) < 2:
-                self._review_view_candidates(run_id, view, set(hashes))
-            else:
-                for item in candidates:
-                    if self.detail(run_id).get("stop_requested"):
-                        return
-                    self._collect_candidate_gates(run_id, item["candidate_id"], evaluation_id)
-            current = self.detail(run_id)
-            if (current.get("evaluations") or {}).get(view, {}).get("evaluation_id") == evaluation_id:
-                evaluation = dict(current["evaluations"][view])
-                review_v2 = int(run.get("review_version") or 1) >= 2
-                finished = evaluation.get("ranking_status") in {"COMPLETE", "FAILED", "EMPTY"}
-                evaluation["status"] = "COMPLETE" if not review_v2 or finished else "RUNNING"
-                update_view_evaluation(self._root(run_id), view,
-                    {**evaluation, "gates_status": "COMPLETE", "updated_at": self._now()},
-                    evaluation_id=evaluation_id)
-
-        def rank() -> None:
-            if int(run.get("review_version") or 1) < 2:
-                current = self.detail(run_id)
-                evaluation = dict((current.get("evaluations") or {}).get(view) or {})
-                if evaluation.get("evaluation_id") == evaluation_id:
-                    evaluation.update(ranking_status="SKIPPED", ranking_updated_at=self._now())
-                    update_view_evaluation(self._root(run_id), view, evaluation, evaluation_id=evaluation_id)
-                return
-            current = self.detail(run_id)
-            if current.get("stop_requested"):
-                return
-            evaluation = (current.get("evaluations") or {}).get(view) or {}
-            if evaluation.get("evaluation_id") == evaluation_id and evaluation.get("ranking_status") in {"COMPLETE", "FAILED", "EMPTY"}:
+        evaluation_id = uuid4().hex
+        def rank():
+            if self.detail(run_id).get("stop_requested"):
                 return
             self.rank_view(run_id, view, evaluation_id=evaluation_id)
-            current = self.detail(run_id)
-            evaluation = dict((current.get("evaluations") or {}).get(view) or {})
-            if evaluation.get("evaluation_id") == evaluation_id and evaluation.get("gates_status") == "COMPLETE":
-                evaluation["status"] = "COMPLETE"
-                update_view_evaluation(self._root(run_id), view, evaluation, evaluation_id=evaluation_id)
-
-        return local_image_evaluation_service().stage_view_evaluation(run_id, view, evaluation_id,
-            stage_gates=stage, collect_gates=collect, rank=rank,
-            save_evaluation=lambda record: update_view_evaluation(self._root(run_id), view, record,
-                evaluation_id=evaluation_id), input_hashes=hashes)
+            current = dict((self.detail(run_id).get("evaluations") or {}).get(view) or {})
+            if current.get("evaluation_id") == evaluation_id:
+                current["status"] = "COMPLETE"
+                update_view_evaluation(self._root(run_id), view, current, evaluation_id=evaluation_id)
+        return local_image_evaluation_service().stage_view_evaluation(
+            run_id, view, evaluation_id, rank=rank,
+            finish=lambda: finish_evaluation(self._root(run_id), view, evaluation_id),
+            save_evaluation=lambda record: update_view_evaluation(self._root(run_id), view, record, evaluation_id=evaluation_id),
+            input_hashes=hashes)
 
     def reconcile_review_jobs(self, run_id: str) -> dict[str, Any]:
-        from zet.services.local_image_evaluation_service import local_image_evaluation_service, finish_gate_collection
+        from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service
         run = self.detail(run_id)
         for view, evaluation in (run.get("evaluations") or {}).items():
-            if evaluation.get("status") not in {"RUNNING", "STAGING"}:
-                continue
             evaluation_id = str(evaluation.get("evaluation_id") or "")
-            if not evaluation_id:
-                continue
-            candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
-                          and item["candidate_id"] in (evaluation.get("input_hashes") or {})]
-            def collect(candidates=candidates, view=view, evaluation_id=evaluation_id):
-                if run.get("review_version", 1) >= 2:
-                    for item in candidates:
-                        self._collect_candidate_gates(run_id, item["candidate_id"], evaluation_id)
-                else:
-                    self._review_view_candidates(run_id, view, {item["candidate_id"] for item in candidates})
-                finish_gate_collection(self._root(run_id), view, evaluation_id)
-            local_image_evaluation_service().reconcile_review_jobs(run_id, view, evaluation_id,
-                stage_gates=lambda candidates=candidates: [self._stage_candidate_gates(run_id, item["candidate_id"])
-                    for item in candidates] if run.get("review_version", 1) >= 2 else None,
-                collect_gates=collect,
-                rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, evaluation_id=evaluation_id)
-                    if run.get("review_version", 1) >= 2 else None)
+            if evaluation.get("status") == "RUNNING" and evaluation_id:
+                local_image_evaluation_service().reconcile_review_jobs(
+                    run_id, view, evaluation_id,
+                    finish=lambda view=view, evaluation_id=evaluation_id: finish_evaluation(self._root(run_id), view, evaluation_id),
+                    rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, evaluation_id=evaluation_id))
         return self.detail(run_id)
 
     def _review_view_candidates_v2(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
         run = self.detail(run_id)
         candidates = [item for item in run["candidates"] if item.get("view") == view
-                      and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
-        for candidate in candidates:
-            if self.detail(run_id)["stop_requested"]:
-                return False
-            current = next(item for item in self.detail(run_id)["candidates"]
-                           if item["candidate_id"] == candidate["candidate_id"])
-            if current.get("status") == "GATE_REJECTED" and current.get("rejection_gate") != "orientation":
-                continue
-            if not Path(str(current.get("image_path") or "")).is_file():
-                continue
-            if current.get("status") in {"PENDING", "QUEUED", "RUNNING"}:
-                continue
-            if (current.get("status") in {"WAITING_FOR_GATES", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE", "FAILED"}
-                    or current.get("rejection_gate") == "orientation"):
-                self._run_candidate_gates(run_id, current["candidate_id"])
-        if self.detail(run_id)["stop_requested"]:
+                      and (candidate_ids is None or item["candidate_id"] in candidate_ids)
+                      and Path(str(item.get("image_path") or "")).is_file()]
+        if run.get("stop_requested"):
             return False
         try:
             self.rank_view(run_id, view)
         except Exception:
-            # rank_view persists a visible failed ranking; allow other views to finish.
             return True
-        return True
+        return not self.detail(run_id).get("stop_requested")
 
     def queue_view_ranking(self, run_id: str, view: str) -> dict[str, Any]:
-        """Queue a current gate-survivor set for comparative Luna ranking."""
+        """Queue rendered candidates for comparative Luna ranking."""
         run = self.detail(run_id)
         view = str(view or "").upper()
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
-        if run.get("review_version", 1) < 2 or view not in run.get("views", []):
+        if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
             raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before ranking.")
         survivors = [item for item in run["candidates"] if item.get("view") == view
                      and (item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
                           or item.get("human_review", {}).get("decision") == "keep")
-                     and (not item.get("rejection_gate") or item.get("human_review", {}).get("decision") == "keep")
                      and item.get("human_review", {}).get("decision") != "reject"]
-        if not survivors and not any(item.get("view") == view and item.get("status") == "GATE_REJECTED"
-                                     for item in run["candidates"]):
-            raise LocalBodyReferenceError("No gate-reviewed candidates are available to rank.")
+        if not survivors:
+            raise LocalBodyReferenceError("No rendered candidates are available to rank.")
         root = self._root(run_id)
         state = self._read_json((root / "state.json"))
         rankings = state.setdefault("rankings", {})
@@ -2199,8 +1652,6 @@ Do not explain your reasoning."""
         run = self.detail(run_id)
         view = str(view or "").upper()
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
-        if run.get("review_version", 1) < 2:
-            raise LocalBodyReferenceError("Per-view ranking is available for version 2 runs.")
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
         active_evaluation = (run.get("evaluations") or {}).get(view) or {}
@@ -2209,26 +1660,11 @@ Do not explain your reasoning."""
             return run
         if not evaluation_id and active_evaluation.get("status") in {"RUNNING", "STAGING"}:
             evaluation_id = str(active_evaluation.get("evaluation_id") or "")
-        if evaluation_id:
-            # Body ranking uses gate eligibility; compare supplemental candidates
-            # only after collection finishes, including on restart recovery.
-            while True:
-                run = self.detail(run_id)
-                active = (run.get("evaluations") or {}).get(view) or {}
-                if active.get("evaluation_id") != evaluation_id or active.get("status") not in {"STAGING", "RUNNING"} or run.get("stop_requested"):
-                    return run
-                if active.get("gates_status") == "COMPLETE":
-                    break
-                time.sleep(0.25)
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
         anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
         if view != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):
             raise LocalBodyReferenceError("Select a completed front anchor before ranking other views.")
         survivors = [item for item in run["candidates"] if item.get("view") == view
-                     and (item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
-                          or item.get("human_review", {}).get("decision") == "keep")
-                     and (not item.get("rejection_gate")
-                          or item.get("human_review", {}).get("decision") == "keep")
                      and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
@@ -2265,7 +1701,7 @@ Do not explain your reasoning."""
                 for index, candidate in enumerate(survivors, start=1):
                     image_labels.append(f"Candidate {candidate['candidate_id']}: image {index + (1 if view != FRONT_VIEW else 0)}")
                 prompt = (
-                    "Rank all rendered body-reference candidates from best to worst. Gates and human reviews are independent advice; assess every image on its visual merits. Compare them against one another; do not turn minor "
+                    "Rank all rendered body-reference candidates from best to worst. Human review is an independent advice signal; assess every image on its visual merits. Compare them against one another; do not turn minor "
                     "imperfections into automatic failures. Favor the requested canonical view, complete readable "
                     "silhouette, believable anatomy, proportions, mannequin head, and technical reference usefulness. "
                     + ("Use the FRONT anchor to judge body consistency. " if view != FRONT_VIEW else "")
@@ -2320,7 +1756,10 @@ Do not explain your reasoning."""
                 )
             current_rankings[view] = ranking
             if evaluation_id:
-                active.update(ranking_status=ranking.get("status"), ranking_updated_at=self._now())
+                ranking_status = ranking.get("status")
+                active.update(ranking_status=ranking_status, ranking_updated_at=self._now())
+                if ranking_status in {"COMPLETE", "FAILED", "EMPTY", "SKIPPED"}:
+                    active["status"] = "COMPLETE"
                 current.setdefault("evaluations", {})[view] = active
             current["updated_at"] = self._now()
         mutate_local_run_state(root, save_ranking)
@@ -2345,7 +1784,10 @@ Do not explain your reasoning."""
             ranking["evaluation_id"] = evaluation_id
             state.setdefault("rankings", {})[view] = ranking
             if evaluation_id:
-                active.update(ranking_status=ranking.get("status"), ranking_updated_at=self._now())
+                ranking_status = ranking.get("status")
+                active.update(ranking_status=ranking_status, ranking_updated_at=self._now())
+                if ranking_status in {"COMPLETE", "FAILED", "EMPTY", "SKIPPED"}:
+                    active["status"] = "COMPLETE"
                 state.setdefault("evaluations", {})[view] = active
         mutate_local_run_state(self._root(run_id), save)
 
@@ -2374,9 +1816,8 @@ Do not explain your reasoning."""
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
             update.update({
                 "status": "PENDING", "image_path": "", "image_sha256": "", "ask_id": "",
-                "gates": {}, "failed_gate": "", "rejection_gate": "", "render_error": "",
-                "analyses": {}, "analysis_history": [], "review_history": [], "gate_history": [],
-                "gate_rejection_history": [],
+                "render_error": "",
+                "analyses": {}, "analysis_history": [], "review_history": [],
                 "human_review": {"decision": "undecided"},
                 "retry_count": int(candidate.get("retry_count") or 0) + (1 if image_path else 0),
             })
@@ -2395,51 +1836,9 @@ Do not explain your reasoning."""
             for candidate in run.get("candidates") or []:
                 if candidate.get("view") != view:
                     continue
-                gates = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).get("gates")
-                if gates:
-                    state["candidates"][candidate["candidate_id"]]["gates"] = {
-                        key: {**record, "status": "STALE", "stale_reason": "The selected FRONT anchor changed."}
-                        for key, record in gates.items()
-                    }
                 if state.get("selected_views", {}).get(view) == candidate.get("candidate_id"):
                     state["candidates"][candidate["candidate_id"]]["stale_selection"] = True
 
-    def _candidate_gates_current(self, run: dict[str, Any], candidate: dict[str, Any]) -> bool:
-        """Check that every current FRONT gate matches its policy and image inputs."""
-        image = Path(str(candidate.get("image_path") or ""))
-        if not image.is_file():
-            return False
-        from zet.services.local_gate_registry_service import LocalGateRegistryService
-
-        registry = LocalGateRegistryService(self.app, self.project_root)
-        records = candidate.get("gates") or {}
-        for definition in self.review_gates(str(candidate.get("view") or "")):
-            record = records.get(definition.key) or {}
-            policy = registry.status("body-reference", definition.key)
-            expected_hashes = {
-                "candidate": self._hash(image),
-                "front_anchor": "",
-            }
-            if definition.uses_anchor:
-                anchor = next(
-                    (item for item in run.get("candidates") or []
-                     if item.get("candidate_id") == run.get("front_anchor")),
-                    None,
-                )
-                anchor_image = Path(str((anchor or {}).get("image_path") or ""))
-                if not anchor_image.is_file():
-                    return False
-                expected_hashes["front_anchor"] = self._hash(anchor_image)
-            if policy == "Disabled":
-                if record.get("status") != "DISABLED":
-                    return False
-                continue
-            if (record.get("status") != "COMPLETE"
-                    or record.get("policy_status") != policy
-                    or record.get("input_hashes") != expected_hashes
-                    or record.get("prompt_sha256") != hashlib.sha256(definition.prompt.encode()).hexdigest()):
-                return False
-        return True
 
     @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
@@ -2484,8 +1883,6 @@ Do not explain your reasoning."""
         auto_approved = bool(autogenerate and view == FRONT_VIEW)
         if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
             raise LocalBodyReferenceError("A human-rejected candidate cannot be autoselected.")
-        if auto_approved and not self._candidate_gates_current(run, candidate):
-            raise LocalBodyReferenceError("Re-evaluate and pass the FRONT gates before autoselecting this candidate.")
         ranking = (run.get("rankings") or {}).get(view) or {}
         if view != FRONT_VIEW and run.get("front_anchor"):
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
@@ -2500,7 +1897,7 @@ Do not explain your reasoning."""
             raise LocalBodyReferenceError("The candidate image is missing.")
         if auto_approved and (ranking.get("status") != "COMPLETE"
                               or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
-            raise LocalBodyReferenceError("Autogenerate requires a current ranking from passed FRONT gates.")
+            raise LocalBodyReferenceError("Autogenerate requires a current FRONT ranking.")
         previous_id = selected.get(view)
         if previous_id != candidate_id:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
@@ -2512,7 +1909,7 @@ Do not explain your reasoning."""
         selected[view] = candidate_id
         update = {"selected_at": self._now()}
         if auto_approved:
-            update["autogenerate_approval"] = {"approved_at": self._now(), "reason": "Current #1 Luna FRONT candidate passed local gates."}
+            update["autogenerate_approval"] = {"approved_at": self._now(), "reason": "Current #1 Luna FRONT candidate has a valid image and ranking."}
         state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
         if view == FRONT_VIEW:
             state["front_anchor"] = candidate_id
@@ -2656,8 +2053,7 @@ Do not explain your reasoning."""
             if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(candidate.get("ask_id") or "")):
                 raise LocalBodyReferenceError("Timed out waiting for the render; use Retry after checking AI Proxy.")
             time.sleep(max(0.5, float(self.app.config.comfyui_poll_seconds)))
-        next_status = "WAITING_FOR_GATES" if self.detail(run_id).get("review_version", 1) >= 2 else "WAITING_FOR_FACE_GATE"
-        self._candidate_update(run_id, candidate_id, {"status": next_status, "completed_at": "",
+        self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_HUMAN_REVIEW", "completed_at": "",
                                                     "image_sha256": self._hash(image), "render_error": ""})
         return True
 
@@ -2759,11 +2155,11 @@ Do not explain your reasoning."""
                     return
                 view_candidates = [item for item in latest["candidates"] if item.get("view") == view
                                    and (target_candidate_ids is None or item["candidate_id"] in target_candidate_ids)]
-                waiting_status = next((status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
+                waiting_status = next((status for status in ("WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
                                        if any(item.get("status") == status for item in view_candidates)), None)
                 if waiting_status and not latest.get("front_anchor"):
                     waiting_candidates = [item for item in view_candidates
-                                          if item.get("status") in {"WAITING_FOR_FACE_GATE", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"}]
+                                          if item.get("status") in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"}]
                     self._run_update(run_id, status=("AWAITING_FRONT_ANCHOR" if latest.get("review_version", 1) >= 2 else waiting_status), review_only=False,
                                      target_views=[view], target_candidate_ids=[item["candidate_id"] for item in waiting_candidates])
                     return
@@ -2778,10 +2174,10 @@ Do not explain your reasoning."""
             scoped_candidates = [item for item in latest.get("candidates") or []
                                  if target_candidate_ids is None or item["candidate_id"] in target_candidate_ids]
             waiting_candidates = [item for item in scoped_candidates if item.get("status") in {
-                "WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"
+                "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"
             }]
             if waiting_candidates:
-                waiting_status = next(status for status in ("WAITING_FOR_FACE_GATE", "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
+                waiting_status = next(status for status in ("WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW")
                                       if any(item.get("status") == status for item in waiting_candidates))
                 all_selected = all((latest.get("selected_views") or {}).get(target) for target in latest.get("views") or [])
                 run_status = ("COMPLETE" if all_selected else "AWAITING_HUMAN_SELECTION") if latest.get("review_version", 1) >= 2 else waiting_status
@@ -2888,7 +2284,7 @@ Do not explain your reasoning."""
         if state.get("status") == "CANCELLED":
             self._withdraw_queued_asks(run_id)
             return self.detail(run_id)
-        active = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE",
+        active = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING",
                   "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"}
         if state.get("status") not in active:
             run = self.detail(run_id)
@@ -2962,29 +2358,14 @@ Do not explain your reasoning."""
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, {str(candidate["view"])}, "A candidate in this view is being retried.")
         self._save_state(run_id, state)
-        if int(run.get("review_version") or 1) >= 2 and candidate.get("status") == "FAILED" and candidate.get("failed_gate"):
-            failed_gate = str(candidate["failed_gate"])
-            gates = dict(candidate.get("gates") or {})
-            if failed_gate in gates:
-                gates[failed_gate] = {**gates[failed_gate], "status": "FAILED"}
-            self._candidate_update(run_id, candidate_id, {
-                "status": "WAITING_FOR_GATES", "gates": gates, "failed_gate": "", "render_error": "",
-            })
-            state = self._read_json((self._root(run_id) / "state.json"))
-            state.update(status="RUNNING", review_only=True, target_views=[candidate["view"]],
-                         target_candidate_ids=[candidate_id], stop_requested=False,
-                         post_review_status=("AWAITING_HUMAN_SELECTION" if run.get("front_anchor")
-                                             else "AWAITING_FRONT_ANCHOR"), updated_at=self._now())
-            self._save_state(run_id, state)
-            return self.detail(run_id)
         if candidate["status"] == "FAILED":
             ask_id = str(candidate.get("ask_id") or "")
             proxy_status, answer = self._proxy_answer(ask_id) if ask_id else ("UNKNOWN", {})
             if ask_id and (proxy_status in {"QUEUED", "RUNNING"} or str(answer.get("status") or "").upper() == "SUCCESS"):
-                self._candidate_update(run_id, candidate_id, {"status": "QUEUED", "render_error": "", "face_gate": {}})
+                self._candidate_update(run_id, candidate_id, {"status": "QUEUED", "render_error": ""})
             else:
                 self._candidate_update(run_id, candidate_id, {
-                    "status": "PENDING", "render_error": "", "ask_id": "", "image_path": "", "face_gate": {},
+                    "status": "PENDING", "render_error": "", "ask_id": "", "image_path": "",
                     "retry_count": int(candidate.get("retry_count") or 0) + 1,
                 })
         elif candidate["status"] in {"COMPLETE", "WAITING_FOR_HUMAN_REVIEW", "WAITING_FOR_ANALYSIS"}:
@@ -3009,10 +2390,10 @@ Do not explain your reasoning."""
             proxy_status, answer = self._proxy_answer(ask_id) if ask_id else ("UNKNOWN", {})
             if ask_id and (proxy_status in {"QUEUED", "RUNNING"} or str(answer.get("status") or "").upper() == "SUCCESS"):
                 self._candidate_update(run_id, candidate["candidate_id"],
-                                       {"status": "QUEUED", "render_error": "", "face_gate": {}})
+                                       {"status": "QUEUED", "render_error": ""})
             else:
                 self._candidate_update(run_id, candidate["candidate_id"], {
-                    "status": "PENDING", "render_error": "", "ask_id": "", "image_path": "", "face_gate": {},
+                    "status": "PENDING", "render_error": "", "ask_id": "", "image_path": "",
                     "retry_count": int(candidate.get("retry_count") or 0) + 1,
                 })
         return self.resume(run_id)

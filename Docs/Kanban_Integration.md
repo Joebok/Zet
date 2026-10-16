@@ -43,7 +43,7 @@ tools and the unselected Batches page omit unrelated header selections.
 
 Create task inside a local candidate review also records its candidate and the
 matching backend local-asset key when available. Candidate details, file paths,
-prompts, gate responses, and source documents are not copied. The Return to Zet
+prompts, model responses, and source documents are not copied. The Return to Zet
 link restores the pipeline and batch; candidate review reopening is not included.
 
 Each local Batches card has Create task. It reports that row's character, phase,
@@ -84,16 +84,13 @@ actions retain their behavior.
 
 ## Auxiliary pages and screenshots (packet 08)
 
-Local Character Overview, Gate Test Rig, and Gate Test Data have Create task and
-Open board in their headers. Overview slot buttons capture their own character,
-phase, costume, pipeline, and autogeneration job. Gate case/result buttons capture
-pipeline, gate, test case, and the displayed run when applicable. Supported editor
-fields identify the selected control without copying its contents. Labels and
-availability come from the existing backend overview/catalog/case/run responses.
-Return links restore and mark a slot or case, and reopen saved tests or recorded
-runs through read requests. Missing references produce a visible notice. Recorded
-universes bind API requests and image links without changing the global default.
-Return links never start a run, save a test, or generate an image.
+Local Character Overview has Create task and Open board in its header. Overview
+slot buttons capture their own character, phase, costume, pipeline, and
+autogeneration job. Supported editor fields identify the selected control without
+copying its contents. Return links restore and mark a slot through read requests.
+Missing references produce a visible notice. Recorded universes bind API requests
+and image links without changing the global default. Return links never start a
+run, save a test, or generate an image.
 
 Image Generation review also has Create task, capturing its job and result IDs
 without prompts or pixels. Its return link opens Image Generation; job/result IDs

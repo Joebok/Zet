@@ -117,7 +117,6 @@
           <button class="tab workflow-tab" data-page="local-image-config">Config</button>
           <button class="tab workflow-tab" data-page="universes">Universes</button>
           <button id="toolbar-local-character-overview" type="button">Local Character Overview</button>
-          <button id="toolbar-gate-test-rig" type="button">Gate Test Rig</button>
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
           <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
           <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
@@ -235,7 +234,6 @@
       <div class="page-title-row"><h1 id="local-pipeline-title">Local Assets</h1></div>
       <div id="local-pipeline-content" class="local-pipeline-layout">
         <section class="control-panel local-pipeline-panel">
-          <details id="local-pipeline-gates"><summary>Gate settings</summary><div id="local-pipeline-gate-settings"></div></details>
           <div class="local-pipeline-controls">
             <label id="local-pipeline-costume-label" hidden>Costume<select id="local-pipeline-costume"></select></label>
             <label class="local-pipeline-batch-label">Batch<select id="local-pipeline-runs"></select></label>
@@ -319,13 +317,6 @@
           </div>
         </div>
       </div>
-    </dialog>
-    <dialog id="local-pipeline-gate-prompt-dialog" class="local-pipeline-gate-prompt-dialog" aria-labelledby="local-pipeline-gate-prompt-title">
-      <header>
-        <h2 id="local-pipeline-gate-prompt-title">Gate prompt</h2>
-        <button id="local-pipeline-gate-prompt-close" type="button">Close</button>
-      </header>
-      <pre id="local-pipeline-gate-prompt-content" aria-live="polite"></pre>
     </dialog>
     <section id="local-stub-page" class="page">
       <div class="page-title-row"><h1 id="local-stub-title">Coming soon</h1></div>
@@ -1834,10 +1825,6 @@
             <article class="managed-llm-role" data-llm-role="scene_builder">
               <p class="managed-llm-description"></p>
               <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role">
-              <label>Local Body-Reference rejection gates<select id="setting-local-body-reference-face-gate-model" form="automation-form"></select></label>
-              <p class="managed-llm-description">Model alias used for the narrow review gates on version 2 runs.</p>
             </article>
             <article class="managed-llm-role" data-llm-role="local_body_reference_review">
               <label>Legacy Local Body-Reference review model<select id="setting-local-body-reference-review-model" form="automation-form"></select></label>

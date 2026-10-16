@@ -155,7 +155,7 @@ model availability, artistic quality or production deployment.
 | Reconstruction/true-up, Quick Character and Costume Wizard | Codex/Ollama plus render children | durable `reconstruction`, `minor`, `costume` methods and shared structured results | vision |
 | Minor Character stages and advisory reviews | Codex/Ollama/ComfyUI | common coordinator plus durable minor continuations | vision or image generation |
 | Body/Head/Assembly/Dressing, supplemental slots | ComfyUI plus Codex/Ollama | generic AI harvester with domain attempt/slot fences | image generation or vision |
-| Ranking, prompt improvement, gate diagnostics | Codex/Ollama | common structured/result delivery and existing domain application | vision where images are supplied |
+| Ranking, prompt improvement | Codex/Ollama | common structured/result delivery and existing domain application | vision where images are supplied |
 
 Every row publishes through `FileProxyClient`; no new request uses the legacy app
 workers. Those workers remain solely for immutable envelopes already published.

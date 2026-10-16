@@ -2,7 +2,7 @@
 
 Read [AGENTS.md](../AGENTS.md) first. Select only the documents relevant to the task, then verify their source and tests. This knowledge base describes implementation inspected on **2026-10-11**; newer code and observed tests may expose drift.
 
-The V5 history recovery on 2026-10-11 restored the approved three-scenario local E2E suite and retired the former Python/browser suites and CI gates. [Testing](Testing.md) owns the exact S1–S3 scenarios, isolated fixture/reset behavior, optional live check, and coverage policy. Component/code-map verification now refers to that baseline and names uncovered contracts. Earlier results in completed plans and Git snapshots remain historical evidence, not current commands or outstanding failures.
+The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and retired the former Python/browser suites and CI gates; S4 was added to the baseline on 2026-10-16. [Testing](Testing.md) owns the four scenarios, isolated fixture/reset behavior, optional live check, and coverage policy. Component/code-map verification now refers to that baseline and names uncovered contracts. Earlier results in completed plans and Git snapshots remain historical evidence, not current commands or outstanding failures.
 
 ## Task navigation
 
@@ -30,7 +30,7 @@ The V5 history recovery on 2026-10-11 restored the approved three-scenario local
 | [Testing.md](Testing.md) | Approved fast scenarios, isolated fixtures, optional live check, coverage approval | Before selecting or changing tests |
 | [GitHub_Task_Workflow.md](GitHub_Task_Workflow.md) | GitHub capture/evidence, worker/limits/attention, deployment and restoration | Dashboard task reporting and Kanban integration |
 | [COMPONENTS/LIBRARY.md](COMPONENTS/LIBRARY.md) | Universe binding, authoritative images, derived discovery index | Library/reference/discovery work |
-| [COMPONENTS/LOCAL_CHARACTERS.md](COMPONENTS/LOCAL_CHARACTERS.md) | Candidate generation, gates, ranking, selection, publication | Character pipeline work |
+| [COMPONENTS/LOCAL_CHARACTERS.md](COMPONENTS/LOCAL_CHARACTERS.md) | Candidate generation, ranking, human review, selection, publication | Character pipeline work |
 | [COMPONENTS/PROMPTS.md](COMPONENTS/PROMPTS.md) | Template compilation, view conditioning, attachment contracts | Prompt changes |
 | [COMPONENTS/SCENE_BUILDER.md](COMPONENTS/SCENE_BUILDER.md) | Retiring structured scenes, targets, layout, render and review | Retired workflow, migration history and offline geometry archive; no maintained scenario |
 | [COMPONENTS/NARRATIVE.md](COMPONENTS/NARRATIVE.md) | Independent narrative authoring, jobs, references and assembly | Narrative workflows |

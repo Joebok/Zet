@@ -341,7 +341,7 @@ class LocalRunAllRemainingService:
                 else:
                     adapter._update(run_id, candidate["candidate_id"], **changes)
                 continue
-            if candidate.get("status") in {"FAILED", "WAITING_FOR_GATES"} or (
+            if candidate.get("status") == "FAILED" or (
                 candidate.get("status") in {"QUEUED", "RUNNING"} and proxy_status == "UNKNOWN"
             ):
                 try:
@@ -425,9 +425,7 @@ class LocalRunAllRemainingService:
         remaining = sum(not Path(str(item.get("image_path") or "")).is_file()
                         for item in refreshed.get("candidates") or [])
         review_errors = bool(refreshed.get("review_errors")) or any(
-            item.get("review_error") or any(gate.get("status") in {"FAILED", "ERROR"}
-                                             for gate in (item.get("gates") or {}).values())
-            for item in refreshed.get("candidates") or []) or any(
+            item.get("review_error") for item in refreshed.get("candidates") or []) or any(
                 ranking.get("status") == "FAILED" for ranking in (refreshed.get("rankings") or {}).values())
         result = "WAITING_FOR_SELECTION" if unselected or remaining else "COMPLETE"
         needs_anchor = pipeline in {"body-reference", "head-image"} or bool(refreshed.get("use_front_anchor", True))
@@ -443,7 +441,7 @@ class LocalRunAllRemainingService:
             next_result = "QUEUED" if (needs_anchor and later_views_missing) else result
             batch.update(result=next_result, review_status="FAILED" if review_errors else "COMPLETE",
                          images_remaining=remaining, images_complete=len(refreshed.get("candidates") or []) - remaining,
-                         review_error="One or more advisory gates or rankings need re-evaluation." if review_errors else "",
+                         review_error="One or more rankings need re-evaluation." if review_errors else "",
                          message="FRONT selection is ready; dependent views are queued." if next_result == "QUEUED" else batch.get("message", ""),
                          updated_at=self._now())
         self._update(campaign_id, finish)

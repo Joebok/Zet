@@ -12,7 +12,7 @@
     AWAITING_FRONT_ANCHOR: "Awaiting FRONT selection", AWAITING_HUMAN_SELECTION: "Awaiting selection",
     REVIEW_REQUIRED: "Review required", COMPLETE: "Complete", CANCELLED: "Stopped",
     STOPPED: "Stopped", INTERRUPTED: "Interrupted", ERROR: "Error", PENDING: "Pending",
-    WAITING_FOR_GATES: "Waiting for gates", GATE_REJECTED: "Gate rejected", FAILED: "Failed",
+    FAILED: "Failed",
   };
   const evaluationLabels = {
     STAGING: "Staging reviews", RUNNING: "Reviews running", COMPLETE: "Reviews complete",
@@ -25,7 +25,7 @@
   };
   const activeStatuses = new Set(["PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"]);
   const state = { pipeline: "", generation: 0, run: null, runs: [], reviewCandidates: [], reviewIndex: -1,
-    gatePolicies: {}, frontSourcePath: "", poll: null, previewGeneration: 0, contextKey: "", compareOpposite: false,
+    frontSourcePath: "", poll: null, previewGeneration: 0, contextKey: "", compareOpposite: false,
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
     runState: "absent", costumesState: "absent", runRequest: 0 };
   const restoreParams = new URLSearchParams(window.location.search);
@@ -38,12 +38,6 @@
   function hasSharedAssetRouter() { return ["character-assembly", "costume-dressing"].includes(state.pipeline); }
   function baseUrl() { return `/api/local/${state.pipeline}`; }
   function selectedCostume() { return $("costume")?.value || ""; }
-  function gateRegistry() {
-    if (state.pipeline === "character-assembly") return "local-character-assembly";
-    if (state.pipeline === "costume-dressing") return "local-costume-dressing";
-    return state.pipeline;
-  }
-
   function query(extra = {}) {
     const params = new URLSearchParams({
       character: document.querySelector("#character-select").value,
@@ -123,10 +117,8 @@
       case "lock-preview": return `${baseUrl()}/runs/${id}/views/${encodedView}/lock-preview${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "unlock": return `${baseUrl()}/runs/${id}/views/${encodedView}/unlock${query()}`;
       case "proceed": return `${baseUrl()}/runs/${id}/views/FRONT/proceed${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "prompt": return `${baseUrl()}/runs/${id}/review-spec/${encodedView}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "image-prompt": return `${baseUrl()}/runs/${id}/image-prompt/${encodedView}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "gate-prompt": return `${baseUrl()}/runs/${id}/views/${encodedView}/gates/${encodeURIComponent(candidate)}/prompt${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "source": return state.pipeline === "head-image"
+            case "source": return state.pipeline === "head-image"
         ? `${baseUrl()}/runs/${id}/source`
         : `${baseUrl()}/runs/${id}/sources/${encodedView}/${encodeURIComponent(candidate)}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       default: throw new Error(`Unsupported Local workflow action: ${action}`);
@@ -176,14 +168,6 @@
       || !unstartedViews(run).length;
   }
 
-  function gateLabel(record, policy) {
-    if (record?.status === "DISABLED" || policy === "Disabled") return "Disabled";
-    if (record?.status === "STALE") return "Stale";
-    if (record?.verdict === "FALSE") return "Passed";
-    if (record?.verdict === "TRUE" || (policy === "Warning" && record?.status === "FAILED")) return policy === "Warning" ? "Warning" : "Rejected";
-    return statusLabels[record?.status] || record?.status || "Pending";
-  }
-
   function addLink(parent, label, href) {
     const link = document.createElement("a");
     link.href = href;
@@ -191,88 +175,6 @@
     link.rel = "noopener";
     link.textContent = label;
     parent.append(link);
-  }
-
-  function renderGateSettings(data) {
-    state.gatePolicies = data.statuses || {};
-    const host = $("gate-settings");
-    host.replaceChildren();
-    for (const [key] of Object.entries(data.gates || {})) {
-      const label = document.createElement("label");
-      label.className = "local-pipeline-gate-setting";
-      const name = document.createElement("span");
-      name.textContent = `${key.replaceAll("_", " ")}:`;
-      const select = document.createElement("select");
-      for (const value of ["Disabled", "Warning", "Active"]) select.add(new Option(value, value));
-      select.value = state.gatePolicies[key] || "Disabled";
-      select.addEventListener("change", async () => {
-        try {
-          const updated = await request(`/api/local-gates/${gateRegistry()}/${encodeURIComponent(key)}`, {
-            method: "PUT", body: JSON.stringify({ status: select.value }),
-          });
-          state.gatePolicies = updated.statuses || state.gatePolicies;
-          if (state.run) render();
-        } catch (error) { setStatus(error.message, true); }
-      });
-      label.append(name, select);
-      host.append(label);
-    }
-  }
-
-  async function loadGateSettings(generation) {
-    const data = await request(`/api/local-gates/${gateRegistry()}`);
-    if (generation === state.generation) renderGateSettings(data);
-  }
-
-  function gateSummary(candidate) {
-    const gates = { ...Object.fromEntries(Object.keys(state.gatePolicies).map((key) => [key, {}])), ...(candidate.gates || {}) };
-    return Object.entries(gates).map(([key, record]) => {
-      const policy = record.policy_status || state.gatePolicies[key];
-      const labelText = gateLabel(record, policy);
-      const line = document.createElement("p");
-      line.className = "local-pipeline-gate-result";
-      const label = document.createElement("strong");
-      label.textContent = key.replaceAll("_", " ");
-      const result = document.createElement("span");
-      result.className = "local-pipeline-gate-icon";
-      if (labelText === "Disabled") {
-        result.classList.add("muted");
-        result.textContent = "n/a";
-      } else if (labelText === "Passed") {
-        result.classList.add("success-text");
-        result.textContent = "✓";
-        result.setAttribute("aria-label", "Passed");
-      } else if (labelText === "Warning") {
-        result.classList.add("warning-text");
-        result.textContent = "⚠";
-        result.setAttribute("aria-label", "Warning gate failed");
-      } else if (["Rejected", "Failed"].includes(labelText)) {
-        result.classList.add("error-text");
-        result.textContent = "✕";
-        result.setAttribute("aria-label", "Failed");
-      } else if (labelText === "Pending") {
-        result.classList.add("muted");
-        result.textContent = "◷";
-        result.setAttribute("aria-label", "Pending");
-      } else {
-        result.classList.add("muted");
-        result.textContent = labelText;
-      }
-      result.title = labelText;
-      line.append(label, result);
-      if (labelText !== "Disabled") {
-        const prompt = document.createElement("a");
-        prompt.href = route("gate-prompt", state.run.run_id, candidate.view, key);
-        prompt.className = "local-pipeline-prompt-link";
-        prompt.dataset.gatePrompt = "true";
-        prompt.dataset.gateName = key.replaceAll("_", " ");
-        prompt.textContent = "▤";
-        prompt.setAttribute("aria-label", `${key.replaceAll("_", " ")} prompt`);
-        prompt.title = "View prompt";
-        line.append(prompt);
-      }
-      return line;
-    });
   }
 
   function universeImageUrl(path) {
@@ -422,7 +324,6 @@
     card.append(status);
     const renderError = renderErrorDetails(candidate);
     if (renderError) card.append(renderError);
-    for (const line of gateSummary(candidate)) card.append(line);
     const human = document.createElement("p");
     human.className = "muted";
     human.textContent = `Human ${candidate.human_review?.decision || "undecided"}`;
@@ -448,7 +349,7 @@
       else if (slot <= 8 && candidate.render_status === "FAILED") addSlotButton(controls, "Retry", "retry", view, slot, disabled, candidate.slot_reason);
       addSlotButton(controls, "Clear", "clear", view, slot, disabled, candidate.slot_reason);
     }
-    if (candidate.failed_gate || candidate.review_error) addButton(controls, "Retry review", "retry", { disabled: busy(run), view, candidate: candidate.candidate_id });
+    if (candidate.review_error) addButton(controls, "Retry review", "retry", { disabled: busy(run), view, candidate: candidate.candidate_id });
     if (controls.childElementCount) card.append(controls);
     return card;
   }
@@ -581,7 +482,7 @@
       const viewReady = view === "FRONT" || run.use_front_anchor === false || Boolean(run.front_anchor);
       addRecompileOption(viewActions);
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
-      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => ["FAILED", "GATE_REJECTED"].includes(item.status)), view });
+      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.status === "FAILED"), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
       addButton(viewActions, ranking.status === "COMPLETE" ? "Re-rank" : "Rank images", "rank", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
       const ai = run.view_reviews?.[view]?.ai_observations || {};
@@ -653,7 +554,6 @@
       }
       const links = document.createElement("p");
       links.className = "muted";
-      addLink(links, "Review specification", route("prompt", run.run_id, view));
       links.append(document.createTextNode(" · "));
       addLink(links, "Image prompt", route("image-prompt", run.run_id, view));
       const promptHelp = document.createElement("p"); promptHelp.className = "muted local-pipeline-prompt-help";
@@ -686,9 +586,8 @@
       if (evaluation.evaluation_id || ranking.status) {
         const reviewProgress = document.createElement("p");
         reviewProgress.className = "muted local-pipeline-review-progress";
-        const gatesText = evaluationLabels[evaluation.gates_status] || evaluationLabels[evaluation.status] || "Gates not queued";
         const rankText = evaluationLabels[evaluation.ranking_status] || evaluationLabels[ranking.status] || "Ranking not queued";
-        reviewProgress.textContent = `Advice · Gates: ${gatesText} · Luna: ${rankText}`;
+        reviewProgress.textContent = `Luna ranking · ${rankText}`;
         details.append(reviewProgress);
       }
       const gallery = document.createElement("div");
@@ -964,7 +863,7 @@
     setStatus("");
     startPolling();
     const generation = state.generation;
-    void refreshContext().then(() => loadGateSettings(state.generation)).catch((error) => setStatus(error.message, true));
+    void refreshContext().catch((error) => setStatus(error.message, true));
   }
 
   async function uploadHeadSource(file) {
@@ -1130,7 +1029,6 @@
     if (candidate.elapsed_seconds != null && Number.isFinite(Number(candidate.elapsed_seconds))) {
       metadata.push(`Generation time: ${Math.round(Number(candidate.elapsed_seconds))} seconds`);
     }
-    if (candidate.rejection_gate) metadata.push(`Rejected by: ${candidate.rejection_gate}`);
     info.textContent = metadata.join(" · ");
     const decision = document.createElement("fieldset");
     decision.className = "decision-options local-pipeline-decision-options";
@@ -1175,7 +1073,6 @@
     content.className = "local-pipeline-review-content";
     const renderError = renderErrorDetails(candidate);
     if (renderError) content.append(renderError);
-    for (const line of gateSummary(candidate)) content.append(line);
     const ranking = run.rankings?.[candidate.view] || {};
     const rankingOrder = ranking.luna_ordered_candidate_ids || ranking.ordered_candidate_ids || [];
     const rankingPosition = rankingOrder.indexOf(candidate.candidate_id);
@@ -1272,22 +1169,6 @@
     state.compareOpposite = false;
     renderReview();
     $("review-dialog").showModal();
-  }
-
-  async function openGatePrompt(link) {
-    const dialog = $("gate-prompt-dialog");
-    const title = $("gate-prompt-title");
-    const content = $("gate-prompt-content");
-    title.textContent = `${link.dataset.gateName} prompt`;
-    content.textContent = "Loading prompt…";
-    dialog.showModal();
-    try {
-      const response = await fetch(link.href);
-      if (!response.ok) throw new Error(response.statusText || "Could not load prompt.");
-      content.textContent = await response.text();
-    } catch (error) {
-      content.textContent = `Could not load prompt: ${error.message}`;
-    }
   }
 
   async function handleAction(button) {
@@ -1403,12 +1284,6 @@
       $("source-remove").hidden = true;
     });
     for (const host of [$("views"), $("selected")]) host.addEventListener("click", (event) => {
-      const prompt = event.target.closest("a[data-gate-prompt]");
-      if (prompt) {
-        event.preventDefault();
-        void openGatePrompt(prompt);
-        return;
-      }
       const button = event.target.closest("button[data-local-action]");
       if (button?.closest("summary")) {
         event.preventDefault();
@@ -1418,10 +1293,6 @@
     });
     $("review-close").addEventListener("click", () => $("review-dialog").close());
     $("review-task").addEventListener("click", () => void window.ZetTaskCapture.open());
-    $("gate-prompt-close").addEventListener("click", () => $("gate-prompt-dialog").close());
-    $("gate-prompt-dialog").addEventListener("click", (event) => {
-      if (event.target === $("gate-prompt-dialog")) $("gate-prompt-dialog").close();
-    });
     $("review-toggle").addEventListener("change", () => { state.compareOpposite = $("review-toggle").checked; renderReview(); });
     $("review-prev").addEventListener("click", () => { void navigateReview(-1); });
     $("review-next").addEventListener("click", () => { void navigateReview(1); });

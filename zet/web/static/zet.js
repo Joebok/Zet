@@ -284,7 +284,6 @@ const toolbarRestartZet = document.querySelector("#toolbar-restart-zet");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
 const toolbarLocalCharacterOverview = document.querySelector("#toolbar-local-character-overview");
-const toolbarGateTestRig = document.querySelector("#toolbar-gate-test-rig");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
 const helpMenuButton = document.querySelector("#help-menu-button");
 const helpMenu = document.querySelector("#help-menu");
@@ -452,7 +451,6 @@ const settingImagePromptGenerationModel = document.querySelector("#setting-image
 const settingCostumeWizardModel = document.querySelector("#setting-costume-wizard-model");
 const settingQuickCharacterWizardModel = document.querySelector("#setting-quick-character-wizard-model");
 
-const settingLocalBodyReferenceFaceGateModel = document.querySelector("#setting-local-body-reference-face-gate-model");
 const settingLocalBodyReferenceReviewModel = document.querySelector("#setting-local-body-reference-review-model");
 const refreshOllamaModels = document.querySelector("#refresh-ollama-models");
 const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
@@ -842,7 +840,6 @@ const ollamaModelControls = () => [
   settingImagePromptGenerationModel,
   settingCostumeWizardModel,
   settingQuickCharacterWizardModel,
-  settingLocalBodyReferenceFaceGateModel,
   settingLocalBodyReferenceReviewModel,
 ];
 fullscreenImageOverlay.className = "fullscreen-image-overlay";
@@ -10355,7 +10352,6 @@ function renderPipelineControls(payload) {
   setOllamaModelValue(settingImagePromptGenerationModel, automation.ai_image_prompt_generation_model || "image-analysis:latest");
   setOllamaModelValue(settingCostumeWizardModel, automation.ai_costume_wizard_model || "codex:gpt-6-luna");
   setOllamaModelValue(settingQuickCharacterWizardModel, automation.ai_quick_character_wizard_model || "codex:gpt-6-luna");
-  setOllamaModelValue(settingLocalBodyReferenceFaceGateModel, automation.local_body_reference_face_gate_model || "");
   setOllamaModelValue(settingLocalBodyReferenceReviewModel, automation.local_body_reference_review_model || "");
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   renderManagedLlmRoles(payload.managed_llm_roles || []);
@@ -10565,7 +10561,6 @@ function automationPayloadFromForm() {
     ai_image_prompt_generation_model: settingImagePromptGenerationModel.value,
     ai_costume_wizard_model: settingCostumeWizardModel.value,
     ai_quick_character_wizard_model: settingQuickCharacterWizardModel.value,
-    local_body_reference_face_gate_model: settingLocalBodyReferenceFaceGateModel.value,
     local_body_reference_review_model: settingLocalBodyReferenceReviewModel.value,
     ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,
     render_backend: settingRenderBackend.value,
@@ -11810,11 +11805,6 @@ characterRecommendedAction.addEventListener("click", () => runGuardedTransition(
 toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
 toolbarLocalCharacterOverview.addEventListener("click", () => {
   window.location.assign("/local-character-overview");
-  closeToolbarSettingsMenu();
-});
-
-toolbarGateTestRig.addEventListener("click", () => {
-  window.location.assign("/gate-test-rig");
   closeToolbarSettingsMenu();
 });
 

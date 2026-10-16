@@ -60,3 +60,4 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 | [0015 - Minor Character alignment and current boards](0015-minor-character-alignment.md) | How do style/view selection gates, simple prompts and one-level undo replace iteration history? | Accepted locally 2026-10-15 |
 
 | [0016 — Unified AI execution and collection](0016-unified-ai-jobs.md) | Who owns provider execution, independent cloud admission, common collection and model selection? | Accepted 2026-10-16 |
+| [0018 — Ranking-only character review](0018-ranking-only-character-review.md) | How do rendered character candidates reach ranking and human review without a defect verdict stage? | Accepted locally 2026-10-16; existing library conversion pending |

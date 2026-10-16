@@ -259,11 +259,8 @@ async function processLocalFront(page, pipeline, runId, costume, pngPath) {
       await answerLocalEnvelope(context.queue, candidate.ask_id, await readFile(pngPath));
       answered.add(candidate.ask_id);
     }
-    for (const gate of Object.values(candidate?.gates || {})) {
-      if (gate.ask_id && !answered.has(gate.ask_id)) {
-        await answerLocalEnvelope(context.queue, gate.ask_id, Buffer.from("FALSE: prepared test pass"));
-        answered.add(gate.ask_id);
-      }
+    if (run.rankings?.FRONT?.status === "FAILED") {
+      throw new Error(`Luna ranking failed: ${run.rankings.FRONT.error || "unknown error"}`);
     }
     return candidate?.image_available && run.rankings?.FRONT?.status === "COMPLETE" ? "READY" : candidate?.status;
   }, { timeout: 70_000 }).toBe("READY");

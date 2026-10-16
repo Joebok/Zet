@@ -11,8 +11,7 @@ CONTEXT_FIELDS = {"version", "page_id", "page_name", "source_url", "universe_id"
 COMPONENTS = {"narrative": "COMPONENTS/NARRATIVE.md", "scene-candidates": "COMPONENTS/NARRATIVE.md",
               "local-body-reference": "COMPONENTS/LOCAL_CHARACTERS.md", "local-head-image": "COMPONENTS/LOCAL_CHARACTERS.md",
               "local-character-assembly": "COMPONENTS/LOCAL_CHARACTERS.md", "local-costume-dressing": "COMPONENTS/LOCAL_CHARACTERS.md",
-              "local-character-overview": "COMPONENTS/LOCAL_CHARACTERS.md", "gate-test-rig": "COMPONENTS/LOCAL_CHARACTERS.md",
-              "gate-test-data": "COMPONENTS/LOCAL_CHARACTERS.md", "zine": "ARCHITECTURE.md"}
+              "local-character-overview": "COMPONENTS/LOCAL_CHARACTERS.md", "zine": "ARCHITECTURE.md"}
 
 
 def validate_repository(value):

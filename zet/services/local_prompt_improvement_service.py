@@ -114,11 +114,11 @@ class LocalPromptImprovementService:
         self.pipeline = pipeline
         self.project_root = Path(project_root).resolve()
 
-    def _run(self, run_id: str, costume: str = "", *, upgrade_legacy: bool = False) -> dict[str, Any]:
+    def _run(self, run_id: str, costume: str = "") -> dict[str, Any]:
         if self.pipeline in {"character-assembly", "costume-dressing"}:
-            return self.adapter.detail(run_id, costume, upgrade_legacy=upgrade_legacy)
+            return self.adapter.detail(run_id, costume)
         if self.pipeline == "body-reference":
-            return self.adapter.detail(run_id, upgrade_legacy=upgrade_legacy)
+            return self.adapter.detail(run_id)
         return self.adapter.detail(run_id)
 
     @staticmethod
@@ -145,8 +145,8 @@ class LocalPromptImprovementService:
                                 "reason": str(candidate.get("render_error") or candidate.get("error") or "Image unavailable")})
         return images, missing
 
-    def detail(self, run_id: str, costume: str = "", *, upgrade_legacy: bool = False) -> dict[str, Any]:
-        run = self._run(run_id, costume, upgrade_legacy=upgrade_legacy)
+    def detail(self, run_id: str, costume: str = "") -> dict[str, Any]:
+        run = self._run(run_id, costume)
         root = self._root(run)
         library_root = pipeline_library_root_for_path(root)
         spec = read_library_json(root / "spec.json", library_root)
@@ -308,7 +308,7 @@ class LocalPromptImprovementService:
                 "Report noticeable structural discrepancies and variations between images that a clearer prompt or template could mitigate. "
                 "Focus on silhouette, garment size and shape, head/body proportions, hair length and form, and equipment or weapon placement. "
                 "Use candidate IDs as evidence and distinguish a recurring variation from an isolated defect. "
-                "Do not focus on minor decorative differences such as embroidery motifs. Do not rank, reject, or skip gate-failed images. "
+                "Do not focus on minor decorative differences such as embroidery motifs. Review every supplied image on its visual merits. "
                 "For one image, compare major structures against the saved prompt and state that cross-image variation cannot be assessed. "
                 "Do not claim to inspect missing images. Return concise observations, not rewritten prompts.\n\n"
                 f"Image mapping:\n{mapping}\n\nMissing images and reasons:\n{json.dumps(missing, indent=2)}\n\n"

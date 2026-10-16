@@ -186,16 +186,6 @@ def create_local_character_asset_pipeline_router(
         @router.get(f"{prefix}/runs/{{run_id}}/image-prompt/{{view}}", response_class=PlainTextResponse)
         def image_prompt(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
             return PlainTextResponse(call(lambda: service(_pipeline).adapter.image_prompt(run_id, view, **({"costume": costume} if _pipeline == "costume-dressing" else {})), missing=404), media_type="text/markdown")
-
-        @router.get(f"{prefix}/runs/{{run_id}}/review-spec/{{view}}", response_class=PlainTextResponse)
-        def review_specification(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
-            method = "review_prompt" if _pipeline in {"body-reference", "head-image"} else "review_specification"
-            return PlainTextResponse(call(lambda: getattr(service(_pipeline).adapter, method)(run_id, view, **({"costume": costume} if _pipeline == "costume-dressing" else {})), missing=404), media_type="text/markdown")
-
-        @router.get(f"{prefix}/runs/{{run_id}}/views/{{view}}/gates/{{gate}}/prompt", response_class=PlainTextResponse)
-        def gate_prompt(run_id: str, view: str, gate: str, costume: str = Query(""), _pipeline: str = pipeline):
-            return PlainTextResponse(call(lambda: service(_pipeline).adapter.gate_prompt(run_id, view, gate, **({"costume": costume} if _pipeline == "costume-dressing" else {})), missing=404), media_type="text/markdown")
-
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/select")
         def select(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "select_view", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), costume=costume if _pipeline == "costume-dressing" else ""))

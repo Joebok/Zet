@@ -27,14 +27,13 @@ class LocalImagePipelineConfig:
     compiler: str
     reference_roles: tuple[str, ...]
     optional_front_source: bool
-    gate_profile: str
     ranking_profile: str
     prerequisites: tuple[str, ...] = ()
     front_anchor_rule: str = "optional"
     front_count: int = 8
     other_count: int = 4
     candidate_limit: int = 64
-    review_version: int = 2
+    review_version: int = 3
 
     def page_contract(self) -> dict[str, Any]:
         value = asdict(self)
@@ -56,17 +55,17 @@ class LocalImagePipelineConfig:
 LOCAL_IMAGE_PIPELINES: dict[str, LocalImagePipelineConfig] = {
     "body-reference": LocalImagePipelineConfig(
         "body-reference", "Body-Reference", ("character", "phase"), "body-reference", "body_reference",
-        (), False, "body-reference", "body-reference", front_anchor_rule="required"),
+        (), False, "body-reference", front_anchor_rule="required"),
     "head-image": LocalImagePipelineConfig(
         "head-image", "Head-Image", ("character", "phase"), "head-image", "head_image",
-        ("front_reference",), True, "head-image", "head-image", front_anchor_rule="required"),
+        ("front_reference",), True, "head-image", front_anchor_rule="required"),
     "character-assembly": LocalImagePipelineConfig(
         "character-assembly", "Character-Assembly", ("character", "phase"), "character-assembly",
-        "character_assembly", ("body_reference", "head_image"), False, "character-assembly",
+        "character_assembly", ("body_reference", "head_image"), False,
         "character-assembly", prerequisites=("Body-Reference", "Head-Image")),
     "costume-dressing": LocalImagePipelineConfig(
         "costume-dressing", "Costume-Dressing", ("character", "phase", "costume"), "costume-dressing",
-        "costume_dressing", ("character_assembly", "costume"), False, "costume-dressing",
+        "costume_dressing", ("character_assembly", "costume"), False,
         "costume-dressing", prerequisites=("Character-Assembly", "costume")),
 }
 
@@ -152,7 +151,6 @@ def local_pipeline_batch_summary(run: dict[str, Any]) -> dict[str, Any]:
         "candidate_count": int(run.get("candidate_count") or len(candidates)),
         "selected_view_count": len(run.get("selected_views") or {}),
         "front_anchor": run.get("front_anchor") or "",
-        "gate_rejection_count": sum(item.get("status") == "GATE_REJECTED" for item in candidates),
         "stale_selections": list(run.get("stale_selections") or []),
         "error": str(run.get("error") or ""),
     }
@@ -224,102 +222,25 @@ def serialize_local_run_state(function):
     return wrapped
 
 
-def upgrade_legacy_review_v1(run_root: Path, spec: dict[str, Any], state: dict[str, Any], *, active: bool = False) -> bool:
-    """Upgrade an idle review-v1 run in place, preserving its original JSON and assets.
-
-    Old gate and ranking results cannot be verified against the v2 input/prompt hashes, so
-    they remain visible but stale. Candidate images, decisions, selections, and snapshots
-    are retained without rerendering or unlocking assets.
-    """
-    try:
-        version = int(spec.get("review_version") or 1)
-    except (TypeError, ValueError):
-        version = 1
-    if version >= 2 or active:
-        return False
-
-    legacy_root = run_root / "legacy_review_v1"
-    legacy_root.mkdir(parents=True, exist_ok=True)
-    for name in ("spec.json", "state.json"):
-        source = run_root / name
-        destination = legacy_root / name
-        if source.is_file() and not destination.exists():
-            shutil.copy2(source, destination)
-
-    spec["review_version"] = 2
-    spec.setdefault("schema_version", 2)
-    updates = state.setdefault("candidates", {})
-    for candidate in spec.get("candidates", []):
-        candidate_id = str(candidate.get("candidate_id") or "")
-        if not candidate_id:
-            continue
-        combined = {**candidate, **(updates.get(candidate_id) or {})}
-        gates = dict(combined.get("gates") or {})
-        for gate in gates.values():
-            if isinstance(gate, dict):
-                gate.update(status="STALE", stale_reason="Legacy result has no v2 input hash.")
-        if combined.get("face_gate") and "face" not in gates:
-            face = dict(combined["face_gate"])
-            face.update(status="STALE", stale_reason="Legacy result has no v2 input hash.")
-            gates["face"] = face
-        updates.setdefault(candidate_id, {}).update(gates=gates, legacy_review_stale=True)
-
-    rankings = state.setdefault("rankings", {})
-    for ranking in rankings.values():
-        if isinstance(ranking, dict) and ranking.get("status") in {"COMPLETE", "EMPTY"}:
-            ranking.update(status="STALE", stale_reason="Legacy ranking has no v2 input hashes.")
-    state.setdefault("selected_views", {})
-    state["review_upgrade"] = {"from_version": 1, "to_version": 2}
-
-    library_root = pipeline_library_root_for_path(run_root)
-    write_library_json(run_root / "spec.json", spec, library_root)
-    write_library_json(run_root / "state.json", state, library_root)
-    return True
-
-
 RUN_STATUSES = {
     "QUEUED", "PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING",
     "AWAITING_FRONT_ANCHOR", "READY_FOR_VIEWS", "AWAITING_HUMAN_SELECTION",
     "REVIEW_REQUIRED", "COMPLETE", "CANCELLED", "INTERRUPTED", "ERROR",
 }
 CANDIDATE_STATUSES = {
-    "PENDING", "QUEUED", "RUNNING", "WAITING_FOR_GATES", "GATE_REJECTED",
-    "WAITING_FOR_HUMAN_REVIEW", "COMPLETE", "FAILED",
+    "PENDING", "QUEUED", "RUNNING", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE", "FAILED",
 }
-GATE_STATUSES = {"QUEUED", "RUNNING", "COMPLETE", "DISABLED", "STALE", "FAILED"}
 RANKING_STATUSES = {"QUEUED", "RUNNING", "EMPTY", "COMPLETE", "STALE", "FAILED"}
 ACTIVE_RUN_STATUSES = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}
 
 
-def gate_result_is_current(
-    record: dict[str, Any], *, input_hashes: dict[str, str], prompt_sha256: str,
-    policy_status: str | None = None,
-) -> bool:
-    """Return whether a gate result is current and acceptable under its policy."""
-    saved_policy = str(record.get("policy_status") or policy_status or "Active")
-    if policy_status and saved_policy != policy_status:
-        return False
-    if record.get("input_hashes") != input_hashes or record.get("prompt_sha256") != prompt_sha256:
-        return False
-    if saved_policy == "Disabled":
-        return record.get("status") == "DISABLED"
-    if saved_policy == "Warning" and record.get("status") == "FAILED":
-        return True
-    if record.get("status") != "COMPLETE":
-        return False
-    if saved_policy == "Warning":
-        return record.get("verdict") in {"TRUE", "FALSE"}
-    return record.get("verdict") == "FALSE"
-
-
 def clear_candidate_artifacts(run_root: Path, candidate_id: str, image_path: str | Path | None = None) -> None:
-    """Delete only this run's generated image and gate-output directories."""
+    """Delete only this run's generated candidate artifacts."""
     if not re.fullmatch(r"(?:F|FL|FR|PL|PR|B|BR|BL)-\d{3,}", str(candidate_id or "")):
         raise ValueError("Invalid local image candidate ID.")
     root = run_root.resolve()
     for relative in (
         Path("renders") / candidate_id / "Local_Test_Renders",
-        Path("analyses") / candidate_id,
     ):
         target = (root / relative).resolve()
         if not target.is_relative_to(root):

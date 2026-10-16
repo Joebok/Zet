@@ -46,7 +46,7 @@ CLI modules under [zet/scripts/](../zet/scripts/) are separate operations; some 
 
 ## Major data flows
 
-- **Local characters:** source/template snapshots → shared compiler → proxy render candidates → defect gates/ranking → human selection → lock/publication into the entity library. Candidate workspace and approved-image lookup are separate. See [LOCAL_CHARACTERS](COMPONENTS/LOCAL_CHARACTERS.md).
+- **Local characters:** source/template snapshots → shared compiler → proxy render candidates → Luna ranking and human review → selection → lock/publication into the entity library. Candidate workspace and approved-image lookup are separate. See [LOCAL_CHARACTERS](COMPONENTS/LOCAL_CHARACTERS.md).
 - **Scene Builder (retired):** authoring/render execution is removed or fenced; historic source data remains. Dedicated geometry and integration code live in the [offline archive](../Archive/scene-builder/README.md). StoryService is now a narrow locked-character/auxiliary reference compatibility reader. Legacy image references retain read-only resolution.
 - **Narrative:** dashboard-mounted story/scene/target records → prose interview/synthesis → frozen references/assembly snapshot → durable image jobs → candidate slots and selection. This subsystem does not route through Scene Builder or its pipeline state. See [NARRATIVE](COMPONENTS/NARRATIVE.md).
 - **Library/discovery:** approved image bytes and entity/reference metadata are authoritative; the separate local index scans authored sources and queue summaries into published generations for dashboard queries. See [LIBRARY](COMPONENTS/LIBRARY.md).
@@ -63,7 +63,7 @@ Important complexity: a large composition facade/web module, callbacks between s
 
 ## Current test execution boundary
 
-[Testing](Testing.md) documents the recovered local E2E harness: a disposable Test universe/private queue, temporary derived index, prepared fast responses and selected-state resets. Exactly three maintained scenarios exercise representative authoring, character-to-costume and Narrative assembly tasks. The separate live Narrative check is opt-in. Python/browser unit suites and Actions gates have been retired; these scenarios do not establish every subsystem contract. Task capture, zines, geometry and many lifecycle/error branches have no dedicated maintained scenario.
+[Testing](Testing.md) documents the recovered local E2E harness: a disposable Test universe/private queue, temporary derived index, prepared fast responses and selected-state resets. Four maintained scenarios exercise representative authoring, character-to-costume, Narrative assembly and shared AI queue tasks. The separate live Narrative check is opt-in. Python/browser unit suites and Actions gates have been retired; these scenarios do not establish every subsystem contract. Task capture, zines, geometry and many lifecycle/error branches have no dedicated maintained scenario.
 
 [ADR 0005](DECISIONS/0005-narrative-dashboard-and-legacy-scene-retirement.md) owns the active Narrative/legacy migration boundary. Migration CLI deliberately avoids app construction, workers and live services.
 

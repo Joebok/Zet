@@ -243,7 +243,7 @@ class CharacterRenderSlots:
                     candidate = {**keep, "candidate_id": cid, "view": view, "ordinal": ordinal,
                         "seed": template["seed"] if action == "retry" else str(random.SystemRandom().randrange(0, 2**63 - 1)),
                         "status": "PENDING", "image_path": "", "ask_id": "", "retry_count": 0,
-                        "gates": {}, "human_review": {"decision": "undecided"}, "render_error": ""}
+                        "human_review": {"decision": "undecided"}, "render_error": ""}
                     if action != "retry":
                         candidate["render_input"] = self.prepare_input(run, view, root / "renders" / cid / "inputs",
                             recompile=bool(payload.get("recompile")))
@@ -325,7 +325,7 @@ class CharacterRenderSlots:
                                 target = Path(candidate["image_path"])
                                 status, answer = self.adapter._proxy_answer(candidate["ask_id"])
                                 if target.is_file():
-                                    updates = {"status": "WAITING_FOR_GATES", "image_sha256": self.adapter._hash(target), "render_error": ""}
+                                    updates = {"status": "WAITING_FOR_HUMAN_REVIEW", "image_sha256": self.adapter._hash(target), "render_error": ""}
                                     changed.add(candidate["view"])
                                     done.add(cid)
                                 elif answer.get("status") in {"ERROR", "RETRY_LATER"} or status == "UNKNOWN":

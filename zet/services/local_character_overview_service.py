@@ -237,12 +237,8 @@ class LocalCharacterOverviewService:
                 continue
             ranking = (run.get("rankings") or {}).get("FRONT") or {}
             digest = adapter._hash(image)
-            try:
-                finished = (ranking.get("status") == "COMPLETE"
-                            and ranking.get("input_hashes", {}).get(candidate_id) == digest
-                            and adapter._candidate_gates_current(run, candidate))
-            except Exception:
-                finished = False
+            finished = (ranking.get("status") == "COMPLETE"
+                        and ranking.get("input_hashes", {}).get(candidate_id) == digest)
             rendered_at = str(candidate.get("rendered_at") or "")
             try:
                 rendered_sort = datetime.fromisoformat(rendered_at).timestamp() if rendered_at else image.stat().st_mtime
@@ -314,8 +310,7 @@ class LocalCharacterOverviewService:
         adapter = self._pipeline_service(pipeline).adapter
         kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
         deadline = time.monotonic() + 1860
-        active = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_FACE_GATE",
-                  "WAITING_FOR_GATES", "WAITING_FOR_ANALYSIS"}
+        active = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_ANALYSIS"}
         while True:
             job = self._read(path)
             if job.get("job_id") != job_id or job.get("status") not in ACTIVE_STATUSES:
@@ -392,7 +387,7 @@ class LocalCharacterOverviewService:
             if ranking.get("status") == "FAILED":
                 raise LocalCharacterOverviewError(f"Luna ranking failed for {pipeline}: {ranking.get('error') or 'unknown error'}")
             if ranking.get("status") == "EMPTY" and front_candidates and all(
-                item.get("status") in {"FAILED", "GATE_REJECTED"} for item in front_candidates
+                item.get("status") == "FAILED" for item in front_candidates
             ):
                 raise LocalCharacterOverviewError(f"All FRONT candidates failed or were rejected for {pipeline}.")
             self._execute_front(pipeline, run_id, costume)
@@ -409,8 +404,8 @@ class LocalCharacterOverviewService:
         candidate = next((item for item in run.get("candidates", []) if item.get("candidate_id") == candidate_id), None)
         if not candidate or not Path(str(candidate.get("image_path") or "")).is_file():
             raise LocalCharacterOverviewError(f"The #1 Luna FRONT image is missing for {pipeline}.")
-        if candidate.get("human_review", {}).get("decision") == "reject" or candidate.get("rejection_gate"):
-            raise LocalCharacterOverviewError(f"The #1 Luna FRONT candidate was rejected for {pipeline}.")
+        if candidate.get("human_review", {}).get("decision") == "reject":
+            raise LocalCharacterOverviewError(f"The #1 Luna FRONT candidate was rejected by human review for {pipeline}.")
         if pipeline == "body-reference":
             adapter.select_view(run_id, "FRONT", candidate_id, autogenerate=True)
         elif pipeline == "head-image":

@@ -126,8 +126,8 @@
   function discover() {
     document.querySelectorAll('select[id^="setting-"][id$="-model"], #image-reconstruction-model, #mc-model, input[list="narrative-model-options"], [data-ai-model-picker]').forEach(control => {
       const narrative = control.matches('input[list="narrative-model-options"]');
-      const gate = /gate|review|analysis|description/.test(control.id) || control.hasAttribute("data-ai-vision");
-      attach(control, { ...(gate ? { required: ["vision"] } : {}), ...(known[control.id] || {}), ...(narrative ? { allowDefault: true } : {}) });
+      const needsVision = /review|analysis|description/.test(control.id) || control.hasAttribute("data-ai-vision");
+      attach(control, { ...(needsVision ? { required: ["vision"] } : {}), ...(known[control.id] || {}), ...(narrative ? { allowDefault: true } : {}) });
     });
   }
   window.ZetModelPicker = { open, attach, refresh: () => load(true), sync: syncControl };

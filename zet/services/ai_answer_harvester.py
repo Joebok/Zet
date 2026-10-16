@@ -653,12 +653,6 @@ class AIAnswerHarvester:
         results: list[HarvestResult] = []
         if lifecycle is not None and client is not None:
             lifecycle.drain_ready_answers(client)
-            for item in lifecycle.reconcile_stale_gate_answers(client):
-                if item.get("status") == "FAILED":
-                    results.append(HarvestResult(
-                        answer_path=Path(item["evidence_path"]), ask_id=item["ask_id"], asset_id=None,
-                        status="FAILED", message=item["message"],
-                    ))
             # A previous run may have applied the answer and written its harvest
             # manifest, then stopped before persisting the compact receipt. Finish
             # that commit without reapplying the answer.

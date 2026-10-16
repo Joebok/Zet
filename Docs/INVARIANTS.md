@@ -32,11 +32,11 @@ These are supported by implementation and repository instructions, with earlier 
 - **Implementation/impact:** [LocalAssetStoreService](../zet/services/local_asset_store_service.py): `locked_assets`, `_batch_exists`, `lock`, `promote_chain`; [LocalAssetSourceService](../zet/services/local_asset_source_service.py); identity/turnaround/phase consumers and catalog publication.
 - **Verify:** S2 verifies seeded prerequisites, selection/lock and Assembly-to-Dressing use. Inspect `_batch_exists`, checksum checks and promotion rollback for uncovered cases. Old cutover fixture failures belong to the retired suite, not the maintained baseline.
 
-## 6. Review verdicts and human decisions have explicit meaning
+## 6. Ranking and human review define candidate eligibility
 
-- **Rule/why:** narrow gate verdict `TRUE` means a rejection defect. The shared `parse_rejection_verdict` accepts a single TRUE/FALSE; Assembly/Dressing `_wait_gate` also accepts an optional `: reason`. Preserve the parser contract for the specific pipeline. Rankings must contain every submitted survivor exactly once, with unique IDs/reasons. Human decisions are `keep`, `reject`, or `undecided`; automated approval cannot override human rejection. Manual rank adjustments preserve Luna's original order.
-- **Implementation/impact:** [candidate_review_contract.py](../zet/services/candidate_review_contract.py), [local_candidate_review_contract.py](../zet/services/local_candidate_review_contract.py), [local_image_pipeline_policy.py](../zet/services/local_image_pipeline_policy.py); every local candidate gate/ranker.
-- **Verify:** S2 applies prepared defect responses and waits for a one-candidate rank before selection/lock. It does not cover multi-candidate ordering, stale evaluation or human-rejection overrides; inspect shared policy/parser code.
+- **Rule/why:** rendered candidates enter human review and ranking without an intermediate defect verdict. Rankings must contain every submitted survivor exactly once, with unique IDs/reasons. Body-Reference ranking excludes human-rejected candidates; other pipelines retain their existing human-review behavior. Automatic FRONT selection requires the current original Luna #1, valid current image bytes, and no human rejection. Manual rank adjustments preserve Luna's original order.
+- **Implementation/impact:** [local_candidate_review_contract.py](../zet/services/local_candidate_review_contract.py), [local_image_evaluation_service.py](../zet/services/local_image_evaluation_service.py), [local_image_pipeline_policy.py](../zet/services/local_image_pipeline_policy.py), and the four local pipeline services.
+- **Verify:** S2 waits for a one-candidate ranking before selection/lock. It does not cover multi-candidate ordering, stale evaluation or human-rejection overrides; inspect the shared ranking and selection checks. Gate-free records use `review_version: 3`; library path-format versions remain independent.
 
 ## 7. Queue publication and consumption preserve ownership and readiness
 

@@ -1,26 +1,7 @@
-"""Shared, pipeline-neutral validation for narrow visual review gates."""
+"""Shared, pipeline-neutral validation for local image rankings."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class ReviewGate:
-    key: str
-    prompt: str
-    uses_anchor: bool = False
-    crop_head: bool = False
-    uses_source: bool = False
-    input_roles: tuple[str, ...] = ()
-
-
-def parse_rejection_verdict(value: str) -> str:
-    """Accept only a single TRUE/FALSE rejection verdict."""
-    verdict = str(value or "").strip().upper()
-    if verdict not in {"TRUE", "FALSE"}:
-        raise ValueError(f"Expected TRUE or FALSE, received {verdict[:80]!r}.")
-    return verdict
 
 
 def validate_ranking(value: object, candidate_ids: list[str]) -> list[dict[str, str]]:

@@ -50,10 +50,9 @@ class LocalImagePipelineWorkflowService:
             return self.adapter.preview(payload)
         if name == "create":
             created = self.adapter.create_run(payload)
-            return self.prompt_improvement.detail(str(created.get("run_id") or ""), costume,
-                                                  upgrade_legacy=True)
+            return self.prompt_improvement.detail(str(created.get("run_id") or ""), costume)
         if name == "detail":
-            return self.slots.detail(self.prompt_improvement.detail(run_id, costume, upgrade_legacy=True))
+            return self.slots.detail(self.prompt_improvement.detail(run_id, costume))
         if name in {"generate_slots", "clear_slot", "regenerate_slot", "retry_render_slot"}:
             operation = {"generate_slots": "generate", "clear_slot": "clear", "regenerate_slot": "regenerate", "retry_render_slot": "retry"}[name]
             return self.slots.change(run_id, view, operation, payload, costume)

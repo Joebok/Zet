@@ -13,12 +13,12 @@ The active character workflow produces and reviews **batches of candidates** for
 | Selection, lock and publication | [LocalAssetStoreService](../../zet/services/local_asset_store_service.py), checksum-verified [LocalAssetSourceService](../../zet/services/local_asset_source_service.py), entity image library |
 | Overview and sequenced automation/recovery | [LocalCharacterOverviewService](../../zet/services/local_character_overview_service.py), [LocalRunAllRemainingService](../../zet/services/local_run_all_remaining_service.py), [local router](../../zet/web/local_character_asset_pipeline_router.py), app startup recovery |
 
-Inputs include character/phase, normalized requested views, costume qualifier when applicable, source batch/candidate selections, source templates, profile and seed controls. Runs retain specs, snapshots, candidate state, gate/ranking jobs, and selections. Outputs include candidate image artifacts and, after locking, approved library image/reference bindings.
+Inputs include character/phase, normalized requested views, costume qualifier when applicable, source batch/candidate selections, source templates, profile and seed controls. Runs retain specs, snapshots, candidate state, ranking jobs, human decisions, and selections. Outputs include candidate image artifacts and, after locking, approved library image/reference bindings.
 
 1. Preview validates inputs and dependencies. Assembly uses body/head references; dressing uses an assembled character and costume source. Read the service's source resolution before assuming every input must already be locked: selected-batch workflows also exist.
 2. Creation snapshots source material and records the run. Rendering queues work through the shared File Proxy; answer harvesting and view-specific evaluation progress persisted state.
-3. Narrow defect gates and comparison ranking provide review data. Front-anchor/order requirements differ by pipeline; use the owning service rather than a universal view loop.
-4. Human decisions, current gate/ranking state, and selection determine eligibility. Selection and locking are separate operations; promotion may collect a source chain.
+3. Rendered candidates are available for Luna ranking and human review immediately. Front-anchor/order requirements differ by pipeline; use the owning service rather than a universal view loop.
+4. Current ranking, human decisions, image validity, and selection determine eligibility. Selection and locking are separate operations; promotion may collect a source chain.
 5. Lock publication preserves approved image bytes/checksum and a stable logical reference. Verified locks feed identity keys, turnarounds, costumes, phase comparison and scene references.
 
 ## Contracts, failures, and extension
@@ -31,15 +31,15 @@ Active edit profiles use the shared Qwen reference sizing policy described in
 [PROMPTS](PROMPTS.md). Prepared snapshots preserve source order and are retained
 with pending workflow artifacts so retries keep the original edit inputs.
 
-Preserve the review semantics, live-batch/checksum lock requirements, universe ownership, and immutable dependent locks in [INVARIANTS](../INVARIANTS.md). Failure modes include unavailable external rendering/review models, stale gate/rank results, changed/missing source snapshots, invalid batch IDs, missing `spec.json`, missing locked bytes, and interrupted runners. Stop/resume/rerun and recovery must respect superseded work; do not reset persisted state blindly.
+Preserve the review semantics, live-batch/checksum lock requirements, universe ownership, and immutable dependent locks in [INVARIANTS](../INVARIANTS.md). Failure modes include unavailable external rendering/ranking models, stale rankings, changed/missing source snapshots, invalid batch IDs, missing `spec.json`, missing locked bytes, and interrupted runners. Stop/resume/rerun and recovery must respect superseded work; do not reset persisted state blindly.
 
 Deleting a Body-Reference batch is blocked while its runner still owns the durable runner lock. A persisted active status with no live runner is interrupted work and can be deleted without first changing it to cancelled/stopped; queued asks are withdrawn during deletion.
 
-For a new gate, update shared policy/registry and the owning pipeline inputs/prompts and relevant approved scenario assertions; new coverage requires approval. For a new local asset operation use the local store/services and downstream source provider, not `Assets.json` stage mutation. Data formats belong to [DATA_MODEL](../DATA_MODEL.md); prompt mechanics belong to [PROMPTS](PROMPTS.md).
+For a new local asset operation use the local store/services and downstream source provider, not `Assets.json` stage mutation. Data formats belong to [DATA_MODEL](../DATA_MODEL.md); prompt mechanics belong to [PROMPTS](PROMPTS.md).
 
 ## Verification and decisions
 
-[S2 in fast.spec.mjs](../../tests/e2e/fast.spec.mjs) previews, creates and starts a front-only Character-Assembly run, applies prepared image/gate responses, waits for ranking, selects/locks it, and repeats for Costume-Dressing. Body/Head prerequisites are seeded with valid batch specs/locks. This does not verify Body/Head generation, other views, multi-candidate rankings, cancellation or recovery. The former Python cutover failures are historical, not outstanding baseline failures. See [Testing](../Testing.md) for the approved baseline and coverage policy.
+[S2 in fast.spec.mjs](../../tests/e2e/fast.spec.mjs) previews, creates and starts a front-only Character-Assembly run, applies a prepared image response, waits for ranking, selects/locks it, and repeats for Costume-Dressing. Body/Head prerequisites are seeded with valid batch specs/locks. This does not verify Body/Head generation, other views, multi-candidate rankings, cancellation or recovery. The former Python cutover failures are historical, not outstanding baseline failures. See [Testing](../Testing.md) for the approved baseline and coverage policy.
 
 [ADR 0003](../DECISIONS/0003-local-character-production-boundary.md) records the retirement/renderer boundary. [V5 Realignment](../../Docs-Joe/Zet%20V5%20Realignment.md) describes intent and open questions; it does not authorize a new implementation phase.
 
@@ -48,7 +48,7 @@ All four local character pages display eight stable slots per view. Initial FRON
 
 [CharacterRenderSlots](../../zet/services/render_slot_service.py) owns atomic allocation and protection behind [LocalImagePipelineWorkflowService](../../zet/services/local_image_workflow_service.py). Detail includes `slots_by_view`, `slot_controls`, candidate slot numbers and action reasons. Render actions persist `slot_render_ids` before scheduling; an independent per-run collector submits/reconciles them without taking the batch runner lock. Other slots remain usable while renders run. Clear detaches running candidates so late answers cannot fill replacement slots. Startup recovery reattaches this collector. Candidate definitions added after creation live separately from mutable review state so rerun resets retain them. Clear detaches active membership and retains provenance/artifacts. Legacy galleries over eight remain visible; clear surplus unprotected candidates to reach capacity.
 
-The browser polls at two-second intervals while active, including in review. Updates patch slot/status sections and preserve unsaved observations, human decisions, focus and current candidate. Once a view has a complete ranking, candidate cards and previous/next review navigation follow Luna order, with unranked occupied candidates after ranked candidates in physical slot order; empty slots remain after candidates. This is presentation only: each card retains its physical slot label and its actions remain bound to that slot. Incomplete, stale or failed rankings leave cards and review navigation in physical slot order. Selected/locked outputs require explicit protection transitions; adding alternatives does not modify immutable library locks. Body ranking waits for gates before comparing the complete active survivor set. See [ADR 0007](../DECISIONS/0007-stable-render-slots.md).
+The browser polls at two-second intervals while active, including in review. Updates patch slot/status sections and preserve unsaved observations, human decisions, focus and current candidate. Once a view has a complete ranking, candidate cards and previous/next review navigation follow Luna order, with unranked occupied candidates after ranked candidates in physical slot order; empty slots remain after candidates. This is presentation only: each card retains its physical slot label and its actions remain bound to that slot. Incomplete, stale or failed rankings leave cards and review navigation in physical slot order. Selected/locked outputs require explicit protection transitions; adding alternatives does not modify immutable library locks. Body ranking compares the valid, non-rejected candidate set. See [ADR 0007](../DECISIONS/0007-stable-render-slots.md) for the original slot design; the review contract is now ranking-only.
 
 Reference previews above candidate cards deduplicate repeated per-candidate snapshots by image checksum, preserving the prompt role and image label in the caption. Older snapshots without checksums fall back to their role and prompt label.
 
@@ -92,20 +92,19 @@ Paired review has independent navigation. Right arrows/keyboard keys move among 
 Main Minor Characters navigation saves edits and opens the complete list, including from an editor. Direct character links/history and Inventory handoffs remain. The All Minor Characters button and iteration history are removed. Board actions use `/api/minor-characters/{sid}/boards/{view}/{action}` and `/boards/{view}/slots/action`; mutations carry expected board revisions and services enforce eligibility. See [data model](../DATA_MODEL.md) and [prompts](PROMPTS.md). Disposable checks cover this workflow; S1-S3 are regression coverage, not artistic acceptance.
 
 ## Unified AI jobs (2026-10-16)
-Local gates, ranking, prompt observations and Minor Character analysis/review/render
-requests use the common AI job boundary. Generic execution moved to AI_Proxy;
+Ranking, prompt observations and Minor Character analysis/review/render requests
+use the common AI job boundary. Generic execution moved to AI_Proxy;
 Minor Character continuations persist and resume without session-page reads.
 Domain eligibility, immutable publication, revisions and image binding rules stay
 here. [Shared AI jobs](AI_JOBS.md) owns collection/receipts, queue activity and the
 capability-aware model popup.
 
-Image-based gates and ranking require the current render's successful harvest
-receipt, validated bytes and committed image hash. Gate staging uses the run's
-state lock and a durable publication reservation, so restart between publication
-and gate-state commit reuses its ask. Minor review uses a deterministic workflow
+Ranking requires the current render's successful harvest receipt, validated bytes
+and committed image hash. Ranking staging uses the run's state lock and a durable
+publication reservation. Minor review uses a deterministic workflow
 identity and process-shared session locks; its candidate image is committed before
 review starts. Admission rechecks current membership, cancellation, hashes and
-evaluation immediately around publication. Queued render/gate work does not fail
+evaluation immediately around publication. Queued render work does not fail
 solely because a subscriber's 30-minute wait elapsed.
 
 Reconstruction preparation verifies its frozen input fingerprint and reuses its
