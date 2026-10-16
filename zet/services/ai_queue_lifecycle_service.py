@@ -136,7 +136,10 @@ class AIQueueLifecycleService:
                     shutil.move(str(answer_path), str(destination))
                 self._prune_debug()
             elif answer_path.is_dir():
-                shutil.rmtree(answer_path)
+                # The durable receipt is the completion barrier. Antivirus, sync
+                # clients, or test runners may briefly hold files open on Windows;
+                # a busy finished payload can be cleaned up on a later sweep.
+                shutil.rmtree(answer_path, ignore_errors=True)
         finally:
             # Receipt durability is the completion barrier; route removal is idempotent.
             if not answer_path.exists() or self.read_receipt(job_id):
