@@ -390,6 +390,13 @@ class LocalCharacterAssetPipelineService:
                                            "candidates": {}, "selected_views": {}, "rankings": {}})
         return self.detail(run_id, plan["costume"])
 
+    def _all_selected_views_locked(self, run: dict[str, Any]) -> bool:
+        return self.asset_store.all_selected_views_locked(
+            run, self.definition["asset_pipeline"],
+            qualifier=self._qualifier(str(run.get("costume") or "")),
+            require_front_anchor=self._requires_front_anchor(run),
+        )
+
     def detail(self, run_id: str, costume: str = "") -> dict[str, Any]:
         root = self._run_root(run_id, costume)
         spec, state = self._read(root / "spec.json"), self._read(root / "state.json")
@@ -439,6 +446,10 @@ class LocalCharacterAssetPipelineService:
                      or bool(local_asset.get("locked") and local_asset.get("candidate_id") != candidate_id))
             if stale:
                 result["stale_selections"].append(view)
+        if (result["status"] in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED", "COMPLETE"}
+                and self._all_selected_views_locked(result)):
+            result["status"] = "COMPLETE"
+            result["stale_selections"] = []
         return decorate_local_pipeline_detail(result, self.pipeline)
 
     def list_runs(self, character: str = "", phase: str = "", costume: str = "") -> list[dict[str, Any]]:
@@ -485,6 +496,11 @@ class LocalCharacterAssetPipelineService:
                         interrupted = not self._is_active(run_id)
                     if interrupted:
                         status = "INTERRUPTED"
+                if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self._all_selected_views_locked({
+                    **spec, **state, "run_id": run_id,
+                    "candidates": list(merge_candidates(spec, state).values()),
+                }):
+                    status = "COMPLETE"
                 result.append({
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),

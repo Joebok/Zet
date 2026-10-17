@@ -49,6 +49,13 @@ Use this map to select a narrow search, inspect the named entry point and caller
 
 ## Search and impact routine
 
+Completed character batch publication: `LocalAssetStoreService.all_selected_views_locked`
+verifies requested selections against same-batch, costume-scoped locks and image
+checksums. Body, Head, Assembly and Dressing adapters use it in detail and summary
+projections so stale advisory rankings do not hide completed publication. Disposable
+checks cover invalid publications and protected statuses; S2 remains Assembly/Dressing
+regression coverage.
+
 Failed AI job deletion: [AIJobCleanupService](../zet/services/ai_job_cleanup_service.py)
 owns status/producer/path validation, job-scoped payload cleanup and retryable
 partial failure under coordinator/job locks. `ZetApp.delete_failed_ai_job`,

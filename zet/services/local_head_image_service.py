@@ -306,6 +306,11 @@ class LocalHeadImageService:
         value["stale_selections"] = sorted(set(value["stale_selections"]) | set(stale_selected))
         if value["stale_selections"] and value["status"] not in ACTIVE_RUN_STATUSES | {"ERROR", "CANCELLED", "INTERRUPTED"}:
             value["status"] = "REVIEW_REQUIRED"
+        if ((state.get("status") or spec.get("status")) in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED", "COMPLETE"}
+                and value["status"] in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"}
+                and self.asset_store.all_selected_views_locked(value, "Head-Image")):
+            value["status"] = "COMPLETE"
+            value["stale_selections"] = []
         return decorate_local_pipeline_detail(value, "head-image")
 
     def rename_run(self, run_id: str, batch_name: str) -> dict[str, Any]:
@@ -368,6 +373,11 @@ class LocalHeadImageService:
                         if self._active_key(run_id) not in self._active:
                             status = "INTERRUPTED"
                 candidates = merge_candidates(spec, state)
+                if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self.asset_store.all_selected_views_locked({
+                    **spec, **state, "run_id": run_id, "candidates": list(candidates.values()),
+                    "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
+                }, "Head-Image"):
+                    status = "COMPLETE"
                 result.append({
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),

@@ -495,6 +495,10 @@ class LocalBodyReferenceService:
                 return path
         raise LocalBodyReferenceError(f"Local Body-Reference not found: {run_id}")
 
+    def _all_selected_views_locked(self, run: dict[str, Any]) -> bool:
+        """Verified publication completes a batch independently of advisory rankings."""
+        return self.asset_store.all_selected_views_locked(run, "Body-Reference")
+
     def detail(self, run_id: str) -> dict[str, Any]:
         root = self._root(run_id)
         value = self._read_json((root / "spec.json"))
@@ -561,6 +565,11 @@ class LocalBodyReferenceService:
         value["stale_selections"] = stale_selections
         if stale_selections and value["status"] not in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "ERROR"}:
             value["status"] = "REVIEW_REQUIRED"
+        if (stored_status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED", "COMPLETE"}
+                and value["status"] in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"}
+                and self._all_selected_views_locked(value)):
+            value["status"] = "COMPLETE"
+            value["stale_selections"] = []
         value["root"] = str(root)
         value["local_assets"] = self.asset_store.detail(
             str(value.get("character") or ""), str(value.get("phase") or "")
@@ -646,7 +655,7 @@ class LocalBodyReferenceService:
         return sorted(runs, key=lambda item: str(item.get("created_at") or item["run_id"]), reverse=True)
 
     def list_run_summaries(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
-        """List batches without recalculating rankings or hashing candidate images."""
+        """List batches without recalculating rankings; verify fully selected publications."""
         wanted_character = str(character or "").strip()
         wanted_phase = str(phase or "").strip()
         runs: list[dict[str, Any]] = []
@@ -665,6 +674,12 @@ class LocalBodyReferenceService:
                     status = "INTERRUPTED"
                 candidates = merge_candidates(spec, state)
                 selected = state.get("selected_views") or spec.get("selected_views") or {}
+                if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self._all_selected_views_locked({
+                    **spec, "run_id": run_id, "selected_views": selected,
+                    "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
+                    "candidates": list(candidates.values()),
+                }):
+                    status = "COMPLETE"
                 counts: dict[str, int] = {}
                 for candidate in candidates.values():
                     candidate_status = str(candidate.get("status") or "UNKNOWN")

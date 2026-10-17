@@ -95,6 +95,31 @@ class LocalAssetStoreService:
             result.append({"key": key, **record, "image_path": str(path)})
         return sorted(result, key=lambda item: item["key"])
 
+    def all_selected_views_locked(self, run: dict[str, Any], pipeline: str, *,
+                                  qualifier: str = "", require_front_anchor: bool = True) -> bool:
+        """Verify completed publication independently of advisory rankings."""
+        views = run.get("views") or []
+        selected = run.get("selected_views") or {}
+        if not views or any(not selected.get(view) for view in views):
+            return False
+        if ((require_front_anchor or run.get("front_anchor"))
+                and run.get("front_anchor") != selected.get("FRONT")):
+            return False
+        locks = {record["view"]: record for record in self.locked_assets(
+            run["character"], run["phase"], pipeline=pipeline, qualifier=qualifier
+        ) if str(record.get("qualifier") or "").casefold() == qualifier.casefold()}
+        candidates = {item["candidate_id"]: item for item in run.get("candidates") or []}
+        for view in views:
+            record = locks.get(view) or {}
+            candidate = candidates.get(selected[view]) or {}
+            image = Path(str(candidate.get("image_path") or ""))
+            if (record.get("batch_id") != run["run_id"]
+                    or record.get("candidate_id") != selected[view]
+                    or candidate.get("view") != view or not image.is_file()
+                    or self._image_hash(image) != record.get("image_sha256")):
+                return False
+        return True
+
     def _batch_exists(self, character: str, phase: str, record: dict[str, Any], batch_id: str) -> bool:
         """Require batch-owned locks to point at a live pipeline batch."""
         if not re.fullmatch(r"(?:[0-9a-f]{32}|[0-9]{8}_[0-9]{6}_[0-9]{6})", batch_id):

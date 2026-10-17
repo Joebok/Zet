@@ -21,6 +21,15 @@ Inputs include character/phase, normalized requested views, costume qualifier wh
 4. Current ranking, human decisions, image validity, and selection determine eligibility. Selection and locking are separate operations; promotion may collect a source chain.
 5. Lock publication preserves approved image bytes/checksum and a stable logical reference. Verified locks feed identity keys, turnarounds, costumes, phase comparison and scene references.
 
+All four pipelines' detail and batch summaries recognize completed publication when
+every requested view's current selection matches a verified lock from that batch,
+including the selected image checksum and the required FRONT anchor. Assembly and
+Dressing retain their optional-anchor setting; Dressing matches the costume qualifier.
+[LocalAssetStoreService.all_selected_views_locked](../../zet/services/local_asset_store_service.py)
+owns this shared check. Stale advisory rankings do not leave these fully locked
+batches awaiting selection. This projection does not rewrite saved rankings,
+selections, locks, or batch state, and does not override active or stopped work.
+
 ## Contracts, failures, and extension
 
 Candidate, source-snapshot, and local asset-lock records persist library-owned paths relative to the bound universe using format version 1. Storage helpers resolve paths before file access, so service and HTTP consumers continue to receive usable filesystem paths while newly written JSON remains portable. Image bytes, checksums, selections, and lock state remain governed by their existing workflow contracts. See [portable library references](../DECISIONS/0011-portable-library-references.md).
