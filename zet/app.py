@@ -477,10 +477,11 @@ class ZetApp:
                     entity_names = [entity["name"] for entity in asset.get("entities", [])]
                     set_names = [reference_set["name"] for reference_set in asset.get("sets", [])]
                     facet_values = [f"{facet['namespace']}:{facet['value']}" for facet in asset.get("facets", [])]
+                    entities = asset.get("entities", [])
                     rows.append(self._indexed_row(
                         "inventory", asset["asset_id"], f"{asset['origin']}\0{asset['label'].casefold()}", asset,
                         source_key=asset.get("origin_key"), status=asset["status"], source_type=asset["origin"],
-                        semantic_category=asset.get("entities", [{}])[0].get("entity_type", ""),
+                        semantic_category=entities[0]["entity_type"] if entities else "",
                         collections=set_names, keywords=facet_values,
                         search_text=" ".join([asset["asset_id"], asset["label"], asset["origin"], asset["status"], *entity_names, *set_names, *facet_values, *asset.get("tags", [])]),
                     ))

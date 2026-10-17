@@ -71,9 +71,11 @@ state files and old index set were removed; a residual-only preview also found a
 removed two stale index databases under the same approved Indexes root. The old
 C: Indexes root is absent and the old queue tree contains no files. The shared
 transport queue and external archive were not cleaned; the archive scan remains
-bounded/incomplete. The dashboard reports the existing `project/.indexed-dashboard/
-entity-library` provider error (`list index out of range`), also present in the old
-index metadata. `npm.cmd run test:e2e` passed all four approved scenarios (32.1s);
+bounded/incomplete. The dashboard's `project/.indexed-dashboard/entity-library`
+provider error was traced to valid assets without linked entities and fixed by
+allowing their indexed semantic category to remain empty. The persisted error
+clears on the next dashboard reconciliation. `npm.cmd run test:e2e` passed all
+four approved scenarios (32.1s);
 Python compilation and `git diff --check` passed. No live model/render request was
 issued.
 
