@@ -163,7 +163,7 @@ class LocalImagePipelineWorkflowService:
 
     def reevaluate(self, run_id: str, view: str = "", *, costume: str = "") -> dict[str, Any]:
         """Refresh ranking and prompt observations using existing harvested images."""
-        from zet.services.image_harvest_service import require_candidate_harvest
+        from zet.services.image_harvest_service import reconcile_candidate_harvest
         from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
 
         run = self.prompt_improvement.detail(run_id, costume)
@@ -189,8 +189,11 @@ class LocalImagePipelineWorkflowService:
         for target in targets:
             self.adapter.asset_store.assert_batch_change_allowed(
                 run["character"], run["phase"], self.pipeline_config.label, target, qualifier)
-        for candidate in images:
-            require_candidate_harvest(self.app, run, candidate)
+        source_prefix = {"body-reference": "LocalBodyReference", "head-image": "LocalHeadImage",
+                         "character-assembly": "LocalCharacterAsset", "costume-dressing": "LocalCharacterAsset"}[self.pipeline]
+        run = reconcile_candidate_harvest(
+            self.app, lambda: self.prompt_improvement.detail(run_id, costume), run, images,
+            source_prefix=source_prefix)
         for target in targets:
             self.prompt_improvement.start(run_id, target, costume)
             self.stage_view_evaluation(run_id, target, costume=costume)
