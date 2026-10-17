@@ -5527,6 +5527,18 @@ dd {
 .template-improvement textarea, .template-improvement select { width: 100%; min-width: 0; }
 .template-improvement pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); background: var(--surface-subtle); max-height: 36rem; overflow: auto; }
 .template-improvement .template-diff { border-left: 3px solid var(--primary); padding: .7rem; }
+.template-diff-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-family: monospace; font-size: .85rem; }
+.template-diff-table caption { text-align: left; color: var(--text-muted); padding: .4rem 0; }
+.template-diff-table .template-diff-number { width: 3.2rem; }
+.template-diff-table th { text-align: left; background: var(--surface-subtle); padding: .6rem; }
+.template-diff-table td { vertical-align: top; border-bottom: 1px solid var(--border); }
+.template-diff-table .template-diff-line-number { color: var(--text-muted); text-align: right; padding: .35rem .4rem; user-select: none; }
+.template-diff-table .template-diff-code { white-space: pre-wrap; overflow-wrap: anywhere; padding: .35rem .5rem; }
+.template-diff-table .template-diff-removed { background: var(--danger-soft); color: var(--danger); }
+.template-diff-table .template-diff-added { background: var(--success-soft); color: var(--success); }
+.template-diff-table .template-diff-empty, .template-diff-table .template-diff-gap { background: var(--surface-subtle); }
+.template-diff-table .template-diff-gap { text-align: center; padding: .35rem; color: var(--text-muted); }
+.template-diff-table .template-diff-sign { font-weight: 700; }
 .template-representatives { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; }
 .template-representative img { max-height: 180px; max-width: 100%; object-fit: contain; }
 .template-source-choices label { display: flex; align-items: center; gap: .6rem; overflow-wrap: anywhere; }

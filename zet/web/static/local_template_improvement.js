@@ -30,6 +30,42 @@
     parent.append(control); return control;
   }
   function field(parent, title, control) { const label = el("label", title); label.append(control); parent.append(label); return control; }
+  function sourceDiff(source) {
+    const section = el("section", "", "template-master-diff");
+    section.setAttribute("aria-label", "Master versus proposed template diff");
+    section.append(el("h4", "Master → Proposed"),
+      el("p", "Master is the baseline captured for this version. Red / − removes text; green / + adds text.", "muted"));
+    const rows = source.master_diff_rows;
+    if (!rows) { section.append(el("pre", source.master_diff || "No changes from master", "template-diff")); return section; }
+    if (!rows.length) { section.append(el("p", "No changes from master.")); return section; }
+    const table = el("table", "", "template-diff-table");
+    table.append(el("caption", "Changes from master to the saved proposed template"));
+    const columns = el("colgroup");
+    for (const cls of ["template-diff-number", "template-diff-text", "template-diff-number", "template-diff-text"]) columns.append(el("col", "", cls));
+    table.append(columns);
+    const head = el("thead"), headings = el("tr");
+    for (const label of ["Master baseline", "Proposed"]) { const cell = el("th", label); cell.colSpan = 2; cell.scope = "colgroup"; headings.append(cell); }
+    head.append(headings); table.append(head);
+    const body = el("tbody");
+    for (const row of rows) {
+      const line = el("tr");
+      if (row.kind === "gap") { const gap = el("td", "⋯ unchanged lines ⋯", "template-diff-gap"); gap.colSpan = 4; line.append(gap); }
+      else for (const side of ["master", "proposed"]) {
+        const number = row[`${side}_line`];
+        const changed = row.kind !== "equal" && number != null;
+        const cls = changed ? side === "master" ? "template-diff-removed" : "template-diff-added" : "";
+        const gutter = el("td", number == null ? "" : String(number), `template-diff-line-number ${cls}`);
+        const code = el("td", "", `template-diff-code ${cls}`);
+        if (number != null) {
+          const sign = el("span", changed ? side === "master" ? "− " : "+ " : "  ", "template-diff-sign");
+          code.append(sign, document.createTextNode(row[`${side}_text`]));
+        } else code.classList.add("template-diff-empty");
+        line.append(gutter, code);
+      }
+      body.append(line);
+    }
+    table.append(body); section.append(table); return section;
+  }
   function build() {
     host.replaceChildren();
     const summary = el("summary", "Improve governing templates"); host.append(summary);
@@ -145,15 +181,17 @@
       if (!revision.source_ids.includes(source.source_id) && !source.master_diff) continue;
       const details = el("details"); details.open = Boolean(source.master_diff); details.append(el("summary", source.source_id));
       if (source.rationale) details.append(el("p", source.rationale));
-      details.append(el("pre", source.master_diff || "No changes from master", "template-diff"));
+      details.append(sourceDiff(source));
       if (source.diff && source.diff !== source.master_diff) {
         const step = el("details"); step.append(el("summary", "Changes from parent version"), el("pre", source.diff, "template-diff")); details.append(step);
       }
+      const editor = el("details"); editor.append(el("summary", "Full templates / edit proposal"));
       const pair = el("div", "", "template-source-pair");
-      field(pair, "Master", el("pre", source.master_text));
+      field(pair, "Master baseline", el("pre", source.master_text));
       const edit = field(pair, "Proposed (editable; saves a new version)", el("textarea")); edit.value = source.text; edit.rows = 16; edit.dataset.sourceId = source.source_id;
-      edit.addEventListener("input", () => { edit.dataset.dirty = String(edit.value !== source.text); });
-      details.append(pair); result.append(details);
+      const dirtyNote = el("p", "Unsaved edits: save a new version to update the diff.", "muted"); dirtyNote.hidden = true;
+      edit.addEventListener("input", () => { edit.dataset.dirty = String(edit.value !== source.text); dirtyNote.hidden = edit.dataset.dirty !== "true"; });
+      editor.append(pair, dirtyNote); details.append(editor); result.append(details);
     }
     button(result, "Save edited version", async () => {
       const replacements = Object.fromEntries([...result.querySelectorAll("textarea[data-source-id]")].filter(edit => edit.dataset.dirty === "true").map(edit => [edit.dataset.sourceId, edit.value]));

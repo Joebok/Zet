@@ -25,6 +25,25 @@ def _digest(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def template_diff_rows(master: str, proposed: str) -> list[dict]:
+    """Aligned, contextual source lines for the master/proposal review table."""
+    before, after = master.splitlines(), proposed.splitlines()
+    rows = []
+    for group in difflib.SequenceMatcher(None, before, after, autojunk=False).get_grouped_opcodes(3):
+        if rows:
+            rows.append({"kind": "gap"})
+        for kind, start, end, new_start, new_end in group:
+            for offset in range(max(end - start, new_end - new_start)):
+                left = start + offset if offset < end - start else None
+                right = new_start + offset if offset < new_end - new_start else None
+                rows.append({"kind": kind,
+                             "master_line": left + 1 if left is not None else None,
+                             "master_text": before[left] if left is not None else "",
+                             "proposed_line": right + 1 if right is not None else None,
+                             "proposed_text": after[right] if right is not None else ""})
+    return rows
+
+
 def compiler_guidance() -> str:
     from zet.services.view_conditioning_service import VIEW_ORDER, _sets
     return ("# Current character compiler contract\n\n"
@@ -145,6 +164,7 @@ class LocalTemplateRevisionService:
                     source["text"].splitlines(True), fromfile=source["label"] + " (before)", tofile=source["label"] + " (proposed)"))
                 source["master_diff"] = "".join(difflib.unified_diff(source["master_text"].splitlines(True), source["text"].splitlines(True),
                     fromfile=source["label"] + " (master)", tofile=source["label"] + " (revision)"))
+                source["master_diff_rows"] = template_diff_rows(source["master_text"], source["text"])
         return {"run_id": run_id, "active_revision_id": active.get("revision_id", ""),
                 "sources": self._sources(workflow, run), "representatives": reps, "omitted_views": omitted,
                 "history": [{k: item.get(k) for k in ("revision_id", "parent_revision_id", "created_at", "status", "summary", "error", "promoted_at")} for item in records],
@@ -209,6 +229,7 @@ class LocalTemplateRevisionService:
                 source["before_text"] = source["text"]
                 source.pop("diff", None)
                 source.pop("master_diff", None)
+                source.pop("master_diff_rows", None)
             record = {"version": 1, "universe_id": self.app.universe_id, "pipeline": pipeline, "run_id": run_id,
                       "revision_id": revision_id, "parent_revision_id": parent.get("revision_id", ""), "created_at": _now(),
                       "status": "PROPOSING", "direction": direction, "model": model, "source_ids": editable,
