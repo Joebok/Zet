@@ -547,7 +547,8 @@ class LocalHeadImageService:
                 selected_views = [view for view in VIEWS if view in views]
                 for view in selected_views:
                     view_candidates = [item for item in self.detail(run_id)["candidates"]
-                                       if item["view"] == view and not item.get("slot_managed")
+                                       if item["view"] == view
+                                       and (candidate_ids is not None or not item.get("slot_managed"))
                                        and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                        and not Path(str(item.get("image_path") or "")).is_file()]
 
@@ -595,7 +596,8 @@ class LocalHeadImageService:
                         break
 
                     if not render_only:
-                        completed_view = [item for item in self.detail(run_id)["candidates"] if item["view"] == view and not item.get("slot_managed")
+                        completed_view = [item for item in self.detail(run_id)["candidates"] if item["view"] == view
+                                          and (candidate_ids is not None or not item.get("slot_managed"))
                                           and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                           and Path(str(item.get("image_path") or "")).is_file()]
                         if completed_view and not self.detail(run_id).get("stop_requested"):
@@ -1096,7 +1098,9 @@ class LocalHeadImageService:
         supersede_evaluations(state, affected_views, "A view or its inputs are being re-run.")
         if view == FRONT:
             state["front_anchor"] = None
-        state.update(status="RUNNING", stop_requested=False, error="")
+        state.update(status="RUNNING", stop_requested=False, error="", target_views=[view],
+                     target_candidate_ids=[item["candidate_id"] for item in run["candidates"]
+                                           if item["view"] == view])
         self._write(root / "state.json", state)
         return self.detail(run_id)
 

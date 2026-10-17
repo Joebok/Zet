@@ -858,7 +858,8 @@ class LocalBodyReferenceService:
             state["ranking_history"] = {}
         (root / "cancelled.json").unlink(missing_ok=True)
         state.update(
-            status="RUNNING", review_only=False, target_views=[view], target_candidate_ids=[], stop_requested=False,
+            status="RUNNING", review_only=False, target_views=[view],
+            target_candidate_ids=[item["candidate_id"] for item in candidates], stop_requested=False,
             error="", updated_at=stamp,
         )
         self._save_state(run_id, state)
@@ -1490,7 +1491,9 @@ class LocalBodyReferenceService:
     def _render_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
         """Render candidate images without blocking on AI Proxy."""
         run = self.detail(run_id)
-        candidates = [item for item in run["candidates"] if item.get("view") == view and not item.get("slot_managed") and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
+        candidates = [item for item in run["candidates"] if item.get("view") == view
+                      and (candidate_ids is not None or not item.get("slot_managed"))
+                      and (candidate_ids is None or item["candidate_id"] in candidate_ids)]
 
         for candidate in candidates:
             if self.detail(run_id)["stop_requested"]:

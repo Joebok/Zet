@@ -857,7 +857,8 @@ class LocalCharacterAssetPipelineService:
                     return
                 self._run_update(run_id, costume, status="RUNNING", error="", slot_work_pending=False)
                 for view in [item for item in VIEWS if item in views]:
-                    pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view and not item.get("slot_managed")
+                    pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view
+                               and (candidate_ids is not None or not item.get("slot_managed"))
                                and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                and not Path(str(item.get("image_path") or "")).is_file()]
                     for item in pending:
@@ -893,7 +894,8 @@ class LocalCharacterAssetPipelineService:
                             except Exception as exc:
                                 self._update(run_id, item["candidate_id"], costume, status="FAILED", render_error=str(exc))
                     if not render_only and not self.detail(run_id, costume).get("stop_requested"):
-                        pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view and not item.get("slot_managed")
+                        pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view
+                                   and (candidate_ids is not None or not item.get("slot_managed"))
                                    and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                                    and Path(str(item.get("image_path") or "")).is_file()]
                         if pending and not self.detail(run_id, costume).get("stop_requested"):
@@ -1058,7 +1060,9 @@ class LocalCharacterAssetPipelineService:
         state.setdefault("rankings", {}).pop(view, None)
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, {view}, "Candidates in this view are being re-run.")
-        state.update(status="QUEUED", stop_requested=False)
+        state.update(status="QUEUED", stop_requested=False, target_views=[view],
+                     target_candidate_ids=[item["candidate_id"] for item in run["candidates"]
+                                           if item["view"] == view])
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 
