@@ -54,11 +54,10 @@ class LibraryReferenceService:
         return result
 
     def decode(self, document: dict[str, Any]) -> dict[str, Any]:
-        """Copy a record and resolve its versioned portable paths for runtime use."""
+        """Resolve portable paths and moved legacy absolute references for runtime use."""
         version = document.get(_FORMAT_FIELD)
-        if version is None:
-            return deepcopy(document)
-        if isinstance(version, bool) or not isinstance(version, int) or version != LIBRARY_PATH_FORMAT_VERSION:
+        if version is not None and (isinstance(version, bool) or not isinstance(version, int)
+                                    or version != LIBRARY_PATH_FORMAT_VERSION):
             raise LibraryReferenceError(f"Unsupported library path format version: {version!r}")
         bound_universe = str(getattr(self.paths.config, "universe_id", "") or "")
         if not bound_universe:
@@ -75,30 +74,30 @@ class LibraryReferenceService:
             )
         result = deepcopy(document)
         result.pop(_FORMAT_FIELD, None)
-        self._walk(result, encode=False)
+        self._walk(result, encode=False, absolute_only=version is None)
         return result
 
-    def _walk(self, value: Any, *, encode: bool) -> None:
+    def _walk(self, value: Any, *, encode: bool, absolute_only: bool = False) -> None:
         if isinstance(value, dict):
             for key, child in tuple(value.items()):
                 if key in _PATH_FIELDS:
                     if isinstance(child, str):
-                        value[key] = self._convert(child, encode=encode)
+                        value[key] = self._convert(child, encode=encode, absolute_only=absolute_only)
                     elif key in {"paths", "image_paths", "source_paths"} and isinstance(child, list):
-                        value[key] = [self._convert(item, encode=encode) if isinstance(item, str) else item for item in child]
+                        value[key] = [self._convert(item, encode=encode, absolute_only=absolute_only) if isinstance(item, str) else item for item in child]
                         for item in value[key]:
                             if isinstance(item, (dict, list)):
-                                self._walk(item, encode=encode)
+                                self._walk(item, encode=encode, absolute_only=absolute_only)
                     elif isinstance(child, (dict, list)):
-                        self._walk(child, encode=encode)
+                        self._walk(child, encode=encode, absolute_only=absolute_only)
                 elif isinstance(child, (dict, list)):
-                    self._walk(child, encode=encode)
+                    self._walk(child, encode=encode, absolute_only=absolute_only)
         elif isinstance(value, list):
             for child in value:
                 if isinstance(child, (dict, list)):
-                    self._walk(child, encode=encode)
+                    self._walk(child, encode=encode, absolute_only=absolute_only)
 
-    def _convert(self, value: str, *, encode: bool) -> str:
+    def _convert(self, value: str, *, encode: bool, absolute_only: bool = False) -> str:
         raw = value.strip()
         if not raw:
             return value
@@ -106,7 +105,9 @@ class LibraryReferenceService:
             if Path(raw).is_absolute() or PureWindowsPath(raw).is_absolute():
                 return self.paths.serialize_library_path(raw)
             return value
-        if self._portable(raw):
+        if Path(raw).is_absolute() or PureWindowsPath(raw).is_absolute():
+            return str(self.paths.resolve_library_path(raw))
+        if not absolute_only and self._portable(raw):
             return str(self.paths.resolve_library_path(raw))
         return value
 

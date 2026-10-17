@@ -1,5 +1,6 @@
 # 0011 — Portable library references
 Status: accepted
+Exact moved-universe read resolution updated by [ADR 0021](0021-file-based-local-image-availability.md).
 Date: 2026-10-14
 
 ## Context

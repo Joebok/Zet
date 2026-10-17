@@ -54,16 +54,16 @@ Re-running a whole view in Body-Reference, Head-Image, Assembly, or Dressing tar
 
 Re-evaluate is the single dashboard evaluation action for all four pipelines. [LocalImagePipelineWorkflowService.reevaluate](../../zet/services/local_image_workflow_service.py) refreshes Luna ranking and AI prompt-improvement observations for existing harvested images, for one view or every rendered view in the batch. Unrendered views are skipped. It preserves human decisions, notes and selections and does not invoke the render runner or retired defect gates. Existing active ranking/observation work is reused; completed evaluation records receive a new identity and late updates remain fenced. The separate Rank images/Re-rank and Re-analyze buttons are removed; ranking and observations remain visible.
 
-Explicit Re-evaluate also finishes interrupted candidate checksum commits through
+Explicit Re-evaluate refreshes candidate file bookkeeping through
 [reconcile_candidate_harvest](../../zet/services/image_harvest_service.py). Under
-the run lock it verifies every target before saving missing hashes. Modern receipts
-must match the image checksum; older successful receipts without artifact
-hashes additionally require the saved request's exact source attempt, universe,
-character/phase and output filename. Existing committed hashes are never replaced.
-Recovered render state enters human review without changing decisions, observations,
-selections or image bytes. Missing receipts or saved legacy requests still block
-analysis; deployment must retain the owning machine-local queue state. Detail reads
-and publication admission do not perform this repair.
+the run lock it checks every target file before refreshing missing or outdated
+hashes. A current candidate's existing file is sufficient for local review; saved
+hashes, receipts and historical requests do not gate availability. Recovered render
+state enters human review without changing decisions, observations, selections or
+image bytes. Cancellation, candidate/attempt replacement and evaluation ownership
+still fence publication. Hashes continue to identify stale rankings and changed
+inputs. This does not change immutable published-lock or transport validation.
+See [ADR 0021](../DECISIONS/0021-file-based-local-image-availability.md).
 
 Reference previews above candidate cards deduplicate repeated per-candidate snapshots by image checksum, preserving the prompt role and image label in the caption. Older snapshots without checksums fall back to their role and prompt label.
 

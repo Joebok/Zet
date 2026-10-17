@@ -80,9 +80,11 @@ request. Successful receipts clear the active collection error.
 Image Generation loads requests from disk under its process-shared collection
 lock. Atomic image and child-state commits precede the receipt; restart can finish
 a saved child whose receipt was interrupted. `copy_result(image=True)` records the
-applied image checksum. Local image advice and Minor Character review require a
-successful receipt and matching image; admission rechecks current owner, candidate,
-cancellation and evaluation under the domain lock before request publication.
+applied image checksum. Minor Character review requires a successful receipt and
+matching image. Local character batch advice instead requires the current image
+file, independently of old receipts or saved checksums; admission still rechecks
+current candidate/attempt, cancellation and evaluation under the domain lock before
+request publication. See [ADR 0021](../DECISIONS/0021-file-based-local-image-availability.md).
 Producer-local `Followups/` reservations and deterministic Minor review workflow
 IDs reuse published work after interrupted state commits. See
 [ADR 0017](../DECISIONS/0017-image-harvest-admission.md).

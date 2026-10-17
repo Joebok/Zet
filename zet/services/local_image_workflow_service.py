@@ -189,11 +189,8 @@ class LocalImagePipelineWorkflowService:
         for target in targets:
             self.adapter.asset_store.assert_batch_change_allowed(
                 run["character"], run["phase"], self.pipeline_config.label, target, qualifier)
-        source_prefix = {"body-reference": "LocalBodyReference", "head-image": "LocalHeadImage",
-                         "character-assembly": "LocalCharacterAsset", "costume-dressing": "LocalCharacterAsset"}[self.pipeline]
         run = reconcile_candidate_harvest(
-            self.app, lambda: self.prompt_improvement.detail(run_id, costume), run, images,
-            source_prefix=source_prefix)
+            self.app, lambda: self.prompt_improvement.detail(run_id, costume), run, images)
         for target in targets:
             self.prompt_improvement.start(run_id, target, costume)
             self.stage_view_evaluation(run_id, target, costume=costume)

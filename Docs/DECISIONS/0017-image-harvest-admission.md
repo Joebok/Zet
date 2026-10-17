@@ -1,6 +1,7 @@
 # 0017 — Durable image harvest admits dependent analysis
 
 Status: accepted
+Local character batch advice availability superseded by [ADR 0021](0021-file-based-local-image-availability.md).
 Date: 2026-10-16
 
 ## Context

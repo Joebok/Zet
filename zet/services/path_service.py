@@ -79,12 +79,32 @@ class PathService:
         return relative.as_posix()
 
     def resolve_library_path(self, path: str | Path) -> Path:
-        """Resolve a portable library path or current-root absolute path safely."""
+        """Resolve portable paths and existing files moved with their owning universe."""
         raw = str(path or "").strip()
         if not raw:
             return Path()
         candidate = Path(raw).expanduser()
         if candidate.is_absolute() or PureWindowsPath(raw).is_absolute():
+            root = self.entity_library_root()
+            try:
+                candidate.resolve().relative_to(root)
+                return candidate
+            except (ValueError, OSError):
+                pass
+            parts = raw.replace("\\", "/").split("/")
+            library_folders = {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "ImageCatalog",
+                               "Stories", "PipelineCandidates", "images", "_state", "NarrativeStories"}
+            matches = set()
+            for index, part in enumerate(parts[:-1]):
+                suffix = parts[index + 1:]
+                if (part.casefold() != root.name.casefold() or suffix[0] not in library_folders
+                        or ".." in suffix):
+                    continue
+                relocated = root.joinpath(*suffix).resolve()
+                if relocated.is_relative_to(root) and relocated.exists():
+                    matches.add(relocated)
+            if len(matches) == 1:
+                return matches.pop()
             return candidate
         normalized = raw.replace("\\", "/")
         parts = tuple(part for part in normalized.split("/") if part not in {"", "."})
@@ -107,12 +127,10 @@ class PathService:
         """Resolve absolute, project-relative, and legacy _Lib paths."""
         parts = self._path_parts(path)
         if parts and parts[0].endswith(":\\"):
-            # Absolute paths remain tied to their recorded root. Relocation is explicit
-            # in LibraryReferenceMigrationService; basename matching is ambiguous.
-            return Path(*parts)
+            return self.resolve_library_path(path)
         raw_path = Path(path)
         if raw_path.is_absolute():
-            return raw_path
+            return self.resolve_library_path(path)
         if parts and parts[0] == "_Lib":
             return self.resolve_library_path(Path(*parts[1:]).as_posix())
         if parts and parts[0] in {"Characters", "Assets", "Pipelines", "AuxiliaryResources", "ImageCatalog", "Stories", "PipelineCandidates", "images", "_state", "NarrativeStories"}:

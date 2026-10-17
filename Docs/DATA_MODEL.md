@@ -166,7 +166,10 @@ Collection diagnostics add `failure_stage`, `exception_type`, `affected_path` an
 from `answer_status`; image application can include `applied_artifact` with its
 checksum, image flag and diagnostic destination path. Destination authorization
 still comes from the owning workflow, never that diagnostic path. Older receipts
-remain readable; dependent images also require the committed domain hash.
+remain readable. Local character batch review uses current-file availability;
+missing/outdated candidate hashes are refreshed on explicit Re-evaluate rather
+than rejecting an existing image. Other dependent workflows retain their own
+receipt/hash contracts. See [ADR 0021](DECISIONS/0021-file-based-local-image-availability.md).
 
 New I/O collection failures also retain `collection_failures` and
 `collection_retry_at` for delayed collection-only retry. Historical failures

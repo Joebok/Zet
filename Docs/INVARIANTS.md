@@ -52,10 +52,14 @@ These are supported by implementation and repository instructions, with earlier 
 
 ## 9. Reference order, view domains, and schema gates are contracts
 
-Dependent image analysis additionally requires a successful render harvest receipt,
-validated image bytes and the current domain image hash. Admission is fenced by
-the domain lock and current candidate/evaluation ownership; a loose output file
-does not admit analysis. Local ComfyUI/Ollama work stays non-preemptive and serial,
+Local character batch advice requires an existing current-candidate image file;
+historical receipt or checksum metadata does not block review. Explicit Re-evaluate
+refreshes hashes as bookkeeping. Admission remains fenced by the domain lock,
+cancellation and current candidate/attempt/evaluation ownership. Other dependent
+workflows retain their receipt and image-validation contracts. See
+[ADR 0021](DECISIONS/0021-file-based-local-image-availability.md), which supersedes
+the local batch availability portion of ADR 0017.
+Local ComfyUI/Ollama work stays non-preemptive and serial,
 while the two independent Codex slots may execute only requests already published
 by those domain owners. [ADR 0017](DECISIONS/0017-image-harvest-admission.md) records
 this completion barrier and its isolated validation boundary.
@@ -128,7 +132,7 @@ Character slot changes hold the state lock and persist pending candidate IDs bef
 
 ## 16. Library-owned paths are universe-relative and versioned
 
-- **Rule/why:** Typed paths persisted by a library-owned record use forward-slash paths relative to the owning universe. Readers resolve them from the configured bound root and reject traversal or a foreign universe. Absolute legacy paths remain readable during transition; old roots are mapped only by the explicit offline updater. Free text, document/job-relative names, source-controlled templates, logical keys, and IDs are not path-migrated.
+- **Rule/why:** Typed paths persisted by a library-owned record use forward-slash paths relative to the owning universe. Readers resolve them from the configured bound root and reject traversal or a foreign universe. Absolute legacy references to an existing exact universe-relative location resolve under the current root, including versionless records; no basename search is performed. Subsequent writes persist portable paths. The offline updater remains available for explicit bulk conversion. Free text, document/job-relative names, source-controlled templates, logical keys, and IDs are not path-migrated.
 - **Compatibility:** `library_path_format_version` is independent of workflow/review versions. New readers accept legacy and version 1 records and reject unsupported versions. Deployments and code rollback must check the library marker before opening converted data; recovery to an older release uses the retained library copy.
 - **Implementation/impact:** [LibraryReferenceService](../zet/services/library_reference_service.py), [PathService](../zet/services/path_service.py), the storage owners listed in [DATA_MODEL](DATA_MODEL.md), and [normalize_library_references](../zet/scripts/normalize_library_references.py).
 - **Verify:** Run the updater only while Zet servers and harvesters are stopped. It applies atomically per record, verifies operational references and saved image hashes, and writes a universe marker only after the full scan and route verification succeed. The approved S1-S3 baseline does not prove every relocation branch; use disposable fixtures for those checks.

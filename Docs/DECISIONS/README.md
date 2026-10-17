@@ -1,5 +1,8 @@
 # Architectural decision records
 
+[0021 — Existing files admit local character image review](0021-file-based-local-image-availability.md)
+records file-based local batch availability and exact moved-universe path reads.
+
 [0019 — Failed AI job deletion retains a local fence](0019-failed-ai-job-deletion.md)
 records confirmed queue cleanup and replay fencing (2026-10-16).
 

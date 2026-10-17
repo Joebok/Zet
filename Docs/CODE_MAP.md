@@ -4,8 +4,8 @@ AI collection/recovery additions (2026-10-16):
 [AIJobService](../zet/services/ai_job_service.py) owns read-only state inspection,
 dual-outcome checks and durable image receipt admission;
 [image_harvest_service](../zet/services/image_harvest_service.py) rechecks local
-candidate/evaluation ownership at publication and reconciles verified missing
-candidate checksum commits during explicit Re-evaluate;
+candidate/evaluation ownership and image-file availability at publication, and
+refreshes candidate file bookkeeping during explicit Re-evaluate;
 [AIJobRecoveryService](../zet/services/ai_job_recovery_service.py) owns read-only
 retained-answer reports and explicit fenced collection retry, exposed by
 [inspect_ai_recovery](../zet/scripts/inspect_ai_recovery.py). Domain handlers and
