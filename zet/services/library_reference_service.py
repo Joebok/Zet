@@ -287,6 +287,8 @@ def resolve_library_document(document: dict[str, Any], library_root: str | Path)
 def read_library_json(path: str | Path, library_root: str | Path) -> dict[str, Any]:
     import json
     import time
+    from zet.services.storage_health_service import guard_path
+    guard_path(path)
 
     # Windows may briefly deny an open while a background handler replaces state.
     deadline = time.monotonic() + 1.0

@@ -281,7 +281,7 @@ async function answerLocalEnvelope(queue, id, output) {
   await writeFile(path.join(answer, manifest.expected_output), output);
   await writeFile(path.join(answer, "answer_manifest.json"), JSON.stringify({
     ask_id: id, status: "SUCCESS", expected_output: manifest.expected_output,
-    worker_id: "local-test-worker", ollama_attempt_id: id,
+    worker_id: "local-test-worker", ollama_attempt_id: manifest.ollama_attempt_id || id,
   }));
   await writeFile(path.join(answer, "proxy_result.json"), JSON.stringify({ status: "SUCCEEDED", output_files: [
     { path: manifest.expected_output, size: output.length, sha256: createHash("sha256").update(output).digest("hex") },

@@ -57,7 +57,10 @@ class AIJobCleanupService:
         if job_id.endswith(".") or re.fullmatch(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", job_id, re.IGNORECASE):
             raise ValueError("Invalid AI job identifier for deletion.")
         with file_lock(self.lifecycle.root / "Locks/coordinator.lock"), file_lock(self.lifecycle.lock_path(job_id)):
-            return self._delete(job_id)
+            result = self._delete(job_id)
+            from zet.services.storage_health_service import remember_request
+            remember_request(self.paths.config, job_id, status="DELETED")
+            return result
 
     def _delete(self, job_id):
         from zet.services.ai_queue_query_service import AIQueueQueryService

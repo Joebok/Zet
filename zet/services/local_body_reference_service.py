@@ -318,6 +318,8 @@ class LocalBodyReferenceService:
             )
             analysis = self._compile_analysis_view(root, character, phase, view)
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             raise LocalBodyReferenceError(f"Could not compile Body-Reference prompt for {view}: {exc}") from exc
         final_prompt = Path(str(result["final_prompt"]))
         if not final_prompt.is_file():
@@ -1343,6 +1345,8 @@ class LocalBodyReferenceService:
                 try:
                     snapshot.update(self._compile_analysis_view(root, spec["character"], spec["phase"], view))
                 except Exception as exc:
+                    from zet.services.storage_health_service import pause_on_storage_error
+                    pause_on_storage_error(self.app.config, exc)
                     raise LocalBodyReferenceError(f"Could not refresh analysis prompt for {view}: {exc}") from exc
                 spec["source_snapshot_sha256"] = hashlib.sha256(
                     json.dumps(spec["prompt_snapshots"], sort_keys=True).encode()
@@ -1518,6 +1522,8 @@ class LocalBodyReferenceService:
             try:
                 self.queue_render_candidate(run_id, candidate["candidate_id"])
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 self._candidate_update(run_id, candidate["candidate_id"], {
                     "status": "FAILED", "render_error": str(exc),
                 })
@@ -1535,6 +1541,8 @@ class LocalBodyReferenceService:
                     current = next((item for item in self.detail(run_id)["candidates"]
                                    if item["candidate_id"] == candidate_id), None)
                 except Exception as exc:
+                    from zet.services.storage_health_service import pause_on_storage_error
+                    pause_on_storage_error(self.app.config, exc)
                     self._candidate_update(run_id, candidate_id, {"status": "FAILED", "render_error": str(exc)})
                     continue
         return True
@@ -1748,6 +1756,8 @@ class LocalBodyReferenceService:
                            "model": str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
                            "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "recorded_at": self._now()}
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 ranking = {"status": "FAILED", "ordered_candidate_ids": [], "entries": [],
                            "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
                            "error": str(exc), "recorded_at": self._now()}
@@ -1993,12 +2003,16 @@ class LocalBodyReferenceService:
                 dependencies=dependencies,
             )
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             raise LocalBodyReferenceError(str(exc)) from exc
 
     def unlock_view(self, character: str, phase: str, view: str) -> dict[str, Any]:
         try:
             return self.asset_store.unlock(character, phase, "Body-Reference", view)
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             raise LocalBodyReferenceError(str(exc)) from exc
 
     def _review_view_candidates(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
@@ -2028,6 +2042,8 @@ class LocalBodyReferenceService:
                         self.run_luna_analysis(run_id, candidate_id)
                         self._candidate_update(run_id, candidate_id, {"luna_status": "COMPLETE"})
                     except Exception as exc:
+                        from zet.services.storage_health_service import pause_on_storage_error
+                        pause_on_storage_error(self.app.config, exc)
                         self._candidate_update(run_id, candidate_id, {
                             "luna_status": "FAILED", "luna_error": str(exc),
                         })
@@ -2039,10 +2055,14 @@ class LocalBodyReferenceService:
                     try:
                         self._wait_for_local(run_id, candidate_id)
                     except Exception as exc:
+                        from zet.services.storage_health_service import pause_on_storage_error
+                        pause_on_storage_error(self.app.config, exc)
                         job = current.get("local_job") or {}
                         job.update(status="FAILED", error=str(exc))
                         self._candidate_update(run_id, candidate_id, {"local_job": job})
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 # Preserve the existing behavior for an unexpected candidate-level
                 # review failure while allowing the rest of the view to proceed.
                 self._candidate_update(run_id, candidate_id, {
@@ -2135,6 +2155,7 @@ class LocalBodyReferenceService:
                 [FRONT_VIEW] if not run.get("front_anchor") else
                 [view for view in run.get("views") or [] if view != FRONT_VIEW]
             ))
+            self._run_update(run_id, target_views=views, target_candidate_ids=sorted(target_candidate_ids or []), recovery_render_only=render_only)
             for view in views:
                 if self.detail(run_id)["stop_requested"]:
                     self._withdraw_queued_asks(run_id)
@@ -2156,6 +2177,8 @@ class LocalBodyReferenceService:
                     try:
                         self.stage_view_evaluation(run_id, view)
                     except Exception as exc:
+                        from zet.services.storage_health_service import pause_on_storage_error
+                        pause_on_storage_error(self.app.config, exc)
                         current = self.detail(run_id).get("review_errors") or {}
                         current[view] = str(exc)
                         self._run_update(run_id, review_errors=current)
@@ -2218,7 +2241,11 @@ class LocalBodyReferenceService:
             self._run_update(run_id, status=status, review_only=False, target_views=[], target_candidate_ids=[])
             return
         except Exception as exc:
-            self._run_update(run_id, status="ERROR", review_only=False, error=str(exc))
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
+            from zet.services.storage_health_service import storage_health
+            if not storage_health(self.app.config).check_error(exc):
+                self._run_update(run_id, status="ERROR", review_only=False, error=str(exc))
         finally:
             with self._active_runs_lock:
                 self._active_runs.discard(self._active_key(run_id))

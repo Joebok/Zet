@@ -135,3 +135,6 @@ Reconstruction preparation verifies its frozen input fingerprint and reuses its
 saved record after suspension. Draft-application and analysis-to-candidate
 checkpoints prevent replay from creating another reconstruction or candidate.
 See [AI jobs](AI_JOBS.md) for common lifecycle/receipt ownership.
+
+## Recurring runner recovery (2026-10-17)
+The backend storage recovery host discovers orphaned Body, Head, Assembly and Dressing work after reconnect and during ordinary polling. It preserves saved target views/candidates and render-only/review intent, rechecks local OS runner ownership at execution, and excludes stops, cancellations, completed locks and human/prerequisite waits. Campaign recovery also respects cancelled batches. See [storage recovery](STORAGE_RECOVERY.md).

@@ -79,6 +79,8 @@ class LibraryIndexRepository:
         )
 
     def _connect(self) -> sqlite3.Connection:
+        from zet.services.storage_health_service import guard_path
+        guard_path(self.database_path)
         self.index_root.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
@@ -235,7 +237,11 @@ class LibraryIndexRepository:
             self._initialize(connection)
             return operation(connection)
         except sqlite3.DatabaseError as exc:
-            raise self._corrupt(exc) from exc
+            from zet.services.storage_health_service import guard_path
+            guard_path(self.database_path, force=True)
+            if getattr(exc, "sqlite_errorcode", 0) & 0xff in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}:
+                raise self._corrupt(exc) from exc
+            raise LibraryIndexError(f"Index access failed at {self.database_path}: {exc}") from exc
         finally:
             if connection is not None:
                 connection.close()

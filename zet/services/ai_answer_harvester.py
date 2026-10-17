@@ -677,6 +677,8 @@ class AIAnswerHarvester:
         for answer_path in answer_paths:
             from zet.repositories.ai_job_repository import AIJobRepository
             job_repository = AIJobRepository(self.ai_proxy_path_service.lifecycle.root)
+            if job_repository.get(answer_path.name).get("logical_job_id"):
+                continue
             if job_repository.get(answer_path.name).get("harvest_state") == "HARVEST_FAILED":
                 continue
             if self._has_external_consumer(answer_path):
@@ -695,6 +697,11 @@ class AIAnswerHarvester:
             if owner != str(getattr(self.path_service.config, "universe_id", "Moonsea")):
                 continue
             try:
+                if (answer_path / "proxy_result.json").is_file():
+                    from zet.services.ai_attempt_recovery_service import AIAttemptRecoveryService
+                    if AIAttemptRecoveryService.retryable(answer_path):
+                        self.ai_proxy_path_service.jobs.ready_answer(answer_path.name)
+                        continue
                 result = self.apply_answer_folder(answer_path)
                 if result.status.startswith("ALREADY_"):
                     if result.status.startswith("ALREADY_") and (answer_path / "harvest_manifest.json").is_file():

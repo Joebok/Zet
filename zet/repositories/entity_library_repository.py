@@ -21,14 +21,18 @@ class EntityLibraryRepository:
         self.database_path = Path(database_path).resolve()
 
     def _connect(self) -> sqlite3.Connection:
+        from zet.services.storage_health_service import protect_catalog
+        existed = protect_catalog(self.database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.database_path, timeout=15)
+        connection = sqlite3.connect(self.database_path.as_uri() + "?mode=rw", uri=True, timeout=15) if existed else sqlite3.connect(self.database_path, timeout=15)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 15000")
         return connection
 
     def initialize(self) -> None:
+        from zet.services.storage_health_service import protect_catalog
+        protect_catalog(self.database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         existed = self.database_path.is_file()
         connection = self._connect()
@@ -174,6 +178,7 @@ class EntityLibraryRepository:
             raise EntityLibraryRepositoryError(f"Image library database is unreadable: {exc}") from exc
         finally:
             connection.close()
+        protect_catalog(self.database_path)
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:

@@ -283,6 +283,8 @@ class ZetApp:
     @classmethod
     def from_config(cls, config_path: str | Path, *, validate_catalog: bool = True, universe_id: str | None = None) -> "ZetApp":
         container_config = ConfigService.load(config_path)
+        from zet.services.storage_health_service import storage_health
+        storage_health(container_config).require()
         universe_service = UniverseService(container_config.base_library_path, container_config.state_file(Path(config_path).resolve().parent, "universe-selection.json"))
         selected_id = universe_id or universe_service.selection()
         config = universe_service.bind_config(container_config, selected_id)
@@ -417,6 +419,7 @@ class ZetApp:
         entity_library_service.refresh_usages(config.base_library_path)
         app.library_index_service.list_items_provider = app._indexed_list_rows
         image_catalog_repository.after_write = app.refresh_library_index
+        app.ai_proxy_service.ai_proxy_path_service.app = app
         return app
 
     @staticmethod

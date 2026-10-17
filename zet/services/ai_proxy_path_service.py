@@ -17,6 +17,9 @@ class AIProxyPathService:
 
     def __init__(self, config: Config):
         self.config = config
+        from zet.services.storage_health_service import storage_health
+        self.storage_health = storage_health(config)
+        self.storage_health.require()
         self.lifecycle = AIQueueLifecycleService(config)
         self.file_proxy_client = self.lifecycle.file_proxy_client()
 

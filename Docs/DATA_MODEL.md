@@ -180,3 +180,6 @@ render, analysis kind, frozen inputs and evaluation. Reconstruction's
 `preparation.json` fingerprints its owner and inputs. Wizard sessions may retain
 `draft_workflow_id` and `analysis_continuation` checkpoints, and candidates retain
 `render_harvest` evidence. Wire versions and catalog schemas are unchanged.
+
+## Recovery metadata (2026-10-17)
+Version-1 fixed-local recovery records add root identities, compact request activity, registered continuation arguments and logical-to-current attempt reservations. Existing library and protocol-v1 envelope formats remain readable. New request records optionally retain the original envelope for interrupted staging publication. Recovery status fields are additive; fresh execution uses a new transport ID, with verified producer-local logical results. Details and storage ownership: [storage recovery](COMPONENTS/STORAGE_RECOVERY.md).

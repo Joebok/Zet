@@ -39,9 +39,31 @@ class AIWorkflowService:
     def __init__(self, app):
         self.app = app
         self.root = app.ai_proxy_service.ai_proxy_path_service.lifecycle.root / "Workflows"
+        from zet.services.storage_health_service import recovery_root
+        self.local_root = recovery_root(app.config) / "Workflows"
 
     def _read(self, path):
-        return json.loads(path.read_text(encoding="utf-8"))
+        local = self.local_root / path.name
+        saved = json.loads(local.read_text(encoding="utf-8")) if local.is_file() else None
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            if saved is None:
+                raise
+            return saved
+        return saved if saved and saved.get("updated_at", "") >= record.get("updated_at", "") else record
+
+    def _save(self, path, record):
+        from zet.services.storage_health_service import storage_health
+        write_json_atomic(self.local_root / path.name, record)
+        if storage_health(self.app.config).status()["available"]:
+            write_json_atomic(path, record)
+
+    def _paths(self):
+        paths = {path.name: self.root / path.name for path in self.local_root.glob("*.json")}
+        if self.root.is_dir():
+            paths.update({path.name: path for path in self.root.glob("*.json")})
+        return list(paths.values())
 
     def submit(self, target, args, *, service, owner=None, key=None, initial=None):
         if target.__name__ not in self.METHODS[service]:
@@ -50,9 +72,9 @@ class AIWorkflowService:
         path = self.root / (task_id + ".json")
         owner = owner or {"session_id": str(args[0]) if args else ""}
         with file_lock(path.with_suffix(".lock")):
-            if not path.exists():
+            if not path.exists() and not (self.local_root / path.name).exists():
                 now = datetime.now(timezone.utc).isoformat()
-                write_json_atomic(path, {"version": 1, "id": task_id, "universe_id": self.app.universe_id,
+                self._save(path, {"version": 1, "id": task_id, "universe_id": self.app.universe_id,
                     "service": service, "method": target.__name__, "args": list(args), "owner": owner,
                     "status": "WAITING", "created_at": now, "updated_at": now})
         _POOL.submit(self.run, task_id, initial)
@@ -70,6 +92,10 @@ class AIWorkflowService:
         raise ValueError("Unknown AI workflow owner")
 
     def run(self, task_id, initial=None):
+        from zet.services.storage_health_service import storage_health
+        health = storage_health(self.app.config)
+        if not health.poll()["available"]:
+            return
         path = self.root / (task_id + ".json")
         try:
             with file_lock(path.with_suffix(".lock"), timeout=0.05):
@@ -78,9 +104,11 @@ class AIWorkflowService:
                     return
                 if record["method"] not in self.METHODS.get(record["service"], set()):
                     raise ValueError("Unregistered persisted workflow")
-                record["status"] = "RUNNING"
+                if record.get("error"):
+                    record["last_recovery_error"] = {"message": record["error"], "recorded_at": record.get("updated_at", "")}
+                record.update(status="RUNNING", error="")
                 record["updated_at"] = datetime.now(timezone.utc).isoformat()
-                write_json_atomic(path, record)
+                self._save(path, record)
                 token = current_workflow.set({"id": task_id, "counts": {}, "owner": record["owner"], "service": record["service"]})
                 try:
                     target = getattr(self._service(record["service"]), record["method"])
@@ -92,35 +120,38 @@ class AIWorkflowService:
                 except AIPending:
                     record["status"] = "WAITING"
                 except Exception as exc:
-                    record.update(status="FAILED", error=str(exc))
+                    if health.check_error(exc):
+                        record.update(status="PAUSED_STORAGE", error="Storage unavailable; resumption is automatic")
+                    else:
+                        record.update(status="FAILED", error=str(exc))
                 finally:
                     current_workflow.reset(token)
                     record["updated_at"] = datetime.now(timezone.utc).isoformat()
                     if record["status"] == "COMPLETE":
                         record["completed_at"] = record["updated_at"]
-                    write_json_atomic(path, record)
-        except TimeoutError:
+                    self._save(path, record)
+        except (TimeoutError, OSError):
             return
 
     def resume(self):
-        if self.root.is_dir():
-            for path in self.root.glob("*.json"):
+        if self.root.is_dir() or self.local_root.is_dir():
+            for path in self._paths():
                 try:
                     record = self._read(path)
-                    if record["universe_id"] == self.app.universe_id and record["status"] in {"WAITING", "RUNNING"}:
+                    if record["universe_id"] == self.app.universe_id and record["status"] in {"WAITING", "RUNNING", "PAUSED_STORAGE", "RECOVERING"}:
                         _POOL.submit(self.run, record["id"])
                 except (OSError, ValueError, KeyError):
                     import logging
                     logging.getLogger(__name__).exception("Unable to resume AI workflow %s", path)
 
     def pending(self, session_id):
-        if self.root.is_dir():
-            for path in self.root.glob("*.json"):
+        if self.root.is_dir() or self.local_root.is_dir():
+            for path in self._paths():
                 try:
                     record = self._read(path)
                     if (record["universe_id"] == self.app.universe_id
                             and str(session_id) in {str(value) for value in record.get("owner", {}).values()}
-                            and record["status"] in {"WAITING", "RUNNING"}):
+                            and record["status"] in {"WAITING", "RUNNING", "PAUSED_STORAGE", "RECOVERING"}):
                         return True
                 except (OSError, ValueError, KeyError):
                     continue

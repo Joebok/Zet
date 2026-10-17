@@ -119,3 +119,9 @@ remains queue/background/history regression coverage, without a new scenario.
   legacy worker aliases only for previously published envelopes.
 - S4 is the approved unified queue/background/history/selector scenario; S1-S3
   remain domain regressions. See [shared AI jobs](COMPONENTS/AI_JOBS.md).
+
+## Removable storage recovery (2026-10-17)
+- `storage_health_service.py` owns fixed-local health/identity and request metadata; `storage_recovery_service.py` owns per-universe batch recovery and runner rechecks.
+- `ai_attempt_recovery_service.py` owns subscriber replacement reservations and logical answer materialization; `AIWorkflowService` mirrors continuation intent locally.
+- `storage_bootstrap_service.py` owns deferred service construction and storage availability presentation; existing web routes delegate to it. Index scanning and authoritative catalog opening retain their existing owners.
+- S1-S4 remain regressions. Disposable outage checks and their limits are recorded in [storage recovery](COMPONENTS/STORAGE_RECOVERY.md).

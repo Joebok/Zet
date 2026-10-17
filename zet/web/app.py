@@ -953,7 +953,7 @@ def _action_response(zet_app: ZetApp, character: str, phase: str, asset_id: int,
     }
 
 
-def create_app(
+def _create_available_app(
     config_path: str | Path = "config.toml",
     performance: PerformanceInstrumentation | None = None,
     *,
@@ -976,18 +976,18 @@ def create_app(
             name="ollama-model-catalog-refresh",
             daemon=True,
         )
-        application.state.ollama_catalog_refresh_thread.start()
-        application.state.image_generation_service.start()
-        application.state.task_status_service.start()
-        if config.github_repository and config.runtime_role != "development":
-            import os
-            application.state.worker_bridge_service.publish(os.environ.get("ZET_WEB_PORT", "8081"), app.state.boot_id)
-        for zet_app in application.state.universe_apps.values():
-            zet_app.image_catalog_service.repository.load()
-            zet_app.library_index_reconciler.start()
-            _schedule_recovery(zet_app)
-        application.state.ai_job_coordinator.start()
         try:
+            application.state.ollama_catalog_refresh_thread.start()
+            application.state.image_generation_service.start()
+            application.state.task_status_service.start()
+            if config.github_repository and config.runtime_role != "development":
+                import os
+                application.state.worker_bridge_service.publish(os.environ.get("ZET_WEB_PORT", "8081"), app.state.boot_id)
+            for zet_app in application.state.universe_apps.values():
+                zet_app.image_catalog_service.repository.load()
+                zet_app.library_index_reconciler.start()
+                _schedule_recovery(zet_app)
+            application.state.ai_job_coordinator.start()
             yield
         finally:
             application.state.ai_job_coordinator.stop()
@@ -1033,8 +1033,9 @@ def create_app(
 
             def recover() -> None:
                 try:
-                    LocalCharacterOverviewService(zet_app, PROJECT_ROOT).recover()
-                    LocalRunAllRemainingService(zet_app, PROJECT_ROOT).recover()
+                    from zet.services.storage_recovery_service import StorageRecoveryService
+                    zet_app._storage_recovery = StorageRecoveryService(zet_app)
+                    zet_app._storage_recovery.recover()
                 except Exception as exc:
                     with app.state.recovery_lock:
                         app.state.recovery_statuses[universe_id] = {
@@ -3729,6 +3730,25 @@ def create_app(
         raise HTTPException(410, "Scene Builder is retired. Use /api/narrative and the dashboard Stories workspace.")
 
     return app
+
+
+def create_app(config_path="config.toml", performance=None, *, validate_catalog_on_create=True):
+    from zet.services.storage_health_service import storage_health
+    from zet.services.storage_bootstrap_service import waiting_app, install_storage_status
+    config = ConfigService.load(config_path)
+    health = storage_health(config)
+    def factory():
+        result = _create_available_app(config_path, performance, validate_catalog_on_create=validate_catalog_on_create)
+        install_storage_status(result, storage_health(result.state.zet_app.config), config)
+        return result
+    if not health.poll()["available"]:
+        return waiting_app(config, factory)
+    try:
+        return factory()
+    except Exception as exc:
+        if not health.check_error(exc):
+            raise
+        return waiting_app(config, factory)
 
 
 if __name__ != "__main__":

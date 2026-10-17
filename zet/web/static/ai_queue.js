@@ -10,7 +10,7 @@
     for (const item of rows) {
       const row = document.createElement("tr");
       row.dataset.jobId = item.ask_id;
-      for (const value of [item.universe_id, item.status, [item.workflow, item.target].filter(Boolean).join(" / "), item.task_type || item.ask_id,
+      for (const value of [item.universe_id, ({ PAUSED_STORAGE: "Paused � storage unavailable", RECOVERING: "Recovering" })[item.status] || item.status, [item.workflow, item.target].filter(Boolean).join(" / "), item.task_type || item.ask_id,
         `${item.provider || ""} · ${item.model || ""}`, item.created_at,
         [item.failure_stage && `Stage: ${item.failure_stage}`, item.details,
           item.age_seconds != null && `Age: ${Math.floor(item.age_seconds / 60)} min`, item.recovery_action].filter(Boolean).join(" · ")]) {
@@ -74,7 +74,7 @@
         select.value = previous;
       }
       render();
-      document.querySelector("#queue-counts").textContent = Object.entries(payload.counts || {}).map(([name, count]) => `${name}: ${count}`).join(" | ") || "No recorded AI activity";
+      document.querySelector("#queue-counts").textContent = (payload.stale ? "Storage unavailable; counts unknown. Work will resume automatically." : Object.entries(payload.counts || {}).map(([name, count]) => `${name}: ${count}`).join(" | ") || "No recorded AI activity");
       const recent = document.querySelector("#recent-harvest-table tbody");
       recent.replaceChildren();
       for (const item of payload.recent_harvests || []) {

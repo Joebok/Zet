@@ -74,6 +74,7 @@ PIPELINE_PAGE_CONFIG: dict[str, dict[str, Any]] = {
 }
 
 RUN_STATUS_LABELS = {
+    "PAUSED_STORAGE": "Paused — storage unavailable", "RECOVERING": "Recovering",
     "QUEUED": "Queued", "PREFLIGHT": "Checking inputs", "RUNNING": "Running",
     "STOPPING": "Stopping", "REEVALUATING": "Re-evaluating", "READY_FOR_VIEWS": "Ready for other views",
     "AWAITING_FRONT_ANCHOR": "Awaiting FRONT selection", "AWAITING_HUMAN_SELECTION": "Awaiting selection",

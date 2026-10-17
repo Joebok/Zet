@@ -16,6 +16,11 @@ class AIQueueQueryService:
         self.repository = AIJobRepository(paths.lifecycle.root)
 
     def rows(self):
+        from zet.services.storage_health_service import storage_health
+        health = storage_health(self.paths.config)
+        status = health.poll()
+        if any(status["resources"][name]["status"] != "AVAILABLE" for name in ("queue", "application")):
+            return self.cached(self.paths.config)["items"]
         receipts = list(self.paths.lifecycle.iter_receipts() or ())
         from zet.services.storage_maintenance_service import StorageMaintenanceService
         cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(self.paths.config.storage_completed_retention_days)))
@@ -132,10 +137,65 @@ class AIQueueQueryService:
             row["workflow"] = row.get("workflow") or row.get("task_type") or row.get("consumer") or row.get("worker_type", "")
             row["target"] = " / ".join(str(owner[key]) for key in ("character", "phase", "session_id", "run_id", "narrative_story_id", "narrative_scene_id", "narrative_target_id", "candidate_id", "view") if owner.get(key))
             row["workflow_url"] = self.workflow_url(row, owner)
-            for internal in ("request", "manifest", "input_inventory"):
+            for internal in ("request", "manifest", "input_inventory", "envelope"):
                 row.pop(internal, None)
-        return sorted(rows.values(), key=lambda row: (row["status"] not in self.TERMINAL,
+        # Replacement envelopes are transport details, not independent user tasks.
+        for job_id, row in list(rows.items()):
+            saved = self.repository.get(job_id)
+            if saved.get("logical_job_id"):
+                del rows[job_id]
+                continue
+            universe = row.get("universe_id")
+            if universe and universe != self.paths.config.universe_id:
+                info = {"status": "RECOVERING", "recovery_stage": saved.get("recovery_stage", ""),
+                        "current_attempt_id": saved.get("current_attempt_id", job_id)} if saved.get("current_attempt_id") else {}
+                app = getattr(self.paths, "app", None)
+                if app and row["status"] not in self.TERMINAL:
+                    try:
+                        bound = app.universe_service.bind_config(self.paths.config, universe)
+                        if not storage_health(bound).poll()["available"]:
+                            info.update(status="PAUSED_STORAGE", blocking_reason="This universe's storage is unavailable")
+                    except (ValueError, OSError):
+                        info.update(status="RECOVERY_REQUIRED", blocking_reason="Universe ownership cannot currently be resolved")
+            else:
+                info = self.paths.jobs.inspect(job_id)
+            if info.get("status") == "PAUSED_STORAGE" and row["status"] not in self.TERMINAL:
+                row.update(status="PAUSED_STORAGE", details=info.get("blocking_reason", ""))
+            if info.get("recovery_stage"):
+                row.update({key: info.get(key, "") for key in ("logical_job_id", "current_attempt_id", "recovery_stage", "last_recovered_at")})
+                if info["status"] in {"RECOVERING", "PAUSED_STORAGE", "HELD", "SUPERSEDED"}:
+                    row.update(status=info["status"], details=info.get("blocking_reason", ""),
+                               recovery_action="Work will resume automatically.")
+        result = sorted(rows.values(), key=lambda row: (row["status"] not in self.TERMINAL,
                       row.get("harvested_at") or row.get("created_at") or "", row["ask_id"]), reverse=True)
+        from zet.services.atomic_file_service import write_json_atomic
+        write_json_atomic(self.cache_path(self.paths.config), {"items": result})
+        return result
+
+    @staticmethod
+    def cache_path(config):
+        import hashlib
+        from zet.services.storage_health_service import recovery_root
+        return recovery_root(config).parent / "Activity" / (hashlib.sha256(str(config.base_ai_queue_path).encode()).hexdigest() + ".json")
+
+    @classmethod
+    def cached(cls, config):
+        try:
+            rows = json.loads(cls.cache_path(config).read_text(encoding="utf-8"))["items"]
+        except FileNotFoundError:
+            rows = []
+        from zet.services.storage_health_service import request_journal_root
+        known = {row["ask_id"]: row for row in rows}
+        for path in request_journal_root(config).glob("*.json"):
+            row = json.loads(path.read_text(encoding="utf-8"))
+            if row.get("logical_job_id") or row.get("status") == "DELETED":
+                known.pop(row["ask_id"], None)
+                continue
+            known[row["ask_id"]] = {**known.get(row["ask_id"], {}), **row}
+        rows = list(known.values())
+        rows = [dict(row, status="PAUSED_STORAGE", details="Storage unavailable; resumption is automatic")
+                if row.get("status") not in cls.TERMINAL else row for row in rows]
+        return {"items": rows, "total": None, "counts": None, "next_cursor": None, "stale": True}
 
     @staticmethod
     def workflow_url(row, owner):

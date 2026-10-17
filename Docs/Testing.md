@@ -176,3 +176,11 @@ queue-state root. Compiler script helpers honor that active config; normal queue
 state paths remain unchanged without the test override. Worker validation keeps
 locked npm/browser caches inside ignored test-results and selects its own verified
 Python environment. These repair the approved scenarios without adding coverage.
+
+## Recovery fixture state (2026-10-17)
+Fast/live fixture configurations set Runtime.Root to the disposable fixture's
+Runtime directory. Storage-health identities, recovery leases and continuation
+metadata therefore do not share normal application recovery state. The existing
+local-response helper copies the original ask's attempt ID; scenario purposes and
+counts are unchanged. Disposable outage checks are recorded in
+[Development](DEVELOPMENT.md#storage-recovery-verification-2026-10-17).

@@ -165,3 +165,6 @@ inventory before application, persists results/receipts before cleanup, and neve
 replays an ambiguous execution. Foreground and background collection share locks
 and handlers. Model restrictions come from one cached capability catalog and are
 validated on submission as well as in the popup. See [Shared AI jobs](COMPONENTS/AI_JOBS.md).
+
+## Removable storage
+Unavailable resources must not be interpreted as empty authored/request state. Preserve the last committed derived index on incomplete scans and never silently recreate an observed authoritative catalog. Automatic recovery retains one execution per transport attempt, owner/attempt fencing and immutable published bytes; a fresh attempt is subscriber-owned. Stopped/cancelled/completed/protected work remains excluded. See [ADR 0022](DECISIONS/0022-removable-storage-recovery.md).

@@ -16,6 +16,8 @@ PIPELINE_LABELS = {
 }
 
 STATUS_GROUPS = (
+    ("PAUSED_STORAGE", "Paused — storage unavailable"),
+    ("RECOVERING", "Recovering"),
     ("READY_TO_PUBLISH", "Ready to publish"),
     ("INTERRUPTED", "Interrupted"),
     ("FAILED", "Failed / Error"),

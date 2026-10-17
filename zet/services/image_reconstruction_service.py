@@ -318,6 +318,8 @@ class ImageReconstructionService:
                                                {"roles": roles, "task": context}))
             report["status"] = "COMPLETE"
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             report.update(status="FAILED", error=str(exc))
             raise
         finally:
@@ -394,6 +396,8 @@ class ImageReconstructionService:
             try:
                 self.generator.slot_workspace.reserve_reconstruction(new["id"], 1)
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 new.update(status="FAILED", error=str(exc)); self._save(new)
                 raise
             mapping[key] = new["id"]
@@ -415,6 +419,8 @@ class ImageReconstructionService:
                 "Preserve the selected result's intended composition. Actual rendered prompt: "
                 + self.generator.status(expected["requestId"])["prompt"], report_id=report_id)
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             path = self._report_path(job_id, report_id)
             report = json.loads(path.read_text(encoding="utf-8"))
             report.update(status="FAILED", error=str(exc)); write_json_atomic(path, report)
@@ -437,6 +443,8 @@ class ImageReconstructionService:
                 {**spec, "width": new["width"], "height": new["height"]}, expected)
             new["status"] = "SUBMITTED"
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             new.update(status="FAILED", error=str(exc))
         finally:
             self._save(new)
@@ -480,6 +488,8 @@ class ImageReconstructionService:
         try:
             self.generator.slot_workspace.reserve_reconstruction(job["id"], count)
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             job.update(status="FAILED", error=str(exc)); self._save(job)
             with self._guard:
                 self._active.discard(job["id"])
@@ -530,11 +540,15 @@ class ImageReconstructionService:
             })
             job["status"] = "SUBMITTED"
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             job.update(status="FAILED", error=str(exc))
         finally:
-            self._save(job)
-            with self._guard:
-                self._active.discard(job_id)
+            try:
+                self._save(job)
+            finally:
+                with self._guard:
+                    self._active.discard(job_id)
 
     def _pending_workflow(self, job_id):
         from zet.services.ai_workflow_service import AIWorkflowService

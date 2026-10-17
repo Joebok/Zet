@@ -147,7 +147,8 @@ def prepare(mode: str) -> Path:
         'Indexes = "Indexes"\nQueueState = "QueueState"\n'
         'MigrationState = "MigrationState"\nWorkflowState = "WorkflowState"\n\n'
         "[AIHarvest]\nAutoEnabled = false\n\n"
-        '[Runtime]\nRole = "development"\n\n'
+        '[Runtime]\nRole = "development"\n'
+        f'Root = {json.dumps((root / "Runtime").as_posix())}\n\n'
         f'[AIModels]\nNarrativeScene = {json.dumps(live_model)}\nCodexDefault = "gpt-6-luna"\n\n'
         f'[ComfyUI]\nServerURL = {json.dumps(comfy_url)}\nCheckpoint = {json.dumps(checkpoint)}\n'
         "[Render]\nBackend = \"manual_chatgpt\"\n",

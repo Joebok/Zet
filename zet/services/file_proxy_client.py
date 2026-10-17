@@ -109,6 +109,9 @@ class FileProxyClient:
             "priority": ask_manifest.get("queue_priority", 0),
         }
         request = json.loads((staging / "ai_request.json").read_text(encoding="utf-8")) if (staging / "ai_request.json").is_file() else None
+        if hasattr(self, "config"):
+            from zet.services.storage_health_service import remember_request
+            remember_request(self.config, job_id, ask_manifest, job_manifest)
         AIJobRepository(self.local_state_root).register(job_id, ask_manifest, job_manifest, request)
         temp = staging / ".job.json.tmp"
         temp.write_text(json.dumps(job_manifest, indent=2) + "\n", encoding="utf-8")

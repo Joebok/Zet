@@ -30,6 +30,8 @@ def file_lock(path: Path, timeout: float = 30):
     Lock files intentionally persist: unlinking them can split concurrent owners
     across different inodes. Nested calls in the same thread are supported.
     """
+    from zet.services.storage_health_service import local_lock_path
+    path = local_lock_path(path)
     key = os.path.normcase(str(path.resolve()))
     with _guard:
         lock = _locks.setdefault(key, threading.RLock())
@@ -84,6 +86,15 @@ def atomic_copy(source: Path, target: Path) -> None:
         replace_with_retry(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def runner_lock_active(root: Path) -> bool:
+    """Cross-process runner observation; callers first check their own active set."""
+    try:
+        with file_lock(Path(root) / "runner.lock", timeout=0):
+            return False
+    except TimeoutError:
+        return True
 
 
 def validate_image(contents: bytes) -> None:

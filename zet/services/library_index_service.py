@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import fnmatch
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +16,22 @@ from zet.services.config_service import Config
 from zet.services.path_service import PathService
 from zet.services.workflow_storage import task_state_path
 from zet.services.storage_path_service import StoragePathService
+
+
+def checked_glob(root: Path, pattern: str, *, recursive=False):
+    """Unlike Path.glob, propagate unreadable-directory errors to abort the snapshot."""
+    from zet.services.storage_health_service import guard_path
+    try:
+        root.stat()
+    except FileNotFoundError:
+        guard_path(root, force=True)
+        return []
+    if not recursive:
+        return [path for path in root.iterdir() if fnmatch.fnmatch(path.name, pattern)]
+    def failed(exc):
+        raise exc
+    return [Path(folder) / name for folder, _, files in os.walk(root, onerror=failed)
+            for name in files if fnmatch.fnmatch(name, pattern)]
 
 
 class LibraryIndexService:
@@ -32,7 +50,7 @@ class LibraryIndexService:
         self.queue_paths = AIProxyPathService(config)
         self.repository = LibraryIndexRepository(
             config.base_library_path,
-            index_root=index_root or StoragePathService(config).ensure_available("indexes"),
+            index_root=index_root or StoragePathService(config).indexes,
         )
         self.project_root = Path(project_root or Path.cwd()).resolve()
         self._now = now or (lambda: datetime.now(timezone.utc))
@@ -61,9 +79,8 @@ class LibraryIndexService:
         try:
             contents = path.read_bytes()
         except OSError as exc:
-            fingerprint = "unreadable"
-            self._record_error(source_path, source_kind, fingerprint, str(exc))
-            return None, source_path, fingerprint
+            # An incomplete filesystem snapshot must never replace a valid generation.
+            raise OSError(f"Index source could not be read: {path}") from exc
         fingerprint = self._fingerprint(contents)
         cached = self.repository.cached_source_payload(source_path, fingerprint)
         if cached is not None:
@@ -153,7 +170,7 @@ class LibraryIndexService:
             return stories, scenes, targets
         for folder in sorted(path for path in root.iterdir() if path.is_dir() and not path.name.startswith("_")):
             duplicate_story = False
-            story_candidates = sorted(folder.glob("*.story.json"))
+            story_candidates = sorted(checked_glob(folder, "*.story.json"))
             story_data: dict[str, Any] | None = None
             story_slug = folder.name
             story_source = self._source_name(folder / f"{story_slug}.story.json")
@@ -187,7 +204,7 @@ class LibraryIndexService:
             if not isinstance(indexed_order, list):
                 self._record_error(story_source, "story", story_fingerprint, "scene_index must be an array.")
                 indexed_order = []
-            scene_paths = {path.name.removesuffix(".scene.json"): path for path in folder.glob("*.scene.json")}
+            scene_paths = {path.name.removesuffix(".scene.json"): path for path in checked_glob(folder, "*.scene.json")}
             missing_scenes = [str(value) for value in indexed_order if str(value) not in scene_paths]
             if missing_scenes:
                 self._record_error(
@@ -294,7 +311,7 @@ class LibraryIndexService:
         reference_sources: dict[str, tuple[str, str]] = {}
         reference_root = catalog_root / "ReferenceSets"
         if reference_root.is_dir():
-            for path in sorted(reference_root.glob("*.json")):
+            for path in sorted(checked_glob(reference_root, "*.json")):
                 value, source_path, fingerprint = self._read_json(path, "catalog_reference_set")
                 if value is None:
                     continue
@@ -316,7 +333,7 @@ class LibraryIndexService:
             return records, relationships
         catalog_ids: set[str] = set()
         source_keys: set[str] = set()
-        for path in sorted(records_root.glob("*.json")):
+        for path in sorted(checked_glob(records_root, "*.json")):
             value, source_path, fingerprint = self._read_json(path, "catalog_record")
             if value is None:
                 continue
@@ -517,7 +534,7 @@ class LibraryIndexService:
         for root in history_roots:
             if not root.is_dir():
                 continue
-            for answer_path in sorted(root.rglob("answer_manifest.json")):
+            for answer_path in sorted(checked_glob(root, "answer_manifest.json", recursive=True)):
                 resolved = answer_path.resolve()
                 if resolved in seen_paths:
                     continue
@@ -558,6 +575,10 @@ class LibraryIndexService:
         return active, history
 
     def snapshot(self, *, include_archive_history: bool = False) -> IndexSnapshot:
+        from zet.services.storage_health_service import storage_health
+        health = storage_health(self.config)
+        health.poll(force=True)
+        health.require()
         self._sources = []
         self._errors = []
         self._source_payloads = []
@@ -576,6 +597,8 @@ class LibraryIndexService:
                 "fingerprint": list_fingerprint,
                 "parse_status": "valid",
             })
+        health.poll(force=True)
+        health.require()
         return IndexSnapshot(
             sources=tuple(self._sources),
             stories=tuple(stories),
@@ -607,6 +630,8 @@ class LibraryIndexService:
             return self._reconcile()
 
     def _reconcile(self) -> dict:
+        from zet.services.storage_health_service import storage_health
+        storage_health(self.config).require()
         previous = self.repository.active_source_fingerprints()
         if self.repository.status()["active_generation"] is None:
             report = self.rebuild(backfill_history=False)
@@ -680,7 +705,9 @@ class LibraryIndexService:
             key = self.dependency_path(resolved)
             try:
                 result[key] = self._fingerprint(resolved.read_bytes())
-            except OSError:
+            except FileNotFoundError:
+                from zet.services.storage_health_service import guard_path
+                guard_path(resolved, force=True)
                 result[key] = "missing"
         return result
 
@@ -699,7 +726,9 @@ class LibraryIndexService:
             return "unresolvable"
         try:
             return self._fingerprint(resolved.read_bytes())
-        except OSError:
+        except FileNotFoundError:
+            from zet.services.storage_health_service import guard_path
+            guard_path(resolved, force=True)
             return "missing"
 
     def record_compilation(
@@ -779,7 +808,7 @@ class LibraryIndexService:
         if archive_root.is_dir():
             paths = sorted(
                 self._source_name(path, queue=True)
-                for path in archive_root.rglob("answer_manifest.json")
+                for path in checked_glob(archive_root, "answer_manifest.json", recursive=True)
             )
         remaining = [path for path in paths if path > cursor]
         selected = remaining[:batch_size]

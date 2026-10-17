@@ -38,6 +38,8 @@ class AIJobCoordinator:
         self._stop = threading.Event()
         self._thread = None
         self._discovered = set()
+        from zet.services.storage_recovery_service import StorageRecoveryService
+        self.recovery = StorageRecoveryService(app)
         self.handlers = {
             "zet-narrative-scenes": self._narrative,
             "zet-image-generation": self._images,
@@ -91,8 +93,7 @@ class AIJobCoordinator:
     def _loop(self):
         while not self._stop.is_set():
             try:
-                with file_lock(self.root / "Locks/coordinator.lock", timeout=0.05):
-                    self.sweep()
+                self.sweep()
             except TimeoutError:
                 pass
             except Exception:
@@ -111,6 +112,13 @@ class AIJobCoordinator:
                     # Recover publication only when its complete immutable envelope was persisted.
                     if root == client.ask_root and path.name.endswith(".staging"):
                         try:
+                            if not (path / "job.json").is_file():
+                                pending_id = path.name[1:-len(".staging")]
+                                pending = self.repository.get(pending_id)
+                                envelope = pending.get("envelope")
+                                if not envelope or not client._inventory_complete(path, envelope.get("files")):
+                                    continue
+                                write_json_atomic(path / "job.json", envelope)
                             envelope = json.loads((path / "job.json").read_text(encoding="utf-8"))
                             job_id = envelope["job_id"]
                             if (str(envelope.get("producer_id", "")).casefold() == socket.gethostname().casefold()
@@ -131,6 +139,11 @@ class AIJobCoordinator:
                     continue
 
     def sweep(self, *, retry_failed=False):
+        from zet.services.storage_health_service import StorageUnavailable
+        try:
+            self.recovery.health.require("queue", "application")
+        except StorageUnavailable:
+            return []
         try:
             with file_lock(self.root / "Locks/coordinator.lock", timeout=0.05):
                 return self._sweep(retry_failed=retry_failed)
@@ -138,6 +151,7 @@ class AIJobCoordinator:
             return []
 
     def _sweep(self, *, retry_failed=False):
+        from zet.services.storage_health_service import StorageUnavailable
         lifecycle = self.app.ai_proxy_service.ai_proxy_path_service.lifecycle
         before = {row.get("ask_id") for _, row in lifecycle.iter_receipts() or ()}
         self.import_legacy_history()
@@ -154,8 +168,7 @@ class AIJobCoordinator:
                     self.repository.update(record["ask_id"], harvest_state="AWAITING_HARVEST", error="")
             records = list(self.repository.all())
         universes = {self.app.universe_id}
-        if not self._discovered:
-            universes.update(item["universe_id"] for item in self.app.universe_service.list_universes())
+        universes.update(item["universe_id"] for item in self.app.universe_service.list_universes())
         universes.update(row.get("universe_id") for row in records if row.get("harvest_state") not in {"APPLIED", "FAILED", "SUPERSEDED"})
         workflow_root = self.root / "Workflows"
         if workflow_root.is_dir():
@@ -169,10 +182,16 @@ class AIJobCoordinator:
         for universe in universes - {"", None}:
             try:
                 app = self.resolve_app(universe)
+                if not hasattr(app, "_storage_recovery"):
+                    from zet.services.storage_recovery_service import StorageRecoveryService
+                    app._storage_recovery = StorageRecoveryService(app)
+                app._storage_recovery.recover()
                 if universe not in self._discovered:
                     self._adopt_narrative(app)
                     self._discovered.add(universe)
                 self._collect_app(app, [row for row in records if row.get("universe_id") == universe])
+            except StorageUnavailable:
+                continue
             except Exception:
                 logging.getLogger(__name__).exception("Unable to collect AI work for %s", universe)
         try:
@@ -257,6 +276,10 @@ class AIJobCoordinator:
             logging.getLogger(__name__).exception("Legacy collection failed for %s; continuing other consumers", app.universe_id)
         for record in records:
             job_id = record["ask_id"]
+            if record.get("logical_job_id"):
+                continue
+            if record.get("harvest_state") == "SUPERSEDED":
+                continue
             if self.repository.is_deleted(job_id):
                 continue
             if paths.lifecycle.read_receipt(job_id):

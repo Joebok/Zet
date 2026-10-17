@@ -70,3 +70,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 
 | [0016 — Unified AI execution and collection](0016-unified-ai-jobs.md) | Who owns provider execution, independent cloud admission, common collection and model selection? | Accepted 2026-10-16 |
 | [0018 — Ranking-only character review](0018-ranking-only-character-review.md) | How do rendered character candidates reach ranking and human review without a defect verdict stage? | Accepted locally 2026-10-16; existing library conversion pending |
+
+[0022 � Local recovery evidence and subscriber-owned fresh attempts](0022-removable-storage-recovery.md) records removable-volume recovery, continuation intent, and the authoritative-catalog/index distinction (accepted 2026-10-17).

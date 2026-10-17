@@ -12,6 +12,21 @@ _RETRYABLE_ERRNOS = {errno.EACCES, errno.EBUSY, errno.EPERM}
 _RETRYABLE_WINERRORS = {5, 32, 33}
 
 
+def read_json(path: Path):
+    """Retry short Windows replacement locks without pretending a record is absent."""
+    from zet.services.storage_health_service import guard_path
+    guard_path(path)
+    deadline = time.monotonic() + 1
+    while True:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                guard_path(path, force=True)
+                raise
+            time.sleep(.025)
+
+
 def _retryable(exc: OSError) -> bool:
     return (
         isinstance(exc, (FileExistsError, FileNotFoundError, PermissionError))
@@ -37,6 +52,8 @@ def replace_with_retry(source: Path, destination: Path, timeout_seconds: float =
 
 
 def write_text_atomic(path: Path, contents: str, timeout_seconds: float = 15.0) -> None:
+    from zet.services.storage_health_service import guard_path
+    guard_path(path)
     deadline = time.monotonic() + timeout_seconds
     delay = 0.05
     while True:
@@ -47,6 +64,7 @@ def write_text_atomic(path: Path, contents: str, timeout_seconds: float = 15.0) 
             replace_with_retry(temp_path, path, max(0.0, deadline - time.monotonic()))
             return
         except OSError as exc:
+            guard_path(path, force=True)
             if not _retryable(exc) or time.monotonic() >= deadline:
                 raise
             time.sleep(delay)
@@ -67,6 +85,8 @@ def write_json_atomic(path: Path, data: dict, timeout_seconds: float = 15.0) -> 
 
 
 def write_bytes_atomic(path: Path, contents: bytes) -> None:
+    from zet.services.storage_health_service import guard_path
+    guard_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp.{uuid4().hex}")
     try:

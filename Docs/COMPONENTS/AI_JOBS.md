@@ -196,3 +196,6 @@ workers. Those workers remain solely for immutable envelopes already published.
 Their runtime evidence lookup is compatibility execution metadata; model selectors
 and the compatibility `list_models()` API read the proxy-owned catalog. Repository
 coding automation and Codex quota inspection are outside creative job execution.
+
+## Storage pauses and fresh attempts (2026-10-17)
+`PAUSED_STORAGE` and `RECOVERING` are nonterminal. Logical request IDs resolve through fenced replacement transport attempts for verified interruption/storage failures. Collection retry never replays execution. Registered continuation intent is journaled locally before its normal application copy, and queue activity can show explicitly stale local metadata with unknown counts during an outage. Missing frozen inputs and genuine content/provider errors remain actionable failures. See [storage recovery](STORAGE_RECOVERY.md).

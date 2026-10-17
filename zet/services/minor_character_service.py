@@ -145,14 +145,16 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         session["job"] = {"kind": "review", "status": "COMPLETE", "error": ""}
         session["status"] = "REVIEW_READY"
         key = (self._key(sid), candidate_id)
+        self._write(session)
         with _LOCK:
             _REVIEW_ACTIVE.add(key)
-        self._write(session)
 
         def review():
             try:
                 self._review_job(sid, candidate_id)
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 with self._lock(sid):
                     current = self._read(sid)
                     candidate = next(c for c in current["candidates"] if c["candidate_id"] == candidate_id)
@@ -163,7 +165,11 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                     _REVIEW_ACTIVE.discard(key)
         from zet.services.ai_workflow_service import AIWorkflowService
         workflow_key = uuid5(NAMESPACE_URL, f"minor-review:{self.app.universe_id}:{sid}:{candidate_id}:{candidate['sha256']}").hex
-        AIWorkflowService(self.app).submit(self._review_job, [sid, candidate_id], service="minor", key=workflow_key, initial=review)
+        try:
+            AIWorkflowService(self.app).submit(self._review_job, [sid, candidate_id], service="minor", key=workflow_key, initial=review)
+        finally:
+            with _LOCK:
+                _REVIEW_ACTIVE.discard(key)
 
     def create_character(self, payload):
         name = text(payload.get("name", ""), "Character name").strip()

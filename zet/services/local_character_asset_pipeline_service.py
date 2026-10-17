@@ -31,7 +31,7 @@ from zet.services.local_image_pipeline_policy import (
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.render_slot_service import merge_candidates, render_count, slot_maps, frozen_input, verify_input
-from zet.services.workflow_storage import file_lock, supersede_task
+from zet.services.workflow_storage import runner_lock_active, file_lock, supersede_task
 
 
 VIEWS = ("FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE",
@@ -427,7 +427,7 @@ class LocalCharacterAssetPipelineService:
             candidate["image_filled"] = Path(str(candidate.get("image_path") or "")).is_file()
         if state.get("status") in ACTIVE_RUN_STATUSES:
             with self._active_lock:
-                result["interrupted"] = not self._is_active(run_id)
+                result["interrupted"] = not self._is_active(run_id) and not runner_lock_active(root)
                 if result["interrupted"]:
                     result["status"] = "INTERRUPTED"
         result["local_assets"] = self.asset_store.detail(result["character"], result["phase"])["assets"]
@@ -493,7 +493,7 @@ class LocalCharacterAssetPipelineService:
                 interrupted = False
                 if status in ACTIVE_RUN_STATUSES:
                     with self._active_lock:
-                        interrupted = not self._is_active(run_id)
+                        interrupted = not self._is_active(run_id) and not runner_lock_active(path.parent)
                     if interrupted:
                         status = "INTERRUPTED"
                 if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self._all_selected_views_locked({
@@ -871,7 +871,8 @@ class LocalCharacterAssetPipelineService:
                     self._run_update(run_id, costume, status="AWAITING_FRONT_ANCHOR",
                                      error="Select a FRONT candidate before generating other views.")
                     return
-                self._run_update(run_id, costume, status="RUNNING", error="", slot_work_pending=False)
+                self._run_update(run_id, costume, status="RUNNING", error="", slot_work_pending=False,
+                                 target_views=sorted(views), target_candidate_ids=sorted(candidate_ids or []), recovery_render_only=render_only)
                 for view in [item for item in VIEWS if item in views]:
                     pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view
                                and (candidate_ids is not None or not item.get("slot_managed"))
@@ -888,7 +889,7 @@ class LocalCharacterAssetPipelineService:
                         try:
                             ask_id = str(current.get("ask_id") or "")
                             queue_status, _ = self._proxy_answer(ask_id) if ask_id else ("UNKNOWN", {})
-                            if queue_status in {"QUEUED", "RUNNING", "ANSWERED"}:
+                            if queue_status in {"QUEUED", "RUNNING", "ANSWERED", "RECOVERING", "PAUSED_STORAGE", "HELD"}:
                                 self._update(run_id, item["candidate_id"], costume,
                                              status="QUEUED" if queue_status == "QUEUED" else "RUNNING")
                                 continue
@@ -897,6 +898,8 @@ class LocalCharacterAssetPipelineService:
                             self.queue_render_candidate(run_id, item["candidate_id"], costume)
                             self._update(run_id, item["candidate_id"], costume, status="RUNNING")
                         except Exception as exc:
+                            from zet.services.storage_health_service import pause_on_storage_error
+                            pause_on_storage_error(self.app.config, exc)
                             self._update(run_id, item["candidate_id"], costume, status="FAILED", render_error=str(exc))
                     for item in pending:
                         if self.detail(run_id, costume).get("stop_requested"):
@@ -908,6 +911,8 @@ class LocalCharacterAssetPipelineService:
                             try:
                                 self._wait_render(run_id, item["candidate_id"], costume)
                             except Exception as exc:
+                                from zet.services.storage_health_service import pause_on_storage_error
+                                pause_on_storage_error(self.app.config, exc)
                                 self._update(run_id, item["candidate_id"], costume, status="FAILED", render_error=str(exc))
                     if not render_only and not self.detail(run_id, costume).get("stop_requested"):
                         pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view
@@ -924,7 +929,11 @@ class LocalCharacterAssetPipelineService:
         except TimeoutError:
             return
         except Exception as exc:
-            self._run_update(run_id, costume, status="ERROR", error=str(exc), target_views=[], target_candidate_ids=[])
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
+            from zet.services.storage_health_service import storage_health
+            if not storage_health(self.app.config).check_error(exc):
+                self._run_update(run_id, costume, status="ERROR", error=str(exc))
         finally:
             with self._active_lock:
                 self._active.discard(self._active_key(run_id))
@@ -969,6 +978,8 @@ class LocalCharacterAssetPipelineService:
                     reference_image_paths=reference_image_paths,
                 )
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 raise LocalCharacterAssetPipelineError(str(exc)) from exc
             ranking = {"status": "COMPLETE", "ordered_candidate_ids": [entry["candidate_id"] for entry in entries],
                        "luna_ordered_candidate_ids": [entry["candidate_id"] for entry in entries],
@@ -1010,6 +1021,8 @@ class LocalCharacterAssetPipelineService:
         try:
             ranking = self._rank(run, view)
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             ranking = {"status": "FAILED", "error": str(exc), "recorded_at": self._now()}
         def save(current: dict[str, Any]) -> None:
             active = (current.get("evaluations") or {}).get(view) or {}

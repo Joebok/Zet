@@ -63,9 +63,16 @@ def main() -> int:
 
     print(f"{timestamp()} Auto harvest worker running every {interval} seconds.", flush=True)
     from zet.services.ai_job_coordinator import AIJobCoordinator
-    coordinator = AIJobCoordinator(ZetApp.from_config(args.config))
+    coordinator = None
     while True:
         try:
+            from zet.services.storage_health_service import storage_health
+            health = storage_health(ConfigService.load(args.config))
+            if not health.poll()["available"]:
+                time.sleep(2)
+                continue
+            if coordinator is None:
+                coordinator = AIJobCoordinator(ZetApp.from_config(args.config))
             harvest_once(args.config, coordinator)
             interval = configured_interval(args.config, args.interval_seconds)
             if interval <= 0:

@@ -143,6 +143,8 @@ class CostumeWizardService:
                     image.verify()
                     image_format = str(image.format or "").lower()
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 raise CostumeWizardError(f"Reference image {index} is not a valid image.") from exc
             suffix = {"jpeg": ".jpg", "png": ".png", "webp": ".webp", "gif": ".gif", "bmp": ".bmp"}.get(image_format)
             if not suffix:
@@ -174,19 +176,29 @@ class CostumeWizardService:
             raise CostumeWizardError("Reference image is unavailable.")
         return path
 
+    def _pending_workflow(self, session_id):
+        from zet.services.ai_workflow_service import AIWorkflowService
+        return AIWorkflowService(self.app).pending(session_id)
+
     def _submit(self, session_id: str, kind: str, target, *args) -> None:
         with _ACTIVE_LOCK:
-            if session_id in _ACTIVE:
+            if session_id in _ACTIVE or self._pending_workflow(session_id):
                 raise CostumeWizardError("A wizard task is already running for this session.")
             _ACTIVE.add(session_id)
         from zet.services.ai_workflow_service import AIWorkflowService
-        AIWorkflowService(self.app).submit(target, args, service="costume", owner={"session_id": session_id},
-            initial=lambda: self._run_job(session_id, kind, target, *args))
+        try:
+            AIWorkflowService(self.app).submit(target, args, service="costume", owner={"session_id": session_id},
+                initial=lambda: self._run_job(session_id, kind, target, *args))
+        finally:
+            with _ACTIVE_LOCK:
+                _ACTIVE.discard(session_id)
 
     def _run_job(self, session_id: str, kind: str, target, *args) -> None:
         try:
             target(*args)
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             with self._lock(session_id):
                 try:
                     session = self._read(session_id)
@@ -315,6 +327,8 @@ class CostumeWizardService:
             for view in ("FRONT", "BACK"):
                 condition_sections(sections, sources, ViewContext(body_view=view, head_view=view))
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             return [str(exc)]
         return []
 

@@ -22,8 +22,13 @@ class NarrativeProxyService:
 
     def publish(self, story: str, scene: str, target: str, job: dict, prompt: str,
                 *, schema: dict | None = None, references: list[dict] | None = None, width=1216, height=832, seed=0):
+        paths = self.app.ai_proxy_service.ai_proxy_path_service
+        if paths.jobs.repository.get(job["id"]) or paths.lifecycle.read_receipt(job["id"]):
+            return
         worker = ("codex_generate" if str(job.get("model", "")).startswith("codex:") else "ollama_generate") if schema else "local_image_render"
-        staging = self.client.create_staging(job["id"])
+        staging = self.client.staging_path(job["id"])
+        self.client.ensure_layout()
+        staging.mkdir(exist_ok=True)
         manifest = {
             "version": 1, "ask_id": job["id"], "consumer": CONSUMER, "worker_type": worker,
             "universe_id": self.config.universe_id,

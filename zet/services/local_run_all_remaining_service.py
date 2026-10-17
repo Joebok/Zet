@@ -44,10 +44,15 @@ class LocalRunAllRemainingService:
         return LocalImagePipelineWorkflowService(self.app, self.project_root, pipeline).adapter
 
     def _read(self, path: Path) -> dict[str, Any]:
+        from zet.services.storage_health_service import guard_path
+        guard_path(path)
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except FileNotFoundError:
+            guard_path(path, force=True)
             return {}
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid saved workflow state: {path}")
         return value if isinstance(value, dict) else {}
 
     def _campaign_path(self, campaign_id: str) -> Path:
@@ -78,6 +83,8 @@ class LocalRunAllRemainingService:
                 kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
                 try:
                     run = adapter.detail(run_id, **kwargs)
+                    if run.get("stop_requested") or run.get("status") in {"CANCELLED", "STOPPED"}:
+                        continue
                     state_path = Path(run["root"]) / "state.json"
                     state = self._read(state_path)
                     if not run.get("stop_requested") and (state.get("slot_render_ids") or state.get("slot_review_views")):
@@ -162,14 +169,23 @@ class LocalRunAllRemainingService:
                     if (run.get("slot_version") == 1 and run.get("target_candidate_ids")
                             and run.get("status") in {"QUEUED", "INTERRUPTED"}
                             and not run.get("stop_requested")):
-                        from zet.services.local_character_overview_service import submit_local_pipeline_task
-                        submit_local_pipeline_task(adapter.execute_run, run_id,
+                        from zet.services.storage_recovery_service import submit_recovered_run
+                        submit_recovered_run(adapter, run_id, run["root"],
                             views=set(run.get("target_views") or []),
-                            candidate_ids=set(run["target_candidate_ids"]), **kwargs)
+                            candidate_ids=set(run["target_candidate_ids"]),
+                            render_only=bool(self._read(Path(run["root"]) / "state.json").get("recovery_render_only")), **kwargs)
                 except Exception:
                     continue
         active_id = str(self._read(self.active_path).get("campaign_id") or "")
         if not active_id:
+            return
+        with _ACTIVE_LOCK:
+            if active_id in _ACTIVE:
+                return
+        try:
+            with file_lock(self._campaign_path(active_id).with_suffix(".runner.lock"), timeout=0):
+                pass
+        except TimeoutError:
             return
         campaign = self._read(self._campaign_path(active_id))
         if campaign.get("status") in {"QUEUED", "RUNNING", "RECOVERING"}:
@@ -209,6 +225,18 @@ class LocalRunAllRemainingService:
                 return
 
     def _run(self, campaign_id: str) -> None:
+        try:
+            with file_lock(self._campaign_path(campaign_id).with_suffix(".runner.lock"), timeout=0):
+                if self._read(self._campaign_path(campaign_id)).get("status") not in {"QUEUED", "RUNNING", "RECOVERING"}:
+                    with _ACTIVE_LOCK:
+                        _ACTIVE.discard(campaign_id)
+                    return
+                self._run_locked(campaign_id)
+        except TimeoutError:
+            with _ACTIVE_LOCK:
+                _ACTIVE.discard(campaign_id)
+
+    def _run_locked(self, campaign_id: str) -> None:
         try:
             self._update(campaign_id, lambda item: item.update(status="RUNNING", started_at=item.get("started_at") or self._now()))
             campaign = self._read(self._campaign_path(campaign_id))
@@ -267,8 +295,10 @@ class LocalRunAllRemainingService:
         while run.get("status") in ACTIVE_RUN_STATUSES and not run.get("interrupted"):
             time.sleep(2)
             run = adapter.detail(run_id, **kwargs)
-        if (run.get("status") in {"INTERRUPTED", "CANCELLED", "STOPPED", "ERROR"}
-                or run.get("stop_requested")):
+        if run.get("stop_requested") or run.get("status") in {"CANCELLED", "STOPPED"}:
+            self._set_batch(campaign_id, index, result="CANCELLED")
+            return
+        if run.get("status") in {"INTERRUPTED", "ERROR", "PAUSED_STORAGE", "RECOVERING"}:
             if pipeline == "body-reference":
                 (Path(run["root"]) / "cancelled.json").unlink(missing_ok=True)
             adapter._run_update(run_id, **kwargs, status="QUEUED", stop_requested=False, error="")

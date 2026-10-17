@@ -33,6 +33,11 @@ class AIJobService:
     def inspect(self, job_id):
         """Inspect durable state without collecting, registering, or modifying a job."""
         self.validate_id(job_id)
+        from zet.services.storage_health_service import storage_health
+        health = storage_health(self.paths.config)
+        if not health.poll()["available"]:
+            return {"ask_id": job_id, "logical_job_id": job_id, "status": "PAUSED_STORAGE", "location": "", "path": "",
+                    "blocking_reason": "Storage unavailable; recovery is automatic", "storage": health.status()}
         if self.repository.is_deleted(job_id):
             return {"ask_id": job_id, "status": "DELETED", "location": "", "path": "",
                     "blocking_reason": "Job was explicitly deleted."}
@@ -41,6 +46,20 @@ class AIJobService:
         info = {"ask_id": job_id, "status": "RECONCILING", "location": "", "path": "",
                 "harvest_state": record.get("harvest_state", ""), "blocking_reason": record.get("error", ""),
                 **{key: record.get(key, "") for key in ("failure_stage", "exception_type", "affected_path", "failed_at")}}
+        from zet.services.ai_attempt_recovery_service import AIAttemptRecoveryService
+        recovery = AIAttemptRecoveryService(self).read(job_id)
+        info.update(logical_job_id=job_id, current_attempt_id=recovery.get("current_attempt_id", job_id),
+                    recovery_stage=recovery.get("status", ""), last_recovered_at=recovery.get("recovered_at", ""))
+        if recovery and recovery.get("status") != "COMPLETE" and not receipt:
+            if record.get("provider") in {"ollama", "comfyui"}:
+                try:
+                    execution = json.loads((self.client.root / "Control/execution_status.json").read_text(encoding="utf-8"))
+                except FileNotFoundError:
+                    execution = {}
+                if execution.get("local_execution_blocked"):
+                    return {**info, "status": "HELD", "blocking_reason": execution.get("reason", "Backend reconciliation requires attention"), "location": "recovery"}
+            return {**info, "status": "SUPERSEDED" if recovery["status"] == "SUPERSEDED" else "RECOVERING",
+                    "blocking_reason": recovery.get("reason", ""), "location": "recovery"}
         if receipt:
             return {**info, "status": str(receipt.get("status") or "APPLIED"), "location": "receipt",
                     "execution_status": receipt.get("execution_status", ""), "answer_status": receipt.get("answer_status", ""),
@@ -68,7 +87,7 @@ class AIJobService:
     def is_pending(self, job_id):
         """Known unfinished requests do not expire while queued or being collected."""
         return self.inspect(job_id)["status"] in {
-            "QUEUED", "RUNNING", "ANSWERED", "HARVESTING", "HARVEST_FAILED", "TRANSFERRING", "RECOVERY_REQUIRED"}
+            "QUEUED", "RUNNING", "ANSWERED", "HARVESTING", "HARVEST_FAILED", "TRANSFERRING", "RECOVERY_REQUIRED", "PAUSED_STORAGE", "RECOVERING", "HELD"}
 
     def assert_image_harvest(self, job_id, image_path, expected_hash=""):
         """The durable receipt and exact image, never file existence alone, admit analysis."""
@@ -119,6 +138,12 @@ class AIJobService:
 
     def submit_text(self, model, system, prompt, schema=None, images=None, *, job_id=None,
                     consumer="zet-structured", owner=None, task_type="structured_inference", options=None, workflow=None, admission=None):
+        from zet.services.storage_health_service import storage_health, StorageUnavailable
+        if not storage_health(self.paths.config).poll()["available"]:
+            from zet.services.ai_workflow_service import current_workflow, AIPending
+            if current_workflow.get() is not None:
+                raise AIPending()
+            raise StorageUnavailable("AI submission paused until storage returns")
         model = str(model).strip()
         provider = "codex" if model.startswith("codex:") else "ollama"
         job_id = job_id or "AI_" + uuid4().hex
@@ -156,6 +181,27 @@ class AIJobService:
         return job_id
 
     def ready_answer(self, job_id):
+        self.validate_id(job_id)
+        from zet.services.storage_health_service import storage_health, StorageUnavailable
+        from zet.services.ai_attempt_recovery_service import AIAttemptRecoveryService
+        if not storage_health(self.paths.config).poll()["available"]:
+            return None
+        try:
+            with file_lock(self.lifecycle.lock_path(job_id)):
+                if self.repository.is_deleted(job_id) or self.lifecycle.read_receipt(job_id):
+                    return None
+                return AIAttemptRecoveryService(self).ready(job_id)
+        except StorageUnavailable:
+            return None
+        except FileNotFoundError:
+            # Another collector may have committed its receipt between discovery
+            # and opening an envelope. Absence alone never admits a new execution.
+            if self.lifecycle.read_receipt(job_id) or not any((root / job_id).is_dir() for root in
+                    (self.lifecycle.inbox_root, self.client.answer_root)):
+                return None
+            raise
+
+    def _ready_answer_physical(self, job_id):
         """Only verified, matching, durably copied answers reach a workflow handler."""
         self.validate_id(job_id)
         with file_lock(self.lifecycle.lock_path(job_id)):
@@ -272,6 +318,9 @@ class AIJobService:
             return self._result(job_id)
 
     def _result(self, job_id):
+        from zet.services.storage_health_service import storage_health
+        if not storage_health(self.paths.config).poll()["available"]:
+            return None
         if self.repository.is_deleted(job_id):
             raise AIExecutionError("This AI job was deleted. Start a new attempt to retry.")
         path = self.ready_answer(job_id)

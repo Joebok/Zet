@@ -71,3 +71,6 @@ Important complexity: a large composition facade/web module, callbacks between s
 Character adapters share [render_slot_service.py](../zet/services/render_slot_service.py) for fixed positions, supplemental candidate merging and protected mutations through the local workflow service. Image Generation's [workspace service](../zet/services/image_generation_workspace_service.py) persists universe-owned assignments over its existing jobs. Shared [render_slots.js](../zet/web/static/render_slots.js) provides presentation controls only. Active browser pages poll and patch results during review; Narrative continues owning its independent target records. No new event transport or production dependency is introduced. See [ADR 0007](DECISIONS/0007-stable-render-slots.md).
 
 The shared request, continuation, model catalog and all-universe activity interfaces are owned by [Shared AI jobs](COMPONENTS/AI_JOBS.md).
+
+## Unavailable storage
+Storage-dependent construction is deferred when configured resources are unavailable. The waiting dashboard and standalone harvester keep probing; normal services initialize after recovery. A backend recovery service owns startup and recurring reconciliation, with local OS coordination independent of the removable volume. See [storage recovery](COMPONENTS/STORAGE_RECOVERY.md).

@@ -69,10 +69,15 @@ class LocalCharacterOverviewService:
 
     @staticmethod
     def _read(path: Path) -> dict[str, Any]:
+        from zet.services.storage_health_service import guard_path
+        guard_path(path)
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except FileNotFoundError:
+            guard_path(path, force=True)
             return {}
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid saved workflow state: {path}")
         return value if isinstance(value, dict) else {}
 
     def slot_status(self, character: str, phase: str, costume: str) -> dict[str, Any]:
@@ -429,6 +434,9 @@ class LocalCharacterOverviewService:
                 try:
                     self._choose_and_lock(job, pipeline)
                 except Exception as exc:
+                    from zet.services.storage_health_service import storage_health
+                    if storage_health(self.app.config).check_error(exc):
+                        return
                     message = str(exc)
                     if "still running" in message.lower() or "wait" in message.lower() or "busy" in message.lower():
                         time.sleep(1)

@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from zet.services.atomic_file_service import write_json_atomic
+from zet.services.atomic_file_service import write_json_atomic, read_json
 
 
 def timestamp():
@@ -27,10 +27,15 @@ class AIJobRepository:
         return self.deletion_path(job_id).exists()
 
     def get(self, job_id):
+        from zet.services.storage_health_service import guard_path
+        guard_path(self.root)
         try:
-            value = json.loads(self.path(job_id).read_text(encoding="utf-8"))
+            value = read_json(self.path(job_id))
             return value if isinstance(value, dict) else {}
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            guard_path(self.root, force=True)
+            return {}
+        except ValueError:
             return {}
 
     def put(self, job_id, record):
@@ -50,13 +55,18 @@ class AIJobRepository:
                     collection_failures=attempts, collection_retry_at=retry_at)
 
     def all(self):
+        from zet.services.storage_health_service import guard_path
+        guard_path(self.root)
         if self.root.is_dir():
             for path in self.root.glob("*.json"):
                 try:
                     value = json.loads(path.read_text(encoding="utf-8"))
                     if isinstance(value, dict) and not self.is_deleted(value.get("ask_id", "")):
                         yield value
-                except (OSError, ValueError):
+                except FileNotFoundError:
+                    guard_path(self.root, force=True)
+                    continue
+                except ValueError:
                     continue
 
     def register(self, job_id, manifest, envelope, request=None):
@@ -67,10 +77,12 @@ class AIJobRepository:
         provider = str(manifest.get("provider") or ("manual" if manifest.get("worker_type") == "manual_chatgpt_render" else "codex" if model.startswith("codex:") else
                        "comfyui" if manifest.get("worker_type") == "local_image_render" else "ollama"))
         self.put(job_id, {"version": 1, "created_at": envelope["created_at"], "producer_id": envelope["producer_id"],
+                         "logical_job_id": manifest.get("logical_job_id", ""),
                          "universe_id": manifest.get("universe_id", ""), "task_type": manifest.get("task_type", ""),
                          "consumer": manifest.get("consumer", "zet"), "model": model, "provider": provider,
                          "workflow": manifest.get("workflow") or manifest.get("pipeline") or manifest.get("task_type", ""),
                          "worker_type": manifest.get("worker_type", ""), "asset_id": manifest.get("asset_id"),
                          "owner": {key: manifest[key] for key in manifest if key.endswith("_id") or key in {"story_slug", "scene_slug", "character", "phase", "view", "costume"}},
                          "manifest": manifest, "request": request or {}, "input_inventory": envelope.get("files", []),
+                         "envelope": envelope,
                          "harvest_state": "PUBLISHED"})

@@ -220,35 +220,21 @@ class AdHocImageGenerationService:
             while seed in used_seeds:
                 seed = random.SystemRandom().randrange(0, 2**63 - 1)
             used_seeds.add(seed)
-            children.append({"ask_id": "", "index": index, "seed": seed, "status": "QUEUED"})
+            children.append({"ask_id": "", "reserved_ask_id": "Image_" + uuid4().hex, "index": index, "seed": seed, "status": "QUEUED"})
         job = self._new_job(request_id, mode, count, workspace, children, prompt_path, "QUEUED", "")
         job.update(self._request_details(payload, width, height, user_prompt))
+        job["submission"] = {"checkpoint": checkpoint, "preset_name": preset_name, "references": references,
+                             "width": width, "height": height, "workflow": payload.get("ai_workflow", "Image Generation"),
+                             "owner": payload.get("ai_owner", {})}
         self._jobs[request_id] = job
         self._save_job(job)
         try:
             for child in children:
-                seed = child["seed"]
-                staged = self.zet_app.ai_proxy_service.stage_render_task_local_render_ask(
-                    {"ask_id": f"adhoc_{request_id}", "ad_hoc_request_id": request_id,
-                     "workflow": payload.get("ai_workflow", "Image Generation"), "ai_owner": payload.get("ai_owner", {})},
-                    prompt_path,
-                    workspace,
-                    allow_parallel=True,
-                    seed=seed,
-                    checkpoint=checkpoint,
-                    render_overrides={
-                        "width": width,
-                        "height": height,
-                        "disable_prompt_globals": True,
-                    },
-                    render_preset=preset_name,
-                    image_generation="comfyui",
-                    reference_files=references,
-                    consumer=IMAGE_GENERATION_CONSUMER,
-                )
-                child["ask_id"] = staged.name
-                self._save_job(job)
+                self._dispatch_child(job, child)
         except Exception as exc:
+            from zet.services.storage_health_service import storage_health
+            if storage_health(self.zet_app.config).check_error(exc):
+                return self._paused_submission(job)
             queued = sum(bool(child["ask_id"]) for child in children)
             job["error"] = f"Only {queued} of {count} images could be queued: {exc}"
             for child in children:
@@ -260,6 +246,44 @@ class AdHocImageGenerationService:
                 shutil.rmtree(workspace, ignore_errors=True)
         self._save_job(job)
         return self.status(request_id)
+
+    def _paused_submission(self, job):
+        job.update(status="PAUSED_STORAGE", error="Storage unavailable; submission will resume automatically")
+        from zet.services.storage_health_service import storage_health
+        if storage_health(self.zet_app.config).status()["available"]:
+            self._save_job(job)
+        return {"request_id": job["request_id"], "status": "PAUSED_STORAGE", "error": job["error"], "images": []}
+
+    def _dispatch_child(self, job, child):
+        if child.get("ask_id"):
+            return
+        reserved = child.get("reserved_ask_id")
+        # Adopt a published envelope if the process died before saving its child ID.
+        matches = [record for record in self.proxy_paths.jobs.repository.all()
+                   if not record.get("logical_job_id")
+                   and record.get("manifest", {}).get("ad_hoc_request_id") == job["request_id"]
+                   and (record["ask_id"] == reserved or record.get("manifest", {}).get("seed") == child["seed"])]
+        if len(matches) == 1:
+            child.update(ask_id=matches[0]["ask_id"], status="QUEUED", done=False, error="")
+            self._save_job(job)
+            return
+        if len(matches) > 1:
+            raise AdHocImageGenerationError("Multiple envelopes match this child; preserve them for recovery")
+        intent = job.get("submission")
+        if not intent:
+            raise AdHocImageGenerationError("Frozen submission intent is unavailable; explicit recovery is required")
+        child.setdefault("reserved_ask_id", "Image_" + uuid4().hex)
+        self._save_job(job)
+        staged = self.zet_app.ai_proxy_service.stage_render_task_local_render_ask(
+            {"ask_id": "adhoc_" + job["request_id"], "transport_job_id": child["reserved_ask_id"],
+             "ad_hoc_request_id": job["request_id"], "ad_hoc_child_index": child["index"],
+             "workflow": intent["workflow"], "ai_owner": intent["owner"]},
+            job["prompt_path"], job["workspace"], allow_parallel=True, seed=child["seed"],
+            checkpoint=intent["checkpoint"], render_preset=intent["preset_name"], image_generation="comfyui",
+            render_overrides={"width": intent["width"], "height": intent["height"], "disable_prompt_globals": True},
+            reference_files=intent["references"], consumer=IMAGE_GENERATION_CONSUMER)
+        child.update(ask_id=staged.name, status="QUEUED", done=False, error="")
+        self._save_job(job)
 
     def _new_job(self, request_id, mode, count, workspace, children, prompt_path, status, error):
         return {
@@ -432,11 +456,13 @@ class AdHocImageGenerationService:
                 continue
             ask_id = child["ask_id"]
             if not ask_id:
-                child.update(done=True, status="FAILED", error="Render submission was interrupted. Retry this slot.")
-                job["failures"] += 1
-                job["error"] = job["error"] or child["error"]
-                continue
+                self._dispatch_child(job, child)
+                ask_id = child["ask_id"]
             inspection = self.proxy_paths.jobs.inspect(ask_id)
+            if inspection["status"] in {"PAUSED_STORAGE", "RECOVERING", "HELD"}:
+                child.update(status=inspection["status"], error="", done=False)
+                running += 1
+                continue
             if inspection["status"] in {"HARVEST_FAILED", "RECOVERY_REQUIRED", "TRANSFERRING"}:
                 child.update(status=inspection["status"], error=inspection["blocking_reason"])
                 job["error"] = inspection["blocking_reason"]
@@ -555,6 +581,7 @@ class AdHocImageGenerationService:
             "request_id", "mode", "prompt", "negative_prompt", "width", "height", "count",
             "children", "status", "error", "failures", "created_at", "finished_at",
         )}
+        record["submission"] = job.get("submission")
         record["render_payload"] = job.get("render_payload")
         record["image_slots_version"] = job.get("image_slots_version", 0)
         record["source_asset_id"] = job.get("source_asset_id", "")
@@ -610,5 +637,7 @@ class AdHocImageGenerationService:
                 stale = time.time() - workspace.stat().st_mtime >= 24 * 3600
             except OSError:
                 continue
-            if workspace.is_dir() and len(workspace.name) == 32 and stale:
+            active = any(Path(job["workspace"]).resolve() == workspace.resolve()
+                         and job["status"] not in {"COMPLETE", "FAILED", "ERROR", "PARTIAL"} for job in self._jobs.values())
+            if workspace.is_dir() and len(workspace.name) == 32 and stale and not active:
                 shutil.rmtree(workspace, ignore_errors=True)

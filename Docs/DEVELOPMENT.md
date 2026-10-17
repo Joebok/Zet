@@ -161,3 +161,24 @@ history. A transient Windows state-read sharing violation was found and repaired
 before the final Zet baseline passed. No dependencies or live backend calls were
 added. Upgrade AI_Proxy registrations before migrated Zet; no production rollout
 was performed. See the [completed plan](../plans/completed/unified-ai-jobs.md).
+
+## Storage recovery verification (2026-10-17)
+The approved four-scenario `npm.cmd run test:e2e` baseline passed after the storage
+recovery implementation. Python compilation and JavaScript syntax checks passed;
+`git diff --check` passed. No maintained scenario was added or expanded. The
+prepared local-answer helper now preserves the ask's actual attempt ID, and the
+fixture Runtime folder isolates recovery evidence from normal application state.
+
+Disposable checks passed for fresh execution attempts behind a logical job ID,
+root identity/two-probe recovery, offline bootstrap with real ZetApp construction,
+C-resident continuation reservation, incomplete index scan rejection, missing
+catalog protection, child publication reattachment and protected runner rechecks.
+A controlled proxy crash preserved its surviving worker's local slot while cloud
+work ran; successful old execution published without replay. A deliberately stalled
+probe returned paused status without blocking independent resources or spawning
+more workers. Initial validation exposed a fixture attempt mismatch and a repeated
+completion race; the helper and receipt barrier were repaired before passing runs.
+
+Real E: disconnection, live inference, manual external-backend settlement and
+production deployment/restart were not performed. Operational contracts and code
+owners: [storage recovery](COMPONENTS/STORAGE_RECOVERY.md).

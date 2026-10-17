@@ -28,7 +28,7 @@ from zet.services.local_image_pipeline_policy import (
 )
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.render_slot_service import merge_candidates, render_count, slot_maps, frozen_input, verify_input
-from zet.services.workflow_storage import file_lock, supersede_task
+from zet.services.workflow_storage import runner_lock_active, file_lock, supersede_task
 
 
 class LocalHeadImageError(ValueError):
@@ -159,6 +159,8 @@ class LocalHeadImageService:
             with Image.open(io.BytesIO(contents)) as image:
                 image.verify()
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             raise LocalHeadImageError("The uploaded reference is not a readable image.") from exc
         target_dir = self._workspace(character, phase) / "inputs"
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -184,6 +186,8 @@ class LocalHeadImageService:
             record_compiler_sources(output_dir)
             return result
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             raise LocalHeadImageError(f"Could not compile the local {view} prompt: {exc}") from exc
 
     def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -261,7 +265,7 @@ class LocalHeadImageService:
         active = state.get("status") in ACTIVE_RUN_STATUSES
         if active:
             with self._active_lock:
-                value["interrupted"] = self._active_key(run_id) not in self._active
+                value["interrupted"] = self._active_key(run_id) not in self._active and not runner_lock_active(root)
                 if value["interrupted"]:
                     value["status"] = "INTERRUPTED"
         else:
@@ -370,7 +374,7 @@ class LocalHeadImageService:
                 status = str(state.get("status") or spec.get("status") or "UNKNOWN")
                 if status in ACTIVE_RUN_STATUSES:
                     with self._active_lock:
-                        if self._active_key(run_id) not in self._active:
+                        if self._active_key(run_id) not in self._active and not runner_lock_active(path.parent):
                             status = "INTERRUPTED"
                 candidates = merge_candidates(spec, state)
                 if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self.asset_store.all_selected_views_locked({
@@ -553,7 +557,8 @@ class LocalHeadImageService:
                     views = set(run["target_views"])
                 if views is None:
                     views = {FRONT} if not run.get("front_anchor") else {view for view in VIEWS if view != FRONT}
-                self._run_update(run_id, status="RUNNING", error="", slot_work_pending=False)
+                self._run_update(run_id, status="RUNNING", error="", slot_work_pending=False,
+                                 target_views=sorted(views), target_candidate_ids=sorted(candidate_ids or []), recovery_render_only=render_only)
                 selected_views = [view for view in VIEWS if view in views]
                 for view in selected_views:
                     view_candidates = [item for item in self.detail(run_id)["candidates"]
@@ -578,6 +583,8 @@ class LocalHeadImageService:
                             self.queue_render_candidate(run_id, candidate_id)
                             self._update(run_id, candidate_id, status="RUNNING")
                         except Exception as exc:
+                            from zet.services.storage_health_service import pause_on_storage_error
+                            pause_on_storage_error(self.app.config, exc)
                             self._update(run_id, candidate_id, status="FAILED", render_error=str(exc))
 
                     if self.detail(run_id).get("stop_requested"):
@@ -600,6 +607,8 @@ class LocalHeadImageService:
                             if not self._wait_render(run_id, candidate_id):
                                 break
                         except Exception as exc:
+                            from zet.services.storage_health_service import pause_on_storage_error
+                            pause_on_storage_error(self.app.config, exc)
                             self._update(run_id, candidate_id, status="FAILED", render_error=str(exc))
 
                     if self.detail(run_id).get("stop_requested"):
@@ -634,7 +643,11 @@ class LocalHeadImageService:
         except TimeoutError:
             return
         except Exception as exc:
-            self._run_update(run_id, status="ERROR", error=str(exc))
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
+            from zet.services.storage_health_service import storage_health
+            if not storage_health(self.app.config).check_error(exc):
+                self._run_update(run_id, status="ERROR", error=str(exc))
         finally:
             with self._active_lock:
                 self._active.discard(self._active_key(run_id))
@@ -729,6 +742,8 @@ class LocalHeadImageService:
         try:
             return self._rank_view(run_id, view, evaluation_id=evaluation_id)
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             root = self._run_root(run_id)
             def fail(state: dict[str, Any]) -> None:
                 key = str(view or "").upper()
@@ -795,6 +810,8 @@ class LocalHeadImageService:
                     owner={"run_id": run_id, "view": view, "pipeline": 'Head-Image', "evaluation_id": evaluation_id},
                 )
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 raise LocalHeadImageError(str(exc)) from exc
         ranking = {"status": "COMPLETE", "evaluation_id": evaluation_id,
             "ordered_candidate_ids": [item["candidate_id"] for item in entries],
@@ -1038,6 +1055,8 @@ class LocalHeadImageService:
                 with Image.open(source) as image:
                     image.verify()
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 raise LocalHeadImageError("The uploaded reference is not a readable image.") from exc
 
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")

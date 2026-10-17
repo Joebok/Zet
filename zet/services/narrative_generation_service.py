@@ -149,9 +149,12 @@ class NarrativeGenerationService:
                         job["request"] = replay["request"]
                         schema = deepcopy(replay.get("schema", schema))
                         job["schema"] = schema
+                    self.repository.write(record, story, scene, target)
                     self.proxy.publish(story, scene, target, job, job["request"], schema=schema)
                     job["status"] = "QUEUED"
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.author.app.config, exc)
                 self._fail(record, job, str(exc))
             self.repository.write(record, story, scene, target)
             return self.author.target(story, scene, target)
@@ -182,6 +185,8 @@ class NarrativeGenerationService:
                                    width=parent["detail"]["width"], height=parent["detail"]["height"], seed=candidate["seed"])
                 job["status"] = candidate["status"] = "QUEUED"
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.author.app.config, exc)
                 job["status"] = candidate["status"] = "FAILED"
                 job["error"] = candidate["error"] = str(exc)
             self.repository.write(record, story, scene, target)
@@ -189,6 +194,26 @@ class NarrativeGenerationService:
     def _refresh(self, story, scene, target, record):
         release = []
         for job in list(record["jobs"].values()):
+            if job["status"] == "SUBMITTING":
+                if job["kind"] == "image":
+                    candidate = record["candidates"].get(job.get("candidate_id"))
+                    if not candidate or candidate.get("job_id") != job["id"]:
+                        job.update(status="SUPERSEDED", error="")
+                        continue
+                    parent = next((item for item in record["jobs"].values()
+                                   if candidate["id"] in item.get("candidate_ids", [])), None)
+                    if not parent:
+                        self._fail(record, job, "Recovery requires the saved parent request and frozen references.")
+                        continue
+                    self.proxy.publish(story, scene, target, job, candidate["prompt"],
+                        references=parent["references"], width=parent["detail"]["width"],
+                        height=parent["detail"]["height"], seed=candidate["seed"])
+                elif job.get("request") and job.get("schema") is not None:
+                    self.proxy.publish(story, scene, target, job, job["request"], schema=job["schema"])
+                else:
+                    self._fail(record, job, "Recovery requires the saved request and schema; restore them or explicitly retry this task.")
+                    continue
+                job["status"] = "QUEUED"
             if job["status"] == "DISPATCHING":
                 self._stage_renders(story, scene, target, record, job, job["result"])
                 job["status"] = "COMPLETE"

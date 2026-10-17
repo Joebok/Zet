@@ -10,7 +10,7 @@ import shutil
 import socket
 from uuid import uuid4
 
-from zet.services.atomic_file_service import write_json_atomic
+from zet.services.atomic_file_service import write_json_atomic, read_json
 from zet.services.config_service import Config
 from zet.services.file_proxy_client import FileProxyClient
 from zet.services.ai_queue_paths import queue_local_state_root
@@ -43,14 +43,23 @@ class AIQueueLifecycleService:
         return self.receipt_root / f"{hashlib.sha256(job_id.encode('utf-8')).hexdigest()}.json"
 
     def read_receipt(self, job_id: str) -> dict:
+        from zet.services.storage_health_service import guard_path
+        guard_path(self.root)
         try:
-            value = json.loads(self.receipt_path(job_id).read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
+            value = read_json(self.receipt_path(job_id))
+        except FileNotFoundError:
+            guard_path(self.root, force=True)
             return {}
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Receipt is unreadable; preserve the result for recovery: {self.receipt_path(job_id)}") from exc
         return value if isinstance(value, dict) else {}
 
     def write_receipt(self, job_id: str, receipt: dict) -> None:
         write_json_atomic(self.receipt_path(job_id), receipt)
+        from zet.services.storage_health_service import remember_request
+        state = str(receipt.get("status", "APPLIED"))
+        remember_request(self.config, job_id, status="SUPERSEDED" if "SUPERSEDED" in state else
+                         "FAILED" if "FAIL" in state else "COMPLETE", completed_at=receipt.get("recorded_at", ""))
 
     def drain_answer(self, source: Path, client: FileProxyClient) -> Path:
         from zet.services.workflow_storage import file_lock
@@ -116,6 +125,8 @@ class AIQueueLifecycleService:
     def finish_answer(self, answer_path: Path, receipt: dict) -> None:
         from zet.services.workflow_storage import file_lock
         with file_lock(self.lock_path(answer_path.name)):
+            if self.read_receipt(answer_path.name):
+                return
             self._finish_answer(answer_path, receipt)
 
     def _finish_answer(self, answer_path: Path, receipt: dict) -> None:

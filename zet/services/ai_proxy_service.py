@@ -762,7 +762,22 @@ class AIProxyService:
             reference_files,
             consumer,
         )
-        ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
+        reserved = manifest.get("transport_job_id")
+        if reserved:
+            self.ai_proxy_path_service.jobs.validate_id(reserved)
+            ask_manifest["ask_id"] = reserved
+            client = self.ai_proxy_path_service.file_proxy_client
+            if client.ready_path(reserved).is_dir():
+                return client.ready_path(reserved)
+            ask_path = client.staging_path(reserved)
+            ask_path.mkdir(parents=True, exist_ok=True)
+            previous = self._read_json_if_exists(ask_path / "ask_manifest.json")
+            for key in ("ollama_attempt_id", "expected_output", "target_output_file"):
+                if previous.get(key):
+                    ask_manifest[key] = previous[key]
+            ask_manifest["ad_hoc_child_index"] = manifest["ad_hoc_child_index"]
+        else:
+            ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
         ask_manifest["workflow"] = manifest.get("workflow") or ask_manifest.get("pipeline") or "Image Generation"
         ask_manifest.update({key: value for key, value in manifest.get("ai_owner", {}).items()
                              if key in {"session_id", "candidate_id", "revision_id"}})

@@ -174,3 +174,6 @@ Scene `use_universe_style` defaults true on creation; records missing the flag n
 Synthesis, including composite harmonization, receives the effective style. Job detail/provenance freeze that source and text; retries reuse frozen inputs. A Render job attributes style to its saved prompt provenance, rather than claiming to adopt newer settings. Write Prompt is required to adopt subsequent style changes. Rendering does not silently rewrite existing prompts. See [ADR 0012](../DECISIONS/0012-universe-style-and-reconstruction.md). Existing S1/S3 and disposable compatibility/override checks passed; live artistic fidelity is unverified.
 
 Shared transport, receipts, foreground/background collection and model selection are owned by [Shared AI jobs](AI_JOBS.md).
+
+## Interrupted submission recovery (2026-10-17)
+Text request/schema intent is saved before publication. SUBMITTING jobs reattach to existing transport or resume publication using saved request/candidate identity; replacement execution stays behind the common logical AI job interface. Storage exceptions suspend work instead of becoming permanent provider/content errors. See [storage recovery](STORAGE_RECOVERY.md).

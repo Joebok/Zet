@@ -46,3 +46,6 @@ The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and r
 - `Docs-Joe/`: preserved design/research material. Useful intent sources include [V5 direction](../Docs-Joe/Zet%20V5%20Realignment.md), [library proposal](../Docs-Joe/Library%20Structure.md), [view tagging](../Docs-Joe/ZET_View_Conditioned_Template_Tagging_Spec.md), [Narrative phase 2](../Docs-Joe/Narrative_Scenes_Phase_2.md), and [reference caching](../Docs-Joe/ComfyUI_Reference_Cache.md). Proposals are not evidence that a feature is implemented; `Docs-Joe/archive/` is historical.
 
 Keep links repository-relative, use stable module/symbol references, and maintain the document that owns the changed concept. See AGENTS for the before/during/after maintenance workflow and Development for known verification gaps.
+
+## Removable storage recovery (2026-10-17)
+[Storage recovery](COMPONENTS/STORAGE_RECOVERY.md) owns outage classification, local evidence, startup/polling reconciliation, fresh attempts, and verification limits.

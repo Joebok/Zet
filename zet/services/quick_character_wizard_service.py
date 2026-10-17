@@ -172,6 +172,8 @@ class QuickCharacterWizardService:
                 image.verify()
                 extension = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}[image.format]
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             raise QuickCharacterWizardError("Choose a readable PNG, JPEG, or WEBP reference.") from exc
         return data, extension
 
@@ -223,7 +225,7 @@ class QuickCharacterWizardService:
     def _submit(self, sid: str, target, *args) -> None:
         key = self._key(sid)
         with _LOCK:
-            if key in _ACTIVE:
+            if key in _ACTIVE or self._pending_workflow(sid):
                 raise QuickCharacterWizardConflict("A wizard task is already running.")
             _ACTIVE.add(key)
 
@@ -231,6 +233,8 @@ class QuickCharacterWizardService:
             try:
                 target(sid, *args)
             except Exception as exc:
+                from zet.services.storage_health_service import pause_on_storage_error
+                pause_on_storage_error(self.app.config, exc)
                 with self._lock(sid):
                     session = self._read(sid)
                     if session["status"] not in {"ABANDONED", "ACCEPTED"}:
@@ -246,7 +250,11 @@ class QuickCharacterWizardService:
                 with _LOCK:
                     _ACTIVE.discard(key)
         from zet.services.ai_workflow_service import AIWorkflowService
-        AIWorkflowService(self.app).submit(target, [sid, *args], service="minor", initial=run)
+        try:
+            AIWorkflowService(self.app).submit(target, [sid, *args], service="minor", initial=run)
+        finally:
+            with _LOCK:
+                _ACTIVE.discard(key)
 
     def _ask(self, prompt: str, schema: dict, images: list[str], model: str | None = None) -> dict:
         model = model or self.app.config.ai_quick_character_wizard_model
@@ -510,6 +518,8 @@ class QuickCharacterWizardService:
                 candidate["view_context"] = context
             self._dispatch_candidate(sid, candidate, payload)
         except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
             with self._lock(sid):
                 current = self._read(sid)
                 if current["status"] not in {"ABANDONED", "ACCEPTED"}:
@@ -702,6 +712,8 @@ class QuickCharacterWizardService:
                 except OSError as exc:
                     c["error"] = f"Image collection is temporarily unavailable: {exc}"
                 except Exception as exc:
+                    from zet.services.storage_health_service import pause_on_storage_error
+                    pause_on_storage_error(self.app.config, exc)
                     c.update(status="FAILED", error=str(exc))
                     session["status"] = "FAILED"
                 self._write(session)
