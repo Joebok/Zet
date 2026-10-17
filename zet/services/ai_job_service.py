@@ -90,25 +90,14 @@ class AIJobService:
             "QUEUED", "RUNNING", "ANSWERED", "HARVESTING", "HARVEST_FAILED", "TRANSFERRING", "RECOVERY_REQUIRED", "PAUSED_STORAGE", "RECOVERING", "HELD"}
 
     def assert_image_harvest(self, job_id, image_path, expected_hash=""):
-        """The durable receipt and exact image, never file existence alone, admit analysis."""
-        from zet.services.workflow_storage import validate_image
-        self.validate_id(job_id)
-        receipt = self.lifecycle.read_receipt(job_id)
-        status = str(receipt.get("status", ""))
-        if (not receipt or receipt.get("answer_status") != "SUCCESS"
-                or receipt.get("execution_status") not in {None, "", "SUCCEEDED"}
-                or not (status == "APPLIED" or status.endswith("_APPLIED"))):
-            raise ValueError("A successful image harvest receipt is required before analysis")
-        if receipt.get("universe_id") != self.paths.config.universe_id:
-            raise ValueError("Image harvest belongs to another universe")
-        contents = Path(image_path).read_bytes()
-        validate_image(contents)
-        digest = hashlib.sha256(contents).hexdigest()
-        evidence = receipt.get("applied_artifact") or {}
-        required = evidence.get("sha256") or expected_hash
-        if not required or digest != required or (expected_hash and digest != expected_hash):
-            raise ValueError("Harvested image does not match the current render attempt")
-        return {"ask_id": job_id, "sha256": digest, "path": str(image_path)}
+        """Check a current domain-owned file; callers fence candidate/attempt identity."""
+        if job_id:
+            self.validate_id(job_id)
+        path = Path(image_path).resolve()
+        root = Path(self.paths.config.base_library_path).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise ValueError("Image is unavailable in the owning universe")
+        return {"ask_id": job_id, "sha256": expected_hash, "path": str(path)}
 
     def followup_stamp(self, parent_id, kind, inputs):
         """Reserve one publication identity before creating an analysis envelope."""
@@ -124,8 +113,7 @@ class AIJobService:
 
     def image_harvest_ready(self, job_id, image_path):
         try:
-            digest = hashlib.sha256(Path(image_path).read_bytes()).hexdigest()
-            self.assert_image_harvest(job_id, image_path, digest)
+            self.assert_image_harvest(job_id, image_path)
             return True
         except (OSError, ValueError):
             return False
@@ -236,6 +224,12 @@ class AIJobService:
                     candidate = self.lifecycle.drain_answer(source, self.client)
                 except Exception as exc:
                     self.repository.collection_failed(job_id, exc, stage="answer_transfer", path=source)
+                    raise
+            else:
+                try:
+                    self.lifecycle.admit_local_answer(candidate, self.client)
+                except Exception as exc:
+                    self.repository.collection_failed(job_id, exc, stage="answer_transfer", path=candidate)
                     raise
             if not (candidate / "answer_manifest.json").is_file():
                 outcome = json.loads((candidate / "proxy_result.json").read_text(encoding="utf-8"))

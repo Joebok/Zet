@@ -38,10 +38,10 @@ def publish_quick_character(app, session: dict, directory: Path, *, views=None) 
             source = library.get_asset(source_id)
         except EntityLibraryServiceError as exc:
             raise QuickCharacterWizardConflict("The primary library source is unavailable. Start a new wizard.") from exc
-        if source["status"] == "archived" or source["checksum"] != primary["checksum"]:
+        if source["status"] == "archived" or source["checksum"] != primary.get("managed_checksum", primary["checksum"]):
             raise QuickCharacterWizardConflict("The primary library source changed. Start a new wizard from the current image.")
-        if hashlib.sha256(Path(source["image_path"]).read_bytes()).hexdigest() != primary["checksum"]:
-            raise QuickCharacterWizardConflict("The primary source image changed outside the library.")
+        if not Path(source["image_path"]).is_file():
+            raise QuickCharacterWizardConflict("The primary source image is unavailable.")
         source_links = [link for link in source["entities"] if link["role"] in {"primary_subject", "depicted_subject"}]
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     assets = []
@@ -61,7 +61,7 @@ def publish_quick_character(app, session: dict, directory: Path, *, views=None) 
         asset_id = stable_id(view)
         outputs[view] = asset_id
         assets.append({"asset_id": asset_id, "label": session["name"] + " · " + view.replace("_3_4", " 3/4").replace("_", " ").title(),
-                       "filename": candidate["filename"], "view": view.lower(), "prompt": candidate["prompt"],
+                       "filename": candidate["filename"], "view": view.lower(), "prompt": candidate.get("prompt", ""),
                        "negative": "multiple characters, extra limbs, mirrored asymmetry, text, labels, collage",
                        "candidate": candidate})
     created_files = []
@@ -77,11 +77,9 @@ def publish_quick_character(app, session: dict, directory: Path, *, views=None) 
                 width, height = image.size
             path = library.images_root / (asset["asset_id"] + extension)
             checksum = hashlib.sha256(data).hexdigest()
-            if path.exists():
-                if hashlib.sha256(path.read_bytes()).hexdigest() != checksum:
-                    raise QuickCharacterWizardConflict("A saved wizard image differs from this selection.")
-            else:
-                path.write_bytes(data)
+            if not path.exists():
+                from zet.services.atomic_file_service import write_bytes_atomic
+                write_bytes_atomic(path, data)
                 created_files.append(path)
             asset.update(path=path, checksum=checksum, mime_type=mime_type, width=width, height=height)
         with library.repository.transaction() as connection:
@@ -153,6 +151,6 @@ def publish_quick_character(app, session: dict, directory: Path, *, views=None) 
             path.unlink(missing_ok=True)
         raise
     # If index refresh fails, a retry reuses the committed IDs and refreshes again.
-    app.refresh_library_index()
+    app.request_library_index_refresh()
     return {"set_id": set_id, "source_asset_id": source_id, "asset_ids": outputs,
             "tags": {view: f"{{{{LIB:ASSET:{aid}}}}}" for view, aid in outputs.items()}}

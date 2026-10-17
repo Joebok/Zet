@@ -179,7 +179,7 @@ class LocalPromptImprovementService:
             if ai.get("status") != "COMPLETE":
                 continue
             images, _ = self._images(run, view)
-            hashes = {item["candidate_id"]: _hash(path) for item, path in images}
+            hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item, path in images}
             if hashes != ai.get("input_hashes"):
                 ai["status"] = "STALE"
                 ai["stale_reason"] = "View images changed after analysis."
@@ -212,7 +212,7 @@ class LocalPromptImprovementService:
             if automatic:
                 return run
             raise ValueError("No rendered images are available for this view.")
-        hashes = {item["candidate_id"]: _hash(path) for item, path in images}
+        hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item, path in images}
         job_id = uuid4().hex
         with _ACTIVE_LOCK:
             _ACTIVE_JOBS.add(job_id)
@@ -252,7 +252,7 @@ class LocalPromptImprovementService:
             run = self.detail(run_id, costume)
             images, _ = self._images(run, view)
             images = [(item, path) for item, path in images if item["candidate_id"] in hashes]
-            if {item["candidate_id"]: _hash(path) for item, path in images} != hashes:
+            if {item["candidate_id"]: str(item.get("image_sha256") or "") for item, path in images} != hashes:
                 raise ValueError("View images changed before analysis started.")
             self._save_ai(run, view, job_id, {"status": "RUNNING", "started_at": _now()})
             prompt = self._analysis_prompt(run, view, images, missing)
@@ -267,7 +267,7 @@ class LocalPromptImprovementService:
                 raise ValueError("The model returned empty observations.")
             latest = self.detail(run_id, costume)
             current, _ = self._images(latest, view)
-            current_hashes = {item["candidate_id"]: _hash(path) for item, path in current}
+            current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item, path in current}
             self._save_ai(latest, view, job_id, {"status": "COMPLETE" if current_hashes == hashes else "STALE",
                 "text": observations, "input_hashes": hashes, "missing_candidates": missing,
                 "model": str(getattr(self.adapter.app.config, "codex_default_model", "gpt-6-luna")),

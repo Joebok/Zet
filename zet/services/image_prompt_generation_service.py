@@ -70,8 +70,8 @@ class ImagePromptGenerationService:
         asset = self.zet_app.entity_library_asset(asset_id)
         if asset.get("status") == "archived":
             raise ValueError("Archived images cannot be analyzed.")
-        if hashlib.sha256(Path(asset["image_path"]).read_bytes()).hexdigest() != asset["checksum"]:
-            raise ValueError("The image changed outside the library. Refresh the inventory before analysis.")
+        if not Path(asset["image_path"]).is_file():
+            raise ValueError("The image is unavailable.")
         job_id = uuid4().hex
         job = {"job_id": job_id, "asset_id": asset_id, "checksum": asset["checksum"], "kind": kind,
                "status": "RUNNING", "draft": None, "error": "", "existing_prompt": asset.get("prompt", ""),
@@ -96,8 +96,7 @@ class ImagePromptGenerationService:
         if result["status"] == "COMPLETE":
             try:
                 current = self.zet_app.entity_library_asset(result["asset_id"])
-                if (current.get("checksum") != result["checksum"]
-                        or hashlib.sha256(Path(current["image_path"]).read_bytes()).hexdigest() != result["checksum"]):
+                if current.get("checksum") != result["checksum"]:
                     action = "Generate Identity" if result["kind"] == "identity" else "Generate Prompt"
                     result.update(status="FAILED", error=f"The image changed during analysis. Run {action} again.")
             except Exception:

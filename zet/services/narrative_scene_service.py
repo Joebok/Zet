@@ -1,6 +1,5 @@
 """Authoring and image ownership for narrative scenes, independent of Scene Builder."""
 from dataclasses import asdict
-import json
 from pathlib import Path
 
 from zet.models.narrative import NarrativeElement, NarrativeScene, NarrativeStory, NarrativeTarget
@@ -27,13 +26,10 @@ class NarrativeSceneService:
     def __init__(self, zet_app):
         self.app = zet_app
         self.repository = NarrativeRepository(zet_app.config.base_library_path)
+        self.repository.usage_provider = lambda: getattr(self.app, "entity_library_service", None)
 
     def persist(self, record, story: str, scene: str = "", target: str = "") -> dict:
-        data = self.repository.write(record, story, scene, target)
-        library = getattr(self.app, "entity_library_service", None)
-        if library is not None:
-            library.refresh_usages(self.app.config.base_library_path)
-        return data
+        return self.repository.write(record, story, scene, target)
 
     def stories(self) -> list[dict]:
         with self.repository.lock():
@@ -87,13 +83,6 @@ class NarrativeSceneService:
                 asset = self.app.entity_library_service.resolve_reference(element["reference_key"])
             except EntityLibraryServiceError as exc:
                 raise ValueError(str(exc)) from exc
-            if "costume-dressing" in element["reference_key"]:
-                root = Path(self.app.config.base_library_path) / "_state" / "LocalAssets"
-                for store in root.glob("*/*/local_assets.json"):
-                    records = json.loads(store.read_text(encoding="utf-8")).get("assets", {})
-                    if any(record.get("entity_library_asset_id") == asset["asset_id"] and record.get("stale")
-                           for record in records.values()):
-                        raise ValueError("Current costume reference is stale; choose an approved replacement.")
             return self.library_asset(asset["asset_id"])
         if element.get("asset_id"):
             return self.library_asset(element["asset_id"])
@@ -132,13 +121,14 @@ class NarrativeSceneService:
                 element = asdict(NarrativeElement(str(data.get("name") or "New element")))
                 record["elements"].append(element)
             element.setdefault("reference_key", "")
+            previous_binding = (element.get("asset_id"), element.get("reference_key"))
             self._patch(element, data, ("name", "kind", "asset_id", "reference_key", "appearance", "reference_role"))
             if not element["name"].strip() or element["kind"] not in {"subject", "prop", "environment"}:
                 raise ValueError("An element needs a name and subject, prop, or environment type.")
             if element["asset_id"] and element["reference_key"]:
                 raise ValueError("Choose either a library asset or a logical reference.")
             # Unavailable logical bindings are retained in editable migration stubs.
-            if element["asset_id"]:
+            if element["asset_id"] and (not element_id or previous_binding != (element["asset_id"], element["reference_key"])):
                 self.library_asset(element["asset_id"])
             self.persist(record, story, scene)
             return element
@@ -382,7 +372,9 @@ class NarrativeSceneService:
     def delete(self, story: str, scene: str = "", target: str = "", confirmed: list[str] | None = None) -> None:
         with self.repository.lock():
             self.confirm(self.protected_images(story, scene, target), confirmed or [])
-            self.repository.delete(story, scene, target)
+            with self.app.entity_library_service.image_usages.mutation(
+                    self.repository.folder(story, scene, target), tree=True):
+                self.repository.delete(story, scene, target)
             if target:
                 parent = self.repository.read(story, scene)
                 parent["target_ids"].remove(target)
@@ -391,7 +383,6 @@ class NarrativeSceneService:
                 parent = self.repository.read(story)
                 parent["scene_ids"].remove(scene)
                 self.persist(parent, story)
-            self.app.entity_library_service.refresh_usages(self.app.config.base_library_path)
 
     def legacy_location(self, story_slug: str, scene_slug: str = "") -> dict:
         for story in self.repository.stories():

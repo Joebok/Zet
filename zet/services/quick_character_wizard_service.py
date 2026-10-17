@@ -155,8 +155,7 @@ class QuickCharacterWizardService:
             if asset["status"] == "archived":
                 raise QuickCharacterWizardError("Archived references cannot be used.")
             data = Path(asset["image_path"]).read_bytes()
-            if hashlib.sha256(data).hexdigest() != asset["checksum"]:
-                raise QuickCharacterWizardConflict("A library reference changed outside the library. Refresh it first.")
+            item["managed_checksum"] = asset.get("checksum", "")
         else:
             encoded = item.get("image")
             if not isinstance(encoded, str) or len(encoded) > _MAX_BYTES * 4 // 3 + 128:
@@ -208,7 +207,8 @@ class QuickCharacterWizardService:
             (directory / filename).write_bytes(data)
             records.append({"index": index, "asset_id": str(ref.get("asset_id") or ""),
                             "caption": str(ref["caption"]).strip(), "filename": filename,
-                            "checksum": hashlib.sha256(data).hexdigest()})
+                            "checksum": hashlib.sha256(data).hexdigest(),
+                            "managed_checksum": ref.get("managed_checksum", "")})
         session = {"session_id": sid, "name": name, "notes": str(payload.get("notes") or "").strip(),
                    "version": 2, "style_mode": style_mode, "preserve": preserve, "changes": changes,
                    "model": str(payload.get("model") or self.app.config.ai_quick_character_wizard_model),
@@ -287,9 +287,7 @@ class QuickCharacterWizardService:
             refs = []
             for ref, path in zip(self._ordered_references(session), self._reference_paths(session)):
                 contents = Path(path).read_bytes()
-                if hashlib.sha256(contents).hexdigest() != ref["checksum"]:
-                    raise QuickCharacterWizardConflict("A reference snapshot changed. Start a new session.")
-                refs.append(({"asset_id": ref["asset_id"], "caption": ref["caption"], "label": ref["caption"]}, contents))
+                refs.append(({"asset_id": ref["asset_id"], "managed_checksum": ref.get("managed_checksum", ref["checksum"]), "caption": ref["caption"], "label": ref["caption"]}, contents))
             core = self._reconstruction()
             prepared = core.prepare({"model": session["model"], "preserve": session["preserve"],
                 "changes": session["changes"], "notes": session["notes"],
@@ -634,15 +632,9 @@ class QuickCharacterWizardService:
         self._submit(sid, self._review_job, candidate_id)
 
     def _review_harvest(self, sid, candidate):
-        generation = self._generation()
-        request = generation._read_saved_job(candidate.get("render_request_id") or candidate["request_id"])
-        if request is None:
-            raise QuickCharacterWizardError("Render request is unavailable for image review")
-        child = next((item for item in request["children"] if item.get("status") == "COMPLETE" and item.get("done")), None)
-        if child is None:
-            raise QuickCharacterWizardError("Image must be harvested before review")
         return self.app.ai_proxy_service.ai_proxy_path_service.jobs.assert_image_harvest(
-            child["ask_id"], self._directory(sid) / candidate["filename"], candidate["sha256"])
+            candidate.get("render_request_id") or candidate.get("request_id") or "",
+            self._directory(sid) / candidate["filename"], candidate.get("sha256", ""))
 
     @contextmanager
     def _review_admission(self, sid, candidate):
@@ -795,7 +787,4 @@ class QuickCharacterWizardService:
         path = self._directory(sid) / record["filename"]
         if not path.resolve().is_relative_to(self._directory(sid).resolve()) or not path.is_file():
             raise QuickCharacterWizardError("Wizard image is unavailable.")
-        expected = record.get("sha256") or record.get("checksum")
-        if expected and hashlib.sha256(path.read_bytes()).hexdigest() != expected:
-            raise QuickCharacterWizardConflict("A wizard image changed outside the session.")
         return path

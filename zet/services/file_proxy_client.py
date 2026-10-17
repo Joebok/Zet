@@ -203,7 +203,7 @@ class FileProxyClient:
         return inventory
 
     @staticmethod
-    def _inventory_complete(folder: Path, records) -> bool:
+    def _inventory_complete(folder: Path, records, *, verify_hashes: bool = True) -> bool:
         if not isinstance(records, list):
             return False
         try:
@@ -219,8 +219,10 @@ class FileProxyClient:
                 ):
                     return False
                 path = folder.joinpath(*posix.parts)
-                if not path.is_file() or path.stat().st_size != int(record["size"]):
+                if not path.resolve().is_relative_to(folder.resolve()) or not path.is_file() or path.stat().st_size != int(record["size"]):
                     return False
+                if not verify_hashes:
+                    continue
                 digest = hashlib.sha256()
                 with path.open("rb") as handle:
                     for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -269,7 +271,7 @@ class FileProxyClient:
             return "Answer belongs to another producer computer. Harvest it on that computer."
         if job.get("route_required") and not self.load_route(answer.name):
             return "Local route is missing. Restore its Zet_File_Proxy_State/Routes record before harvesting."
-        if not self._inventory_complete(answer, result.get("output_files")):
+        if not self._inventory_complete(answer, result.get("output_files"), verify_hashes=False):
             return "Output transfer is incomplete or its checksum does not match. Preserve the answer and retry transfer."
         return ""
 

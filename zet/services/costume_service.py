@@ -54,12 +54,10 @@ class CostumeService:
 
     def _write_text_atomic(self, path: Path, contents: str) -> None:
         """Replace a text file without exposing a partial write."""
-        temp_path = path.with_name(f"{path.name}.tmp")
-        try:
-            temp_path.write_text(contents, encoding="utf-8")
-            temp_path.replace(path)
-        finally:
-            temp_path.unlink(missing_ok=True)
+        from zet.services.image_usage_service import usage_mutation
+        from zet.services.atomic_file_service import write_text_atomic
+        with usage_mutation(self.path_service, path):
+            write_text_atomic(path, contents)
 
     @staticmethod
     def _replace_costume_paths(value: Any, old_path: str, new_path: str, old_name: str, new_name: str) -> Any:
@@ -479,15 +477,17 @@ class CostumeService:
         updated_contents = self._sync_costume_name(contents, display_name)
         self._check_local_rename(character, phase, existing.name, display_name)
 
-        if old_path != new_path:
-            self._write_text_atomic(new_path, updated_contents)
-            try:
-                old_path.unlink(missing_ok=True)
-            except Exception:
-                new_path.unlink(missing_ok=True)
-                raise
-        else:
-            self._write_text_atomic(old_path, updated_contents)
+        from zet.services.image_usage_service import usage_mutation
+        with usage_mutation(self.path_service, old_path):
+            if old_path != new_path:
+                self._write_text_atomic(new_path, updated_contents)
+                try:
+                    old_path.unlink(missing_ok=True)
+                except Exception:
+                    new_path.unlink(missing_ok=True)
+                    raise
+            else:
+                self._write_text_atomic(old_path, updated_contents)
         self._rename_local_costume_data(character, phase, existing.name, display_name)
         self._rename_turnaround_data(character, phase, existing.name, display_name)
 

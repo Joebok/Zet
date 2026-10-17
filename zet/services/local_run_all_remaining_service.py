@@ -436,7 +436,7 @@ class LocalRunAllRemainingService:
         self._set_batch(campaign_id, index, review_status="RUNNING")
         try:
             for view in views:
-                hashes = {str(item["candidate_id"]): adapter._hash(Path(str(item["image_path"])))
+                hashes = {str(item["candidate_id"]): str(item.get("image_sha256") or "")
                           for item in run.get("candidates") or [] if item.get("view") == view
                           and Path(str(item.get("image_path") or "")).is_file()}
                 evaluation = (run.get("evaluations") or {}).get(view) or {}

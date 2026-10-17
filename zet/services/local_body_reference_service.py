@@ -549,11 +549,11 @@ class LocalBodyReferenceService:
                 continue
             anchor = next((item for item in by_id.values() if item.get("candidate_id") == value.get("front_anchor")), None)
             anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-            anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image and anchor_image.is_file() else ""
+            anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT_VIEW else ""
             candidates_for_view = [item for item in by_id.values() if item.get("view") == view
                                    and item.get("human_review", {}).get("decision") != "reject"
                                    and Path(str(item.get("image_path") or "")).is_file()]
-            current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in candidates_for_view}
+            current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates_for_view}
             if ranking.get("status") in {"COMPLETE", "EMPTY"} and (
                     ranking.get("input_hashes") != current_hashes or ranking.get("anchor_hash", "") != anchor_hash):
                 ranking.update(status="STALE", stale_reason="Candidate set or FRONT anchor changed after ranking.")
@@ -562,7 +562,7 @@ class LocalBodyReferenceService:
             image = Path(str((selected or {}).get("image_path") or ""))
             if selected_id and (not selected or not image.is_file() or ranking.get("status") != "COMPLETE"
                                 or selected_id not in (ranking.get("ordered_candidate_ids") or [])
-                                or ranking.get("input_hashes", {}).get(selected_id) != self._hash(image)):
+                                or ranking.get("input_hashes", {}).get(selected_id) != str((selected or {}).get("image_sha256") or "")):
                 stale_selections.append(view)
         value["stale_selections"] = stale_selections
         if stale_selections and value["status"] not in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "ERROR"}:
@@ -573,34 +573,6 @@ class LocalBodyReferenceService:
             value["status"] = "COMPLETE"
             value["stale_selections"] = []
         value["root"] = str(root)
-        value["local_assets"] = self.asset_store.detail(
-            str(value.get("character") or ""), str(value.get("phase") or "")
-        ).get("assets", {})
-        # Adopt legacy selected candidates into the local asset index without
-        # moving their images or changing their selection/review state.
-        for selected_view, selected_id in (value.get("selected_views") or {}).items():
-            asset_key = self.asset_store.key("Body-Reference", selected_view)
-            if asset_key in value["local_assets"]:
-                continue
-            selected_candidate = next((item for item in value.get("candidates", [])
-                                       if item.get("candidate_id") == selected_id), None)
-            selected_image = Path(str((selected_candidate or {}).get("image_path") or ""))
-            if selected_candidate and selected_image.is_file():
-                dependencies = []
-                if selected_view != FRONT_VIEW:
-                    anchor = next((item for item in value.get("candidates", [])
-                                   if item.get("candidate_id") == value.get("front_anchor")), None)
-                    anchor_image = Path(str((anchor or {}).get("image_path") or ""))
-                    if anchor_image.is_file():
-                        dependencies.append({
-                            "key": self.asset_store.key("Body-Reference", FRONT_VIEW),
-                            "image_sha256": self._hash(anchor_image),
-                        })
-                self.asset_store.record_batch_selection(
-                    str(value["character"]), str(value["phase"]), "Body-Reference", selected_view,
-                    candidate_id=str(selected_id), image_path=selected_image, batch_id=run_id,
-                    dependencies=dependencies,
-                )
         value["local_assets"] = self.asset_store.detail(
             str(value.get("character") or ""), str(value.get("phase") or "")
         ).get("assets", {})
@@ -1217,12 +1189,12 @@ class LocalBodyReferenceService:
         image = Path(str(candidate.get("image_path") or ""))
         if candidate.get("status") not in {"WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW", "COMPLETE"} or not image.is_file():
             raise LocalBodyReferenceError("Analysis requires a rendered candidate image.")
-        if input_hashes.get("candidate") != self._hash(image):
+        if input_hashes.get("candidate") != str(candidate.get("image_sha256") or ""):
             raise LocalBodyReferenceError("Analysis input hash does not match the candidate image.")
         if candidate["view"] != FRONT_VIEW:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
             anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-            if anchor_image is None or not anchor_image.is_file() or input_hashes.get("front_anchor") != self._hash(anchor_image):
+            if anchor_image is None or not anchor_image.is_file() or input_hashes.get("front_anchor") != str((anchor or {}).get("image_sha256") or ""):
                 raise LocalBodyReferenceError("Analysis front-anchor hash is missing or stale.")
         analysis = {**result, "provider": provider, "input_hashes": dict(input_hashes), "recorded_at": self._now()}
         state = self._read_json((self._root(run_id) / "state.json"))
@@ -1416,7 +1388,7 @@ class LocalBodyReferenceService:
             "response_schema": self.analysis_schema(), "expected_output": "response.json", "task_type": "local_body_reference_analysis",
             "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
             "local_body_reference_run_id": run_id, "candidate_id": candidate_id,
-            "input_hashes": {"candidate": self._hash(image), "front_anchor": self._hash(anchor_image) if anchor_image and anchor_image.is_file() else ""},
+            "input_hashes": {"candidate": str(candidate.get("image_sha256") or ""), "front_anchor": str((anchor or {}).get("image_sha256") or "") if anchor_image and anchor_image.is_file() else ""},
         }
         (staging / "ask_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         proxy.publish(staging, ask_id, "ollama_generate")
@@ -1599,7 +1571,7 @@ class LocalBodyReferenceService:
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
-        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in candidates}
+        hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
         previous = (run.get("evaluations") or {}).get(view) or {}
         if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
             self.reconcile_review_jobs(run_id)
@@ -1700,12 +1672,12 @@ class LocalBodyReferenceService:
         state = self._read_json((root / "state.json"))
         previous = dict((state.get("rankings") or {}).get(view) or {})
         if previous.get("status") == "COMPLETE" and not evaluation_id:
-            current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in survivors}
-            current_anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image else ""
+            current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in survivors}
+            current_anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT_VIEW else ""
             if previous.get("input_hashes") == current_hashes and previous.get("anchor_hash", "") == current_anchor_hash:
                 return run
-        current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"]))) for item in survivors}
-        current_anchor_hash = self._hash(anchor_image) if view != FRONT_VIEW and anchor_image else ""
+        current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in survivors}
+        current_anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT_VIEW else ""
         if not survivors:
             ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [],
                        "input_hashes": {}, "anchor_hash": current_anchor_hash,
@@ -1769,7 +1741,7 @@ class LocalBodyReferenceService:
                 return
             latest = self.detail(run_id)
             ranked_candidate_ids = set(current_hashes)
-            hashes_now = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
+            hashes_now = {item["candidate_id"]: str(item.get("image_sha256") or "")
                           for item in latest["candidates"] if item.get("view") == view
                           and item["candidate_id"] in ranked_candidate_ids
                           and Path(str(item.get("image_path") or "")).is_file()}
@@ -1803,7 +1775,7 @@ class LocalBodyReferenceService:
                 return
             run = self.detail(run_id)
             ranked_candidate_ids = set(input_hashes)
-            current = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
+            current = {item["candidate_id"]: str(item.get("image_sha256") or "")
                        for item in run["candidates"] if item.get("view") == view
                        and item["candidate_id"] in ranked_candidate_ids
                        and Path(str(item.get("image_path") or "")).is_file()}
@@ -1924,7 +1896,7 @@ class LocalBodyReferenceService:
         if not image.is_file():
             raise LocalBodyReferenceError("The candidate image is missing.")
         if auto_approved and (ranking.get("status") != "COMPLETE"
-                              or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
+                              or ranking.get("input_hashes", {}).get(candidate_id) != str(candidate.get("image_sha256") or "")):
             raise LocalBodyReferenceError("Autogenerate requires a current FRONT ranking.")
         previous_id = selected.get(view)
         if previous_id != candidate_id:
@@ -1945,7 +1917,7 @@ class LocalBodyReferenceService:
                 self._mark_downstream_review_stale(run, state)
                 if state.get("status") not in ACTIVE_RUN_STATUSES:
                     state.update(status="READY_FOR_VIEWS", target_views=[], target_candidate_ids=[])
-        image_hash = self._hash(image)
+        image_hash = str(candidate.get("image_sha256") or "")
         dependencies = []
         if view != FRONT_VIEW:
             anchor = next((item for item in run["candidates"]
@@ -1954,7 +1926,7 @@ class LocalBodyReferenceService:
             if anchor_image and anchor_image.is_file():
                 dependencies.append({
                     "key": self.asset_store.key("Body-Reference", FRONT_VIEW),
-                    "image_sha256": self._hash(anchor_image),
+                    "image_sha256": str((anchor or {}).get("image_sha256") or ""),
                 })
         self.asset_store.record_batch_selection(
             run["character"], run["phase"], "Body-Reference", view,
@@ -2488,7 +2460,7 @@ class LocalBodyReferenceService:
             "codex:" + self.app.config.codex_default_model.removeprefix("codex:"), "", prompt,
             self.analysis_schema(), images, task_type="local_body_reference_review",
             owner={"run_id": run_id, "candidate_id": candidate_id})
-        hashes = {"candidate": self._hash(image), "front_anchor": self._hash(images[0]) if len(images) == 2 else ""}
+        hashes = {"candidate": str(candidate.get("image_sha256") or ""), "front_anchor": str((anchor or {}).get("image_sha256") or "") if len(images) == 2 else ""}
         self.record_analysis(run_id, candidate_id, "luna", result, hashes)
         return {"provider": "luna", "status": "COMPLETE", "elapsed_seconds": round(time.perf_counter() - started, 3), "result": result}
 

@@ -29,7 +29,7 @@ flowchart LR
     Apply --> Receipt[Durable receipt and cleanup/debug retention]
 ```
 
-`publish` copies/localizes absolute input paths and ordered references, externalizes absolute output routes, writes a file inventory, and renames staging to ready. Local routing is required for jobs that need it; portable bundles do not carry arbitrary machine output paths. Readiness checks reject incomplete or hash/size-invalid payloads rather than assuming any Answer folder is complete.
+`publish` copies/localizes absolute input paths and ordered references, externalizes absolute output routes, writes a file inventory, and renames staging to ready. Local routing is required for jobs that need it; portable bundles do not carry arbitrary machine output paths. Status/readiness checks inspect metadata and file sizes. Collection verifies inventory hashes while copying to hidden local staging, records local admission, then publishes atomically. Incomplete/mismatched transfers retain the shared answer for retry; admitted local files are not repeatedly rehashed.
 
 `drain_answer` verifies direct-child location, symlink restrictions, matching producer, readiness, and equal copied contents before removing the shared source. Copy failure leaves the source available. Receipts handle a leftover shared duplicate; debug retention preserves selected local payload when enabled.
 

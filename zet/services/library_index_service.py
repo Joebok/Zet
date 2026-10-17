@@ -60,6 +60,7 @@ class LibraryIndexService:
         self._reconcile_lock = threading.Lock()
         self.last_scan_metrics = {"parsed_sources": 0, "reused_sources": 0}
         self.list_items_provider: Callable[[], Sequence[Mapping]] | None = None
+        self.usage_maintenance: Callable[[], None] | None = None
 
     @staticmethod
     def _fingerprint(contents: bytes) -> str:
@@ -704,7 +705,7 @@ class LibraryIndexService:
             resolved = Path(path).resolve()
             key = self.dependency_path(resolved)
             try:
-                result[key] = self._fingerprint(resolved.read_bytes())
+                result[key] = self._file_dependency_fingerprint(resolved)
             except FileNotFoundError:
                 from zet.services.storage_health_service import guard_path
                 guard_path(resolved, force=True)
@@ -725,11 +726,26 @@ class LibraryIndexService:
         if resolved is None:
             return "unresolvable"
         try:
-            return self._fingerprint(resolved.read_bytes())
+            return self._file_dependency_fingerprint(resolved)
         except FileNotFoundError:
             from zet.services.storage_health_service import guard_path
             guard_path(resolved, force=True)
             return "missing"
+
+    def _file_dependency_fingerprint(self, path: Path) -> str:
+        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".bin"}:
+            if not path.is_file():
+                raise FileNotFoundError(str(path))
+            if path.parent == self.paths.entity_library_images_path():
+                from zet.repositories.entity_library_repository import EntityLibraryRepository
+                database = self.paths.entity_library_database_path()
+                if database.is_file():
+                    row = EntityLibraryRepository(database).fetchone(
+                        "SELECT checksum,status FROM assets WHERE file_name=?", (path.name,))
+                    if row:
+                        return "managed:" + json.dumps(row, sort_keys=True)
+            return "available"
+        return self._fingerprint(path.read_bytes())
 
     def record_compilation(
         self,
@@ -856,9 +872,11 @@ class LibraryIndexReconciler:
         self.service = service
         self.interval_seconds = interval_seconds
         self._stop = threading.Event()
-        self._wait = wait or self._stop.wait
+        self._wake = threading.Event()
+        self._wait = wait or self._wake.wait
         self._thread: threading.Thread | None = None
         self._status_lock = threading.Lock()
+        self._start_lock = threading.Lock()
         self._last_result: dict | None = None
         self._last_error = ""
         self._running = False
@@ -870,10 +888,29 @@ class LibraryIndexReconciler:
                     "last_error": self._last_error}
 
     def run_cycle(self) -> dict:
+        if self.service.usage_maintenance:
+            try:
+                self.service.usage_maintenance()
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Pending image usage maintenance will retry")
         return self.service.reconcile()
+
+    def request_refresh(self) -> None:
+        self._wake.set()
+        try:
+            self.start()
+        except Exception as exc:
+            # The primary write has already committed. Retain diagnostics and
+            # let the ordinary lifecycle/recovery start the worker again.
+            with self._status_lock:
+                self._last_error = str(exc)
 
     def _run(self) -> None:
         while not self._stop.is_set():
+            self._wake.clear()
+            if self._stop.wait(0.25):
+                break
             with self._status_lock:
                 self._running = True
                 self._last_error = ""
@@ -887,17 +924,18 @@ class LibraryIndexReconciler:
             finally:
                 with self._status_lock:
                     self._running = False
-            if self._wait(self.interval_seconds):
-                break
+            self._wait(self.interval_seconds)
 
     def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
-            return
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="zet-library-index-reconciler", daemon=True)
-        self._thread.start()
+        with self._start_lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._stop.clear()
+            self._thread = threading.Thread(target=self._run, name="zet-library-index-reconciler", daemon=True)
+            self._thread.start()
 
     def stop(self) -> None:
         self._stop.set()
+        self._wake.set()
         if self._thread is not None:
             self._thread.join(timeout=5)

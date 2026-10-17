@@ -76,21 +76,26 @@ class LocalAssetStoreService:
         return {"character": character, "phase": phase, "assets": value.get("assets", {})}
 
     def locked_assets(self, character: str, phase: str, pipeline: str = "", qualifier: str = "") -> list[dict[str, Any]]:
-        """Return only verified locked assets for downstream local pipelines."""
+        """Return published locks whose permanent files are available."""
         records = self.detail(character, phase)["assets"]
+        from zet.repositories.entity_library_repository import EntityLibraryRepository
+        database = self.library_root / "catalog.sqlite3"
+        archived = set()
+        ids = {r["entity_library_asset_id"] for r in records.values() if r.get("entity_library_asset_id")}
+        if ids and database.is_file():
+            marks = ",".join("?" for _ in ids)
+            archived = {row["asset_id"] for row in EntityLibraryRepository(database).fetchall(
+                f"SELECT asset_id FROM assets WHERE status='archived' AND asset_id IN ({marks})", tuple(ids))}
         result = []
         for key, record in records.items():
             if pipeline and record.get("pipeline", "").lower() != pipeline.lower():
                 continue
             if qualifier and str(record.get("qualifier") or "").lower() != qualifier.lower():
                 continue
-            if not record.get("locked") or record.get("stale"):
-                continue
-            batch_id = str(record.get("batch_id") or "").strip()
-            if batch_id and not self._batch_exists(character, phase, record, batch_id):
+            if not record.get("locked") or record.get("entity_library_asset_id") in archived:
                 continue
             path = Path(str(record.get("locked_image_path") or "")).resolve()
-            if not path.is_file() or self._image_hash(path) != record.get("image_sha256"):
+            if not path.is_relative_to(self.library_root) or not path.is_file():
                 continue
             result.append({"key": key, **record, "image_path": str(path)})
         return sorted(result, key=lambda item: item["key"])
@@ -112,36 +117,11 @@ class LocalAssetStoreService:
         for view in views:
             record = locks.get(view) or {}
             candidate = candidates.get(selected[view]) or {}
-            image = Path(str(candidate.get("image_path") or ""))
             if (record.get("batch_id") != run["run_id"]
                     or record.get("candidate_id") != selected[view]
-                    or candidate.get("view") != view or not image.is_file()
-                    or self._image_hash(image) != record.get("image_sha256")):
+                    or (candidate and candidate.get("view") != view)):
                 return False
         return True
-
-    def _batch_exists(self, character: str, phase: str, record: dict[str, Any], batch_id: str) -> bool:
-        """Require batch-owned locks to point at a live pipeline batch."""
-        if not re.fullmatch(r"(?:[0-9a-f]{32}|[0-9]{8}_[0-9]{6}_[0-9]{6})", batch_id):
-            return False
-        safe_character, safe_phase = self._safe(character), self._safe(phase)
-        pipeline = str(record.get("pipeline") or "").casefold()
-        batch_root = self.root / safe_character / safe_phase
-        if pipeline == "body-reference":
-            batch_root /= batch_id
-        elif pipeline == "head-image":
-            batch_root = batch_root / "Head-Image" / batch_id
-        elif pipeline == "character-assembly":
-            batch_root = batch_root / "Character-Assembly" / batch_id
-        elif pipeline == "costume-dressing":
-            raw_qualifier = str(record.get("qualifier") or "")
-            if not raw_qualifier:
-                return False
-            qualifier = self._safe(raw_qualifier)
-            batch_root = batch_root / "Costume-Dressing" / qualifier / batch_id
-        else:
-            return False
-        return (batch_root / "spec.json").is_file()
 
     @staticmethod
     def _image_hash(path: Path) -> str:
@@ -267,8 +247,9 @@ class LocalAssetStoreService:
             if not record or not record.get("selected") or record.get("stale"):
                 raise LocalAssetStoreError(f"Select a reviewed {key} candidate before locking it.")
             source = Path(str(record.get("image_path") or "")).resolve()
-            if not source.is_file() or self._image_hash(source) != record.get("image_sha256"):
-                raise LocalAssetStoreError(f"Selected image for {key} is missing or has changed; review it again.")
+            if not source.is_relative_to(self.library_root) or not source.is_file():
+                raise LocalAssetStoreError(f"Selected image for {key} is missing.")
+            record["image_sha256"] = self._image_hash(source)
             try:
                 published = self._publish(source, character=character, phase=phase, pipeline=pipeline,
                                           checksum=record["image_sha256"], qualifier=qualifier, view=view,
@@ -299,9 +280,9 @@ class LocalAssetStoreService:
                 pipeline, view = str(item["pipeline"]), str(item["view"]).upper()
                 qualifier = str(item.get("qualifier") or "")
                 image = Path(str(item["image_path"])).resolve()
-                digest = str(item["image_sha256"])
-                if not image.is_file() or self._image_hash(image) != digest:
-                    raise LocalAssetStoreError(f"Selected image for {pipeline} {view} is missing or changed.")
+                if not image.is_relative_to(self.library_root) or not image.is_file():
+                    raise LocalAssetStoreError(f"Selected image for {pipeline} {view} is missing.")
+                digest = self._image_hash(image)
                 key = self.key(pipeline, view, qualifier)
                 staged.append((key, item, image, Path(), digest))
 
@@ -321,8 +302,8 @@ class LocalAssetStoreService:
                     except Exception as exc:
                         raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
                     locked_path = Path(published["image_path"])
-                    if self._image_hash(locked_path) != digest:
-                        raise LocalAssetStoreError(f"Could not verify permanent image for {key}.")
+                    if not locked_path.is_file():
+                        raise LocalAssetStoreError(f"Could not publish permanent image for {key}.")
                     reference_key = (published.get("logical_reference") or {}).get("reference_key", "")
                     published_assets.append((key, item, image, locked_path, digest, published["asset_id"], reference_key))
             result = []

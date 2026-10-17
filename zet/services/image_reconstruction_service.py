@@ -98,8 +98,7 @@ class ImageReconstructionService:
             if asset.get("status") == "archived":
                 raise ValueError("Choose an available source image.")
             contents = Path(asset["image_path"]).read_bytes()
-            if hashlib.sha256(contents).hexdigest() != asset["checksum"]:
-                raise ValueError("The source changed outside the library. Refresh it first.")
+            source["managed_checksum"] = asset.get("checksum", "")
             source["label"] = asset.get("label", asset_id)
         else:
             encoded = str(payload.get("image") or "")
@@ -129,13 +128,12 @@ class ImageReconstructionService:
         identity = fingerprint({"model": model, "payload": payload, "style": style,
             "owner": {"universe_id": self.app.universe_id, "workflow_id": context["id"] if context else "",
                       **(context["owner"] if context else {})},
-            "references": [{"metadata": metadata, "sha256": hashlib.sha256(contents).hexdigest()}
-                           for metadata, contents in references]})
+            "references": [metadata for metadata, _ in references]})
         with file_lock(directory / ".prepare.lock"):
             marker = directory / "preparation.json"
             if marker.is_file():
                 saved = json.loads(marker.read_text(encoding="utf-8"))
-                if saved.get("identity") != identity:
+                if saved.get("identity_version") == 2 and saved.get("identity") != identity:
                     raise ValueError("Reconstruction preparation inputs changed during continuation")
             elif self._path(job_id).is_file():
                 # Old deterministic continuations have no preparation marker. Verify their
@@ -147,10 +145,10 @@ class ImageReconstructionService:
                 expected = target_brief(payload, style, sources)
                 actual = old["target"]
                 if (old["model"] != model or old["style"] != style or any(actual.get(k) != v for k, v in expected.items()
-                        if k not in {"description", "identity", "proposals", "questions", "observations"})):
+                        if k not in {"description", "identity", "proposals", "questions", "observations", "sources"})):
                     raise ValueError("Existing reconstruction does not match the frozen preparation")
                 self.validate_sources(old)
-            write_json_atomic(marker, {"identity": identity})
+            write_json_atomic(marker, {"identity": identity, "identity_version": 2})
             if self._path(job_id).is_file():
                 old = self._read(job_id)
                 self.validate_sources(old)
@@ -178,8 +176,6 @@ class ImageReconstructionService:
         if not path.is_relative_to(directory):
             raise ValueError("Invalid reconstruction snapshot path.")
         contents = path.read_bytes()
-        if hashlib.sha256(contents).hexdigest() != source["sha256"]:
-            raise ValueError("Reconstruction source snapshot changed.")
         return contents
 
     def source_image(self, job_id, index):
@@ -200,8 +196,7 @@ class ImageReconstructionService:
             self._source_bytes(job, source)
             if source.get("asset_id"):
                 asset = self.app.entity_library_asset(source["asset_id"])
-                if (asset.get("status") == "archived" or asset["checksum"] != source["sha256"]
-                        or hashlib.sha256(Path(asset["image_path"]).read_bytes()).hexdigest() != source["sha256"]):
+                if (asset.get("status") == "archived" or asset["checksum"] != source.get("managed_checksum", source["sha256"])):
                     raise ValueError("The library reference changed. Start a new reconstruction.")
 
     def analyze(self, job_id):
@@ -266,7 +261,7 @@ class ImageReconstructionService:
             if (report["status"] != "COMPLETE" and not (instructions.strip() and not item_ids)
                     or report["target_hash"] != job["target_hash"]):
                 raise ValueError("The comparison is not current. Compare this candidate again.")
-            if not references or hashlib.sha256(references[0][1]).hexdigest() != report["candidate_sha256"]:
+            if not references:
                 raise ValueError("The candidate changed after comparison.")
             correction = self.true_up.correction(job["model"], job["target"], report,
                                                 item_ids or [], text(instructions, "Refinement"), context)
@@ -366,7 +361,6 @@ class ImageReconstructionService:
         instructions = text(payload.get("instructions", ""), "Refinement")
         if ((report["status"] != "COMPLETE" and not (instructions and not item_ids))
                 or report["candidate"] != {"selected_result": expected}
-                or hashlib.sha256(contents).hexdigest() != report["candidate_sha256"]
                 or source.get("reconstruction", {}).get("id") != job_id):
             raise ValueError("The comparison does not belong to the current selection.")
         if not isinstance(item_ids, list) or any(not isinstance(i, str) for i in item_ids):
@@ -529,8 +523,7 @@ class ImageReconstructionService:
             self._save(job)
             if job["source"]["asset_id"]:
                 current = self.app.entity_library_asset(job["source"]["asset_id"])
-                if (current.get("status") == "archived" or current["checksum"] != job["source"]["sha256"]
-                        or hashlib.sha256(Path(current["image_path"]).read_bytes()).hexdigest() != current["checksum"]):
+                if (current.get("status") == "archived" or current["checksum"] != job["source"].get("managed_checksum", job["source"]["sha256"])):
                     raise ValueError("The library source changed during analysis. Start a new reconstruction.")
             self.generator.slot_workspace.submit_reconstruction(job_id, {
                 "mode": "txt2img", "prompt": job["prompt"], "negative_prompt": "",

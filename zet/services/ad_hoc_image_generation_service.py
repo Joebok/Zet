@@ -111,8 +111,9 @@ class AdHocImageGenerationService:
                 raise AdHocImageGenerationError(f"Source image is unavailable: {exc}") from exc
             if source.get("origin") == "pipeline" or source.get("status") == "archived":
                 raise AdHocImageGenerationError("Only available, non-pipeline images can be modified.")
-            if not source_checksum or source.get("checksum") != source_checksum:
+            if source_checksum and source.get("checksum") != source_checksum:
                 raise AdHocImageGenerationError("The source image changed. Reopen Image Generation from the current image.")
+            source_checksum = str(source.get("checksum") or "")
         elif source_checksum:
             raise AdHocImageGenerationError("A source checksum requires a source image.")
         count_value = payload.get("count", IMAGE_GENERATION_DEFAULT_COUNT)
@@ -166,10 +167,15 @@ class AdHocImageGenerationService:
                 reference_images.append({"label": label, "bytes": reference_bytes, "extension": extension})
             if source_asset_id:
                 source_path = Path(str(source.get("image_path") or ""))
-                if (not source_path.is_file()
-                        or hashlib.sha256(source_path.read_bytes()).hexdigest() != source_checksum
-                        or hashlib.sha256(reference_images[0]["bytes"]).hexdigest() != source_checksum):
-                    raise AdHocImageGenerationError("The reference image does not match the selected inventory image.")
+                if not source_path.is_file():
+                    raise AdHocImageGenerationError("The selected inventory image is unavailable.")
+                # Bind the chosen inventory image at this handoff, even when the
+                # browser preview or historical checksum predates a manual edit.
+                contents = source_path.read_bytes()
+                validate_image(contents)
+                with Image.open(BytesIO(contents)) as image:
+                    extension = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}[image.format]
+                reference_images[0].update(bytes=contents, extension=extension)
         preset_name = (
             ("comfyui-qwen-local-character-edit" if payload.get("reference_images") is not None
              else "comfyui-qwen-head-image-edit")
@@ -500,6 +506,7 @@ class AdHocImageGenerationService:
                         continue
                     image_bytes, _ = result
                     validate_image(image_bytes)
+                    child["image_sha256"] = hashlib.sha256(image_bytes).hexdigest()
                     with Image.open(BytesIO(image_bytes)) as image:
                         content_type = Image.MIME.get(image.format or "", "application/octet-stream")
                     if job.get("image_slots_version") == 1:
@@ -551,7 +558,7 @@ class AdHocImageGenerationService:
         evidence = {}
         if child["status"] == "COMPLETE":
             path = self.results_root / job["request_id"] / f"image-{child['index']}.bin"
-            evidence["applied_artifact"] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "image": True}
+            evidence["applied_artifact"] = {"path": str(path), "sha256": child.get("image_sha256", ""), "image": True}
         self.proxy_paths.jobs.finish(child["ask_id"], status="FAILED" if child["status"] == "FAILED" else "APPLIED",
                                      message=child.get("error", ""), **evidence)
 
@@ -574,7 +581,7 @@ class AdHocImageGenerationService:
             image_bytes, content_type = image
             filename = f"image-{index}.bin"
             image_path = directory / filename
-            if not image_path.exists() or hashlib.sha256(image_path.read_bytes()).digest() != hashlib.sha256(image_bytes).digest():
+            if not image_path.exists():
                 write_bytes_atomic(image_path, image_bytes)
             image_records.append({"filename": filename, "content_type": content_type})
         record = {key: job[key] for key in (

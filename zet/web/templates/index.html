@@ -597,7 +597,10 @@
             <button id="entity-library-delete" class="danger-action" type="button" disabled>Archive image</button>
           </section>
           <section class="inventory-detail-group"><h3>Logical references</h3><ul id="entity-library-logical-references"></ul></section>
-          <section class="inventory-detail-group"><h3>Where used</h3><ul id="entity-library-usages"></ul></section>
+          <section class="inventory-detail-group"><h3>Where used</h3><p>Recorded by Zet. Check on demand after editing files outside Zet.</p><ul id="entity-library-usages"></ul>
+            <div class="button-row"><button id="entity-library-usages-check" class="entity-library-usage-action" type="button">Check references</button><button id="entity-library-usages-rebuild" class="entity-library-usage-action" type="button">Rebuild usage list</button></div>
+            <p id="entity-library-usage-report" class="status-text" role="status" style="white-space: pre-wrap"></p>
+          </section>
         </aside>
         <button id="entity-library-retry-load" type="button" hidden>Retry loading image</button>
       </section>

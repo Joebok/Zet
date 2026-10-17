@@ -156,7 +156,9 @@ class CharacterOnboardingService:
         phase_path.mkdir(parents=True, exist_ok=True)
         self._ensure_phase_scaffold(character, phase, payload.get("source_phase") or "")
         template_path = self.path_service.character_template_path(character, phase)
-        template_path.write_text(self._render_template(payload, character, phase), encoding="utf-8")
+        from zet.services.image_usage_service import usage_mutation
+        with usage_mutation(self.path_service, template_path):
+            template_path.write_text(self._render_template(payload, character, phase), encoding="utf-8")
         return CharacterOnboardingDraft(character, phase, str(template_path), self.status(character, phase))
 
     def upload_template(self, character: str, phase: str, contents: str, create_only: bool = False) -> CharacterOnboardingStatus:
@@ -178,7 +180,9 @@ class CharacterOnboardingService:
             backup_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             shutil.copy2(template_path, backup_dir / f"Character.backup.{stamp}.md")
-        template_path.write_text(contents, encoding="utf-8")
+        from zet.services.image_usage_service import usage_mutation
+        with usage_mutation(self.path_service, template_path):
+            template_path.write_text(contents, encoding="utf-8")
         errors = self.validate_template(template_path)
         if errors:
             return self.status(character, phase)

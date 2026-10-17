@@ -112,6 +112,12 @@ class SourceEditorService:
         }
 
     def save(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from zet.services.image_usage_service import usage_mutation
+        path = self.resolve_path(str(payload.get("path") or ""))
+        with usage_mutation(self.zet_app.path_service, path):
+            return self._save(payload)
+
+    def _save(self, payload: dict[str, Any]) -> dict[str, Any]:
         path = self.resolve_path(str(payload.get("path") or ""))
         editor_type = str(payload.get("editor_type") or "")
         text = str(payload.get("text") or "")

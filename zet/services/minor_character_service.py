@@ -267,7 +267,8 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.write_bytes(data)
                         record = {"reference_id": rid, "index": next_index, "filename": filename,
-                                  "asset_id": str(ref.get("asset_id") or ""), "checksum": hashlib.sha256(data).hexdigest()}
+                                  "asset_id": str(ref.get("asset_id") or ""), "checksum": hashlib.sha256(data).hexdigest(),
+                                  "managed_checksum": ref.get("managed_checksum", "")}
                         next_index += 1
                     record["caption"] = text(ref.get("caption", record.get("caption", "Identity and appearance reference")), "Caption") or "Identity and appearance reference"
                     records.append(record)

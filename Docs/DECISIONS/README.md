@@ -72,3 +72,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 | [0018 â€” Ranking-only character review](0018-ranking-only-character-review.md) | How do rendered character candidates reach ranking and human review without a defect verdict stage? | Accepted locally 2026-10-16; existing library conversion pending |
 
 [0022 — Local recovery evidence and subscriber-owned fresh attempts](0022-removable-storage-recovery.md) records removable-volume recovery, continuation intent, and the authoritative-catalog/index distinction (accepted 2026-10-17).
+
+| [0023 - Available images and verified handoffs](0023-streamlined-image-integrity.md) | File availability, managed versions, incremental usages, confirmed deletion and async indexes | Accepted 2026-10-17 |

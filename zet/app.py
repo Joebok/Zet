@@ -416,9 +416,9 @@ class ZetApp:
             path_service, local_asset_sources, entity_library_repository
         )
         story_service.story_reference_service.entity_library_service = entity_library_service
-        entity_library_service.refresh_usages(config.base_library_path)
+        app.library_index_service.usage_maintenance = entity_library_service.image_usages.drain
         app.library_index_service.list_items_provider = app._indexed_list_rows
-        image_catalog_repository.after_write = app.refresh_library_index
+        image_catalog_repository.after_write = app.request_library_index_refresh
         app.ai_proxy_service.ai_proxy_path_service.app = app
         return app
 
@@ -581,13 +581,16 @@ class ZetApp:
             invalidate_summary_cache()
         return report
 
-    def _indexed_write(self, operation):
-        result = operation()
+    def request_library_index_refresh(self):
+        """Derived discovery must not delay or fail a successful primary mutation."""
         from zet.services.summary_cache import invalidate_summary_cache
         invalidate_summary_cache()
-        if self.entity_library_service is not None:
-            self.entity_library_service.refresh_usages(self.path_service.config.base_library_path)
-        self.refresh_library_index()
+        self.library_index_reconciler.request_refresh()
+        return {"refresh_pending": True}
+
+    def _indexed_write(self, operation):
+        result = operation()
+        self.request_library_index_refresh()
         return result
 
     def entity_library_assets(self, **filters):
@@ -597,16 +600,9 @@ class ZetApp:
         return self.entity_library_service.get_asset(asset_id)
 
     def entity_library_update_asset(self, asset_id: str, data: dict):
-        self.entity_library_service.refresh_usages(self.path_service.config.base_library_path)
         asset = self.entity_library_service.update_asset(asset_id, data)
-        from zet.services.summary_cache import invalidate_summary_cache
-        invalidate_summary_cache()
-        warning = ""
-        try:
-            self.refresh_library_index()
-        except Exception as exc:
-            warning = f"Image saved, but the search index could not refresh: {exc}"
-        return {"asset": asset, "refresh_warning": warning}
+        self.request_library_index_refresh()
+        return {"asset": asset, "refresh_warning": ""}
 
     def entity_library_replace_asset(self, asset_id: str, mime_type: str, data: bytes):
         return self._indexed_write(lambda: self.entity_library_service.replace_asset(asset_id, mime_type, data))
@@ -685,8 +681,7 @@ class ZetApp:
     def entity_library_backfill_costume_references(self, *, dry_run: bool = True):
         result = self.entity_library_service.backfill_costume_references(dry_run=dry_run)
         if not dry_run:
-            self.entity_library_service.refresh_usages(self.path_service.config.base_library_path)
-            self.refresh_library_index()
+            self.request_library_index_refresh()
         return result
 
     def list_assets(self, character: str, phase: str) -> list[Asset]:
@@ -1118,7 +1113,7 @@ class ZetApp:
         from zet.services.local_body_reference_service import LocalBodyReferenceService
         from zet.services.summary_cache import invalidate_summary_cache
         invalidate_summary_cache()
-        self.refresh_library_index()
+        self.request_library_index_refresh()
         return results
 
 
@@ -1438,13 +1433,13 @@ class ZetApp:
         """Update a costume template and its Costume-Dressing assets."""
         return self.costume_service.update_costume(character, phase, costume_slug, costume_name)
 
-    def delete_character_phase(self, character: str, phase: str) -> str:
+    def delete_character_phase(self, character: str, phase: str, **confirmation) -> str:
         """Move a character phase and its related library data to deleted storage."""
-        return self._indexed_write(lambda: self.library_deletion_service.delete_phase(character, phase))
+        return self._indexed_write(lambda: self.library_deletion_service.delete_phase(character, phase, **confirmation))
 
-    def delete_costume(self, character: str, phase: str, costume_slug: str) -> str:
+    def delete_costume(self, character: str, phase: str, costume_slug: str, **confirmation) -> str:
         """Move a costume and its related library data to deleted storage."""
-        return self._indexed_write(lambda: self.library_deletion_service.delete_costume(character, phase, costume_slug))
+        return self._indexed_write(lambda: self.library_deletion_service.delete_costume(character, phase, costume_slug, **confirmation))
 
     def list_scene_appearances(self, character: str, phase: str):
         """List reusable Scene Appearance definitions for a character phase."""

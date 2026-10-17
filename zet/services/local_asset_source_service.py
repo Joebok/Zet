@@ -1,4 +1,4 @@
-"""Verified local character image sources for derived asset workflows."""
+"""Available published local character image sources for derived workflows."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,7 +8,7 @@ from zet.services.local_asset_store_service import LocalAssetStoreService, Local
 
 
 class LocalAssetSourceService:
-    """Expose only checksum-verified, locked local pipeline images."""
+    """Expose locked local pipeline images at their recorded locations."""
 
     def __init__(self, store: LocalAssetStoreService):
         self.store = store
@@ -32,7 +32,7 @@ class LocalAssetSourceService:
         return sources
 
     def get_source(self, character: str, phase: str, source_key: str) -> dict[str, Any]:
-        """Resolve a current lock and reject stale or altered images."""
+        """Resolve a current lock with an available permanent file."""
         for source in self.list_sources(character, phase):
             if source["source_key"] == source_key:
                 return source

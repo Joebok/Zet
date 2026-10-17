@@ -37,3 +37,6 @@ scenarios passed. This does not establish live provider behavior or deployment.
 Owners: [AI jobs](../COMPONENTS/AI_JOBS.md),
 [image admission](../../zet/services/image_harvest_service.py),
 [common jobs](../../zet/services/ai_job_service.py).
+
+Image availability and recurring verification are superseded by
+[ADR 0023](0023-streamlined-image-integrity.md); ownership and job fences remain.

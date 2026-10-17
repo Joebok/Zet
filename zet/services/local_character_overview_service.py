@@ -241,7 +241,7 @@ class LocalCharacterOverviewService:
             if not candidate or not image.is_file() or candidate.get("human_review", {}).get("decision") == "reject":
                 continue
             ranking = (run.get("rankings") or {}).get("FRONT") or {}
-            digest = adapter._hash(image)
+            digest = str(candidate.get("image_sha256") or "")
             finished = (ranking.get("status") == "COMPLETE"
                         and ranking.get("input_hashes", {}).get(candidate_id) == digest)
             rendered_at = str(candidate.get("rendered_at") or "")

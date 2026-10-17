@@ -19,11 +19,13 @@ def _current_candidate(run, candidate):
 def require_candidate_harvest(app, run, candidate):
     """Retain the shared entry point; a current image file admits local review."""
     current = _current_candidate(run, candidate)
-    image = Path(str(current.get("image_path") or ""))
-    if not image.is_file():
+    image = Path(str(current.get("image_path") or "")).resolve()
+    library = Path(app.config.base_library_path).resolve()
+    owner = Path(run.get("root") or library).resolve()
+    if not image.is_relative_to(library) or not image.is_relative_to(owner) or not image.is_file():
         raise ValueError("Candidate image is unavailable")
     return {"ask_id": str(current.get("ask_id") or ""), "path": str(image),
-            "sha256": hashlib.sha256(image.read_bytes()).hexdigest()}
+            "sha256": str(current.get("image_sha256") or "")}
 
 
 def reconcile_candidate_harvest(app, read_run, run, candidates):
@@ -40,6 +42,7 @@ def reconcile_candidate_harvest(app, read_run, run, candidates):
             if not image.is_relative_to(root):
                 raise ValueError("Harvested image is outside its candidate batch")
             evidence = require_candidate_harvest(app, current, saved)
+            evidence["sha256"] = hashlib.sha256(image.read_bytes()).hexdigest()
             if (saved.get("image_sha256") != evidence["sha256"]
                     or saved.get("status") in {"PENDING", "QUEUED", "RUNNING", "FAILED"}):
                 recovered[saved["candidate_id"]] = evidence["sha256"]

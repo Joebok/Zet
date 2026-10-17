@@ -140,7 +140,7 @@ Scene defaults include service-owned `legacy_image`, `source_provenance`, and
 and target serializers resolve current logical references; stale/archived/missing
 bindings show issues and cannot supply render references. Submitted jobs still freeze
 resolved IDs, ordered files and bytes. [NarrativeSceneService](../../zet/services/narrative_scene_service.py)
-refreshes entity usages on authoring changes. Legacy image assets survive scene deletion.
+updates only the changed consumer's recorded entity usages on reference changes. Legacy image assets survive scene deletion.
 
 [NarrativeMigrationService](../../zet/services/narrative_migration_service.py) and its
 [CLI](../../zet/scripts/migrate_narrative_scenes.py) consume the reviewed
@@ -177,3 +177,10 @@ Shared transport, receipts, foreground/background collection and model selection
 
 ## Interrupted submission recovery (2026-10-17)
 Text request/schema intent is saved before publication. SUBMITTING jobs reattach to existing transport or resume publication using saved request/candidate identity; replacement execution stays behind the common logical AI job interface. Storage exceptions suspend work instead of becoming permanent provider/content errors. See [storage recovery](STORAGE_RECOVERY.md).
+
+NarrativeRepository routes writes through incremental usage tracking, including
+reference-bearing job snapshots; unchanged reference sets avoid derived writes.
+Pending observations retry without invalidating committed authoring. Image
+availability follows [ADR 0023](../DECISIONS/0023-streamlined-image-integrity.md);
+required missing references fail only their dependent operation. Confirmed deletion
+may leave authored references unresolved; it does not silently remove them.

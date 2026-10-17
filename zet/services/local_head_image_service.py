@@ -285,7 +285,7 @@ class LocalHeadImageService:
         stale = []
         anchor = next((c for c in value["candidates"] if c["candidate_id"] == value.get("front_anchor")), None)
         anchor_path = Path(str((anchor or {}).get("image_path") or ""))
-        anchor_hash = self._hash(anchor_path) if anchor_path.is_file() else ""
+        anchor_hash = str((anchor or {}).get("image_sha256") or "") if anchor_path.is_file() else ""
         for view, ranking in value["rankings"].items():
             if view == FRONT:
                 continue
@@ -305,7 +305,7 @@ class LocalHeadImageService:
             image = Path(str((candidate or {}).get("image_path") or ""))
             if (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
                     or candidate_id not in (ranking.get("ordered_candidate_ids") or [])
-                    or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)):
+                    or ranking.get("input_hashes", {}).get(candidate_id) != str((candidate or {}).get("image_sha256") or "")):
                 stale_selected.append(view)
         value["stale_selections"] = sorted(set(value["stale_selections"]) | set(stale_selected))
         if value["stale_selections"] and value["status"] not in ACTIVE_RUN_STATUSES | {"ERROR", "CANCELLED", "INTERRUPTED"}:
@@ -702,7 +702,7 @@ class LocalHeadImageService:
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
-        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in candidates}
+        hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
         previous = (run.get("evaluations") or {}).get(view) or {}
         if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
             self.reconcile_review_jobs(run_id)
@@ -779,16 +779,16 @@ class LocalHeadImageService:
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
         for survivor in survivors:
             require_candidate_harvest(self.app, run, survivor)
-        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
+        hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in survivors}
         if not survivors:
-            anchor_hash = self._hash(anchor_path) if view != FRONT and anchor_path.is_file() else ""
+            anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT else ""
             ranking = {
                 "status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [],
                 "input_hashes": {}, "anchor_hash": anchor_hash, "model": "", "recorded_at": self._now(),
             }
             self._save_ranking_result(run_id, view, evaluation_id, hashes, ranking)
             return self.detail(run_id)
-        anchor_hash = self._hash(anchor_path) if view != FRONT else ""
+        anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT else ""
         if len(survivors) == 1:
             entries = [{"candidate_id": survivors[0]["candidate_id"], "reason": "Only completed image in this view."}]
             model = "deterministic-single-survivor"
@@ -829,7 +829,7 @@ class LocalHeadImageService:
             if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
                 return
             run = self.detail(run_id)
-            current_hashes = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
+            current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "")
                 for item in run.get("candidates") or [] if item.get("view") == view
                 and Path(str(item.get("image_path") or "")).is_file()}
             if current_hashes != input_hashes:
@@ -894,7 +894,7 @@ class LocalHeadImageService:
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"]), None)
             anchor_image = Path(str((anchor or {}).get("image_path") or ""))
             if anchor_image.is_file():
-                anchor_hash = self._hash(anchor_image)
+                anchor_hash = str((anchor or {}).get("image_sha256") or "")
                 dependencies = [{"key": self.asset_store.key("Head-Image", FRONT), "image_sha256": anchor_hash}]
         root, state = self._state(run_id)
         previous_id = selected.get(view)

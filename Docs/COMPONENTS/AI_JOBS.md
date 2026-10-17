@@ -65,7 +65,8 @@ the activity source, not a history archive.
 
 `AIJobService.inspect()` is read-only: it distinguishes transport location,
 execution/worker outcomes, collection failure, and blocking reason without draining
-an answer. `HARVEST_FAILED` remains visible to Image Generation; missing routes or
+an answer or reading image payloads. Full hash verification occurs during collection;
+local Inbox admission is reused after successful transfer. `HARVEST_FAILED` remains visible to Image Generation; missing routes or
 owner metadata use `RECOVERY_REQUIRED`, while incomplete inventories use
 `TRANSFERRING`. Job diagnostics record the failure stage, exception type, affected
 path and failure timestamp. A transport success requires `SUCCEEDED`; worker
@@ -80,9 +81,8 @@ request. Successful receipts clear the active collection error.
 Image Generation loads requests from disk under its process-shared collection
 lock. Atomic image and child-state commits precede the receipt; restart can finish
 a saved child whose receipt was interrupted. `copy_result(image=True)` records the
-applied image checksum. Minor Character review requires a successful receipt and
-matching image. Local character batch advice instead requires the current image
-file, independently of old receipts or saved checksums; admission still rechecks
+applied image checksum as write-time metadata. Local and Minor Character review
+use current owned files, independently of old receipts or saved checksums; admission still rechecks
 current candidate/attempt, cancellation and evaluation under the domain lock before
 request publication. See [ADR 0021](../DECISIONS/0021-file-based-local-image-availability.md).
 Producer-local `Followups/` reservations and deterministic Minor review workflow
@@ -199,3 +199,8 @@ coding automation and Codex quota inspection are outside creative job execution.
 
 ## Storage pauses and fresh attempts (2026-10-17)
 `PAUSED_STORAGE` and `RECOVERING` are nonterminal. Logical request IDs resolve through fenced replacement transport attempts for verified interruption/storage failures. Collection retry never replays execution. Registered continuation intent is journaled locally before its normal application copy, and queue activity can show explicitly stale local metadata with unknown counts during an outage. Missing frozen inputs and genuine content/provider errors remain actionable failures. See [storage recovery](STORAGE_RECOVERY.md).
+
+Generic legacy harvest cleanup must not complete a registered domain's answer merely
+because it carries a shared harvest marker. The owning handler applies and commits
+its receipt before payload cleanup. This was verified with a disposable race check
+and the existing S3 retry journey. See [ADR 0023](../DECISIONS/0023-streamlined-image-integrity.md).

@@ -52,7 +52,7 @@ class LibraryDeletionService:
             raise LibraryDeletionServiceError(f"Deleted-folder destination already exists: {destination}")
         shutil.move(str(source), str(destination))
 
-    def _purge_assets(self, ids: list[str], archive: Path) -> None:
+    def _purge_assets(self, ids: list[str], archive: Path, connection) -> None:
         if not ids:
             return
         placeholders = ",".join("?" for _ in ids)
@@ -60,76 +60,36 @@ class LibraryDeletionService:
             f"SELECT asset_id,file_name FROM assets WHERE asset_id IN ({placeholders})", tuple(ids)
         )
         for row in rows:
-            source = self.paths.entity_library_images_path() / f"{row['asset_id']}{Path(row['file_name']).suffix.lower()}"
+            source = self.paths.entity_library_images_path() / row["file_name"]
             self._move(source, archive / "entity-library-images" / row["file_name"])
-        with self.entity_repository.transaction() as connection:
-            connection.execute(
-                f"DELETE FROM asset_usages WHERE reference_key IN (SELECT reference_key FROM logical_references WHERE asset_id IN ({placeholders}))",
-                tuple(ids),
-            )
-            connection.execute(f"DELETE FROM asset_usages WHERE asset_id IN ({placeholders})", tuple(ids))
-            connection.execute(f"DELETE FROM logical_references WHERE asset_id IN ({placeholders})", tuple(ids))
-            connection.execute(f"DELETE FROM provenance WHERE source_asset_id IN ({placeholders})", tuple(ids))
-            connection.execute(f"UPDATE assets SET derived_from_asset_id=NULL WHERE derived_from_asset_id IN ({placeholders})", tuple(ids))
-            connection.execute(f"UPDATE assets SET replacement_for_asset_id=NULL WHERE replacement_for_asset_id IN ({placeholders})", tuple(ids))
-            connection.execute(f"DELETE FROM assets WHERE asset_id IN ({placeholders})", tuple(ids))
-
-    def _protect_narrative_assets(self, ids: list[str]) -> None:
-        if not ids:
-            return
-        placeholders = ",".join("?" for _ in ids)
-        usages = self.entity_repository.fetchall(
-            f"""SELECT DISTINCT u.asset_id,u.reference_key,u.consumer_id,u.locator FROM asset_usages u
-                LEFT JOIN logical_references lr ON lr.reference_key=u.reference_key
-                WHERE u.status='current' AND u.consumer_id LIKE 'NarrativeStories/%'
-                  AND (u.asset_id IN ({placeholders}) OR (u.asset_id IS NULL AND lr.asset_id IN ({placeholders})))
-                ORDER BY u.consumer_id,u.locator,u.asset_id,u.reference_key""",
-            (*ids, *ids),
+        connection.execute(
+            f"DELETE FROM asset_usages WHERE asset_id IS NULL AND reference_key IN (SELECT reference_key FROM logical_references WHERE asset_id IN ({placeholders}))",
+            tuple(ids),
         )
-        if not usages:
-            return
-
-        library_root = Path(self.paths.config.base_library_path).resolve()
-        narrative_root = (library_root / "NarrativeStories").resolve()
-        references = []
-        for usage in usages:
-            consumer_id = str(usage.get("consumer_id") or "")
-            parts = consumer_id.split("/")
-            story_id = parts[1] if len(parts) > 2 and parts[0] == "NarrativeStories" else ""
-            scene_id = parts[2] if len(parts) > 3 and parts[0] == "NarrativeStories" else ""
-            target_id = parts[3] if len(parts) > 4 and parts[0] == "NarrativeStories" and parts[4] == "target.json" else ""
-
-            story = self._read_record(narrative_root / story_id / "story.json", narrative_root) if story_id else {}
-            scene = self._read_record(narrative_root / story_id / scene_id / "scene.json", narrative_root) if scene_id else {}
-            target = self._read_record(narrative_root / story_id / scene_id / target_id / "target.json", narrative_root) if target_id else {}
-            references.append({
-                "story_id": story_id,
-                "story_title": str(story.get("title") or "Narrative story"),
-                "scene_id": scene_id,
-                "scene_title": str(scene.get("title") or "Narrative scene"),
-                "target_id": target_id,
-                "target_title": str(target.get("title") or ""),
-                "consumer_id": consumer_id,
-                "locator": str(usage.get("locator") or ""),
-                "asset_id": str(usage.get("asset_id") or ""),
-                "reference_key": str(usage.get("reference_key") or ""),
-            })
-        raise NarrativeUsageBlockedError(
-            "Narrative references prevent deleting this phase or costume. Update these references first.",
-            references,
+        connection.execute(
+            f"UPDATE asset_usages SET reference_key=NULL WHERE asset_id IS NOT NULL AND reference_key IN "
+            f"(SELECT reference_key FROM logical_references WHERE asset_id IN ({placeholders}))", tuple(ids),
         )
+        connection.execute(f"DELETE FROM asset_usages WHERE asset_id IN ({placeholders})", tuple(ids))
+        connection.execute(f"DELETE FROM logical_references WHERE asset_id IN ({placeholders})", tuple(ids))
+        connection.execute(f"DELETE FROM provenance WHERE source_asset_id IN ({placeholders})", tuple(ids))
+        connection.execute(f"UPDATE assets SET derived_from_asset_id=NULL WHERE derived_from_asset_id IN ({placeholders})", tuple(ids))
+        connection.execute(f"UPDATE assets SET replacement_for_asset_id=NULL WHERE replacement_for_asset_id IN ({placeholders})", tuple(ids))
+        connection.execute(f"DELETE FROM assets WHERE asset_id IN ({placeholders})", tuple(ids))
 
-    @staticmethod
-    def _read_record(path: Path, root: Path) -> dict:
-        try:
-            resolved = path.resolve()
-            if not resolved.is_file() or not resolved.is_relative_to(root):
-                return {}
-            return json.loads(resolved.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+    def delete_phase(self, character, phase, *, confirm_ids=None, expected_versions=None):
+        from zet.services.image_usage_service import usage_mutation
+        with usage_mutation(self.paths, self.paths.character_path(self._name(character, "character"), self._name(phase, "phase")), tree=True):
+            with self.entity_repository.transaction() as connection:
+                return self._delete_phase(character, phase, connection, confirm_ids, expected_versions)
 
-    def delete_phase(self, character: str, phase: str) -> str:
+    def delete_costume(self, character, phase, costume_slug, *, confirm_ids=None, expected_versions=None):
+        from zet.services.image_usage_service import usage_mutation
+        with usage_mutation(self.paths, self.paths.character_path(self._name(character, "character"), self._name(phase, "phase")), tree=True):
+            with self.entity_repository.transaction() as connection:
+                return self._delete_costume(character, phase, costume_slug, connection, confirm_ids, expected_versions)
+
+    def _delete_phase(self, character: str, phase: str, connection, confirm_ids, expected_versions) -> str:
         character, phase = self._name(character, "character"), self._name(phase, "phase")
         phase_path = self.paths.character_path(character, phase)
         if not phase_path.is_dir():
@@ -145,7 +105,8 @@ class LibraryDeletionService:
             "SELECT DISTINCT a.asset_id FROM assets a JOIN asset_entities ae ON ae.asset_id=a.asset_id WHERE ae.variant_id=?",
             (variant["variant_id"],),
         )] if variant else []
-        self._protect_narrative_assets(ids)
+        from zet.services.image_deletion_service import confirm_image_deletion
+        confirm_image_deletion(connection, ids, confirm_ids, expected_versions)
         archive = self._archive(character, phase, "phase")
         self._move(phase_path, archive / "Characters" / character / phase)
         self._move(self.paths.character_asset_path(character, phase), archive / "Assets" / character / phase)
@@ -153,13 +114,12 @@ class LibraryDeletionService:
         self._move(self.paths.pipeline_candidates_path("Character-Pipeline", character, phase), archive / "PipelineCandidates" / character / phase)
         self._move(self.local_sources.store.workspace_path(character, phase).parent, archive / "LocalAssets" / character / phase)
 
-        self._purge_assets(ids, archive)
+        self._purge_assets(ids, archive, connection)
         if variant:
-            with self.entity_repository.transaction() as connection:
-                connection.execute("DELETE FROM variants WHERE variant_id=?", (variant["variant_id"],))
+            connection.execute("DELETE FROM variants WHERE variant_id=?", (variant["variant_id"],))
         return str(archive)
 
-    def delete_costume(self, character: str, phase: str, costume_slug: str) -> str:
+    def _delete_costume(self, character: str, phase: str, costume_slug: str, connection, confirm_ids, expected_versions) -> str:
         character, phase = self._name(character, "character"), self._name(phase, "phase")
         costume_slug = self._name(costume_slug, "costume")
         costumes = self.paths.character_path(character, phase).glob("Costume_*.md")
@@ -189,7 +149,8 @@ class LibraryDeletionService:
                   ))""",
             (slug_prefix, slug_prefix, name_prefix, name_prefix, costume_name, character, phase),
         )
-        self._protect_narrative_assets([row["asset_id"] for row in entity_assets])
+        from zet.services.image_deletion_service import confirm_image_deletion
+        confirm_image_deletion(connection, [row["asset_id"] for row in entity_assets], confirm_ids, expected_versions)
         archive = self._archive(character, phase, f"costume_{costume_slug}")
         self._move(match, archive / "Templates" / match.name)
 
@@ -232,7 +193,7 @@ class LibraryDeletionService:
                                        if not isinstance(dep, dict) or dep.get("key") not in removed_set]
             write_json_atomic(store_path, data)
 
-        self._purge_assets([row["asset_id"] for row in entity_assets], archive)
+        self._purge_assets([row["asset_id"] for row in entity_assets], archive, connection)
         return str(archive)
 
     @staticmethod

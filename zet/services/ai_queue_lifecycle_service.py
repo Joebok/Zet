@@ -88,12 +88,36 @@ class AIQueueLifecycleService:
         final = self.inbox_root / source.name
         self.inbox_root.mkdir(parents=True, exist_ok=True)
         if final.is_dir():
-            self._verify_equal(source, final)
+            if self._json(source / "ask_manifest.json") != self._json(final / "ask_manifest.json"):
+                raise ValueError("Retained answer request identity differs from its source.")
+            self.admit_local_answer(final, client)
         else:
             temporary = self.inbox_root / f".{source.name}.{uuid4().hex}.partial"
             try:
-                shutil.copytree(source, temporary)
-                self._verify_equal(source, temporary)
+                records = self._json(source / "proxy_result.json").get("output_files")
+                if not client._inventory_complete(source, records, verify_hashes=False):
+                    raise OSError("Answer inventory is incomplete; retry collection.")
+                inventory = {record["path"]: record for record in records}
+
+                def copy_verified(original, destination):
+                    relative = Path(original).relative_to(source).as_posix()
+                    digest = hashlib.sha256()
+                    size = 0
+                    with open(original, "rb") as incoming, open(destination, "wb") as outgoing:
+                        for block in iter(lambda: incoming.read(1024 * 1024), b""):
+                            outgoing.write(block)
+                            digest.update(block)
+                            size += len(block)
+                    expected = inventory.get(relative)
+                    if expected and (size != int(expected["size"]) or digest.hexdigest() != expected["sha256"]):
+                        raise OSError(f"Answer transfer checksum mismatch: {relative}")
+                    return destination
+
+                shutil.copytree(source, temporary, copy_function=copy_verified)
+                # A sync client may still be completing files during discovery.
+                if not client._inventory_complete(temporary, records, verify_hashes=False):
+                    raise OSError("Copied answer inventory is incomplete; retry collection.")
+                self._record_admission(temporary, source.name)
                 os.replace(temporary, final)
             finally:
                 if temporary.exists():
@@ -104,6 +128,22 @@ class AIQueueLifecycleService:
             # Keep the verified local copy available even if Dropbox is busy.
             pass
         return final
+
+    @staticmethod
+    def _record_admission(folder: Path, job_id: str) -> None:
+        write_json_atomic(folder / ".zet-admitted.json", {"job_id": job_id})
+
+    def admit_local_answer(self, folder: Path, client: FileProxyClient) -> None:
+        """Verify legacy/interrupted local transfers once, never on status reads."""
+        if folder.parent.resolve() != self.inbox_root.resolve():
+            raise ValueError("Admission requires a local Inbox answer.")
+        marker = folder / ".zet-admitted.json"
+        if marker.is_file() and self._json(marker).get("job_id") == folder.name:
+            return
+        records = self._json(folder / "proxy_result.json").get("output_files")
+        if not client._inventory_complete(folder, records):
+            raise OSError("Local answer inventory checksum mismatch or incomplete transfer.")
+        self._record_admission(folder, folder.name)
 
     def drain_ready_answers(self, client: FileProxyClient) -> list[Path]:
         """Drain only ready answers produced by this machine."""
@@ -300,26 +340,3 @@ class AIQueueLifecycleService:
         if not isinstance(value, dict):
             raise ValueError(f"Expected a JSON object: {path}")
         return value
-
-    @staticmethod
-    def _verify_equal(source: Path, copy: Path) -> None:
-        source_files = {p.relative_to(source).as_posix(): p for p in source.rglob("*") if p.is_file()}
-        copy_files = {p.relative_to(copy).as_posix(): p for p in copy.rglob("*") if p.is_file()}
-        if source_files.keys() != copy_files.keys():
-            raise IOError("Answer transfer file inventory differs from its source.")
-        for relative, original in source_files.items():
-            duplicate = copy_files[relative]
-            if original.stat().st_size != duplicate.stat().st_size:
-                raise IOError(f"Answer transfer size mismatch: {relative}")
-            if AIQueueLifecycleService._sha256(original) != AIQueueLifecycleService._sha256(duplicate):
-                raise IOError(f"Answer transfer checksum mismatch: {relative}")
-
-    @staticmethod
-    def _sha256(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest()
-
-

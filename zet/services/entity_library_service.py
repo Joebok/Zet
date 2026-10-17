@@ -43,7 +43,14 @@ class EntityLibraryService:
         self.repository = repository
         self.images_root = path_service.entity_library_images_path()
         self.pipeline_provider = None
-        self._pipeline_signatures: dict[str, tuple[int, int]] = {}
+        self._image_usages = None
+
+    @property
+    def image_usages(self):
+        if self._image_usages is None:
+            from zet.services.image_usage_service import ImageUsageService
+            self._image_usages = ImageUsageService(self)
+        return self._image_usages
 
     @staticmethod
     def _require(value: str, label: str) -> str:
@@ -104,54 +111,29 @@ class EntityLibraryService:
         return next((item for item in references if item["status"] == "active"), None)
 
     def _sync_pipeline_assets(self) -> None:
+        """Explicit legacy discovery; reads never call this or infer archival."""
         if not callable(self.pipeline_provider):
             return
-        items = self.pipeline_provider()
-        active_origin_keys = set()
-        local_origin_keys = set()
-        local_image_paths = set()
-        for item in items:
-            source_type = str(getattr(item, "source_type", ""))
-            source_path = Path(str(getattr(item, "image_path", "")))
-            if source_type == "local-pipeline" and source_path.is_file():
-                local_image_paths.add(source_path.resolve())
-                checksum = hashlib.sha256(source_path.read_bytes()).hexdigest()
-                origin_key = (f"local:{getattr(item, 'pipeline', '')}:{getattr(item, 'character', '')}:"
-                              f"{getattr(item, 'phase', '')}:")
-                legacy_origin_key = origin_key + checksum
-                if str(getattr(item, "pipeline", "")).casefold() == "costume-dressing":
-                    origin_key += f"{str(getattr(item, 'costume', '')).casefold()}:{str(getattr(item, 'view', '')).upper()}:"
-                local_origin_keys.update((legacy_origin_key, origin_key + checksum))
-        active_origin_keys.update(local_origin_keys)
-        for item in items:
-            if (
-                getattr(item, "source_type", "") != "pipeline"
-                or not getattr(item, "available", True)
-                or getattr(item, "candidate_pending", False)
-                or getattr(item, "asset_state", "LOCKED") != "LOCKED"
-            ):
-                continue
-            source_path = Path(item.image_path)
-            if not source_path.is_file():
+        for item in self.pipeline_provider():
+            if (getattr(item, "source_type", "") != "pipeline"
+                    or not getattr(item, "available", True)
+                    or getattr(item, "candidate_pending", False)
+                    or getattr(item, "asset_state", "LOCKED") != "LOCKED"):
                 continue
             origin_key = str(item.tag)
-            stat = source_path.stat()
-            signature = (stat.st_size, stat.st_mtime_ns)
-            if self._pipeline_signatures.get(origin_key) == signature:
-                cached = self.repository.fetchall(
-                    "SELECT origin_key FROM assets WHERE origin='pipeline' AND substr(origin_key,1,length(?)+1)=?||':'",
-                    (origin_key, origin_key),
-                )
-                active_origin_keys.update(row["origin_key"] for row in cached)
+            # Existing publication identity, including an explicit archive, wins.
+            if self.repository.fetchone(
+                "SELECT asset_id FROM assets WHERE origin='pipeline' AND (origin_key=? OR substr(origin_key,1,length(?)+1)=?||':')",
+                (origin_key, origin_key, origin_key),
+            ):
                 continue
-            data = source_path.read_bytes()
+            source = Path(item.image_path).resolve()
+            if not source.is_relative_to(Path(self.path_service.config.base_library_path).resolve()) or not source.is_file():
+                continue
+            data = source.read_bytes()
             checksum = hashlib.sha256(data).hexdigest()
             versioned_key = f"{origin_key}:{checksum}"
-            active_origin_keys.add(versioned_key)
-            current = self.repository.fetchone("SELECT asset_id FROM assets WHERE origin_key = ?", (versioned_key,))
-            if current:
-                self._pipeline_signatures[origin_key] = signature
-                continue
+            source_path = source
             mime_type = str(item.mime_type or "image/png").lower()
             extension = IMAGE_TYPES.get(mime_type, source_path.suffix.lower() or ".png")
             asset_id = str(uuid4())
@@ -189,61 +171,6 @@ class EntityLibraryService:
                     "INSERT INTO provenance(provenance_id,asset_id,relation_type,details_json,created_at) VALUES(?,?,?,?,?)",
                     (str(uuid4()), asset_id, "locked_pipeline_source", json.dumps({"tag": origin_key, "label": item.label}), stamp),
                 )
-            self._pipeline_signatures[origin_key] = signature
-        stamp = _now()
-        with self.repository.transaction() as connection:
-            self._restore_local_pipeline_assets(connection, local_origin_keys, stamp,
-                                                verified_paths=local_image_paths)
-            if active_origin_keys:
-                placeholders = ",".join("?" for _ in active_origin_keys)
-                archived = connection.execute(
-                    f"SELECT asset_id FROM assets WHERE origin='pipeline' AND status<>'archived' "
-                    f"AND origin_key NOT IN ({placeholders})",
-                    tuple(sorted(active_origin_keys)),
-                ).fetchall()
-                connection.execute(
-                    f"UPDATE assets SET status='archived',updated_at=? "
-                    f"WHERE origin='pipeline' AND status<>'archived' AND origin_key NOT IN ({placeholders})",
-                    (stamp, *sorted(active_origin_keys)),
-                )
-            else:
-                archived = connection.execute(
-                    "SELECT asset_id FROM assets WHERE origin='pipeline' AND status<>'archived'"
-                ).fetchall()
-                connection.execute(
-                    "UPDATE assets SET status='archived',updated_at=? WHERE origin='pipeline' AND status<>'archived'",
-                    (stamp,),
-                )
-            self._deactivate_asset_references(connection, [row["asset_id"] for row in archived], stamp)
-
-    def _restore_local_pipeline_assets(self, connection, origin_keys: set[str], stamp: str,
-                                       *, verified_paths: set[Path] | None = None) -> None:
-        """Recover archived publications only when their verified source and blob agree."""
-        if not origin_keys:
-            return
-        placeholders = ",".join("?" for _ in origin_keys)
-        rows = connection.execute(
-            f"SELECT asset_id,file_name,checksum,origin_key FROM assets "
-            f"WHERE origin='pipeline' AND status='archived' AND origin_key IN ({placeholders})",
-            tuple(sorted(origin_keys)),
-        ).fetchall()
-        for row in rows:
-            path = self._image_path(row["asset_id"], row["file_name"])
-            if verified_paths is not None and path.resolve() not in verified_paths:
-                continue
-            if (row["origin_key"].rsplit(":", 1)[-1] != row["checksum"]
-                    or not path.is_file()
-                    or hashlib.sha256(path.read_bytes()).hexdigest() != row["checksum"]):
-                continue
-            connection.execute(
-                "UPDATE assets SET status='approved',updated_at=? WHERE asset_id=?",
-                (stamp, row["asset_id"]),
-            )
-            connection.execute(
-                "UPDATE logical_references SET status='active',updated_at=? "
-                "WHERE asset_id=? AND status='inactive'",
-                (stamp, row["asset_id"]),
-            )
 
     @staticmethod
     def _deactivate_asset_references(connection, asset_ids: list[str], stamp: str) -> None:
@@ -257,7 +184,6 @@ class EntityLibraryService:
         )
 
     def list_assets(self, **filters) -> list[dict]:
-        self._sync_pipeline_assets()
         include_archived = bool(filters.pop("include_archived", False))
         hide_obsolete = bool(filters.pop("hide_obsolete", False))
         rows = self.repository.fetchall("SELECT * FROM assets ORDER BY created_at DESC, asset_id")
@@ -500,15 +426,30 @@ class EntityLibraryService:
         key += checksum
         asset = self.import_asset(label, mime_type, data, origin="pipeline", origin_key=key, notes="Locked local pipeline image")
         if asset["status"] == "archived":
+            # Explicit relocking is the operator's decision to restore this publication.
+            if not Path(asset["image_path"]).is_file():
+                from zet.services.atomic_file_service import write_bytes_atomic
+                write_bytes_atomic(Path(asset["image_path"]), data)
             with self.repository.transaction() as connection:
-                self._restore_local_pipeline_assets(connection, {key}, _now())
+                connection.execute("UPDATE assets SET status='approved',updated_at=? WHERE asset_id=?", (_now(), asset["asset_id"]))
+                connection.execute("UPDATE logical_references SET status='active',updated_at=? WHERE asset_id=? AND status='inactive'",
+                                   (_now(), asset["asset_id"]))
             asset = self.get_asset(asset["asset_id"])
-            if asset["status"] == "archived":
-                raise EntityLibraryServiceError(f"Published pipeline image is missing or has changed: {asset['asset_id']}")
         if str(pipeline).casefold() == "costume-dressing" and costume and view:
             return self.classify_costume_image(asset["asset_id"], character=character, phase=phase,
                                                 costume=costume, view=view, reference_key=reference_key)
-        return asset
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            entity = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='character'", (character,)).fetchone()
+            entity_id = entity["entity_id"] if entity else str(uuid4())
+            if not entity:
+                connection.execute("INSERT INTO entities VALUES(?,?,?,?,?,?,?)", (entity_id, character, "character", "", "active", stamp, stamp))
+            variant = connection.execute("SELECT variant_id FROM variants WHERE entity_id=? AND lower(name)=lower(?) AND variant_type='life_stage'", (entity_id, phase)).fetchone()
+            variant_id = variant["variant_id"] if variant else str(uuid4())
+            if not variant:
+                connection.execute("INSERT INTO variants VALUES(?,?,?,?,?,?,?)", (variant_id, entity_id, phase, "life_stage", "", stamp, stamp))
+            connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset["asset_id"], entity_id, variant_id, "primary_subject"))
+        return self.get_asset(asset["asset_id"])
 
     @staticmethod
     def logical_costume_reference_key(character: str, phase: str, costume: str, view: str) -> str:
@@ -656,21 +597,10 @@ class EntityLibraryService:
                 stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                 shutil.copy2(path, backup_dir / f"{path.stem}.{stamp}.json")
                 from zet.services.atomic_file_service import write_json_atomic
-                write_json_atomic(path, document)
+                with self.image_usages.mutation(path):
+                    write_json_atomic(path, document)
         return {"dry_run": dry_run, "costume_images": assets, "scene_references": scenes,
                 "scenes_changed": len(changed)}
-        stamp = _now()
-        with self.repository.transaction() as connection:
-            entity = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='character'", (character,)).fetchone()
-            entity_id = entity["entity_id"] if entity else str(uuid4())
-            if not entity:
-                connection.execute("INSERT INTO entities VALUES(?,?,?,?,?,?,?)", (entity_id, character, "character", "", "active", stamp, stamp))
-            variant = connection.execute("SELECT variant_id FROM variants WHERE entity_id=? AND lower(name)=lower(?) AND variant_type='life_stage'", (entity_id, phase)).fetchone()
-            variant_id = variant["variant_id"] if variant else str(uuid4())
-            if not variant:
-                connection.execute("INSERT INTO variants VALUES(?,?,?,?,?,?,?)", (variant_id, entity_id, phase, "life_stage", "", stamp, stamp))
-            connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset["asset_id"], entity_id, variant_id, "primary_subject"))
-        return asset
 
     @staticmethod
     def _link_assets(connection, asset_id: str, entity_ids: list[str], set_ids: list[str], *, entity_role: str = "depicted_subject") -> None:
@@ -727,11 +657,8 @@ class EntityLibraryService:
             raise EntityLibraryServiceError("Only available, non-pipeline images can be modified.")
         if asset["checksum"] != expected_checksum:
             raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
-        try:
-            if hashlib.sha256(Path(asset["image_path"]).read_bytes()).hexdigest() != expected_checksum:
-                raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
-        except OSError as exc:
-            raise EntityLibraryServiceError("The source image is unavailable. Reopen Image Generation from the current image.") from exc
+        if not Path(asset["image_path"]).is_file():
+            raise EntityLibraryServiceError("The source image is unavailable.")
         mime_type = str(mime_type or "").split(";", 1)[0].strip().lower()
         if not data or mime_type not in IMAGE_TYPES:
             raise EntityLibraryServiceError("Choose a valid generated image.")
@@ -740,7 +667,7 @@ class EntityLibraryService:
         revision = f"{asset_id}_{checksum}{IMAGE_TYPES[mime_type]}"
         staged = self.images_root / revision
         self.images_root.mkdir(parents=True, exist_ok=True)
-        if not staged.is_file() or hashlib.sha256(staged.read_bytes()).hexdigest() != checksum:
+        if not staged.is_file():
             temporary = staged.with_name(staged.name + "." + uuid4().hex + ".tmp")
             try:
                 temporary.write_bytes(data)
@@ -758,12 +685,8 @@ class EntityLibraryService:
                 if current["checksum"] != expected_checksum:
                     raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
                 current_path = self._image_path(asset_id, current["file_name"])
-                try:
-                    current_checksum = hashlib.sha256(current_path.read_bytes()).hexdigest()
-                except OSError as exc:
-                    raise EntityLibraryServiceError("The source image is unavailable. Reopen Image Generation from the current image.") from exc
-                if current_checksum != expected_checksum:
-                    raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
+                if not current_path.is_file():
+                    raise EntityLibraryServiceError("The source image is unavailable.")
                 details = {"request_id": request_id, "result_index": result_index,
                            "previous_file": current["file_name"], "previous_checksum": current["checksum"]}
                 connection.execute(
@@ -783,16 +706,13 @@ class EntityLibraryService:
             raise
         return self.get_asset(asset_id)
 
-    def set_asset_status(self, asset_id: str, status: str) -> dict:
+    def set_asset_status(self, asset_id: str, status: str, *, confirm_ids=None, expected_versions=None) -> dict:
         if status not in ASSET_STATUSES:
             raise EntityLibraryServiceError("Invalid image status.")
-        if status == "archived":
-            usages = self.usage_for_asset(asset_id)
-            if usages:
-                raise EntityLibraryServiceError(
-                    f"Image has {len(usages)} current consumer(s); update those consumers before archiving it."
-                )
         with self.repository.transaction() as connection:
+            if status == "archived":
+                from zet.services.image_deletion_service import confirm_image_deletion
+                confirm_image_deletion(connection, [asset_id], confirm_ids, expected_versions)
             if status == "archived":
                 connection.execute(
                     "UPDATE logical_references SET status='inactive',updated_at=? WHERE asset_id=? AND status='active'",
@@ -974,10 +894,9 @@ class EntityLibraryService:
                     raise EntityLibraryServiceError(
                         "Resolve current consumers and preferred references before changing this image from approved status."
                     )
-            if status == "archived" and has_usages:
-                raise EntityLibraryServiceError(
-                    "Image has current consumers; update those consumers before archiving it."
-                )
+            if status == "archived" and fresh["status"] != "archived":
+                from zet.services.image_deletion_service import confirm_image_deletion
+                confirm_image_deletion(connection, [asset_id], data.get("confirm_ids"), data.get("expected_versions"))
             if reference_key:
                 collision = connection.execute(
                     "SELECT asset_id FROM logical_references WHERE reference_key=?", (reference_key,)
@@ -1055,8 +974,8 @@ class EntityLibraryService:
                 )
         return self.get_asset(asset_id)
 
-    def delete_asset(self, asset_id: str) -> dict:
-        return self.set_asset_status(asset_id, "archived")
+    def delete_asset(self, asset_id: str, *, confirm_ids=None, expected_versions=None) -> dict:
+        return self.set_asset_status(asset_id, "archived", confirm_ids=confirm_ids, expected_versions=expected_versions)
 
     def create_entity(self, data: dict) -> dict:
         name = self._require(data.get("name"), "Entity name")
@@ -1541,70 +1460,7 @@ class EntityLibraryService:
         return [item for item in self.list_assets(**filters) if item["status"] == "approved"]
 
     def refresh_usages(self, library_root: str | Path) -> dict:
-        """Rebuild usage records from authored scene JSON and template references."""
-        root = Path(library_root).resolve()
-        observations = []
-        missing = []
-        scene_paths = (list(root.rglob("*.scene.json"))
-                       + list((root / "NarrativeStories").glob("*/*/scene.json"))
-                       + list((root / "NarrativeStories").glob("*/*/*/target.json")))
-        for path in sorted(scene_paths):
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            consumer_id = path.relative_to(root).as_posix()
-            def visit(value, locator=""):
-                if isinstance(value, dict):
-                    direct = str(value.get("asset_id") or "").strip()
-                    logical = str(value.get("reference_key") or "").strip()
-                    if direct or logical:
-                        observations.append((direct or None, logical or None, "scene", consumer_id, locator or "$"))
-                    for key, child in value.items():
-                        if key in {"source_document", "source_markdown", "image_review", "imported_baseline"}:
-                            continue
-                        visit(child, f"{locator}.{key}" if locator else str(key))
-                elif isinstance(value, list):
-                    for index, child in enumerate(value):
-                        visit(child, f"{locator}[{index}]")
-            visit(data)
-        template_paths = list((root / "Characters").rglob("*.md")) + list((root / "CostumePrompt").rglob("*.md"))
-        for path in sorted(template_paths):
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            consumer_id = path.relative_to(root).as_posix()
-            for match in re.finditer(r"\{\{LIB:ASSET:([0-9a-fA-F-]{36})\}\}", text):
-                observations.append((match.group(1), None, "template", consumer_id, f"offset:{match.start()}"))
-            for match in re.finditer(r"\{\{LIB:REF:([a-z0-9][a-z0-9._-]*)\}\}", text):
-                observations.append((None, match.group(1), "template", consumer_id, f"offset:{match.start()}"))
-        stamp = _now()
-        current = []
-        with self.repository.transaction() as connection:
-            connection.execute("UPDATE asset_usages SET status='stale'")
-            for asset_id, reference_key, consumer_type, consumer_id, locator in observations:
-                valid_asset = (connection.execute("SELECT 1 FROM assets WHERE asset_id=?", (asset_id,)).fetchone()
-                               if asset_id else None)
-                valid_reference = (connection.execute(
-                    "SELECT 1 FROM logical_references WHERE reference_key=?", (reference_key,)
-                ).fetchone() if reference_key else None)
-                if asset_id and not valid_asset:
-                    missing.append({"asset_id": asset_id, "reference_key": None,
-                                    "consumer_id": consumer_id, "locator": locator})
-                    asset_id = None
-                if reference_key and not valid_reference:
-                    missing.append({"asset_id": None, "reference_key": reference_key,
-                                    "consumer_id": consumer_id, "locator": locator})
-                    reference_key = None
-                if not asset_id and not reference_key:
-                    continue
-                usage_id = hashlib.sha256("|".join((asset_id or "", reference_key or "", consumer_id, locator)).encode()).hexdigest()
-                connection.execute(
-                    "INSERT INTO asset_usages(usage_id,asset_id,reference_key,consumer_type,consumer_id,locator,last_seen,status) VALUES(?,?,?,?,?,?,?,'current') ON CONFLICT(usage_id) DO UPDATE SET last_seen=excluded.last_seen,status='current'",
-                    (usage_id, asset_id, reference_key, consumer_type, consumer_id, locator, stamp),
-                )
-                current.append(usage_id)
-        stale_count = self.repository.fetchone("SELECT count(*) AS count FROM asset_usages WHERE status='stale'") or {"count": 0}
-        return {"current": len(current), "missing": missing, "stale": int(stale_count["count"])}
-
+        """Compatibility entry point for an explicitly requested usage rebuild."""
+        if Path(library_root).resolve() != Path(self.path_service.config.base_library_path).resolve():
+            raise EntityLibraryServiceError("Usage rebuild belongs to another universe.")
+        return self.image_usages.audit(rebuild=True)

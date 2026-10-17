@@ -12,7 +12,7 @@ Paths below are relative to the **bound universe root** unless stated otherwise.
 | `Characters/<character>/<phase>/Character.md`, costume Markdown, expression/appearance definitions | [PathService](../zet/services/path_service.py), [CharacterSourceService](../zet/services/character_source_service.py), [CostumeService](../zet/services/costume_service.py), models under [zet/models](../zet/models/) | Authoring sources. Shared templates/instructions are in repository `Shared_Library/`; generated prompt artifacts are not canonical source replacements. |
 | Character-phase `Assets.json`, `Pipelines.json` and identity/turnaround records | [Asset](../zet/models/asset.py), [PipelineDefinition](../zet/models/pipeline.py), [repositories](../zet/repositories/) | Retained traditional pipeline data; numeric asset IDs are scoped by character and phase. Optimistic `revision` guards saves. Local character generation does not use these as its run state. |
 | `PipelineCandidates/Character-Pipeline/` | [LocalBodyReferenceService](../zet/services/local_body_reference_service.py), [LocalHeadImageService](../zet/services/local_head_image_service.py), [LocalCharacterAssetPipelineService](../zet/services/local_character_asset_pipeline_service.py) | Durable batch `spec.json`, run state, source snapshots, candidate images, human decisions, rankings, and selections. Review records use `review_version: 3`; `library_path_format_version` remains an independent path contract. Read serializers/mutation helpers in [local_image_pipeline_policy.py](../zet/services/local_image_pipeline_policy.py) before changing state. |
-| `_state/LocalAssets/<character>/<phase>/local_assets.json` | [LocalAssetStoreService](../zet/services/local_asset_store_service.py) | Schema version 1 workspace with keyed assets. Separates selected candidate, verified lock, upstream dependencies, entity asset ID, and logical reference. A lock is not merely a boolean flag. |
+| `_state/LocalAssets/<character>/<phase>/local_assets.json` | [LocalAssetStoreService](../zet/services/local_asset_store_service.py) | Schema version 1 workspace with keyed assets. Separates selected candidate, published lock, upstream dependencies, entity asset ID, and logical reference. A usable lock requires its permanent file; batch history and byte verification are not required. |
 | `Stories/<story>/` | Preserved legacy source files; [retirement archive](../Archive/scene-builder/README.md) | Original V4 JSON, Markdown, images and optional 3D layouts remain unchanged; no active authoring or normalization. |
 | Legacy story pipeline artifacts | Preserved files and [offline source archive](../Archive/scene-builder/README.md) | Historical compiler/review/queue records; retired execution paths do not stage or publish new work. |
 | `NarrativeStories/<story-id>/<scene-id>/<target-id>/` | [NarrativeRepository](../zet/repositories/narrative_repository.py), [Narrative models](../zet/models/narrative.py) | `story.json`, `scene.json`, `target.json` plus images/snapshots. Independent of Scene Builder. Target reads fill absent model defaults; no global schema version is declared in these models. |
@@ -168,8 +168,8 @@ checksum, image flag and diagnostic destination path. Destination authorization
 still comes from the owning workflow, never that diagnostic path. Older receipts
 remain readable. Local character batch review uses current-file availability;
 missing/outdated candidate hashes are refreshed on explicit Re-evaluate rather
-than rejecting an existing image. Other dependent workflows retain their own
-receipt/hash contracts. See [ADR 0021](DECISIONS/0021-file-based-local-image-availability.md).
+than rejecting an existing image. Existing-image review does not require historical receipts or matching bytes;
+current candidate/attempt ownership still fences new work. See [ADR 0021](DECISIONS/0021-file-based-local-image-availability.md).
 
 New I/O collection failures also retain `collection_failures` and
 `collection_retry_at` for delayed collection-only retry. Historical failures
@@ -183,3 +183,19 @@ render, analysis kind, frozen inputs and evaluation. Reconstruction's
 
 ## Recovery metadata (2026-10-17)
 Version-1 fixed-local recovery records add root identities, compact request activity, registered continuation arguments and logical-to-current attempt reservations. Existing library and protocol-v1 envelope formats remain readable. New request records optionally retain the original envelope for interrupted staging publication. Recovery status fields are additive; fresh execution uses a new transport ID, with verified producer-local logical results. Details and storage ownership: [storage recovery](COMPONENTS/STORAGE_RECOVERY.md).
+
+## Streamlined image integrity metadata (2026-10-17)
+
+Catalog schema 3 and existing checksum/receipt fields remain compatible. Checksums
+record Zet-managed writes, not file-system anti-tampering proof. New reconstruction
+sources and wizard references may carry `managed_checksum` separately from the digest
+of captured bytes; legacy snapshots fall back to their saved checksum metadata.
+Preparation markers use `identity_version: 2` with request/source metadata identity.
+
+Local Inbox `.zet-admitted.json` records one-time successful transfer verification;
+it is local collection state, never trusted from a shared answer. Per-consumer
+ImageUsages pending markers live under the existing machine-local recovery journal,
+scoped by library configuration, with a bounded lock pool. `asset_usages` retains its
+schema and direct-ID/key-only semantics; no bulk catalog migration is required.
+Archive confirmations carry `confirm_ids` and per-image `expected_versions` derived
+from catalog metadata, checked under the catalog transaction.

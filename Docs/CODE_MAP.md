@@ -2,7 +2,7 @@
 
 AI collection/recovery additions (2026-10-16):
 [AIJobService](../zet/services/ai_job_service.py) owns read-only state inspection,
-dual-outcome checks and durable image receipt admission;
+dual-outcome checks and one-time transfer admission;
 [image_harvest_service](../zet/services/image_harvest_service.py) rechecks local
 candidate/evaluation ownership and image-file availability at publication, and
 refreshes candidate file bookkeeping during explicit Re-evaluate;
@@ -25,7 +25,7 @@ Use this map to select a narrow search, inspect the named entry point and caller
 | Portable library paths and offline conversion | [library_reference_service.py](../zet/services/library_reference_service.py), [path_service.py](../zet/services/path_service.py); owning repositories/services encode/decode records; [library_reference_migration_service.py](../zet/services/library_reference_migration_service.py) and [normalize_library_references.py](../zet/scripts/normalize_library_references.py) update existing data | Disposable relocation/update checks passed; latest approved E2E run had S2/S3 pass and S1 timeout (see [DEVELOPMENT](DEVELOPMENT.md)) | Explicit typed path selectors, universe containment/ownership, legacy-root mapping, saved hashes, process quiescence and release compatibility; live library conversion remains a rollout action |
 | App construction and dashboard | [app.py](../zet/app.py): `ZetApp.from_config`, `AssetRef`; [web/app.py](../zet/web/app.py): `create_app`, lifespan, request universe binding and runtime version header; [task_service.py](../zet/services/task_service.py): checked-out revision and commit timestamp; [templates](../zet/web/templates/), [zet.js](../zet/web/static/zet.js), [zet.css](../zet/web/static/zet.css) | S1/S3 browser actions and reload; all scenarios use the fixture server. Full startup/recovery not covered | Service construction, cached apps, serializers, background lifecycle |
 | Configuration and universe lifecycle | [config_service.py](../zet/services/config_service.py): `ConfigService.load`, `Config`; [universe_service.py](../zet/services/universe_service.py): `bind_config`, `initialize`; [path_service.py](../zet/services/path_service.py); [universe_migration_service.py](../zet/services/universe_migration_service.py); called by app/HTTP and scripts | Test config/universe exercised by all; lifecycle/migration/config-error branches not covered | Every store, shared queues, style application, migration routing |
-| Entity image library and usage tracking | [entity_library_service.py](../zet/services/entity_library_service.py): `EntityLibraryService`; [entity_library_repository.py](../zet/repositories/entity_library_repository.py); [library_deletion_service.py](../zet/services/library_deletion_service.py); [repair_archived_reference.py](../zet/scripts/repair_archived_reference.py); app/library routes and story/Narrative reference consumers | S1 uses a seeded reference; S2 publishes locks. Inventory editor races, schema migration, search freshness and usage protection have no dedicated scenario; archived-reference and relocated-lock recovery checks use disposable catalogs | Targeted detail reads, one transactional editor PATCH, preferred aliases, migration and deletion protection; usage refresh validates direct IDs and keys independently, while paired historical references stay anchored to their direct image. Pipeline archive deactivates keys atomically; verified local locks restore their exact archived publications and bound references atomically; service writes reject active keys on archived images |
+| Entity image library and usage tracking | [entity_library_service.py](../zet/services/entity_library_service.py): `EntityLibraryService`; [entity_library_repository.py](../zet/repositories/entity_library_repository.py); [library_deletion_service.py](../zet/services/library_deletion_service.py); [repair_archived_reference.py](../zet/scripts/repair_archived_reference.py); app/library routes and story/Narrative reference consumers | S1 uses a seeded reference; S2 publishes locks. Inventory editor races, schema migration, search freshness and confirmed deletion have no dedicated scenario; archived-reference and relocated-lock recovery checks use disposable catalogs | Targeted detail reads, one transactional editor PATCH, preferred aliases, migration and deletion protection; incremental usage bookkeeping records direct IDs and keys independently, while paired historical references stay anchored to their direct image. Pipeline archive deactivates keys atomically; explicit relocking can restore archived publications and still-bound references; service writes reject active keys on archived images |
 | Record image catalog and derived dashboard discovery | [image_catalog_service.py](../zet/services/image_catalog_service.py), [image_catalog_repository.py](../zet/repositories/image_catalog_repository.py); [library_index_service.py](../zet/services/library_index_service.py): `LibraryIndexService`, `LibraryIndexReconciler`; [library_index_repository.py](../zet/repositories/library_index_repository.py); `ZetApp.refresh_library_index`, `_indexed_list_rows` | Fixture initialization is incidental; no catalog/index migration, pagination, freshness or corruption scenario | Catalog callbacks, paging/generation freshness, reference picker, index error reporting |
 | Machine-local storage, bounded retention and cutover inventory | [config_service.py](../zet/services/config_service.py), [storage_path_service.py](../zet/services/storage_path_service.py), [storage_maintenance_service.py](../zet/services/storage_maintenance_service.py), [manage_storage.py](../zet/scripts/manage_storage.py); queue/index/task workflow consumers | S4 runs on isolated configured storage; no maintained storage-migration scenario | `Storage.Root` containment, index publication/pruning, seven-day successful queue retention, read-only manifest and explicit offline compaction |
 | Character onboarding and source editing | [character_onboarding_service.py](../zet/services/character_onboarding_service.py), [character_source_service.py](../zet/services/character_source_service.py), [quick_character_wizard_service.py](../zet/services/quick_character_wizard_service.py), [quick_character_publication_service.py](../zet/services/quick_character_publication_service.py), [source_editor_service.py](../zet/services/source_editor_service.py); wizard router and app | S1 uploads/restores the character template; no wizard/source-edit permutations | Shared templates, measurements, derived prompts, initial image publication |
@@ -50,8 +50,8 @@ Use this map to select a narrow search, inspect the named entry point and caller
 ## Search and impact routine
 
 Completed character batch publication: `LocalAssetStoreService.all_selected_views_locked`
-verifies requested selections against same-batch, costume-scoped locks and image
-checksums. Body, Head, Assembly and Dressing adapters use it in detail and summary
+verifies requested selections against same-batch, costume-scoped lock identities and permanent image
+availability. Body, Head, Assembly and Dressing adapters use it in detail and summary
 projections so stale advisory rankings do not hide completed publication. Disposable
 checks cover invalid publications and protected statuses; S2 remains Assembly/Dressing
 regression coverage.
@@ -109,7 +109,7 @@ remains queue/background/history regression coverage, without a new scenario.
 ## Unified creative AI boundary (2026-10-16)
 
 - `AIJobService`, `AIJobRepository`, `AIJobCoordinator` and `AIWorkflowService` own
-  durable requesting, verified collection, registered consumer application and
+  durable requesting, admitted collection, registered consumer application and
   resumable continuations. `AIRequestPreparation` compiles frozen requests/graphs;
   provider execution belongs to AI_Proxy's native workers.
 - `AIQueueQueryService`, `/api/ai/jobs` and `ai_queue.js` own all-universe activity,
@@ -125,3 +125,19 @@ remains queue/background/history regression coverage, without a new scenario.
 - `ai_attempt_recovery_service.py` owns subscriber replacement reservations and logical answer materialization; `AIWorkflowService` mirrors continuation intent locally.
 - `storage_bootstrap_service.py` owns deferred service construction and storage availability presentation; existing web routes delegate to it. Index scanning and authoritative catalog opening retain their existing owners.
 - S1-S4 remain regressions. Disposable outage checks and their limits are recorded in [storage recovery](COMPONENTS/STORAGE_RECOVERY.md).
+
+## Streamlined image integrity (2026-10-17)
+
+- [ImageUsageService](../zet/services/image_usage_service.py) owns changed-consumer
+  observations, recovery markers and explicit report/rebuild scans. NarrativeRepository
+  observes reference-bearing writes; source/onboarding/costume services journal their
+  own mutations. Inventory GETs never scan authored consumers.
+- [image_deletion_service](../zet/services/image_deletion_service.py) owns metadata
+  version confirmations shared by inventory and phase/costume deletion. Confirmed
+  removal is allowed with recorded usages; external authored bindings survive.
+- LocalAssetStore/Source, character adapters and prompt observations use file
+  availability plus stored versions. AIJob/Lifecycle/FileProxy separate cheap status
+  reads from verified transfer. Reconstruction/wizard sources distinguish managed
+  metadata from captured bytes. LibraryIndexReconciler coalesces write requests;
+  image dependencies do not rehash payloads. See
+  [ADR 0023](DECISIONS/0023-streamlined-image-integrity.md).

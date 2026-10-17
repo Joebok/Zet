@@ -161,13 +161,11 @@ class LocalCharacterAssetPipelineService:
 
     def _locked(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
         key = self.asset_store.key(pipeline, view, qualifier)
-        record = self.asset_store.detail(character, phase)["assets"].get(key) or {}
-        if not record.get("locked") or record.get("stale"):
-            raise LocalCharacterAssetPipelineError(f"A current locked {pipeline} image is required for {view}.")
-        path = Path(str(record.get("locked_image_path") or "")).resolve()
-        if not path.is_file() or self._hash(path) != record.get("image_sha256"):
-            raise LocalCharacterAssetPipelineError(f"The locked {pipeline} image for {view} is missing or changed.")
-        return {**record, "key": key, "image_path": str(path)}
+        records = self.asset_store.locked_assets(character, phase, pipeline=pipeline, qualifier=qualifier)
+        record = next((item for item in records if item["key"] == key), None)
+        if record is None:
+            raise LocalCharacterAssetPipelineError(f"A locked {pipeline} file is required for {view}.")
+        return record
 
     def _requirements(self) -> tuple[tuple[str, str], ...]:
         source_pipeline = {
@@ -318,12 +316,13 @@ class LocalCharacterAssetPipelineService:
             for role, record in refs.items():
                 source = Path(record["image_path"])
                 expected_hash = str(record.get("sha256") or record.get("image_sha256") or "")
-                if not source.is_file() or not expected_hash or self._hash(source) != expected_hash:
+                if not source.is_file():
                     raise LocalCharacterAssetPipelineError(f"Selected {role.replace('_', ' ')} source for {view} changed after preview.")
                 destination = input_root / view / f"{role}{source.suffix.lower()}"
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, destination)
-                snapshot[view][role] = {**record, "image_path": str(destination), "sha256": self._hash(destination)}
+                snapshot[view][role] = {**record, "image_path": str(destination), "sha256": self._hash(destination),
+                                        "managed_checksum": record.get("image_sha256", "")}
         costume_snapshot = ""
         if plan.get("costume"):
             source = self._costume_path(plan["character"], plan["phase"], plan["costume"])
@@ -442,7 +441,7 @@ class LocalCharacterAssetPipelineService:
             local_asset = result["local_assets"].get(key) or {}
             stale = (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
                      or candidate_id not in (ranking.get("ordered_candidate_ids") or [])
-                     or ranking.get("input_hashes", {}).get(candidate_id) != self._hash(image)
+                     or ranking.get("input_hashes", {}).get(candidate_id) != str(candidate.get("image_sha256") or "")
                      or bool(local_asset.get("locked") and local_asset.get("candidate_id") != candidate_id))
             if stale:
                 result["stale_selections"].append(view)
@@ -542,7 +541,7 @@ class LocalCharacterAssetPipelineService:
                 qualifier = str(source.get("qualifier") or "")
                 key = str(source.get("key") or self.asset_store.key(pipeline, view, qualifier))
                 current = (run.get("local_assets") or {}).get(key) or {}
-                source_hash = str(source.get("sha256") or source.get("image_sha256") or "")
+                source_hash = str(source.get("managed_checksum") or source.get("image_sha256") or source.get("sha256") or "")
                 source_batch = str(source.get("batch_id") or "")
                 source_candidate = str(source.get("candidate_id") or "")
                 source_label = str(source.get("batch_name") or "")
@@ -556,9 +555,8 @@ class LocalCharacterAssetPipelineService:
                         source_label = "a previous batch"
                 source_label = source_label or "a previous batch"
                 current_path = Path(str(current.get("locked_image_path") or ""))
-                current_valid = (current_path.is_file() and current.get("image_sha256")
-                                 and self._hash(current_path) == current.get("image_sha256"))
-                if not current.get("locked") or current.get("stale") or not current_valid:
+                current_valid = current_path.is_file()
+                if not current.get("locked") or not current_valid:
                     entries.append(f"{role.replace('_', ' ')} came from {source_label}; no current locked image exists.")
                 elif current.get("image_sha256") != source_hash:
                     entries.append(f"{role.replace('_', ' ')} came from {source_label}, not the current locked image.")
@@ -575,7 +573,7 @@ class LocalCharacterAssetPipelineService:
                                           if item.get("candidate_id") == source_candidate), None)
                         selected_path = Path(str((candidate or {}).get("image_path") or ""))
                         if (selected != source_candidate or not selected_path.is_file()
-                                or self._hash(selected_path) != source_hash):
+                                or (candidate or {}).get("image_sha256", "") != source_hash):
                             entries.append(f"The {role.replace('_', ' ')} image is no longer the selected {view} image in its source batch.")
                         if pipeline == "Character-Assembly":
                             for ancestor_view, messages in (source_run.get("lineage_warnings") or {}).items():
@@ -596,7 +594,7 @@ class LocalCharacterAssetPipelineService:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
             inputs[role] = {**record, "image_path": str(destination), "sha256": self._hash(destination),
-                            "image_sha256": self._hash(destination)}
+                            "managed_checksum": record.get("image_sha256", "")}
         spec_path = Path(run["root"]) / "spec.json"
         spec = self._read(spec_path)
         spec.setdefault("sources", {})[view] = inputs
@@ -609,7 +607,7 @@ class LocalCharacterAssetPipelineService:
         for role, record in source.items():
             path = Path(str(record.get("image_path") or ""))
             digest = str(record.get("sha256") or record.get("image_sha256") or "")
-            if not path.is_file() or not digest or self._hash(path) != digest:
+            if not path.is_file():
                 raise LocalCharacterAssetPipelineError(f"Chosen {role.replace('_', ' ')} reference for {view} is missing or changed.")
         return self._snapshot_view_inputs(run, view, source)
 
@@ -619,7 +617,7 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError(f"No complete original reference snapshot exists for {view}.")
         for role, record in sources.items():
             path = Path(str(record.get("image_path") or ""))
-            if not path.is_file() or self._hash(path) != record.get("sha256"):
+            if not path.is_file():
                 raise LocalCharacterAssetPipelineError(f"Original {role.replace('_', ' ')} snapshot for {view} is missing or changed.")
         return sources
 
@@ -816,7 +814,7 @@ class LocalCharacterAssetPipelineService:
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
-        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in candidates}
+        hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
         previous = (run.get("evaluations") or {}).get(view) or {}
         if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
             self.reconcile_review_jobs(run_id, costume)
@@ -944,7 +942,7 @@ class LocalCharacterAssetPipelineService:
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
         for survivor in survivors:
             require_candidate_harvest(self.app, run, survivor)
-        hashes = {item["candidate_id"]: self._hash(Path(item["image_path"])) for item in survivors}
+        hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in survivors}
         if not survivors:
             ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [], "input_hashes": {}, "recorded_at": self._now()}
         elif len(survivors) == 1:
@@ -1000,7 +998,7 @@ class LocalCharacterAssetPipelineService:
         if evaluation_id and (current_evaluation.get("evaluation_id") != evaluation_id
                               or current_evaluation.get("status") not in {"RUNNING", "STAGING"}):
             return run
-        hashes_before = {item["candidate_id"]: self._hash(Path(item["image_path"]))
+        hashes_before = {item["candidate_id"]: str(item.get("image_sha256") or "")
                          for item in run["candidates"] if item.get("view") == view
                          and Path(str(item.get("image_path") or "")).is_file()}
         can_start = []
@@ -1028,7 +1026,7 @@ class LocalCharacterAssetPipelineService:
             active = (current.get("evaluations") or {}).get(view) or {}
             if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
                 return
-            hashes_now = {item["candidate_id"]: self._hash(Path(str(item["image_path"])))
+            hashes_now = {item["candidate_id"]: str(item.get("image_sha256") or "")
                           for item in self.detail(run_id, costume)["candidates"] if item.get("view") == view
                           and Path(str(item.get("image_path") or "")).is_file()}
             if hashes_now != hashes_before:
@@ -1286,7 +1284,7 @@ class LocalCharacterAssetPipelineService:
         if not pipeline:
             raise LocalCharacterAssetPipelineError(f"Cannot identify the source pipeline for {view}.")
         qualifier = str(source.get("qualifier") or "")
-        digest = str(source.get("sha256") or source.get("image_sha256") or "")
+        digest = str(source.get("managed_checksum") or source.get("image_sha256") or source.get("sha256") or "")
         current = (owner.get("local_assets") or {}).get(key) or {}
         if current.get("locked") and current.get("image_sha256") == digest:
             return
@@ -1304,7 +1302,7 @@ class LocalCharacterAssetPipelineService:
             candidate = next((item for item in source_run.get("candidates", [])
                               if item.get("candidate_id") == source_candidate_id), None)
             image = Path(str((candidate or {}).get("image_path") or "")).resolve()
-            if not image.is_file() or self._hash(image) != digest:
+            if not image.is_file():
                 raise LocalCharacterAssetPipelineError(f"The selected {pipeline} image for {view} is missing or changed.")
             records[key] = {"pipeline": pipeline, "view": view, "qualifier": qualifier,
                             "candidate_id": source_candidate_id, "batch_id": source_run_id,
@@ -1438,8 +1436,8 @@ class LocalCharacterAssetPipelineService:
             for view, sources in fresh_sources.items():
                 for role, source in sources.items():
                     path = Path(str(source.get("image_path") or ""))
-                    digest = str(source.get("sha256") or source.get("image_sha256") or "")
-                    if not path.is_file() or not digest or self._hash(path) != digest:
+                    digest = str(source.get("managed_checksum") or source.get("image_sha256") or source.get("sha256") or "")
+                    if not path.is_file():
                         raise LocalCharacterAssetPipelineError(f"Chosen {role.replace('_', ' ')} reference for {view} is missing or changed.")
         else:
             for view in VIEWS:
@@ -1535,7 +1533,7 @@ class LocalCharacterAssetPipelineService:
                 if sources:
                     for role, record in sources.items():
                         path = Path(str(record.get("image_path") or ""))
-                        if not path.is_file() or self._hash(path) != record.get("sha256"):
+                        if not path.is_file():
                             raise LocalCharacterAssetPipelineError(f"Recorded {role.replace('_', ' ')} input for {view} is missing or changed.")
                 else:
                     self._refresh_view_inputs(run, view)

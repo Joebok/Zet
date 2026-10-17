@@ -7,7 +7,7 @@ This component owns library service interactions. [DATA_MODEL](../DATA_MODEL.md)
 - [UniverseService](../../zet/services/universe_service.py): discover/select/create universes and bind configuration. [ZetApp.from_config](../../zet/app.py) constructs the bound services. [create_app](../../zet/web/app.py) caches per-universe apps and binds requests through header/query context.
 - [EntityLibraryService](../../zet/services/entity_library_service.py) and [EntityLibraryRepository](../../zet/repositories/entity_library_repository.py): authoritative images, entities/variants, reference sets, descriptors/facets/tags, stable logical references, usage, merge/archive/replace workflows. [LibraryDeletionService](../../zet/services/library_deletion_service.py) coordinates removal with local workflow sources and the entity catalog.
 - [ImageCatalogService](../../zet/services/image_catalog_service.py) and [ImageCatalogRepository](../../zet/repositories/image_catalog_repository.py): a separate record-oriented catalog combining managed metadata and existing pipeline/story images. It remains wired into app/story reference services; entity SQLite has not replaced every catalog consumer.
-- [LibraryIndexService](../../zet/services/library_index_service.py)/`LibraryIndexReconciler` and [LibraryIndexRepository](../../zet/repositories/library_index_repository.py): derived local generations for dashboard paging, source payload reuse, errors, work/history, and compilation dependency fingerprints. `ZetApp._indexed_list_rows` supplies additional list rows; record catalog writes call `refresh_library_index`.
+- [LibraryIndexService](../../zet/services/library_index_service.py)/`LibraryIndexReconciler` and [LibraryIndexRepository](../../zet/repositories/library_index_repository.py): derived local generations for dashboard paging, source payload reuse, errors, work/history, and compilation dependency fingerprints. `ZetApp._indexed_list_rows` supplies additional list rows; record catalog writes request a coalesced background refresh.
 
 ## Inputs, outputs, and flow
 
@@ -21,10 +21,10 @@ Library-owned typed JSON path fields are stored in portable format version 1 rel
 
 - Wrong universe/request context can target the wrong store; queue/results must remain owned by the bound universe.
 - Older or incomplete record catalogs fail validation with a migration instruction. Entity initialization can migrate an older database with a backup; it rejects a newer unsupported version.
-- Usage protection can block archive/replace/merge operations. Preserve logical-reference semantics and operation previews rather than bypassing protections with raw SQL/file deletion.
-- Pipeline reconciliation deactivates logical references in the same transaction when it archives their images. Active logical-reference writes reject archived image targets; the preview-first `zet.scripts.repair_archived_reference` command handles an explicitly verified existing mismatch without initializing or synchronizing the app.
-- Inventory synchronization restores an archived local publication only when its origin key and exact ID-addressed image path match a current verified lock and its stored bytes still match the checksum. It restores references still bound to that image in the same transaction; historical duplicate publications remain archived. Explicit relocking also restores a verified existing publication before costume classification. Fixing paths alone does not change previously archived catalog statuses.
-- Phase and costume deletion preserve current Narrative consumers; a blocked costume deletion reports each Story/Scene reference and links to the editable scene when its record IDs resolve.
+- Archive/deletion shows recorded usages and requires confirmed image IDs plus managed-version tokens. Confirmed removal may leave unresolved authored references; no global usage scan precedes it. Merge/version conflicts keep their existing metadata checks.
+- Explicit archival deactivates logical references transactionally. Discovery never infers archival from missing source files and does not revive explicit archives. `_sync_pipeline_assets` remains an explicit legacy discovery operation; inventory reads never invoke it.
+- Explicit relocking can restore an existing publication and its still-bound references by identity and file availability. Body/Head/Assembly publications register character/phase classification directly; Costume-Dressing also maintains its logical view key.
+- Phase/costume deletion confirms the affected images and recorded consumers, fences versions under the catalog transaction, then moves existing files to deleted storage. Authored references outside the removed scope remain available for repair.
 - Derived index corruption or stale generations can affect discovery while authored files remain intact. Inspect error/freshness reporting before choosing a rebuild; the machine-local index lives under configured `Storage.Root/Indexes`, outside Git/Dropbox and the authored library. The rebuild CLI uses the configured universe binding; indexes remain disposable and are not copied during storage cutover.
 - Add new reusable library actions in focused services and expose them through existing app/router patterns. Add indexed discovery kinds through source scanning and list providers; inspect pagination/freshness contracts in source and obtain approval for any new coverage. Do not make candidates searchable approved images merely by adding them to a folder scan.
 
@@ -72,3 +72,21 @@ Minor Character workspaces separate working selection from explicit per-view Inv
 
 ## Unavailable volume integrity (2026-10-17)
 Root identity/availability checks and observed-catalog markers prevent replacing missing authoritative state. SQLite opens observed catalogs in existing-file mode. Derived index scans propagate unreadable directories/sources and retain the committed generation when a scan is incomplete. A missing/corrupt catalog requires restoration, independently of index rebuilds. See [storage recovery](STORAGE_RECOVERY.md).
+
+## Incremental usages and maintenance
+
+[ImageUsageService](../../zet/services/image_usage_service.py) owns per-consumer
+replacement/removal and local recoverable pending markers. Narrative repository
+writes observe reference changes (including generated snapshots); unchanged
+reference sets skip bookkeeping. Source/template/costume writers track their
+changed file or explicitly affected scope. Existing rows survive upgrades.
+Inventory Where used displays recorded observations; Check references is report-only,
+and Rebuild usage list updates only readable consumers. Audits do not change
+images, authored bindings, or archive decisions.
+
+Index refresh requests debounce for 250 ms on the existing reconciler, retaining
+its 60-second discovery cycle and last successfully published generation. Pending
+usage maintenance replays there, including after restart. Image dependencies use
+availability/catalog version metadata; text/JSON dependency fingerprints remain.
+Primary saves return without synchronous index rebuilds. See
+[ADR 0023](../DECISIONS/0023-streamlined-image-integrity.md).

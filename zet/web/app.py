@@ -31,7 +31,7 @@ from zet.services.local_image_review_service import LocalImageReviewService
 from zet.services.image_catalog_service import ImageCatalogReferenceConflict
 from zet.services.manual_render_metrics_service import ManualRenderMetricsService
 from zet.services.manual_render_submission_service import ManualRenderSubmissionService
-from zet.services.library_deletion_service import NarrativeUsageBlockedError
+from zet.services.image_deletion_service import ImageDeletionConfirmation
 from zet.services.performance_instrumentation import PerformanceInstrumentation
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
@@ -1350,12 +1350,14 @@ def _create_available_app(
         }
 
     @app.delete("/api/character-phase")
-    def character_phase_delete(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+    def character_phase_delete(character: str = Query(...), phase: str = Query(...), data: dict = Body(default={})) -> dict[str, Any]:
         """Move a character phase and its related files into library deleted storage."""
         zet_app = _app(app.state.config_path)
         try:
-            destination = zet_app.delete_character_phase(character, phase)
+            destination = zet_app.delete_character_phase(character, phase, confirm_ids=data.get("confirm_ids"), expected_versions=data.get("expected_versions"))
             return {"destination": destination, "message": f"Moved {character} / {phase} and its related assets to deleted storage."}
+        except ImageDeletionConfirmation as exc:
+            raise HTTPException(status_code=409, detail=exc.detail()) from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1771,14 +1773,18 @@ def _create_available_app(
     def entity_library_asset_update(asset_id: str, data: dict = Body(...)) -> dict[str, Any]:
         try:
             return _app(app.state.config_path).entity_library_update_asset(asset_id, data)
+        except ImageDeletionConfirmation as exc:
+            raise HTTPException(status_code=409, detail=exc.detail()) from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.delete("/api/entity-library/assets/{asset_id}")
-    def entity_library_asset_archive(asset_id: str) -> dict[str, Any]:
+    def entity_library_asset_archive(asset_id: str, data: dict = Body(default={})) -> dict[str, Any]:
         try:
             zet_app = _app(app.state.config_path)
-            return {"asset": zet_app._indexed_write(lambda: zet_app.entity_library_service.delete_asset(asset_id))}
+            return {"asset": zet_app._indexed_write(lambda: zet_app.entity_library_service.delete_asset(asset_id, confirm_ids=data.get("confirm_ids"), expected_versions=data.get("expected_versions")))}
+        except ImageDeletionConfirmation as exc:
+            raise HTTPException(status_code=409, detail=exc.detail()) from exc
         except Exception as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -2006,7 +2012,21 @@ def _create_available_app(
             service = _app(app.state.config_path).entity_library_service
             if asset_id:
                 return {"usages": service.usage_for_asset(asset_id)}
-            return {"report": service.refresh_usages(service.path_service.config.base_library_path)}
+            return {"report": service.image_usages.summary()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/usages/check")
+    def entity_library_usages_check() -> dict[str, Any]:
+        try:
+            return {"report": _app(app.state.config_path).entity_library_service.image_usages.audit()}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/entity-library/usages/rebuild")
+    def entity_library_usages_rebuild() -> dict[str, Any]:
+        try:
+            return {"report": _app(app.state.config_path).entity_library_service.image_usages.audit(rebuild=True)}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2438,21 +2458,19 @@ def _create_available_app(
         costume_slug: str,
         character: str = Query(...),
         phase: str = Query(...),
+        data: dict = Body(default={}),
     ) -> dict[str, Any]:
         """Move a costume and its related files into library deleted storage."""
         zet_app = _app(app.state.config_path)
         try:
-            destination = zet_app.delete_costume(character, phase, costume_slug)
+            destination = zet_app.delete_costume(character, phase, costume_slug, confirm_ids=data.get("confirm_ids"), expected_versions=data.get("expected_versions"))
             return {
                 "costumes": [_costume_payload(zet_app, character, phase, item) for item in zet_app.list_costumes(character, phase)],
                 "destination": destination,
                 "message": f"Moved costume {costume_slug} and its related assets to deleted storage.",
             }
-        except NarrativeUsageBlockedError as exc:
-            raise HTTPException(
-                status_code=409,
-                detail={"message": str(exc), "references": exc.references},
-            ) from exc
+        except ImageDeletionConfirmation as exc:
+            raise HTTPException(status_code=409, detail=exc.detail()) from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

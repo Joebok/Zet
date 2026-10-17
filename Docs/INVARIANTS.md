@@ -26,11 +26,11 @@ These are supported by implementation and repository instructions, with earlier 
 - **Implementation/impact:** `WorkerService.run_current_worker`/`run_named_worker`, guarded app/web actions, local Body/Head/Assembly/Dressing services. Retained assets may still be inspected/reviewed or used by supported consumers.
 - **Verify:** Inspect `require_active_pipeline` callers. S2 verifies active local Assembly/Dressing with seeded prerequisites; it does not exhaustively exercise retirement guards.
 
-## 5. Approved local sources are verified snapshots
+## 5. Approved local sources are available publications
 
-- **Rule/why:** `locked_assets` requires locked, non-stale records, existing image bytes matching SHA-256, and a valid live batch `spec.json` when `batch_id` is present. Selecting a new candidate does not replace an existing immutable lock. Changing an upstream selection does not silently mutate a locked dependent.
-- **Implementation/impact:** [LocalAssetStoreService](../zet/services/local_asset_store_service.py): `locked_assets`, `_batch_exists`, `lock`, `promote_chain`; [LocalAssetSourceService](../zet/services/local_asset_source_service.py); identity/turnaround/phase consumers and catalog publication.
-- **Verify:** S2 verifies seeded prerequisites, selection/lock and Assembly-to-Dressing use. Inspect `_batch_exists`, checksum checks and promotion rollback for uncovered cases. Old cutover fixture failures belong to the retired suite, not the maintained baseline.
+- **Rule/why:** `locked_assets` requires a recorded lock and an existing universe-owned permanent image. Original batch/candidate files, saved hashes and advisory upstream drift do not invalidate publication. Manual file replacement is trusted. Explicit catalog archival revokes availability; explicit relocking can restore it.
+- **Implementation/impact:** [LocalAssetStoreService](../zet/services/local_asset_store_service.py), [LocalAssetSourceService](../zet/services/local_asset_source_service.py) and entity publication. Managed hashes are recorded on writes/re-evaluation, not recomputed by detail/summary reads.
+- **Verify:** S2 covers publication and downstream prerequisites; disposable checks cover manual replacement, absent history/files and archive/relock. See [ADR 0023](DECISIONS/0023-streamlined-image-integrity.md).
 
 ## 6. Ranking and human review define candidate eligibility
 
@@ -40,7 +40,7 @@ These are supported by implementation and repository instructions, with earlier 
 
 ## 7. Queue publication and consumption preserve ownership and readiness
 
-- **Rule/why:** publish a complete hidden staging bundle by atomic rename; consume only ready answers with valid inventory and applicable producer/local routing. Drain shared answers into a verified local copy before removing shared payload. Superseded attempts and durable receipts prevent late/duplicate application.
+- **Rule/why:** publish a complete hidden staging bundle by atomic rename; inspect answers using metadata; admit them only after inventory verification with applicable producer/local routing. Verify bytes while copying shared answers into local staging, atomically publish admission, then remove shared payload. Admitted local files are not repeatedly rehashed. Superseded attempts and durable receipts prevent late/duplicate application.
 - **Implementation/impact:** [FileProxyClient](../zet/services/file_proxy_client.py), [AIQueueLifecycleService](../zet/services/ai_queue_lifecycle_service.py), [workflow_storage.py](../zet/services/workflow_storage.py), [AIAnswerHarvester](../zet/services/ai_answer_harvester.py), manual publication/submission. Changes affect all AI producers and consumers.
 - **Verify:** S2/S3 exercise private prepared answers and result application; S3 includes one render failure/retry. Generic harvester, foreign/missing-route, stale-attempt, copy-failure and duplicate branches are not independently covered. A separately requested live check exercises actual Narrative dispatch, not all these cases.
 
@@ -55,8 +55,8 @@ These are supported by implementation and repository instructions, with earlier 
 Local character batch advice requires an existing current-candidate image file;
 historical receipt or checksum metadata does not block review. Explicit Re-evaluate
 refreshes hashes as bookkeeping. Admission remains fenced by the domain lock,
-cancellation and current candidate/attempt/evaluation ownership. Other dependent
-workflows retain their receipt and image-validation contracts. See
+cancellation and current candidate/attempt/evaluation ownership. Wizard/Minor Character advice also uses current owned files without historical
+receipt/hash requirements; input/attempt/selection fences remain. See
 [ADR 0021](DECISIONS/0021-file-based-local-image-availability.md), which supersedes
 the local batch availability portion of ADR 0017.
 Local ComfyUI/Ollama work stays non-preemptive and serial,
@@ -102,7 +102,7 @@ hashes before resuming. Configuration changes apply only to new submissions.
 Narrative logical costume references resolve approved current exact-view images;
 unavailable/stale bindings remain review issues. Jobs freeze the resolved bytes and
 ordered references at submission. Legacy-image catalog blobs survive scene deletion.
-Costume deletion uses the same exact costume asset set for usage protection and
+Costume deletion uses the same exact costume asset set for confirmation and
 purge; a character/phase origin prefix alone does not establish costume ownership.
 Candidate imports and migration resumes are idempotent; changed source briefs cannot
 silently overwrite authored inputs or selected/locked outputs. Retired owned answers
@@ -111,24 +111,25 @@ are superseded without publishing into source or Narrative records.
 ## 13. Image editor saves are atomic and preferred keys preserve aliases
 
 - **Rule/why:** One editor save updates image fields, organization, asset descriptors, and preferred reference together. A failed validation leaves the authored asset unchanged. A preferred-key change does not deactivate older keys that existing templates or scenes may use.
-- **Implementation/impact:** `EntityLibraryService.update_asset`, `assets.preferred_reference_key` in entity catalog schema 3, and `PATCH /api/entity-library/assets/{asset_id}`. Targeted detail reads do not synchronize pipeline images; inventory search and reconciliation own discovery.
+- **Implementation/impact:** `EntityLibraryService.update_asset`, `assets.preferred_reference_key` in entity catalog schema 3, and `PATCH /api/entity-library/assets/{asset_id}`. Inventory reads do not synchronize pipeline images; publication writes and explicit reconciliation own discovery.
 - **Verify:** Run disposable schema/backfill, collision, alias, rollback, and targeted-read diagnostics. The approved E2E suite does not cover inventory edit/save races or preference migration; obtain approval before adding that coverage.
 
-Pipeline archival deactivates active references to the archived images in the same
-catalog transaction. Service writes cannot activate a logical reference on an
-archived image. Existing mismatches use the expected-binding,
-preview-first [repair command](../zet/scripts/repair_archived_reference.py).
+Explicit archival deactivates bound logical references in the catalog transaction.
+Discovery cannot archive images or restore an explicit archive based on source
+absence/presence. Destructive library actions require confirmed image IDs and
+managed-version tokens, show recorded consumers, and may proceed with usages.
+Surviving authored references are retained and may become unresolved.
 
 ## 14. Render positions are independent of candidates and ranking
 Eight-slot grids keep stable physical positions and candidate bindings. A completed Luna ranking may change the browser's card presentation order, but it never changes the candidate's physical slot or its slot actions. Supplemental generation fills empty slots only; reserved prerequisites and failed renders are occupied. Replacement candidates/jobs have distinct identities, and changed character evaluations receive a new fence. Late results cannot fill another candidate's position. Selected and locked images require explicit protection transitions before slot replacement. Clear detaches membership while retaining historical artifacts; normal reruns still follow their existing explicit destructive behavior.
 
 Character slot changes hold the state lock and persist pending candidate IDs before background submission. An independent slot collector owns `slot_runner.lock`; it does not block unrelated slot actions on the batch runner. Existing batch runners exclude these independently managed additions. Empty capacity is not Run All Remaining work. Image Generation workspace assignments are universe-owned and server persisted; newly generated results return by child index, never completion order. Services own these transitions, browsers own only presentation/draft inputs. [ADR 0007](DECISIONS/0007-stable-render-slots.md) and [render_slot_service.py](../zet/services/render_slot_service.py) own the contract. Existing S2/S3 cover baseline compatibility; the separately approved disposable checks cover the reported slot issues. Full Body/Head generation and general restart recovery remain unverified by maintained scenarios.
 
-## 15. Image usage endpoints preserve identity
+## 15. Recorded image usages preserve identity
 
-- **Rule/why:** A usage with a direct asset ID remains tied to that image even when it also records a historical logical key. Key-only usages follow the key's current image. Usage refresh validates each endpoint separately; a missing key must not abort other observations or erase a valid direct consumer.
-- **Implementation/impact:** `EntityLibraryService.refresh_usages`, `usage_for_asset`, status guards, and `LibraryDeletionService._protect_narrative_assets`. Narrative jobs retain frozen resolved IDs and bytes; live authored elements keep current direct or logical bindings.
-- **Verify:** The approved S1-S3 suite exercises representative authoring and Narrative flows but has no dedicated usage protection assertion. Inspect endpoint validation and every catalog usage join; request approval before adding permanent coverage.
+- **Rule/why:** Direct asset IDs remain anchored to their image even beside historical logical keys; key-only usages follow the current key. Zet mutations update just their affected consumers, with local pending markers for recovery. Ordinary reads/startup/saves never rebuild global usages. Unreadable consumers retain their observations during explicit audits/rebuilds.
+- **Implementation/impact:** [ImageUsageService](../zet/services/image_usage_service.py), `NarrativeRepository.write`, template/source writers and `EntityLibraryService.usage_for_asset`. `GET /api/entity-library/usages` reads observations; POST `/usages/check` reports and POST `/usages/rebuild` explicitly refreshes readable consumers. Resolve actual files when compiling/submitting/assembling/exporting; failure affects only that dependent operation.
+- **Verify:** S1/S3 cover representative authoring; disposable service/API/browser checks cover replay, direct/key identity, external edits, audits and confirmed deletion. No new permanent scenarios.
 
 ## 16. Library-owned paths are universe-relative and versioned
 
@@ -141,7 +142,7 @@ Character slot changes hold the state lock and persist pending candidate IDs bef
 
 Source observations and intended output have different authority. Explicit changes override conflicting source facts; destination style controls rendering treatment. A true-up cannot treat deliberately removed equipment as identity drift. Changed target intent gets new task/revision identity and invalidates old approvals; a corrected front requires explicit selection before downstream views become current.
 
-Original reconstruction sources are analysis-only. Styled candidates may enter true-up img2img renders; selected styled fronts may anchor character views. Reports/corrections bind universe, target hash, exact candidate bytes and host selection/front identity. Repeated application reuses an existing attempt; retries retain submitted inputs/seed. Image Generation reserves additional slots and checks the selected source again at dispatch. See [ADR 0013](DECISIONS/0013-shared-reconstruction-target-and-true-up.md). Model reports are optional artistic advice: custom feedback needs no compatibility approval and takes precedence over earlier direction. Failed review does not block choosing a rendered wizard image. Software validation does not prove visual compliance.
+Original reconstruction sources are analysis-only. Styled candidates may enter true-up img2img renders; selected styled fronts may anchor character views. Reports/corrections bind universe, target hash, managed source version and host candidate/selection/front identity. Snapshot hashes describe captured inputs; existing files are not policed against them. Repeated application reuses an existing attempt; retries retain submitted inputs/seed. Image Generation reserves additional slots and checks the selected source again at dispatch. See [ADR 0013](DECISIONS/0013-shared-reconstruction-target-and-true-up.md). Model reports are optional artistic advice: custom feedback needs no compatibility approval and takes precedence over earlier direction. Failed review does not block choosing a rendered wizard image. Software validation does not prove visual compliance.
 
 Minor Characters use fresh named universe-local workspaces with one current board for style and each view. Selected style enables independent view alignment; selecting an aligned view gates its true-ups. Only generated view true-ups can lock; carry does not change eligibility. Selection requires current slot membership; immutable Inventory locks survive slot replacement, refinement, undo and deletion. Refinement carries at most one selected image in its same slot and clears other slots. One undo per board restores prompt/supporting state with empty slots and no redo. Private frozen sources support replay without image history. Revisions fence stale mutations; late results cannot restore discarded membership. Comparison is display-only. Retired records are excluded without migration. See [ADR 0015](DECISIONS/0015-minor-character-alignment.md); queue ownership and image integrity remain applicable.
 

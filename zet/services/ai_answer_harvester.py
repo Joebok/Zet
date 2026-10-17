@@ -736,6 +736,11 @@ class AIAnswerHarvester:
         harvest = self._read_json(answer_path / "harvest_manifest.json")
         answer = self._read_json(answer_path / "answer_manifest.json")
         ask = self._read_json(answer_path / "ask_manifest.json")
+        if str(ask.get("consumer") or "zet").strip().lower() != "zet":
+            # A transport/legacy harvest marker is not the owning domain's
+            # application commit. Its registered handler must consume and finish
+            # the answer before any generic receipt cleanup can remove it.
+            return
         lifecycle.finish_answer(answer_path, {
             "status": harvest.get("status") or answer.get("status") or "UNKNOWN",
             "answer_status": answer.get("status", ""),

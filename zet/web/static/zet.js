@@ -4837,11 +4837,11 @@ function renderCostumeEditor() {
 async function deleteSelectedCostume() {
   const costume = selectedCostume();
   if (!costume || !state.character || !state.phase) return;
-  if (!window.confirm(`Move ${costume.name} and all of its templates and character assets to the library deleted folder?`)) return;
   costumeDelete.disabled = true;
   showCostumeMessage("Moving costume to deleted storage...");
   try {
-    const payload = await fetchJson(`/api/costumes/${encodeURIComponent(costume.slug)}?${currentQuery().toString()}`, { method: "DELETE" });
+    const payload = await confirmedImageMutation(`/api/costumes/${encodeURIComponent(costume.slug)}?${currentQuery().toString()}`, { method: "DELETE" }, `Move ${costume.name} and all its templates and assets to the library deleted folder?`);
+    if (!payload) return;
     state.costumes = payload.costumes || [];
     state.selectedCostumeSlug = null;
     costumeName.value = "";
@@ -8104,7 +8104,7 @@ function renderEntityLibraryAsset(asset) {
   }
   if (!asset.usages?.length) {
     const row = document.createElement("li");
-    row.textContent = "No current consumers.";
+    row.textContent = "No recorded consumers.";
     entityLibraryUsages.append(row);
   }
   entityLibrarySavedSnapshot = entityLibraryEditorSnapshot();
@@ -8133,13 +8133,51 @@ async function selectEntityLibraryAsset(assetId) {
   }
 }
 
+async function confirmedImageMutation(url, options, message) {
+  try {
+    return await fetchJson(url, options);
+  } catch (error) {
+    if (error.detail?.code !== "IMAGE_CONFIRMATION_REQUIRED") throw error;
+    const images = error.detail.images || [];
+    const lines = images.map(image => {
+      const usages = (image.usages || []).map(use => `  ${use.consumer_id} · ${use.locator}`).join("\n");
+      return `${image.label}${usages ? `\n${usages}` : " · no recorded usages"}`;
+    });
+    if (!window.confirm(`${message}\n\n${lines.join("\n")}\n\nRecorded references may become unresolved. Continue?`)) return null;
+    const original = options.body ? JSON.parse(options.body) : {};
+    return fetchJson(url, {...options, headers: {...options.headers, "Content-Type": "application/json"},
+      body: JSON.stringify({...original, confirm_ids: images.map(image => image.id),
+        expected_versions: Object.fromEntries(images.map(image => [image.id, image.version]))})});
+  }
+}
+
+for (const action of ["check", "rebuild"]) {
+  document.querySelector(`#entity-library-usages-${action}`)?.addEventListener("click", async () => {
+    const output = document.querySelector("#entity-library-usage-report");
+    const buttons = document.querySelectorAll(".entity-library-usage-action");
+    buttons.forEach(button => { button.disabled = true; });
+    output.textContent = action === "check" ? "Checking references…" : "Rebuilding recorded usages…";
+    try {
+      const {report} = await fetchJson(`/api/entity-library/usages/${action}`, {method: "POST"});
+      const findings = [...report.missing.map(item => `${item.consumer_id}: ${item.reason}`),
+        ...report.unreadable.map(item => `${item.consumer_id}: ${item.error}`)];
+      output.textContent = `${report.checked} documents checked; ${report.differences.length} usage lists differed. ${action === "rebuild" ? "Readable documents updated." : "Recorded usages unchanged."}${findings.length ? `\n${findings.join("\n")}` : " All references resolve."}`;
+      if (action === "rebuild" && entityLibrarySelectedAsset) await selectEntityLibraryAsset(entityLibrarySelectedAsset.asset_id);
+    } catch (error) {
+      output.textContent = error.message;
+    } finally {
+      buttons.forEach(button => { button.disabled = false; });
+    }
+  });
+}
+
 async function deleteEntityLibraryAsset() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.status === "archived") return;
-  if (!window.confirm(`Archive ${asset.label || asset.file_name} from the image inventory? Its logical references will be deactivated. Current consumers must be updated first.`)) return;
   entityLibraryDelete.disabled = true;
   try {
-    await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, { method: "DELETE" });
+    const removed = await confirmedImageMutation(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, { method: "DELETE" }, `Archive ${asset.label || asset.file_name}?`);
+    if (!removed) return;
     entityLibrarySelectedAsset = null;
     entityLibraryEditorTitle.textContent = "Select an image";
     entityLibraryPreview.hidden = true;
@@ -8149,6 +8187,7 @@ async function deleteEntityLibraryAsset() {
     showAuxResourceMessage("Image deleted from the inventory.", "success");
   } catch (error) {
     showAuxResourceMessage(error.message, "error");
+  } finally {
     entityLibraryDelete.disabled = false;
   }
 }
@@ -8171,7 +8210,7 @@ async function saveEntityLibraryAsset() {
   const setIds = [...entityLibraryEditSets.selectedOptions].map((optionItem) => optionItem.value);
   const request = (async () => {
     try {
-      const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, {
+      const payload = await confirmedImageMutation(`/api/entity-library/assets/${encodeURIComponent(asset.asset_id)}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           label: entityLibraryEditLabel.value, notes: entityLibraryEditNotes.value,
@@ -8181,7 +8220,8 @@ async function saveEntityLibraryAsset() {
           descriptors: { prompt_identity: entityLibraryEditIdentity.value, prompt_costume: entityLibraryEditCostume.value },
           preferred_reference_key: entityLibraryEditReference.value.trim(),
         }),
-      });
+      }, `Archive ${asset.label || asset.file_name}?`);
+      if (!payload) { setEntityLibraryEditorState("ready", "Archive cancelled."); return false; }
       if (!payload.asset) throw new Error("The save response did not include the saved image.");
       renderEntityLibraryAsset(payload.asset);
       setEntityLibraryEditorState("ready", payload.refresh_warning || "Image saved.");
@@ -12836,11 +12876,11 @@ phaseSelect.addEventListener("change", async () => {
 });
 deletePhaseButton.addEventListener("click", async () => {
   if (!state.character || !state.phase) return;
-  if (!window.confirm(`Move ${state.character} / ${state.phase} and all templates and character assets to the library deleted folder?`)) return;
   deletePhaseButton.disabled = true;
   showActionMessage("Moving phase to deleted storage...");
   try {
-    const payload = await fetchJson(`/api/character-phase?${currentQuery().toString()}`, { method: "DELETE" });
+    const payload = await confirmedImageMutation(`/api/character-phase?${currentQuery().toString()}`, { method: "DELETE" }, `Move ${state.character} / ${state.phase} and all templates and assets to the library deleted folder?`);
+    if (!payload) return;
     state.phase = null;
     await refreshCurrentContext();
     if (document.querySelector("#costumes-page").classList.contains("active") && state.phase) await loadCostumes();

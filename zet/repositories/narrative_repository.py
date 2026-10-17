@@ -12,6 +12,7 @@ class NarrativeRepository:
     def __init__(self, library_root: str | Path):
         self.library_root = Path(library_root).resolve()
         self.root = self.library_root / "NarrativeStories"
+        self.usage_provider = None
 
     def lock(self):
         return file_lock(self.root / ".workflow.lock")
@@ -55,7 +56,12 @@ class NarrativeRepository:
 
     def write(self, record, story: str, scene: str = "", target: str = "") -> dict:
         data = record if isinstance(record, dict) else asdict(record)
-        write_library_json(self.path(story, scene, target), data, self.library_root)
+        path = self.path(story, scene, target)
+        library = self.usage_provider() if self.usage_provider else None
+        if library is None:
+            write_library_json(path, data, self.library_root)
+        else:
+            library.image_usages.write_consumer(path, data, lambda: write_library_json(path, data, self.library_root))
         return data
 
     def stories(self) -> list[dict]:

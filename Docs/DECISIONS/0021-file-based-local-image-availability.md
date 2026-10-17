@@ -48,3 +48,6 @@ are recorded in the
 [PathService](../../zet/services/path_service.py),
 [LibraryReferenceService](../../zet/services/library_reference_service.py),
 [local characters](../COMPONENTS/LOCAL_CHARACTERS.md).
+
+Image availability and recurring verification are superseded by
+[ADR 0023](0023-streamlined-image-integrity.md); ownership and job fences remain.
