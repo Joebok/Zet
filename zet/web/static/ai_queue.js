@@ -20,14 +20,15 @@
         const link = document.createElement("a"); link.href = item.workflow_url; link.textContent = row.children[1].textContent;
         row.children[1].replaceChildren(link);
       }
-      const actions = document.createElement("td");
       if (["HARVEST_FAILED", "RECOVERY_REQUIRED"].includes(item.status)) {
+        const status = document.createElement("div"); status.className = "ai-job-status";
+        const label = document.createElement("span"); label.append(...row.children[1].childNodes);
         const button = document.createElement("button");
         button.type = "button"; button.textContent = "Delete job"; button.disabled = deleting;
         button.addEventListener("click", () => void deleteJob(item));
-        actions.append(button);
+        status.append(label, button);
+        row.children[1].replaceChildren(status);
       }
-      row.append(actions);
       body.append(row);
     }
     document.querySelector("#ai-jobs-more").hidden = !cursor;

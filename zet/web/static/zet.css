@@ -5518,3 +5518,5 @@ dd {
 .ai-model-picker::backdrop { background: #0008; }
 .ai-model-control { text-align: left; }
 #ai-jobs-table td { vertical-align: top; overflow-wrap: anywhere; }
+#ai-jobs-table .ai-job-status { display: flex; align-items: center; gap: .5rem; }
+#ai-jobs-table .ai-job-status button { flex: none; white-space: nowrap; }

@@ -118,7 +118,7 @@ removed.
 
 `DELETE /api/ai/jobs/{job_id}`, through `ZetApp.delete_failed_ai_job`, delegates
 to [AIJobCleanupService](../../zet/services/ai_job_cleanup_service.py). AI Queue
-offers a confirmed **Delete job** action on `HARVEST_FAILED` and
+offers a confirmed **Delete job** action beside the status on `HARVEST_FAILED` and
 `RECOVERY_REQUIRED` rows. The service rechecks current status under the coordinator
 and common job locks, refuses Ask/Running work, verifies local producer evidence,
 rejects conflicting job identities and linked/junction paths, and removes only
@@ -130,6 +130,8 @@ payloads, staging/partial transfers, Jobs, Routes, Receipts, StructuredResults a
 parent Followup reservations/queue markers. It never follows output destinations
 into the library or deletes domain workflow records, images or shared lock files.
 Busy files leave a visible `HARVEST_FAILED` deletion row with a retry action.
+Shared `Superseded` markers are validated against `Zet_File_Proxy_State` under
+the shared queue; producer-local markers use the configured local lifecycle root.
 
 A minimal hashed `DeletedJobs` marker is committed before payload removal. Queries,
 collection, adoption and publication fence the deleted identity, including late

@@ -83,7 +83,7 @@ class AIJobCleanupService:
                     (self.client.legacy_route_root / f"{job_id}.json", self.client.legacy_route_root),
                     (local / "StructuredResults" / f"{job_id}.json", local),
                     (self.client.route_root / f".{job_id}.json.tmp", self.client.route_root),
-                    (task_state_path(queue, "Superseded", job_id, state_root=self.lifecycle.storage_root), local),
+                    (task_state_path(queue, "Superseded", job_id, state_root=self.lifecycle.storage_root), queue / "Zet_File_Proxy_State"),
                     (task_state_path(queue, "Manual_Render_Publications", job_id, state_root=self.lifecycle.storage_root), local)]
         if self.lifecycle.inbox_root.is_dir():
             targets += [(path, local) for path in self.lifecycle.inbox_root.iterdir()
