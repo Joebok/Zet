@@ -1,5 +1,5 @@
 # File-based local image review and live batch recovery
-Status: active
+Status: complete
 Authorization: Joe approved applying the fix to the running app, recovering Elder
 and Youth Tsaeytte Head-Image batches, and removing checksum/path metadata failures
 when their image files exist.
@@ -46,7 +46,7 @@ preserve that config and avoid an unrelated storage migration.
   original image bytes and human decisions/selections remain unchanged.
 - Validation: managed staging suite, health/revision checks, batch/AI job status,
   source-image checksums recorded before/after for verification only.
-- Status: in progress.
+- Status: complete.
 
 ## Documentation impact
 LOCAL_CHARACTERS owns action semantics; AI_JOBS/INVARIANTS/DATA_MODEL describe
@@ -75,3 +75,42 @@ must distinguish stale metadata from files genuinely absent on disk.
 - Live pre-rollout snapshot: both named batches INTERRUPTED, eight existing images
   each; Elder ranking FAILED, Youth unranked. Original byte hashes/human decisions/
   selections recorded in ignored `test-results/live-head-recovery-before.json`.
+- Implementation published as `f827c04a462dcb6f51cc736189072761c595126b` and
+  deployed through `/api/deployment/update`, operation
+  `a0e53395cef74826bb6acaf4f072d065`. Staged release's approved E2E command passed;
+  controller reported succeeded and health confirmed revision f827c04 with new
+  boot `48b3d8b249544e0d95e6de3306d8ca58`. Existing runtime config retained.
+- Recovery is blocked before either Re-evaluate POST: the E: volume disappeared
+  from Windows. `Get-Volume`, `Get-Disk` and `Get-Partition` show only C:/D: and
+  their recovery/system partitions. D: is AI_DRIVE and has no Zet library/queue.
+  Health reports recovery error `[WinError 3] ... E:\\`; explicit Moonsea requests
+  return `Universe not found: Moonsea`. No path substitution, new library, queue
+  migration or image changes were made. Joe was asked to reconnect E:\Zet.
+- The disposable `test-results/recover_live_heads.py` stopped after the deployment
+  succeeded and before submitting AI work. Once E: is back, rerun it: it checks
+  the deployed revision/boot, submits the two re-evaluations, then verifies eight
+  ranked images each and preservation of original bytes/human decisions/selections.
+  Do not mark WP2/this plan complete until that live verification succeeds.
+- Joe confirmed the drive was reconnected. After E: became readable, the existing
+  `/api/processes/restart-zet` action restarted the deployed release so startup
+  recovery could finish; health confirmed revision f827c04, boot
+  `4515a182b3d44ee9983d37b7c5592613`, and recovery complete.
+- Re-evaluate was submitted once per original batch through the live FRONT action.
+  The first monitor incorrectly read Elder's prior FAILED ranking before the new
+  asynchronous evaluation finished; monitoring was corrected to compare evaluation
+  IDs, then resumed with `--monitor-only` without resubmitting work.
+- Final live verification: Elder evaluation `420fbfa3cc384f42bb77ab753031d95b` and
+  Youth evaluation `85a0ce60988c402fb22293b4bb14cfbc` both produced COMPLETE rankings
+  of all eight original FRONT images. Both AI observation jobs are COMPLETE.
+  Original image bytes, human decisions, front anchors and selected views match
+  the pre-rollout snapshot. Full ignored result: `test-results/live-head-recovery-result.json`.
+
+## Final result
+The requested code is deployed and both reported batches are recovered. Local
+review uses existing files instead of historical checksum/receipt admission;
+all 143 audited stale absolute references resolve to exact existing current-root
+files without a bulk library rewrite. Four approved E2E scenarios passed locally
+and in managed staging; focused disposable recovery/path checks and final
+`git diff --check` passed. No new permanent tests, dependencies, images or
+published locks were introduced or replaced. The transient E: disconnect was
+resolved by Joe reconnecting the volume; no filesystem remapping was performed.

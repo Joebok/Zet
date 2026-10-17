@@ -36,8 +36,12 @@ Disposable isolated copies of both reported batches ranked eight existing images
 each with prepared responses, including absent requests/receipts and stale hashes.
 Replacement/cancellation/missing-file rejection and versioned/legacy path behavior
 passed; all 143 audited relocatable references resolved to their exact current files.
-Maintained E2E and production rollout results are recorded in the
-[implementation plan](../../plans/active/file-based-image-review-and-recovery.md).
+All four maintained E2E scenarios passed locally and in managed staging. Release
+`f827c04` is deployed; both original batches received complete live rankings and
+observations for eight FRONT images each, with byte hashes, human decisions and
+selections preserved. Results and the resolved transient volume-disconnect blocker
+are recorded in the
+[implementation plan](../../plans/completed/file-based-image-review-and-recovery.md).
 
 ## Owners
 [image_harvest_service](../../zet/services/image_harvest_service.py),
