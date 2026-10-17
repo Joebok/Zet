@@ -170,20 +170,21 @@ class LocalHeadImageService:
         return {"path": str(target), "name": target.name}
 
     def _compile(self, run_root: Path, character: str, phase: str, view: str, references: list[dict],
-                 *, apply_phase_change: bool = False) -> dict[str, Any]:
-        output_dir = run_root / "prompts" / view
+                 *, apply_phase_change: bool = False, output_dir: Path | None = None) -> dict[str, Any]:
+        from zet.services.template_source_service import compile_with_revision
+        output_dir = output_dir or run_root / "prompts" / view
         template_path = Path(self.app.config.base_character_path) / character / phase / "Character.md"
         job = {"Job": f"LocalHeadImage_{run_root.name}_{view}", "Task": "head-image", "Character": character,
                "Phase": phase, "Head View": view, "Template Path": str(template_path),
                "Output Directory": str(output_dir), "Reference Files": references,
                "Apply Phase Change": apply_phase_change}
+        from zet.services.local_view_reference_service import reference_recipes
+        job["Allow Unanchored View"] = (reference_recipes(run_root).get(view) or {}).get("mode") == "none"
         try:
-            result = compile_head_image_job(
+            result = compile_with_revision(run_root, compile_head_image_job,
                 job, self.project_root, pipeline_mode="local",
                 universe_root=self.app.config.base_library_path,
             )
-            from zet.services.local_prompt_improvement_service import record_compiler_sources
-            record_compiler_sources(output_dir)
             return result
         except Exception as exc:
             from zet.services.storage_health_service import pause_on_storage_error
@@ -418,7 +419,7 @@ class LocalHeadImageService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalHeadImageError(f"Unknown candidate: {candidate_id}")
-        if candidate["view"] != FRONT and not run.get("front_anchor"):
+        if not candidate.get("render_input") and candidate["view"] != FRONT and not run.get("front_anchor"):
             raise LocalHeadImageError("Select a FRONT anchor before generating other views.")
         if candidate.get("status") in {"QUEUED", "RUNNING"}:
             return candidate
@@ -428,7 +429,7 @@ class LocalHeadImageService:
             source = str(run.get("front_source") or "")
             if source:
                 references = [{"role": "head_image_source", "label": "Uploaded front reference", "path": source}]
-        else:
+        elif not candidate.get("render_input"):
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"]), None)
             anchor_path = Path(str((anchor or {}).get("image_path") or ""))
             if not anchor_path.is_file():
@@ -446,6 +447,7 @@ class LocalHeadImageService:
                                      apply_phase_change=bool(run.get("apply_phase_change", False)))
             preset_name = "comfyui-qwen-head-image-edit" if references else "comfyui-qwen-head-image-text"
             saved_input = frozen_input(candidate_dir / "inputs", Path(compiled["final_prompt"]).read_text(encoding="utf-8"), references, preset_name)
+            saved_input["template_revision_id"] = compiled.get("template_revision_id", "")
             references = saved_input["references"]
         self._update(run_id, candidate_id, render_input=saved_input)
         prompt_path = candidate_dir / "Final_Prompt.md"

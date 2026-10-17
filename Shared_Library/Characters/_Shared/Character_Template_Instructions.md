@@ -19,6 +19,26 @@ Use this manual when an existing character design and one or more approved image
 - Use `<!-- ZET:VIEW_DEFAULT face_visible -->` to set a section default, `[all]` to restore all views on one bullet, and `<!-- ZET:CANON_ONLY -->` for documentation that must never reach generation prompts.
 - Do not add technical fitment clothing. Zet selects the global modesty layer: Youth for any youth phase, adult feminine or masculine for recognized adult phases, and Default for Elder and every other phase.
 
+## View visibility tags
+
+The current compiler accepts the following groups. These constrain visibility; they do not change the requested camera angle. Body and head orientations can differ, so use an explicit domain for facial/hair facts and costume/body facts.
+
+| Tags | Intended visibility |
+| --- | --- |
+| `all`, `frontish`, `rearish`, `profiles` | All views; front and front quarters; back and back quarters; the two profiles |
+| `front_3q`, `back_3q`, `three_quarter` | Front quarters; back quarters; all four quarters |
+| `leftish`, `left_side`, `near_left` | Front-left quarter, left profile, back-left quarter |
+| `rightish`, `right_side`, `near_right` | Front-right quarter, right profile, back-right quarter |
+| `face_visible`, `both_eyes_visible`, `single_side_face` | Front, front quarters and profiles; front and front quarters; profiles |
+| `rear_head_visible`, `near_ear_visible` | Back and back quarters; quarters and profiles |
+| `front_torso_visible`, `rear_torso_visible` | Front/back and their respective quarters, plus both profiles |
+| `front_costume_visible`, `rear_costume_visible` | Front/back and their respective quarters, excluding profiles |
+| `far_left_3q`, `far_right_3q` | Right quarters / left quarters, where the corresponding anatomical side is farther away |
+
+Individual views also accept `f`, `fl`, `pl`, `bl`, `b`, `br`, `pr`, `fr` or the explicit view tokens. Example: `* [head:both_eyes_visible] Both eyes remain visible.` Give profile and rear visibility their own bullets rather than forcing facial details into every view. The authoritative definitions are in `zet/services/view_conditioning_service.py`; local template-improvement requests and exported compiler guides derive their group list from that parser.
+
+When improving an existing template, preserve its design and change only the requested rules. Use selected images or Luna's first-ranked representative per view; use observations to distinguish recurring defects from random failures in discarded candidates. Correct reference-angle contamination through reference selection rather than increasingly forceful prose.
+
 ## Metadata
 
 Metadata identifies the character and selects global behavior. Character Phase controls phase-specific assets and technical modesty. Gender Presentation affects modesty only for phases containing `adult`. Canonical Art Style is a fallback; the selected universe owns the active local rendering style. Keep identity facts independent of medium, linework and shading conventions. Describe distinctive facial proportions explicitly rather than using anime or photographic style labels as identity. Describe supported material construction and texture without inventing scars, wear or decorative detail.

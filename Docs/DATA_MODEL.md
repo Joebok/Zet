@@ -21,6 +21,10 @@ Paths below are relative to the **bound universe root** unless stated otherwise.
 | Producer-local queue state | [AIQueueLifecycleService](../zet/services/ai_queue_lifecycle_service.py), [StoragePathService](../zet/services/storage_path_service.py) | `[Storage].Root/AI_Queue/<queue-hash>/<producer>/`; shared queue transport remains at `BaseAIQueuePath`. Routes, receipts, requests, continuations and model cache are local state, not authored data. See [QUEUES](COMPONENTS/QUEUES.md) and [AI jobs](COMPONENTS/AI_JOBS.md). |
 | Machine-local task workflow and migration reports | [runtime_state_service.py](../zet/services/runtime_state_service.py), [LibraryReferenceMigrationService](../zet/services/library_reference_migration_service.py) | Configured relative children `TaskWorkflow` and `LibraryReferenceUpdates`; explicit Runtime/GitHub state overrides retain precedence. Loading configuration creates no directories. |
 
+## Character template revisions
+
+Character batches may contain `template_improvement/revisions/<id>.json` (version 1), frozen `evidence/<id>/` and `compiled/<id>/<view>/` artifacts, plus `active.json`. [LocalTemplateRevisionService](../zet/services/local_template_revision_service.py) owns immutable proposed source text, parent identity, evidence and master baselines; status/compilation/promotion metadata evolves separately. `library/…` and `project/…` source IDs bind to the active universe/checkout; operational library paths retain existing portable serialization. Per-view `view_reference_recipes` live in batch state without changing `review_version`. Individual `render_input` records retain template revision identity and the frozen resolved recipe/references. See [local character workflow](COMPONENTS/LOCAL_CHARACTERS.md#governing-template-improvement-2026-10-17).
+
 ## Entity image relationships
 
 `Entity` is the depicted subject (including costume as an entity type); `Variant` is an entity-specific life stage, form, state, or version. `Asset` here means an actual catalog image with immutable identifier and file metadata. This is distinct from the numeric traditional `zet.models.asset.Asset` workflow record.

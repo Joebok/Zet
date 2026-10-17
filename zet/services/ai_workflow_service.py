@@ -34,6 +34,7 @@ class AIWorkflowService:
         "costume": {"_draft_job", "_render_job", "_refine_job"},
         "reconstruction": {"_run", "_comparison_task", "_correction_task"},
         "image_prompt": {"_run"},
+        "template_revision": {"_propose_job"},
     }
 
     def __init__(self, app):
@@ -81,6 +82,10 @@ class AIWorkflowService:
         return task_id
 
     def _service(self, name):
+        if name == "template_revision":
+            from pathlib import Path
+            from zet.services.local_template_revision_service import LocalTemplateRevisionService
+            return LocalTemplateRevisionService(self.app, Path(__file__).resolve().parents[2])
         if name == "minor":
             return self.app.minor_character_service
         if name == "costume":

@@ -108,50 +108,72 @@ class CharacterRenderSlots:
             return "Resume the stopped batch before submitting more renders."
         return ""
 
-    def prepare_input(self, run: dict, view: str, directory: Path, *, recompile: bool = False) -> dict:
+    def prepare_input(self, run: dict, view: str, directory: Path, *, recompile: bool = False, output_dir: Path | None = None) -> dict:
         """Read the current view prompt, optionally compile it, then freeze this ask."""
+        from zet.services.template_source_service import active_revision
+        from zet.services.local_view_reference_service import custom_references, reference_recipes
         root = Path(run["root"])
         pipeline = self.workflow.pipeline
+        revision = active_revision(root)
+        output = output_dir or root / "prompts" / view
+        stamp = output / "Template_Revision.json"
+        compiled_revision = json.loads(stamp.read_text(encoding="utf-8")).get("revision_id", "") if stamp.is_file() else ""
+        recipe = reference_recipes(root).get(view) or {"mode": "default"}
+        recipe_stamp = output / "Reference_Recipe.json"
+        prior_recipe = json.loads(recipe_stamp.read_text(encoding="utf-8")) if recipe_stamp.is_file() else {"mode": "default"}
+        recompile = recompile or output_dir is not None or compiled_revision != revision.get("revision_id", "") or recipe != prior_recipe or recipe["mode"] != "default"
         if pipeline == "body-reference":
             snapshot = next(item for item in run["prompt_snapshots"] if item["view"] == view)
             if recompile:
-                snapshot = self.adapter._compile_view(root, run["character"], run["phase"], view, run["views"].index(view) + 1)
+                snapshot = self.adapter._compile_view(root, run["character"], run["phase"], view, run["views"].index(view) + 1, output_dir=output)
             path = Path(snapshot["prompt_path"])
-            prompt = self.adapter._qwen_prompt(path.read_text(encoding="utf-8"), view, anchor=view != "FRONT")
             anchor = next((c for c in run["candidates"] if c["candidate_id"] == run.get("front_anchor")), {})
-            refs = [{"role": "body_reference_front_anchor", "path": anchor["image_path"]}] if view != "FRONT" else []
+            refs = [{"role": "body_reference_front_anchor", "path": anchor["image_path"]}] if view != "FRONT" and anchor.get("image_path") else []
+            refs = custom_references(run, view, pipeline, refs)
+            prompt = self.adapter._qwen_prompt(path.read_text(encoding="utf-8"), view, anchor=bool(refs), anchor_view=refs[0].get("view", "FRONT") if refs else "FRONT")
             preset = "comfyui-qwen-body-reference-edit" if refs else "comfyui-qwen-body-reference-text"
         elif pipeline == "head-image":
             anchor = next((c for c in run["candidates"] if c["candidate_id"] == run.get("front_anchor")), {})
             source = run.get("front_source") if view == "FRONT" else anchor.get("image_path")
             refs = [{"role": "head_image_source", "path": source}] if source else []
-            path = root / "prompts" / view / "Final_Image_Prompt.md"
+            refs = custom_references(run, view, pipeline, refs)
+            path = output / "Final_Image_Prompt.md"
             if recompile or not path.is_file():
                 compiled = self.adapter._compile(root, run["character"], run["phase"], view, refs,
-                    apply_phase_change=bool(run.get("apply_phase_change")))
+                    apply_phase_change=bool(run.get("apply_phase_change")), output_dir=output)
                 path = Path(compiled["final_prompt"])
             prompt = path.read_text(encoding="utf-8")
             preset = "comfyui-qwen-head-image-edit" if refs else "comfyui-qwen-head-image-text"
         else:
-            if recompile and pipeline == "costume-dressing":
+            if recompile and pipeline == "costume-dressing" and output_dir is None:
                 self.adapter._refresh_costume_snapshot(run)
                 run = self.adapter.detail(run["run_id"], run.get("costume", ""))
-            refs = self.adapter._references(run, view)
-            path = root / "prompts" / view / "Final_Image_Prompt.md"
+            refs = self.adapter._references(run, view, use_recipe=True)
+            path = output / "Final_Image_Prompt.md"
             if recompile or not path.is_file():
-                compiled = self.adapter._compile(run, view, refs)
+                compiled = self.adapter._compile(run, view, refs, output_dir=output, use_reference_recipe=True)
                 path = Path(compiled["final_prompt"])
             # Compilation may package additional ordered costume references.
-            manifest = root / "prompts" / view / "dependency_manifest.json"
+            manifest = output / "dependency_manifest.json"
             if manifest.is_file():
                 resources = json.loads(manifest.read_text(encoding="utf-8")).get("resources")
                 if isinstance(resources, list) and resources:
                     refs = resources
             prompt = path.read_text(encoding="utf-8")
             preset = self.adapter.definition["preset"]
-        return frozen_input(directory, prompt, refs, preset)
+        from zet.services.atomic_file_service import write_json_atomic
+        if output_dir is None:
+            write_json_atomic(recipe_stamp, recipe)
+        saved = frozen_input(directory, prompt, refs, preset)
+        saved["template_revision_id"] = revision.get("revision_id", "")
+        saved["reference_recipe"] = recipe
+        return saved
 
     def _prerequisite(self, run: dict, view: str) -> str:
+        from zet.services.local_view_reference_service import recipe_requirement
+        custom = recipe_requirement(run, view)
+        if custom is not None:
+            return custom
         requires = self.workflow.pipeline in {"body-reference", "head-image"} or run.get("use_front_anchor", False)
         if view != "FRONT" and requires and not run.get("front_anchor"):
             return "Select a FRONT anchor before rendering this view."

@@ -204,6 +204,30 @@ def create_local_character_asset_pipeline_router(
             return FileResponse(path, media_type="application/zip", filename=f"{_pipeline}_{run_id}_prompt_improvement.zip",
                                 background=BackgroundTask(path.unlink, missing_ok=True))
 
+        @router.get(f"{prefix}/runs/{{run_id}}/template-revisions")
+        def template_revisions(run_id: str, revision_id: str = Query(""), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "template_revision_detail", run_id=run_id, costume=costume,
+                                       revision_id=revision_id))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/template-revisions")
+        def propose_template_revision(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "template_revision_start", run_id=run_id, costume=costume, payload=payload))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/template-revisions/activate")
+        def activate_template_revision(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "template_revision_activate", run_id=run_id, costume=costume,
+                                       revision_id=str(payload.get("revision_id") or ""), payload=payload))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/template-revisions/{{revision_id}}/promote")
+        def promote_template_revision(run_id: str, revision_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "template_revision_promote", run_id=run_id, costume=costume,
+                                       revision_id=revision_id, payload=payload))
+
+        @router.put(f"{prefix}/runs/{{run_id}}/views/{{view}}/reference-recipe")
+        def save_view_reference(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "save_view_reference", run_id=run_id, view=view,
+                                       costume=costume, payload=payload))
+
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/ranking/move")
         def move_rank(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "move_rank", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), direction=str(payload.get("direction") or ""), costume=costume if _pipeline == "costume-dressing" else ""))

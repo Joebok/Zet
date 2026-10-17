@@ -621,7 +621,8 @@ class LocalCharacterAssetPipelineService:
                 raise LocalCharacterAssetPipelineError(f"Original {role.replace('_', ' ')} snapshot for {view} is missing or changed.")
         return sources
 
-    def _references(self, run: dict[str, Any], view: str) -> list[dict[str, Any]]:
+    def _references(self, run: dict[str, Any], view: str, *, use_recipe: bool = False) -> list[dict[str, Any]]:
+        from zet.services.local_view_reference_service import custom_references, reference_recipes
         inputs = run.get("sources", {}).get(view)
         if inputs is None:
             inputs = self._snapshot_view_inputs(run, view, self._locked_view_inputs(run, view))
@@ -631,8 +632,11 @@ class LocalCharacterAssetPipelineService:
         else:
             roles = ("character_assembly",) if view == "FRONT" or not self._requires_front_anchor(run) else ("character_assembly", "front_costume")
         refs = []
+        custom = use_recipe and (reference_recipes(Path(run["root"])).get(view) or {}).get("mode", "default") != "default"
         for role in roles:
             if role in {"front_assembly", "front_costume"}:
+                if custom:
+                    continue
                 anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
                 path = Path(str((anchor or {}).get("image_path") or ""))
                 if not anchor or not path.is_file():
@@ -642,31 +646,32 @@ class LocalCharacterAssetPipelineService:
                 source = inputs[role]
                 refs.append({"role": role, "path": source["image_path"], "view": view,
                              "body_view": view, "head_view": view, "character": run["character"], "phase": run["phase"]})
-        return refs
+        return custom_references(run, view, self.pipeline, refs) if use_recipe else refs
 
-    def _compile(self, run: dict[str, Any], view: str, refs: list[dict[str, Any]]) -> dict[str, Any]:
+    def _compile(self, run: dict[str, Any], view: str, refs: list[dict[str, Any]], *, output_dir: Path | None = None, use_reference_recipe: bool = False) -> dict[str, Any]:
+        from zet.services.template_source_service import compile_with_revision
         root = Path(run["root"])
-        output = root / "prompts" / view
+        output = output_dir or root / "prompts" / view
         template = self.character_root / run["character"] / run["phase"] / "Character.md"
         job = {"Job": f"Local_{self.pipeline}_{run['run_id']}_{view}", "Task": self.definition["task"],
                "Character": run["character"], "Phase": run["phase"], "Output Directory": str(output),
                "Template Path": str(template), "Reference Files": refs}
         if self.pipeline == "character-assembly":
+            from zet.services.local_view_reference_service import reference_recipes
+            default_refs = not use_reference_recipe or (reference_recipes(root).get(view) or {}).get("mode", "default") == "default"
             job.update({"Body View": view, "Head View": view,
-                        "use_front_anchor": self._requires_front_anchor(run)})
-            result = compile_character_assembly_job(
+                        "use_front_anchor": self._requires_front_anchor(run) and default_refs})
+            result = compile_with_revision(root, compile_character_assembly_job,
                 job, self.project_root, pipeline_mode="local",
                 universe_root=self.app.config.base_library_path,
             )
         else:
             job.update({"Body View": view, "Head View": view, "Costume": run["costume"],
                         "Costume Path": run["costume_path"]})
-            result = compile_costume_dressing_job(
+            result = compile_with_revision(root, compile_costume_dressing_job,
                 job, self.project_root, pipeline_mode="local",
                 universe_root=self.app.config.base_library_path,
             )
-        from zet.services.local_prompt_improvement_service import record_compiler_sources
-        record_compiler_sources(output)
         return result
 
     def queue_render_candidate(self, run_id: str, candidate_id: str, costume: str = "") -> dict[str, Any]:
@@ -674,7 +679,7 @@ class LocalCharacterAssetPipelineService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalCharacterAssetPipelineError(f"Unknown candidate: {candidate_id}")
-        if candidate["view"] != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
+        if not candidate.get("render_input") and candidate["view"] != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before generating other views.")
         root = Path(run["root"])
         candidate_root = root / "renders" / candidate_id
@@ -687,6 +692,7 @@ class LocalCharacterAssetPipelineService:
             compiled = self._compile(run, candidate["view"], refs)
             saved_input = frozen_input(candidate_root / "inputs", Path(compiled["final_prompt"]).read_text(encoding="utf-8"),
                                        compiled.get("reference_files") or refs, self.definition["preset"])
+            saved_input["template_revision_id"] = compiled.get("template_revision_id", "")
         self._update(run_id, candidate_id, costume=costume, render_input=saved_input)
         render_root = candidate_root / "Local_Test_Renders"
         target = render_root / f"{self.pipeline.replace('-', '')}_{candidate_id}_{candidate.get('retry_count', 0)}.png"

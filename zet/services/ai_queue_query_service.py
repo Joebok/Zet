@@ -215,6 +215,8 @@ class AIQueueQueryService:
                 page = "local-costume-dressing" if "dressing" in pipeline else "local-character-assembly"
                 batch = owner["local_character_asset_run_id"]
             params.update(page=page, local_batch=batch, task_context="1")
+            if owner.get("costume"):
+                params["local_costume"] = owner["costume"]
             for key in ("character", "phase"):
                 if owner.get(key):
                     params["task_" + key] = owner[key]

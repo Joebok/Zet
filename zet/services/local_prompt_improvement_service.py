@@ -57,7 +57,8 @@ def _source_paths(source_map: Path) -> list[Path]:
 
 def record_compiler_sources(output_dir: Path) -> None:
     """Capture source hashes alongside the prompt at local compilation time."""
-    sources = [{"path": str(path.resolve()), "sha256": _hash(path)}
+    from zet.services.template_source_service import template_source_hash
+    sources = [{"path": str(path.resolve()), "sha256": template_source_hash(path)}
                for path in _source_paths(output_dir / "Prompt_Source_Map.json")]
     library_root = pipeline_library_root_for_path(output_dir)
     write_library_json(output_dir / "Prompt_Source_Hashes.json", {"sources": sources}, library_root)
@@ -176,6 +177,11 @@ class LocalPromptImprovementService:
 
     def project(self, run: dict[str, Any]) -> dict[str, Any]:
         """Add prompt-review presentation state to an already loaded run."""
+        if self.pipeline != "scene":
+            from zet.services.local_view_reference_service import reference_recipes
+            from zet.services.template_source_service import active_revision
+            run["view_reference_recipes"] = reference_recipes(self._root(run))
+            run["active_template_revision_id"] = active_revision(self._root(run)).get("revision_id", "")
         for candidate in run.get("candidates") or []:
             (candidate.get("human_review") or {}).pop("notes", None)
         for view, record in (run.get("view_reviews") or {}).items():
@@ -433,8 +439,8 @@ class LocalPromptImprovementService:
                     if path.stem in {"body_reference_v2", "head_image_v2", "character_assembly_v2", "costume_dressing_v2",
                                      "final_image_prompt_tail_v1"} and (path.stem.startswith(self.pipeline.replace("-", "_")) or path.stem == "final_image_prompt_tail_v1"):
                         add(path, f"sources/{path.name}", known_source_hashes.get(str(path.resolve()), ""))
-                guide = self.project_root / "Docs" / "Prompt_Compiler_Guide.md"
-                add(guide, "Prompt_Compiler_Guide.md")
+                from zet.services.local_template_revision_service import compiler_guidance
+                add_text("Prompt_Compiler_Guide.md", compiler_guidance())
                 for view in run.get("views") or []:
                     if self.pipeline == "scene":
                         continue

@@ -191,7 +191,8 @@ def _clean_template_field(value: str) -> str:
 
 
 def extract_template_field(template_path: Path, labels: list[str]) -> str:
-    text = template_path.read_text(encoding="utf-8")
+    from zet.services.template_source_service import read_template_text
+    text = read_template_text(template_path)
     for label in labels:
         escaped = re.escape(label).replace(r"\ ", r"\s+")
         match = re.search(rf"(?im)^\s*{escaped}\s*:\s*(.+?)\s*$", text)

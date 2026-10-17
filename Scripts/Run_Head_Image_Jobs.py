@@ -117,7 +117,7 @@ def compile_head_image_job(
         if len(source_references) > 1:
             raise TemplateCompileError("INVALID_REFERENCE", "Local Head-Image accepts at most one source image.")
         if (view_token != "FRONT" and view_token not in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}
-                and not source_references):
+                and not source_references and job.get("Allow Unanchored View") is not True):
             raise TemplateCompileError("MISSING_REFERENCE", "Local non-front Head-Image views require the selected FRONT anchor.")
         for source_reference in source_references:
             validate_reference(source_reference, "head_image_source", project_root)
@@ -212,6 +212,11 @@ def compile_head_image_job(
             " features facing the front in Image 1 become hidden at this angle."
             " Use the rear-view details below for surfaces and accessories hidden in Image 1."
         )
+
+    from zet.services.local_view_reference_service import batch_reference_guidance
+    custom_guidance = batch_reference_guidance(references, view_token)
+    if pipeline_mode == "local" and custom_guidance:
+        contract_values["LOCAL_REFERENCE_GUIDANCE"] = custom_guidance
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",

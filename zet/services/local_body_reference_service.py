@@ -301,8 +301,9 @@ class LocalBodyReferenceService:
             "blocking_reasons": [],
         }
 
-    def _compile_view(self, root: Path, character: str, phase: str, view: str, index: int) -> dict[str, Any]:
-        output = root / "prompts" / view
+    def _compile_view(self, root: Path, character: str, phase: str, view: str, index: int, *, output_dir: Path | None = None) -> dict[str, Any]:
+        from zet.services.template_source_service import compile_with_revision
+        output = output_dir or root / "prompts" / view
         job = {
             "Job": f"LocalBodyReference_{root.name}_{view}",
             "Task": "body-reference",
@@ -312,11 +313,11 @@ class LocalBodyReferenceService:
             "Output Directory": str(output),
         }
         try:
-            result = compile_body_reference_job(
+            result = compile_with_revision(root, compile_body_reference_job,
                 job, self.project_root, pipeline_mode="local",
                 universe_root=self.app.config.base_library_path,
             )
-            analysis = self._compile_analysis_view(root, character, phase, view)
+            analysis = self._compile_analysis_view(root, character, phase, view, output_dir=output / "analysis")
         except Exception as exc:
             from zet.services.storage_health_service import pause_on_storage_error
             pause_on_storage_error(self.app.config, exc)
@@ -324,8 +325,6 @@ class LocalBodyReferenceService:
         final_prompt = Path(str(result["final_prompt"]))
         if not final_prompt.is_file():
             raise LocalBodyReferenceError(f"Compiled prompt is missing for {view}: {final_prompt}")
-        from zet.services.local_prompt_improvement_service import record_compiler_sources
-        record_compiler_sources(output)
         text = final_prompt.read_text(encoding="utf-8")
         qwen_prompt = self._qwen_prompt(text, view)
         return {
@@ -334,14 +333,16 @@ class LocalBodyReferenceService:
             "manual_prompt": text,
             **analysis,
             "qwen_prompt": qwen_prompt,
+            "template_revision_id": result.get("template_revision_id", ""),
             "prompt_path": str(final_prompt),
             "prompt_sha256": self._hash(final_prompt),
             "source_map": str(result.get("source_map") or ""),
             "dependency_manifest": str(result.get("dependency_manifest") or ""),
         }
 
-    def _compile_analysis_view(self, root: Path, character: str, phase: str, view: str) -> dict[str, str]:
-        output = root / "prompts" / view / "analysis"
+    def _compile_analysis_view(self, root: Path, character: str, phase: str, view: str, *, output_dir: Path | None = None) -> dict[str, str]:
+        from zet.services.template_source_service import compile_with_revision
+        output = output_dir or root / "prompts" / view / "analysis"
         job = {
             "Job": f"LocalBodyReference_{root.name}_{view}",
             "Task": "body-reference",
@@ -350,7 +351,7 @@ class LocalBodyReferenceService:
             "Body View": view,
             "Output Directory": str(output),
         }
-        result = compile_body_reference_job(
+        result = compile_with_revision(root, compile_body_reference_job,
             job, self.project_root, prompt_variant="analysis", pipeline_mode="local",
             universe_root=self.app.config.base_library_path,
         )
@@ -371,7 +372,7 @@ class LocalBodyReferenceService:
         return self._hash(path) if path.is_file() else ""
 
     @staticmethod
-    def _qwen_prompt(manual_prompt: str, view: str, anchor: bool = False) -> str:
+    def _qwen_prompt(manual_prompt: str, view: str, anchor: bool = False, anchor_view: str = "FRONT") -> str:
         body = re.sub(r"\{\{[^}]+\}\}", "", manual_prompt)
         body = re.sub(r"^#+\s*", "", body, flags=re.MULTILINE)
         body = re.sub(r"\s+", " ", body).strip()
@@ -387,7 +388,7 @@ class LocalBodyReferenceService:
         )
         if anchor:
             instruction = (
-                "Use <image1> as the accepted front-view Qwen identity and proportion anchor. "
+                f"Use <image1> as the accepted {anchor_view.replace('_', ' ').lower()} identity and proportion reference. "
                 + instruction.replace("Create one", "Edit the supplied identity anchor into one", 1)
                 + " Preserve the anchor's body proportions while changing only the requested view."
             )
@@ -463,6 +464,7 @@ class LocalBodyReferenceService:
                         "candidate_id": candidate_id, "view": prompt["view"], "view_index": view_index + 1,
                         "method": method, "ordinal": ordinal + 1, "seed": str(seeds[seed_index]),
                         "prompt": candidate_prompt, "prompt_sha256": hashlib.sha256(candidate_prompt.encode()).hexdigest(),
+                        "template_revision_id": prompt.get("template_revision_id", ""),
                         "status": "PENDING", "image_path": "", "render_error": "",
                         "analyses": {}, "disposition": "pending", "human_review": {"decision": "undecided"},
                     })
@@ -730,6 +732,7 @@ class LocalBodyReferenceService:
                     prompt = self._qwen_prompt(refreshed["manual_prompt"], view, anchor=True)
                 candidate["prompt"] = prompt
                 candidate["prompt_sha256"] = hashlib.sha256(prompt.encode()).hexdigest()
+                candidate["template_revision_id"] = refreshed.get("template_revision_id", "")
         spec["source_snapshot_sha256"] = hashlib.sha256(
             json.dumps(spec["prompt_snapshots"], sort_keys=True).encode()
         ).hexdigest()
@@ -745,8 +748,8 @@ class LocalBodyReferenceService:
                 prompt = refreshed["qwen_prompt"]
                 if candidate.get("method") == METHOD_FRONT_CONDITIONED:
                     prompt = self._qwen_prompt(refreshed["manual_prompt"], view, anchor=True)
-                candidate.update(prompt=prompt, prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest())
-                state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(prompt=prompt, prompt_sha256=candidate["prompt_sha256"])
+                candidate.update(prompt=prompt, prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(), template_revision_id=refreshed.get("template_revision_id", ""))
+                state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(prompt=prompt, prompt_sha256=candidate["prompt_sha256"], template_revision_id=candidate["template_revision_id"])
         mutate_local_run_state(root, update_added)
 
     def rerun(self, run_id: str, *, recompile: bool = False) -> dict[str, Any]:
@@ -2227,7 +2230,7 @@ class LocalBodyReferenceService:
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
         if candidate.get("status") in {"QUEUED", "RUNNING", "COMPLETE"}:
             return candidate
-        if candidate.get("view") != FRONT_VIEW and not run.get("front_anchor"):
+        if not candidate.get("render_input") and candidate.get("view") != FRONT_VIEW and not run.get("front_anchor"):
             raise LocalBodyReferenceError("Complete front analysis and select an anchor before rendering other views.")
         method = candidate.get("method")
         if method == "shared_front":
@@ -2236,13 +2239,15 @@ class LocalBodyReferenceService:
         elif method == METHOD_TEXT_FIRST:
             preset_name = "comfyui-qwen-body-reference-text"
             references = []
-        else:
+        elif not candidate.get("render_input"):
             preset_name = "comfyui-qwen-body-reference-edit"
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
             anchor_path = Path(str(anchor.get("image_path") or "")) if anchor else None
             if anchor_path is None or not anchor_path.is_file():
                 raise LocalBodyReferenceError("Front-conditioned rendering requires a completed front anchor image.")
             references = [{"role": "body_reference_front_anchor", "path": str(anchor_path)}]
+        else:
+            references = []
         root = self._root(run_id)
         candidate_dir = root / "renders" / candidate_id
         saved_input = candidate.get("render_input")
@@ -2252,6 +2257,7 @@ class LocalBodyReferenceService:
             preset_name = saved_input["preset"]
         else:
             saved_input = frozen_input(candidate_dir / "inputs", candidate["prompt"], references, preset_name)
+            saved_input["template_revision_id"] = candidate.get("template_revision_id", "")
         references = saved_input["references"]
         self._candidate_update(run_id, candidate_id, {"render_input": saved_input})
         candidate_dir.mkdir(parents=True, exist_ok=True)

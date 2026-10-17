@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "backgrounds": {
+    "turnaround_source": {
+      "label": "Turnaround source background",
+      "text": "Use a plain smooth very light desaturated blue-gray studio background. Add a flat matte light neutral-gray studio floor, slightly darker than the background, with a subtle horizontal floor/background boundary. Keep both surfaces featureless and uniform. Even studio lighting."
+    }
+  }
+}

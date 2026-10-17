@@ -57,7 +57,8 @@ def load_template_sections_with_sources(
     path = Path(template_path)
     if not path.exists():
         raise TemplateCompileError("MISSING_TEMPLATE", f"Template file not found: {path}")
-    text = path.read_text(encoding="utf-8")
+    from zet.services.template_source_service import read_template_text
+    text = read_template_text(path)
     markers = list(MARKER_RE.finditer(text))
     sections: dict[str, str] = {}
     sources: dict[str, dict] = {}

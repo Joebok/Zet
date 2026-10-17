@@ -192,6 +192,8 @@ model availability, artistic quality or production deployment.
 | Body/Head/Assembly/Dressing, supplemental slots | ComfyUI plus Codex/Ollama | generic AI harvester with domain attempt/slot fences | image generation or vision |
 | Ranking, prompt improvement | Codex/Ollama | common structured/result delivery and existing domain application | vision where images are supplied |
 
+Governing character-template proposals register `template_revision._propose_job` with `AIWorkflowService`. Their batch-local revision records retain frozen evidence, proposed text and compiler results independently of request retention. Requests carry normal character batch/costume ownership for AI Queue navigation; [local characters](LOCAL_CHARACTERS.md#governing-template-improvement-2026-10-17) owns review, trial activation and explicit master promotion.
+
 Every row publishes through `FileProxyClient`; no new request uses the legacy app
 workers. Those workers remain solely for immutable envelopes already published.
 Their runtime evidence lookup is compatibility execution metadata; model selectors

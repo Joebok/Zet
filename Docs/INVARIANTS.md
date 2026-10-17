@@ -167,5 +167,9 @@ replays an ambiguous execution. Foreground and background collection share locks
 and handlers. Model restrictions come from one cached capability catalog and are
 validated on submission as well as in the popup. See [Shared AI jobs](COMPONENTS/AI_JOBS.md).
 
+## Character template revisions
+
+Character template proposals retain frozen evidence and master baselines. Only compiled READY versions can become active or update masters; editing a proposal creates a child. Activation changes future render inputs, never queued asks or published image bytes. Explicit master promotion validates every changed source before writing and journals partial failures for explicit replay. Per-view custom references resolve only to a selected, available, non-rejected candidate in the same batch and preserve matching prerequisite bindings/order. See [ADR 0024](DECISIONS/0024-character-template-versions.md).
+
 ## Removable storage
 Unavailable resources must not be interpreted as empty authored/request state. Preserve the last committed derived index on incomplete scans and never silently recreate an observed authoritative catalog. Automatic recovery retains one execution per transport attempt, owner/attempt fencing and immutable published bytes; a fresh attempt is subscriber-owned. Stopped/cancelled/completed/protected work remains excluded. See [ADR 0022](DECISIONS/0022-removable-storage-recovery.md).

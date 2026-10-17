@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from zet.services.template_source_service import read_template_text
 
 from Scripts.Build_Static_Final_Prompt import (
     prompt_template_path,
@@ -126,7 +127,7 @@ class PromptTemplateService:
         selection = select_sections_for_prompt(
             conditioned_sections,
             filter_prompt_variant_blocks(
-                filter_pipeline_mode_blocks(template_file.read_text(encoding="utf-8"), pipeline_mode),
+                filter_pipeline_mode_blocks(read_template_text(template_file), pipeline_mode),
                 prompt_variant,
             ),
             view_token,
@@ -159,7 +160,7 @@ class PromptTemplateService:
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
         prompt_text, source_map = render_static_prompt_with_source_map(
             filter_prompt_variant_blocks(
-                filter_pipeline_mode_blocks(template_file.read_text(encoding="utf-8"), pipeline_mode),
+                filter_pipeline_mode_blocks(read_template_text(template_file), pipeline_mode),
                 prompt_variant,
             ),
             template_path=template_file,

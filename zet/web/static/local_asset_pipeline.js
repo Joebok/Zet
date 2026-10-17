@@ -375,7 +375,8 @@
     const decision = $("review-panel").querySelector("input[name='local-human-decision']:checked")?.value;
     const oldRun = state.run;
     state.run = latest;
-    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_view, run?.slot_controls, run?.rankings, run?.evaluations, run?.selected_views, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256]);
+    window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id));
+    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_view, run?.slot_controls, run?.rankings, run?.evaluations, run?.selected_views, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
     const replacement = document.createElement("div");
     if (changed) renderViews(latest, replacement);
@@ -427,6 +428,14 @@
       const recompile = previous.querySelector("input[data-recompile]");
       const nextRecompile = next.querySelector("input[data-recompile]");
       if (recompile && nextRecompile) nextRecompile.checked = recompile.checked;
+      const oldRecipe = previous.querySelector(".local-pipeline-reference-recipe"), nextRecipe = next.querySelector(".local-pipeline-reference-recipe");
+      if (oldRecipe && nextRecipe && (JSON.stringify(oldRun?.view_reference_recipes?.[view]) !== JSON.stringify(latest.view_reference_recipes?.[view]) || JSON.stringify(oldRun?.selected_views) !== JSON.stringify(latest.selected_views))) {
+        const oldSelect = oldRecipe.querySelector("select"), nextSelect = nextRecipe.querySelector("select");
+        const savedRecipe = oldRun?.view_reference_recipes?.[view] || { mode: "default" };
+        const savedValue = savedRecipe.mode === "selected_view" ? savedRecipe.source_view : savedRecipe.mode;
+        if (oldSelect.value !== savedValue) nextSelect.value = oldSelect.value;
+        oldRecipe.replaceWith(nextRecipe);
+      }
       for (const selector of ["summary", ".render-slot-add", ".local-pipeline-review-progress", ".local-pipeline-ai-observations"]) {
         const oldSection = previous.querySelector(selector), newSection = next.querySelector(selector);
         if (selector === ".render-slot-add" && oldSection && newSection) newSection.querySelector("input").value = oldSection.querySelector("input").value;
@@ -559,6 +568,23 @@
       const promptHelp = document.createElement("p"); promptHelp.className = "muted local-pipeline-prompt-help";
       promptHelp.textContent = "Generate / Regen use the current view prompt. Recompile builds it from current templates first. Retry uses the failed render’s saved prompt.";
       details.append(links, promptHelp);
+      const recipeSection = document.createElement("div"); recipeSection.className = "local-pipeline-reference-recipe";
+      const recipeLabel = document.createElement("label"); recipeLabel.textContent = "Reference for new individual renders";
+      const recipeSelect = document.createElement("select"); recipeSelect.dataset.referenceRecipe = view;
+      recipeSelect.add(new Option("Pipeline default", "default"));
+      recipeSelect.add(new Option(hasSharedAssetRouter() ? "No batch anchor" : "No view reference (text only)", "none"));
+      for (const sourceView of run.views || []) {
+        if (sourceView === view) continue;
+        const cid = run.selected_views?.[sourceView] || (sourceView === "FRONT" ? run.front_anchor : "");
+        recipeSelect.add(new Option(`Selected ${sourceView}${cid ? ` · ${cid}` : " (choose an image first)"}`, sourceView));
+      }
+      const recipe = run.view_reference_recipes?.[view] || { mode: "default" };
+      recipeSelect.value = recipe.mode === "selected_view" ? recipe.source_view : recipe.mode;
+      recipeLabel.append(recipeSelect); recipeSection.append(recipeLabel);
+      addButton(recipeSection, "Save reference", "save-view-reference", { view });
+      const recipeHelp = document.createElement("p"); recipeHelp.className = "muted";
+      recipeHelp.textContent = "Applies to future Generate / Regen in individual slots. Matching pipeline inputs remain. Custom choices compile automatically; Retry keeps its saved inputs. A front reference can pull a rear image toward the front angle.";
+      recipeSection.append(recipeHelp); details.append(recipeSection);
       const observationDetails = document.createElement("details");
       observationDetails.className = "local-pipeline-observations";
       observationDetails.dataset.view = view;
@@ -645,6 +671,7 @@
 
   function render() {
     const run = state.run;
+    window.ZetTemplateImprovement?.update(run, state.pipeline, () => loadRun(run?.run_id || ""));
     renderLineageWarnings(run);
     if (!run) {
       $("lineage-warning").hidden = true;
@@ -1209,6 +1236,13 @@
     const view = button.dataset.view;
     const candidateId = button.dataset.candidate || button.closest?.("[data-candidate]")?.dataset.candidate || "";
     if (action === "review") { openReview(candidateId); return; }
+    if (action === "save-view-reference") {
+      const value = button.closest(".local-pipeline-reference-recipe").querySelector("select").value;
+      const params = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
+      await request(`${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/views/${encodeURIComponent(view)}/reference-recipe${params}`,
+        { method: "PUT", body: JSON.stringify({ mode: ["default", "none"].includes(value) ? value : "selected_view", source_view: value }) });
+      await loadRun(state.run.run_id); setStatus("Reference saved for new individual renders."); return;
+    }
     if (action === "save-observations") {
       const observations = $("views").querySelector(`textarea[data-view-observations="${view}"]`)?.value || "";
       const result = await request(route("observations", state.run.run_id, view), { method: "PUT", body: JSON.stringify({ observations }) });

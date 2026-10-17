@@ -651,6 +651,9 @@ def compile_costume_dressing_job(
         "EQUIPMENT_VIEW_HEADING": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Optional equipment view heading", "editable": False},
         "LOCAL_COSTUME_REFERENCE_GUIDANCE": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Local costume reference guidance", "editable": False},
     }
+    from zet.services.local_view_reference_service import batch_reference_guidance
+    if pipeline_mode == "local":
+        metadata_values["LOCAL_COSTUME_REFERENCE_GUIDANCE"] += "\n" + batch_reference_guidance(references, body_view_token)
     prompt_text = render_static_prompt_artifacts(
         project_root=project_root,
         bundle=bundle,

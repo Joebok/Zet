@@ -74,3 +74,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 [0022 — Local recovery evidence and subscriber-owned fresh attempts](0022-removable-storage-recovery.md) records removable-volume recovery, continuation intent, and the authoritative-catalog/index distinction (accepted 2026-10-17).
 
 | [0023 - Available images and verified handoffs](0023-streamlined-image-integrity.md) | File availability, managed versions, incremental usages, confirmed deletion and async indexes | Accepted 2026-10-17 |
+
+[0024 - Character template versions and explicit view references](0024-character-template-versions.md) records batch-local proposals, compiler overlays, confirmed promotion and selected-view conditioning (accepted locally 2026-10-17; artistic quality unverified).

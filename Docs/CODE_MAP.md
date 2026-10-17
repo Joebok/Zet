@@ -49,6 +49,8 @@ Use this map to select a narrow search, inspect the named entry point and caller
 
 ## Search and impact routine
 
+Character template improvement: [LocalTemplateRevisionService](../zet/services/local_template_revision_service.py) owns representative selection, frozen proposal versions, real compiler validation, trial activation and confirmed conflict-checked promotion. [TemplateSourceService](../zet/services/template_source_service.py) supplies context-local source overrides to existing compiler readers/adapters; [LocalViewReferenceService](../zet/services/local_view_reference_service.py) owns explicit same-batch selected-view recipes. `LocalImagePipelineWorkflowService` exposes operations through the shared local router; [local_template_improvement.js](../zet/web/static/local_template_improvement.js), `local_asset_pipeline.js` and scoped styles present version/individual-render controls. `AIWorkflowService` registers resumable `template_revision` jobs; AI Queue links retain batch/costume context. Disposable contracts/browser checks cover the feature; S1–S4 remain regressions. See [local characters](COMPONENTS/LOCAL_CHARACTERS.md#governing-template-improvement-2026-10-17).
+
 Completed character batch publication: `LocalAssetStoreService.all_selected_views_locked`
 verifies requested selections against same-batch, costume-scoped lock identities and permanent image
 availability. Body, Head, Assembly and Dressing adapters use it in detail and summary

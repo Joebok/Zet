@@ -123,6 +123,25 @@ class LocalImagePipelineWorkflowService:
             return self._present_run(result)
         if name == "save_observations":
             return self.prompt_improvement.save_observations(run_id, view, payload.get("observations"), costume)
+        if name == "save_view_reference":
+            from zet.services.local_view_reference_service import save_reference_recipe
+            from zet.services.workflow_storage import file_lock
+            run = self.prompt_improvement.detail(run_id, costume)
+            with file_lock(Path(run["root"]) / "state.lock"):
+                save_reference_recipe(self.prompt_improvement.detail(run_id, costume), view, payload)
+            return self._present_run(self.prompt_improvement.detail(run_id, costume))
+        if name.startswith("template_revision_"):
+            from zet.services.local_template_revision_service import LocalTemplateRevisionService
+            revisions = LocalTemplateRevisionService(self.app, self.project_root)
+            revision_id = str(args.get("revision_id") or "")
+            if name == "template_revision_detail":
+                return revisions.detail(self.pipeline, run_id, costume, revision_id)
+            if name == "template_revision_start":
+                return revisions.start(self.pipeline, run_id, payload, costume)
+            if name == "template_revision_activate":
+                return revisions.activate(self.pipeline, run_id, revision_id, costume, payload.get("expected_active"))
+            if name == "template_revision_promote":
+                return revisions.promote(self.pipeline, run_id, revision_id, payload, costume)
         if name == "reanalyze":
             return self.prompt_improvement.start(run_id, view, costume)
         if name in {"select_view", "unselect_view"}:

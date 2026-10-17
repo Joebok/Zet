@@ -282,6 +282,13 @@ def compile_character_assembly_job(
             **contract_values,
             **template_metadata(template_path),
         }
+    from zet.services.local_view_reference_service import batch_reference_guidance
+    if pipeline_mode == "local":
+        guidance = batch_reference_guidance(references, body_view_token)
+        if guidance:
+            metadata_values["LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE"] = (
+                "Image 1 is the matching Body-Reference; Image 2 is the matching Head-Image. "
+                "These matching-view inputs control target pose, camera, anatomy and framing.\n" + guidance)
     metadata_sources = {
         **({"LOCAL_CANONICAL_ART_STYLE": universe_sources["CANONICAL_ART_STYLE"]}
            if universe_style else {}),
