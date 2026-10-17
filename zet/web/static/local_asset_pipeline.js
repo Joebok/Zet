@@ -27,7 +27,7 @@
   const state = { pipeline: "", generation: 0, run: null, runs: [], reviewCandidates: [], reviewIndex: -1,
     frontSourcePath: "", poll: null, previewGeneration: 0, contextKey: "", compareOpposite: false,
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
-    runState: "absent", costumesState: "absent", runRequest: 0 };
+    runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false };
   const restoreParams = new URLSearchParams(window.location.search);
 
   function contextKey() {
@@ -123,10 +123,10 @@
     }
   }
 
-  function cacheBustedImageUrl(url) {
-    url = universeImageUrl(url);
-    const separator = url.includes("?") ? "&" : "?";
-    return `${url}${separator}v=${Date.now()}`;
+  function versionedImageUrl(url, version) {
+    if (!version) return universeImageUrl(url);
+    const resolved = universeImageUrl(url);
+    return `${resolved}${resolved.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
   }
 
   function payload() {
@@ -500,7 +500,10 @@
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          image.src = cacheBustedImageUrl(route("source", run.run_id, view, role));
+          const source = run.sources?.[view]?.[role] || {};
+          const version = source.sha256 || source.image_sha256 || source.image_path ||
+            (role === "front_reference" ? run.front_source_sha256 || run.front_source : "");
+          image.src = versionedImageUrl(route("source", run.run_id, view, role), version);
           figure.append(caption, image);
           sources.append(figure);
         }
@@ -542,7 +545,8 @@
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          image.src = cacheBustedImageUrl(route("reference-image", run.run_id, view, String(index)));
+          image.src = versionedImageUrl(route("reference-image", run.run_id, view, String(index)),
+            reference.sha256 || reference.path || `${view}:${reference.role || "reference"}:${index}`);
           figure.append(caption, image);
           sources.append(figure);
         }
@@ -716,9 +720,10 @@
   async function pollForImages(runId, generation = state.generation) {
     if (state.pollInFlight || !state.run || state.run.run_id !== runId) return;
     state.pollInFlight = true;
+    const requestId = state.runRequest;
     try {
       const latest = await request(route("detail", runId));
-      if (generation !== state.generation || state.run?.run_id !== runId) return;
+      if (requestId !== state.runRequest || generation !== state.generation || state.run?.run_id !== runId) return;
       if (contextKey() !== state.contextKey || !document.querySelector("#local-pipeline-page").classList.contains("active")) return;
       mergeLiveRun(latest);
     } catch (error) {
@@ -886,12 +891,19 @@
   }
 
   async function perform(action, view = "", candidateId = "", body = undefined) {
+    const runId = state.run?.run_id || "";
+    const generation = state.generation;
+    const pipeline = state.pipeline;
+    const context = contextKey();
+    const requestId = ++state.runRequest;
     const method = action === "rename"
       ? "PUT" : action === "delete" ? "DELETE" : "POST";
     let path;
     if (action === "reevaluate-view") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/reevaluate${query({ view })}`;
     else path = route(action, state.run?.run_id, view, candidateId);
     const result = await request(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (requestId !== state.runRequest || generation !== state.generation || pipeline !== state.pipeline ||
+        context !== contextKey() || (runId && state.run?.run_id !== runId)) return result;
     if (action === "delete") {
       state.run = null;
       await refreshRuns();
@@ -910,8 +922,8 @@
     } else if (action === "lock" || action === "unlock" || action === "select" || action === "unselect") {
       setStatus("Selection updated.");
     }
-    if (action === "rerun" || action === "rerun-view" || action === "rerun-failed" || action === "reevaluate" || action === "reevaluate-view" || action === "proceed") {
-      await loadRun(state.run?.run_id);
+    if (["review", "select", "unselect", "move-rank"].includes(action) && result?.run_id) {
+      mergeLiveRun(result);
     } else await loadRun(state.run?.run_id);
   }
 
@@ -940,28 +952,40 @@
       item => item.candidate_id, item => physicalSlotNumber(run, view, item)));
   }
 
+  function normalizedDecision(value) {
+    return ({ pass: "keep", fail: "reject" })[String(value || "undecided").toLowerCase()] || String(value || "undecided").toLowerCase();
+  }
+
   async function saveReviewDecision(candidate) {
-    const decision = $("review-panel").querySelector("input[name='local-human-decision']:checked")?.value || "undecided";
-    await perform("review", candidate.view, candidate.candidate_id, { decision });
+    const decision = normalizedDecision($("review-panel").querySelector("input[name='local-human-decision']:checked")?.value);
+    const current = (state.run?.candidates || []).find(item => item.candidate_id === candidate.candidate_id) || candidate;
+    if (decision !== normalizedDecision(current.human_review?.decision)) {
+      await perform("review", candidate.view, candidate.candidate_id, { decision });
+    }
     state.reviewCandidates = orderedReviewCandidates();
     state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
     return state.reviewCandidates[state.reviewIndex] || candidate;
   }
 
   async function navigateReview(direction) {
+    if (state.reviewActionPending) return;
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
+    state.reviewActionPending = true;
     try {
       await saveReviewDecision(candidate);
       state.reviewCandidates = orderedReviewCandidates();
       state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id) + direction;
       renderReview();
     } catch (error) { setStatus(error.message, true); }
+    finally { state.reviewActionPending = false; }
   }
 
   async function navigateReviewView(direction) {
+    if (state.reviewActionPending) return;
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
+    state.reviewActionPending = true;
     try {
       await saveReviewDecision(candidate);
       state.reviewCandidates = orderedReviewCandidates();
@@ -972,6 +996,7 @@
       state.reviewIndex = state.reviewCandidates.findIndex((item) => item.view === targetView);
       renderReview();
     } catch (error) { setStatus(error.message, true); }
+    finally { state.reviewActionPending = false; }
   }
 
   function renderReview() {
@@ -1048,15 +1073,20 @@
     save.className = "primary-action";
     save.textContent = "Save review";
     save.addEventListener("click", async () => {
+      if (state.reviewActionPending) return;
+      state.reviewActionPending = true;
       try {
         await saveReviewDecision(candidate);
         renderReview();
       } catch (error) { setStatus(error.message, true); }
+      finally { state.reviewActionPending = false; }
     });
     const select = document.createElement("button");
     select.textContent = "Select this image";
     select.disabled = selectedViews[candidate.view] === candidate.candidate_id;
     select.addEventListener("click", async () => {
+      if (state.reviewActionPending) return;
+      state.reviewActionPending = true;
       try {
         await saveReviewDecision(candidate);
         await perform("select", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id });
@@ -1064,6 +1094,7 @@
         state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
         renderReview();
       } catch (error) { setStatus(error.message, true); }
+      finally { state.reviewActionPending = false; }
     });
     const content = document.createElement("section");
     content.className = "local-pipeline-review-content";
@@ -1118,6 +1149,8 @@
       up.textContent = "Rank up";
       up.disabled = adjustedPosition <= 0;
       up.addEventListener("click", async () => {
+        if (state.reviewActionPending) return;
+        state.reviewActionPending = true;
         try {
           await saveReviewDecision(candidate);
           await perform("move-rank", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id, direction: "up" });
@@ -1125,12 +1158,15 @@
           state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
           renderReview();
         } catch (error) { setStatus(error.message, true); }
+        finally { state.reviewActionPending = false; }
       });
       const down = document.createElement("button");
       down.type = "button";
       down.textContent = "Rank down";
       down.disabled = adjustedPosition >= adjustedOrder.length - 1;
       down.addEventListener("click", async () => {
+        if (state.reviewActionPending) return;
+        state.reviewActionPending = true;
         try {
           await saveReviewDecision(candidate);
           await perform("move-rank", candidate.view, candidate.candidate_id, { candidate_id: candidate.candidate_id, direction: "down" });
@@ -1138,6 +1174,7 @@
           state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id);
           renderReview();
         } catch (error) { setStatus(error.message, true); }
+        finally { state.reviewActionPending = false; }
       });
       actions.append(up, down);
     }

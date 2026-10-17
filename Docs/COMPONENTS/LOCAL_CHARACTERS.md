@@ -10,6 +10,7 @@ The active character workflow produces and reviews **batches of candidates** for
 | Head generation/review | [LocalHeadImageService](../../zet/services/local_head_image_service.py), [Run_Head_Image_Jobs.py](../../Scripts/Run_Head_Image_Jobs.py) |
 | Assembly and costume-qualified dressing | [LocalCharacterAssetPipelineService](../../zet/services/local_character_asset_pipeline_service.py): `preview`, `create_run`, `execute_run`, `select_view`, `lock_preview`, `lock_selected_view`, rerun/resume/stop methods |
 | Shared review/run semantics | [local_image_pipeline_policy.py](../../zet/services/local_image_pipeline_policy.py), [candidate_review_contract.py](../../zet/services/candidate_review_contract.py), [local_candidate_review_contract.py](../../zet/services/local_candidate_review_contract.py), [local_image_ranking_service.py](../../zet/services/local_image_ranking_service.py) |
+| Candidate image delivery | [local_candidate_image_service.py](../../zet/services/local_candidate_image_service.py) resolves current candidate membership and contained image paths from the owning run's spec/state without building full run detail |
 | Selection, lock and publication | [LocalAssetStoreService](../../zet/services/local_asset_store_service.py), file-available [LocalAssetSourceService](../../zet/services/local_asset_source_service.py), entity image library |
 | Overview and sequenced automation/recovery | [LocalCharacterOverviewService](../../zet/services/local_character_overview_service.py), [LocalRunAllRemainingService](../../zet/services/local_run_all_remaining_service.py), [local router](../../zet/web/local_character_asset_pipeline_router.py), app startup recovery |
 
@@ -20,6 +21,11 @@ Inputs include character/phase, normalized requested views, costume qualifier wh
 3. Rendered candidates are available for Luna ranking and human review immediately. Front-anchor/order requirements differ by pipeline; use the owning service rather than a universal view loop.
 4. Current ranking, human decisions, image validity, and selection determine eligibility. Selection and locking are separate operations; promotion may collect a source chain.
 5. Lock publication preserves approved image bytes/checksum and a stable logical reference. Available published locks feed identity keys, turnarounds, costumes, phase comparison and scene references.
+
+The shared review page skips unchanged human decisions. Review, selection, and rank
+responses carry the same presented run fields as detail, allowing the page to merge
+them directly without another detail request. Candidate images use the focused
+resolver above; reference previews keep URLs stable for their saved content identity.
 
 All four pipelines' detail and batch summaries recognize completed publication when
 every requested view's current selection matches a published lock from that batch,

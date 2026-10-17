@@ -52,7 +52,7 @@ class LocalImagePipelineWorkflowService:
             created = self.adapter.create_run(payload)
             return self.prompt_improvement.detail(str(created.get("run_id") or ""), costume)
         if name == "detail":
-            return self.slots.detail(self.prompt_improvement.detail(run_id, costume))
+            return self._present_run(self.prompt_improvement.detail(run_id, costume))
         if name in {"generate_slots", "clear_slot", "regenerate_slot", "retry_render_slot"}:
             operation = {"generate_slots": "generate", "clear_slot": "clear", "regenerate_slot": "regenerate", "retry_render_slot": "retry"}[name]
             return self.slots.change(run_id, view, operation, payload, costume)
@@ -113,11 +113,14 @@ class LocalImagePipelineWorkflowService:
             return self.adapter.stage_view_evaluation(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.stage_view_evaluation(run_id, view)
         if name == "move_rank":
             if self.pipeline in {"head-image", "body-reference"}:
-                return self.adapter.move_candidate_rank(run_id, view, candidate_id, direction)
-            return self.adapter.move_rank(run_id, view, candidate_id, direction, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.move_rank(run_id, view, candidate_id, direction)
+                result = self.adapter.move_candidate_rank(run_id, view, candidate_id, direction)
+            else:
+                result = self.adapter.move_rank(run_id, view, candidate_id, direction, costume)
+            return self._present_run(result)
         if name == "review_candidate":
             method = self.adapter.update_candidate
-            return method(run_id, candidate_id, payload, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, candidate_id, payload)
+            result = method(run_id, candidate_id, payload, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else method(run_id, candidate_id, payload)
+            return self._present_run(result)
         if name == "save_observations":
             return self.prompt_improvement.save_observations(run_id, view, payload.get("observations"), costume)
         if name == "reanalyze":
@@ -130,7 +133,7 @@ class LocalImagePipelineWorkflowService:
                 from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
                 LocalRunAllRemainingService(self.app, self.project_root).front_selection_changed(
                     self.pipeline, run_id, costume if self.pipeline == "costume-dressing" else "")
-            return result
+            return self._present_run(result)
         if name == "select_front_anchor":
             if self.pipeline == "body-reference":
                 return self.adapter.select_front_anchor(run_id, candidate_id)
@@ -151,6 +154,18 @@ class LocalImagePipelineWorkflowService:
             self.prompt_improvement.reset_after_rerender(run_id, {str(candidate.get("view") or "")}, costume)
             return self.prompt_improvement.detail(run_id, costume)
         raise LocalImageWorkflowError(f"Unsupported local image workflow action: {name}")
+
+    def _present_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        """Return loaded workflow state in the same shape for detail and mutation routes."""
+        presented = self.prompt_improvement.project(run)
+        presented = self.slots.detail(presented)
+        for candidate in presented.get("candidates", []):
+            image_path = str(candidate.get("image_path") or "")
+            available = bool(image_path and Path(image_path).is_file())
+            candidate["image_available"] = available
+            if not available:
+                candidate["image_path"] = ""
+        return presented
 
     def execute(self, run_id: str, *, views: set[str] | None = None, costume: str = "",
                 candidate_ids: set[str] | None = None, render_only: bool = False) -> None:

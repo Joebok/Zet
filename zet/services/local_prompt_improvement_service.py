@@ -172,6 +172,10 @@ class LocalPromptImprovementService:
                         ai.update(status="FAILED", error="Observations were interrupted; use Re-evaluate.", completed_at=_now())
             mutate_local_run_state(root, mark_interrupted)
             run = self._run(run_id, costume)
+        return self.project(run)
+
+    def project(self, run: dict[str, Any]) -> dict[str, Any]:
+        """Add prompt-review presentation state to an already loaded run."""
         for candidate in run.get("candidates") or []:
             (candidate.get("human_review") or {}).pop("notes", None)
         for view, record in (run.get("view_reviews") or {}).items():

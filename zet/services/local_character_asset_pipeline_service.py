@@ -1567,12 +1567,11 @@ class LocalCharacterAssetPipelineService:
                 "blocked_views": blocked_views}
 
     def image_path(self, run_id: str, candidate_id: str, costume: str = "") -> Path:
-        run = self.detail(run_id, costume)
-        item = next((candidate for candidate in run["candidates"] if candidate["candidate_id"] == candidate_id), None)
-        path = Path(str((item or {}).get("image_path") or "")).resolve()
-        if not path.is_file() or not path.is_relative_to(Path(run["root"]).resolve()):
-            raise LocalCharacterAssetPipelineError("Candidate image is unavailable.")
-        return path
+        from zet.services.local_candidate_image_service import candidate_image_path
+        try:
+            return candidate_image_path(self._run_root(run_id, costume), candidate_id, self.library_root)
+        except ValueError as exc:
+            raise LocalCharacterAssetPipelineError("Candidate image is unavailable.") from exc
 
     def source_path(self, run_id: str, view: str, role: str, costume: str = "") -> Path:
         run = self.detail(run_id, costume)

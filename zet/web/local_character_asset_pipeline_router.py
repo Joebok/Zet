@@ -84,17 +84,8 @@ def create_local_character_asset_pipeline_router(
 
         @router.get(f"{prefix}/runs/{{run_id}}")
         def detail(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
-            def load_detail():
-                result = action(_pipeline, "detail", run_id=run_id,
-                                costume=costume if _pipeline == "costume-dressing" else "")
-                for candidate in result.get("candidates", []):
-                    image_path = str(candidate.get("image_path") or "")
-                    available = bool(image_path and Path(image_path).is_file())
-                    candidate["image_available"] = available
-                    if not available:
-                        candidate["image_path"] = ""
-                return result
-            return call(load_detail, missing=404)
+            return call(lambda: action(_pipeline, "detail", run_id=run_id,
+                                       costume=costume if _pipeline == "costume-dressing" else ""), missing=404)
 
         @router.post(f"{prefix}/runs/{{run_id}}/start")
         def start(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
