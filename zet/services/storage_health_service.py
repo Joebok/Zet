@@ -224,10 +224,24 @@ class StorageHealth:
             try:
                 current = root.stat()
             except FileNotFoundError:
-                if not row.get("identity") and not name.startswith("catalog:"):
-                    continue
-                self._mark_paused(name, f"Configured storage disappeared: {root}")
-                raise StorageUnavailable(f"Configured storage disappeared: {root}") from None
+                # A removable-volume path can briefly report ENOENT even while
+                # the device is reachable. Confirm through the full directory
+                # probe before turning one metadata lookup into an outage.
+                self.poll(force=True)
+                with self._lock:
+                    row = dict(self._rows.get(name, row))
+                if row.get("status") != "AVAILABLE":
+                    raise StorageUnavailable(row.get("error") or f"Storage is recovering: {root}") from None
+                try:
+                    current = root.stat()
+                except FileNotFoundError:
+                    if not row.get("identity") and not name.startswith("catalog:"):
+                        continue
+                    self._mark_paused(name, f"Configured storage disappeared: {root}")
+                    raise StorageUnavailable(f"Configured storage disappeared: {root}") from None
+                except OSError as exc:
+                    self._mark_paused(name, f"Configured storage cannot be accessed: {root}")
+                    raise StorageUnavailable(f"Configured storage cannot be accessed: {root}") from exc
             except OSError as exc:
                 self._mark_paused(name, f"Configured storage cannot be accessed: {root}")
                 raise StorageUnavailable(f"Configured storage cannot be accessed: {root}") from exc

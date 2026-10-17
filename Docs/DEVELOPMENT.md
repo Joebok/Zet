@@ -2,6 +2,13 @@
 
 Run commands from the repository root. [Testing](Testing.md) owns the approved four-scenario fast baseline, isolated Test library, and separately invoked live Narrative check. Use [CODE_MAP](CODE_MAP.md) for implementation navigation and [AGENTS](../AGENTS.md) for authority boundaries.
 
+## Verification note (2026-10-17)
+
+Storage recovery and AI job cleanup changes passed a disposable isolated check for
+a transient root-stat failure and deletion of a `RECOVERY_REQUIRED` record with no
+producer metadata. `npm.cmd run test:e2e` passed all four approved scenarios
+(39.1 seconds). No production queue, library, or live AI service was used.
+
 ## Runtime and prerequisites
 
 - Python **3.11+**, declared in [pyproject.toml](../pyproject.toml). Prefer `python3`. If unavailable, verify a fallback with `<candidate> -c "import sys; assert sys.version_info.major == 3"`, then reuse it. Verification here used Python 3.14.6 on Windows.

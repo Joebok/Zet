@@ -122,10 +122,11 @@ removed.
 to [AIJobCleanupService](../../zet/services/ai_job_cleanup_service.py). AI Queue
 offers a confirmed **Delete job** action beside the status on `HARVEST_FAILED` and
 `RECOVERY_REQUIRED` rows. The service rechecks current status under the coordinator
-and common job locks, refuses Ask/Running work, verifies local producer evidence,
-rejects conflicting job identities and linked/junction paths, and removes only
-known job-scoped transport/local-state files. Missing files are harmless. Shared
-jobs without verifiable ownership need their metadata restored before deletion.
+and common job locks, refuses Ask/Running work and explicit foreign-producer
+metadata, rejects conflicting job identities and linked/junction paths, and removes
+only known job-scoped transport/local-state files. Missing ownership metadata does
+not prevent cleanup of an eligible failed/recovery-required row. Missing files are
+harmless.
 
 Cleanup includes Answer, Inbox, Debug, manual queue payloads, matching archived
 payloads, staging/partial transfers, Jobs, Routes, Receipts, StructuredResults and

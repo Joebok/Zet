@@ -32,6 +32,9 @@ more probe workers. Independent verified resources remain usable. The ten most
 recent outage causes remain in diagnostic history when active errors clear. Exclusive local
 identity markers prevent competing startup hosts from replacing the first root
 observation. Fast fixtures keep recovery metadata under their own Runtime folder.
+When a direct root stat briefly reports `FileNotFoundError`, `require()` forces a
+fresh full probe before classifying the root as disappeared; a successful probe
+and stat keep it available, while a confirmed missing root still pauses recovery.
 
 ## Execution, collection, and continuation
 

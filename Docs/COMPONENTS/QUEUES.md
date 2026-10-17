@@ -48,11 +48,12 @@ and receipts directly. All local-producer universes are shown by default. Its cu
 and recent-history APIs do not depend on derived library-index generations. See
 [Shared AI jobs](AI_JOBS.md) for paging, filters, handlers and the shared model popup.
 
-The confirmed per-row **Delete job** action removes locally owned retained
+The confirmed per-row **Delete job** action removes retained
 `HARVEST_FAILED` / `RECOVERY_REQUIRED` payloads and job-scoped state through
-`AIJobCleanupService`. It refuses active/foreign/unverifiable shared work, preserves
-library assets and workflow records, and keeps a minimal producer-local deletion
-fence against late answers. Partial cleanup remains visible for retry. See
+`AIJobCleanupService`. It refuses active work and explicit foreign ownership,
+allows cleanup when ownership metadata is absent, preserves library assets and
+workflow records, and keeps a minimal producer-local deletion fence against late
+answers. Partial cleanup remains visible for retry. See
 [deletion behavior](AI_JOBS.md#deleting-retained-failures) for the exact boundary.
 
 `python3 -B -m zet.scripts.manage_storage --config config.toml` reports configured

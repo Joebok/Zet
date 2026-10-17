@@ -120,8 +120,9 @@ class AIJobCleanupService:
             elif path.suffix == ".json":
                 evidence.append(self._read(path))
         producers = {str(item["producer_id"]).casefold() for item in evidence if item.get("producer_id")}
-        if producers != {socket.gethostname().casefold()}:
-            raise ValueError("Cannot verify that all job files belong to this machine. Restore ownership metadata before deleting.")
+        foreign = producers - {socket.gethostname().casefold()}
+        if foreign:
+            raise ValueError("This job has ownership metadata for another machine and cannot be deleted here.")
         self._safe(marker, local)
         deletion = {"version": 1, "ask_id": job_id, "producer_id": socket.gethostname(),
                     "universe_id": (row or previous).get("universe_id", ""),

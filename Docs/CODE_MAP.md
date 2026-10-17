@@ -57,7 +57,7 @@ checks cover invalid publications and protected statuses; S2 remains Assembly/Dr
 regression coverage.
 
 Failed AI job deletion: [AIJobCleanupService](../zet/services/ai_job_cleanup_service.py)
-owns status/producer/path validation, job-scoped payload cleanup and retryable
+owns status/foreign-producer/path validation, job-scoped payload cleanup and retryable
 partial failure under coordinator/job locks. `ZetApp.delete_failed_ai_job`,
 `DELETE /api/ai/jobs/{job_id}` and `ai_queue.js` expose the confirmed action.
 `AIJobRepository.DeletedJobs` fences queries, publication and collection against
