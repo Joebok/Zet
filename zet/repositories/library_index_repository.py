@@ -247,13 +247,28 @@ class LibraryIndexRepository:
 
     def begin_rebuild(self) -> int:
         def operation(connection: sqlite3.Connection) -> int:
-            previous = self._metadata(connection, "building_generation")
-            if previous is not None:
-                connection.execute(
-                    "UPDATE generations SET status = 'failed', completed_at = CURRENT_TIMESTAMP "
-                    "WHERE generation = ? AND status = 'building'",
-                    (int(previous),),
-                )
+            connection.execute("BEGIN IMMEDIATE")
+            active = self._metadata(connection, "active_generation")
+            # A prior interrupted build is never visible to readers. Retain the
+            # active snapshot and discard every abandoned generation before a
+            # fresh build starts.
+            if active is not None:
+                connection.execute("DELETE FROM generations WHERE generation <> ?", (int(active),))
+                for table in (
+                    "sources", "stories", "scenes", "render_targets", "catalog_records",
+                    "reference_relationships", "work_items", "job_summaries", "index_errors",
+                    "indexed_list_items",
+                ):
+                    connection.execute(f"DELETE FROM {table} WHERE generation <> ?", (int(active),))
+            else:
+                connection.execute("DELETE FROM generations")
+                for table in (
+                    "sources", "stories", "scenes", "render_targets", "catalog_records",
+                    "reference_relationships", "work_items", "job_summaries", "index_errors",
+                    "indexed_list_items",
+                ):
+                    connection.execute(f"DELETE FROM {table}")
+            connection.execute("DELETE FROM metadata WHERE key = 'building_generation'")
             row = connection.execute("SELECT COALESCE(MAX(generation), 0) + 1 FROM generations").fetchone()
             generation = int(row[0])
             connection.execute(
@@ -348,6 +363,25 @@ class LibraryIndexRepository:
                 connection.execute(
                     "INSERT OR REPLACE INTO metadata(key, value) VALUES ('active_generation', ?)",
                     (str(generation),),
+                )
+                # The generation tables are a disposable snapshot. Keep exactly the
+                # published copy after the replacement is committed and readable.
+                for table in (
+                    "sources", "stories", "scenes", "render_targets", "catalog_records",
+                    "reference_relationships", "work_items", "job_summaries", "index_errors",
+                    "indexed_list_items",
+                ):
+                    connection.execute(f"DELETE FROM {table} WHERE generation <> ?", (generation,))
+                connection.execute("DELETE FROM generations WHERE generation <> ?", (generation,))
+                connection.execute(
+                    "DELETE FROM source_payloads WHERE NOT EXISTS ("
+                    "SELECT 1 FROM sources WHERE sources.source_path = source_payloads.source_path "
+                    "AND sources.fingerprint = source_payloads.fingerprint AND sources.generation = ?)",
+                    (generation,),
+                )
+                connection.execute(
+                    "DELETE FROM dependency_edges WHERE scope_key NOT IN "
+                    "(SELECT scope_key FROM compilation_cache)"
                 )
                 connection.execute("DELETE FROM metadata WHERE key IN ('building_generation', 'last_build_error')")
                 connection.commit()

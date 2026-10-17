@@ -7,9 +7,10 @@ from zet.services.local_render_policy import require_qwen_profile
 
 
 class LocalRenderBackendService:
-    def __init__(self, presets_path: str | Path, queue_root=None):
+    def __init__(self, presets_path: str | Path, queue_root=None, *, config=None):
         self.presets_path = Path(presets_path)
         self.queue_root = queue_root
+        self.config = config
 
     def preset(self, preset_name: str) -> dict[str, Any]:
         presets = json.loads(self.presets_path.read_text(encoding="utf-8")) if self.presets_path.exists() else {}
@@ -38,7 +39,7 @@ class LocalRenderBackendService:
         if self.queue_root is None:
             raise RuntimeError("Backend metadata requires the configured AI_Proxy catalog.")
         from zet.services.ai_model_catalog_service import AIModelCatalogService
-        return AIModelCatalogService(self.queue_root).catalog()
+        return AIModelCatalogService(self.queue_root, config=self.config).catalog()
 
     def comfyui_options(self, server_url: str = "") -> dict[str, Any]:
         value = self._catalog().get("comfyui_options", {})

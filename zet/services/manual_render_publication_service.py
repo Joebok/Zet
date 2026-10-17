@@ -39,6 +39,7 @@ class ManualRenderPublicationService:
     def __init__(self, config: Config):
         self.config = config
         self.path_service = AIProxyPathService(config)
+        self.local_state_root = self.path_service.lifecycle.root
 
     @property
     def queue_root(self) -> Path:
@@ -46,10 +47,10 @@ class ManualRenderPublicationService:
 
     @property
     def journal_root(self) -> Path:
-        return queue_local_state_root(self.queue_root) / self.JOURNAL_KIND
+        return self.local_state_root / self.JOURNAL_KIND
 
     def intent_path(self, ask_id: str) -> Path:
-        return task_state_path(self.queue_root, self.JOURNAL_KIND, str(ask_id))
+        return task_state_path(self.queue_root, self.JOURNAL_KIND, str(ask_id), state_root=self.path_service.lifecycle.storage_root)
 
     @staticmethod
     def _read_json(path: Path) -> dict[str, Any]:
@@ -202,7 +203,7 @@ class ManualRenderPublicationService:
                 manifest = self._read_json(item / "ask_manifest.json")
                 if manifest.get("auxiliary") or subject_key(manifest) != target:
                     continue
-                supersede_task(self.queue_root, item, reason)
+                supersede_task(self.queue_root, item, reason, state_root=self.path_service.lifecycle.storage_root)
 
     def publish(
         self,
@@ -223,7 +224,7 @@ class ManualRenderPublicationService:
         ):
             raise ManualRenderPublicationError("Manual render publication paths must be inside the manual ask queue.")
         ask_id = ready_path.name
-        lock_path = task_state_path(self.queue_root, "Locks", ask_id)
+        lock_path = task_state_path(self.queue_root, "Locks", ask_id, state_root=self.path_service.lifecycle.storage_root)
         with file_lock(lock_path, timeout=15):
             intent = self._read_intent(ask_id)
             if intent.get("status") == "COMMITTED" and ready_path.is_dir():

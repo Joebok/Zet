@@ -56,7 +56,8 @@ class LibraryReferenceMigrationService:
         self.old_roots = tuple(Path(item).expanduser().resolve() for item in old_library_roots)
         self.route_roots = tuple(Path(item).expanduser().resolve() for item in route_roots)
         identity = hashlib.sha256(os.path.normcase(str(self.container)).encode("utf-8")).hexdigest()[:20]
-        state_root = (Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Zet" / "LibraryReferenceUpdates")
+        from zet.services.storage_path_service import StoragePathService
+        state_root = StoragePathService(self.config).ensure_available("migration_state")
         self.report_path = state_root / f"{identity}.json"
         self.lock_path = self.report_path.with_suffix(".lock")
         self.universes = UniverseService(self.container, self.config.state_file(self.config_path.parent, "universe-selection.json"))
@@ -185,7 +186,9 @@ class LibraryReferenceMigrationService:
         return []
 
     def _route_roots(self) -> tuple[Path, ...]:
-        client = FileProxyClient(self.config.base_ai_queue_path)
+        client = FileProxyClient(
+            self.config.base_ai_queue_path, storage_root=StoragePathService(self.config).ensure_available("queue_state")
+        )
         roots = {client.route_root.resolve(), client.legacy_route_root.resolve(), *self.route_roots}
         return tuple(sorted(roots, key=lambda item: str(item).casefold()))
 

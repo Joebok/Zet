@@ -64,6 +64,13 @@ this completion barrier and its isolated validation boundary.
 - **Implementation/impact:** [chatgpt_prompt_contract.py](../zet/services/chatgpt_prompt_contract.py), [PromptTemplateService](../zet/services/prompt_template_service.py), [view_conditioning_service.py](../zet/services/view_conditioning_service.py), [ImageCatalogRepository](../zet/repositories/image_catalog_repository.py); compilers, queue snapshots, render adapters.
 - **Verify:** S2/S3 exercise limited compilation/attachment packaging. View-tag permutations, unsupported schemas and exhaustive ordering validation have no dedicated scenario. Inspect compilers and both producer/consumer; do not sort references after compilation.
 
+## 10. Machine-local storage is configured and bounded
+
+- **Rule/why:** machine-local operational state and disposable indexes resolve beneath `[Storage].Root` through [StoragePathService](../zet/services/storage_path_service.py); relative child paths cannot escape or overlap the creative library/shared queue. Missing configured volumes fail clearly rather than redirecting writes to the old C: location. The shared `BaseAIQueuePath` remains transport-owned.
+- **Retention:** keep one published index generation and parsed payloads only for current source fingerprints. Retain completed queue details for seven days by original completion time, and prune only after a verified success receipt. Missing receipts, errors, unknown ownership, image-admission proof and lock files are protected. `catalog.sqlite3`, authored library data, and library-owned workflow records are outside machine-storage maintenance.
+- **Implementation/impact:** [ConfigService](../zet/services/config_service.py), [LibraryIndexRepository](../zet/repositories/library_index_repository.py), [StorageMaintenanceService](../zet/services/storage_maintenance_service.py), [manage_storage](../zet/scripts/manage_storage.py), queue lifecycle/coordinator and task workflow root.
+- **Verify:** the four fast E2E scenarios run on isolated configured storage. Use the read-only storage report/preview before migration. `--apply`, `--rebuild-index` and `--compact-indexes` are explicit operations; old storage removal requires a reviewed, quiescent cutover manifest.
+
 Qwen Image 2.1 prepared references are job-local derivative snapshots: source bytes
 and ordering remain intact, dimensions only shrink to aligned sizes, and pending
 submission recovery verifies the saved workflow fingerprint and prepared-image

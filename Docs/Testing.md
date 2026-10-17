@@ -13,6 +13,11 @@ deployment was performed, and no permanent scenario was added.
 
 Zet maintains exactly **four fast Playwright task scenarios** and **one separately invoked live Narrative check**. This is the validation owner for the agent knowledge base. The recovered commits `b3d695a`, `3f6acbe`, and `257fdeb` retired the former Python/browser suites and GitHub Actions gates in favor of representative local tasks. See [AGENTS.md](../AGENTS.md) and the [delivery workflow](../.github/CODEX_WORKFLOW.md). Old test paths in tickets refer agents to this baseline; they are not instructions to recreate deleted tests.
 
+Fast fixtures keep operational storage in a process-unique temporary root outside
+the Git checkout, as the production TaskWorkflow guard requires. The E2E server
+removes only that exact temp directory at shutdown; it never uses normal Zet
+AppData, queue or index roots.
+
 Minor Characters (2026-10-15) were verified with disposable prepared-response service/browser journeys, including selected versus locked views, nonblocking advisory review, source/candidate comparison and Inventory handoffs. Those checks are not maintained scenarios. All three approved scenarios passed (26.7s); see the [completed plan](../plans/completed/minor-characters-workspace.md) for evidence and scope limits.
 
 Scene and story coverage uses `/narrative`, `/api/narrative`, and `NarrativeStories`. Scene Builder and local scene-batch execution are retired; their offline archive has no maintained scenario. Passing the baseline is not evidence of every subsystem contract or live rendering quality.

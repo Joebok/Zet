@@ -12,7 +12,7 @@ Zet is a **producer/subscriber** of a separate AI Proxy system. Queue payloads m
   drains all registered consumers, records receipts and retains application failures.
 
 - Manual final-render tasks use `<BaseAIQueuePath>/Manual_Render_Queue/{Ask,Answer}`. [ManualRenderPublicationService](../../zet/services/manual_render_publication_service.py), [ManualRenderSubmissionService](../../zet/services/manual_render_submission_service.py), and retained [RenderConsoleQueue](../../zet/render_console/queue.py) support that dashboard workflow.
-- [AIQueueLifecycleService](../../zet/services/ai_queue_lifecycle_service.py) owns producer-local `Inbox`, `Receipts`, `Routes`, and optional `Debug`; [queue_local_state_root](../../zet/services/ai_queue_paths.py) keys these by queue path and hostname. Shared `Zet_File_Proxy_State` still holds some markers/archive state and legacy route compatibility; not all task state is local.
+- [AIQueueLifecycleService](../../zet/services/ai_queue_lifecycle_service.py) owns producer-local `Inbox`, `Receipts`, `Routes`, and optional `Debug`; [queue_local_state_root](../../zet/services/ai_queue_paths.py) keys these under configured `[Storage].Root/AI_Queue` by queue path and hostname. The shared AI queue still owns transport. Shared `Zet_File_Proxy_State` still holds some markers/archive state and legacy route compatibility; not all task state is local.
 
 ## Publication and answer lifecycle
 
@@ -54,6 +54,14 @@ The confirmed per-row **Delete job** action removes locally owned retained
 library assets and workflow records, and keeps a minimal producer-local deletion
 fence against late answers. Partial cleanup remains visible for retry. See
 [deletion behavior](AI_JOBS.md#deleting-retained-failures) for the exact boundary.
+
+`python3 -B -m zet.scripts.manage_storage --config config.toml` reports configured
+storage, index pages/generations, shared queue size, and retention candidates.
+`--cutover-preview` is read-only and includes a bounded source file/checksum
+manifest; it must be regenerated after workers stop. `--apply` takes the common
+coordinator lock and removes only old completed local queue detail whose receipt
+confirms success. Unknown/failed/missing-receipt work and lock files stay. No
+automatic cleanup runs against shared transport or the external harvest archive.
 
 Failures include mismatched queue roots, absent workers, incomplete Dropbox sync, missing local routes, foreign producers/universes, superseded attempts, invalid output bytes, blocked Windows replacement, and failed archive/copy operations. Inspect `job.json`, ask/answer manifests, `proxy_result.json`, receipts, superseded markers, and owning workflow errors. Prefer service recovery/retry logic over moving/deleting folders manually. [INVARIANTS](../INVARIANTS.md) owns ordering, ownership, locking and stale-result contracts.
 

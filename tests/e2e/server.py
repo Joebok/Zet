@@ -142,6 +142,10 @@ def prepare(mode: str) -> Path:
         'BaseAssetPath = "Assets"\n'
         'BasePipelinePath = "PipelineCandidates"\n'
         f'BaseAIQueuePath = "{queue_path}"\n\n'
+        "[Storage]\n"
+        f'Root = {json.dumps(str((Path(tempfile.gettempdir()) / f"Zet-E2E-{os.getpid()}-{mode}").as_posix()))}\n'
+        'Indexes = "Indexes"\nQueueState = "QueueState"\n'
+        'MigrationState = "MigrationState"\nWorkflowState = "WorkflowState"\n\n'
         "[AIHarvest]\nAutoEnabled = false\n\n"
         '[Runtime]\nRole = "development"\n\n'
         f'[AIModels]\nNarrativeScene = {json.dumps(live_model)}\nCodexDefault = "gpt-6-luna"\n\n'
@@ -156,12 +160,10 @@ def prepare(mode: str) -> Path:
 
 def build_app(config: Path, index_root: Path):
     os.environ["ZET_CONFIG_PATH"] = str(config.resolve())
-    os.environ["ZET_TEST_QUEUE_STATE_ROOT"] = str(config.parent / "QueueState")
     os.chdir(config.parent)
     sys.path.insert(0, str(PROJECT_ROOT))
 
     # Keep Zet's rebuildable SQLite index outside both Git and the authored seed.
-    from zet.repositories.library_index_repository import LibraryIndexRepository
     from zet.services.ollama_model_service import OllamaModelService
     from zet.services import local_prompt_improvement_service
 
@@ -181,7 +183,6 @@ def build_app(config: Path, index_root: Path):
     seed_catalog()
     catalog_fixture = json.loads((config.parent / "Queue/File_Proxy/Control/model_catalog.json").read_text(encoding="utf-8"))
 
-    LibraryIndexRepository.default_index_root = staticmethod(lambda: index_root)
     OllamaModelService.refresh_model_catalog = lambda self: {"models": [], "vision_models": []}
 
     def prepared_observations(self, run_id, view, costume, job_id, hashes, missing):
@@ -255,8 +256,11 @@ def main() -> int:
     args = parser.parse_args()
     mode = "inspection" if args.open_library else args.mode
     config = prepare(mode)
-    index_root = Path(tempfile.mkdtemp(prefix="zet-e2e-index-"))
-    atexit.register(shutil.rmtree, index_root, ignore_errors=True)
+    index_root = Path(tempfile.gettempdir()) / f"Zet-E2E-{os.getpid()}-{mode}" / "Indexes"
+    storage_root = index_root.parent.resolve()
+    if storage_root.parent != Path(tempfile.gettempdir()).resolve():
+        raise RuntimeError(f"Refusing to clean unexpected isolated storage: {storage_root}")
+    atexit.register(shutil.rmtree, storage_root, ignore_errors=True)
     app = build_app(config, index_root)
     scenario_number = 0
     live_blockers = []

@@ -441,7 +441,7 @@ class LocalHeadImageService:
         output_path = render_dir / output_name
         prompt_copy = candidate_dir / "Qwen_Head_Image_Prompt.md"
         prompt_copy.write_text("Positive Prompt:\n" + saved_input["prompt"] + "\n\nNegative Prompt:\n", encoding="utf-8")
-        profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json")).preset(preset_name)
+        profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset(preset_name)
         ask_id = f"LocalHeadImage_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
                     "pipeline": "Local-Head-Image", "pipeline_stage": "HEAD_IMAGE_RENDER"}
@@ -1213,7 +1213,7 @@ class LocalHeadImageService:
                             (affected_views is None or item["view"] in affected_views) and
                             (candidate_ids is None or item["candidate_id"] in candidate_ids)), None)
             if matched:
-                supersede_task(queue_root, task, "Local Head-Image run was cancelled.")
+                supersede_task(queue_root, task, "Local Head-Image run was cancelled.", state_root=self.app.ai_proxy_service.ai_proxy_path_service.lifecycle.storage_root)
 
     def resume(self, run_id: str) -> dict[str, Any]:
         run = self.detail(run_id)

@@ -13,6 +13,7 @@ from zet.services.ai_proxy_path_service import AIProxyPathService
 from zet.services.config_service import Config
 from zet.services.path_service import PathService
 from zet.services.workflow_storage import task_state_path
+from zet.services.storage_path_service import StoragePathService
 
 
 class LibraryIndexService:
@@ -29,7 +30,10 @@ class LibraryIndexService:
         self.config = config
         self.paths = PathService(config, project_root or Path.cwd())
         self.queue_paths = AIProxyPathService(config)
-        self.repository = LibraryIndexRepository(config.base_library_path, index_root=index_root)
+        self.repository = LibraryIndexRepository(
+            config.base_library_path,
+            index_root=index_root or StoragePathService(config).ensure_available("indexes"),
+        )
         self.project_root = Path(project_root or Path.cwd()).resolve()
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._sources: list[dict] = []
@@ -454,7 +458,8 @@ class LibraryIndexService:
                 if root == self.queue_paths.manual_ask_root() and (
                     (folder / "submission.json").is_file()
                     or (self.queue_paths.manual_answer_root() / folder.name / "answer_manifest.json").is_file()
-                    or task_state_path(Path(self.config.base_ai_queue_path), "Superseded", folder.name).is_file()
+                    or task_state_path(Path(self.config.base_ai_queue_path), "Superseded", folder.name,
+                                       state_root=self.queue_paths.lifecycle.storage_root).is_file()
                 ):
                     continue
                 path = folder / "ask_manifest.json"
@@ -486,10 +491,29 @@ class LibraryIndexService:
         if include_archive:
             history_roots.append(self.queue_paths.harvested_archive_root())
         seen_paths: set[Path] = set()
-        history_by_key = {
-            (str(row["job_id"]), str(row["source_path"])): row
-            for row in ([] if include_archive else self._existing_history())
-        }
+        history_by_key: dict[str, dict] = {}
+        def keep_recent(row: dict) -> bool:
+            stamp = str(row.get("completed_at") or "").strip()
+            if not stamp:
+                return False
+            try:
+                completed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                if completed.tzinfo is None:
+                    completed = completed.replace(tzinfo=timezone.utc)
+                cutoff = self._now().astimezone(timezone.utc).timestamp() - (
+                    max(1, int(self.config.storage_completed_retention_days)) * 86400
+                )
+                return completed.timestamp() >= cutoff
+            except (ValueError, OverflowError):
+                return False
+
+        def remember(row: dict) -> None:
+            if not keep_recent(row):
+                return
+            job_id = str(row["job_id"])
+            prior = history_by_key.get(job_id)
+            if prior is None or str(row.get("completed_at") or "") >= str(prior.get("completed_at") or ""):
+                history_by_key[job_id] = row
         for root in history_roots:
             if not root.is_dir():
                 continue
@@ -500,7 +524,7 @@ class LibraryIndexService:
                 seen_paths.add(resolved)
                 row = self._job_history_row(answer_path)
                 if row is not None:
-                    history_by_key[(row["job_id"], row["source_path"])] = row
+                    remember(row)
         for receipt_path, receipt in self.queue_paths.lifecycle.iter_receipts():
             job_id = str(receipt.get("ask_id") or receipt_path.stem)
             story = str(receipt.get("story_slug") or "")
@@ -529,7 +553,7 @@ class LibraryIndexService:
                 "fingerprint": self._fingerprint(json.dumps(receipt, sort_keys=True).encode("utf-8")),
                 "payload_json": json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
             }
-            history_by_key[(job_id, source_path)] = row
+            remember(row)
         history.extend(history_by_key.values())
         return active, history
 
@@ -715,7 +739,7 @@ class LibraryIndexService:
         expected = self._cursor({"compiler": str(cached["compiler_version"]), **actual})
         return expected == cached["dependency_fingerprint"]
 
-    def rebuild(self, *, backfill_history: bool = True) -> dict:
+    def rebuild(self, *, backfill_history: bool = False) -> dict:
         generation = self.repository.begin_rebuild()
         try:
             snapshot = self.snapshot(include_archive_history=backfill_history)
@@ -734,6 +758,14 @@ class LibraryIndexService:
             "job_summaries": len(snapshot.job_summaries),
             "errors": len(snapshot.errors),
         }
+        try:
+            from zet.services.storage_maintenance_service import StorageMaintenanceService
+            StorageMaintenanceService(self.config).run_if_due()
+        except TimeoutError:
+            pass
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Zet post-index storage maintenance failed")
         return status
 
     def backfill_history(self, *, batch_size: int = 200) -> dict:
@@ -758,8 +790,18 @@ class LibraryIndexService:
         for source_path in selected:
             relative = source_path.removeprefix("queue/")
             row = self._job_history_row(Path(self.config.base_ai_queue_path) / relative)
-            if row is not None:
-                rows.append(row)
+            if row is None or not str(row.get("completed_at") or "").strip():
+                continue
+            try:
+                completed = datetime.fromisoformat(str(row["completed_at"]).replace("Z", "+00:00"))
+                completed = completed.replace(tzinfo=timezone.utc) if completed.tzinfo is None else completed.astimezone(timezone.utc)
+                cutoff = self._now().astimezone(timezone.utc).timestamp() - (
+                    max(1, int(self.config.storage_completed_retention_days)) * 86400
+                )
+                if completed.timestamp() >= cutoff:
+                    rows.append(row)
+            except (ValueError, OverflowError):
+                continue
         next_cursor = selected[-1] if selected else cursor
         complete = len(remaining) <= batch_size
         self.repository.upsert_job_history(rows, cursor=next_cursor, complete=complete)

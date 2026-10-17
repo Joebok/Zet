@@ -106,22 +106,22 @@ def subject_key(manifest: dict) -> tuple:
     return ("asset", manifest.get("character"), manifest.get("phase"), str(manifest.get("asset_id")))
 
 
-def task_state_path(queue_root: Path, kind: str, ask_id: str) -> Path:
+def task_state_path(queue_root: Path, kind: str, ask_id: str, *, state_root: str | Path | None = None) -> Path:
     key = hashlib.sha256(ask_id.encode("utf-8")).hexdigest()
     if kind == "Locks":
         lock_number = int(key[:8], 16) % 64
-        return queue_local_state_root(queue_root) / "Locks" / f"workflow-{lock_number:02d}.lock"
+        return queue_local_state_root(queue_root, state_root=state_root) / "Locks" / f"workflow-{lock_number:02d}.lock"
     if kind == "Manual_Render_Publications":
-        return queue_local_state_root(queue_root) / kind / f"{key}.json"
+        return queue_local_state_root(queue_root, state_root=state_root) / kind / f"{key}.json"
     return queue_root / "Zet_File_Proxy_State" / kind / f"{key}.json"
 
 
-def supersede_task(queue_root: Path, task: Path, reason: str) -> None:
+def supersede_task(queue_root: Path, task: Path, reason: str, *, state_root: str | Path | None = None) -> None:
     """Fence late answers and remove obsolete queued asks."""
-    write_json_atomic(task_state_path(queue_root, "Superseded", task.name), {"ask_id": task.name, "reason": reason})
+    write_json_atomic(task_state_path(queue_root, "Superseded", task.name, state_root=state_root), {"ask_id": task.name, "reason": reason})
     # Running work stays available, but an obsolete ask bundle is no longer queued.
     if task.is_dir() and (task.parent.name == "Ask" or task.parent.parent.name == "Ask"):
-        (queue_local_state_root(queue_root) / "Routes" / f"{task.name}.json").unlink(missing_ok=True)
+        (queue_local_state_root(queue_root, state_root=state_root) / "Routes" / f"{task.name}.json").unlink(missing_ok=True)
         shutil.rmtree(task)
 
 

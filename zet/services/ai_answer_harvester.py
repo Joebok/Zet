@@ -504,7 +504,8 @@ class AIAnswerHarvester:
             character, phase = manifest.get("character"), manifest.get("phase")
             transaction = self.asset_repository.transaction(character, phase) if character and phase else nullcontext()
             with transaction:
-                if (task_state_path(queue_root, "Superseded", answer_path.name).exists()
+                if (task_state_path(queue_root, "Superseded", answer_path.name,
+                                    state_root=self.ai_proxy_path_service.lifecycle.storage_root).exists()
                         and not self._harvest_manifest_path(answer_path).exists()):
                     result = HarvestResult(answer_path, answer_path.name, manifest.get("asset_id"), "SUPERSEDED", "A newer operation superseded this answer; files retained.")
                     self._write_harvest_manifest(answer_path, result)

@@ -1096,7 +1096,7 @@ class LocalBodyReferenceService:
                             if f"_{item['candidate_id']}_" in task.name), None)
             if matched and (affected_views is None or matched["view"] in affected_views) and \
                     (candidate_ids is None or matched["candidate_id"] in candidate_ids):
-                supersede_task(queue_root, task, "Local Body-Reference candidate is being replaced.")
+                supersede_task(queue_root, task, "Local Body-Reference candidate is being replaced.", state_root=self.app.ai_proxy_service.ai_proxy_path_service.lifecycle.storage_root)
 
     def select_front_anchor(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
@@ -1478,7 +1478,7 @@ class LocalBodyReferenceService:
         paths.jobs.copy_result(ask_id, target, image=target.suffix.lower() in {".png", ".jpg", ".webp"})
 
     def _preflight(self) -> None:
-        backend = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"))
+        backend = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config)
         for name in ("comfyui-qwen-body-reference-text", "comfyui-qwen-body-reference-edit"):
             profile = backend.preset(name)
             if not profile:
@@ -2241,7 +2241,7 @@ class LocalBodyReferenceService:
         candidate_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = candidate_dir / "Qwen_Body_Reference_Prompt.md"
         prompt_path.write_text(f"Positive Prompt:\n{saved_input['prompt']}\n\nNegative Prompt:\n", encoding="utf-8")
-        profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json")).preset(preset_name)
+        profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset(preset_name)
         checkpoint = str(profile.get("diffusion_model") or "").strip()
         manifest = {"ask_id": f"LocalBodyReference_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}", "character": run["character"],
                     "phase": run["phase"], "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_RENDER"}

@@ -1,6 +1,6 @@
 """Explicit code-relative defaults and persistent production state locations."""
-import os
 from pathlib import Path
+from zet.services.storage_path_service import StoragePathService
 
 
 def state_file(config, project_root, filename: str) -> Path:
@@ -10,4 +10,4 @@ def state_file(config, project_root, filename: str) -> Path:
 
 def workflow_root(config) -> Path:
     configured = getattr(config, "task_state_path", "") or getattr(config, "runtime_state_path", "")
-    return Path(configured) if configured else Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".local"))) / "Zet" / "TaskWorkflow"
+    return Path(configured) if configured else StoragePathService(config).ensure_available("workflow_state")

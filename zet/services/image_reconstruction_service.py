@@ -51,7 +51,7 @@ class ImageReconstructionService:
         self.app = generator.zet_app
         self.root = Path(self.app.config.base_library_path) / "_state" / "ImageReconstruction"
         self.analyzer = analyzer or ImagePromptGenerationService(self.app, generator.project_root)
-        self.catalog = catalog or AIModelCatalogService(self.app.config.base_ai_queue_path)
+        self.catalog = catalog or AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config)
         self._active = set()
         self._guard = threading.RLock()
         self.true_up = ImageTrueUpService(self._ask)

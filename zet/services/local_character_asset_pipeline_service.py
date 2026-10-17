@@ -681,7 +681,7 @@ class LocalCharacterAssetPipelineService:
         prompt_copy = candidate_root / "Qwen_Local_Character_Prompt.md"
         prompt_copy.write_text("Positive Prompt:\n" + saved_input["prompt"] + "\n\nNegative Prompt:\n", encoding="utf-8")
         preset_name = saved_input["preset"]
-        profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json")).preset(preset_name)
+        profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset(preset_name)
         ask_id = f"LocalCharacterAsset_{run_id}_{candidate_id}_{candidate.get('retry_count', 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
                     "pipeline": f"Local-{self.definition['label'].removeprefix('Local ')}", "pipeline_stage": "LOCAL_CHARACTER_RENDER"}
@@ -1601,7 +1601,7 @@ class LocalCharacterAssetPipelineService:
         queue_root = Path(paths.config.base_ai_queue_path)
         for task in paths.task_paths("ask"):
             if task.name in ask_ids:
-                supersede_task(queue_root, task, "The local character pipeline work was stopped, deleted, or retried.")
+                supersede_task(queue_root, task, "The local character pipeline work was stopped, deleted, or retried.", state_root=self.app.ai_proxy_service.ai_proxy_path_service.lifecycle.storage_root)
 
     def resume(self, run_id: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)

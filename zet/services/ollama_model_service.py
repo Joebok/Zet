@@ -27,7 +27,7 @@ class OllamaModelService:
         """Return the last saved local model catalog, if one is available."""
         if self.proxy_path_service is not None:
             from zet.services.ai_model_catalog_service import AIModelCatalogService
-            return AIModelCatalogService(self.proxy_path_service.config.base_ai_queue_path).legacy_options()
+            return AIModelCatalogService(self.proxy_path_service.config.base_ai_queue_path, config=self.proxy_path_service.config).legacy_options()
         if self.cache_path is None:
             return None
         try:
@@ -49,7 +49,7 @@ class OllamaModelService:
         if self.proxy_path_service is None:
             raise RuntimeError("Model discovery requires the AI_Proxy capability catalog.")
         from zet.services.ai_model_catalog_service import AIModelCatalogService
-        catalog = AIModelCatalogService(self.proxy_path_service.config.base_ai_queue_path)
+        catalog = AIModelCatalogService(self.proxy_path_service.config.base_ai_queue_path, config=self.proxy_path_service.config)
         catalog.catalog(refresh=True)
         return catalog.legacy_options()
 
@@ -58,7 +58,7 @@ class OllamaModelService:
         if self.proxy_path_service is None:
             raise RuntimeError("Model listing requires the AI_Proxy capability catalog.")
         from zet.services.ai_model_catalog_service import AIModelCatalogService
-        return AIModelCatalogService(self.proxy_path_service.config.base_ai_queue_path).legacy_options()
+        return AIModelCatalogService(self.proxy_path_service.config.base_ai_queue_path, config=self.proxy_path_service.config).legacy_options()
 
     def generate_json(
         self,

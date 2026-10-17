@@ -25,11 +25,13 @@ class FileProxyClient:
     }
 
     def __init__(self, base_queue_path: str | Path, *, route_root: Path | None = None,
-                 library_root: str | Path | None = None, universe_id: str = ""):
+                 library_root: str | Path | None = None, universe_id: str = "",
+                 storage_root: str | Path | None = None):
         self.base_queue_path = Path(base_queue_path)
         self.root = self.base_queue_path / "File_Proxy"
+        self.local_state_root = queue_local_state_root(self.base_queue_path, state_root=storage_root)
         if route_root is None:
-            route_root = queue_local_state_root(self.base_queue_path) / "Routes"
+            route_root = self.local_state_root / "Routes"
         self.route_root = route_root
         self.legacy_route_root = self.base_queue_path / "Zet_File_Proxy_State" / "Routes"
         self.library_root = Path(library_root).resolve() if library_root else None
@@ -66,13 +68,16 @@ class FileProxyClient:
     def publish(self, staging: Path, job_id: str, worker_type: str) -> Path:
         from zet.services.workflow_storage import file_lock
         number = int(hashlib.sha256(job_id.encode()).hexdigest()[:8], 16) % 64
-        lock_path = queue_local_state_root(self.base_queue_path) / "Locks" / f"workflow-{number:02d}.lock"
+        lock_path = self.local_state_root / "Locks" / f"workflow-{number:02d}.lock"
         with file_lock(lock_path):
             return self._publish(staging, job_id, worker_type)
 
     def _publish(self, staging: Path, job_id: str, worker_type: str) -> Path:
         from zet.repositories.ai_job_repository import AIJobRepository
-        if AIJobRepository(queue_local_state_root(self.base_queue_path)).is_deleted(job_id):
+        receipt_name = hashlib.sha256(str(job_id).encode("utf-8")).hexdigest() + ".json"
+        if (self.local_state_root / "Receipts" / receipt_name).is_file():
+            raise ValueError("This AI job already has a durable receipt. Start a new attempt with a new job ID.")
+        if AIJobRepository(self.local_state_root).is_deleted(job_id):
             raise ValueError("This AI job was deleted. Start a new attempt to retry.")
         initial = json.loads((staging / "ask_manifest.json").read_text(encoding="utf-8"))
         if worker_type == "ollama_generate" and str(initial.get("ollama_model") or initial.get("model") or "").startswith("codex:"):
@@ -104,7 +109,7 @@ class FileProxyClient:
             "priority": ask_manifest.get("queue_priority", 0),
         }
         request = json.loads((staging / "ai_request.json").read_text(encoding="utf-8")) if (staging / "ai_request.json").is_file() else None
-        AIJobRepository(queue_local_state_root(self.base_queue_path)).register(job_id, ask_manifest, job_manifest, request)
+        AIJobRepository(self.local_state_root).register(job_id, ask_manifest, job_manifest, request)
         temp = staging / ".job.json.tmp"
         temp.write_text(json.dumps(job_manifest, indent=2) + "\n", encoding="utf-8")
         self._replace_with_retry(temp, staging / "job.json")
@@ -229,7 +234,7 @@ class FileProxyClient:
     def answer_block(self, answer: Path) -> dict:
         """Read-only classification; missing routes are not an in-flight transfer."""
         from zet.repositories.ai_job_repository import AIJobRepository
-        if AIJobRepository(queue_local_state_root(self.base_queue_path)).is_deleted(answer.name):
+        if AIJobRepository(self.local_state_root).is_deleted(answer.name):
             return {"status": "DELETED", "reason_code": "DELETED", "blocking_reason": "Job was explicitly deleted."}
         reason = self.answer_blocked_reason(answer)
         if not reason:
@@ -247,7 +252,7 @@ class FileProxyClient:
 
     def answer_blocked_reason(self, answer: Path) -> str:
         from zet.repositories.ai_job_repository import AIJobRepository
-        if AIJobRepository(queue_local_state_root(self.base_queue_path)).is_deleted(answer.name):
+        if AIJobRepository(self.local_state_root).is_deleted(answer.name):
             return "Job was explicitly deleted."
         if (answer / "harvest_manifest.json").is_file():
             return ""

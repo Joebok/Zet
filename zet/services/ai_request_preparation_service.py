@@ -28,7 +28,7 @@ def prepare_request(staging: Path, worker_type: str, config=None):
             request["options"]["api"] = ask.get("request_config", {}).get("api", "chat" if ask.get("ollama_chat", True) else "generate")
         if config is not None:
             from zet.services.ai_model_catalog_service import AIModelCatalogService
-            AIModelCatalogService(config.base_ai_queue_path).validate(request["model"], required=["vision"] if request["images"] else ["text"])
+            AIModelCatalogService(config.base_ai_queue_path, config=config).validate(request["model"], required=["vision"] if request["images"] else ["text"])
     elif worker_type == "local_image_render" and config is not None:
         request = prepare_render(staging, ask, config)
         ask["checkpoint"] = request["model"]
@@ -61,7 +61,7 @@ def prepare_render(staging, ask, config):
         refs, preparation = prepare_qwen_references(refs, staging, policy)
     prompt = (staging / ask["prompt_file"]).read_text(encoding="utf-8")
     positive, negative = (prompt, "") if profile.get("workflow_kind") == "qwen_narrative_prompt" else split_labeled_prompt(prompt)
-    catalog = AIModelCatalogService(config.base_ai_queue_path).catalog()
+    catalog = AIModelCatalogService(config.base_ai_queue_path, config=config).catalog()
     nodes = set(catalog.get("comfyui_node_types", []))
     # Managed ComfyUI is normally stopped until admission. Compile the registered
     # graph contract offline; the proxy validates actual nodes after starting it.

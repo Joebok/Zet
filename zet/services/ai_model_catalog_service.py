@@ -6,12 +6,15 @@ from pathlib import Path
 
 from zet.services.ai_queue_paths import queue_local_state_root
 from zet.services.atomic_file_service import write_json_atomic
+from zet.services.storage_path_service import StoragePathService
 
 
 class AIModelCatalogService:
-    def __init__(self, queue_root):
+    def __init__(self, queue_root, *, state_root=None, config=None):
         self.queue_root = Path(queue_root)
-        self.cache_path = queue_local_state_root(queue_root) / "model_catalog.json"
+        if config is not None:
+            state_root = StoragePathService(config).ensure_available("queue_state")
+        self.cache_path = queue_local_state_root(queue_root, state_root=state_root) / "model_catalog.json"
         self.shared_path = self.queue_root / "File_Proxy/Control/model_catalog.json"
 
     @staticmethod

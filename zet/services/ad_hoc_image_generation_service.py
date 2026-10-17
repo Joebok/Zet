@@ -296,7 +296,7 @@ class AdHocImageGenerationService:
         }
 
     def _preset(self, name: str) -> dict[str, Any]:
-        return LocalRenderBackendService(self.presets_path).preset(name)
+        return LocalRenderBackendService(self.presets_path, config=self.app.config).preset(name)
 
     @staticmethod
     def _dimension(value: Any, label: str) -> int:

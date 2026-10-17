@@ -11,7 +11,7 @@ transfer and retention; workflow components own interpretation of their outputs.
   results, copies validated artifacts and records completion. Compatibility
   synchronous callers wait here; resumable workflows yield rather than wait.
 - [AIJobRepository](../../zet/repositories/ai_job_repository.py) stores compact
-  request identities under the existing producer-local queue root in `Jobs/`.
+  request identities under configured `[Storage].Root/AI_Queue/<queue-hash>/<producer>/Jobs/`.
   The shared queue owns execution state. Durable local records/receipts own Zet
   application state; the library index is not required to display activity.
 - [AIJobCoordinator](../../zet/services/ai_job_coordinator.py) owns the two-second
@@ -52,6 +52,14 @@ it does not become a new execution. Incomplete/missing transport transitions rem
 visible as transferring/reconciling. Worker launch/interruption failures are
 normalized locally from terminal proxy outcomes. Application remains idempotent
 under domain and common job locks.
+
+Completed local details are retained for seven days by default, based on the
+original completion/harvest timestamp. A daily coordinator maintenance pass prunes
+only old records with a verified successful receipt; missing-receipt jobs,
+failures, unknown ownership and persistent locks remain. Old successful receipts
+are compacted to replay identity and required image-admission proof. The derived
+index also keeps only recent deduplicated summaries; the request/receipt store is
+the activity source, not a history archive.
 
 ### Collection and dependent-image admission
 

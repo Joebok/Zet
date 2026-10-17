@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import socket
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from zet.repositories.ai_job_repository import AIJobRepository
 
@@ -16,8 +16,27 @@ class AIQueueQueryService:
         self.repository = AIJobRepository(paths.lifecycle.root)
 
     def rows(self):
+        receipts = list(self.paths.lifecycle.iter_receipts() or ())
+        from zet.services.storage_maintenance_service import StorageMaintenanceService
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(self.paths.config.storage_completed_retention_days)))
+        expired = set()
+        for _, receipt in receipts:
+            completed = None
+            for key in ("completed_at", "harvested_at", "recorded_at"):
+                if receipt.get(key):
+                    try:
+                        completed = datetime.fromisoformat(str(receipt[key]).replace("Z", "+00:00"))
+                        completed = completed.replace(tzinfo=timezone.utc) if completed.tzinfo is None else completed.astimezone(timezone.utc)
+                        break
+                    except (ValueError, OverflowError):
+                        continue
+            job_id = str(receipt.get("ask_id") or "")
+            expired_success = (StorageMaintenanceService._verified_completed(receipt)
+                               and completed is not None and completed < cutoff)
+            if job_id and (receipt.get("retention_compacted") or expired_success):
+                expired.add(job_id)
         rows = {row["ask_id"]: {**row, "status": "HARVEST_FAILED" if row.get("harvest_state") == "HARVEST_FAILED" else "RECONCILING", "details": row.get("error", "")}
-                for row in self.repository.all()}
+                for row in self.repository.all() if row["ask_id"] not in expired}
         client = self.paths.file_proxy_client
         try:
             execution = json.loads((client.root / "Control/execution_status.json").read_text(encoding="utf-8"))
@@ -31,6 +50,8 @@ class AIQueueQueryService:
                 continue
             for path in root.iterdir():
                 if not path.is_dir() or path.name.startswith(".") or self.repository.is_deleted(path.name):
+                    continue
+                if path.name in expired:
                     continue
                 try:
                     ask = json.loads((path / "ask_manifest.json").read_text(encoding="utf-8"))
@@ -49,7 +70,8 @@ class AIQueueQueryService:
                         row.update(status="HELD", details=execution.get("reason", "Local execution is blocked"))
                     if root == self.paths.manual_ask_root():
                         from zet.services.workflow_storage import task_state_path
-                        if task_state_path(self.paths.lifecycle.queue_root, "Superseded", path.name).is_file():
+                        if task_state_path(self.paths.lifecycle.queue_root, "Superseded", path.name,
+                                           state_root=self.paths.lifecycle.storage_root).is_file():
                             row["status"] = "SUPERSEDED"
                         elif (path / "submission.json").is_file():
                             row["status"] = "AWAITING_HARVEST"
@@ -77,9 +99,9 @@ class AIQueueQueryService:
                     rows.setdefault(path.name, {"ask_id": path.name, "status": "RECOVERY_REQUIRED",
                                     "reason_code": "MISSING_OWNER_METADATA", "details": "Job ownership metadata is missing or unreadable; preserve the folder for recovery.",
                                     "created_at": ""})
-        for _, receipt in self.paths.lifecycle.iter_receipts() or ():
+        for _, receipt in receipts:
             job_id = receipt.get("ask_id")
-            if not job_id or self.repository.is_deleted(job_id):
+            if not job_id or job_id in expired or self.repository.is_deleted(job_id):
                 continue
             status = str(receipt.get("status", "APPLIED"))
             normalized = "FAILED" if "FAIL" in status or receipt.get("answer_status") in {"FAILED", "ERROR"} else "SUPERSEDED" if "SUPERSEDED" in status else "COMPLETE"

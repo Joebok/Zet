@@ -83,6 +83,13 @@ class Config:
     runtime_role: str = "local"
     codex_usage_reserve_percent: float = 10.0
     codex_trusted_users: tuple[str, ...] = ("Joebok",)
+    storage_root: str = ""
+    storage_indexes_path: str = "Indexes"
+    storage_queue_state_path: str = "AI_Queue"
+    storage_migration_state_path: str = "LibraryReferenceUpdates"
+    storage_workflow_state_path: str = "TaskWorkflow"
+    storage_completed_retention_days: int = 7
+    storage_maintenance_interval_hours: int = 24
 
     def state_file(self, project_root, filename: str) -> Path:
         return state_file(self, project_root, filename)
@@ -149,6 +156,16 @@ class ConfigService:
     def _ai_harvest_config(payload: dict) -> dict:
         ai_harvest = payload.get("AIHarvest", {})
         return ai_harvest if isinstance(ai_harvest, dict) else {}
+
+    @staticmethod
+    def _storage_config(payload: dict) -> dict:
+        storage = payload.get("Storage", {})
+        if not isinstance(storage, dict):
+            raise ConfigServiceError("Storage settings must be a TOML table.")
+        override = payload.get("StorageByPlatform", {}).get(ConfigService._platform_name(), {})
+        if not isinstance(override, dict):
+            raise ConfigServiceError("Storage platform settings must be a TOML table.")
+        return {**storage, **override}
 
     @staticmethod
     def _zine_config(payload: dict) -> dict:
@@ -234,10 +251,25 @@ class ConfigService:
             zine = ConfigService._zine_config(payload)
             turnaround = ConfigService._turnaround_config(payload)
             ai_harvest = ConfigService._ai_harvest_config(payload)
+            storage = ConfigService._storage_config(payload)
             render = ConfigService._render_config(payload)
             ai_prompt_analysis = ConfigService._ai_prompt_analysis_config(payload)
             preset_path = Path(ConfigService._normalize_path_value(runtime.get("StatePath", ""))) / "Local_Render_Presets.json" if runtime.get("StatePath") else None
             library_base = ConfigService._normalize_path_value(base_folders.get("BaseLibraryPath", ""))
+            configured_storage_root = storage.get("Root", "")
+            if configured_storage_root:
+                storage_root = Path(ConfigService._normalize_path_value(configured_storage_root))
+                if not storage_root.is_absolute():
+                    storage_root = path.resolve().parent / storage_root
+            else:
+                local_storage = os.environ.get("LOCALAPPDATA")
+                if not local_storage:
+                    local_storage = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+                storage_root = Path(local_storage) / "Zet"
+            retention_days = int(storage.get("CompletedRetentionDays", 7))
+            maintenance_hours = int(storage.get("MaintenanceIntervalHours", 24))
+            if retention_days < 1 or maintenance_hours < 1:
+                raise ConfigServiceError("Storage retention and maintenance intervals must be at least one.")
             for configured_state in (github.get("StatePath", ""), runtime.get("StatePath", "")):
                 if configured_state:
                     state_root = Path(ConfigService._normalize_path_value(configured_state)).resolve()
@@ -255,7 +287,7 @@ class ConfigService:
                         raise ConfigServiceError("Development library and queue must be inside the fixture config directory.")
                 if ConfigService._scene_candidate_sources(payload):
                     raise ConfigServiceError("Development fixtures cannot attach external candidate source documents.")
-            return Config(
+            config = Config(
                 base_library_path=library_base,
                 base_character_path=ConfigService._resolve_base_folder(library_base, base_folders["BaseCharacterPath"]),
                 base_asset_path=ConfigService._resolve_base_folder(library_base, base_folders["BaseAssetPath"]),
@@ -320,7 +352,24 @@ class ConfigService:
                 runtime_role=role,
                 codex_usage_reserve_percent=reserve,
                 codex_trusted_users=tuple(trusted),
+                storage_root=str(storage_root.resolve()),
+                storage_indexes_path=str(storage.get("Indexes", "Indexes")),
+                storage_queue_state_path=str(storage.get("QueueState", "AI_Queue")),
+                storage_migration_state_path=str(storage.get("MigrationState", "LibraryReferenceUpdates")),
+                storage_workflow_state_path=str(storage.get("WorkflowState", "TaskWorkflow")),
+                storage_completed_retention_days=retention_days,
+                storage_maintenance_interval_hours=maintenance_hours,
             )
+            from zet.services.storage_path_service import StoragePathError, StoragePathService
+            paths = StoragePathService(config)
+            try:
+                for area in StoragePathService.CHILDREN:
+                    paths.child(area)
+            except StoragePathError as exc:
+                raise ConfigServiceError(str(exc)) from exc
+            if paths.root == Path(config.base_library_path).expanduser().resolve():
+                raise ConfigServiceError("Machine-local storage must be outside the creative library.")
+            return config
         except ConfigServiceError:
             raise
         except TaskServiceError as exc:

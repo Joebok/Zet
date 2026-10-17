@@ -14,17 +14,25 @@ from zet.services.atomic_file_service import write_json_atomic
 from zet.services.config_service import Config
 from zet.services.file_proxy_client import FileProxyClient
 from zet.services.ai_queue_paths import queue_local_state_root
+from zet.services.storage_path_service import StoragePathService
 
 
 class AIQueueLifecycleService:
     def __init__(self, config: Config):
         self.config = config
         self.queue_root = Path(config.base_ai_queue_path).expanduser().resolve()
-        self.root = queue_local_state_root(self.queue_root)
+        self.root = queue_local_state_root(
+            self.queue_root, state_root=StoragePathService(config).ensure_available("queue_state")
+        )
         self.inbox_root = self.root / "Inbox"
         self.receipt_root = self.root / "Receipts"
         self.route_root = self.root / "Routes"
         self.debug_root = self.root / "Debug"
+
+    @property
+    def storage_root(self) -> Path:
+        """Configured QueueState area, before queue/producer identity folders."""
+        return self.root.parent.parent
 
     @property
     def debug_enabled(self) -> bool:
@@ -163,7 +171,8 @@ class AIQueueLifecycleService:
     def file_proxy_client(self) -> FileProxyClient:
         client = FileProxyClient(self.queue_root, route_root=self.route_root,
                                library_root=self.config.base_library_path,
-                               universe_id=getattr(self.config, "universe_id", ""))
+                               universe_id=getattr(self.config, "universe_id", ""),
+                               storage_root=self.root.parent.parent)
         client.lifecycle = self
         client.config = self.config
         return client
@@ -180,13 +189,20 @@ class AIQueueLifecycleService:
         if not self.receipt_root.is_dir() or limit <= 0:
             return []
         receipts = []
+        from zet.services.storage_maintenance_service import StorageMaintenanceService
         for path in self.receipt_root.glob("*.json"):
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, UnicodeError, json.JSONDecodeError):
                 continue
             if isinstance(payload, dict):
-                receipts.append(payload)
+                completed = StorageMaintenanceService._completed(payload)
+                expired_success = (StorageMaintenanceService._verified_completed(payload)
+                                   and completed is not None
+                                   and completed < datetime.now(timezone.utc) - timedelta(
+                                       days=max(1, int(self.config.storage_completed_retention_days))))
+                if not payload.get("retention_compacted") and not expired_success:
+                    receipts.append(payload)
         receipts.sort(key=lambda row: str(row.get("harvested_at") or row.get("recorded_at") or ""), reverse=True)
         return receipts[:limit]
 

@@ -126,10 +126,12 @@ class AIJobService:
         with (admission() if admission else nullcontext()), file_lock(self.lifecycle.lock_path(job_id)):
             if self.repository.is_deleted(job_id):
                 raise AIExecutionError("This AI job was deleted. Start a new attempt to retry.")
+            if self.lifecycle.read_receipt(job_id):
+                return job_id
             if self.repository.get(job_id) or (self.client.ask_root / job_id).exists() or (self.client.running_root / job_id).exists():
                 return job_id
             from zet.services.ai_model_catalog_service import AIModelCatalogService
-            AIModelCatalogService(self.paths.config.base_ai_queue_path).validate(model, required=["vision"] if images else ["text"])
+            AIModelCatalogService(self.paths.config.base_ai_queue_path, config=self.paths.config).validate(model, required=["vision"] if images else ["text"])
             staging = self.client.create_staging(job_id)
             files = []
             for index, image in enumerate(images or []):

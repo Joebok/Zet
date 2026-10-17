@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
 import json
+from datetime import datetime, timezone
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
 from zet.services.atomic_file_service import write_json_atomic
@@ -50,8 +51,10 @@ class AIWorkflowService:
         owner = owner or {"session_id": str(args[0]) if args else ""}
         with file_lock(path.with_suffix(".lock")):
             if not path.exists():
+                now = datetime.now(timezone.utc).isoformat()
                 write_json_atomic(path, {"version": 1, "id": task_id, "universe_id": self.app.universe_id,
-                    "service": service, "method": target.__name__, "args": list(args), "owner": owner, "status": "WAITING"})
+                    "service": service, "method": target.__name__, "args": list(args), "owner": owner,
+                    "status": "WAITING", "created_at": now, "updated_at": now})
         _POOL.submit(self.run, task_id, initial)
         return task_id
 
@@ -76,6 +79,7 @@ class AIWorkflowService:
                 if record["method"] not in self.METHODS.get(record["service"], set()):
                     raise ValueError("Unregistered persisted workflow")
                 record["status"] = "RUNNING"
+                record["updated_at"] = datetime.now(timezone.utc).isoformat()
                 write_json_atomic(path, record)
                 token = current_workflow.set({"id": task_id, "counts": {}, "owner": record["owner"], "service": record["service"]})
                 try:
@@ -91,6 +95,9 @@ class AIWorkflowService:
                     record.update(status="FAILED", error=str(exc))
                 finally:
                     current_workflow.reset(token)
+                    record["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    if record["status"] == "COMPLETE":
+                        record["completed_at"] = record["updated_at"]
                     write_json_atomic(path, record)
         except TimeoutError:
             return

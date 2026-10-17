@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 import socket
 import threading
+from datetime import datetime, timedelta, timezone
 
 from zet.repositories.ai_job_repository import AIJobRepository, timestamp
 from zet.services.ai_workflow_service import AIWorkflowService
@@ -174,6 +175,11 @@ class AIJobCoordinator:
                 self._collect_app(app, [row for row in records if row.get("universe_id") == universe])
             except Exception:
                 logging.getLogger(__name__).exception("Unable to collect AI work for %s", universe)
+        try:
+            from zet.services.storage_maintenance_service import StorageMaintenanceService
+            StorageMaintenanceService(self.app.config).run_if_due()
+        except Exception:
+            logging.getLogger(__name__).exception("Zet local storage maintenance failed")
         return [row for _, row in lifecycle.iter_receipts() or () if row.get("ask_id") not in before]
 
     def import_legacy_history(self, batch_size=200):
@@ -203,6 +209,17 @@ class AIJobCoordinator:
                     continue
                 answer_path = path.parent / "answer_manifest.json"
                 answer = json.loads(answer_path.read_text(encoding="utf-8")) if answer_path.is_file() else {}
+                completion_stamp = str(harvest.get("harvested_at") or answer.get("completed_at") or "")
+                if completion_stamp:
+                    try:
+                        completed = datetime.fromisoformat(completion_stamp.replace("Z", "+00:00"))
+                        completed = completed.replace(tzinfo=timezone.utc) if completed.tzinfo is None else completed
+                        if completed.astimezone(timezone.utc) < datetime.now(timezone.utc) - timedelta(
+                            days=max(1, int(self.app.config.storage_completed_retention_days))
+                        ):
+                            continue
+                    except (ValueError, OverflowError):
+                        pass
                 self.repository.register(job_id, ask, {"created_at": envelope.get("created_at", ""), "producer_id": producer, "files": []})
                 record = self.repository.get(job_id)
                 paths.lifecycle.write_receipt(job_id, {"ask_id": job_id, "universe_id": ask.get("universe_id", ""),

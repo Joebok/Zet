@@ -13,6 +13,17 @@ StatePath = "C:/Users/Joe/Projects/Zet_Runtime/state"
 [RuntimeByPlatform.Windows]
 Root = "C:/Users/Joe/Projects/Zet_Runtime"
 
+[Storage]
+Indexes = "Indexes"
+QueueState = "AI_Queue"
+MigrationState = "LibraryReferenceUpdates"
+WorkflowState = "TaskWorkflow"
+CompletedRetentionDays = 7
+MaintenanceIntervalHours = 24
+
+[StorageByPlatform.Windows]
+Root = "E:/Zet/AppData"
+
 [BaseFolders]
 BaseLibraryPath = "Zet_Library_v5/"
 BaseCharacterPath = "Characters/"

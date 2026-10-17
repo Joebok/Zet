@@ -1,6 +1,6 @@
 # Development and verification
 
-Run commands from the repository root. [Testing](Testing.md) owns the approved three-scenario fast baseline, isolated Test library, and separately invoked live Narrative check. Use [CODE_MAP](CODE_MAP.md) for implementation navigation and [AGENTS](../AGENTS.md) for authority boundaries.
+Run commands from the repository root. [Testing](Testing.md) owns the approved four-scenario fast baseline, isolated Test library, and separately invoked live Narrative check. Use [CODE_MAP](CODE_MAP.md) for implementation navigation and [AGENTS](../AGENTS.md) for authority boundaries.
 
 ## Runtime and prerequisites
 
@@ -21,13 +21,34 @@ Only commands explicitly reported under Observed verification were executed succ
 | Windows launch | `.\run_zet_web.bat` | Activates `.venv`; refuses a duplicate 0.0.0.0:8081 listener; script uses its environment's `python`. |
 | macOS launch | `./run_zet_web.command` | zsh launcher checks port 8081 and executes `python3`; unlike the Windows launcher, it does not activate `.venv`, so select the environment first. |
 | Explicit local launch | `python3 -B -m zet.web.app --config config.toml --host 127.0.0.1 --port 8081` | Browser at localhost:8081. `Ctrl+C` stops it. App construction initializes stores/recovery; use an appropriate library, not an accidental live test target. |
-| Approved fast tests | `npm run test:e2e` | Three serial Playwright task scenarios against disposable fixtures. The pretest setup restores locked npm packages and the matching Chromium browser when missing. |
+| Approved fast tests | `npm run test:e2e` | Four serial Playwright task scenarios against disposable fixtures. The pretest setup restores locked npm packages and the matching Chromium browser when missing. |
 | Inspect test library | `npm run test:library` | Separate inspection copy on 127.0.0.1:8766; see [Testing](Testing.md). |
 | Optional live Narrative check | `npm run test:e2e:live` | Run only when Joe requests it, with the environment and prerequisites in [Testing](Testing.md). |
 | Three.js vendor update | `npm run build:three` | Copies runtime assets via [copy-three-runtime.mjs](../Scripts/copy-three-runtime.mjs); run only for relevant asset changes. |
 | UI capture | `npm run capture:ui` | Inspect [capture-dashboard-ui.mjs](../Scripts/capture-dashboard-ui.mjs) arguments and target before running. |
 
 Configure platform base paths in [config.toml](../config.toml), then universe binding applies; see [DATA_MODEL](DATA_MODEL.md). Zet and AI Proxy must share the queue root. The launchers' 0.0.0.0 host exposes the service on network interfaces; the explicit local command above uses loopback.
+
+Machine-local state is configured in `[Storage]`; Windows production uses
+`E:/Zet/AppData`, and the shared AI queue remains at `BaseAIQueuePath`. Start with
+the read-only report and cutover preview before relocating any existing files:
+
+```powershell
+python3 -B -m zet.scripts.manage_storage --config config.toml
+python3 -B -m zet.scripts.manage_storage --config config.toml --cutover-preview
+```
+
+The cutover preview is bounded and includes file paths/checksums for proposed
+operational copies; regenerate it after stopping Zet/collector/worker processes.
+Preview does not copy, delete or modify its source. Review the complete manifest;
+then `--migrate-from <manifest> --confirm-offline` verifies the source inventory,
+copies each file with checksum verification, and preserves the original. Rebuild
+the configured universe indexes and run `--verify-indexes` before restarting.
+`--apply` is an explicit seven-day local queue-retention sweep. `--compact-indexes`
+is an explicit offline operation; stop all Zet instances first. Never copy old
+derived index databases during relocation. Shared transport and the external archive
+remain report-only until their records have verified ownership and no remaining
+consumer.
 
 Fast browser tests use fixed port **8765**, one worker, and a disposable fixture in `test-results/narrative-e2e/fast`. [server.py](../tests/e2e/server.py) prepares this fixture from [tests/library](../tests/library/README.md). Run suites serially across worktrees because they share the port. The fast suite uses prepared queue answers; live artistic quality remains unverified.
 
@@ -36,6 +57,25 @@ Fast browser tests use fixed port **8765**, one worker, and a disposable fixture
 **V5 recovery, verified on 2026-10-11:** `npm.cmd run test:e2e` passed all **3 scenarios in 21.5s**. No packages were installed and the optional live check was not run. The recovered application, testing, configuration, and workflow files match the source V5 tip. See the [recovery plan](../plans/completed/recover-v5-history.md).
 
 **Documentation refresh at `676e048`, verified on 2026-10-11:** `npm.cmd run test:e2e` completed the existing **3 fast scenarios successfully**. Playwright's `test-results/playwright/.last-run.json` reported `passed` with no failed tests. Python 3.14.6 and Node v24.18.1 were verified. No packages, tests, or scenarios were added; the inspection server and optional live check were not invoked.
+
+**Machine-local storage cutover, verified on 2026-10-16:** configured storage is
+active at `E:/Zet/AppData`. The offline copy checksum-verified 45,364 files
+(69,729,912 bytes); a daily retention pass removed 25,125 expired completed-detail
+files (46,752,461 bytes) and protected receipt-less and unresolved records. The
+fresh Moonsea index has one active generation and passed SQLite `integrity_check`
+at 2,437,120 bytes after application reconciliation. Dashboard health, universe
+discovery, job/recent-harvest endpoints and selected image access were checked; the
+selected image checksum matched the library record. The shared AI Proxy was
+restarted with 0 queued and 0 running jobs. The approved old C: queue and migration
+state files and old index set were removed; a residual-only preview also found and
+removed two stale index databases under the same approved Indexes root. The old
+C: Indexes root is absent and the old queue tree contains no files. The shared
+transport queue and external archive were not cleaned; the archive scan remains
+bounded/incomplete. The dashboard reports the existing `project/.indexed-dashboard/
+entity-library` provider error (`list index out of range`), also present in the old
+index metadata. `npm.cmd run test:e2e` passed all four approved scenarios (32.1s);
+Python compilation and `git diff --check` passed. No live model/render request was
+issued.
 
 ### Historical verification before V5 recovery
 

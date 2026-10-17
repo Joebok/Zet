@@ -3287,7 +3287,7 @@ def create_app(
         try:
             zet_app = _app(app.state.config_path)
             profiles_path = zet_app.config.state_file(Path(app.state.config_path).resolve().parent, "Local_Render_Presets.json")
-            service = LocalRenderBackendService(profiles_path, zet_app.config.base_ai_queue_path)
+            service = LocalRenderBackendService(profiles_path, zet_app.config.base_ai_queue_path, config=zet_app.config)
             server_url = zet_app.config.comfyui_server_url if backend == "comfyui" else ""
             return {
                 "checkpoints": service.list_checkpoints(preset, backend=backend, server_url=server_url),
@@ -3299,12 +3299,14 @@ def create_app(
     @app.get("/api/ai/models")
     def ai_models():
         from zet.services.ai_model_catalog_service import AIModelCatalogService
-        return AIModelCatalogService(_app(app.state.config_path).config.base_ai_queue_path).catalog()
+        config = _app(app.state.config_path).config
+        return AIModelCatalogService(config.base_ai_queue_path, config=config).catalog()
 
     @app.post("/api/ai/models")
     def refresh_ai_models():
         from zet.services.ai_model_catalog_service import AIModelCatalogService
-        return AIModelCatalogService(_app(app.state.config_path).config.base_ai_queue_path).catalog(refresh=True)
+        config = _app(app.state.config_path).config
+        return AIModelCatalogService(config.base_ai_queue_path, config=config).catalog(refresh=True)
 
     @app.get("/api/ai-controls/ollama-models")
     def ai_controls_ollama_models() -> dict[str, Any]:

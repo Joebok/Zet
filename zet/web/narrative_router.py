@@ -63,7 +63,7 @@ def create_narrative_router(app_provider):
         app = app_provider()
         from zet.services.ai_model_catalog_service import AIModelCatalogService
         return {"model": app.config.ai_narrative_scene_model, "slot_count": 8, "renderer": "Qwen Image 2.1",
-                "codex_models": [item["id"] for item in AIModelCatalogService(app.config.base_ai_queue_path).models(providers=["codex"])]}
+                "codex_models": [item["id"] for item in AIModelCatalogService(app.config.base_ai_queue_path, config=app.config).models(providers=["codex"])]}
 
     @router.get("/library")
     def library(q: str = Query("")):

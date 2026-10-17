@@ -144,7 +144,8 @@ class RenderConsoleQueue:
         tasks: list[ManualRenderTask] = []
         for ask_path in sorted(path for path in self.ask_root.iterdir() if path.is_dir() and not path.name.startswith(".")):
             if ((ask_path / "submission.json").exists()
-                    or task_state_path(Path(self.config.base_ai_queue_path), "Superseded", ask_path.name).exists()
+                    or task_state_path(Path(self.config.base_ai_queue_path), "Superseded", ask_path.name,
+                                       state_root=self.path_service.lifecycle.storage_root).exists()
                     or (self.answer_root / ask_path.name / "answer_manifest.json").is_file()):
                 continue
             task = self._task_from_ask_path(ask_path)
@@ -230,7 +231,8 @@ class RenderConsoleQueue:
     def _publish_answer(self, task: ManualRenderTask, manifest: dict, image_bytes: bytes | None = None) -> Path:
         if Path(task.expected_output).name != task.expected_output:
             raise ValueError("Expected output must be a filename.")
-        lock = task_state_path(Path(self.config.base_ai_queue_path), "Locks", task.ask_id)
+        lock = task_state_path(Path(self.config.base_ai_queue_path), "Locks", task.ask_id,
+                               state_root=self.path_service.lifecycle.storage_root)
         with file_lock(lock):
             self.answer_root.mkdir(parents=True, exist_ok=True)
             answer_path = self.answer_root / task.ask_id

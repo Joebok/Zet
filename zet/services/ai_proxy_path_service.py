@@ -115,7 +115,8 @@ class AIProxyPathService:
                 )
                 if state == "ask":
                     paths = [path for path in paths if not (path / "submission.json").exists()
-                             and not task_state_path(Path(self.config.base_ai_queue_path), "Superseded", path.name).exists()]
+                             and not task_state_path(Path(self.config.base_ai_queue_path), "Superseded", path.name,
+                                                     state_root=self.lifecycle.storage_root).exists()]
                 if state == "answer" and root == self.answer_root():
                     paths = [
                         path

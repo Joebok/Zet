@@ -95,7 +95,7 @@ class AIProxyService:
         for item in self.ai_proxy_path_service.task_paths("ask", "answer", "running"):
             manifest = self._read_json_if_exists(item / "ask_manifest.json")
             if subject_key(manifest) == key:
-                supersede_task(Path(self.path_service.config.base_ai_queue_path), item, "Superseded by a new asset operation.")
+                supersede_task(Path(self.path_service.config.base_ai_queue_path), item, "Superseded by a new asset operation.", state_root=self.ai_proxy_path_service.lifecycle.storage_root)
                 removed += 1
 
         return removed
@@ -386,7 +386,7 @@ class AIProxyService:
                 manifest = self._read_json_if_exists(item / "ask_manifest.json")
                 if (item.name != ask.ask_id and subject_key(manifest) == subject_key(self._manifest_payload(ask))
                         and not manifest.get("auxiliary")):
-                    supersede_task(Path(self.path_service.config.base_ai_queue_path), item, "A newer render attempt was staged.")
+                    supersede_task(Path(self.path_service.config.base_ai_queue_path), item, "A newer render attempt was staged.", state_root=self.ai_proxy_path_service.lifecycle.storage_root)
         return published
 
     def _prompt_condense_enabled(self) -> bool:
@@ -484,12 +484,13 @@ class AIProxyService:
                 and manifest.get("task_type") == task_type
                 and manifest.get("auxiliary") is True
             ):
-                supersede_task(Path(self.path_service.config.base_ai_queue_path), ask_path, "A newer auxiliary attempt was staged.")
+                supersede_task(Path(self.path_service.config.base_ai_queue_path), ask_path, "A newer auxiliary attempt was staged.", state_root=self.ai_proxy_path_service.lifecycle.storage_root)
 
     def _has_pending_auxiliary_task(self, asset, task_type: str) -> bool:
         for ask_path in self.ai_proxy_path_service.task_paths("ask", "running", "answer"):
             from zet.services.workflow_storage import task_state_path
-            if task_state_path(Path(self.path_service.config.base_ai_queue_path), "Superseded", ask_path.name).exists():
+            if task_state_path(Path(self.path_service.config.base_ai_queue_path), "Superseded", ask_path.name,
+                               state_root=self.ai_proxy_path_service.lifecycle.storage_root).exists():
                 continue
             manifest = self._read_json_if_exists(ask_path / "ask_manifest.json")
             if (ask_path / "harvest_manifest.json").exists():
