@@ -15,9 +15,9 @@
     FAILED: "Failed",
   };
   const evaluationLabels = {
-    STAGING: "Staging reviews", RUNNING: "Reviews running", COMPLETE: "Reviews complete",
-    QUEUED: "Queued", FAILED: "Review failed", EMPTY: "No images to rank", STALE: "Review stale",
-    SUPERSEDED: "Superseded", SKIPPED: "Not used for legacy reviews",
+    STAGING: "Staging ranking", RUNNING: "Ranking running", COMPLETE: "Ranking complete",
+    QUEUED: "Queued", FAILED: "Ranking failed", EMPTY: "No images to rank", STALE: "Ranking stale",
+    SUPERSEDED: "Superseded", SKIPPED: "Skipped",
   };
   const renderStatusLabels = {
     PENDING: "Image pending", QUEUED: "Render queued", RUNNING: "Rendering",
@@ -104,9 +104,7 @@
       case "delete": return `${baseUrl()}/runs/${id}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun-view": return `${baseUrl()}/runs/${id}/views/${encodedView}/rerun${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun-failed": return `${baseUrl()}/runs/${id}/rerun-failed${query({ view })}`;
-      case "rank": return `${baseUrl()}/runs/${id}/views/${encodedView}/rank${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "observations": return `${baseUrl()}/runs/${id}/views/${encodedView}/observations${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "reanalyze": return `${baseUrl()}/runs/${id}/views/${encodedView}/reanalyze${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "prompt-improvement-package": return `${baseUrl()}/runs/${id}/prompt-improvement-package${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "move-rank": return `${baseUrl()}/runs/${id}/views/${encodedView}/ranking/move${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "select":
@@ -484,9 +482,7 @@
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.status === "FAILED"), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
-      addButton(viewActions, ranking.status === "COMPLETE" ? "Re-rank" : "Rank images", "rank", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
       const ai = run.view_reviews?.[view]?.ai_observations || {};
-      addButton(viewActions, "Re-analyze", "reanalyze", { disabled: ["QUEUED", "RUNNING"].includes(ai.status) || !candidates.some((item) => item.image_path), view });
       summary.append(viewActions);
       details.append(summary);
       if (hasSharedAssetRouter() || (state.pipeline === "head-image" && view === "FRONT" && run.front_source)) {
@@ -909,7 +905,7 @@
         : blocked.length ? `No views are ready. ${blocked[0]}` : "No unstarted views remain.");
     } else if (action === "resume" && result.status !== "QUEUED") {
       setStatus("Batch ready to continue.");
-    } else if (["start", "resume", "stop", "rank", "reanalyze", "retry", "rerun", "rerun-view", "rerun-failed", "reevaluate", "reevaluate-view"].includes(action)) {
+    } else if (["start", "resume", "stop", "retry", "rerun", "rerun-view", "rerun-failed", "reevaluate", "reevaluate-view"].includes(action)) {
       setStatus(action === "stop" ? "Stop requested." : "Work queued.");
     } else if (action === "lock" || action === "unlock" || action === "select" || action === "unselect") {
       setStatus("Selection updated.");

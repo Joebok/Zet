@@ -225,11 +225,9 @@ def create_local_character_asset_pipeline_router(
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/reevaluate")
-        def reevaluate(run_id: str, background_tasks: BackgroundTasks, view: str = Query(""), costume: str = Query(""), _pipeline: str = pipeline):
+        def reevaluate(run_id: str, view: str = Query(""), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
-            result = call(lambda: instance.action("reevaluate", run_id=run_id, view=view.strip() or None, costume=costume if _pipeline == "costume-dressing" else ""))
-            submit_local_pipeline_task(instance.execute, run_id, views={view.upper()} if view else None, costume=costume if _pipeline == "costume-dressing" else "")
-            return result
+            return call(lambda: instance.action("reevaluate", run_id=run_id, view=view.strip(), costume=costume if _pipeline == "costume-dressing" else ""))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/lock")
         def lock(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):

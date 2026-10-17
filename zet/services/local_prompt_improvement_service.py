@@ -169,7 +169,7 @@ class LocalPromptImprovementService:
                     with _ACTIVE_LOCK:
                         active = ai.get("job_id") in _ACTIVE_JOBS
                     if ai.get("status") in {"QUEUED", "RUNNING"} and not active:
-                        ai.update(status="FAILED", error="Analysis was interrupted; use Re-analyze.", completed_at=_now())
+                        ai.update(status="FAILED", error="Observations were interrupted; use Re-evaluate.", completed_at=_now())
             mutate_local_run_state(root, mark_interrupted)
             run = self._run(run_id, costume)
         for candidate in run.get("candidates") or []:
@@ -228,8 +228,9 @@ class LocalPromptImprovementService:
                               or (ranking.get("input_hashes") and ranking["input_hashes"] != hashes)):
                 accepted.append(False)
                 return
+            # An explicit refresh also satisfies the one-time automatic observation pass.
             record["ai_observations"] = {"status": "QUEUED", "text": str(previous.get("text") or ""),
-                "auto_started": bool(automatic or previous.get("auto_started")), "job_id": job_id,
+                "auto_started": True, "job_id": job_id,
                 "input_hashes": hashes, "missing_candidates": missing, "queued_at": _now(), "error": ""}
             accepted.append(True)
         mutate_local_run_state(self._root(run), claim)

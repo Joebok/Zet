@@ -24,17 +24,19 @@ def supersede_evaluations(state: dict[str, Any], views: set[str], reason: str) -
 
 
 def update_view_evaluation(run_root: Path, view: str, changes: dict[str, Any], *,
-                           evaluation_id: str = "") -> dict[str, Any] | None:
-    """Merge one view's evaluation under the run's state lock."""
+                           evaluation_id: str = "", replace: bool = False) -> dict[str, Any] | None:
+    """Stage a replacement evaluation or merge an update fenced by its identity."""
     from zet.services.local_image_pipeline_policy import mutate_local_run_state
 
     saved: list[dict[str, Any] | None] = []
     def apply(state: dict[str, Any]) -> None:
         evaluations = state.setdefault("evaluations", {})
         current = dict(evaluations.get(view) or {})
-        if evaluation_id and current.get("evaluation_id") not in {None, "", evaluation_id}:
+        if not replace and evaluation_id and current.get("evaluation_id") not in {None, "", evaluation_id}:
             saved.append(None)
             return
+        if replace:
+            current = {}
         current.update(changes)
         evaluations[view] = current
         saved.append(dict(current))

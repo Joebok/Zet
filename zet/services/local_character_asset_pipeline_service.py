@@ -817,7 +817,7 @@ class LocalCharacterAssetPipelineService:
         return local_image_evaluation_service().stage_view_evaluation(
             run_id, view, evaluation_id, rank=rank,
             finish=lambda: finish_evaluation(self._run_root(run_id, costume), view, evaluation_id),
-            save_evaluation=lambda record: update_view_evaluation(self._run_root(run_id, costume), view, record, evaluation_id=evaluation_id),
+            save_evaluation=lambda record: update_view_evaluation(self._run_root(run_id, costume), view, record, evaluation_id=evaluation_id, replace=True),
             input_hashes=hashes)
 
     def reconcile_review_jobs(self, run_id: str, costume: str = "") -> dict[str, Any]:

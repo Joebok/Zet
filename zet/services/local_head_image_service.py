@@ -277,7 +277,7 @@ class LocalHeadImageService:
             ranked = [candidates_by_id.get(candidate_id) for candidate_id in ranking.get("ordered_candidate_ids", [])]
             if any(not candidate for candidate in ranked):
                 ranking["status"] = "STALE"
-                ranking["stale_reason"] = "A ranked candidate is missing. Re-evaluate this view and rank it again."
+                ranking["stale_reason"] = "A ranked candidate is missing. Re-evaluate this view."
         stale = []
         anchor = next((c for c in value["candidates"] if c["candidate_id"] == value.get("front_anchor")), None)
         anchor_path = Path(str((anchor or {}).get("image_path") or ""))
@@ -696,7 +696,7 @@ class LocalHeadImageService:
         return local_image_evaluation_service().stage_view_evaluation(
             run_id, view, evaluation_id, rank=rank,
             finish=lambda: finish_evaluation(self._run_root(run_id), view, evaluation_id),
-            save_evaluation=lambda record: update_view_evaluation(self._run_root(run_id), view, record, evaluation_id=evaluation_id),
+            save_evaluation=lambda record: update_view_evaluation(self._run_root(run_id), view, record, evaluation_id=evaluation_id, replace=True),
             input_hashes=hashes)
 
     def reconcile_review_jobs(self, run_id: str) -> dict[str, Any]:

@@ -108,7 +108,7 @@ class LocalImagePipelineWorkflowService:
             self.prompt_improvement.reset_after_rerender(run_id, affected, costume)
             return self.prompt_improvement.detail(run_id, costume)
         if name == "reevaluate":
-            return self.adapter.reevaluate(run_id, view or None, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.reevaluate(run_id, view or None)
+            return self.reevaluate(run_id, view, costume=costume)
         if name == "rank":
             return self.adapter.stage_view_evaluation(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.stage_view_evaluation(run_id, view)
         if name == "move_rank":
@@ -160,6 +160,41 @@ class LocalImagePipelineWorkflowService:
         else:
             self.adapter.execute_run(run_id, views=views, candidate_ids=candidate_ids,
                                      render_only=render_only)
+
+    def reevaluate(self, run_id: str, view: str = "", *, costume: str = "") -> dict[str, Any]:
+        """Refresh ranking and prompt observations using existing harvested images."""
+        from zet.services.image_harvest_service import require_candidate_harvest
+        from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
+
+        run = self.prompt_improvement.detail(run_id, costume)
+        if run.get("status") in ACTIVE_RUN_STATUSES or run.get("slot_work_pending") or run.get("slot_render_ids"):
+            raise LocalImageWorkflowError("Wait for current renders to finish before re-evaluating.")
+        if run.get("stop_requested") or run.get("status") in {"CANCELLED", "STOPPED"}:
+            raise LocalImageWorkflowError("Resume the stopped batch before re-evaluating.")
+        view = str(view or "").strip().upper()
+        if view and view not in run.get("views", []):
+            raise LocalImageWorkflowError(f"Unknown local batch view: {view}")
+        images = [item for item in run.get("candidates", [])
+                  if (not view or item["view"] == view)
+                  and Path(str(item.get("image_path") or "")).is_file()]
+        targets = [target for target in run.get("views", []) if any(item["view"] == target for item in images)]
+        if not targets:
+            raise LocalImageWorkflowError("No rendered images are available to re-evaluate.")
+        requires_anchor = self.pipeline in {"body-reference", "head-image"} or bool(run.get("use_front_anchor"))
+        if requires_anchor and any(target != "FRONT" for target in targets):
+            anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), {})
+            if not Path(str(anchor.get("image_path") or "")).is_file():
+                raise LocalImageWorkflowError("Select a completed FRONT anchor before re-evaluating other views.")
+        qualifier = self.adapter._qualifier(costume) if self.pipeline == "costume-dressing" else ""
+        for target in targets:
+            self.adapter.asset_store.assert_batch_change_allowed(
+                run["character"], run["phase"], self.pipeline_config.label, target, qualifier)
+        for candidate in images:
+            require_candidate_harvest(self.app, run, candidate)
+        for target in targets:
+            self.prompt_improvement.start(run_id, target, costume)
+            self.stage_view_evaluation(run_id, target, costume=costume)
+        return self.action("detail", run_id=run_id, costume=costume)
 
     def stage_view_evaluation(self, run_id: str, view: str, *, costume: str = "",
                               candidate_ids: set[str] | None = None) -> dict[str, Any]:
