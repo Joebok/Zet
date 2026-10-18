@@ -15,6 +15,16 @@ def reference_recipes(root: Path) -> dict:
     return read_library_json(root / "state.json", pipeline_library_root_for_path(root)).get("view_reference_recipes", {})
 
 
+def batch_view_reference(source_view: str, target_view: str, path: str, candidate_id: str) -> dict:
+    """Describe a planned or selected input without putting runtime IDs in prompt text."""
+    return {"role": "batch_view_reference", "prompt_role": "subject_reference", "path": path,
+            "view": source_view, "candidate_id": candidate_id,
+            "label": f"Selected {source_view} from this batch",
+            "preserve": ["visible identity and design details consistent with the authored target"],
+            "ignore": ["source camera angle, pose, crop and visibility of surfaces hidden in the target view"],
+            "notes": f"Design reference from {source_view}; output must show {target_view}. Do not rotate the target toward this image or invent hidden front details."}
+
+
 def selected_reference(run: dict, view: str, recipe: dict) -> dict | None:
     source_view = recipe.get("source_view")
     if recipe.get("mode") != "selected_view":
@@ -30,12 +40,7 @@ def selected_reference(run: dict, view: str, recipe: dict) -> dict | None:
         raise ValueError(f"Select an available, non-rejected {source_view} image in this batch first.")
     if not image.resolve().is_relative_to(Path(run["root"]).resolve()):
         raise ValueError("The selected reference must belong to this batch.")
-    return {"role": "batch_view_reference", "prompt_role": "subject_reference", "path": str(image),
-            "view": source_view, "candidate_id": cid,
-            "label": f"Selected {source_view} from this batch ({cid})",
-            "preserve": ["visible identity and design details consistent with the authored target"],
-            "ignore": ["source camera angle, pose, crop and visibility of surfaces hidden in the target view"],
-            "notes": f"Design reference from {source_view}; output must show {view}. Do not rotate the target toward this image or invent hidden front details."}
+    return batch_view_reference(source_view, view, str(image), cid)
 
 
 def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:

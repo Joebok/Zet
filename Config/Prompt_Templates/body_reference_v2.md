@@ -1,7 +1,7 @@
 <!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 # Render Task
 
-Create one new full-body technical body reference for {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}. This is text-to-image generation with no source image.
+Create one new full-body technical body reference for {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}. {{BODY_REFERENCE_INPUT_GUIDANCE}}
 
 # Image Inputs
 

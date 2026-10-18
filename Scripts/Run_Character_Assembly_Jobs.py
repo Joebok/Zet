@@ -181,6 +181,9 @@ def compile_character_assembly_job(
         raise TemplateCompileError("MISSING_REFERENCE", "Local non-front Character-Assembly requires the selected FRONT assembly anchor.")
     validate_reference(body_reference, "body_reference")
     validate_reference(head_image, "head_image")
+    for reference in references:
+        if reference.get("role") == "batch_view_reference":
+            validate_reference(reference, "batch_view_reference", project_root)
     if front_assembly:
         validate_reference(front_assembly, "front_assembly")
         raw_anchor_view = str(front_assembly.get("view") or "").strip()

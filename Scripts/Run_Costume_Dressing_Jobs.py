@@ -530,6 +530,9 @@ def compile_costume_dressing_job(
     references = reference_files_for_job(job)
     character_assembly = reference_by_role(references, "character_assembly")
     validate_reference(character_assembly, "character_assembly")
+    for reference in references:
+        if reference.get("role") == "batch_view_reference":
+            validate_reference(reference, "batch_view_reference", project_root)
     has_front_costume_reference = any(item.get("role") == "front_costume" for item in references)
 
     all_sections, section_sources = load_costume_dressing_section_data(project_root, character_template_path, costume_path)

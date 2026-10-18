@@ -43,6 +43,8 @@ from zet.services.pipeline_compiler_support import (
     normalize_view,
     output_files,
     require_job_field,
+    reference_files_for_job,
+    validate_reference,
     resolve_project_path,
     template_metadata,
     template_path_for_job,
@@ -69,19 +71,19 @@ def resource_policy(bundle: dict) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def write_dependency_manifest(path: Path, job_id: str, character: str, phase: str, view_token: str, bundle: dict, contract: dict) -> None:
+def write_dependency_manifest(path: Path, job_id: str, character: str, phase: str, view_token: str, bundle: dict, contract: dict, references: list[dict]) -> None:
     manifest = {
         "job_id": job_id,
         "task": "body-reference",
         "character": character,
         "phase": phase,
         "view_token": view_token,
-        "resources_allowed": False,
-        "resources": [],
+        "resources_allowed": bool(contract.get("image_inputs")),
+        "resources": references,
         "resource_policy": resource_policy(bundle),
         **contract,
         "notes": [
-            "Body-reference uses no external, cached, discovered, or prior-rendered image resources unless explicitly allowed by future task configuration."
+            "Local body-reference may use an explicitly supplied batch design reference; external, cached and discovered image resources are not allowed."
         ],
     }
     write_json_file(path, manifest)
@@ -179,6 +181,8 @@ def compile_body_reference_job(
         raise TemplateCompileError("MISSING_JOB_FIELD", f"Unsupported task for body-reference runner: {task}")
 
     bundle = load_bundle(project_root, "body-reference")
+    if pipeline_mode == "local":
+        bundle = {**bundle, "resources": {**resource_policy(bundle), "allow_job_declared_images": True}}
     if prompt_variant == "analysis":
         bundle = {**bundle, "legacy_static_prompt_template": ""}
     view_token = normalize_view(project_root, raw_view)
@@ -212,11 +216,16 @@ def compile_body_reference_job(
     image_review_path = paths["image_review"]
     diagnostics_path = paths["diagnostics"]
 
-    references = auxiliary_references_for_texts(
+    auxiliary_references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], []
     )
-    if references:
-        raise TemplateCompileError("UNEXPECTED_REFERENCE", "Body-reference V2 does not accept image inputs.")
+    references = reference_files_for_job(job)
+    if auxiliary_references or (references and pipeline_mode != "local"):
+        raise TemplateCompileError("UNEXPECTED_REFERENCE", "Body-reference accepts only explicitly supplied local batch design references.")
+    if len(references) > 1 or any(ref.get("role") not in {"batch_view_reference", "body_reference_front_anchor"} for ref in references):
+        raise TemplateCompileError("INVALID_REFERENCE", "Local Body-Reference accepts at most one batch design reference.")
+    for reference in references:
+        validate_reference(reference, str(reference["role"]), project_root)
     references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
         references, render_mode="generate"
     )
@@ -230,6 +239,10 @@ def compile_body_reference_job(
     }
     universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
     metadata_values = {
+        "BODY_REFERENCE_INPUT_GUIDANCE": (
+            "Use the supplied image only as an identity and proportion reference; create the requested target view rather than copying its camera angle, pose or framing."
+            if references else "This is text-to-image generation with no source image."
+        ),
         "CHARACTER_NAME": character,
         "CHARACTER_PHASE": phase,
         "VIEW_TOKEN": view_token,
@@ -264,7 +277,7 @@ def compile_body_reference_job(
     )
     if prompt_variant == "generation":
         finalize_chatgpt_prompt(diagnostics_path, prompt_text, image_inputs, "generate")
-        write_dependency_manifest(manifest_path, job_id, character, phase, view_token, bundle, contract_manifest)
+        write_dependency_manifest(manifest_path, job_id, character, phase, view_token, bundle, contract_manifest, references)
         checklist = load_checklist(project_root, str(bundle.get("review_checklist", "")))
         findings = review_prompt_text(prompt_text, checklist)
         write_prompt_review(prompt_review_path, metadata, final_prompt_path, findings)

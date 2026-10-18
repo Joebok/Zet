@@ -126,12 +126,12 @@ class CharacterRenderSlots:
         recompile = recompile or output_dir is not None or compiled_revision != revision.get("revision_id", "") or recipe != prior_recipe or recipe["mode"] != "default"
         if pipeline == "body-reference":
             snapshot = next(item for item in run["prompt_snapshots"] if item["view"] == view)
-            if recompile:
-                snapshot = self.adapter._compile_view(root, run["character"], run["phase"], view, run["views"].index(view) + 1, output_dir=output)
-            path = Path(snapshot["prompt_path"])
             anchor = next((c for c in run["candidates"] if c["candidate_id"] == run.get("front_anchor")), {})
             refs = [{"role": "body_reference_front_anchor", "path": anchor["image_path"]}] if view != "FRONT" and anchor.get("image_path") else []
             refs = custom_references(run, view, pipeline, refs)
+            if recompile or refs:
+                snapshot = self.adapter._compile_view(root, run["character"], run["phase"], view, run["views"].index(view) + 1, output_dir=output, references=refs)
+            path = Path(snapshot["prompt_path"])
             prompt = self.adapter._qwen_prompt(path.read_text(encoding="utf-8"), view, anchor=bool(refs), anchor_view=refs[0].get("view", "FRONT") if refs else "FRONT")
             preset = "comfyui-qwen-body-reference-edit" if refs else "comfyui-qwen-body-reference-text"
         elif pipeline == "head-image":

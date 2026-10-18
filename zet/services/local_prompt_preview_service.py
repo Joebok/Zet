@@ -29,25 +29,34 @@ class LocalPromptPreviewService:
                     "character-assembly": compile_character_assembly_job,
                     "costume-dressing": compile_costume_dressing_job}[pipeline]
         character = Path(workflow.app.config.base_character_path) / run["character"] / run["phase"] / "Character.md"
+        from zet.services.local_view_reference_service import batch_view_reference, reference_recipes
+        recipes = reference_recipes(Path(run["root"]))
         result = []
         with template_sources(sources):
             for view in VIEW_ORDER:
                 references = []
                 def declare(role, source_view=view):
-                    references.append({"role": role, "path": "declared:" + role, "label": role.replace("_", " "),
+                    references.append({"role": role, "path": "declared:" + role,
                         "character": run["character"], "phase": run["phase"], "view": source_view,
                         "body_view": source_view, "head_view": source_view})
-                if pipeline == "head-image" and (view != "FRONT" or run.get("front_source")):
-                    declare("head_image_source", PREDECESSORS.get(view, "FRONT"))
-                    references[-1].update(candidate_id="declared")
+                source_view = PREDECESSORS.get(view, "FRONT")
+                if view == "BACK":
+                    source_view = (run.get("character_progression") or {}).get("back_reference", source_view)
+                recipe = recipes.get(view) or {}
+                if recipe.get("mode") == "selected_view":
+                    source_view = recipe["source_view"]
+                if pipeline == "head-image" and view == "FRONT" and run.get("front_source"):
+                    declare("head_image_source")
                 if pipeline == "character-assembly":
                     declare("body_reference")
                     declare("head_image")
                 if pipeline == "costume-dressing":
                     declare("character_assembly")
-                if pipeline in {"character-assembly", "costume-dressing"} and view != "FRONT":
-                    declare("batch_view_reference", PREDECESSORS[view])
-                    references[-1].update(candidate_id="declared", prompt_role="subject_reference")
+                if view != "FRONT":
+                    reference = batch_view_reference(source_view, view, "declared:batch_view_reference", "declared")
+                    if pipeline == "head-image":
+                        reference.update(role="head_image_source", prompt_role="edit_base")
+                    references.append(reference)
                 output = Path(directory) / view
                 job = {"Job": "PromptPreview_" + view, "Task": pipeline, "Character": run["character"],
                     "Phase": run["phase"], "Body View": view, "Head View": view, "Template Path": str(character),
@@ -61,7 +70,7 @@ class LocalPromptPreviewService:
                 prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
                 if pipeline == "body-reference":
                     prompt = workflow.adapter._qwen_prompt(prompt, view, anchor=view != "FRONT",
-                        anchor_view=PREDECESSORS.get(view, "FRONT"))
+                        anchor_view=source_view)
                 source_map = json.loads((output / "Prompt_Source_Map.json").read_text(encoding="utf-8"))
                 compact = []
                 for fragment in source_map.get("fragments", []):
@@ -69,5 +78,5 @@ class LocalPromptPreviewService:
                     if item not in compact:
                         compact.append(item)
                 result.append({"view": view, "prompt": prompt, "source_map": compact,
-                    "reference_inputs": references, "renderable": False})
+                    "reference_inputs": compiled["reference_files"], "renderable": False})
         return result

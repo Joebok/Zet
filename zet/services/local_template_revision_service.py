@@ -189,6 +189,10 @@ class LocalTemplateRevisionService:
                 master = current[source["source_id"]]
                 source.update(master_text=master["text"], master_sha256=master["master_sha256"],
                               source_path=master["source_path"], before_text=source["text"])
+                if pipeline == "body-reference" and source["source_id"] == "project/Config/Prompt_Templates/body_reference_v2.md":
+                    # New proposals adopt the runtime input contract without rewriting their parent.
+                    source["text"] = source["text"].replace(
+                        "This is text-to-image generation with no source image.", "{{BODY_REFERENCE_INPUT_GUIDANCE}}")
                 for key in ("diff", "master_diff", "master_diff_rows"):
                     source.pop(key, None)
             editable = payload.get("source_ids", [s["source_id"] for s in sources])
@@ -258,6 +262,10 @@ class LocalTemplateRevisionService:
                     "Cite affected views and explain the problem. Do not invent design details or change intent. "
                     "Preserve markers, placeholders and reference order. Report compiler/config issues in the summary, "
                     "never change unlisted sources. Empty findings is valid. Operator instructions take precedence.\n"
+                    "These are text-only previews of future renders: renderable=false is intentional. "
+                    "Declared reference inputs identify the images that will be bound from selected predecessor views "
+                    "during staged generation; their files need not exist during this review. "
+                    "Review prompt wording against those planned roles and views.\n"
                     + record["compiler_guidance"] + "\nOperator: " + record["direction"]
                     + "\nEditable source IDs: " + json.dumps(record["source_ids"])
                     + "\nSources: " + json.dumps([{k: s[k] for k in ("source_id", "text")} for s in record["sources"]], ensure_ascii=False)

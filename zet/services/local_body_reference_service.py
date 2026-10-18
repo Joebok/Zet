@@ -303,7 +303,7 @@ class LocalBodyReferenceService:
             "blocking_reasons": [],
         }
 
-    def _compile_view(self, root: Path, character: str, phase: str, view: str, index: int, *, output_dir: Path | None = None) -> dict[str, Any]:
+    def _compile_view(self, root: Path, character: str, phase: str, view: str, index: int, *, output_dir: Path | None = None, references: list[dict] | None = None) -> dict[str, Any]:
         from zet.services.template_source_service import compile_with_revision
         output = output_dir or root / "prompts" / view
         job = {
@@ -313,6 +313,7 @@ class LocalBodyReferenceService:
             "Phase": phase,
             "Body View": view,
             "Output Directory": str(output),
+            "Reference Files": references or [],
         }
         try:
             result = compile_with_revision(root, compile_body_reference_job,
