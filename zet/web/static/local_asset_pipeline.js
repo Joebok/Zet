@@ -164,6 +164,35 @@
       || (!run?.front_anchor && !(hasSharedAssetRouter()
         && (run?.use_front_anchor === false || unstartedViews(run).includes("FRONT"))))
       || !unstartedViews(run).length;
+    if (run?.progression) {
+      $("start").hidden = !resumable;
+      $("proceed").hidden = false;
+      $("proceed").disabled = isBusy || !run.progression.can_continue;
+      $("proceed").textContent = run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
+      $("proceed").title = run.progression.reason || "Generate the next stage from your selected images";
+      $("anchor-option").hidden = true;
+    }
+    const progression = $("progression");
+    progression.hidden = !run?.progression;
+    if (run?.progression) {
+      progression.replaceChildren();
+      const label = document.createElement("p");
+      label.textContent = run.progression.prompt_review_required ? "Phase 1 · Analyze and accept the governing prompts below."
+        : run.progression.complete ? "All requested views selected. Refinement and publication remain available."
+          : run.progression.stage < 0 ? "Prompts accepted · Ready to generate FRONT."
+            : `Stage ${run.progression.stage + 1} · ${run.progression.current_views.join(" + ")}. ${run.progression.reason}`;
+      progression.append(label);
+      for (const warning of run.reference_warnings || []) {
+        const note = document.createElement("p"); note.className = "muted";
+        note.textContent = `${warning.view}: ${warning.message}`; progression.append(note);
+      }
+    }
+    $("back-reference-label").hidden = !run?.progression?.next_views.includes("BACK");
+    if (run && $("back-reference").dataset.runId !== run.run_id) {
+      $("back-reference").value = run.character_progression?.back_reference || "BACK_LEFT_3_4";
+      $("back-reference").dataset.runId = run.run_id;
+    }
+    for (const option of $("back-reference").options) option.disabled = !run?.selected_views?.[option.value];
   }
 
   function addLink(parent, label, href) {
@@ -272,11 +301,23 @@
         addButton(controls, locked ? "Unlock" : "Lock", locked ? "unlock" : "lock",
           { view });
         if (!locked) addButton(controls, "Unselect", "unselect", { view, candidate: candidate.candidate_id });
+        const refine = document.createElement("a");
+        refine.textContent = "Refine";
+        refine.href = refinementUrl(view);
+        refine.className = "button";
+        controls.append(refine);
         article.append(controls);
       }
       host.append(article);
     }
     host.hidden = !run.views?.length;
+  }
+
+  function refinementUrl(view) {
+    const params = new URLSearchParams({ pipeline: state.pipeline, run_id: state.run.run_id, view,
+      universe_id: document.querySelector("#universe-select").value });
+    if (isCostume()) params.set("costume", selectedCostume());
+    return `/local-character-refinement?${params}`;
   }
 
   function renderCandidate(view, candidate, ranking, run) {
@@ -584,6 +625,16 @@
       addButton(recipeSection, "Save reference", "save-view-reference", { view });
       const recipeHelp = document.createElement("p"); recipeHelp.className = "muted";
       recipeHelp.textContent = "Applies to future Generate / Regen in individual slots. Matching pipeline inputs remain. Custom choices compile automatically; Retry keeps its saved inputs. A front reference can pull a rear image toward the front angle.";
+      if (run.character_progression && view !== "BACK") {
+        recipeSelect.disabled = true;
+        recipeSection.querySelector("button").hidden = true;
+        recipeHelp.textContent = view === "FRONT" ? "Uses this pipeline’s FRONT prerequisites." : "Uses the selected predecessor from the preceding stage. Submitted renders retain their frozen reference.";
+      }
+      if (run.character_progression && view === "BACK") {
+        for (const option of [...recipeSelect.options]) if (!["BACK_LEFT_3_4", "BACK_RIGHT_3_4"].includes(option.value)) option.remove();
+        recipeSelect.value = recipe.source_view || run.character_progression.back_reference;
+        recipeHelp.textContent = "Choose either selected rear three-quarter for future BACK renders. Existing images stay unchanged.";
+      }
       recipeSection.append(recipeHelp); details.append(recipeSection);
       const observationDetails = document.createElement("details");
       observationDetails.className = "local-pipeline-observations";
@@ -772,7 +823,7 @@
     select.replaceChildren();
     for (const run of state.runs) {
       const phaseChangeLabel = state.pipeline === "head-image" && run.apply_phase_change ? " · Phase change rules" : "";
-      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel} · ${run.run_id}`, run.run_id));
+      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel}${run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : ""} · ${run.run_id}`, run.run_id));
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
@@ -918,6 +969,8 @@
   }
 
   async function perform(action, view = "", candidateId = "", body = undefined) {
+    if (action === "proceed" && state.run?.character_progression) body = {
+      expected_stage: state.run.character_progression.stage, back_reference: $("back-reference").value };
     const runId = state.run?.run_id || "";
     const generation = state.generation;
     const pipeline = state.pipeline;
@@ -1241,6 +1294,7 @@
       const params = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
       await request(`${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/views/${encodeURIComponent(view)}/reference-recipe${params}`,
         { method: "PUT", body: JSON.stringify({ mode: ["default", "none"].includes(value) ? value : "selected_view", source_view: value }) });
+      if (view === "BACK" && state.run.character_progression) $("back-reference").value = value;
       await loadRun(state.run.run_id); setStatus("Reference saved for new individual renders."); return;
     }
     if (action === "save-observations") {
@@ -1315,7 +1369,7 @@
         if (hasSharedAssetRouter()) $("use-anchor").checked = false;
         await refreshRuns(created.run_id);
         if (hasSharedAssetRouter()) void readiness();
-        setStatus("Queued batch created. Start it when ready.");
+        setStatus("Batch created. Analyze and accept its governing prompts, then Continue to generate FRONT.");
       } catch (error) { setStatus(error.message, true); await readiness(); }
     });
     $("rename").addEventListener("submit", async (event) => { event.preventDefault(); await handleAction({ dataset: { localAction: "rename" } }).catch((error) => setStatus(error.message, true)); });

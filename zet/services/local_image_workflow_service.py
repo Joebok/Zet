@@ -42,6 +42,20 @@ class LocalImagePipelineWorkflowService:
         costume = str(args.get("costume") or "")
         payload = args.get("payload") or {}
         direction = str(args.get("direction") or "")
+        if name.startswith("refinement_"):
+            from zet.services.local_character_refinement_service import LocalCharacterRefinementService
+            refinement = LocalCharacterRefinementService(self.app, self.project_root)
+            if name == "refinement_open":
+                return refinement.open(self.pipeline, run_id, costume, view)
+            operation = name.removeprefix("refinement_")
+            if operation not in {"detail", "analyze", "edit", "retry", "adopt", "image_path"}:
+                raise LocalImageWorkflowError("Unknown refinement operation.")
+            params = [self.pipeline, run_id, costume, str(args.get("session_id") or "")]
+            if operation == "image_path":
+                params.append(str(args.get("attempt_id") or ""))
+            elif operation != "detail":
+                params.append(payload)
+            return getattr(refinement, operation)(*params)
         if name in {"rerun_batch", "rerun_view", "rerun_failed", "reevaluate", "run_unstarted_views", "delete_batch"}:
             current = self.prompt_improvement.detail(run_id, costume)
             if current.get("slot_work_pending") or current.get("slot_render_ids"):
@@ -64,6 +78,8 @@ class LocalImagePipelineWorkflowService:
             return self.adapter.delete_run(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.delete_run(run_id)
         if name == "start":
             current = self.action("detail", run_id=run_id, costume=costume)
+            if current.get("character_progression") and current["character_progression"]["stage"] < 0:
+                raise LocalImageWorkflowError("Analyze and accept prompts, then use Continue to generate FRONT.")
             if current.get("status") != "QUEUED":
                 raise LocalImageWorkflowError("Only a queued local image batch can be started.")
             return {"started": True, "run_id": run_id}
@@ -72,6 +88,9 @@ class LocalImagePipelineWorkflowService:
         if name == "resume":
             return self.adapter.resume(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.resume(run_id)
         if name == "rerun_batch":
+            current = self.prompt_improvement.detail(run_id, costume)
+            if current.get("character_progression") and current["character_progression"]["stage"] < 0:
+                raise LocalImageWorkflowError("Accept prompt review and Continue before rerunning images.")
             recompile = bool(args.get("recompile", False))
             if self.pipeline == "costume-dressing":
                 result = self.adapter.rerun(run_id, costume,
@@ -84,9 +103,18 @@ class LocalImagePipelineWorkflowService:
                 result = self.adapter.rerun(run_id, recompile=recompile)
             else:
                 result = self.adapter.rerun(run_id)
+            if current.get("character_progression"):
+                from zet.services.local_image_pipeline_policy import mutate_local_run_state
+                def restart_front(state):
+                    state["character_progression"]["stage"] = 0
+                    state["view_reference_recipes"] = {}
+                    state.update(target_views=["FRONT"], target_candidate_ids=[], status="QUEUED")
+                mutate_local_run_state(Path(result["root"]), restart_front)
             self.prompt_improvement.reset_after_rerender(run_id, set(result.get("views") or []), costume)
             return self.prompt_improvement.detail(run_id, costume)
         if name == "rerun_view":
+            from zet.services.local_character_progression_service import guard_view
+            guard_view(self.prompt_improvement.detail(run_id, costume), view.upper())
             recompile = bool(args.get("recompile", False))
             if self.pipeline == "costume-dressing":
                 result = self.adapter.rerun_view(run_id, view, costume,
@@ -138,6 +166,10 @@ class LocalImagePipelineWorkflowService:
                 return revisions.detail(self.pipeline, run_id, costume, revision_id)
             if name == "template_revision_start":
                 return revisions.start(self.pipeline, run_id, payload, costume)
+            if name == "template_revision_decisions":
+                return revisions.decisions(self.pipeline, run_id, revision_id, payload, costume)
+            if name == "template_revision_accept":
+                return revisions.accept(self.pipeline, run_id, revision_id, payload, costume)
             if name == "template_revision_activate":
                 return revisions.activate(self.pipeline, run_id, revision_id, costume, payload.get("expected_active"))
             if name == "template_revision_promote":
@@ -158,6 +190,10 @@ class LocalImagePipelineWorkflowService:
                 return self.adapter.select_front_anchor(run_id, candidate_id)
             return self.action("select_view", run_id=run_id, view="FRONT", candidate_id=candidate_id, costume=costume)
         if name == "run_unstarted_views":
+            current = self.action("detail", run_id=run_id, costume=costume)
+            if current.get("character_progression"):
+                from zet.services.local_character_progression_service import advance
+                return advance(self, run_id, costume, payload.get("expected_stage"), payload.get("back_reference"))
             return self.adapter.proceed(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.proceed(run_id)
         if name == "lock_view":
             return self.adapter.lock_selected_view(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.lock_selected_view(run_id, view)

@@ -780,7 +780,8 @@ class AIProxyService:
             ask_path = self._create_ask_folder(ask_manifest["ask_id"], "local_image_render")
         ask_manifest["workflow"] = manifest.get("workflow") or ask_manifest.get("pipeline") or "Image Generation"
         ask_manifest.update({key: value for key, value in manifest.get("ai_owner", {}).items()
-                             if key in {"session_id", "candidate_id", "revision_id"}})
+                             if key in {"session_id", "candidate_id", "revision_id", "character_refinement_session_id",
+                                        "character_refinement_pipeline_id", "run_id", "attempt_id", "view", "character", "phase", "costume"}})
         self._write_json_atomic(ask_path / "ask_manifest.json", ask_manifest)
         self._write_text_atomic(ask_path / prompt_path.name, submitted_prompt)
         if scene_render_ir_path is not None:

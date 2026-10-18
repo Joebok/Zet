@@ -160,7 +160,7 @@ test("character-to-costume workflow previews prerequisites and creates a real ru
   expect(plan.can_create, JSON.stringify(plan.blocking_reasons)).toBeTruthy();
   const runResponse = await page.request.post("/api/local/character-assembly/runs?universe_id=Test", { data: {
     character: "Traveler", phase: "Adult", costume: "", front_only: true,
-    front_count: 1, other_count: 1, seeds: [11,12,13,14,15,16,17,18],
+    front_count: 1, other_count: 1, seeds: [11],
   }});
   expect(runResponse.ok(), await runResponse.text()).toBeTruthy();
   const run = await runResponse.json();
@@ -179,7 +179,7 @@ test("character-to-costume workflow previews prerequisites and creates a real ru
   expect(dressingPlan.can_create, JSON.stringify(dressingPlan.blocking_reasons)).toBeTruthy();
   const dressingResponse = await page.request.post("/api/local/costume-dressing/runs?universe_id=Test", { data: {
     character: "Traveler", phase: "Adult", costume: "Test Travel Outfit", front_only: true,
-    front_count: 1, other_count: 1, seeds: [21,22,23,24,25,26,27,28],
+    front_count: 1, other_count: 1, seeds: [21],
   }});
   expect(dressingResponse.ok(), await dressingResponse.text()).toBeTruthy();
   const dressing = await dressingResponse.json();
@@ -245,7 +245,25 @@ async function deliverEnvelope(page, id, output, failed = false) {
 async function processLocalFront(page, pipeline, runId, costume, pngPath) {
   const base = `/api/local/${pipeline}/runs/${runId}`;
   const query = `?universe_id=Test${costume ? `&costume=${encodeURIComponent(costume)}` : ""}`;
-  const started = await page.request.post(`${base}/start${query}`);
+  const reviewResponse = await page.request.post(`${base}/template-revisions${query}`, { data: { model: "codex:gpt-6-luna" } });
+  expect(reviewResponse.ok(), await reviewResponse.text()).toBeTruthy();
+  const reviewId = (await reviewResponse.json()).revision.revision_id;
+  const reviewAnswered = new Set();
+  await expect.poll(async () => {
+    const review = (await (await page.request.get(`${base}/template-revisions${query}&revision_id=${reviewId}`)).json()).revision;
+    if (review.status === "FAILED") throw new Error(review.error);
+    const queue = await (await page.request.get("/api/ai/jobs")).json();
+    for (const job of queue.items || []) {
+      if (job.task_type === "character_prompt_review" && job.status === "QUEUED" && !reviewAnswered.has(job.ask_id)) {
+        await deliverEnvelope(page, job.ask_id, { summary: "Prepared prompt review: no corrections needed.", findings: [] });
+        reviewAnswered.add(job.ask_id);
+      }
+    }
+    return review.status;
+  }, { timeout: 20000 }).toBe("REVIEW_READY");
+  const accepted = await page.request.post(`${base}/template-revisions/${reviewId}/accept${query}`, { data: { selected_ids: [] } });
+  expect(accepted.ok(), await accepted.text()).toBeTruthy();
+  const started = await page.request.post(`${base}/views/FRONT/proceed${query}`, { data: { expected_stage: -1 } });
   expect(started.ok(), await started.text()).toBeTruthy();
   const context = await (await page.request.get("/__test/context")).json();
   const answered = new Set();

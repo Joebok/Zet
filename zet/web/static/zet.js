@@ -11733,12 +11733,13 @@ function renderLocalRunAllStatus(campaign) {
   const running = Number(progress.RUNNING || 0);
   const waiting = Number(progress.WAITING_FOR_SELECTION || 0);
   const waitingReferences = Number(progress.WAITING_FOR_REFERENCE || 0);
+  const reviewPending = Number(progress.REVIEW_PENDING || 0);
   const failed = Number(progress.FAILED || 0);
   const complete = Number(progress.COMPLETE || 0);
   const total = Number(campaign.batch_count || (campaign.batches || []).length);
   const imageCounts = `${campaign.images_complete || 0} images ready · ${campaign.images_remaining || 0} remaining`;
-  const batchCounts = `${running} running · ${waiting} waiting for selection · ${waitingReferences} waiting for references · ${failed} failed · ${complete}/${total} complete`;
-  const details = (campaign.batches || []).filter((item) => ["FAILED", "WAITING_FOR_SELECTION", "WAITING_FOR_REFERENCE"].includes(item.result)
+  const batchCounts = `${running} running · ${waiting} waiting for selection · ${reviewPending} need review · ${waitingReferences} waiting for references · ${failed} failed · ${complete}/${total} complete`;
+  const details = (campaign.batches || []).filter((item) => ["FAILED", "WAITING_FOR_SELECTION", "WAITING_FOR_REFERENCE", "REVIEW_PENDING"].includes(item.result)
     || item.review_error)
     .slice(0, 4).map((item) => `${item.character} ${item.phase}${item.costume ? ` · ${item.costume}` : ""}: ${item.review_error
       ? `Advisory review: ${item.review_error}` : item.message || item.error || item.result.replaceAll("_", " ").toLowerCase()}`);
@@ -11746,6 +11747,14 @@ function renderLocalRunAllStatus(campaign) {
     : campaign.status === "FAILED" ? `Run all Remaining failed: ${campaign.error || "see campaign details."}`
       : "Run all Remaining is active.";
   localRunAllStatus.textContent = [campaignLabel, imageCounts, batchCounts, ...details].join("\n");
+  for (const item of (campaign.batches || []).filter(item => item.result === "REVIEW_PENDING")) {
+    const params = new URLSearchParams({ page: `local-${item.pipeline}`, local_batch: item.run_id,
+      character: item.character, phase: item.phase });
+    if (item.costume) params.set("local_costume", item.costume);
+    const link = document.createElement("a"); link.href = `/?${params}`;
+    link.textContent = `Review ${item.character} ${item.pipeline} batch`;
+    localRunAllStatus.append(document.createElement("br"), link);
+  }
   localRunAllStatus.hidden = false;
 }
 

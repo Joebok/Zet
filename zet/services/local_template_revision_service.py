@@ -8,7 +8,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import shutil
 from uuid import uuid4
 
 from zet.services.atomic_file_service import write_text_atomic
@@ -18,7 +17,7 @@ from zet.services.workflow_storage import file_lock
 
 
 def _now():
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    return datetime.now().astimezone().isoformat(timespec="microseconds")
 
 
 def _digest(text):
@@ -158,6 +157,10 @@ class LocalTemplateRevisionService:
         active = active_revision(Path(run["root"]))
         revision = self._record(directory, revision_id) if revision_id else (records[0] if records else None)
         if revision:
+            if revision.get("version") == 2 and revision["status"] == "PROPOSING":
+                from zet.services.ai_workflow_service import AIWorkflowService
+                AIWorkflowService(self.app).submit(self._review_job, [pipeline, run_id, costume, revision["revision_id"]],
+                    service="template_revision", key="template_" + revision["revision_id"], owner=revision["owner"])
             revision = deepcopy(revision)
             for source in revision["sources"]:
                 source["diff"] = "".join(difflib.unified_diff(source.get("before_text", source["master_text"]).splitlines(True),
@@ -172,79 +175,180 @@ class LocalTemplateRevisionService:
 
     def start(self, pipeline, run_id, payload, costume=""):
         workflow, run, directory = self._load(pipeline, run_id, costume)
-        revision_id = uuid4().hex
+        from zet.services.local_character_progression_service import enroll
+        enroll(Path(run["root"]), run.get("views"))
         with file_lock(directory / "revisions.lock"):
             parent_id = payload.get("parent_revision_id")
             parent = self._record(directory, parent_id) if parent_id else active_revision(Path(run["root"]))
-            current_sources = self._sources(workflow, run)
-            sources = deepcopy(parent["sources"] if parent else current_sources)
-            current = {source["source_id"]: source for source in current_sources}
+            live = self._sources(workflow, run)
+            sources = deepcopy(parent["sources"] if parent else live)
+            current = {s["source_id"]: s for s in live}
             for source in sources:
-                live = current.get(source["source_id"])
-                if not live:
-                    raise ValueError("A governing template is unavailable; restore it before revising.")
-                source.update(source_path=live["source_path"], master_text=live["text"], master_sha256=live["master_sha256"])
-            allowed = {s["source_id"] for s in sources}
-            editable = payload.get("source_ids", [sources[0]["source_id"]])
-            if not isinstance(editable, list) or not editable or set(editable) - allowed:
+                if source["source_id"] not in current:
+                    raise ValueError("A governing source is unavailable.")
+                master = current[source["source_id"]]
+                source.update(master_text=master["text"], master_sha256=master["master_sha256"],
+                              source_path=master["source_path"], before_text=source["text"])
+                for key in ("diff", "master_diff", "master_diff_rows"):
+                    source.pop(key, None)
+            editable = payload.get("source_ids", [s["source_id"] for s in sources])
+            if not isinstance(editable, list) or not editable or set(editable) - set(current):
                 raise ValueError("Choose existing governing templates to edit.")
             direction = payload.get("direction", "")
             if not isinstance(direction, str) or len(direction) > 20000:
                 raise ValueError("Direction must be text of at most 20,000 characters.")
-            reps, omitted = self.representatives(run, payload.get("representatives"))
-            if not reps:
-                raise ValueError("Select at least one representative image, or complete Luna ranking first.")
-            model = str(payload.get("model") or "codex:" + self.app.config.codex_default_model.removeprefix("codex:"))
             manual = payload.get("replacements")
-            if manual is not None and (not isinstance(manual, dict) or set(manual) - set(editable)):
-                raise ValueError("Manual edits must name the chosen source templates.")
+            if manual is not None:
+                if not isinstance(manual, dict) or set(manual) - set(editable):
+                    raise ValueError("Manual edits must name the chosen sources.")
+                for source in sources:
+                    if source["source_id"] in manual:
+                        self._validate_text(source["text"], manual[source["source_id"]])
+                        source["text"] = manual[source["source_id"]]
+            model = str(payload.get("model") or "codex:" + self.app.config.codex_default_model.removeprefix("codex:"))
             if manual is None:
                 from zet.services.ai_model_catalog_service import AIModelCatalogService
-                AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config).validate(model, required=["vision"])
-            evidence_dir = directory / "evidence" / revision_id
-            evidence_dir.mkdir(parents=True, exist_ok=False)
-            for item in reps:
-                source = Path(item["image_path"])
-                target = evidence_dir / f"{item['view']}_{item['candidate_id']}{source.suffix}"
-                shutil.copy2(source, target)
-                item.update(image_path=str(target), sha256=hashlib.sha256(target.read_bytes()).hexdigest())
-                candidate = next(c for c in run["candidates"] if c["candidate_id"] == item["candidate_id"])
-                item["prompt"] = (candidate.get("render_input") or {}).get("prompt") or candidate.get("prompt") or workflow.prompt_improvement._saved_prompt(run, item["view"])
-                item["reference_inputs"] = [{k: ref.get(k) for k in ("role", "label", "view", "candidate_id", "notes")}
-                                            for ref in (candidate.get("render_input") or {}).get("references", candidate.get("reference_images") or [])]
-                source_map = Path(run["root"]) / "prompts" / item["view"] / "Prompt_Source_Map.json"
-                item["source_map"] = []
-                if source_map.is_file():
-                    provenance = self._read(source_map)
-                    for fragment in provenance.get("fragments", []):
-                        compact = {key: fragment[key] for key in ("source_kind", "source_path", "section_name", "json_pointer", "placeholder", "editable") if key in fragment}
-                        if compact not in item["source_map"]:
-                            item["source_map"].append(compact)
-                hashes = Path(run["root"]) / "prompts" / item["view"] / "Prompt_Source_Hashes.json"
-                item["compiled_source_versions"] = self._read(hashes).get("sources", []) if hashes.is_file() else []
-            view_config = self.project_root / "Config" / "Prompt_View_Text.json"
-            view_context = json.loads(view_config.read_text(encoding="utf-8")).get("views", {})
-            reviews = deepcopy(run.get("view_reviews") or {})
-            for source in sources:
-                source["before_text"] = source["text"]
-                source.pop("diff", None)
-                source.pop("master_diff", None)
-                source.pop("master_diff_rows", None)
-            record = {"version": 1, "universe_id": self.app.universe_id, "pipeline": pipeline, "run_id": run_id,
-                      "revision_id": revision_id, "parent_revision_id": parent.get("revision_id", ""), "created_at": _now(),
-                      "status": "PROPOSING", "direction": direction, "model": model, "source_ids": editable,
-                      "sources": sources, "representatives": reps, "omitted_views": omitted, "observations": reviews,
-                      "reference_recipes": deepcopy(run.get("view_reference_recipes") or {}),
-                      "compiler_guidance": compiler_guidance(), "replacements": manual, "summary": "", "error": ""}
-            record["view_configuration"] = {item["view"]: view_context.get(item["view"], {}) for item in reps}
+                AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config).validate(model, required=["text"])
+            rid = uuid4().hex
             owner_key = {"body-reference": "local_body_reference_run_id", "head-image": "local_head_image_run_id"}.get(pipeline, "local_character_asset_run_id")
-            record["owner"] = {owner_key: run_id, "pipeline": pipeline, "run_id": run_id, "revision_id": revision_id,
-                               "character": run["character"], "phase": run["phase"], "costume": costume}
-            self._write(directory / "revisions" / f"{revision_id}.json", record)
+            record = {"version": 2, "revision_id": rid, "parent_revision_id": parent.get("revision_id", ""),
+                "universe_id": self.app.universe_id, "pipeline": pipeline, "run_id": run_id, "created_at": _now(),
+                "status": "PROPOSING", "model": model, "direction": direction, "source_ids": editable,
+                "sources": sources, "representatives": [], "observations": {}, "findings": [], "selected_ids": [],
+                "compiler_guidance": compiler_guidance(), "manual": manual is not None, "summary": "", "error": "",
+                "owner": {owner_key: run_id, "pipeline": pipeline, "run_id": run_id, "revision_id": rid,
+                    "character": run["character"], "phase": run["phase"], "costume": costume}}
+            self._write(directory / "revisions" / f"{rid}.json", record)
+            from zet.services.local_image_pipeline_policy import mutate_local_run_state
+            def reviewing(state):
+                flow = state["character_progression"]
+                if flow["stage"] < 0:
+                    flow["accepted_revision_id"] = ""
+            mutate_local_run_state(Path(run["root"]), reviewing)
         from zet.services.ai_workflow_service import AIWorkflowService
-        AIWorkflowService(self.app).submit(self._propose_job, [pipeline, run_id, costume, revision_id], service="template_revision",
-            key="template_" + revision_id, owner=record["owner"])
+        AIWorkflowService(self.app).submit(self._review_job, [pipeline, run_id, costume, rid],
+            service="template_revision", key="template_" + rid, owner=record["owner"])
+        return self.detail(pipeline, run_id, costume, rid)
+
+    def _review_job(self, pipeline, run_id, costume, revision_id):
+        workflow, run, directory = self._load(pipeline, run_id, costume)
+        path = directory / "revisions" / f"{revision_id}.json"
+        record = self._record(directory, revision_id)
+        if record["status"] in {"REVIEW_READY", "READY", "FAILED"}:
+            return
+        try:
+            from zet.services.local_prompt_preview_service import LocalPromptPreviewService
+            if "compiled_views" not in record:
+                with file_lock(Path(run["root"]) / "state.lock"):
+                    if not path.is_file():
+                        return
+                    record["compiled_views"] = LocalPromptPreviewService(workflow).compile(run, record["sources"], directory / "compiled" / revision_id)
+                    self._write(path, record)
+            if "answer" not in record:
+                properties = {key: {"type": "string"} for key in ("source_id", "before", "after", "rationale")}
+                properties["views"] = {"type": "array", "items": {"type": "string"}}
+                schema = {"type": "object", "properties": {"summary": {"type": "string"},
+                    "findings": {"type": "array", "items": {"type": "object", "properties": properties,
+                        "required": list(properties), "additionalProperties": False}}},
+                    "required": ["summary", "findings"], "additionalProperties": False}
+                prompt = ("Analyze ONLY the supplied governing template text and compiled prompts. No image analysis. "
+                    "Check spelling, typos, unclear or contradictory wording and continuity across all eight views. "
+                    "Respect intentional asymmetry, angle and occlusion. Propose small independently selectable corrections. "
+                    "Each before must be an exact unique nonempty substring of one editable source, after its replacement. "
+                    "Cite affected views and explain the problem. Do not invent design details or change intent. "
+                    "Preserve markers, placeholders and reference order. Report compiler/config issues in the summary, "
+                    "never change unlisted sources. Empty findings is valid. Operator instructions take precedence.\n"
+                    + record["compiler_guidance"] + "\nOperator: " + record["direction"]
+                    + "\nEditable source IDs: " + json.dumps(record["source_ids"])
+                    + "\nSources: " + json.dumps([{k: s[k] for k in ("source_id", "text")} for s in record["sources"]], ensure_ascii=False)
+                    + "\nCompiled prompts: " + json.dumps(record["compiled_views"], ensure_ascii=False))
+                if record["manual"]:
+                    answer = {"summary": "Manual child revision; review and accept the compiled text.", "findings": []}
+                else:
+                    answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
+                        record["model"], "", prompt, schema, [], task_type="character_prompt_review",
+                        workflow=pipeline, owner=record["owner"])
+                    record["runtime"] = runtime
+                record["answer"] = answer
+            sources = {s["source_id"]: s for s in record["sources"]}
+            findings = []
+            for index, finding in enumerate(record["answer"]["findings"]):
+                source = sources.get(finding["source_id"])
+                if not source or finding["source_id"] not in record["source_ids"]:
+                    raise ValueError("Correction names an unapproved source.")
+                before = finding["before"]
+                if not before or source["text"].count(before) != 1:
+                    raise ValueError("Correction text must match one unique source location; analyze again.")
+                self._validate_text(source["text"], source["text"].replace(before, finding["after"], 1))
+                findings.append({**finding, "id": str(index + 1)})
+            record.update(status="REVIEW_READY", findings=findings, summary=record["answer"]["summary"], completed_at=_now())
+            with file_lock(Path(run["root"]) / "state.lock"):
+                if not path.is_file():
+                    return
+                self._write(path, record)
+        except Exception as exc:
+            from zet.services.storage_health_service import pause_on_storage_error
+            pause_on_storage_error(self.app.config, exc)
+            record.update(status="FAILED", error=str(exc), completed_at=_now())
+            with file_lock(Path(run["root"]) / "state.lock"):
+                if not path.is_file():
+                    return
+                self._write(path, record)
+
+    def decisions(self, pipeline, run_id, revision_id, payload, costume=""):
+        _, _, directory = self._load(pipeline, run_id, costume)
+        with file_lock(directory / "revisions.lock"):
+            record = self._record(directory, revision_id)
+            ids = payload.get("selected_ids", [])
+            allowed = {f["id"] for f in record.get("findings", [])}
+            if record["status"] != "REVIEW_READY" or not isinstance(ids, list) or set(ids) - allowed:
+                raise ValueError("Choose corrections from the completed prompt review.")
+            record["selected_ids"] = list(dict.fromkeys(ids))
+            self._write(directory / "revisions" / f"{revision_id}.json", record)
         return self.detail(pipeline, run_id, costume, revision_id)
+
+    def accept(self, pipeline, run_id, revision_id, payload, costume=""):
+        workflow, run, directory = self._load(pipeline, run_id, costume)
+        with file_lock(directory / "revisions.lock"):
+            record = self._record(directory, revision_id)
+            ids = payload.get("selected_ids", record.get("selected_ids", []))
+            if record.get("accepted_revision_id"):
+                if ids != record.get("selected_ids", []):
+                    raise ValueError("This review was accepted with different choices. Create a child review.")
+                return self.detail(pipeline, run_id, costume, record["accepted_revision_id"])
+            if record["status"] != "REVIEW_READY" or not isinstance(ids, list) or set(ids) - {f["id"] for f in record["findings"]}:
+                raise ValueError("Complete prompt analysis before accepting its corrections.")
+            live = {s["source_id"]: s for s in self._sources(workflow, run)}
+            sources = deepcopy(record["sources"])
+            for source in sources:
+                if live.get(source["source_id"], {}).get("master_sha256") != source["master_sha256"]:
+                    raise ValueError("Governing source changed since analysis; analyze again before accepting.")
+                original = source["text"]
+                edits = []
+                for finding in record["findings"]:
+                    if finding["id"] in ids and finding["source_id"] == source["source_id"]:
+                        start = original.index(finding["before"])
+                        edits.append((start, start + len(finding["before"]), finding["after"]))
+                edits.sort()
+                if any(left[1] > right[0] for left, right in zip(edits, edits[1:])):
+                    raise ValueError("Selected corrections overlap; choose one or request a revised analysis.")
+                for start, end, after in reversed(edits):
+                    source["text"] = source["text"][:start] + after + source["text"][end:]
+                self._validate_text(original, source["text"])
+            child_id = uuid4().hex
+            from zet.services.local_prompt_preview_service import LocalPromptPreviewService
+            compiled = LocalPromptPreviewService(workflow).compile(run, sources, directory / "compiled" / child_id)
+            child = {**deepcopy(record), "revision_id": child_id, "parent_revision_id": revision_id,
+                "status": "READY", "sources": sources, "compiled_views": compiled, "created_at": _now(),
+                "selected_ids": ids, "accepted_at": _now(), "findings": []}
+            child["owner"] = {**record["owner"], "revision_id": child_id}
+            self._write(directory / "revisions" / f"{child_id}.json", child)
+            self._write(directory / "active.json", {"revision_id": child_id, "updated_at": _now()})
+            record.update(accepted_revision_id=child_id, selected_ids=ids)
+            self._write(directory / "revisions" / f"{revision_id}.json", record)
+            from zet.services.local_character_progression_service import accept_prompts
+            accept_prompts(Path(run["root"]), child_id)
+        return self.detail(pipeline, run_id, costume, child_id)
 
     @staticmethod
     def _prompt(record):
@@ -358,6 +462,11 @@ class LocalTemplateRevisionService:
                 record = self._record(directory, revision_id)
                 if record["status"] != "READY":
                     raise ValueError("Compile the revision successfully before trying it.")
+            if run.get("character_progression"):
+                if not revision_id or not record.get("accepted_at"):
+                    raise ValueError("Analyze and accept a prompt version before using it in this staged batch.")
+                from zet.services.local_character_progression_service import accept_prompts
+                accept_prompts(Path(run["root"]), revision_id)
             self._write(directory / "active.json", {"revision_id": revision_id, "updated_at": _now()})
         return self.detail(pipeline, run_id, costume, revision_id)
 

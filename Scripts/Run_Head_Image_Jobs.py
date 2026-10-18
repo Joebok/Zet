@@ -24,6 +24,7 @@ from Scripts.Job_File_Utils import (
 )
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
+    prompt_preview_compiler,
     job_get,
     load_body_reference_section_data,
     load_bundle,
@@ -82,6 +83,7 @@ def _local_source_rules(rules: str, *, apply_phase_changes: bool = True) -> str:
     return "\n".join(lines)
 
 
+@prompt_preview_compiler
 def compile_head_image_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
     pipeline_mode: str = "traditional", universe_root: str | Path | None = None,

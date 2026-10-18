@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query, Request
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse
 from starlette.background import BackgroundTask
 
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
@@ -19,6 +19,10 @@ def create_local_character_asset_pipeline_router(
 ) -> APIRouter:
     router = APIRouter()
     root = Path(project_root)
+
+    @router.get("/local-character-refinement", response_class=HTMLResponse)
+    def refinement_page():
+        return (root / "zet/web/templates/local_character_refinement.html").read_text(encoding="utf-8")
 
     def service(pipeline: str) -> LocalImagePipelineWorkflowService:
         return LocalImagePipelineWorkflowService(app_factory(), root, pipeline)
@@ -66,6 +70,25 @@ def create_local_character_asset_pipeline_router(
         def action(_pipeline: str, name: str, **args: Any):
             return service(_pipeline).action(name, **args)
 
+        @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/refinement")
+        def open_refinement(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "refinement_open", run_id=run_id, view=view, costume=costume))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/refinements/{{session_id}}")
+        def refinement_detail(run_id: str, session_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "refinement_detail", run_id=run_id, session_id=session_id, costume=costume))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/refinements/{{session_id}}/{{operation}}")
+        def refinement_action(run_id: str, session_id: str, operation: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+            if operation not in {"analyze", "edit", "retry", "adopt"}:
+                raise HTTPException(status_code=404, detail="Unknown refinement action.")
+            return call(lambda: action(_pipeline, "refinement_" + operation, run_id=run_id, session_id=session_id, costume=costume, payload=payload))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/refinements/{{session_id}}/images/{{attempt_id}}")
+        def refinement_image(run_id: str, session_id: str, attempt_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            path = call(lambda: action(_pipeline, "refinement_image_path", run_id=run_id, session_id=session_id, attempt_id=attempt_id, costume=costume), missing=404)
+            return FileResponse(path)
+
         @router.post(f"{prefix}/preview")
         def preview(payload: dict[str, Any] = Body(...), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "preview", payload=payload))
@@ -89,12 +112,10 @@ def create_local_character_asset_pipeline_router(
 
         @router.post(f"{prefix}/runs/{{run_id}}/start")
         def start(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
-            current = call(lambda: action(_pipeline, "detail", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""), missing=404)
-            if current.get("status") != "QUEUED":
-                raise HTTPException(status_code=409, detail="Only a queued local image batch can be started.")
             instance = service(_pipeline)
+            result = call(lambda: instance.action("start", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""))
             submit_local_pipeline_task(instance.execute, run_id, costume=costume if _pipeline == "costume-dressing" else "")
-            return {"started": True, "run_id": run_id}
+            return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/slots")
         def generate_slots(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
@@ -213,6 +234,14 @@ def create_local_character_asset_pipeline_router(
         def propose_template_revision(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "template_revision_start", run_id=run_id, costume=costume, payload=payload))
 
+        @router.put(f"{prefix}/runs/{{run_id}}/template-revisions/{{revision_id}}/decisions")
+        def template_decisions(run_id: str, revision_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "template_revision_decisions", run_id=run_id, costume=costume, revision_id=revision_id, payload=payload))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/template-revisions/{{revision_id}}/accept")
+        def accept_template_review(run_id: str, revision_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "template_revision_accept", run_id=run_id, costume=costume, revision_id=revision_id, payload=payload))
+
         @router.post(f"{prefix}/runs/{{run_id}}/template-revisions/activate")
         def activate_template_revision(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "template_revision_activate", run_id=run_id, costume=costume,
@@ -257,9 +286,9 @@ def create_local_character_asset_pipeline_router(
             return call(lambda: action(_pipeline, "unlock_view", character=character, phase=phase, view=view, costume=costume if _pipeline == "costume-dressing" else ""))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/proceed")
-        def proceed(run_id: str, view: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
+        def proceed(run_id: str, view: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
-            result = call(lambda: instance.action("run_unstarted_views", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""))
+            result = call(lambda: instance.action("run_unstarted_views", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else "", payload=payload))
             target_views = set(result.get("target_views") or [])
             if target_views:
                 submit_local_pipeline_task(instance.execute, run_id, views=target_views, costume=costume if _pipeline == "costume-dressing" else "")

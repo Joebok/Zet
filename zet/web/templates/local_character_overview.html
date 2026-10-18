@@ -48,6 +48,7 @@
           const status=make('p','state'+(slot.state==='ERROR'?' error':''),slot.message||({IDLE:'Ready to generate.',QUEUED:'Queued.',RUNNING:`Working on ${slot.pipeline||'local pipeline'}…`,CANCELLED:'Stopped. Start again to retry.'}[slot.state]||slot.state));card.append(status);
           const actions=make('div','actions');if(slot.state==='RUNNING'||slot.state==='QUEUED'){const stop=make('button','', 'Stop');stop.dataset.action='stop';stop.dataset.path=slotPath(slot,'stop');actions.append(stop)}
           else if(!slot.image_url){const start=make('button','primary',slot.state==='ERROR'||slot.state==='CANCELLED'?'Try again':'Autogenerate');start.dataset.action='start';start.dataset.path=slotPath(slot);actions.append(start)}
+          if(slot.run_id&&slot.pipeline){const review=make('a','','Review batch');const params=new URLSearchParams({page:'local-'+slot.pipeline,local_batch:slot.run_id,character:row.character,phase:row.phase});if(slot.pipeline==='costume-dressing')params.set('local_costume',slot.name);review.href='/?'+params;actions.append(review)}
           const report=make('button','','Create task');report.type='button';report.dataset.reportSlot=card.dataset.taskSlot;actions.append(report);
           card.append(actions);slots.append(card)
         }

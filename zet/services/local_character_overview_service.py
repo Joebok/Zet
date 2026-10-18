@@ -32,6 +32,12 @@ def submit_local_pipeline_task(function, *args: Any, **kwargs: Any):
     return _JOBS.submit(function, *args, **kwargs)
 
 
+class CharacterStagePause(ValueError):
+    def __init__(self, run):
+        self.run = run
+        super().__init__("Open the character batch to review prompts, select/refine its images and Continue explicitly.")
+
+
 class LocalCharacterOverviewError(ValueError):
     pass
 
@@ -110,6 +116,7 @@ class LocalCharacterOverviewService:
                         "pipeline": str(job.get("pipeline") or ""),
                         "message": str(job.get("message") or ""),
                         "job_id": str(job.get("job_id") or ""),
+                        "run_id": str(job.get("run_id") or ""),
                         "image_url": (f"/api/local/character-overview/image/{self._safe(character)}/{self._safe(phase)}/{self._safe(costume.name)}?v={record['image_sha256']}" if record else ""),
                         "image_sha256": str((record or {}).get("image_sha256") or ""),
                     })
@@ -353,6 +360,8 @@ class LocalCharacterOverviewService:
         kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
         if selected:
             run = adapter.detail(selected["run_id"], **kwargs) if pipeline in {"character-assembly", "costume-dressing"} else adapter.detail(selected["run_id"])
+            if run.get("character_progression"):
+                raise CharacterStagePause(run)
             if not (run.get("selected_views") or {}).get("FRONT"):
                 if pipeline == "body-reference":
                     adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], autogenerate=True)
@@ -375,6 +384,8 @@ class LocalCharacterOverviewService:
         owns_run = run is None
         if run is None:
             run = self._create_batch(pipeline, character, phase, costume)
+        if run.get("character_progression"):
+            raise CharacterStagePause(run)
         run_id = str(run["run_id"])
         self._update(self._job_path(character, phase, costume), job["job_id"], run_id=run_id, owns_run=owns_run)
         ranking = (run.get("rankings") or {}).get("FRONT") or {}
@@ -434,6 +445,10 @@ class LocalCharacterOverviewService:
                 try:
                     self._choose_and_lock(job, pipeline)
                 except Exception as exc:
+                    if isinstance(exc, CharacterStagePause):
+                        self._update(path, job_id, status="STOPPED", run_id=exc.run["run_id"],
+                            message=str(exc), error="")
+                        return
                     from zet.services.storage_health_service import storage_health
                     if storage_health(self.app.config).check_error(exc):
                         return

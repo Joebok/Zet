@@ -1,5 +1,7 @@
 # Architectural decision records
 
+[0025 - Character prompt review, staged views and image refinement](0025-character-review-stages-and-refinement.md) records the text-only review gate, same-side stages, dedicated refinement and advisory reference changes.
+
 [0021 — Existing files admit local character image review](0021-file-based-local-image-availability.md)
 records file-based local batch availability and exact moved-universe path reads.
 

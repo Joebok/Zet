@@ -186,6 +186,8 @@ def decorate_local_pipeline_detail(run: dict[str, Any], pipeline: str) -> dict[s
         "remaining": counts["PENDING"] + counts["QUEUED"] + counts["RUNNING"] + counts["FAILED"],
     }
     result["pipeline_config"] = pipeline_page_config(pipeline)
+    from zet.services.local_character_progression_service import project
+    result = project(result)
     result["page_summary"] = local_pipeline_batch_summary(result)
     return result
 

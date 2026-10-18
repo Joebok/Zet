@@ -201,7 +201,11 @@ class AIQueueQueryService:
     def workflow_url(row, owner):
         from urllib.parse import urlencode
         params = {"task_universe": row.get("universe_id", "")}
-        if owner.get("narrative_story_id"):
+        if owner.get("character_refinement_session_id"):
+            return "/local-character-refinement?" + urlencode({"universe_id": row.get("universe_id", ""),
+                "pipeline": owner.get("character_refinement_pipeline_id", ""), "run_id": owner.get("run_id", ""),
+                "view": owner.get("view", ""), "costume": owner.get("costume", "")})
+        elif owner.get("narrative_story_id"):
             params.update(page="narrative", story=owner["narrative_story_id"], scene=owner.get("narrative_scene_id", ""), target=owner.get("narrative_target_id", ""))
         elif owner.get("session_id"):
             params.update(page="minor-characters", minor_character=owner["session_id"])

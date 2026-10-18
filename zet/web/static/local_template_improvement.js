@@ -1,8 +1,9 @@
 /* Local template versions and explicit cross-view references. */
 (() => {
   const host = document.getElementById("local-template-improvement");
+  const decisionDrafts = new Map();
   let context = null, data = null, loading = false, lastFetch = 0, serial = 0, selectedRevision = "", signature = "";
-  let direction, model, representatives, sourceChoices, history, result, message, active, proposalButton;
+  let direction, model, sourceChoices, history, result, message, active, proposalButton;
   const el = (tag, text = "", cls = "") => {
     const item = document.createElement(tag); item.textContent = text;
     if (cls) item.className = cls;
@@ -69,32 +70,22 @@
   function build() {
     host.replaceChildren();
     const summary = el("summary", "Improve governing templates"); host.append(summary);
-    host.append(el("p", "Choose one representative per view and describe the changes. Proposals are saved as versions; try a version with individual Generate / Regen before updating master templates.", "muted"));
+    host.append(el("p", "Review all eight compiled view prompts without images. Choose corrections, accept the batch version, then Continue to generate the next stage. Master updates remain separate.", "muted"));
     active = el("p"); host.append(active);
-    representatives = el("div", "", "template-representatives"); host.append(representatives);
     sourceChoices = el("div", "", "template-source-choices"); host.append(sourceChoices);
-    direction = field(host, "Targeted changes and consistency goals", el("textarea")); direction.rows = 4; direction.maxLength = 20000;
+    direction = field(host, "Prompt review instructions / refinement feedback", el("textarea")); direction.rows = 4; direction.maxLength = 20000;
     model = field(host, "Review model", el("input")); model.type = "text";
-    window.ZetModelPicker?.attach(model, { required: ["vision"], allowDefault: true });
+    window.ZetModelPicker?.attach(model, { required: ["text"], allowDefault: true });
     const actions = el("div", "", "button-row"); host.append(actions);
-    proposalButton = button(actions, "Propose template revision", async () => {
-      // Save visible observations first, including edits made since the last view save.
-      const initial = serial, captured = context;
-      for (const input of document.querySelectorAll("#local-pipeline-views textarea[data-view-observations]")) {
-        const view = input.dataset.viewObservations;
-        if (input.value === (captured.run.view_reviews?.[view]?.observations || "")) continue;
-        const params = captured.pipeline === "costume-dressing" ? `?costume=${encodeURIComponent(captured.run.costume || "")}` : "";
-        await request(`/api/local/${captured.pipeline}/runs/${encodeURIComponent(captured.run.run_id)}/views/${encodeURIComponent(view)}/observations${params}`,
-          { method: "PUT", body: JSON.stringify({ observations: input.value }) });
-        if (serial !== initial) return;
-      }
+    proposalButton = button(actions, "Analyze prompts", async () => {
+      const initial = serial;
       const source_ids = [...sourceChoices.querySelectorAll("input:checked")].map(input => input.value);
       if (!source_ids.length) throw new Error("Choose at least one source template to edit.");
       const payload = { direction: direction.value, model: model.value, source_ids,
-        representatives: Object.fromEntries([...representatives.querySelectorAll("select")].map(select => [select.dataset.view, select.value])) };
+        parent_revision_id: data?.revision?.status === "READY" ? data.revision.revision_id : data?.active_revision_id || undefined };
       const value = await request(endpoint(), { method: "POST", body: JSON.stringify(payload) });
       if (serial !== initial) return;
-      selectedRevision = value.revision.revision_id; data = value; signature = ""; renderData(); status("Proposal saved. You can leave this page while it runs.");
+      selectedRevision = value.revision.revision_id; data = value; signature = ""; renderData(); await context.reload(); status("Text analysis started. You can leave this page while it runs.");
     });
     button(actions, "Refresh revisions", refresh);
     history = field(host, "Saved versions", el("select"));
@@ -102,46 +93,15 @@
     message = el("p", "", "action-message"); message.setAttribute("role", "status"); host.append(message);
     result = el("section", "", "template-revision-result"); host.append(result);
   }
-  function renderRepresentatives() {
-    const saved = Object.fromEntries([...representatives.querySelectorAll("select")].map(select => [select.dataset.view, select.value]));
-    representatives.replaceChildren(el("h3", "Representative images"));
-    for (const view of context.run.views || []) {
-      const row = el("div", "", "template-representative");
-      const select = el("select"); select.dataset.view = view;
-      const auto = data.representatives.find(item => item.view === view);
-      select.add(new Option(auto ? `Automatic: ${auto.candidate_id} (${auto.reason})` : "Automatic: no selected image or current Luna #1", ""));
-      select.add(new Option("Exclude this view", "skip"));
-      for (const candidate of context.run.candidates || []) {
-        if (candidate.view === view && candidate.image_path && candidate.human_review?.decision !== "reject") select.add(new Option(candidate.candidate_id, candidate.candidate_id));
-      }
-      field(row, view.replaceAll("_", " "), select);
-      if ([...select.options].some(option => option.value === saved[view])) select.value = saved[view];
-      const image = el("img"); image.alt = `${view} representative`; image.loading = "lazy";
-      const updateImage = () => {
-        const cid = select.value === "skip" ? "" : select.value || auto?.candidate_id;
-        image.hidden = !cid;
-        if (cid) {
-          const params = new URLSearchParams({ universe_id: context.universe });
-          if (context.pipeline === "costume-dressing") params.set("costume", context.run.costume || "");
-          image.src = `/api/local/${context.pipeline}/runs/${encodeURIComponent(context.run.run_id)}/images/${encodeURIComponent(cid)}?${params}`;
-        }
-      };
-      select.addEventListener("change", updateImage); updateImage(); row.append(image); representatives.append(row);
-    }
-  }
   function renderData() {
     if (!data) return;
-    active.textContent = data.active_revision_id ? `Trial version: ${data.active_revision_id.slice(0, 8)}. New individual renders use its templates.` : "New renders use current master templates.";
+    active.textContent = data.active_revision_id ? `Trial version: ${data.active_revision_id.slice(0, 8)}. New renders use its frozen templates.` : "New renders use current master templates.";
     if (!sourceChoices.childElementCount) {
       sourceChoices.append(el("h3", "Templates the proposal may change"));
       data.sources.forEach((source, index) => {
-        const check = el("input"); check.type = "checkbox"; check.value = source.source_id; check.checked = index === 0;
+        const check = el("input"); check.type = "checkbox"; check.value = source.source_id; check.checked = true;
         const label = el("label"); label.append(check, document.createTextNode(source.source_id)); sourceChoices.append(label);
       });
-    }
-    const repsSignature = JSON.stringify([data.representatives, (context.run.candidates || []).map(c => [c.candidate_id, c.image_path, c.human_review?.decision])]);
-    if (representatives.dataset.signature !== repsSignature && !representatives.contains(document.activeElement)) {
-      renderRepresentatives(); representatives.dataset.signature = repsSignature;
     }
     history.replaceChildren(new Option("Latest version", ""));
     for (const item of data.history) history.add(new Option(`${item.revision_id.slice(0, 8)} · ${item.status}${item.promoted_at ? " · promoted" : ""}`, item.revision_id));
@@ -153,12 +113,54 @@
     if (result.querySelector("textarea[data-dirty='true']") && result.dataset.revision === revision?.revision_id) return;
     signature = nextSignature; result.replaceChildren(); result.dataset.revision = revision?.revision_id || "";
     if (!revision) return;
+    if (["PROPOSING", "VALIDATING"].includes(revision.status)) status("Analyzing text; no images are sent.");
     result.append(el("h3", `Version ${revision.revision_id.slice(0, 8)} · ${revision.status}`), el("p", revision.summary || "Preparing proposal…"));
     if (revision.parent_revision_id) result.append(el("p", `Based on ${revision.parent_revision_id.slice(0, 8)}`, "muted"));
     if (revision.error) result.append(el("p", revision.error, "error"));
     if (revision.promotion?.status === "FAILED" || revision.promotion?.status === "APPLYING") result.append(el("p", `Master update ${revision.promotion.status}: ${revision.promotion.error || "interrupted or in progress; review before retrying"}`, "error"));
     if (revision.recommendations) result.append(el("p", revision.recommendations));
     const toolbar = el("div", "", "button-row"); result.append(toolbar);
+    if (revision.version === 2 && revision.status === "REVIEW_READY") {
+      const findings = el("fieldset"); findings.append(el("legend", "Proposed corrections — check Yes to apply; unchecked means No"));
+      let saving = Promise.resolve();
+      const chosen = () => [...findings.querySelectorAll("input:checked")].map(input => input.value);
+      for (const finding of revision.findings || []) {
+        const row = el("section", "", "template-correction");
+        const label = el("label"); const check = el("input"); check.type = "checkbox"; check.value = finding.id;
+        check.checked = (decisionDrafts.get(revision.revision_id) || revision.selected_ids || []).includes(finding.id);
+        label.append(check, document.createTextNode(`Yes — ${finding.rationale}`));
+        row.append(label, el("p", `${finding.source_id} · ${finding.views.join(", ")}`, "muted"),
+          el("p", "Before"), el("pre", finding.before), el("p", "After"), el("pre", finding.after));
+        check.addEventListener("change", () => {
+          const selected_ids = chosen();
+          decisionDrafts.set(revision.revision_id, selected_ids);
+          saving = saving.catch(() => {}).then(() => request(endpoint(`/${revision.revision_id}/decisions`),
+            { method: "PUT", body: JSON.stringify({ selected_ids }) }));
+          void saving.catch(error => status(error.message, true));
+        });
+        findings.append(row);
+      }
+      if (!revision.findings.length) findings.append(el("p", "No corrections proposed. You can accept this version."));
+      result.append(findings);
+      const accept = async () => {
+        await saving;
+        const initial = serial;
+        const value = await request(endpoint(`/${revision.revision_id}/accept`),
+          { method: "POST", body: JSON.stringify({ selected_ids: chosen() }) });
+        if (serial !== initial) return;
+        data = value; selectedRevision = value.revision.revision_id; signature = "";
+        renderData(); await context.reload(); status("Prompt version accepted. Use Continue when ready to generate.");
+        return value;
+      };
+      button(toolbar, "Accept selected corrections", accept);
+      button(toolbar, "Apply selected and analyze again", async () => {
+        const accepted = await accept(); if (!accepted) return;
+        const value = await request(endpoint(), { method: "POST", body: JSON.stringify({
+          parent_revision_id: accepted.revision.revision_id, direction: direction.value, model: model.value,
+          source_ids: [...sourceChoices.querySelectorAll("input:checked")].map(input => input.value) }) });
+        data = value; selectedRevision = value.revision.revision_id; signature = ""; renderData(); await context.reload();
+      });
+    }
     const switchVersion = async id => {
       const initial = serial;
       const value = await request(endpoint("/activate"), { method: "POST", body: JSON.stringify({ revision_id: id, expected_active: data.active_revision_id }) });
@@ -166,8 +168,8 @@
       data = value; signature = ""; renderData(); await context.reload(); status(id ? "Trial version active. Generate or regenerate an individual image to try it." : "Current master templates restored for new renders.");
     };
     const tryButton = button(toolbar, "Use for new renders", () => switchVersion(revision.revision_id));
-    tryButton.disabled = revision.status !== "READY" || revision.revision_id === data.active_revision_id;
-    const masters = button(toolbar, "Use current masters", () => switchVersion("")); masters.disabled = !data.active_revision_id;
+    tryButton.disabled = revision.status !== "READY" || (revision.revision_id === data.active_revision_id && !context.run.progression?.prompt_review_required);
+
     const changed = revision.sources.filter(source => source.text !== source.master_text);
     const promote = button(toolbar, "Update master templates…", async () => {
       if (!window.confirm(`Update these master templates with version ${revision.revision_id.slice(0, 8)}?\n\n${changed.map(source => source.source_id).join("\n")}\n\nThis affects future compilations in other batches. Original text remains in the saved version.`)) return;
@@ -198,8 +200,7 @@
       if (!Object.keys(replacements).length) throw new Error("Edit a proposed template before saving a new version.");
       const initial = serial;
       const value = await request(endpoint(), { method: "POST", body: JSON.stringify({ parent_revision_id: revision.revision_id,
-        direction: direction.value || "Manual template revision", replacements, source_ids: Object.keys(replacements),
-        representatives: Object.fromEntries(revision.representatives.map(item => [item.view, item.candidate_id])) }) });
+        direction: direction.value || "Manual template revision", replacements, source_ids: Object.keys(replacements) }) });
       if (initial !== serial) return;
       selectedRevision = value.revision.revision_id; data = value; signature = ""; result.replaceChildren(); renderData(); status("Edited version saved; checking compilation.");
     });
@@ -208,9 +209,7 @@
       for (const view of revision.compiled_views) { const details = el("details"); details.append(el("summary", view.view), el("pre", view.prompt)); compiled.append(details); }
       result.append(compiled);
     }
-    const evidence = el("details"); evidence.append(el("summary", "Saved evidence and direction"), el("p", revision.direction),
-      el("p", revision.representatives.map(item => `${item.view}: ${item.candidate_id} (${item.reason})`).join(" · ")),
-      el("pre", JSON.stringify(revision.observations, null, 2))); result.append(evidence);
+
   }
   async function refresh() {
     if (!context || loading || !host.open) return;
@@ -230,6 +229,7 @@
       serial++; loading = false; lastFetch = 0; data = null; selectedRevision = ""; signature = "";
       context = { key, run, pipeline, reload, universe }; build();
     } else context = { ...context, run, reload };
+    if (run?.progression?.prompt_review_required) host.open = true;
     if (run && host.open && Date.now() - lastFetch > 1500) void refresh().catch(error => status(error.message, true));
   }
   host.addEventListener("toggle", () => { if (host.open) void refresh().catch(error => status(error.message, true)); });

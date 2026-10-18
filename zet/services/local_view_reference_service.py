@@ -46,9 +46,18 @@ def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
     if mode not in {"default", "none", "selected_view"}:
         raise ValueError("Reference mode must be default, none or selected_view.")
     recipe = {"mode": mode, "source_view": str(payload.get("source_view") or "").upper() if mode == "selected_view" else ""}
+    if run.get("character_progression"):
+        from zet.services.local_prompt_preview_service import PREDECESSORS
+        source = recipe["source_view"]
+        valid = view == "BACK" and source in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
+        valid = valid or view != "BACK" and source == PREDECESSORS.get(view) and bool(source)
+        if recipe["mode"] != "selected_view" or not valid:
+            raise ValueError("Staged batches use their selected same-side predecessor; BACK may use either rear quarter.")
     selected_reference(run, view, recipe)
     def update(state):
         state.setdefault("view_reference_recipes", {})[view] = recipe
+        if view == "BACK" and state.get("character_progression"):
+            state["character_progression"]["back_reference"] = recipe["source_view"]
     mutate_local_run_state(Path(run["root"]), update)
     return recipe
 

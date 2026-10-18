@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import re
 from copy import deepcopy
+from contextvars import ContextVar
+from functools import wraps
 
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Library_Paths import character_root, resolve_library_path
@@ -43,6 +45,26 @@ def with_universe_art_style(ir: dict, universe_root: str | Path | None) -> dict:
     return result
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_TEXT_PREVIEW = ContextVar("character_text_preview", default=False)
+
+
+def prompt_preview_compiler(compile_function):
+    """Allow declared image roles only inside a non-renderable compiler preview."""
+    @wraps(compile_function)
+    def compile_prompt(*args, text_preview=False, **kwargs):
+        token = _TEXT_PREVIEW.set(text_preview)
+        try:
+            result = compile_function(*args, **kwargs)
+            if text_preview:
+                result.update(status="TEXT_PREVIEW", renderable=False)
+                manifest = Path(result["dependency_manifest"])
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+                data.update(text_preview=True, renderable=False)
+                manifest.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return result
+        finally:
+            _TEXT_PREVIEW.reset(token)
+    return compile_prompt
 
 
 def load_json(path: Path) -> dict:
@@ -471,6 +493,10 @@ def reference_by_role(reference_files: list[dict], role: str) -> dict:
 
 def validate_reference(reference: dict, role: str, project_root: Path = PROJECT_ROOT) -> Path:
     raw_path = str(reference.get("path") or "").strip()
+    if raw_path.startswith("declared:"):
+        if not _TEXT_PREVIEW.get():
+            raise TemplateCompileError("MISSING_REFERENCE", "Declared references are text previews, not render inputs.")
+        return Path(raw_path)
     if not raw_path:
         raise TemplateCompileError("MISSING_REFERENCE", f"Reference slot {role} has no path.")
     path = resolve_library_path(project_root, raw_path)

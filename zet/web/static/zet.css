@@ -5549,3 +5549,18 @@ dd {
 .local-pipeline-reference-recipe { padding: .7rem 0; }
 .local-pipeline-reference-recipe label { display: inline-grid; gap: .4rem; max-width: 100%; margin-right: .6rem; }
 @media (max-width: 850px) { .template-source-pair { grid-template-columns: minmax(0, 1fr); } }
+
+/* Dedicated character refinement and prompt corrections. */
+.character-refinement { max-width: 1440px; margin: 0 auto; padding: 24px; }
+.refinement-layout { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr); gap: 24px; align-items: start; }
+.refinement-layout > section { min-width: 0; }
+.refinement-layout label { display: block; margin: 12px 0; }
+.refinement-layout textarea { width: 100%; box-sizing: border-box; }
+#refine-image { display: block; width: 100%; max-height: 75vh; object-fit: contain; }
+#refine-image[hidden] { display: none; }
+#refine-comparisons { display: flex; flex-wrap: wrap; gap: 12px; }
+#refine-comparisons label { max-width: 150px; }
+#refine-comparisons img { display: block; width: 100%; max-height: 180px; object-fit: contain; }
+.template-correction { margin: 12px 0; padding: 12px; border: 1px solid var(--border, #888); border-radius: 8px; }
+.template-correction pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 850px) { .refinement-layout { grid-template-columns: 1fr; } .character-refinement { padding: 16px; } }

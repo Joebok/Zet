@@ -23,6 +23,7 @@ from Scripts.Job_File_Utils import (
 )
 from Scripts.Library_Paths import pipeline_root
 from zet.services.pipeline_compiler_support import (
+    prompt_preview_compiler,
     expected_output_for_job,
     job_get,
     load_bundle,
@@ -138,6 +139,7 @@ Reviewed At:
     )
 
 
+@prompt_preview_compiler
 def compile_character_assembly_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
     pipeline_mode: str = "traditional", universe_root: str | Path | None = None,

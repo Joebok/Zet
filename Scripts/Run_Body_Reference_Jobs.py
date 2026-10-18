@@ -25,6 +25,7 @@ from Scripts.Job_File_Utils import (
 from Scripts.Library_Paths import character_root
 from Scripts.Review_Prompt_Static import format_static_findings, load_checklist, review_prompt_text
 from zet.services.pipeline_compiler_support import (
+    prompt_preview_compiler,
     background_treatment_source_map,
     character_gender,
     expected_output_for_job,
@@ -159,6 +160,7 @@ Reviewed At:
     )
 
 
+@prompt_preview_compiler
 def compile_body_reference_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
     pipeline_mode: str = "traditional", universe_root: str | Path | None = None,

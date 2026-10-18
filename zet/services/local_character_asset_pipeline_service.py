@@ -276,14 +276,15 @@ class LocalCharacterAssetPipelineService:
                         + (f": {details}" if details else ".")
                     )
         front_count, other_count = render_count(payload.get("front_count"), 8), render_count(payload.get("other_count"), 4)
-        total = front_count + 7 * other_count
+        from zet.services.local_character_progression_service import planned_views
+        requested_views = planned_views(payload)
+        total = front_count + (len(requested_views) - 1) * other_count
         if front_count < 1 or other_count < 1 or total > 256:
             raise LocalCharacterAssetPipelineError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
         inputs, blocking_reasons = {}, []
         source_batches = payload.get("source_batches") or {}
         if not isinstance(source_batches, dict):
             raise LocalCharacterAssetPipelineError("Source batch choices must be an object keyed by source role.")
-        requested_views = ("FRONT",) if payload.get("front_only") else VIEWS
         for view in requested_views:
             resolved = {}
             try:
@@ -297,7 +298,7 @@ class LocalCharacterAssetPipelineService:
             blocking_reasons.append(f"Costume template not found: {costume_path}")
         return {"pipeline": self.pipeline, "pipeline_config": pipeline_page_config(self.pipeline),
                 "character": character, "phase": phase, "costume": costume,
-                "views": list(VIEWS), "front_count": front_count, "other_count": other_count,
+                "views": requested_views, "front_count": front_count, "other_count": other_count,
                 "candidate_count": total, "inputs": inputs, "front_only": bool(payload.get("front_only")),
                 "use_front_anchor": bool(payload.get("use_front_anchor", True)),
                 "front_anchor_required_for_other_views": bool(payload.get("use_front_anchor", True)),
@@ -367,7 +368,7 @@ class LocalCharacterAssetPipelineService:
         except (TypeError, ValueError) as exc:
             raise LocalCharacterAssetPipelineError("Every seed must be an integer.") from exc
         candidates, index = [], 0
-        for view in VIEWS:
+        for view in plan["views"]:
             for ordinal in range(1, (plan["front_count"] if view == "FRONT" else plan["other_count"]) + 1):
                 index += 1
                 candidates.append({"candidate_id": view_candidate_id(view, ordinal), "view": view, "ordinal": ordinal,
@@ -376,7 +377,7 @@ class LocalCharacterAssetPipelineService:
         spec = {"schema_version": 1, "review_version": 3, "kind": self.pipeline, "run_id": run_id,
                 "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
-                "costume": plan["costume"], "views": list(VIEWS), "front_count": plan["front_count"],
+                "costume": plan["costume"], "views": plan["views"], "front_count": plan["front_count"],
                 "other_count": plan["other_count"], "candidate_count": count, "sources": sources,
                 "source_batches": plan.get("source_batches") or {},
                 "use_front_anchor": plan["use_front_anchor"],
@@ -387,6 +388,8 @@ class LocalCharacterAssetPipelineService:
         self._write(root / "state.json", {"run_id": run_id, "status": "QUEUED", "updated_at": self._now(),
                                            "stop_requested": False, "front_anchor": None, "views_started": False,
                                            "candidates": {}, "selected_views": {}, "rankings": {}})
+        from zet.services.local_character_progression_service import enroll
+        enroll(root, plan["views"])
         return self.detail(run_id, plan["costume"])
 
     def _all_selected_views_locked(self, run: dict[str, Any]) -> bool:
@@ -501,6 +504,7 @@ class LocalCharacterAssetPipelineService:
                 }):
                     status = "COMPLETE"
                 result.append({
+                    "character_progression": state.get("character_progression"),
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
                     "costume": spec.get("costume", ""), "created_at": spec.get("created_at", ""),
@@ -679,6 +683,11 @@ class LocalCharacterAssetPipelineService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalCharacterAssetPipelineError(f"Unknown candidate: {candidate_id}")
+        from zet.services.local_character_progression_service import prepare_candidate
+        if run.get("character_progression"):
+            from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+            candidate = prepare_candidate(LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline), run, candidate)
+
         if not candidate.get("render_input") and candidate["view"] != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before generating other views.")
         root = Path(run["root"])
@@ -859,6 +868,12 @@ class LocalCharacterAssetPipelineService:
 
     def execute_run(self, run_id: str, *, views: set[str] | None = None, costume: str = "",
                     candidate_ids: set[str] | None = None, render_only: bool = False) -> None:
+        from zet.services.local_character_progression_service import execution_views
+        staged = self.detail(run_id, costume)
+        if staged.get("character_progression"):
+            views = execution_views(staged, views)
+            if not views:
+                return
         root = self._run_root(run_id, costume)
         try:
             with file_lock(root / "runner.lock", timeout=0):
@@ -1123,6 +1138,11 @@ class LocalCharacterAssetPipelineService:
     @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, costume: str = "", *, autogenerate: bool = False) -> dict[str, Any]:
         run, view = self.detail(run_id, costume), view.upper()
+        if run.get("character_progression"):
+            from zet.services.local_character_progression_service import select
+            from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+            return select(LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline), run, view, candidate_id)
+
         if view not in VIEWS:
             raise LocalCharacterAssetPipelineError(f"Unknown view: {view}")
         if not candidate_id:
@@ -1396,7 +1416,7 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError(f"Unknown view: {view}")
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.definition["asset_pipeline"], view, self._qualifier(costume))
         state = self._read(Path(run["root"]) / "state.json")
-        if view == "FRONT" and self._requires_front_anchor(run) and any(
+        if view == "FRONT" and not run.get("character_progression") and self._requires_front_anchor(run) and any(
             (state.get("selected_views") or {}).get(target) for target in VIEWS[1:]
         ):
             raise LocalCharacterAssetPipelineError("Clear or unlock downstream selections before rerunning FRONT.")
@@ -1478,6 +1498,7 @@ class LocalCharacterAssetPipelineService:
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 
+    @serialize_local_run_state
     def delete_run(self, run_id: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
         if run.get("status") in {"RUNNING", "STOPPING", "REEVALUATING"} and not run.get("interrupted"):

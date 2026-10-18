@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Character image refinement · Zet</title>
+  <link rel="stylesheet" href="/static/zet.css">
+  <script defer src="/static/ai_model_picker.js"></script>
+  <script defer src="/static/local_character_refinement.js"></script>
+</head>
+<body>
+  <main class="character-refinement">
+    <a id="refine-return" href="/">← Return to batch</a>
+    <h1 id="refine-title">Character image refinement</h1>
+    <p>Improve the image with targeted edits. Governing templates stay unchanged.</p>
+    <p id="refine-message" role="status" aria-live="polite"></p>
+    <div class="refinement-layout">
+      <section aria-label="Refinement image">
+        <label>Working attempt <select id="refine-attempt"></select></label>
+        <img id="refine-image" alt="Selected character image to refine" hidden>
+        <p id="refine-attempt-status"></p>
+        <div class="button-row"><button id="refine-use" type="button">Use this image</button><button id="refine-retry" type="button" hidden>Retry render</button></div>
+      </section>
+      <section aria-label="Refinement controls">
+        <fieldset id="refine-comparisons"><legend>Selected views to include in analysis</legend></fieldset>
+        <label>Analysis model <input id="refine-model" type="text" placeholder="Default analysis model"></label>
+        <button id="refine-analyze" type="button">Analyze image and continuity</button>
+        <section id="refine-analysis" aria-label="Suggested image corrections"></section>
+        <label>Targeted changes / feedback <textarea id="refine-feedback" rows="5" maxlength="24000"></textarea></label>
+        <button id="refine-edit" type="button">Generate refinement</button>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

@@ -309,6 +309,14 @@ class LocalRunAllRemainingService:
             image = Path(str(candidate.get("image_path") or ""))
             if not image.is_file() or image.stat().st_size <= 0:
                 missing_views.add(str(candidate.get("view") or ""))
+        if run.get("character_progression"):
+            from zet.services.local_character_progression_service import execution_views
+            allowed = execution_views(run)
+            missing_views.intersection_update(allowed or set())
+            if not missing_views:
+                self._set_batch(campaign_id, index, result="REVIEW_PENDING",
+                    message="Open the batch to accept prompts or select images and Continue to the next stage.")
+                return
         needs_anchor = pipeline in {"body-reference", "head-image"} or bool(run.get("use_front_anchor", True))
         if not run.get("front_anchor") and needs_anchor:
             missing_views.intersection_update({"FRONT"})

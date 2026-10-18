@@ -1,5 +1,14 @@
 # Local testing
 
+## Character prompt review and image refinement (2026-10-18)
+
+`npm.cmd run test:e2e` passed all four maintained scenarios in 48.9 seconds. S2 now supplies a prepared text-only prompt report, accepts the batch version and explicitly opens FRONT before its existing Assembly/Dressing render/select/lock task. Front-only runs use one seed per actual candidate. No maintained scenario or dependency was added.
+
+Disposable isolated prepared-response checks passed all 32 pipeline/view text previews; five-stage generation and exact same-side references for all four pipelines; no-change/selective acceptance, rejected/overlapping corrections, stale master refusal and unchanged masters; image-only comparison choices, custom-only edits after failed advice, one-base correction payloads, frozen render replay/retry, occupied-slot adoption, unchanged published bytes, retained attempt history and warning-only downstream choices. AI Queue refinement navigation was checked separately. Desktop and 800px Chromium journeys passed prompt-checkbox persistence/reload, feedback preservation, acceptance/Continue readiness, and FRONT/front-left/front-right refinement, chosen comparisons, adoption and reload. Screenshots were inspected; narrow layout had no horizontal overflow. Python AST, changed JavaScript syntax and `git diff --check` passed.
+
+These checks used disposable libraries, queues, indexes, prepared images and model answers. They did not run live inference, render real artwork, deploy production code or establish image quality. Broader real-model fidelity remains an operator trial.
+
+
 AI job repair validation (2026-10-16): the four maintained fast scenarios passed
 in 33.4 seconds. The shared prepared-envelope helper now uses protocol terminal
 status `SUCCEEDED`; its scenario purpose is unchanged. Disposable isolated checks

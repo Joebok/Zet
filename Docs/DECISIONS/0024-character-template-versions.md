@@ -1,4 +1,6 @@
 # 0024 — Character template versions and explicit view references
+
+The new process in [ADR 0025](0025-character-review-stages-and-refinement.md) supersedes representative-image proposals and ordinary sequencing for newly enrolled batches. Historical records remain readable; overlays and explicit master promotion remain applicable.
 Status: accepted locally; artistic quality unverified
 Date: 2026-10-17
 

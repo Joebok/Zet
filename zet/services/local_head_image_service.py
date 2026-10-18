@@ -139,11 +139,13 @@ class LocalHeadImageService:
         status = status_loader(character, phase) if callable(status_loader) else None
         if status is not None and not status.template_ready:
             raise LocalHeadImageError("A valid Character.md is required before local Head-Image can run: " + "; ".join(status.validation_errors))
+        from zet.services.local_character_progression_service import planned_views
+        views = planned_views(payload)
         front_count, other_count = render_count(payload.get("front_count"), 8), render_count(payload.get("other_count"), 4)
-        if front_count < 1 or other_count < 1 or front_count + 7 * other_count > 256:
+        if front_count < 1 or other_count < 1 or front_count + (len(views) - 1) * other_count > 256:
             raise LocalHeadImageError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
-        return {"character": character, "phase": phase, "views": list(VIEWS), "front_count": front_count,
-                "other_count": other_count, "candidate_count": front_count + 7 * other_count,
+        return {"character": character, "phase": phase, "views": views, "front_count": front_count,
+                "other_count": other_count, "candidate_count": front_count + (len(views) - 1) * other_count,
                 "front_source_optional": True, "front_anchor_required_for_other_views": True,
                 "pipeline": "head-image", "pipeline_config": pipeline_page_config("head-image"),
                 "can_create": True, "blocking_reasons": []}
@@ -219,7 +221,7 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Every seed must be an integer.") from exc
         candidates = []
         index = 0
-        for view in VIEWS:
+        for view in plan["views"]:
             count = plan["front_count"] if view == FRONT else plan["other_count"]
             for ordinal in range(1, count + 1):
                 index += 1
@@ -235,7 +237,7 @@ class LocalHeadImageService:
                 "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "batch_name": "",
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
-                "views": list(VIEWS), "front_count": plan["front_count"], "other_count": plan["other_count"],
+                "views": plan["views"], "front_count": plan["front_count"], "other_count": plan["other_count"],
                 "candidate_count": total, "front_source": source_snapshot,
                 "apply_phase_change": apply_phase_change,
                 "front_source_sha256": self._hash(Path(source_snapshot)) if source_snapshot else "",
@@ -245,6 +247,8 @@ class LocalHeadImageService:
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": "QUEUED", "updated_at": self._now(),
                                             "stop_requested": False, "candidates": {}, "selected_views": {}, "rankings": {}})
+        from zet.services.local_character_progression_service import enroll
+        enroll(root, plan["views"])
         return self.detail(run_id)
 
     def _read_json(self, path: Path) -> dict[str, Any]:
@@ -384,6 +388,7 @@ class LocalHeadImageService:
                 }, "Head-Image"):
                     status = "COMPLETE"
                 result.append({
+                    "character_progression": state.get("character_progression"),
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
                     "apply_phase_change": self._apply_phase_change(spec),
@@ -419,6 +424,11 @@ class LocalHeadImageService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalHeadImageError(f"Unknown candidate: {candidate_id}")
+        from zet.services.local_character_progression_service import prepare_candidate
+        if run.get("character_progression"):
+            from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+            candidate = prepare_candidate(LocalImagePipelineWorkflowService(self.app, self.project_root, "head-image"), run, candidate)
+
         if not candidate.get("render_input") and candidate["view"] != FRONT and not run.get("front_anchor"):
             raise LocalHeadImageError("Select a FRONT anchor before generating other views.")
         if candidate.get("status") in {"QUEUED", "RUNNING"}:
@@ -547,6 +557,12 @@ class LocalHeadImageService:
 
     def execute_run(self, run_id: str, *, views: set[str] | None = None, candidate_ids: set[str] | None = None,
                     render_only: bool = False) -> None:
+        from zet.services.local_character_progression_service import execution_views
+        staged = self.detail(run_id)
+        if staged.get("character_progression"):
+            views = execution_views(staged, views)
+            if not views:
+                return
         root = self._run_root(run_id)
         try:
             with file_lock(root / "runner.lock", timeout=0):
@@ -849,6 +865,11 @@ class LocalHeadImageService:
     @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
         run = self.detail(run_id)
+        if run.get("character_progression"):
+            from zet.services.local_character_progression_service import select
+            from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+            return select(LocalImagePipelineWorkflowService(self.app, self.project_root, "head-image"), run, view, candidate_id)
+
         selected = run.get("selected_views") or {}
         view = str(view or "").upper()
         if not candidate_id:
@@ -1108,7 +1129,7 @@ class LocalHeadImageService:
         view = str(view or "").upper()
         if view not in VIEWS:
             raise LocalHeadImageError(f"Unknown view: {view}")
-        affected_views = set(VIEWS) if view == FRONT else {view}
+        affected_views = set(VIEWS) if view == FRONT and not run.get("character_progression") else {view}
         self._assert_rerun_allowed(run, affected_views)
         root, state = self._state(run_id)
         self._withdraw_queued_asks(run_id, affected_views=affected_views)
@@ -1265,6 +1286,7 @@ class LocalHeadImageService:
         self._run_update(run_id, stop_requested=False, status="QUEUED")
         return self.detail(run_id)
 
+    @serialize_local_run_state
     def delete_run(self, run_id: str) -> dict[str, Any]:
         root = self._run_root(run_id)
         run = self.detail(run_id)

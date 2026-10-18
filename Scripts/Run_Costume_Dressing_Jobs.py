@@ -26,6 +26,7 @@ from Scripts.Job_File_Utils import (
 from zet.services.prompt_template_service import PromptTemplateService
 from Scripts.Library_Paths import character_root, pipeline_root
 from zet.services.pipeline_compiler_support import (
+    prompt_preview_compiler,
     expected_output_for_job,
     extract_template_field,
     job_get,
@@ -487,6 +488,7 @@ Reviewed At:
     )
 
 
+@prompt_preview_compiler
 def compile_costume_dressing_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
     pipeline_mode: str = "traditional", universe_root: str | Path | None = None,

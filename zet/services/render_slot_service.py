@@ -63,6 +63,8 @@ def frozen_input(directory: Path, prompt: str, references: list[dict], preset: s
     directory.mkdir(parents=True, exist_ok=True)
     frozen = []
     for index, ref in enumerate(references):
+        if str(ref.get("path", "")).startswith("declared:"):
+            raise ValueError("Text-only preview references cannot be rendered.")
         source = Path(ref["path"])
         target = directory / f"reference-{index + 1}{source.suffix}"
         if source.resolve() != target.resolve():
@@ -170,6 +172,11 @@ class CharacterRenderSlots:
         return saved
 
     def _prerequisite(self, run: dict, view: str) -> str:
+        from zet.services.local_character_progression_service import guard_view
+        try:
+            guard_view(run, view)
+        except ValueError as exc:
+            return str(exc)
         from zet.services.local_view_reference_service import recipe_requirement
         custom = recipe_requirement(run, view)
         if custom is not None:

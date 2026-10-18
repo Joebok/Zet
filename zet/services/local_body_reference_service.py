@@ -279,6 +279,8 @@ class LocalBodyReferenceService:
         views = self._views()
         if len(views) != 8:
             raise LocalBodyReferenceError(f"Expected eight configured Body-Reference views; found {len(views)}.")
+        from zet.services.local_character_progression_service import planned_views
+        views = planned_views(payload, views)
         front_count = render_count(payload.get("front_count"), PILOT_FRONT_COUNT)
         other_count = render_count(payload.get("other_count"), PILOT_OTHER_COUNT)
         if front_count < 1 or other_count < 1:
@@ -486,6 +488,8 @@ class LocalBodyReferenceService:
         self._write(root / "state.json", {"run_id": run_id, "status": spec["status"], "updated_at": self._now(),
                                             "stop_requested": False, "candidates": {}, "rankings": {},
                                             "selected_views": {}})
+        from zet.services.local_character_progression_service import enroll
+        enroll(root, plan["views"])
         return {**spec, "root": str(root)}
 
     def _root(self, run_id: str) -> Path:
@@ -664,6 +668,7 @@ class LocalBodyReferenceService:
                 except (TypeError, ValueError):
                     review_version = 1
                 runs.append({
+                    "character_progression": state.get("character_progression"),
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
                     "created_at": spec.get("created_at", ""), "status": status,
@@ -812,7 +817,7 @@ class LocalBodyReferenceService:
 
         root = self._root(run_id).resolve()
         affected_views = (set(run.get("views", []))
-                          if view == FRONT_VIEW and int(run.get("review_version") or 1) >= 2 else {view})
+                          if view == FRONT_VIEW and not run.get("character_progression") and int(run.get("review_version") or 1) >= 2 else {view})
         if recompile:
             self._refresh_compiled_prompts(run_id, affected_views)
         for affected_view in affected_views:
@@ -929,7 +934,8 @@ class LocalBodyReferenceService:
                     state.setdefault("ranking_history", {}).setdefault(FRONT_VIEW, []).append(
                         {"archived_at": stamp, "ranking": old_rank}
                     )
-                self._invalidate_views_after_anchor_change(run_id, state)
+                if not run.get("character_progression"):
+                    self._invalidate_views_after_anchor_change(run_id, state)
         else:
             if int(run.get("review_version") or 1) >= 2:
                 state.setdefault("selected_views", {}).pop(view, None)
@@ -1027,6 +1033,7 @@ class LocalBodyReferenceService:
         result = self.detail(run_id)
         result.update(status="REEVALUATING", interrupted=False, error="")
         return result
+    @serialize_local_run_state
     def delete_run(self, run_id: str) -> dict[str, Any]:
         root = self._root(run_id).resolve()
         runs_root = self.runs_root.resolve()
@@ -1846,6 +1853,11 @@ class LocalBodyReferenceService:
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
         """Select the human-approved candidate for one version 2 view."""
         run = self.detail(run_id)
+        if run.get("character_progression"):
+            from zet.services.local_character_progression_service import select
+            from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+            return select(LocalImagePipelineWorkflowService(self.app, self.project_root, "body-reference"), run, view, candidate_id)
+
         view = str(view or "").upper()
         if run.get("review_version", 1) < 2:
             raise LocalBodyReferenceError("View selection is available for version 2 runs.")
@@ -2098,6 +2110,12 @@ class LocalBodyReferenceService:
 
     def execute_run(self, run_id: str, *, views: set[str] | None = None,
                     candidate_ids: set[str] | None = None, render_only: bool = False) -> None:
+        from zet.services.local_character_progression_service import execution_views
+        staged = self.detail(run_id)
+        if staged.get("character_progression"):
+            views = execution_views(staged, views)
+            if not views:
+                return
         try:
             with file_lock(self._root(run_id) / "runner.lock", timeout=0):
                 self._execute_run_locked(run_id, views=views, candidate_ids=candidate_ids, render_only=render_only)
@@ -2228,6 +2246,11 @@ class LocalBodyReferenceService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalBodyReferenceError(f"Unknown candidate: {candidate_id}")
+        from zet.services.local_character_progression_service import prepare_candidate
+        if run.get("character_progression"):
+            from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+            candidate = prepare_candidate(LocalImagePipelineWorkflowService(self.app, self.project_root, "body-reference"), run, candidate)
+
         if candidate.get("status") in {"QUEUED", "RUNNING", "COMPLETE"}:
             return candidate
         if not candidate.get("render_input") and candidate.get("view") != FRONT_VIEW and not run.get("front_anchor"):
