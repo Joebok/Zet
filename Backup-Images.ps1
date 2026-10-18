@@ -1,10 +1,12 @@
 <#
 .SYNOPSIS
-    Copies all files from a source library to a destination while preserving its folder structure.
+    Copies images, templates, and prompts from a source library to a destination.
 
 .DESCRIPTION
-    Recursively copies the contents of the source path to the destination path, preserving the relative
-    directory structure beneath the source root.
+    Recursively copies common image formats and Markdown/text templates and prompts, preserving
+    their relative directory structure. SQLite databases, JSON metadata, and other file types are
+    excluded. Only folders containing copied files are created. This is a limited Dropbox copy,
+    not a full library backup; existing destination files are not deleted.
 
 .EXAMPLE
     .\Backup-Images.ps1 -Source "C:\Projects\Zet_Library" -Dest "D:\Backups\Zet_Library"
@@ -42,15 +44,14 @@ function Copy-LibraryFiles {
         New-Item -ItemType Directory -Path $resolvedDestinationRoot -Force | Out-Null
     }
 
-    Get-ChildItem -LiteralPath $resolvedSourceRoot -Force -Directory -Recurse | ForEach-Object {
-        $relativePath = $_.FullName.Substring($resolvedSourceRoot.Length).TrimStart('\', '/')
-        $targetPath = Join-Path -Path $resolvedDestinationRoot -ChildPath $relativePath
-        if (-not (Test-Path -LiteralPath $targetPath -PathType Container)) {
-            New-Item -ItemType Directory -Path $targetPath -Force | Out-Null
-        }
-    }
+    # Templates and compiled prompts use Markdown or plain text; structured metadata is excluded.
+    $criticalExtensions = @(
+        '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tif', '.tiff', '.avif', '.svg',
+        '.heic', '.heif', '.md', '.txt'
+    )
 
-    Get-ChildItem -LiteralPath $resolvedSourceRoot -Force -File -Recurse | ForEach-Object {
+    Get-ChildItem -LiteralPath $resolvedSourceRoot -Force -File -Recurse |
+        Where-Object { $_.Extension -in $criticalExtensions } | ForEach-Object {
         $relativePath = $_.FullName.Substring($resolvedSourceRoot.Length).TrimStart('\', '/')
         $targetPath = Join-Path -Path $resolvedDestinationRoot -ChildPath $relativePath
         $targetDirectory = Split-Path -Parent $targetPath
