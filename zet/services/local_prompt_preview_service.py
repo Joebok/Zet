@@ -3,7 +3,6 @@ from pathlib import Path
 import json
 
 from zet.services.template_source_service import template_sources
-from zet.services.view_conditioning_service import VIEW_ORDER
 
 
 PREDECESSORS = {
@@ -23,6 +22,7 @@ class LocalPromptPreviewService:
         from Scripts.Run_Head_Image_Jobs import compile_head_image_job
         from Scripts.Run_Character_Assembly_Jobs import compile_character_assembly_job
         from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
+        from zet.services.local_character_progression_service import STAGES
         workflow = self.workflow
         pipeline = workflow.pipeline
         compiler = {"body-reference": compile_body_reference_job, "head-image": compile_head_image_job,
@@ -33,7 +33,7 @@ class LocalPromptPreviewService:
         recipes = reference_recipes(Path(run["root"]))
         result = []
         with template_sources(sources):
-            for view in VIEW_ORDER:
+            for view in (view for stage in STAGES for view in stage):
                 references = []
                 def declare(role, source_view=view):
                     references.append({"role": role, "path": "declared:" + role,

@@ -22,7 +22,7 @@ CompletedRetentionDays = 7
 MaintenanceIntervalHours = 24
 
 [StorageByPlatform.Windows]
-Root = "E:/Zet/AppData"
+Root = "H:/Zet/AppData"
 
 [BaseFolders]
 BaseLibraryPath = "Zet_Library_v5/"
@@ -32,8 +32,8 @@ BasePipelinePath = "Pipelines/"
 BaseAIQueuePath = "AI_Queue/"
 
 [BaseFoldersByPlatform.Windows]
-BaseLibraryPath = "E:/Zet/Zet_Library_v5/"
-BaseAIQueuePath = "E:/Zet/AI_Queue"
+BaseLibraryPath = "H:/Zet/Zet_Library_v5/"
+BaseAIQueuePath = "H:/Zet/AI_Queue"
 
 [BaseFoldersByPlatform.Darwin]
 BaseLibraryPath = "/Users/joe/Projects/Zet_Library-V5/"
@@ -84,7 +84,7 @@ Width = 3960
 [AIHarvest]
 AutoEnabled = true
 IntervalSeconds = 60
-ArchivePath = "E:/Archived/AI_Queue_Archive"
+ArchivePath = "H:/Archived/AI_Queue_Archive"
 Debug = false
 DebugRetentionDays = 7
 DebugMaxBytes = 1073741824

@@ -45,6 +45,7 @@ def template_diff_rows(master: str, proposed: str) -> list[dict]:
 
 def compiler_guidance() -> str:
     from zet.services.view_conditioning_service import VIEW_ORDER, _sets
+    from zet.services.local_character_progression_service import STAGES
     return ("# Current character compiler contract\n\n"
             "Use complete existing templates; change only the requested facts/rules. Preserve section names and paired "
             "<!-- ZET:BEGIN NAME --> / <!-- ZET:END NAME --> markers and all {{PLACEHOLDER}} tokens. "
@@ -57,7 +58,10 @@ def compiler_guidance() -> str:
             "fixed features require explicit visibility, and sides must be anatomical left/right. "
             "The compiler translates anatomical sides for the requested view. Hidden/occluded fixed details are omitted. "
             "Do not leak raw tags or spatial annotations into final render prompts.\n\n"
-            f"Supported views: {', '.join(VIEW_ORDER)}.\nSupported tag sets (from current parser):\n"
+            f"Supported views (orientation order, not generation order): {', '.join(VIEW_ORDER)}.\n"
+            "Staged local generation follows these stages in order: " + json.dumps(STAGES) + ". "
+            "Views in each stage use selected references from completed earlier stages. "
+            "The compiled prompt listing does not schedule generation.\nSupported tag sets (from current parser):\n"
             + json.dumps(_sets, indent=2) + "\n\n"
             "Image order and assigned roles are contracts. A reference from another view controls visible design details, "
             "not target orientation/pose/camera. Do not feed front references to rear views automatically. "
