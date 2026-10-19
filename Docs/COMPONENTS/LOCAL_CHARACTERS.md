@@ -1,5 +1,33 @@
 # Local character assets
 
+## Head rear-view quality pilot (2026-10-19)
+
+[Investigate_Head_Views.py](../../Scripts/Investigate_Head_Views.py) prepares a private
+Tsaeytte Adult snapshot and eight BACK prompt/reference recipes, submits an explicitly
+authorized 16-image screening through the existing AI_Proxy service, collects results
+with reserved request identities, and produces a labeled comparison sheet. Its
+`prepare`, `hair-trials`, `confirmation`, `submit`, `collect`, and `sheet` commands require an explicit `--output`;
+`prepare` also requires `--batch`. Preparation is offline; submission performs real
+inference and must be explicitly authorized. Results live outside the source batch.
+The current investigation does not change production prompts, recipes or selections.
+After partial human acceptance of ears/neck, `hair-trials` prepares four matched-seed
+lower-bob diagnostics instead of the original ear/neck ablations; the 32-render
+ceiling is unchanged. The B-004 lower hair is a visual target, not a new render input.
+Those four diagnostics did not restore the preferred lower contour. Joe approved
+continuing the original silhouette recipe with hair deferred. `confirmation`
+freezes twelve matched-seed current/silhouette comparisons across BACK and both
+rear quarters, reaching the 32-render cap; `sheet --phase confirmation` produces
+the dedicated comparison. No production improvement is claimed before reviewing
+these results and the final human checkpoint.
+After Joe repaired the AI_Proxy-managed ComfyUI startup failure, all 32 logical
+image slots were collected from the existing requests. Some images improve neck
+width and rear orientation, but Joe rejected both selected rear-quarter ears as
+camera-facing. The agent's earlier quarter passes are withdrawn. The full recipe
+is not validated, the pilot budget is exhausted, and no production integration
+proceeded. Ear orientation and the deferred lower-bob mismatch remain open.
+See the [active pilot plan](../../plans/active/head-reference-quality.md) for its
+32-render ceiling, yes/no acceptance gates and conditional integration boundary.
+
 The active character workflow produces and reviews **batches of candidates** for Body-Reference, Head-Image, Character-Assembly, and Costume-Dressing. It reuses prompt compilers while keeping its own run/selection state. Traditional stage-driven generation is retired via [pipeline_retirement.py](../../zet/services/pipeline_retirement.py); retained traditional assets are not local batch IDs.
 
 ## Interfaces and workflow

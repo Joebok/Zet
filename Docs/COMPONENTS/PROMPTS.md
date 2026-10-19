@@ -23,6 +23,23 @@ Use [shared templates/instructions](../../Shared_Library/Characters/_Shared/) an
 
 Generation and analysis templates use `IMAGE_PROMPT_ONLY`/`ANALYSIS_PROMPT_ONLY` blocks; malformed/nested/unclosed variants fail. Consult the mode-filter implementation before changing local/traditional content. [View tagging specification](../../Docs-Joe/ZET_View_Conditioned_Template_Tagging_Spec.md) provides preserved design intent, but parser/tests own supported behavior.
 
+For local Head-Image, place view-specific image instructions such as
+`* [bl] Ear Reference Image, use for ear shape: {{LIB:REF:elf-ears-back-left}}`
+inside `HEAD_DESCRIPTION_VIEW_OVERRIDES` under `ZET:VIEW_DOMAIN head`.
+Source-backed prompts omit `HEAD_DESCRIPTION_FACTS` unless applying phase changes;
+view overrides remain visible. Tags are filtered before image resolution, so only
+the matching view's resource is appended. Static rendering replaces image tags
+inside compiler-composed metadata text as well as ordinary marked sections.
+Head compilation resolves resources in
+the supplied universe, and both batch rendering and fresh/cached render slots
+freeze the compiler's ordered references. Existing submitted inputs remain frozen.
+An accepted batch template revision overrides subsequent master edits: make and
+accept a manual child revision to bring those edits into an existing batch, then
+recompile before generating new renders. Manual child edits may change valid
+`LIB:REF` bindings; compiler placeholders and section markers remain protected,
+and model-proposed edits retain the stricter reference-preservation rule. Acceptance
+still recompiles all eight previews and validates the referenced image files.
+
 ## Scene and Narrative prompt paths
 
 The structured scene compiler, Qwen scene prompt compiler, measured spatial guidance and cleanup are preserved in the [offline archive](../../Archive/scene-builder/README.md). They are not active producers. Shared character helpers and the Narrative/Qwen prompt path no longer import that geometry/compiler.

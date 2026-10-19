@@ -171,7 +171,8 @@ def compile_head_image_job(
         prompt_variant=prompt_variant, pipeline_mode=pipeline_mode,
     )
     references = auxiliary_references_for_texts(
-        project_root, ["\n".join(selection.sections.values())], references
+        project_root, ["\n".join(selection.sections.values())], references,
+        universe_root=universe_root,
     )
     render_mode = "edit" if source_references else "generate"
     references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(

@@ -144,6 +144,13 @@ class CharacterRenderSlots:
                 compiled = self.adapter._compile(root, run["character"], run["phase"], view, refs,
                     apply_phase_change=bool(run.get("apply_phase_change")), output_dir=output)
                 path = Path(compiled["final_prompt"])
+            # Keep compiler-added images in the same order as the prompt citations,
+            # including when reusing a saved prompt without recompilation.
+            manifest = path.parent / "dependency_manifest.json"
+            if manifest.is_file():
+                resources = json.loads(manifest.read_text(encoding="utf-8")).get("resources")
+                if isinstance(resources, list):
+                    refs = resources
             prompt = path.read_text(encoding="utf-8")
             preset = "comfyui-qwen-head-image-edit" if refs else "comfyui-qwen-head-image-text"
         else:

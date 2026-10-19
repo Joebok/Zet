@@ -385,6 +385,7 @@ def render_static_prompt_with_source_map(
                 raise TemplateCompileError("PLACEHOLDER_NAMESPACE_COLLISION", f"Placeholder resolves to metadata and a marked section: {inner}")
             if metadata_key in metadata:
                 text = _replace_single_brace_tokens(metadata[metadata_key], single_brace_values)
+                text = _replace_auxiliary_resource_tags(text, image_inputs_by_tag)
                 source = metadata_sources.get(
                     metadata_key,
                     {

@@ -1,5 +1,22 @@
 # Capability code map
 
+Head rear-view pilot (2026-10-19):
+[Investigate_Head_Views.py](../Scripts/Investigate_Head_Views.py) owns explicitly
+authorized private snapshot/compile/submit/collect/comparison operations for the
+Tsaeytte Adult pilot. It uses the existing native AI_Proxy submission and shared
+validated collection services, preserving the source batch. Sixteen screening
+renders completed; Joe accepted ear/neck gains but preferred the existing lower
+bob. Four hair diagnostics completed without restoring that contour. Joe then
+approved confirming the original silhouette recipe with lower hair deferred;
+12 matched-seed comparisons across BACK and both rear quarters completed after
+proxy repair, reaching 32 collected logical image slots. Joe rejected both
+selected rear-quarter ears as camera-facing; prior agent quarter passes are
+withdrawn. The full recipe is not validated and production integration did not
+proceed. The pilot budget is exhausted. Disposable resume/transfer
+checks and approved S2 passed. See the
+[active plan](../plans/active/head-reference-quality.md); this adds no maintained
+scenario or production recipe default.
+
 AI collection/recovery additions (2026-10-16):
 [AIJobService](../zet/services/ai_job_service.py) owns read-only state inspection,
 dual-outcome checks and one-time transfer admission;

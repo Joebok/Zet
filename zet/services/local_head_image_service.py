@@ -455,6 +455,7 @@ class LocalHeadImageService:
         else:
             compiled = self._compile(root, run["character"], run["phase"], candidate["view"], references,
                                      apply_phase_change=bool(run.get("apply_phase_change", False)))
+            references = compiled["reference_files"]
             preset_name = "comfyui-qwen-head-image-edit" if references else "comfyui-qwen-head-image-text"
             saved_input = frozen_input(candidate_dir / "inputs", Path(compiled["final_prompt"]).read_text(encoding="utf-8"), references, preset_name)
             saved_input["template_revision_id"] = compiled.get("template_revision_id", "")

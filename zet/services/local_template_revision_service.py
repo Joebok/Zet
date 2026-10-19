@@ -211,7 +211,7 @@ class LocalTemplateRevisionService:
                     raise ValueError("Manual edits must name the chosen sources.")
                 for source in sources:
                     if source["source_id"] in manual:
-                        self._validate_text(source["text"], manual[source["source_id"]])
+                        self._validate_text(source["text"], manual[source["source_id"]], allow_reference_changes=True)
                         source["text"] = manual[source["source_id"]]
             model = str(payload.get("model") or "codex:" + self.app.config.codex_default_model.removeprefix("codex:"))
             if manual is None:
@@ -389,13 +389,19 @@ class LocalTemplateRevisionService:
                 + "\nRead-only view configuration (report needed configuration changes separately):\n" + json.dumps(record["view_configuration"]))
 
     @staticmethod
-    def _validate_text(before, after):
+    def _validate_text(before, after, *, allow_reference_changes=False):
         if not isinstance(after, str) or not after.strip() or len(after) > 250000:
             raise ValueError("Replacement template is empty or too large.")
         markers = r"<!--\s*ZET:(?:BEGIN|END)\s+[A-Z0-9_]+\s*-->"
         placeholders = r"\{\{[^\n]+?\}\}"
         for pattern, label in ((markers, "section/variant markers"), (placeholders, "placeholders")):
-            if sorted(re.findall(pattern, before)) != sorted(re.findall(pattern, after)):
+            original = re.findall(pattern, before)
+            replacement = re.findall(pattern, after)
+            if allow_reference_changes and label == "placeholders":
+                from Scripts.Auxiliary_Resource_Tags import LIB_REFERENCE_TAG_RE
+                original = [token for token in original if not LIB_REFERENCE_TAG_RE.fullmatch(token)]
+                replacement = [token for token in replacement if not LIB_REFERENCE_TAG_RE.fullmatch(token)]
+            if sorted(original) != sorted(replacement):
                 raise ValueError(f"Replacement changes compiler {label}; preserve the existing contracts.")
 
     def _propose_job(self, pipeline, run_id, costume, revision_id):
