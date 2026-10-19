@@ -82,6 +82,21 @@ See [ADR 0021](../DECISIONS/0021-file-based-local-image-availability.md).
 
 Reference previews above candidate cards deduplicate repeated per-candidate snapshots by image checksum, preserving the prompt role and image label in the caption. Older snapshots without checksums fall back to their role and prompt label.
 
+Comparative Luna ranking in all four pipelines uses each candidate's supplied
+reference snapshots, rather than substituting FRONT for every non-front view.
+[supplied_ranking_references](../../zet/services/local_image_ranking_service.py)
+maps frozen render inputs (or adopted refinement ancestry) to labeled image
+attachments, retaining source roles, source views and matching prerequisite inputs.
+The prompt asks for visible identity/design consistency across views while still
+requiring the target orientation. Identical recorded checksums share an attachment;
+each candidate retains its own reference mapping. Explicitly empty inputs stay
+empty. Historical candidates use saved reference-image metadata where available,
+otherwise the configured view recipe and existing pipeline inputs. Missing recorded
+images fail ranking instead of silently using FRONT. Existing rankings are unchanged
+until **Re-evaluate**; single-candidate views still receive deterministic rank #1.
+Disposable prepared-payload checks cover this mapping; S2 covers one-candidate
+Assembly/Dressing publication and does not establish comparative model quality.
+
 Existing S2 verifies Assembly/Dressing publication. Joe separately approved disposable checks for costume deep-link loading, card containment, current prompt/Recompile behavior and overlapping slot actions. Those checks use prepared renders/rankings; no new maintained tests or live services were added. Full Body/Head generation and general restart recovery remain outside maintained coverage.
 
 ## Prompt review, staged generation and image refinement (2026-10-18)

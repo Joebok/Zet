@@ -20,7 +20,7 @@ from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
 from zet.services.local_candidate_review_contract import (
     adjust_candidate_ranking, normalize_human_decision,
 )
-from zet.services.local_image_ranking_service import rank_images_with_luna
+from zet.services.local_image_ranking_service import rank_images_with_luna, supplied_ranking_references
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.library_reference_service import read_library_json, write_library_json
 from zet.services.local_image_pipeline_policy import (
@@ -977,18 +977,14 @@ class LocalCharacterAssetPipelineService:
                       "Human review is an independent advice signal; assess every image on its visual merits. "
                       "Compare view accuracy, source preservation, identity, and usefulness as a reference. "
                       "Candidate IDs: " + ", ".join(hashes))
-            reference_image_paths = []
-            if view != "FRONT" and self._requires_front_anchor(run):
-                anchor = next(item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"])
-                guide = "costume appearance" if self.pipeline == "costume-dressing" else "assembled-character proportion and appearance"
-                prompt += f". The first image is the selected FRONT {guide} guide; rank candidates for consistency with it."
-                reference_image_paths.append(str(anchor["image_path"]))
             image_paths = [str(item["image_path"]) for item in survivors]
             try:
+                reference_image_paths, reference_guidance = supplied_ranking_references(
+                    survivors, lambda: self._references(run, view, use_recipe=True))
                 entries, model = rank_images_with_luna(
                     project_root=self.project_root,
                     model=str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
-                    prompt=prompt,
+                    prompt=prompt + "\n\n" + reference_guidance,
                     candidate_ids=list(hashes),
                     image_paths=image_paths,
                     paths=self.app.ai_proxy_service.ai_proxy_path_service,

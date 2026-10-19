@@ -18,7 +18,7 @@ from PIL import Image
 
 from Scripts.Run_Head_Image_Jobs import compile_head_image_job
 from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
-from zet.services.local_image_ranking_service import rank_images_with_luna
+from zet.services.local_image_ranking_service import rank_images_with_luna, supplied_ranking_references
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.library_reference_service import read_library_json, write_library_json
 from zet.services.local_image_pipeline_policy import (
@@ -815,14 +815,19 @@ class LocalHeadImageService:
                       "character details, and usefulness as a reference. Return each candidate once with a concise reason. Candidate IDs: "
                       + ", ".join(item["candidate_id"] for item in survivors))
             try:
+                from zet.services.local_view_reference_service import custom_references
+                source = run.get("front_source") if view == FRONT else str(anchor_path)
+                reference_images, reference_guidance = supplied_ranking_references(
+                    survivors, lambda: custom_references(run, view, "head-image",
+                        [{"role": "head_image_source", "view": "FRONT", "path": source}] if source else []))
                 model = str(getattr(self.app.config, "codex_default_model", "gpt-6-luna"))
                 entries, model = rank_images_with_luna(
                     project_root=self.project_root,
                     model=model,
-                    prompt=prompt,
+                    prompt=prompt + "\n\n" + reference_guidance,
                     candidate_ids=[item["candidate_id"] for item in survivors],
                     image_paths=[item["image_path"] for item in survivors],
-                    reference_image_paths=([anchor_path] if view != FRONT else []),
+                    reference_image_paths=reference_images,
                     paths=self.app.ai_proxy_service.ai_proxy_path_service,
                     admission=lambda: candidate_admission(self.app, lambda: self.detail(run_id), run, survivors),
                     owner={"run_id": run_id, "view": view, "pipeline": 'Head-Image', "evaluation_id": evaluation_id},

@@ -18,7 +18,7 @@ from PIL import Image
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
 
 from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
-from zet.services.local_image_ranking_service import rank_images_with_luna
+from zet.services.local_image_ranking_service import rank_images_with_luna, supplied_ranking_references
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.library_reference_service import read_library_json, write_library_json
@@ -1701,22 +1701,19 @@ class LocalBodyReferenceService:
                        "model": "deterministic-single-survivor", "recorded_at": self._now()}
         else:
             try:
-                image_labels: list[str] = []
-                reference_images = []
-                if view != FRONT_VIEW and anchor_image:
-                    reference_images.append(anchor_image)
-                    image_labels.append("Image 1: accepted FRONT anchor")
-                for index, candidate in enumerate(survivors, start=1):
-                    image_labels.append(f"Candidate {candidate['candidate_id']}: image {index + (1 if view != FRONT_VIEW else 0)}")
+                from zet.services.local_view_reference_service import custom_references
+                reference_images, reference_guidance = supplied_ranking_references(
+                    survivors, lambda: custom_references(run, view, "body-reference",
+                        [{"role": "body_reference_front_anchor", "view": "FRONT", "path": str(anchor_image)}]
+                        if view != FRONT_VIEW and anchor_image else []))
                 prompt = (
                     "Rank all rendered body-reference candidates from best to worst. Human review is an independent advice signal; assess every image on its visual merits. Compare them against one another; do not turn minor "
                     "imperfections into automatic failures. Favor the requested canonical view, complete readable "
                     "silhouette, believable anatomy, proportions, mannequin head, and technical reference usefulness. "
-                    + ("Use the FRONT anchor to judge body consistency. " if view != FRONT_VIEW else "")
                     + "Return every candidate exactly once with a concise comparative reason.\n\n"
                     + "Requested view: " + view + "\n"
                     + "View definition: " + CANONICAL_VIEW_DEFINITIONS.get(view, "") + "\n"
-                    + "Image mapping:\n" + "\n".join(image_labels) + "\n\n"
+                    + reference_guidance + "\n\n"
                     + "Body-Reference specification:\n" + self._review_facts(run, view)
                 )
                 model = str(getattr(self.app.config, "codex_default_model", "gpt-6-luna"))
