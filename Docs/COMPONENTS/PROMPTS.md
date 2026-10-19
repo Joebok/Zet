@@ -40,6 +40,29 @@ recompile before generating new renders. Manual child edits may change valid
 and model-proposed edits retain the stricter reference-preservation rule. Acceptance
 still recompiles all eight previews and validates the referenced image files.
 
+### Supplemental template images (2026-10-19)
+
+Template image tags supplement pipeline prerequisites; their presence is not an
+unexpected-reference error. Body-Reference validates its optional batch design
+anchor separately, then appends images from the view-filtered template. Head,
+Assembly and Dressing retain their required source roles. Supplemental resolution
+uses the supplied universe; images never substitute for missing required sources.
+Compilers and render slots preserve the complete ordered resource manifest for
+fresh and cached prompts, including initial Body candidates. Retry still replays
+the previously frozen prompt and images.
+
+The shared Body/Head Qwen workflows bind every supplied image in citation order,
+including a front Head render supplied only with a template anatomy image. They
+validate files and the ten-image backend limit; prerequisite semantics belong to
+the pipeline compiler. Reference-count cache metadata describes all bindings.
+The historical text/edit profile names do not impose zero/one-image limits.
+
+For anatomy references, put scope and exclusions in a section actually emitted by
+the local prompt. Head view overrides survive source-backed compilation; the
+local Head prompt does not emit the traditional-only source-rule and character-
+requirement placeholders. Specify which anatomy the reference governs and which
+reference background, material, framing or display geometry should be ignored.
+
 ## Scene and Narrative prompt paths
 
 The structured scene compiler, Qwen scene prompt compiler, measured spatial guidance and cleanup are preserved in the [offline archive](../../Archive/scene-builder/README.md). They are not active producers. Shared character helpers and the Narrative/Qwen prompt path no longer import that geometry/compiler.

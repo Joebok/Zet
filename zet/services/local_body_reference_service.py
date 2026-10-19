@@ -2277,8 +2277,21 @@ class LocalBodyReferenceService:
             references = saved_input["references"]
             preset_name = saved_input["preset"]
         else:
+            # Legacy initial candidates must package the same compiler-added images
+            # as staged/supplemental slots, after their optional identity anchor.
+            snapshot = next(item for item in run["prompt_snapshots"] if item["view"] == candidate["view"])
+            if references:
+                snapshot = self._compile_view(root, run["character"], run["phase"], candidate["view"],
+                    run["views"].index(candidate["view"]) + 1, output_dir=candidate_dir / "compiled", references=references)
+                candidate["prompt"] = self._qwen_prompt(snapshot["manual_prompt"], candidate["view"], anchor=True)
+            manifest = Path(snapshot["prompt_path"]).parent / "dependency_manifest.json"
+            if manifest.is_file():
+                resources = json.loads(manifest.read_text(encoding="utf-8")).get("resources")
+                if isinstance(resources, list):
+                    references = resources
+            preset_name = "comfyui-qwen-body-reference-edit" if references else "comfyui-qwen-body-reference-text"
             saved_input = frozen_input(candidate_dir / "inputs", candidate["prompt"], references, preset_name)
-            saved_input["template_revision_id"] = candidate.get("template_revision_id", "")
+            saved_input["template_revision_id"] = snapshot.get("template_revision_id", candidate.get("template_revision_id", ""))
         references = saved_input["references"]
         self._candidate_update(run_id, candidate_id, {"render_input": saved_input})
         candidate_dir.mkdir(parents=True, exist_ok=True)

@@ -83,7 +83,7 @@ def write_dependency_manifest(path: Path, job_id: str, character: str, phase: st
         "resource_policy": resource_policy(bundle),
         **contract,
         "notes": [
-            "Local body-reference may use an explicitly supplied batch design reference; external, cached and discovered image resources are not allowed."
+            "Template image references supplement explicitly supplied batch design references; prerequisite roles and attachment order remain authoritative."
         ],
     }
     write_json_file(path, manifest)
@@ -216,16 +216,18 @@ def compile_body_reference_job(
     image_review_path = paths["image_review"]
     diagnostics_path = paths["diagnostics"]
 
-    auxiliary_references = auxiliary_references_for_texts(
-        project_root, ["\n".join(selection.sections.values())], []
-    )
     references = reference_files_for_job(job)
-    if auxiliary_references or (references and pipeline_mode != "local"):
+    if references and pipeline_mode != "local":
         raise TemplateCompileError("UNEXPECTED_REFERENCE", "Body-reference accepts only explicitly supplied local batch design references.")
     if len(references) > 1 or any(ref.get("role") not in {"batch_view_reference", "body_reference_front_anchor"} for ref in references):
         raise TemplateCompileError("INVALID_REFERENCE", "Local Body-Reference accepts at most one batch design reference.")
     for reference in references:
         validate_reference(reference, str(reference["role"]), project_root)
+    has_design_reference = bool(references)
+    references = auxiliary_references_for_texts(
+        project_root, ["\n".join(selection.sections.values())], references,
+        universe_root=universe_root,
+    )
     references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
         references, render_mode="generate"
     )
@@ -240,7 +242,9 @@ def compile_body_reference_job(
     universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
     metadata_values = {
         "BODY_REFERENCE_INPUT_GUIDANCE": (
-            "Use the supplied image only as an identity and proportion reference; create the requested target view rather than copying its camera angle, pose or framing."
+            "Use Image 1 only as an identity and proportion reference; create the requested target view rather than copying its camera angle, pose or framing. Additional template images govern only their stated reference details."
+            if has_design_reference else
+            "Use template images only for their stated reference details; construct the body from the character facts."
             if references else "This is text-to-image generation with no source image."
         ),
         "CHARACTER_NAME": character,

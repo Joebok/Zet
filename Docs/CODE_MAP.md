@@ -67,6 +67,14 @@ Use this map to select a narrow search, inspect the named entry point and caller
 
 ## Search and impact routine
 
+Supplemental template images: the four character compilers resolve tags after view
+filtering; Body initial packaging and [render_slot_service.py](../zet/services/render_slot_service.py)
+retain the full ordered manifest. [comfyui_workflow_registry.py](../zet/services/comfyui_workflow_registry.py)
+binds all Body/Head Qwen images and enforces file/capacity checks. Required source
+roles remain compiler-owned. See [prompt contracts](COMPONENTS/PROMPTS.md#supplemental-template-images-2026-10-19)
+and the [completed plan](../plans/completed/template-reference-images.md) for
+disposable validation and live/release limits.
+
 Character template improvement: [LocalTemplateRevisionService](../zet/services/local_template_revision_service.py) owns text-only findings, exact selected corrections, accepted batch versions and conflict-checked master promotion. Historical representative-image records retain their continuation support. [TemplateSourceService](../zet/services/template_source_service.py) supplies context-local source overlays; [LocalViewReferenceService](../zet/services/local_view_reference_service.py) resolves selected same-batch reference recipes and shares their prompt descriptions with declared previews. [LocalPromptPreviewService](../zet/services/local_prompt_preview_service.py) uses the four production compilers with future ordered inputs; Body render slots pass resolved references into compilation before freezing the Qwen prompt. New progression and refinement services are mapped above. `AIWorkflowService` registers resumable prompt-review and image-refinement continuations. See [local characters](COMPONENTS/LOCAL_CHARACTERS.md#prompt-review-staged-generation-and-image-refinement-2026-10-18).
 
 Completed character batch publication: `LocalAssetStoreService.all_selected_views_locked`

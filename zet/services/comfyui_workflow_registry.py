@@ -711,11 +711,14 @@ def _qwen_body_reference_prompt_compiler(
     workflow_kind: str,
     **_kwargs: Any,
 ) -> ComfyUICompilation:
-    refs = [item for item in (reference_files or []) if isinstance(item, dict) and item.get("path")]
-    if workflow_kind == QWEN_BODY_REFERENCE_TEXT_WORKFLOW and refs:
-        raise LocalRenderError("Text-first Body-Reference workflow cannot receive image references.")
-    if workflow_kind == QWEN_BODY_REFERENCE_EDIT_WORKFLOW and len(refs) != 1:
-        raise LocalRenderError("Front-conditioned Body-Reference workflow requires exactly one front anchor reference.")
+    refs = reference_files or []
+    if len(refs) > 10:
+        raise LocalRenderError(f"Qwen Image 2.1 supports at most ten reference images; received {len(refs)}.")
+    for index, reference in enumerate(refs, start=1):
+        if not isinstance(reference, dict) or not str(reference.get("path") or "").strip():
+            raise LocalRenderError(f"Character reference {index} is missing its image path.")
+        if not Path(str(reference["path"])).expanduser().is_file():
+            raise LocalRenderError(f"Character reference {index} is missing: {reference['path']}")
     required = {"UNETLoader", "CLIPLoader", "VAELoader", "TextEncodeQwenImage21", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"}
     if refs:
         required.add("LoadImage")
@@ -735,12 +738,12 @@ def _qwen_body_reference_prompt_compiler(
         "resolution": 0 if refs and profile.get("qwen_reference_resize_enabled") else max(width, height),
     }
     bindings = []
-    if refs:
-        ref = refs[0]
+    for index, ref in enumerate(refs, start=1):
         name = str(ref.get("comfyui_input_name") or Path(str(ref["path"])).name)
-        workflow["10"] = {"class_type": "LoadImage", "inputs": {"image": name}}
-        encode["images.image_1"] = ["10", 0]
-        bindings.append({**ref, "comfyui_input_name": name, "image_index": 1})
+        node_id = str(9 + index)
+        workflow[node_id] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        encode[f"images.image_{index}"] = [node_id, 0]
+        bindings.append({**ref, "comfyui_input_name": name, "image_index": index})
     workflow["4"] = {"class_type": "TextEncodeQwenImage21", "inputs": encode}
     workflow["5"] = {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}}
     workflow["6"] = {"class_type": "KSampler", "inputs": {

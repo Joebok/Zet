@@ -74,6 +74,16 @@ Active edit profiles use the shared Qwen reference sizing policy described in
 [PROMPTS](PROMPTS.md). Prepared snapshots preserve source order and are retained
 with pending workflow artifacts so retries keep the original edit inputs.
 
+Template-authored image references supplement those pipeline sources. Body and
+Head share a Qwen graph builder that now binds all ordered references rather than
+assuming one anchor. Body initial candidates and fresh/cached render slots freeze
+the compiler's complete resource list. Required sources, view selection and
+same-batch ownership still belong to their existing pipeline services. See
+[supplemental template images](PROMPTS.md#supplemental-template-images-2026-10-19).
+Disposable offline checks covered the four character compilers, Body slot/initial
+packaging and all eight Tsaeytte Head views; they establish prompt/binding behavior,
+not live image quality. The approved four fast E2E scenarios passed (42.9s).
+
 Preserve the review semantics, live-batch/checksum lock requirements, universe ownership, and immutable dependent locks in [INVARIANTS](../INVARIANTS.md). Failure modes include unavailable external rendering/ranking models, stale rankings, changed/missing source snapshots, invalid batch IDs, missing `spec.json`, missing locked bytes, and interrupted runners. Stop/resume/rerun and recovery must respect superseded work; do not reset persisted state blindly.
 
 Deleting a Body-Reference batch is blocked while its runner still owns the durable runner lock. A persisted active status with no live runner is interrupted work and can be deleted without first changing it to cancelled/stopped; queued asks are withdrawn during deletion.

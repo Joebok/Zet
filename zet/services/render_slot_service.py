@@ -133,6 +133,11 @@ class CharacterRenderSlots:
                 snapshot = self.adapter._compile_view(root, run["character"], run["phase"], view, run["views"].index(view) + 1, output_dir=output, references=refs)
             path = Path(snapshot["prompt_path"])
             prompt = self.adapter._qwen_prompt(path.read_text(encoding="utf-8"), view, anchor=bool(refs), anchor_view=refs[0].get("view", "FRONT") if refs else "FRONT")
+            manifest = path.parent / "dependency_manifest.json"
+            if manifest.is_file():
+                resources = json.loads(manifest.read_text(encoding="utf-8")).get("resources")
+                if isinstance(resources, list):
+                    refs = resources
             preset = "comfyui-qwen-body-reference-edit" if refs else "comfyui-qwen-body-reference-text"
         elif pipeline == "head-image":
             anchor = next((c for c in run["candidates"] if c["candidate_id"] == run.get("front_anchor")), {})
