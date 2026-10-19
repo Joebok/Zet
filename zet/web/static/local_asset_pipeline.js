@@ -187,7 +187,7 @@
         note.textContent = `${warning.view}: ${warning.message}`; progression.append(note);
       }
     }
-    $("back-reference-label").hidden = !run?.progression?.next_views.includes("BACK");
+    $("back-reference-label").hidden = state.pipeline === "body-reference" || !run?.progression?.next_views.includes("BACK");
     if (run && $("back-reference").dataset.runId !== run.run_id) {
       $("back-reference").value = run.character_progression?.back_reference || "BACK_LEFT_3_4";
       $("back-reference").dataset.runId = run.run_id;
@@ -631,9 +631,17 @@
         recipeHelp.textContent = view === "FRONT" ? "Uses this pipeline’s FRONT prerequisites." : "Uses the selected predecessor from the preceding stage. Submitted renders retain their frozen reference.";
       }
       if (run.character_progression && view === "BACK") {
-        for (const option of [...recipeSelect.options]) if (!["BACK_LEFT_3_4", "BACK_RIGHT_3_4"].includes(option.value)) option.remove();
+        const sources = state.pipeline === "body-reference" ? ["FRONT"] : ["BACK_LEFT_3_4", "BACK_RIGHT_3_4"];
+        for (const option of [...recipeSelect.options]) if (!sources.includes(option.value)) option.remove();
         recipeSelect.value = recipe.source_view || run.character_progression.back_reference;
-        recipeHelp.textContent = "Choose either selected rear three-quarter for future BACK renders. Existing images stay unchanged.";
+        if (state.pipeline === "body-reference") {
+          recipeSelect.value = "FRONT";
+          recipeSelect.disabled = true;
+          recipeSection.querySelector("button").hidden = true;
+          recipeHelp.textContent = "Uses the selected FRONT image for future BACK renders. Submitted renders retain their frozen reference.";
+        } else {
+          recipeHelp.textContent = "Choose either selected rear three-quarter for future BACK renders. Existing images stay unchanged.";
+        }
       }
       recipeSection.append(recipeHelp); details.append(recipeSection);
       const observationDetails = document.createElement("details");

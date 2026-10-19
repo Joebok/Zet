@@ -14,6 +14,7 @@ The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and r
 | Change character or scene prompts | [Prompts](COMPONENTS/PROMPTS.md) | [Narrative](COMPONENTS/NARRATIVE.md); [Scene Builder](COMPONENTS/SCENE_BUILDER.md) for historical structured-workflow context |
 | Change local character generation/review | [Local characters](COMPONENTS/LOCAL_CHARACTERS.md) | [Queues](COMPONENTS/QUEUES.md), invariants |
 | Debug jobs, restart recovery, or missing images | [Queues](COMPONENTS/QUEUES.md) | [Development](DEVELOPMENT.md), owning workflow |
+| Troubleshoot LAN/Tailscale HTTPS, DNS, certificates, or Caddy | [HTTPS troubleshooting](LAN_HTTPS.md) | [Development](DEVELOPMENT.md), deployment plans |
 | Plan a substantial change/refactor | [Plan convention](../plans/README.md) | Architecture, relevant invariants, [decisions](DECISIONS/README.md) |
 | Select validation, debug E2E, or inspect the seed | [Testing](Testing.md) | [Development](DEVELOPMENT.md), code-map scenario/gap references |
 | Report a dashboard task or restore captured context | [GitHub task workflow](GitHub_Task_Workflow.md) | Code-map task forwarding entry, config definitions |
@@ -27,6 +28,7 @@ The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and r
 | [DATA_MODEL.md](DATA_MODEL.md) | Store ownership, formats, identifiers, configuration, compatibility | Any persistent/interface change |
 | [INVARIANTS.md](INVARIANTS.md) | Supported contracts, consequences, verification | Before changing a shared assumption |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Setup/run/check commands, observed results, debugging and gaps | Environment or validation work |
+| [LAN_HTTPS.md](LAN_HTTPS.md) | Installed LAN/Tailscale HTTPS pieces, diagnostic commands, renewal, credentials and recovery | HTTPS/DNS/certificate or host service troubleshooting |
 | [Testing.md](Testing.md) | Approved fast scenarios, isolated fixtures, optional live check, coverage approval | Before selecting or changing tests |
 | [GitHub_Task_Workflow.md](GitHub_Task_Workflow.md) | GitHub capture/evidence, worker/limits/attention, deployment and restoration | Dashboard task reporting and Kanban integration |
 | [COMPONENTS/LIBRARY.md](COMPONENTS/LIBRARY.md) | Universe binding, authoritative images, derived discovery index | Library/reference/discovery work |

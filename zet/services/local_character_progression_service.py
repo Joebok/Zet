@@ -142,8 +142,9 @@ def advance(workflow, run_id, costume="", expected_stage=None, back_reference=No
             raise ValueError(run["progression"]["reason"] or "All requested stages are already open.")
         targets = run["progression"]["next_views"]
         next_stage = next(i for i, group in enumerate(STAGES) if targets[0] in group)
-        back = back_reference or flow.get("back_reference", "BACK_LEFT_3_4")
-        if back not in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}:
+        back = "FRONT" if workflow.pipeline == "body-reference" else back_reference or flow.get("back_reference", "BACK_LEFT_3_4")
+        back_sources = {"FRONT"} if workflow.pipeline == "body-reference" else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
+        if back not in back_sources:
             raise ValueError("Choose a selected back three-quarter reference.")
         from zet.services.local_view_reference_service import selected_reference
         recipes = {}

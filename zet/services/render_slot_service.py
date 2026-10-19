@@ -120,7 +120,7 @@ class CharacterRenderSlots:
         output = output_dir or root / "prompts" / view
         stamp = output / "Template_Revision.json"
         compiled_revision = json.loads(stamp.read_text(encoding="utf-8")).get("revision_id", "") if stamp.is_file() else ""
-        recipe = reference_recipes(root).get(view) or {"mode": "default"}
+        recipe = reference_recipes(root, pipeline).get(view) or {"mode": "default"}
         recipe_stamp = output / "Reference_Recipe.json"
         prior_recipe = json.loads(recipe_stamp.read_text(encoding="utf-8")) if recipe_stamp.is_file() else {"mode": "default"}
         recompile = recompile or output_dir is not None or compiled_revision != revision.get("revision_id", "") or recipe != prior_recipe or recipe["mode"] != "default"

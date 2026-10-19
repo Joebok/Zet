@@ -7,12 +7,18 @@ from zet.services.library_reference_service import pipeline_library_root_for_pat
 from zet.services.local_image_pipeline_policy import mutate_local_run_state
 
 
-def reference_recipes(root: Path) -> dict:
+def reference_recipes(root: Path, pipeline: str = "") -> dict:
     from zet.services.storage_health_service import guard_path
     guard_path(root)
     if not (root / "state.json").is_file() and not (root / "spec.json").is_file():
         return {}  # Initial compilation precedes creation of the run records.
-    return read_library_json(root / "state.json", pipeline_library_root_for_path(root)).get("view_reference_recipes", {})
+    state = read_library_json(root / "state.json", pipeline_library_root_for_path(root))
+    recipes = dict(state.get("view_reference_recipes", {}))
+    if pipeline == "body-reference" and state.get("character_progression"):
+        # Apply to future renders in existing staged batches without rewriting
+        # their saved render inputs or historical reference provenance.
+        recipes["BACK"] = {"mode": "selected_view", "source_view": "FRONT"}
+    return recipes
 
 
 def batch_view_reference(source_view: str, target_view: str, path: str, candidate_id: str) -> dict:
@@ -54,10 +60,11 @@ def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
     if run.get("character_progression"):
         from zet.services.local_prompt_preview_service import PREDECESSORS
         source = recipe["source_view"]
-        valid = view == "BACK" and source in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
+        back_sources = {"FRONT"} if run.get("kind") == "local_body_reference" else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
+        valid = view == "BACK" and source in back_sources
         valid = valid or view != "BACK" and source == PREDECESSORS.get(view) and bool(source)
         if recipe["mode"] != "selected_view" or not valid:
-            raise ValueError("Staged batches use their selected same-side predecessor; BACK may use either rear quarter.")
+            raise ValueError("Staged batches use their selected predecessor; Body BACK uses FRONT, other BACK views use either rear quarter.")
     selected_reference(run, view, recipe)
     def update(state):
         state.setdefault("view_reference_recipes", {})[view] = recipe
@@ -68,7 +75,7 @@ def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
 
 
 def custom_references(run: dict, view: str, pipeline: str, base: list[dict]) -> list[dict]:
-    recipe = reference_recipes(Path(run["root"])).get(view) or {"mode": "default"}
+    recipe = reference_recipes(Path(run["root"]), pipeline).get(view) or {"mode": "default"}
     if recipe["mode"] == "default":
         return base
     # These replace only the batch anchor. Matching Body/Head/Assembly inputs and
@@ -87,7 +94,8 @@ def custom_references(run: dict, view: str, pipeline: str, base: list[dict]) -> 
 
 def recipe_requirement(run: dict, view: str) -> str | None:
     """None uses legacy prerequisites; an empty string explicitly needs no anchor."""
-    recipe = reference_recipes(Path(run["root"])).get(view) or {"mode": "default"}
+    pipeline = "body-reference" if run.get("kind") == "local_body_reference" else ""
+    recipe = reference_recipes(Path(run["root"]), pipeline).get(view) or {"mode": "default"}
     if recipe["mode"] == "default":
         return None
     try:

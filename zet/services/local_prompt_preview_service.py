@@ -30,7 +30,7 @@ class LocalPromptPreviewService:
                     "costume-dressing": compile_costume_dressing_job}[pipeline]
         character = Path(workflow.app.config.base_character_path) / run["character"] / run["phase"] / "Character.md"
         from zet.services.local_view_reference_service import batch_view_reference, reference_recipes
-        recipes = reference_recipes(Path(run["root"]))
+        recipes = reference_recipes(Path(run["root"]), pipeline)
         result = []
         with template_sources(sources):
             for view in (view for stage in STAGES for view in stage):
@@ -42,6 +42,8 @@ class LocalPromptPreviewService:
                 source_view = PREDECESSORS.get(view, "FRONT")
                 if view == "BACK":
                     source_view = (run.get("character_progression") or {}).get("back_reference", source_view)
+                    if pipeline == "body-reference":
+                        source_view = "FRONT"
                 recipe = recipes.get(view) or {}
                 if recipe.get("mode") == "selected_view":
                     source_view = recipe["source_view"]

@@ -180,7 +180,7 @@ class LocalPromptImprovementService:
         if self.pipeline != "scene":
             from zet.services.local_view_reference_service import reference_recipes
             from zet.services.template_source_service import active_revision
-            run["view_reference_recipes"] = reference_recipes(self._root(run))
+            run["view_reference_recipes"] = reference_recipes(self._root(run), self.pipeline)
             run["active_template_revision_id"] = active_revision(self._root(run)).get("revision_id", "")
         for candidate in run.get("candidates") or []:
             (candidate.get("human_review") or {}).pop("notes", None)

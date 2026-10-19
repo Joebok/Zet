@@ -59,6 +59,17 @@ consumer.
 
 Fast browser tests use fixed port **8765**, one worker, and a disposable fixture in `test-results/narrative-e2e/fast`. [server.py](../tests/e2e/server.py) prepares this fixture from [tests/library](../tests/library/README.md). Run suites serially across worktrees because they share the port. The fast suite uses prepared queue answers; live artistic quality remains unverified.
 
+## LAN and Tailscale HTTPS on Joe's Windows machine
+
+Use **https://zet.schonbok.net** on the LAN or **https://zet2.schonbok.net** through
+Tailscale. Caddy handles both certificates and forwards requests to the existing
+Python server on port 8081; Python still uses its normal startup.
+
+[LAN HTTPS troubleshooting](LAN_HTTPS.md) is the primary reference for the DNS,
+certificate renewal, Windows service/firewall, private files, diagnostic commands,
+credential changes, and recovery. The [completed deployment plan](../plans/completed/lan-https.md)
+records the original implementation and acceptance checks.
+
 ## Observed verification
 
 **V5 recovery, verified on 2026-10-11:** `npm.cmd run test:e2e` passed all **3 scenarios in 21.5s**. No packages were installed and the optional live check was not run. The recovered application, testing, configuration, and workflow files match the source V5 tip. See the [recovery plan](../plans/completed/recover-v5-history.md).
