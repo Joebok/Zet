@@ -743,10 +743,8 @@ class LocalBodyReferenceService:
             json.dumps(spec["prompt_snapshots"], sort_keys=True).encode()
         ).hexdigest()
         self._write(spec_path, spec)
-        def update_added(state):
-            for candidate in (state.get("added_candidates") or {}).values():
-                if candidate["candidate_id"] in (state.get("detached_candidates") or []):
-                    continue
+        def update_candidates(state):
+            for candidate in merge_candidates(spec, state).values():
                 view = candidate["view"]
                 if view not in views:
                     continue
@@ -754,9 +752,12 @@ class LocalBodyReferenceService:
                 prompt = refreshed["qwen_prompt"]
                 if candidate.get("method") == METHOD_FRONT_CONDITIONED:
                     prompt = self._qwen_prompt(refreshed["manual_prompt"], view, anchor=True)
-                candidate.update(prompt=prompt, prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(), template_revision_id=refreshed.get("template_revision_id", ""))
-                state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(prompt=prompt, prompt_sha256=candidate["prompt_sha256"], template_revision_id=candidate["template_revision_id"])
-        mutate_local_run_state(root, update_added)
+                update = {"prompt": prompt, "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+                          "template_revision_id": refreshed.get("template_revision_id", "")}
+                if candidate["candidate_id"] in (state.get("added_candidates") or {}):
+                    state["added_candidates"][candidate["candidate_id"]].update(update)
+                state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(update)
+        mutate_local_run_state(root, update_candidates)
 
     def rerun(self, run_id: str, *, recompile: bool = False) -> dict[str, Any]:
         """Clear the current batch's generated candidates and reviews, then restart FRONT."""
@@ -766,12 +767,12 @@ class LocalBodyReferenceService:
         if self._runner_is_active(run_id):
             raise LocalBodyReferenceError("Wait for this batch to finish before starting a fresh run.")
         views = set(run.get("views", []))
-        if recompile:
-            self._refresh_compiled_prompts(run_id, views)
         for view in views:
             self.asset_store.assert_batch_change_allowed(
                 run["character"], run["phase"], "Body-Reference", view
             )
+        if recompile:
+            self._refresh_compiled_prompts(run_id, views)
         root = self._root(run_id).resolve()
         self._withdraw_queued_asks(run_id)
         for view in views:
@@ -782,6 +783,7 @@ class LocalBodyReferenceService:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
                 status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                reference_images=[], input_hashes={}, source_image_hash="",
                 image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
                 render_error="", analyses={},
                 disposition="pending",
@@ -819,10 +821,10 @@ class LocalBodyReferenceService:
         root = self._root(run_id).resolve()
         affected_views = (set(run.get("views", []))
                           if view == FRONT_VIEW and not run.get("character_progression") and int(run.get("review_version") or 1) >= 2 else {view})
-        if recompile:
-            self._refresh_compiled_prompts(run_id, affected_views)
         for affected_view in affected_views:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", affected_view)
+        if recompile:
+            self._refresh_compiled_prompts(run_id, affected_views)
         state = self._read_json((root / "state.json"))
         stamp = self._now()
         from zet.services.local_image_evaluation_service import supersede_evaluations
@@ -835,6 +837,7 @@ class LocalBodyReferenceService:
             clear_candidate_artifacts(root, affected["candidate_id"], affected.get("image_path"))
             state.setdefault("candidates", {}).setdefault(affected["candidate_id"], {}).update(
                 status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                reference_images=[], input_hashes={}, source_image_hash="",
                 image_path="", image_sha256="", ask_id="", queued_at="", completed_at="",
                 render_error="", analyses={},
                 disposition="pending", human_review={"decision": "undecided"},
@@ -917,6 +920,7 @@ class LocalBodyReferenceService:
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
             update.update(
                 status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
+                reference_images=[], input_hashes={}, source_image_hash="",
                 image_path="", image_sha256="", ask_id="", queued_at="",
                 completed_at="", render_error="", analyses={}, analysis_history=[], review_history=[],
                 ranking_history=[], local_job={}, luna_status="",
@@ -1823,6 +1827,7 @@ class LocalBodyReferenceService:
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
             update.update({
                 "status": "PENDING", "image_path": "", "image_sha256": "", "ask_id": "",
+                "render_input": None, "reference_images": [], "input_hashes": {}, "source_image_hash": "",
                 "render_error": "",
                 "analyses": {}, "analysis_history": [], "review_history": [],
                 "human_review": {"decision": "undecided"},

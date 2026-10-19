@@ -105,6 +105,14 @@ The browser polls at two-second intervals while active, including in review. Upd
 
 Re-running a whole view in Body-Reference, Head-Image, Assembly, or Dressing targets every candidate in that view, including candidates created through supplemental slots. The batch runner may skip slot-managed candidates during ordinary recovery because the slot collector owns those asks; the explicit view target lets the rerun render and rank the full replacement set.
 
+Body-Reference batch/view **Recompile** refreshes the affected candidates' effective
+prompts, including mutable overrides and supplemental slot definitions, from the
+current templates and active batch revision. Protection checks precede compilation.
+Batch, view, failed-candidate and legacy downstream resets clear frozen render
+inputs, reference previews and reference hashes so pending candidates do not show
+references from discarded renders. Without Recompile, resetting leaves saved prompt text unchanged;
+render Retry continues to replay its frozen inputs and seed.
+
 Re-evaluate is the single dashboard evaluation action for all four pipelines. [LocalImagePipelineWorkflowService.reevaluate](../../zet/services/local_image_workflow_service.py) refreshes Luna ranking and AI prompt-improvement observations for existing harvested images, for one view or every rendered view in the batch. Unrendered views are skipped. It preserves human decisions, notes and selections and does not invoke the render runner or retired defect gates. Existing active ranking/observation work is reused; completed evaluation records receive a new identity and late updates remain fenced. The separate Rank images/Re-rank and Re-analyze buttons are removed; ranking and observations remain visible.
 
 Explicit Re-evaluate refreshes candidate file bookkeeping through
