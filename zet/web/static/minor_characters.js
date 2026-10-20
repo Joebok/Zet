@@ -286,7 +286,8 @@
       if(candidate?.image_url) {
         const thumb=button("",()=>inspect(candidate.candidate_id));thumb.className="mc-slot-image";thumb.title="Inspect full size";
         const img=document.createElement("img");img.src=url(candidate.image_url);img.alt=`Slot ${slot+1} candidate`;thumb.append(img);card.append(thumb);
-      } else card.append(element("p",candidate ? candidate.error || candidate.status.toLowerCase() : "Empty"));
+      } else if (!candidate) card.append(element("p", "Empty", "image-card-state"));
+      if (candidate?.error) card.append(element("p", candidate.error, "error"));
       const controls=element("div","","button-row mc-slot-actions");
       const submitting=slotPending.size>0;
       const regen=button(candidate ? "Regenerate" : "Generate",async()=>{

@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261020-review-ui">
+  <link rel="stylesheet" href="/static/zet.css?v=20261020-image-cards">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261019-responsive">
   <link rel="stylesheet" href="/static/narrative.css?v=20261019-responsive">
 </head>
@@ -1734,15 +1734,13 @@
           <div id="image-generation-results-grid" class="image-generation-results-grid" aria-live="polite"></div>
           <div class="button-row"><button id="image-generation-review-import" class="primary-action" type="button" disabled>Add to Image Inventory</button><button id="image-generation-review-update" type="button" hidden disabled>Update Image Inventory</button></div>
           <dialog id="image-generation-review" class="image-generation-review" aria-label="Image result review">
-            <div class="button-row compact"><button id="image-generation-review-close" type="button">Close</button><button id="image-generation-review-task" type="button">Create task</button></div>
-            <div class="button-row compact"><button id="image-generation-review-previous" type="button" disabled>Previous</button><span id="image-generation-review-count" class="status-text"></span><button id="image-generation-review-next" type="button" disabled>Next</button></div>
+            <div class="button-row compact image-generation-review-toolbar"><button id="image-generation-review-previous" type="button" disabled>Previous</button><span id="image-generation-review-count" class="status-text"></span><button id="image-generation-review-next" type="button" disabled>Next</button><button id="image-generation-review-task" type="button">Create task</button><button id="image-generation-review-close" type="button">Close</button></div>
             <img id="image-generation-review-image" alt="Selected generated result">
-            <div class="button-row"><button id="image-generation-review-select" class="primary-action" type="button">Select</button><button id="image-generation-review-retry" type="button">Regenerate</button><button id="image-generation-review-clear" class="danger-text-action" type="button">Clear slot</button></div>
+            <div class="button-row"><button id="image-generation-review-select" class="primary-action" type="button">Select</button><button id="image-generation-review-retry" type="button">Regenerate</button><button id="image-generation-review-clear" class="danger-text-action" type="button">Clear slot</button><div id="image-generation-review-add"></div></div>
             <p id="image-generation-review-reason" class="slot-action-reason" role="status"></p>
-            <details class="image-generation-review-details"><summary>Prompt and render actions</summary>
+            <details class="image-generation-review-details"><summary>Prompt and source</summary>
             <p><strong>Prompt</strong><br><span id="image-generation-review-prompt"></span></p>
             <p><strong>Negative prompt</strong><br><span id="image-generation-review-negative"></span></p>
-            <div id="image-generation-review-add"></div>
             </details>
           </dialog>
         </section>
@@ -2146,22 +2144,23 @@ Add prompt language here.
   </main>
 
 
+  <script src="/static/image_card_ui.js?v=20261020"></script>
   <script src="/static/image_input.js?v=20261019"></script>
   <script src="/static/task_capture.js?v=20261019-responsive"></script>
   <script src="/static/task_attention.js?v=20261013-github"></script>
-  <script src="/static/render_slots.js?v=20261012"></script>
+  <script src="/static/render_slots.js?v=20261020-image-cards"></script>
   <script src="/static/ai_model_picker.js?v=20261016"></script>
   <script src="/static/storage_status.js?v=20261017"></script>
   <script src="/static/ai_queue.js?v=20261017"></script>
-  <script src="/static/zet.js?v=20261019-responsive"></script>
+  <script src="/static/zet.js?v=20261020-image-cards"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>
     <div id="mc-review-pair" class="qc-comparison-pair"></div>
   </dialog>
-  <script src="/static/minor_characters.js?v=20261019-responsive"></script>
+  <script src="/static/minor_characters.js?v=20261020-image-cards"></script>
   <script src="/static/local_template_improvement.js?v=20261020-review-ui"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261020-review-ui"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261020-image-cards"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
 
 </body>

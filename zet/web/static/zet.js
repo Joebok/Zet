@@ -1738,6 +1738,9 @@ function renderImageGenerationReview() {
   if (!slots.includes(imageGenerationReviewIndex)) { imageGenerationReview.close(); return; }
   const {job, image} = imageGenerationResult(imageGenerationReviewIndex);
   const position = slots.indexOf(imageGenerationReviewIndex);
+  const promptDetails = imageGenerationReview.querySelector("details");
+  if (imageGenerationReview.dataset.slot !== String(imageGenerationReviewIndex)) promptDetails.open = false;
+  imageGenerationReview.dataset.slot = String(imageGenerationReviewIndex);
   imageGenerationReviewImage.src = image.url;
   imageGenerationReviewImage.alt = `Generated image in slot ${imageGenerationReviewIndex + 1}`;
   imageGenerationReviewCount.textContent = `Slot ${imageGenerationReviewIndex + 1} · ${position + 1} of ${slots.length}`;
@@ -1760,6 +1763,7 @@ function renderImageGenerationReview() {
 }
 
 function openImageGenerationReview(slotIndex) {
+  if (!imageGenerationReview.open || imageGenerationReviewIndex !== slotIndex) imageGenerationReview.querySelector("details").open = false;
   imageGenerationReviewIndex = slotIndex;
   if (!imageGenerationReview.open) imageGenerationReview.showModal();
   renderImageGenerationReview();
@@ -2073,14 +2077,18 @@ function renderImageGenerationStatus() {
     }
     nextGrid.append(card);
   }
+  window.ZetImageCardUI.scan(nextGrid);
   [...nextGrid.children].forEach((card, index) => {
     const previous = imageGenerationResultsGrid.children[index];
     if (!previous) imageGenerationResultsGrid.append(card);
     else if (previous.outerHTML !== card.outerHTML) {
       const focused = document.activeElement;
-      const text = previous.contains(focused) ? focused.textContent : null;
+      const action = previous.contains(focused) ? focused.dataset.imageAction || (focused.classList.contains("image-generation-result-preview") ? "preview" : null) : null;
       previous.replaceWith(card);
-      if (text) [...card.querySelectorAll("button,a")].find(button => button.textContent === text)?.focus();
+      window.ZetImageCardUI.scan(card.parentElement);
+      const control = action === "preview" ? card.querySelector(".image-generation-result-preview")
+        : [...card.querySelectorAll("button,a")].find(button => button.dataset.imageAction === action);
+      if (action) control?.focus({ preventScroll: true });
     }
   });
   renderImageGenerationReview();
@@ -4394,7 +4402,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261019-responsive');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261020-image-cards');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;

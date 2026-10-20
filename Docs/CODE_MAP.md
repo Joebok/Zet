@@ -67,6 +67,16 @@ Use this map to select a narrow search, inspect the named entry point and caller
 
 ## Search and impact routine
 
+Compact image-card presentation (2026-10-20):
+[image_card_ui.js](../zet/web/static/image_card_ui.js) owns scoped SVG control
+decoration, accessible labels/tooltips and stable action keys; `zet.css` owns sizing
+and responsive review layout. Local/Narrative renderers own single-status cards,
+image-less details inspection and collapsed prompt/source disclosures; local review
+places available Luna advice above human decisions. Generation, Minor Characters,
+Inventory, shared fullscreen viewers and refinement reuse the decorator without
+changing workflow APIs. Four fast scenarios remain regression coverage; disposable
+prepared-response checks cover presentation. See [Dashboard UI](COMPONENTS/DASHBOARD_UI.md).
+
 Responsive dashboard presentation: [DASHBOARD_UI](COMPONENTS/DASHBOARD_UI.md) owns
 shell/card/review conventions. `zet.js:syncResponsiveChrome` relocates compact
 utilities and keeps all pipeline destinations available. `image_input.js` owns

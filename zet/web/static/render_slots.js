@@ -4,7 +4,8 @@ window.ZetRenderSlots = {
     const group = document.createElement("div");
     group.className = "button-row compact render-slot-add";
     const label = document.createElement("label");
-    label.textContent = "Additional renders ";
+    const caption = document.createElement("span"); caption.className = "render-slot-count-label";
+    caption.textContent = "Additional renders"; label.append(caption);
     const input = document.createElement("input");
     input.type = "number"; input.min = "1"; input.max = String(Math.max(1, emptyCount)); input.value = "1";
     input.disabled = disabled || !emptyCount;

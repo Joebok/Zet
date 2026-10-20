@@ -21,7 +21,11 @@ Narrative provides prose-oriented authoring and generation independent of Scene 
 Responsive cards and image review follow [Dashboard UI](DASHBOARD_UI.md). Existing
 targets with images prioritize viewing on compact screens, with direction and
 generation inputs available in disclosures. These visual conventions preserve
-Narrative's independent records and selection/lock lifecycle.
+Narrative's independent records and selection/lock lifecycle. Cards show render
+status once and use shared image-action icons. Prompt/source provenance, copying,
+assembly layers and raw-composite links live in the review disclosure, collapsed
+on opening/changing candidates. Pending/failed occupied slots can open details;
+selection and locking still require an image.
 
 Narrative JSON persistence uses the shared portable library-path codec for explicitly typed library-owned references, including frozen snapshots. Target-relative filenames and immutable job/transport artifacts keep their existing semantics. The offline updater excludes migration journals and historical free text; see [DATA_MODEL](../DATA_MODEL.md) and [ADR 0011](../DECISIONS/0011-portable-library-references.md).
 

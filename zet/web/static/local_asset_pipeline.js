@@ -147,6 +147,22 @@
     return busy(run) || Boolean(run?.slot_render_ids?.length) || !run?.progression?.can_continue;
   }
 
+  function orderedViews(run) {
+    const order = ["FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"];
+    const position = view => order.includes(view) ? order.indexOf(view) : order.length;
+    return [...(run.views || [])].sort((a, b) => position(a) - position(b));
+  }
+
+  function syncViewContinueButtons(host = $("views")) {
+    const top = $("proceed");
+    for (const button of host.querySelectorAll("button[data-local-action='proceed']")) {
+      button.hidden = top.hidden || top.disabled;
+      button.disabled = top.disabled;
+      button.textContent = top.textContent;
+      button.title = top.title;
+    }
+  }
+
   function frontRenderControl() {
     const run = state.run;
     return { disabled: continuationDisabled(run) || run?.progression?.stage !== -1,
@@ -207,6 +223,7 @@
       $("back-reference").dataset.runId = run.run_id;
     }
     for (const option of $("back-reference").options) option.disabled = !run?.selected_views?.[option.value];
+    syncViewContinueButtons();
   }
 
   function addLink(parent, label, href) {
@@ -283,7 +300,7 @@
     lockNotice.textContent = "Locked images for this pipeline in another batch.";
     lockNotice.hidden = true;
     host.append(lockNotice);
-    for (const view of run.views || []) {
+    for (const view of orderedViews(run)) {
       const article = document.createElement("article");
       article.className = "local-pipeline-selected-card";
       const title = document.createElement("h2");
@@ -363,10 +380,6 @@
         generationTime.textContent = `Generated in ${Math.round(Number(candidate.elapsed_seconds))} seconds`;
         card.append(generationTime);
       }
-    } else {
-      const pending = document.createElement("p");
-      pending.textContent = candidate.slot_waiting ? `Waiting for prerequisites · ${candidate.slot_waiting}` : renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Waiting";
-      card.append(pending);
     }
     const status = document.createElement("p");
     status.className = "muted image-card-state";
@@ -374,7 +387,7 @@
       ? ranking.luna_ordered_candidate_ids
       : ranking.ordered_candidate_ids || [];
     const rank = rankingOrder.indexOf(candidate.candidate_id);
-    status.textContent = `${renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}` : ""}`;
+    status.textContent = `${candidate.slot_waiting ? `Waiting for prerequisites · ${candidate.slot_waiting}` : renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}${ranking.status === "STALE" ? " (stale)" : ""}` : ""}`;
     card.append(status);
     const renderError = renderErrorDetails(candidate);
     if (renderError) card.append(renderError);
@@ -382,18 +395,10 @@
     human.className = "muted";
     human.textContent = `Human ${candidate.human_review?.decision || "undecided"}`;
     card.append(human);
-    if (candidate.render_input?.prompt || candidate.prompt) {
-      const source = document.createElement("details"); source.className = "render-slot-prompt";
-      const summary = document.createElement("summary"); summary.textContent = "Prompt and source";
-      const prompt = document.createElement("pre"); prompt.textContent = candidate.render_input?.prompt || candidate.prompt;
-      const references = document.createElement("p"); references.className = "muted";
-      references.textContent = (candidate.render_input?.references || candidate.reference_images || []).map((ref, index) => `Image ${index + 1}: ${ref.label || ref.role || "Reference"}`).join(" · ");
-      source.append(summary, prompt, references); card.append(source);
-    }
     const controls = document.createElement("div");
     controls.className = "button-row compact local-pipeline-candidate-controls";
+    addButton(controls, "Review", "review", { view, candidate: candidate.candidate_id });
     if (candidate.image_path) {
-      addButton(controls, "Review", "review", { view, candidate: candidate.candidate_id });
       addButton(controls, selected ? "Unselect" : "Select", selected ? "unselect" : "select", { primary: !selected, view, candidate: candidate.candidate_id });
     } else if (selected) addButton(controls, "Unselect", "unselect", {view, candidate: candidate.candidate_id});
     const slot = candidate.slot;
@@ -410,6 +415,7 @@
     if (locked) status.textContent += " · Locked";
     if (candidate.slot_reason) { const reason = document.createElement("p"); reason.className = "slot-action-reason muted"; reason.textContent = candidate.slot_reason; card.append(reason); }
     if (controls.childElementCount) card.append(controls);
+    window.ZetImageCardUI.scan(card);
     return card;
   }
 
@@ -456,16 +462,18 @@
           const focus = document.activeElement;
           const focusedCard = focus?.closest(".local-pipeline-candidate");
           const focusKey = focusedCard ? cardKey(focusedCard) : "";
-          const focusIndex = focusedCard ? [...focusedCard.querySelectorAll("button,a")].indexOf(focus) : -1;
+          const focusAction = focus?.dataset.imageAction || (focus?.classList.contains("local-pipeline-candidate-image") ? "preview" : "");
           const openDetails = new Map([...gallery.children].map(card => [cardKey(card), [...card.querySelectorAll("details")].map(section => section.open)]));
           for (const card of newCards) {
             const open = openDetails.get(cardKey(card)) || [];
             card.querySelectorAll("details").forEach((section, index) => { if (open[index] !== undefined) section.open = open[index]; });
           }
           gallery.replaceChildren(...newCards);
-          if (focusKey && focusIndex >= 0) {
+          if (focusKey && focusAction) {
             const target = [...gallery.children].find(card => cardKey(card) === focusKey);
-            target?.querySelectorAll("button,a")[focusIndex]?.focus();
+            const control = focusAction === "preview" ? target?.querySelector(".local-pipeline-candidate-image")
+              : [...(target?.querySelectorAll("button,a") || [])].find(button => button.dataset.imageAction === focusAction);
+            control?.focus({ preventScroll: true });
           }
         } else {
           for (let index = 0; index < newCards.length; index++) {
@@ -473,9 +481,11 @@
             [...card.querySelectorAll("details")].forEach((section, sectionIndex) => { const nextSection = newCard.querySelectorAll("details")[sectionIndex]; if (nextSection) nextSection.open = section.open; });
             if (card.outerHTML === newCard.outerHTML) continue;
             const focus = document.activeElement;
-            const focusIndex = card.contains(focus) ? [...card.querySelectorAll("button,a")].indexOf(focus) : -1;
+            const focusAction = card.contains(focus) ? focus?.dataset.imageAction || (focus?.classList.contains("local-pipeline-candidate-image") ? "preview" : "") : "";
             card.replaceWith(newCard);
-            if (focusIndex >= 0) newCard.querySelectorAll("button,a")[focusIndex]?.focus();
+            const control = focusAction === "preview" ? newCard.querySelector(".local-pipeline-candidate-image")
+              : [...newCard.querySelectorAll("button,a")].find(button => button.dataset.imageAction === focusAction);
+            if (focusAction) control?.focus({ preventScroll: true });
           }
           while (gallery.children.length > newCards.length) gallery.lastElementChild.remove();
         }
@@ -516,7 +526,7 @@
       state.reviewIndex = index >= 0 ? index : Math.min(state.reviewIndex, state.reviewCandidates.length - 1);
       if (state.reviewIndex >= 0) {
         const focus = document.activeElement;
-        const focusName = focus?.name, focusText = focus?.textContent;
+        const focusName = focus?.name, focusAction = focus?.dataset.imageAction;
         const hadFocus = $("review-panel").contains(focus);
         renderReview();
         const newAddCount = $("review-panel").querySelector(".render-slot-add input");
@@ -524,7 +534,7 @@
         if (index >= 0 && decision) { const radio = $("review-panel").querySelector(`input[value="${decision}"]`); if (radio) radio.checked = true; }
         if (hadFocus && focus?.closest(".render-slot-add")) newAddCount?.focus({ preventScroll: true });
         else if (hadFocus && focusName) $("review-panel").querySelector(`input[name="${focusName}"]:checked`)?.focus({ preventScroll: true });
-        else if (hadFocus && focusText) [...$("review-panel").querySelectorAll("button")].find(button => button.textContent === focusText)?.focus({ preventScroll: true });
+        else if (hadFocus && focusAction) [...$("review-panel").querySelectorAll("button")].find(button => button.dataset.imageAction === focusAction)?.focus({ preventScroll: true });
       } else $("review-dialog").close();
     }
   }
@@ -533,7 +543,7 @@
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
     const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
     host.replaceChildren();
-    for (const view of run.views || []) {
+    for (const view of orderedViews(run)) {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
       const details = document.createElement("details");
       details.className = "local-pipeline-view";
@@ -690,12 +700,11 @@
       aiContent.textContent = `${ai.status || "Pending"}${ai.error ? ` · ${ai.error}` : ""}${ai.stale_reason ? ` · ${ai.stale_reason}` : ""}${ai.text ? `\n\n${ai.text}` : ""}`;
       observationSection.append(aiHeading, aiContent);
       observationDetails.append(observationSection);
+      const reviewProgress = document.createElement("p");
       if (evaluation.evaluation_id || ranking.status) {
-        const reviewProgress = document.createElement("p");
         reviewProgress.className = "muted local-pipeline-review-progress";
         const rankText = evaluationLabels[evaluation.ranking_status] || evaluationLabels[ranking.status] || "Ranking not queued";
         reviewProgress.textContent = `Luna ranking · ${rankText}`;
-        details.append(reviewProgress);
       }
       const gallery = document.createElement("div");
       gallery.className = "local-pipeline-gallery";
@@ -713,6 +722,11 @@
         card.append(title, empty);
         const control = run.slot_controls?.[view] || {};
         addSlotButton(card, "Generate", "generate", view, index + 1, !control.can_generate, control.reason);
+        if (!control.can_generate && control.reason) {
+          const reason = document.createElement("p"); reason.className = "slot-action-reason muted";
+          reason.textContent = control.reason; card.append(reason);
+        }
+        window.ZetImageCardUI.scan(card);
         gallery.append(card);
       };
       const lunaOrder = ranking.status === "COMPLETE"
@@ -737,8 +751,14 @@
       details.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason}));
       details.append(gallery);
       details.append(observationDetails);
+      if (reviewProgress.textContent) details.append(reviewProgress);
+      const continuation = document.createElement("div");
+      continuation.className = "button-row compact";
+      addButton(continuation, "Continue", "proceed", { primary: true });
+      details.append(continuation);
       host.append(details);
     }
+    syncViewContinueButtons(host);
     state.renderedSelections = { ...(run.selected_views || {}) };
   }
 
@@ -1063,7 +1083,7 @@
     const run = state.run;
     const views = run?.views || [];
     return views.flatMap(view => sortCandidatesByDisplayOrder(run, view,
-      (run?.candidates || []).filter(item => item.view === view && item.image_path),
+      (run?.candidates || []).filter(item => item.view === view),
       item => item.candidate_id, item => physicalSlotNumber(run, view, item)));
   }
 
@@ -1072,6 +1092,7 @@
   }
 
   async function saveReviewDecision(candidate) {
+    if (!candidate.image_path) return candidate;
     const decision = normalizedDecision($("review-panel").querySelector("input[name='local-human-decision']:checked")?.value);
     const current = (state.run?.candidates || []).find(item => item.candidate_id === candidate.candidate_id) || candidate;
     if (decision !== normalizedDecision(current.human_review?.decision)) {
@@ -1152,13 +1173,24 @@
     }
     $("review-compare-image").closest("figure").hidden = !comparison;
     $("review-compare-image").closest(".local-pipeline-review-comparison").classList.toggle("single-image", !comparison);
-    $("review-image").src = imageUrl(candidate);
-    $("review-image").alt = `${candidate.view} candidate ${candidate.candidate_id}`;
+    const reviewImage = $("review-image");
+    reviewImage.hidden = !candidate.image_path;
+    if (candidate.image_path) reviewImage.src = imageUrl(candidate);
+    else reviewImage.removeAttribute("src");
+    reviewImage.alt = `${candidate.view} candidate ${candidate.candidate_id}`;
+    let placeholder = reviewImage.parentElement.querySelector(".image-review-placeholder");
+    if (!placeholder) {
+      placeholder = document.createElement("p"); placeholder.className = "image-review-placeholder";
+      reviewImage.after(placeholder);
+    }
+    placeholder.hidden = Boolean(candidate.image_path);
+    placeholder.textContent = "No image available yet.";
     const panel = $("review-panel");
     const previousCandidate = panel.dataset.candidate;
     const previousDetails = panel.querySelector(".local-pipeline-review-details");
     const detailsOpen = previousDetails?.open || false;
     const detailsScroll = previousDetails?.scrollTop || 0;
+    const qualityScroll = panel.querySelector(".local-pipeline-review-quality")?.scrollTop || 0;
     panel.dataset.candidate = candidate.candidate_id;
     panel.replaceChildren();
     const title = document.createElement("h2");
@@ -1175,6 +1207,7 @@
     info.textContent = metadata.join(" · ");
     const decision = document.createElement("fieldset");
     decision.className = "decision-options local-pipeline-decision-options";
+    decision.disabled = !candidate.image_path;
     const legend = document.createElement("legend");
     legend.textContent = "Human decision";
     decision.append(legend);
@@ -1194,6 +1227,7 @@
     const save = document.createElement("button");
     save.className = "neutral-action";
     save.textContent = "Save review";
+    save.disabled = !candidate.image_path;
     save.addEventListener("click", async () => {
       if (state.reviewActionPending) return;
       state.reviewActionPending = true;
@@ -1206,7 +1240,7 @@
     const select = document.createElement("button");
     select.textContent = "Select this image";
     select.className = "primary-action";
-    select.disabled = selectedViews[candidate.view] === candidate.candidate_id;
+    select.disabled = !candidate.image_path || selectedViews[candidate.view] === candidate.candidate_id;
     select.addEventListener("click", async () => {
       if (state.reviewActionPending) return;
       state.reviewActionPending = true;
@@ -1222,24 +1256,25 @@
     const content = document.createElement("section");
     content.className = "local-pipeline-review-content";
     const renderError = renderErrorDetails(candidate);
-    if (renderError) content.append(renderError);
+    // Errors remain visible even when prompt details are collapsed.
     const ranking = run.rankings?.[candidate.view] || {};
-    const rankingOrder = ranking.luna_ordered_candidate_ids || ranking.ordered_candidate_ids || [];
+    const rankingOrder = ranking.luna_ordered_candidate_ids?.length ? ranking.luna_ordered_candidate_ids : ranking.ordered_candidate_ids || [];
     const rankingPosition = rankingOrder.indexOf(candidate.candidate_id);
     const adjustedOrder = ranking.ordered_candidate_ids || [];
     const adjustedPosition = adjustedOrder.indexOf(candidate.candidate_id);
     const rankEntry = (ranking.entries || []).find((item) => item.candidate_id === candidate.candidate_id);
     const rankingInfo = document.createElement("p");
     rankingInfo.className = "local-pipeline-review-explanation local-pipeline-review-rank";
-    rankingInfo.textContent = rankingPosition >= 0
-      ? `Luna rank #${rankingPosition + 1}${rankEntry?.reason ? ` · ${rankEntry.reason}` : ""}`
-      : ranking.status === "STALE" ? `Luna ranking stale · ${ranking.stale_reason || "Review inputs changed"}`
-        : ranking.status === "FAILED" ? `Luna ranking failed · ${ranking.error || "No details available"}` : "Luna ranking: not ranked";
+    rankingInfo.textContent = ranking.status === "STALE"
+      ? `Luna ranking stale · ${ranking.stale_reason || "Review inputs changed"}${rankingPosition >= 0 ? ` · Previous rank #${rankingPosition + 1}` : ""}`
+      : ranking.status === "FAILED" ? `Luna ranking failed · ${ranking.error || "No details available"}`
+        : rankingPosition >= 0 ? `Luna rank #${rankingPosition + 1}${rankEntry?.reason ? ` · ${rankEntry.reason}` : ""}` : "";
     const analysis = document.createElement("div");
     analysis.className = "local-pipeline-review-analyses";
     if (state.pipeline === "body-reference") {
       for (const [provider, titleText] of [["local", "Local review"], ["luna", "Luna review"]]) {
         const result = candidate.analyses?.[provider];
+        if (!result && !(provider === "luna" ? candidate.luna_error : candidate.local_job?.error)) continue;
         const row = document.createElement("p");
         row.className = "local-pipeline-review-explanation";
         const status = result ? (result.pass === true && !result.uncertain ? "Pass" : result.uncertain ? "Uncertain" : "Fail")
@@ -1257,9 +1292,15 @@
     more.className = "local-pipeline-review-details";
     more.open = previousCandidate === candidate.candidate_id && detailsOpen;
     const moreSummary = document.createElement("summary");
-    moreSummary.textContent = "Image details and render actions";
+    moreSummary.textContent = "Prompt and source";
     const moreActions = document.createElement("div");
     moreActions.className = "button-row compact";
+    const prompt = document.createElement("pre");
+    prompt.textContent = candidate.render_input?.prompt || candidate.prompt || "Prompt not recorded";
+    const references = document.createElement("p"); references.className = "muted";
+    references.textContent = (candidate.render_input?.references || candidate.reference_images || [])
+      .map((ref, index) => `Image ${index + 1}: ${ref.label || ref.role || "Reference"}`).join(" · ");
+    content.append(prompt, references);
     more.append(moreSummary, content);
     const slot = candidate.slot || candidate.ordinal;
     if (slot <= 8) {
@@ -1274,7 +1315,7 @@
     const control = run.slot_controls?.[candidate.view] || {};
     moreActions.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", candidate.view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.reason}));
     if (!select.disabled) actions.append(select);
-    if (adjustedPosition >= 0) {
+    if (candidate.image_path && adjustedPosition >= 0) {
       const up = document.createElement("button");
       up.type = "button";
       up.textContent = "Rank up";
@@ -1313,12 +1354,20 @@
     quality.className = "local-pipeline-review-quality";
     const qualityHeading = document.createElement("h3");
     qualityHeading.textContent = "Luna rank & image review";
-    quality.append(qualityHeading, rankingInfo);
+    quality.append(qualityHeading);
+    if (rankingInfo.textContent) quality.append(rankingInfo);
     if (analysis.childElementCount) quality.append(analysis);
     panel.append(title, view);
-    more.append(info, quality, moreActions);
+    if (rankingInfo.textContent || analysis.childElementCount) panel.append(quality);
+    if (renderError) panel.append(renderError);
+    actions.append(...moreActions.children);
+    more.append(info);
     panel.append(decision, actions, more);
-    if (previousCandidate === candidate.candidate_id) more.scrollTop = detailsScroll;
+    window.ZetImageCardUI.scan(panel);
+    if (previousCandidate === candidate.candidate_id) {
+      more.scrollTop = detailsScroll;
+      quality.scrollTop = qualityScroll;
+    }
     $("review-prev").disabled = state.reviewIndex <= 0;
     $("review-next").disabled = state.reviewIndex >= state.reviewCandidates.length - 1;
     const availableViews = (run.views || []).filter((view) => state.reviewCandidates.some((item) => item.view === view));
@@ -1333,6 +1382,7 @@
     state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
     if (state.reviewIndex < 0) return;
     state.compareOpposite = false;
+    delete $("review-panel").dataset.candidate;
     reviewOrigin = { element: document.activeElement, candidateId, x: scrollX, y: scrollY };
     renderReview();
     $("review-dialog").showModal();
@@ -1471,7 +1521,7 @@
     $("review-dialog").addEventListener("close", () => {
       if (reviewOrigin) {
         const origin = reviewOrigin.element?.isConnected ? reviewOrigin.element
-          : [...$("views").querySelectorAll(".local-pipeline-candidate-image")].find(button => button.dataset.candidate === reviewOrigin.candidateId);
+          : [...$("views").querySelectorAll("button[data-local-action='review']")].find(button => button.dataset.candidate === reviewOrigin.candidateId);
         origin?.focus({ preventScroll: true });
         window.scrollTo(reviewOrigin.x, reviewOrigin.y);
         reviewOrigin = null;

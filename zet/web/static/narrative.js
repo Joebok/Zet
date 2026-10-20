@@ -649,12 +649,10 @@ function updateLive() {
   host.querySelector('#narrative-slots').innerHTML = detail.slots.map((id,index)=>{
     const candidate = id ? detail.candidates[id] : null;
     return `<article class="narrative-slot ${id && id === detail.selected_id ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === detail.selected_id ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3>Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
-      ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${esc(candidate?.status.toLowerCase() || 'Empty')}</div>`}
+      ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${candidate ? '' : 'Empty'}</div>`}
       ${candidate ? `<p class="narrative-muted image-card-state">${esc(candidate.status.toLowerCase())}${id === detail.selected_id ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
       ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
-      <details><summary><span>Prompt and source</span> ${copyPromptButton(id)}</summary><p>${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}${candidate.assembly_snapshot ? ' · '+assemblyModeName(candidate.assembly_mode) : ''}</p><pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre>${candidate.assembly_snapshot ? `${(candidate.assembly_snapshot.has_composite ?? (candidate.assembly_snapshot.assembly_mode || 'finish_composite')==='finish_composite') ? `<a href="${esc(artifactUrl(`candidates/${id}/composite`))}" target="_blank">Compare raw composite</a>` : ''}<p>${candidate.assembly_snapshot.layers.filter(layer=>layer.visible).map(layer=>esc(layer.label)).join(' · ')}</p>` : ''}</details>
-      <div class="narrative-actions narrative-review-actions">${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== detail.selected_id ? 'primary' : ''}" ${id === detail.selected_id ? 'disabled' : ''}>${id === detail.selected_id ? 'Selected' : 'Select'}</button>` : ''}
-      ${candidate.source_snapshot ? `<p class="narrative-muted">Source: ${esc(candidate.source_snapshot.scene_title)} · ${esc(candidate.source_snapshot.title)} · ${esc(candidate.backdrop_adaptation?.operation||'edit')}</p>` : ''}
+      <div class="narrative-actions narrative-review-actions"><button data-review="${id}" aria-label="Review slot ${index+1}">Review</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== detail.selected_id ? 'primary' : ''}" ${id === detail.selected_id ? 'disabled' : ''}>${id === detail.selected_id ? 'Selected' : 'Select'}</button>` : ''}
       ${!candidate.locked && id !== detail.selected_id ? `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regenerate'}</button>` : ''}
       <button data-candidate="${id}" data-candidate-action="clear" class="danger-text-action">Clear slot</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
       : `<div class="narrative-actions"><button class="primary" data-render-slot="${index+1}">Generate</button></div>`}</article>`;
@@ -663,7 +661,8 @@ function updateLive() {
 }
 
 function reviewImages() {
-  return detail?.slots.filter(id=>id && detail.candidates[id]?.image) || [];
+  // Occupied slots retain prompt/source inspection even before an image exists.
+  return detail?.slots.filter(id=>id && detail.candidates[id]) || [];
 }
 
 function renderImageReview() {
@@ -676,12 +675,22 @@ function renderImageReview() {
   const candidate = detail.candidates[reviewCandidate];
   const index = images.indexOf(reviewCandidate);
   const selected = reviewCandidate === detail.selected_id;
-  host.querySelector('#review-image').src = imageUrl(reviewCandidate);
+  const image = host.querySelector('#review-image');
+  image.hidden = !candidate.image;
+  if (candidate.image) image.src = imageUrl(reviewCandidate);
+  else image.removeAttribute('src');
+  let placeholder = image.parentElement.querySelector('.image-review-placeholder');
+  if (!placeholder) {
+    placeholder = document.createElement('p'); placeholder.className = 'image-review-placeholder';
+    placeholder.textContent = 'No image available yet.'; image.after(placeholder);
+  }
+  placeholder.hidden = Boolean(candidate.image);
   host.querySelector('#review-image').alt = `Slot ${candidate.slot} candidate`;
   host.querySelector('#narrative-review-prev').disabled = busy || index === 0;
   host.querySelector('#narrative-review-next').disabled = busy || index === images.length - 1;
   const panel = host.querySelector('#narrative-review-panel');
   const sameCandidate = panel.dataset.candidate === reviewCandidate;
+  const focusedAction = panel.contains(document.activeElement) ? document.activeElement.dataset.imageAction : "";
   const previousDetails = panel.querySelector('details');
   const detailsOpen = sameCandidate && previousDetails?.open;
   const detailsScroll = sameCandidate ? panel.scrollTop : 0;
@@ -689,14 +698,21 @@ function renderImageReview() {
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
     <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
-      <button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected ? 'disabled' : ''}>Select</button>
+      <button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected || !candidate.image ? 'disabled' : ''}>Select</button>
       <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>Regenerate</button>
       <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
-      <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
+      <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy || !candidate.image ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
     </div>
     <p class="error" role="status" id="narrative-review-error"></p>
-    <details ${detailsOpen ? 'open' : ''}><summary>Prompt and source ${copyPromptButton(reviewCandidate)}</summary><p class="narrative-muted">${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}</p>
-    <pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre></details>`;
+    ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
+    <details ${detailsOpen ? 'open' : ''}><summary>Prompt and source ${copyPromptButton(reviewCandidate)}</summary><p class="narrative-muted">${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}${candidate.assembly_snapshot ? ' · '+assemblyModeName(candidate.assembly_mode) : ''}</p>
+    <pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre>
+    ${candidate.source_snapshot ? `<p class="narrative-muted">Source: ${esc(candidate.source_snapshot.scene_title)} · ${esc(candidate.source_snapshot.title)} · ${esc(candidate.backdrop_adaptation?.operation || 'edit')}</p>` : ''}
+    ${candidate.assembly_snapshot ? `${(candidate.assembly_snapshot.has_composite ?? (candidate.assembly_snapshot.assembly_mode || 'finish_composite')==='finish_composite') ? `<a href="${esc(artifactUrl(`candidates/${reviewCandidate}/composite`))}" target="_blank">Compare raw composite</a>` : ''}<p>${candidate.assembly_snapshot.layers.filter(layer=>layer.visible).map(layer=>esc(layer.label)).join(' · ')}</p>` : ''}
+    </details>`;
+  window.ZetImageCardUI.scan(panel);
+  if (sameCandidate && focusedAction) [...panel.querySelectorAll("button,a")]
+    .find(button => button.dataset.imageAction === focusedAction)?.focus({ preventScroll: true });
   panel.scrollTop = detailsScroll;
 }
 
@@ -906,6 +922,7 @@ listen(host,'click',event=>{
   }
   if (button.dataset.review) {
     reviewCandidate = button.dataset.review;
+    delete host.querySelector('#narrative-review-panel').dataset.candidate;
     host.querySelector('#image-dialog').showModal(); renderImageReview(); return;
   }
   if (button.id === 'narrative-review-prev' || button.id === 'narrative-review-next') {

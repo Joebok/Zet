@@ -1,5 +1,19 @@
 # Local character assets
 
+## Pipeline view order and continuation controls (2026-10-20)
+
+All four character pipeline pages display view sections and selected-view cards in
+render stage order: FRONT, front three-quarters, profiles, rear three-quarters,
+then BACK. This is presentation order; saved view lists and render scheduling are
+unchanged. Each view has a Continue control below its observations and Luna ranking
+status. It appears when the top Continue control is available and enabled, shares
+its label and action, and updates during polling without replacing unsaved observations.
+
+Validation: the approved character-to-costume E2E scenario passed (1 test, 16.6s).
+Disposable Chromium checks covered all four pipelines' view order, control placement,
+readiness/polling/busy states, and preservation of unsaved observations. No maintained
+tests were added; live inference was not exercised.
+
 ## Head rear-view quality pilot (2026-10-19)
 
 [Investigate_Head_Views.py](../../Scripts/Investigate_Head_Views.py) prepares a private
@@ -35,7 +49,10 @@ The active character workflow produces and reviews **batches of candidates** for
 Image review and touch input follow [Dashboard UI](DASHBOARD_UI.md). Review stays
 in the viewport when opened from a scrolled gallery, with decisions/selection
 outside scrolling details. Compact screens collapse existing batches' new-batch
-settings. Selection and lock contracts remain unchanged.
+settings. Selection and lock contracts remain unchanged. Available Luna advice is
+expanded above Human decision; Prompt and source is collapsed below the actions.
+Pending/failed candidates support details inspection without image-dependent
+decisions. Same-candidate polling preserves drafts, disclosure state and focus.
 
 | Responsibility | Implementation / consumer |
 | --- | --- |

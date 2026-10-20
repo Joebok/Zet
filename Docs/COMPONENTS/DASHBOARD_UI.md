@@ -36,6 +36,39 @@ interaction; [narrative.js](../../zet/web/static/narrative.js) adapts shared sty
 to Narrative's independent records. Minor Characters retains its own comparison
 controller and selected-versus-preview distinction.
 
+## Compact image cards and review (2026-10-20)
+
+[image_card_ui.js](../../zet/web/static/image_card_ui.js) owns the scoped SVG
+action decorator (`ZetImageCardUI.decorate/scan`). It preserves existing controls,
+handlers, IDs, links and workflow eligibility while supplying accessible action
+names, hover/focus labels and stable action keys for polling focus restoration.
+It observes rendered image controls and dynamic labels; it does not dispatch work.
+Shared styles use 32px desktop controls and at least 44px coarse-pointer targets.
+Image action rows wrap naturally; page-level navigation/forms retain text.
+
+Character, Narrative and Minor Character cards show render status once. Character
+and Narrative Prompt and source disclosures live in review, collapsed on opening
+or changing candidates and preserved by same-candidate polling. Occupied pending
+and failed slots can open details without images; image-dependent decisions remain
+unavailable. Narrative review retains prompt copy, source provenance, assembly
+layer labels and raw-composite links. Image Generation follows the same disclosure
+default and groups navigation, close and render controls into compact toolbars.
+
+Character review displays the existing distinct Luna advisory panel below the
+title/context and above Human decision. Available findings remain expanded;
+stale/failed advice is labeled, and absent advice has no empty placeholder. Long
+advice scrolls independently while decisions/actions stay reachable. Prompt/source
+details include recorded inputs, ordered source labels and generation metadata.
+The former Image details and render actions wrapper is removed.
+
+Inventory copy feedback, shared fullscreen viewers (including Overview, identity,
+turnaround, costume, phase comparison and Zine images), Minor Character comparison
+controls and standalone refinement image actions use the same decorator. Workflow
+forms and retired generation/Render Console code retain their existing ownership.
+
+See the [completed plan](../../plans/completed/site-wide-image-cards.md) for isolated
+validation and device limits. No API, storage, queue or publication contract changed.
+
 ## Image input
 
 [image_input.js](../../zet/web/static/image_input.js), `ZetImageInput.attach`, adds

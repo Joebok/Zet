@@ -1,5 +1,26 @@
 # Local testing
 
+## Compact image cards and review (2026-10-20)
+
+`npm.cmd run test:e2e` passed all four approved scenarios in 42.6 seconds after the
+presentation changes. Six changed JavaScript files passed `node --check`;
+`git diff --check` passed. No maintained scenario, dependency or backend contract
+was added. An initial passing run emitted a nonfatal Windows fixture
+usage-maintenance sharing warning; the final run did not.
+
+Disposable Chromium checks used isolated fixture storage/prepared responses and
+browser projections: actual three-candidate Assembly review/polling and Narrative
+render/select/reload; all four character pipeline card states, image-less details,
+long/missing/stale/failed Luna advice, prompt defaults and focus; Inventory
+copy/fullscreen, Generation controls, Minor Character comparison and standalone
+refinement. Desktop, 1133x560 and 390x844 checks included coarse-pointer sizing,
+control/overflow bounds and inspected screenshots. A representative desktop card
+shrank from 583.7px to 491.9px against identical data. Physical iPad acceptance and
+separate populated journeys through every shared fullscreen consumer remain
+unverified. See the [completed plan](../plans/completed/site-wide-image-cards.md)
+for actual checks, corrected disposable-check setup errors and scope limits.
+No live inference, production data writes or deployment occurred.
+
 ## Governing-template review UI (2026-10-20)
 
 `npm.cmd run test:e2e -- --grep character-to-costume` passed the approved S2
