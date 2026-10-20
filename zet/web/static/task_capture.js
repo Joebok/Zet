@@ -189,6 +189,7 @@
   }
 
   el("files").addEventListener("change", (event) => void addScreenshots([...event.target.files]));
+  window.ZetImageInput.attach(el("paste"), el("files"));
   form.addEventListener("paste", (event) => {
     const files = [...(event.clipboardData?.items || [])].filter((item) => item.kind === "file").map((item) => item.getAsFile()).filter(Boolean);
     if (files.length) { event.preventDefault(); void addScreenshots(files); }

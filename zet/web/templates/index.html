@@ -9,9 +9,9 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261017-template-diff">
-  <link rel="stylesheet" href="/static/task_capture.css?v=20261013-github">
-  <link rel="stylesheet" href="/static/narrative.css?v=retirement">
+  <link rel="stylesheet" href="/static/zet.css?v=20261019-responsive">
+  <link rel="stylesheet" href="/static/task_capture.css?v=20261019-responsive">
+  <link rel="stylesheet" href="/static/narrative.css?v=20261019-responsive">
 </head>
 <body>
   <header class="app-header">
@@ -257,8 +257,9 @@
             <select id="local-pipeline-back-reference"><option value="BACK_LEFT_3_4">Selected back-left three-quarter</option><option value="BACK_RIGHT_3_4">Selected back-right three-quarter</option></select>
           </label>
           <section id="local-pipeline-lineage-warning" class="local-pipeline-lineage-warning" role="status" hidden></section>
-          <section id="local-pipeline-options" class="local-pipeline-options">
-            <h2>New batch</h2>
+          <details id="local-pipeline-options" class="local-pipeline-options" data-viewer-settings open>
+            <summary>New batch settings</summary>
+            <div class="local-pipeline-options-body">
             <label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" max="8" value="8"></label>
             <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" max="8" value="4"></label>
             <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
@@ -274,7 +275,8 @@
             <button id="local-pipeline-preview" type="button">Check requirements</button>
             <button id="local-pipeline-create" class="primary-action" type="button" disabled>Create batch</button>
             <p id="local-pipeline-readiness" class="muted" role="status"></p>
-          </section>
+            </div>
+          </details>
           <p id="local-pipeline-status" class="action-message" role="status"></p>
         </section>
         <details id="local-template-improvement" class="control-panel template-improvement" hidden></details>
@@ -1664,6 +1666,7 @@
       <div id="image-generation-message" class="action-message" aria-live="polite" hidden></div>
       <div class="image-generation-layout">
         <form id="image-generation-form" class="control-panel image-generation-form">
+          <details data-viewer-settings open><summary>Generation settings</summary><div class="image-generation-settings-body">
           <details id="image-reconstruction-panel">
             <summary>Reconstruct an image in universe style</summary>
             <p class="status-text">Describe the source with an analysis model, then automatically render a new batch from text using this universe's style.</p>
@@ -1715,6 +1718,7 @@
             <legend>Reference images <span class="status-text">Up to 10. Use each label in your prompt to identify its image.</span></legend>
             <div id="image-generation-reference-list"></div>
           </fieldset>
+        </div></details>
         </form>
         <section class="control-panel image-generation-results" aria-label="Generated images">
           <h2>Results · 8 slots</h2>
@@ -1733,10 +1737,13 @@
             <div class="button-row compact"><button id="image-generation-review-close" type="button">Close</button><button id="image-generation-review-task" type="button">Create task</button></div>
             <div class="button-row compact"><button id="image-generation-review-previous" type="button" disabled>Previous</button><span id="image-generation-review-count" class="status-text"></span><button id="image-generation-review-next" type="button" disabled>Next</button></div>
             <img id="image-generation-review-image" alt="Selected generated result">
+            <div class="button-row"><button id="image-generation-review-select" class="primary-action" type="button">Select</button><button id="image-generation-review-retry" type="button">Regenerate</button><button id="image-generation-review-clear" class="danger-text-action" type="button">Clear slot</button></div>
+            <p id="image-generation-review-reason" class="slot-action-reason" role="status"></p>
+            <details class="image-generation-review-details"><summary>Prompt and render actions</summary>
             <p><strong>Prompt</strong><br><span id="image-generation-review-prompt"></span></p>
             <p><strong>Negative prompt</strong><br><span id="image-generation-review-negative"></span></p>
-            <div class="button-row"><button id="image-generation-review-select" class="primary-action" type="button">Select</button><button id="image-generation-review-retry" type="button">Regen</button><button id="image-generation-review-clear" type="button">Clear</button></div>
             <div id="image-generation-review-add"></div>
+            </details>
           </dialog>
         </section>
       </div>
@@ -2139,21 +2146,22 @@ Add prompt language here.
   </main>
 
 
-  <script src="/static/task_capture.js?v=20261013-github"></script>
+  <script src="/static/image_input.js?v=20261019"></script>
+  <script src="/static/task_capture.js?v=20261019-responsive"></script>
   <script src="/static/task_attention.js?v=20261013-github"></script>
   <script src="/static/render_slots.js?v=20261012"></script>
   <script src="/static/ai_model_picker.js?v=20261016"></script>
   <script src="/static/storage_status.js?v=20261017"></script>
   <script src="/static/ai_queue.js?v=20261017"></script>
-  <script src="/static/zet.js?v=20261013-github"></script>
+  <script src="/static/zet.js?v=20261019-responsive"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>
     <div id="mc-review-pair" class="qc-comparison-pair"></div>
   </dialog>
-  <script src="/static/minor_characters.js?v=20261015-delete-controls"></script>
+  <script src="/static/minor_characters.js?v=20261019-responsive"></script>
   <script src="/static/local_template_improvement.js?v=20261017-diff"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261017-templates"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261019-responsive"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
 
 </body>

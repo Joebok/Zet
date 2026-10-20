@@ -231,6 +231,7 @@
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = text;
+    if (["delete", "clear"].includes(action)) button.classList.add("danger-text-action");
     button.dataset.localAction = action;
     button.dataset.view = view;
     button.dataset.candidate = candidate;
@@ -354,7 +355,7 @@
       card.append(pending);
     }
     const status = document.createElement("p");
-    status.className = "muted";
+    status.className = "muted image-card-state";
     const rankingOrder = ranking.luna_ordered_candidate_ids?.length
       ? ranking.luna_ordered_candidate_ids
       : ranking.ordered_candidate_ids || [];
@@ -389,12 +390,19 @@
       addSlotButton(controls, "Clear", "clear", view, slot, disabled, candidate.slot_reason);
     }
     if (candidate.review_error) addButton(controls, "Retry review", "retry", { disabled: busy(run), view, candidate: candidate.candidate_id });
+    const locked = Object.values(run.local_assets || {}).some(asset => asset.locked && asset.batch_id === run.run_id && asset.candidate_id === candidate.candidate_id && asset.view === view);
+    card.dataset.state = locked ? "locked" : selected ? "selected" : candidate.slot_waiting ? "reserved" : candidate.render_status === "FAILED" ? "failed" : candidate.image_path ? "available" : "pending";
+    if (selected) status.textContent += " · Selected";
+    if (locked) status.textContent += " · Locked";
+    if (candidate.slot_reason) { const reason = document.createElement("p"); reason.className = "slot-action-reason muted"; reason.textContent = candidate.slot_reason; card.append(reason); }
     if (controls.childElementCount) card.append(controls);
     return card;
   }
 
   function addSlotButton(host, label, operation, view, slot, disabled, reason = "") {
-    const button = document.createElement("button"); button.type = "button"; button.textContent = label;
+    const button = document.createElement("button"); button.type = "button"; button.textContent = operation === "regenerate" ? "Regenerate" : operation === "clear" ? "Clear slot" : label;
+    if (operation === "clear") button.className = "danger-text-action";
+    if (operation === "generate") button.className = "primary-action";
     button.disabled = disabled; button.title = reason || "";
     button.addEventListener("click", () => void slotAction(operation, view, slot).catch(error => setStatus(error.message, true)));
     host.append(button);
@@ -500,9 +508,9 @@
         const newAddCount = $("review-panel").querySelector(".render-slot-add input");
         if (newAddCount && oldAddCount) newAddCount.value = oldAddCount;
         if (index >= 0 && decision) { const radio = $("review-panel").querySelector(`input[value="${decision}"]`); if (radio) radio.checked = true; }
-        if (hadFocus && focus?.closest(".render-slot-add")) newAddCount?.focus();
-        else if (hadFocus && focusName) $("review-panel").querySelector(`input[name="${focusName}"]:checked`)?.focus();
-        else if (hadFocus && focusText) [...$("review-panel").querySelectorAll("button")].find(button => button.textContent === focusText)?.focus();
+        if (hadFocus && focus?.closest(".render-slot-add")) newAddCount?.focus({ preventScroll: true });
+        else if (hadFocus && focusName) $("review-panel").querySelector(`input[name="${focusName}"]:checked`)?.focus({ preventScroll: true });
+        else if (hadFocus && focusText) [...$("review-panel").querySelectorAll("button")].find(button => button.textContent === focusText)?.focus({ preventScroll: true });
       } else $("review-dialog").close();
     }
   }
@@ -687,7 +695,7 @@
         const card = document.createElement("article"); card.className = "local-pipeline-candidate render-slot-empty";
         card.dataset.slot = String(index + 1);
         const title = document.createElement("h3"); title.textContent = `Slot ${index + 1}`;
-        const empty = document.createElement("p"); empty.textContent = "Empty";
+        const empty = document.createElement("p"); empty.textContent = "Empty"; empty.className = "image-card-state"; card.dataset.state = "empty";
         card.append(title, empty);
         const control = run.slot_controls?.[view] || {};
         addSlotButton(card, "Generate", "generate", view, index + 1, !control.can_generate, control.reason);
@@ -734,6 +742,7 @@
     renderLineageWarnings(run);
     if (!run) {
       $("lineage-warning").hidden = true;
+      $("options").open = true;
       $("summary").textContent = "No batch selected. Check requirements and create a new batch.";
       $("rename").hidden = true;
       $("selected").replaceChildren();
@@ -744,6 +753,10 @@
       updateRefreshButton();
       setBusyControls();
       return;
+    }
+    if ($("options").dataset.batch !== run.run_id) {
+      if (window.matchMedia("(max-width: 1360px)").matches) $("options").open = false;
+      $("options").dataset.batch = run.run_id;
     }
     const progress = run.page_summary || {};
     const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
@@ -1123,9 +1136,16 @@
       $("review-compare-empty").hidden = false;
       $("review-compare-empty").textContent = "No selected FRONT image is available for comparison.";
     }
+    $("review-compare-image").closest("figure").hidden = !comparison;
+    $("review-compare-image").closest(".local-pipeline-review-comparison").classList.toggle("single-image", !comparison);
     $("review-image").src = imageUrl(candidate);
     $("review-image").alt = `${candidate.view} candidate ${candidate.candidate_id}`;
     const panel = $("review-panel");
+    const previousCandidate = panel.dataset.candidate;
+    const previousDetails = panel.querySelector(".local-pipeline-review-details");
+    const detailsOpen = previousDetails?.open || false;
+    const detailsScroll = previousDetails?.scrollTop || 0;
+    panel.dataset.candidate = candidate.candidate_id;
     panel.replaceChildren();
     const title = document.createElement("h2");
     title.textContent = candidate.candidate_id;
@@ -1158,7 +1178,7 @@
       decision.append(wrapper);
     }
     const save = document.createElement("button");
-    save.className = "primary-action";
+    save.className = "neutral-action";
     save.textContent = "Save review";
     save.addEventListener("click", async () => {
       if (state.reviewActionPending) return;
@@ -1171,6 +1191,7 @@
     });
     const select = document.createElement("button");
     select.textContent = "Select this image";
+    select.className = "primary-action";
     select.disabled = selectedViews[candidate.view] === candidate.candidate_id;
     select.addEventListener("click", async () => {
       if (state.reviewActionPending) return;
@@ -1218,6 +1239,14 @@
     const actions = document.createElement("div");
     actions.className = "button-row compact local-pipeline-review-actions";
     actions.append(save);
+    const more = document.createElement("details");
+    more.className = "local-pipeline-review-details";
+    more.open = previousCandidate === candidate.candidate_id && detailsOpen;
+    const moreSummary = document.createElement("summary");
+    moreSummary.textContent = "Image details and render actions";
+    const moreActions = document.createElement("div");
+    moreActions.className = "button-row compact";
+    more.append(moreSummary, content);
     const slot = candidate.slot || candidate.ordinal;
     if (slot <= 8) {
       if (selectedViews[candidate.view] === candidate.candidate_id) {
@@ -1225,11 +1254,11 @@
         unselect.addEventListener("click", () => void perform("unselect", candidate.view, candidate.candidate_id, {candidate_id: ""}).catch(error => setStatus(error.message, true)));
         actions.append(unselect);
       }
-      addSlotButton(actions, "Regen", "regenerate", candidate.view, slot, Boolean(candidate.slot_reason), candidate.slot_reason);
-      addSlotButton(actions, "Clear", "clear", candidate.view, slot, Boolean(candidate.slot_reason), candidate.slot_reason);
+      addSlotButton(moreActions, "Regenerate", "regenerate", candidate.view, slot, Boolean(candidate.slot_reason), candidate.slot_reason);
+      addSlotButton(moreActions, "Clear slot", "clear", candidate.view, slot, Boolean(candidate.slot_reason), candidate.slot_reason);
     }
     const control = run.slot_controls?.[candidate.view] || {};
-    actions.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", candidate.view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.reason}));
+    moreActions.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", candidate.view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.reason}));
     if (!select.disabled) actions.append(select);
     if (adjustedPosition >= 0) {
       const up = document.createElement("button");
@@ -1264,7 +1293,7 @@
         } catch (error) { setStatus(error.message, true); }
         finally { state.reviewActionPending = false; }
       });
-      actions.append(up, down);
+      moreActions.append(up, down);
     }
     const quality = document.createElement("section");
     quality.className = "local-pipeline-review-quality";
@@ -1273,8 +1302,9 @@
     quality.append(qualityHeading, rankingInfo);
     if (analysis.childElementCount) quality.append(analysis);
     panel.append(title, view);
-    if (info.textContent) panel.append(info);
-    panel.append(content, quality, decision, actions);
+    more.append(info, quality, moreActions);
+    panel.append(decision, actions, more);
+    if (previousCandidate === candidate.candidate_id) more.scrollTop = detailsScroll;
     $("review-prev").disabled = state.reviewIndex <= 0;
     $("review-next").disabled = state.reviewIndex >= state.reviewCandidates.length - 1;
     const availableViews = (run.views || []).filter((view) => state.reviewCandidates.some((item) => item.view === view));
@@ -1283,11 +1313,13 @@
     $("review-next-view").disabled = currentViewIndex < 0 || currentViewIndex >= availableViews.length - 1;
   }
 
+  let reviewOrigin = null;
   function openReview(candidateId) {
     state.reviewCandidates = orderedReviewCandidates();
     state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
     if (state.reviewIndex < 0) return;
     state.compareOpposite = false;
+    reviewOrigin = { element: document.activeElement, candidateId, x: scrollX, y: scrollY };
     renderReview();
     $("review-dialog").showModal();
   }
@@ -1398,6 +1430,7 @@
     $("delete").addEventListener("click", () => void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)));
     $("proceed").addEventListener("click", () => void perform("proceed").catch((error) => setStatus(error.message, true)));
     $("source-file").addEventListener("change", () => void uploadHeadSource($("source-file").files?.[0]));
+    window.ZetImageInput.attach($("source-paste"), $("source-file"));
     $("source-paste").addEventListener("paste", (event) => {
       const file = Array.from(event.clipboardData?.items || []).map((item) => item.getAsFile()).find(Boolean);
       if (!file) return;
@@ -1421,6 +1454,15 @@
       if (button) void handleAction(button).catch((error) => setStatus(error.message, true));
     });
     $("review-close").addEventListener("click", () => $("review-dialog").close());
+    $("review-dialog").addEventListener("close", () => {
+      if (reviewOrigin) {
+        const origin = reviewOrigin.element?.isConnected ? reviewOrigin.element
+          : [...$("views").querySelectorAll(".local-pipeline-candidate-image")].find(button => button.dataset.candidate === reviewOrigin.candidateId);
+        origin?.focus({ preventScroll: true });
+        window.scrollTo(reviewOrigin.x, reviewOrigin.y);
+        reviewOrigin = null;
+      }
+    });
     $("review-task").addEventListener("click", () => void window.ZetTaskCapture.open());
     $("review-toggle").addEventListener("change", () => { state.compareOpposite = $("review-toggle").checked; renderReview(); });
     $("review-prev").addEventListener("click", () => { void navigateReview(-1); });

@@ -1,5 +1,43 @@
 # Local testing
 
+## Responsive dashboard and image input (2026-10-19)
+
+The local implementation and acceptance limits are tracked in the
+[active UI plan](../plans/active/ipad-responsive-ui-and-style-consistency.md);
+[Dashboard UI](COMPONENTS/DASHBOARD_UI.md) owns the conventions and capture command.
+The existing four fast scenarios passed in 41.1 seconds after repairing S1's
+navigation to use the visible compact selector or desktop tabs. Scenario count and
+authoring purpose are unchanged. The initial S1 timeout on the now-hidden desktop
+Overview button was retained in ignored `test-results/ui-responsive`; S2–S4 passed
+in that initial run. A later passing run emitted a nonfatal Windows file-sharing
+warning for fixture usage-maintenance state; no warning suppression or backend
+change was made.
+
+Disposable Chromium checks used only isolated fixtures and prepared responses:
+
+- Twenty-five destinations at five viewport sizes had no horizontal overflow in
+  the final capture reports. Pipeline Controls had an activation error because
+  the fixture lacks legacy `Pipelines.json`; its captures establish only partial
+  layout. Several other pages had empty/prerequisite data, not populated journeys.
+- Three actual local candidates exercised review at 1133×610, 1133×560, 390×844,
+  and 1440×900: viewport bounds, gallery return, candidate navigation, and polling
+  with unsaved decisions and expanded details preserved.
+- Prepared Narrative synthesis/render/selection, reloaded image-first viewing,
+  direction disclosures, and review bounds passed. Image Generation viewer
+  layout/protection messaging used browser-only prepared board responses at three
+  sizes; standalone refinement checks inspected HTML/CSS, not adoption/model work.
+- Mocked clipboard image/empty/denied reads passed through actual Head source and
+  generation-reference handlers. Browser helper checks covered nested file inputs,
+  disabled controls, and discarding reads after context changes. Shell/menu bounds
+  passed at 1100/1101/1133/1360/1361/1440 pixels with long labels and visible utilities.
+
+Native iPad clipboard permission/Photos behavior and physical-device viewport
+acceptance remain unverified. A prepared Image Generation backend submission hit
+an existing `AdHocImageGenerationService._preset` AttributeError (`self.app`);
+that backend file is unchanged, and no render success is claimed for that check.
+No new maintained scenarios, dependencies, live inference, production-library
+writes, external submissions, or deployment were added.
+
 ## Character prompt review and image refinement (2026-10-18)
 
 Ordering follow-up: disposable checks verified that all four character preview lists follow the actual progression stages and every declared same-batch reference precedes its target. Review guidance contains the authoritative stage schedule. All 33 preview/render comparisons and reference-validation checks still passed; the approved character-to-costume S2 scenario passed in 15.8 seconds including startup. Python AST and `git diff --check` passed. The runtime scheduler was already correct; no live AI execution or maintained test additions were needed.

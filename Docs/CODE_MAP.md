@@ -67,6 +67,15 @@ Use this map to select a narrow search, inspect the named entry point and caller
 
 ## Search and impact routine
 
+Responsive dashboard presentation: [DASHBOARD_UI](COMPONENTS/DASHBOARD_UI.md) owns
+shell/card/review conventions. `zet.js:syncResponsiveChrome` relocates compact
+utilities and keeps all pipeline destinations available. `image_input.js` owns
+touch clipboard/file-picker presentation through existing file-input handlers.
+`local_asset_pipeline.js:openReview/renderReview` owns viewport review and gallery
+return behavior. `Scripts/capture-dashboard-ui.mjs` inspects explicit fixture URLs
+and records screenshots/metadata under ignored test-results; this adds no
+maintained scenario.
+
 Supplemental template images: the four character compilers resolve tags after view
 filtering; Body initial packaging and [render_slot_service.py](../zet/services/render_slot_service.py)
 retain the full ordered manifest. [comfyui_workflow_registry.py](../zet/services/comfyui_workflow_registry.py)

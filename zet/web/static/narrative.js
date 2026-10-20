@@ -473,8 +473,9 @@ function adaptationChanged() {
 function renderTarget(targets) {
   const backdrop = detail.kind === 'backdrop';
   const assembly = detail.kind === 'assembly';
+  const viewingImages = window.matchMedia("(max-width: 1360px)").matches && detail.slots.some(id => id && detail.candidates[id]?.image);
   root.innerHTML = `<h1 class="narrative-target-heading"><select id="narrative-target-select" aria-label="Scene page">${targetsWithAssemblyLast(targets).map(target=>`<option value="${target.id}" ${target.id === route.target ? 'selected' : ''}>${esc(target.title)} · ${title(target.kind)}</option>`).join('')}</select></h1>
-    <div class="narrative-editor"><div><section class="narrative-card"><h2>${backdrop ? 'Environment direction' : 'The moment'}</h2>
+    <div class="narrative-editor narrative-target-editor ${viewingImages ? 'has-images' : ''}"><details class="narrative-direction-settings" ${viewingImages ? '' : 'open'}><summary>Scene direction and references</summary><div><section class="narrative-card"><h2>${backdrop ? 'Environment direction' : 'The moment'}</h2>
       ${label('title',detail.title,false)}${label('narrative',detail.narrative,true,backdrop ? 'Describe the environment' : 'Describe what is happening')}
       ${label('staging',detail.staging,true,backdrop ? 'Environment composition' : 'Interaction and staging')}${label('physical_context',detail.physical_context)}
       ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
@@ -490,15 +491,15 @@ function renderTarget(targets) {
     <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
       <label class="narrative-field">Answer or direct a revision<textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea></label>
       <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready.</p></section></div>
-    <div><section class="narrative-card"><h2>Prompt and generation</h2>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option><option value="harmonize_composite" ${detail.assembly_mode==='harmonize_composite'?'selected':''}>Harmonize placed composite</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
+    </details><div class="narrative-output"><details class="narrative-card narrative-generation-settings" ${viewingImages ? '' : 'open'}><summary>Prompt and generation</summary>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option><option value="harmonize_composite" ${detail.assembly_mode==='harmonize_composite'?'selected':''}>Harmonize placed composite</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
       <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
       <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
       <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div><p id="narrative-prompt-pending" class="narrative-muted"></p>
       <div class="narrative-actions"><button class="primary" data-action="render" data-count="1">Render 1</button><button class="primary" data-action="render" data-count="4">Render 4</button><button data-action="refresh">Refresh</button></div>
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
-      <div id="narrative-job-status" role="status" aria-live="polite"></div></section>
-    <section class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+      <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
+    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
   enableModelPickers();
   updateLive();
   loadModels();
@@ -647,16 +648,16 @@ function updateLive() {
   slotSignature = signature;
   host.querySelector('#narrative-slots').innerHTML = detail.slots.map((id,index)=>{
     const candidate = id ? detail.candidates[id] : null;
-    return `<article class="narrative-slot ${id && id === detail.selected_id ? 'selected' : ''}"><h3>Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
+    return `<article class="narrative-slot ${id && id === detail.selected_id ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === detail.selected_id ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3>Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
       ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${esc(candidate?.status.toLowerCase() || 'Empty')}</div>`}
-      ${candidate ? `<p class="narrative-muted">${esc(candidate.status.toLowerCase())}${id === detail.selected_id ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
+      ${candidate ? `<p class="narrative-muted image-card-state">${esc(candidate.status.toLowerCase())}${id === detail.selected_id ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
       ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
       <details><summary><span>Prompt and source</span> ${copyPromptButton(id)}</summary><p>${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}${candidate.assembly_snapshot ? ' · '+assemblyModeName(candidate.assembly_mode) : ''}</p><pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre>${candidate.assembly_snapshot ? `${(candidate.assembly_snapshot.has_composite ?? (candidate.assembly_snapshot.assembly_mode || 'finish_composite')==='finish_composite') ? `<a href="${esc(artifactUrl(`candidates/${id}/composite`))}" target="_blank">Compare raw composite</a>` : ''}<p>${candidate.assembly_snapshot.layers.filter(layer=>layer.visible).map(layer=>esc(layer.label)).join(' · ')}</p>` : ''}</details>
-      <div class="narrative-actions narrative-review-actions">${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select">Select</button>` : ''}
+      <div class="narrative-actions narrative-review-actions">${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== detail.selected_id ? 'primary' : ''}" ${id === detail.selected_id ? 'disabled' : ''}>${id === detail.selected_id ? 'Selected' : 'Select'}</button>` : ''}
       ${candidate.source_snapshot ? `<p class="narrative-muted">Source: ${esc(candidate.source_snapshot.scene_title)} · ${esc(candidate.source_snapshot.title)} · ${esc(candidate.backdrop_adaptation?.operation||'edit')}</p>` : ''}
-      ${!candidate.locked && id !== detail.selected_id ? `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regen'}</button>` : ''}
-      <button data-candidate="${id}" data-candidate-action="clear">Clear</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
-      : `<div class="narrative-actions"><button data-render-slot="${index+1}">Generate</button></div>`}</article>`;
+      ${!candidate.locked && id !== detail.selected_id ? `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regenerate'}</button>` : ''}
+      <button data-candidate="${id}" data-candidate-action="clear" class="danger-text-action">Clear slot</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
+      : `<div class="narrative-actions"><button class="primary" data-render-slot="${index+1}">Generate</button></div>`}</article>`;
   }).join('');
   renderImageReview();
 }
@@ -679,17 +680,24 @@ function renderImageReview() {
   host.querySelector('#review-image').alt = `Slot ${candidate.slot} candidate`;
   host.querySelector('#narrative-review-prev').disabled = busy || index === 0;
   host.querySelector('#narrative-review-next').disabled = busy || index === images.length - 1;
-  host.querySelector('#narrative-review-panel').innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
+  const panel = host.querySelector('#narrative-review-panel');
+  const sameCandidate = panel.dataset.candidate === reviewCandidate;
+  const previousDetails = panel.querySelector('details');
+  const detailsOpen = sameCandidate && previousDetails?.open;
+  const detailsScroll = sameCandidate ? panel.scrollTop : 0;
+  panel.dataset.candidate = reviewCandidate;
+  panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
     <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
       <button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected ? 'disabled' : ''}>Select</button>
-      <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>Regen</button>
-      <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear</button>
+      <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>Regenerate</button>
+      <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
       <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
     </div>
     <p class="error" role="status" id="narrative-review-error"></p>
-    <h3>Prompt and source ${copyPromptButton(reviewCandidate)}</h3><p class="narrative-muted">${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}</p>
-    <pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre>`;
+    <details ${detailsOpen ? 'open' : ''}><summary>Prompt and source ${copyPromptButton(reviewCandidate)}</summary><p class="narrative-muted">${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}</p>
+    <pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre></details>`;
+  panel.scrollTop = detailsScroll;
 }
 
 function mergeTarget(updated) {

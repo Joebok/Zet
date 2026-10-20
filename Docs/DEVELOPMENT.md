@@ -1,5 +1,24 @@
 # Development and verification
 
+## Responsive UI verification (2026-10-19)
+
+Implemented compact navigation, viewport-anchored image review, shared card/action
+styles, and touch image input; see [Dashboard UI](COMPONENTS/DASHBOARD_UI.md) and
+the [active acceptance plan](../plans/active/ipad-responsive-ui-and-style-consistency.md).
+Verified Python 3.14 through `python3` before fixture runs. The existing
+`npm.cmd run test:e2e` four-scenario suite passed in 41.1 seconds. Changed browser
+scripts and the capture script passed `node --check`; `git diff --check` passed.
+Disposable fixture/browser checks and known gaps are recorded in [Testing](Testing.md).
+
+The capture command now requires `ZET_DASHBOARD_URL`; it defaults to a fresh ignored
+output directory instead of deleting `Docs/UI` captures. Final reports/captures
+for 25 destinations at five sizes are under ignored `test-results/ui-responsive-final`.
+The inspection fixture cannot fully load Pipeline Controls without legacy
+`Pipelines.json`. Physical-iPad/native clipboard acceptance remains open. An
+existing Image Generation backend `self.app` AttributeError blocked its prepared
+render-submission check; the UI viewer was inspected using prepared browser data.
+No production process was started, restarted, or deployed for this work.
+
 Run commands from the repository root. [Testing](Testing.md) owns the approved four-scenario fast baseline, isolated Test library, and separately invoked live Narrative check. Use [CODE_MAP](CODE_MAP.md) for implementation navigation and [AGENTS](../AGENTS.md) for authority boundaries.
 
 ## Verification note (2026-10-17)

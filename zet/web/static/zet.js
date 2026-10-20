@@ -1323,6 +1323,7 @@ function renderImageGenerationReferenceSlots() {
         }
       });
       controls.append(paste);
+      window.ZetImageInput.attach(paste, fileInput);
     }
     slot.append(label, controls);
     imageGenerationReferenceList.append(slot);
@@ -1645,6 +1646,7 @@ reconstructionField("file").addEventListener("change", async event => {
   const data = await readImageGenerationReference(file);
   if (state.universeId === universe && version === imageReconstructionSourceVersion) setImageReconstructionSource({image: data, label: file.name}, data);
 });
+window.ZetImageInput.attach(reconstructionField("paste"), reconstructionField("file"));
 reconstructionField("paste").addEventListener("click", () => reconstructionField("paste").focus());
 reconstructionField("paste").addEventListener("paste", async event => {
   const blob = imageBlobFromPasteEvent(event);
@@ -1744,8 +1746,10 @@ function renderImageGenerationReview() {
   imageGenerationReviewPrevious.disabled = position === 0;
   imageGenerationReviewNext.disabled = position === slots.length - 1;
   imageGenerationReviewSelect.textContent = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect" : "Select";
+  imageGenerationReviewSelect.classList.toggle("primary-action", imageGenerationSelectedSlot !== imageGenerationReviewIndex);
   imageGenerationReviewRetry.disabled = imageGenerationPending || imageGenerationSelectedSlot === imageGenerationReviewIndex;
   imageGenerationReviewClear.disabled = imageGenerationReviewRetry.disabled;
+  document.querySelector("#image-generation-review-reason").textContent = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect before regenerating or clearing this slot." : "";
   imageGenerationReviewRetry.title = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect this image before regenerating it." : "";
   imageGenerationReviewClear.title = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect this image before clearing it." : "";
   const add = document.querySelector("#image-generation-review-add");
@@ -2012,6 +2016,7 @@ function renderImageGenerationStatus() {
     const job = assignment && imageGenerationJobs.get(assignment.requestId);
     const card = document.createElement("figure");
     card.className = `image-generation-result${index === imageGenerationSelectedSlot ? " is-selected" : ""}`;
+    card.dataset.state = index === imageGenerationSelectedSlot ? "selected" : "available";
     const title = document.createElement("figcaption");
     title.textContent = `Slot ${index + 1}${index === imageGenerationSelectedSlot ? " · Selected" : ""}`;
     card.append(title);
@@ -2039,26 +2044,32 @@ function renderImageGenerationStatus() {
       download.textContent = "Download";
       const select = document.createElement("button"); select.type = "button"; select.textContent = index === imageGenerationSelectedSlot ? "Unselect" : "Select";
       select.addEventListener("click", () => void imageGenerationSlotAction(index === imageGenerationSelectedSlot ? "unselect" : "select", index));
-      const regenerate = document.createElement("button"); regenerate.type = "button"; regenerate.textContent = "Regen";
+      const regenerate = document.createElement("button"); regenerate.type = "button"; regenerate.textContent = "Regenerate";
       regenerate.disabled = busy || index === imageGenerationSelectedSlot;
       regenerate.addEventListener("click", () => void imageGenerationSlotAction("regenerate", index, currentImageGenerationInputs()));
-      const clear = document.createElement("button"); clear.type = "button"; clear.textContent = "Clear";
+      const clear = document.createElement("button"); clear.type = "button"; clear.textContent = "Clear slot"; clear.className = "danger-text-action";
       clear.disabled = regenerate.disabled;
       clear.addEventListener("click", () => void imageGenerationSlotAction("clear", index));
-      controls.append(review, select, regenerate, clear, download);
+      select.classList.toggle("primary-action", index !== imageGenerationSelectedSlot);
+      if (index === imageGenerationSelectedSlot) { const reason = document.createElement("p"); reason.className = "slot-action-reason muted"; reason.textContent = "Unselect before regenerating or clearing this slot."; card.append(reason); }
+      download.className = "button-link";
+      controls.append(review, select, regenerate, download, clear);
       card.append(controls);
     } else {
       const status = document.createElement("p");
+      status.className = "image-card-state";
       const child = assignment && job?.results?.find(item => item.index === assignment.index);
+      card.dataset.state = child?.status === "FAILED" || job?.status === "ERROR" ? "failed" : assignment ? "pending" : "empty";
       status.textContent = assignment ? child?.status || (job && imageGenerationTerminalStatuses.has(job.status) ? "FAILED" : job?.status || "Loading") : "Empty";
       card.append(status);
       if (child?.error || job?.error) { const error = document.createElement("p"); error.className = "error"; error.textContent = child?.error || job.error; card.append(error); }
       const retry = assignment && (child?.status === "FAILED" || imageGenerationTerminalStatuses.has(job?.status));
-      const action = document.createElement("button"); action.type = "button"; action.textContent = assignment ? (retry ? "Retry" : "Regen") : "Generate"; action.disabled = busy;
+      const action = document.createElement("button"); action.type = "button"; action.textContent = assignment ? (retry ? "Retry" : "Regenerate") : "Generate"; action.disabled = busy;
       action.addEventListener("click", () => assignment ? void imageGenerationSlotAction(retry ? "retry" : "regenerate", index, retry ? undefined : currentImageGenerationInputs()) : void submitImageGenerationForSlots([index]));
+      if (!assignment) action.className = "primary-action";
       card.append(action);
       if (index === imageGenerationSelectedSlot) { const unselect = document.createElement("button"); unselect.type = "button"; unselect.textContent = "Unselect"; unselect.addEventListener("click", () => void imageGenerationSlotAction("unselect", index)); card.append(unselect); }
-      if (assignment) { const clear = document.createElement("button"); clear.type = "button"; clear.textContent = "Clear"; clear.disabled = busy || index === imageGenerationSelectedSlot; clear.addEventListener("click", () => void imageGenerationSlotAction("clear", index)); card.append(clear); }
+      if (assignment) { const clear = document.createElement("button"); clear.type = "button"; clear.textContent = "Clear slot"; clear.className = "danger-text-action"; clear.disabled = busy || index === imageGenerationSelectedSlot; clear.addEventListener("click", () => void imageGenerationSlotAction("clear", index)); card.append(clear); }
     }
     nextGrid.append(card);
   }
@@ -2946,7 +2957,9 @@ function renderHeaderStoryContext() {
 }
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["onboarding", "Overview"], ["local-body-reference", "Assets"], ["identity-keys", "Identity Keys"],
+    ["onboarding", "Overview"], ["local-body-reference", "Body-Reference"],
+    ["local-head-image", "Head-Image"], ["local-character-assembly", "Character-Assembly"],
+    ["local-costume-dressing", "Costume-Dressing"], ["identity-keys", "Identity Keys"],
     ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
     ["minor-characters", "Minor Characters"],
   ],
@@ -2980,7 +2993,25 @@ function renderResponsiveSectionMenu(selectedPage = activePageName() || state.la
   responsiveSectionMenu.value = Array.from(responsiveSectionMenu.options).some((item) => item.value === selectedPage) ? selectedPage : "";
 }
 
+const compactShell = window.matchMedia("(max-width: 1360px)");
+const compactUtilityHomes = new Map();
 function syncResponsiveChrome() {
+  for (const id of ["toolbar-create-task", "toolbar-github-issues", "toolbar-restart-zet", "toolbar-batches", "delete-phase"]) {
+    const item = document.getElementById(id);
+    if (!compactUtilityHomes.has(item)) {
+      const marker = document.createComment(id);
+      item.before(marker);
+      compactUtilityHomes.set(item, marker);
+      item.addEventListener("click", () => closeToolbarSettingsMenu());
+    }
+    if (compactShell.matches) {
+      if (item.parentElement !== toolbarSettingsMenu) toolbarSettingsMenu.append(item);
+    } else if (item.previousSibling !== compactUtilityHomes.get(item)) compactUtilityHomes.get(item).after(item);
+  }
+  deletePhaseButton.hidden = state.workspace === "story";
+  for (const details of document.querySelectorAll("details[data-viewer-settings]")) {
+    if (!details.dataset.viewerInitialized) { details.open = !compactShell.matches; details.dataset.viewerInitialized = "true"; }
+  }
   toolbarSettingsButton.textContent = window.matchMedia("(max-width: 600px)").matches ? "More ▾" : "Tools ▾";
   renderResponsiveSectionMenu();
 }
@@ -4363,7 +4394,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261013-github');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261019-responsive');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;
@@ -5177,6 +5208,7 @@ for (const slot of document.querySelectorAll(".costume-wizard-image-slot")) {
   const fileInput = slot.querySelector(".costume-wizard-file");
   const pasteZone = slot.querySelector(".costume-wizard-paste");
   const preview = slot.querySelector(".costume-wizard-preview");
+  window.ZetImageInput.attach(pasteZone, fileInput);
   const showPreview = (file) => {
     if (!file) return;
     preview.src = URL.createObjectURL(file);
@@ -11817,6 +11849,7 @@ characterPhoneViewer.addEventListener("click", async (event) => {
 
 
 window.matchMedia("(max-width: 600px)").addEventListener("change", syncResponsiveChrome);
+compactShell.addEventListener("change", syncResponsiveChrome);
 
 newMenuButton.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -12167,6 +12200,7 @@ entityLibraryBack.addEventListener("click", async () => {
 
 
 
+window.ZetImageInput.attach(imageCatalogImportZone, imageCatalogImportFile);
 imageCatalogImportZone.addEventListener("paste", (event) => {
   const blob = imageBlobFromPasteEvent(event);
   if (blob) {
@@ -12198,6 +12232,7 @@ imageCatalogAdd.addEventListener("click", () => openImageCatalogManagedUpload("a
 imageCatalogAddFile.addEventListener("change", () => setImageCatalogManagedBlob("add", imageCatalogAddFile.files?.[0]));
 imageCatalogReplaceFile.addEventListener("change", () => setImageCatalogManagedBlob("replace", imageCatalogReplaceFile.files?.[0]));
 for (const [zone, mode] of [[imageCatalogAddZone, "add"], [imageCatalogReplaceZone, "replace"]]) {
+  window.ZetImageInput.attach(zone, mode === "add" ? imageCatalogAddFile : imageCatalogReplaceFile);
   zone.addEventListener("paste", (event) => {
     const blob = imageBlobFromPasteEvent(event);
     if (blob) {
@@ -13075,6 +13110,7 @@ entityLibraryReplace.addEventListener("click", async () => {
   }
 });
 for (const [zone, kind] of [[entityLibraryPaste, "import"], [entityLibraryReplacementPaste, "replacement"]]) {
+  window.ZetImageInput.attach(zone, kind === "import" ? entityLibraryFile : entityLibraryReplacementFile);
   zone.addEventListener("paste", (event) => {
     const blob = imageBlobFromPasteEvent(event);
     if (!blob) return;

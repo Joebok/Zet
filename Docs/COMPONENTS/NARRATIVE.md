@@ -18,6 +18,11 @@ Narrative provides prose-oriented authoring and generation independent of Scene 
 
 ## Data and job lifecycle
 
+Responsive cards and image review follow [Dashboard UI](DASHBOARD_UI.md). Existing
+targets with images prioritize viewing on compact screens, with direction and
+generation inputs available in disclosures. These visual conventions preserve
+Narrative's independent records and selection/lock lifecycle.
+
 Narrative JSON persistence uses the shared portable library-path codec for explicitly typed library-owned references, including frozen snapshots. Target-relative filenames and immutable job/transport artifacts keep their existing semantics. The offline updater excludes migration journals and historical free text; see [DATA_MODEL](../DATA_MODEL.md) and [ADR 0011](../DECISIONS/0011-portable-library-references.md).
 
 Inputs include scene intent/visual settings, named elements/library asset IDs, target narrative/staging/physical context/framing, model selection, candidate slot controls, and assembly layers. Targets include backdrop/subscene/assembly behavior. Outputs are authored prose, generated prompts with provenance, durable job/candidate records, image files, selections and locked images. Storage is under universe `NarrativeStories/`; [DATA_MODEL](../DATA_MODEL.md) owns identifiers/formats.

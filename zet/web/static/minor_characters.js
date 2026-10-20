@@ -235,6 +235,7 @@
     if (candidate?.image_url && index>=0) {
       const figure=imageFigure(candidate.image_url,`${character.name} · ${label(view)} · Slot ${board().slots.indexOf(preview)+1}`);
       const select=button(character.selected[view]===preview ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
+      select.classList.add("primary-action");
       select.disabled=pending || character.selected[view]===preview;
       const actions=element("div","","button-row mc-review-actions");actions.append(previous,select);
       if (candidate.can_lock) {
@@ -288,25 +289,33 @@
       } else card.append(element("p",candidate ? candidate.error || candidate.status.toLowerCase() : "Empty"));
       const controls=element("div","","button-row mc-slot-actions");
       const submitting=slotPending.size>0;
-      const regen=button(candidate ? "Regen" : "Generate",async()=>{
+      const regen=button(candidate ? "Regenerate" : "Generate",async()=>{
         if(candidate) previewCandidate(candidate.candidate_id);
         await slotAction("regenerate",slot);
       },operation=>operation());
       regen.disabled=pending || submitting || !current?.template_candidate_id;
-      const clear=button("Clear",async()=>{
+      const clear=button("Clear slot",async()=>{
         if(candidate) previewCandidate(candidate.candidate_id);
         await slotAction("clear",slot);
       },operation=>operation());clear.disabled=pending || submitting || !candidate;
       const select=button(candidate && character.selected[view]===candidate.candidate_id ? "Selected" : "Select",async()=>{
         previewCandidate(candidate.candidate_id);await selectCandidate(candidate.candidate_id);
       });select.disabled=pending || !candidate?.image_url;
-      controls.append(clear,regen,select);
+      clear.classList.add("danger-text-action");
+      if (!candidate) regen.classList.add("primary-action");
+      else if (character.selected[view] !== candidate.candidate_id) select.classList.add("primary-action");
+      card.classList.toggle("is-selected", Boolean(candidate && character.selected[view] === candidate.candidate_id));
+      card.dataset.state = !candidate ? "empty" : character.locked[view]?.candidate_id === candidate.candidate_id ? "locked" : character.selected[view] === candidate.candidate_id ? "selected" : candidate.status === "FAILED" ? "failed" : candidate.image_url ? "available" : "pending";
+      if (candidate) card.append(element("p", `${candidate.status.toLowerCase()}${character.selected[view] === candidate.candidate_id ? " · Selected" : ""}${character.locked[view]?.candidate_id === candidate.candidate_id ? " · Locked" : ""}`, "muted image-card-state"));
+      if (regen.disabled) card.append(element("p", pending || submitting ? "An operation is in progress." : "Select an alignment image to enable rendering.", "slot-action-reason muted"));
+      controls.append(select);
       if(candidate?.can_lock) {
         const lock=button(character.locked[view]?.candidate_id===candidate.candidate_id ? "Locked" : "Lock",async()=>{
           previewCandidate(candidate.candidate_id);await lockCandidate(candidate);
         });
         lock.disabled=pending || character.locked[view]?.candidate_id===candidate.candidate_id;controls.append(lock);
       }
+      controls.append(regen,clear);
       card.append(controls);$("mc-slots").append(card);
     }
     if(current?.template_candidate_id) $("mc-add-renders").append(window.ZetRenderSlots.countControl(current.slots.filter(id=>!id).length,count=>slotAction("add",undefined,count),{disabled:pending || slotPending.size>0}));
@@ -439,6 +448,7 @@
   $("mc-add-reference").addEventListener("click",()=>act(()=>bridge.openLibraryPicker(asset=>act(()=>addReference({asset_id:asset.asset_id,caption:asset.label || "Identity reference"})))));
   $("mc-upload-trigger").addEventListener("click",()=>$("mc-upload").click());
   $("mc-upload").addEventListener("change",()=>act(async()=>{await upload($("mc-upload").files[0]);$("mc-upload").value="";}));
+  window.ZetImageInput.attach($("mc-paste"), $("mc-upload"));
   $("mc-paste").addEventListener("click",()=>$("mc-paste").focus());
   $("mc-paste").addEventListener("paste",event=>{const item=[...(event.clipboardData?.items||[])].find(i=>i.type.startsWith("image/"));if(item){event.preventDefault();act(()=>upload(item.getAsFile()));}});
   $("quick-character-wizard-open").addEventListener("click",()=>act(async()=>{route("");await bridge.activatePage("minor-characters");}));

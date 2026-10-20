@@ -43,6 +43,8 @@ The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and r
 
 ## Other documentation
 
+- [Dashboard UI](COMPONENTS/DASHBOARD_UI.md): responsive shell, image review, card semantics, touch image input, and isolated screenshot inspection.
+
 - [README.md](../README.md) and [Tutorial.md](../Tutorial.md): installation/product usage. Some descriptions predate the current production renderer; verify against [local characters](COMPONENTS/LOCAL_CHARACTERS.md) and code.
 - [.github/CODEX_WORKFLOW.md](../.github/CODEX_WORKFLOW.md): issue selection and delivery when that workflow is explicitly requested.
 - `Docs-Joe/`: preserved design/research material. Useful intent sources include [V5 direction](../Docs-Joe/Zet%20V5%20Realignment.md), [library proposal](../Docs-Joe/Library%20Structure.md), [view tagging](../Docs-Joe/ZET_View_Conditioned_Template_Tagging_Spec.md), [Narrative phase 2](../Docs-Joe/Narrative_Scenes_Phase_2.md), and [reference caching](../Docs-Joe/ComfyUI_Reference_Cache.md). Proposals are not evidence that a feature is implemented; `Docs-Joe/archive/` is historical.

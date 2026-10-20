@@ -24,7 +24,9 @@ test("library and narrative authoring save and reload through the dashboard", as
   await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   await page.getByRole("button", { name: "Character Development" }).click();
   await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Overview" }).click();
+  const sections = page.locator("#responsive-section-menu");
+  if (await sections.isVisible()) await sections.selectOption("onboarding");
+  else await page.getByRole("button", { name: "Overview" }).click();
   await page.locator("#character-setup-details > summary").click();
   const character = page.locator("#onboarding-character");
   const phase = page.locator("#onboarding-phase");
@@ -41,8 +43,13 @@ test("library and narrative authoring save and reload through the dashboard", as
   await page.getByRole("button", { name: "Upload Template" }).click();
   await expect.poll(async () => readFile(characterPath, "utf8")).toContain("Simple graphic illustration");
 
-  await expect(page.getByRole("button", { name: "Costumes", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Costumes", exact: true }).click();
+  if (await sections.isVisible()) {
+    await expect(sections.locator('option[value="costumes"]')).toBeEnabled();
+    await sections.selectOption("costumes");
+  } else {
+    await expect(page.getByRole("button", { name: "Costumes", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Costumes", exact: true }).click();
+  }
   const costumeRow = page.getByRole("row").filter({ hasText: "Test Travel Outfit" });
   await costumeRow.click();
   await page.locator("#costume-name").fill("Test Travel Outfit Edited");

@@ -111,6 +111,41 @@
 .narrative-history-entry dd { margin:0 0 .5rem; }
 @media (max-width:1100px) { .narrative-editor { grid-template-columns:1fr; } }
 @media (max-width:600px) { #narrative-root { padding:0 .7rem; } .narrative-header { padding:1rem; gap:.8rem; } .narrative-slots { grid-template-columns:repeat(2,minmax(0,1fr)); } #narrative-model { margin-left:0; } }
+
+/* Match the shared image cards while retaining Narrative's target lifecycle. */
+.narrative-slot.selected { border: 1px solid var(--primary); padding: .6rem; box-shadow: inset 0 0 0 1px var(--primary); }
+.narrative-slot button, .narrative-slot a { font-size: .875rem; }
+.narrative-direction-settings { min-width: 0; }
+.narrative-direction-settings > summary, .narrative-generation-settings > summary { font-weight: 600; padding: 8px 0; }
+.narrative-generation-settings > summary { margin-bottom: 8px; }
+.narrative-pending { color: var(--warning); background: var(--warning-soft); border-color: var(--warning); }
+.narrative-complete, .narrative-new-reply { background: var(--success-soft); color: var(--success); }
+.narrative-app .danger-text-action { color: var(--danger); border-color: var(--danger); }
+#image-dialog .local-pipeline-review-layout { padding-top: 58px; }
+#narrative-review-panel > .local-pipeline-review-actions { position: sticky; top: 0; background: var(--surface); padding-bottom: 8px; z-index: 1; }
+#narrative-review-panel details { margin-top: 8px; }
+#narrative-review-panel summary { min-height: 44px; }
+@media (max-width:1360px) {
+  .narrative-grid, .narrative-slots { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+  .narrative-editor { grid-template-columns: minmax(0, 1fr); }
+  #narrative-root { padding: 0 12px; }
+  #narrative-breadcrumb, #narrative-message { margin: 12px; }
+  .narrative-header { background: transparent; padding: 4px 12px; justify-content: flex-end; }
+  .narrative-header > a { display: none; }
+  #narrative-model { color: var(--text-muted); font-size: .75rem; }
+  #narrative-breadcrumb, #narrative-message { margin: 6px 12px; }
+  .narrative-app button, .narrative-slot a { min-height: 44px; }
+  .narrative-app input, .narrative-app select, .narrative-app textarea { max-width: 100%; min-width: 0; }
+  .narrative-layer-controls { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
+  .narrative-stories-heading { flex-wrap: wrap; }
+  .narrative-target-editor.has-images { display: flex; flex-direction: column; }
+  .narrative-target-editor.has-images > .narrative-output { order: -1; width: 100%; display: flex; flex-direction: column; }
+  .narrative-target-editor.has-images #narrative-images-card { order: -1; }
+  .narrative-target-editor.has-images > .narrative-direction-settings { width: 100%; }
+}
+@media (max-width:760px) {
+  #image-dialog .local-pipeline-review-layout { grid-template-rows: minmax(150px, 1fr) minmax(220px, .7fr); }
+}
 /* Source previews and aspect-locked crop selection. */
 .narrative-source-preview { display: block; max-width: 100%; max-height: 340px; margin: 12px auto; }
 .narrative-crop-stage { position: relative; overflow: hidden; margin-top: 12px; }

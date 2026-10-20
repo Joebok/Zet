@@ -1,5 +1,9 @@
 # Library, universes, and discovery
 
+Touch import/paste presentation follows [Dashboard UI](DASHBOARD_UI.md). Clipboard
+images use existing file-input handlers and server validation; catalog ownership
+and replacement protections remain unchanged.
+
 This component owns library service interactions. [DATA_MODEL](../DATA_MODEL.md) owns store layouts and identifiers; [INVARIANTS](../INVARIANTS.md) owns isolation/integrity contracts.
 
 ## Entry points and responsibilities

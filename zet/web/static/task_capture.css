@@ -18,6 +18,9 @@
 .auxiliary-task-page .task-capture-dialog button { background: #f5f7fb; color: #202124; cursor: pointer; }
 .task-capture-dialog button:disabled { opacity: .55; cursor: not-allowed; }
 #task-capture-paste { border: 1px dashed #8b95a5; padding: .6rem; border-radius: 5px; }
+.task-capture-dialog .image-input-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.task-capture-dialog .image-input-actions button { min-height: 44px; }
+.task-capture-dialog .image-input-status { flex-basis: 100%; font-size: .85rem; }
 #task-capture-screenshots { list-style: none; padding: 0; }
 #task-capture-screenshots li { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .5rem 0; overflow-wrap: anywhere; }
 #task-capture-screenshots img { width: 64px; height: 64px; aspect-ratio: auto; object-fit: contain; background: #f5f7fb; }

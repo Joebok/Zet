@@ -32,6 +32,11 @@ The active character workflow produces and reviews **batches of candidates** for
 
 ## Interfaces and workflow
 
+Image review and touch input follow [Dashboard UI](DASHBOARD_UI.md). Review stays
+in the viewport when opened from a scrolled gallery, with decisions/selection
+outside scrolling details. Compact screens collapse existing batches' new-batch
+settings. Selection and lock contracts remain unchanged.
+
 | Responsibility | Implementation / consumer |
 | --- | --- |
 | Body generation/review | [LocalBodyReferenceService](../../zet/services/local_body_reference_service.py), [Run_Body_Reference_Jobs.py](../../Scripts/Run_Body_Reference_Jobs.py) |
