@@ -132,6 +132,15 @@ Character `spec.json` retains initial candidate definitions and initial `slots_b
 
 Image Generation jobs remain under universe `_state/ImageGeneration/<request_id>/job.json`. New jobs use `image_slots_version=1`, child-index image arrays, per-child status/error/seed, and persisted `render_payload` for replay. Historical completion-order jobs retain their original result indices. `_state/ImageGeneration/workspace.json` (version 1) owns eight nullable `{requestId,index}` assignments, `selected_slot` (zero-based or null), and one-time browser import state. A persistent workspace lock serializes allocation; reservations are saved before dispatch. Missing jobs display interruption rather than binding another result. Clear removes board bindings, not historical job files. See [ADR 0007](DECISIONS/0007-stable-render-slots.md).
 
+Character staging adds optional `render_payload.render_config` (`preset`,
+`checkpoint`, `disable_prompt_globals`, `append_reference_labels`) and optional
+reference `metadata` for ordered role/index/view bindings. Persisted `submission`
+also saves the resolved globals policy; old submissions default to disabling
+globals as before. Browser input state retains render configuration/reference
+metadata alongside its existing IndexedDB image bytes. Staging atomically clears
+board assignments and selection after input validation; job/image history remains.
+These additive fields require no board or job format migration.
+
 ## Style and reconstruction records (2026-10-14)
 
 Universe style remains the multiline `canonical_art_style` in `universe.json`. Narrative scenes add boolean `use_universe_style`; new=true, absent legacy=false. Effective style/source and the universe snapshot travel in target context and frozen job provenance. Existing saved prompts and historical jobs are not migrated.

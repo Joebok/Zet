@@ -38,6 +38,17 @@ controller and selected-versus-preview distinction.
 
 ## Compact image cards and review (2026-10-20)
 
+Character view action rows retain the text button **Stage in Image Generator**,
+including on completed views. `local_asset_pipeline.js` supplies the batch, view,
+costume and Recompile context; `zet.js` initializes Image Generation, applies the
+validated handoff and navigates there. It replaces prompts, reference slots,
+result/selection bindings, inventory-update associations, reconstruction and true-up
+drafts, including universe-scoped browser persistence. Inputs remain editable;
+render count is retained and Generate is explicit. Reference bytes/metadata and
+the staged render settings survive reload. Mode changes and other generator entry
+workflows clear the pipeline render settings. Context checks prevent stale responses
+from applying after navigation, universe changes or a newer content replacement.
+
 [image_card_ui.js](../../zet/web/static/image_card_ui.js) owns the scoped SVG
 action decorator (`ZetImageCardUI.decorate/scan`). It preserves existing controls,
 handlers, IDs, links and workflow eligibility while supplying accessible action

@@ -96,7 +96,8 @@ class CharacterRenderSlots:
         for view, slots in maps.items():
             reason = busy or self._prerequisite(run, view)
             run["slot_controls"][view] = {"empty_count": slots.count(None), "reason": reason,
-                "legacy": len(slots) > SLOT_COUNT, "can_generate": not reason and len(slots) <= SLOT_COUNT and None in slots}
+                "legacy": len(slots) > SLOT_COUNT, "can_generate": not reason and len(slots) <= SLOT_COUNT and None in slots,
+                "stage_reason": self._prerequisite(run, view)}
         for candidate in run.get("candidates") or []:
             slots = maps.get(candidate["view"], [])
             candidate["slot"] = slots.index(candidate["candidate_id"]) + 1 if candidate["candidate_id"] in slots else None

@@ -16,6 +16,7 @@ from zet.services.render_slot_service import RenderSlotConflict
 
 def create_local_character_asset_pipeline_router(
     app_factory: Callable[[str | Path], Any], project_root: str | Path,
+    image_generation_provider: Callable[[], Any],
 ) -> APIRouter:
     router = APIRouter()
     root = Path(project_root)
@@ -69,6 +70,13 @@ def create_local_character_asset_pipeline_router(
 
         def action(_pipeline: str, name: str, **args: Any):
             return service(_pipeline).action(name, **args)
+
+        @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/image-generation-stage")
+        def stage_image_generation(run_id: str, view: str, payload: dict[str, Any] = Body(default={}),
+                                   costume: str = Query(""), _pipeline: str = pipeline):
+            from zet.services.image_generator_staging_service import ImageGeneratorStagingService
+            return call(lambda: ImageGeneratorStagingService(service(_pipeline), image_generation_provider()).stage(
+                run_id, view, costume, recompile=bool(payload.get("recompile", False))))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/refinement")
         def open_refinement(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):

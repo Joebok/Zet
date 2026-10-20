@@ -28,6 +28,14 @@ class ImageGenerationWorkspace:
         with file_lock(self.lock), self.generator._lock:
             return self._detail(self._load())
 
+    def reset_for_staging(self):
+        """Detach all results and selection without deleting jobs or image bytes."""
+        with file_lock(self.lock), self.generator._lock:
+            board = self._load()
+            board.update(slots=[None] * 8, selected_slot=None, imported_browser_state=True)
+            write_json_atomic(self.path, board)
+            return self._detail(board)
+
     def _detail(self, board):
         jobs = {}
         busy = False

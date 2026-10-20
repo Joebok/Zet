@@ -137,6 +137,18 @@ retain their project-relative default when no active config is supplied.
 
 `image_reconstruction_service.py` extracts visible content without source rendering conventions and automatically dispatches Qwen txt2img. Codex analysis uses the Codex CLI; Ollama structured analysis is staged through [AI_Proxy](QUEUES.md#publication-and-answer-lifecycle) by `OllamaModelService`. Its frozen source snapshot is analysis-only. The Image Generation page offers a job-specific model, library/upload/paste sources, optional notes and optional text editing. No prompt-review gate precedes rendering. See [ADR 0012](../DECISIONS/0012-universe-style-and-reconstruction.md) and [data model](../DATA_MODEL.md).
 
+Character view staging is a separate input handoff through
+[ImageGeneratorStagingService](../../zet/services/image_generator_staging_service.py).
+`POST /api/local/{pipeline}/runs/{run_id}/views/{view}/image-generation-stage`
+accepts `recompile` and costume context and returns `inputs` plus the reset
+`workspace`. Its compiled prompt already describes its ordered image bindings, so
+Image Generation preserves those bytes/roles and does not append its usual label
+paragraph. Optional `render_config` carries the validated preset/checkpoint and
+prompt-global/label-appending policies through submissions and Retry. Character
+prompt-document formatting is retained for equivalent shared AI_Proxy compilation;
+ordinary ad hoc generation keeps its existing defaults. See
+[Local characters](LOCAL_CHARACTERS.md#fixed-render-slots-2026-10-12).
+
 ### Shared target and true-up
 
 V2 reconstruction shares analysis/composition with the Quick Character Wizard. Source observations remain evidence; effective description/identity applies explicit preserve/change instructions before generation. Observations are not blindly appended into the intended result. Bound hair length using visible face/neck landmarks; unseen completions remain proposals. Universe style is composed separately and frozen for replay.

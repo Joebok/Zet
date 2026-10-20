@@ -95,12 +95,38 @@ class AdHocImageGenerationService:
         with self._lock, file_lock(self.results_root / request_id / ".collect.lock"):
             return self._submit(payload, request_id=request_id, seeds=seeds)
 
+    def render_configuration(self, payload: dict[str, Any], mode: str) -> dict[str, Any]:
+        """Resolve optional character settings while keeping ordinary ad hoc defaults."""
+        default_preset = (("comfyui-qwen-local-character-edit" if payload.get("reference_images") is not None
+                           else "comfyui-qwen-head-image-edit") if mode == "img2img"
+                          else "comfyui-qwen-head-image-text")
+        supplied = payload.get("render_config")
+        if supplied is not None and not isinstance(supplied, dict):
+            raise AdHocImageGenerationError("Invalid image render configuration.")
+        supplied = supplied or {}
+        for key in ("disable_prompt_globals", "append_reference_labels"):
+            if key in supplied and type(supplied[key]) is not bool:
+                raise AdHocImageGenerationError(f"Invalid {key} render setting.")
+        preset = str(supplied.get("preset") or default_preset)
+        checkpoint = str(supplied.get("checkpoint") or "")
+        profile = require_qwen_profile(self.project_root, preset, checkpoint=checkpoint, presets_path=self.presets_path)
+        if mode == "img2img" and not profile.get("supports_reference_images"):
+            raise AdHocImageGenerationError("The chosen render profile does not support reference images.")
+        if not checkpoint:
+            checkpoint = (str(self.zet_app.config.comfyui_checkpoint or "").strip()
+                          or str(profile.get("diffusion_model") or ""))
+        return {"preset": preset, "checkpoint": checkpoint,
+                "disable_prompt_globals": supplied.get("disable_prompt_globals", True),
+                "append_reference_labels": supplied.get("append_reference_labels", True)}
+
     def _submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None) -> dict[str, Any]:
         mode = str(payload.get("mode") or "txt2img").strip().lower()
         if mode not in {"txt2img", "img2img"}:
             raise AdHocImageGenerationError("Choose txt2img or img2img.")
-        user_prompt = str(payload.get("prompt") or "").strip()
-        if not user_prompt:
+        user_prompt = str(payload.get("prompt") or "")
+        if payload.get("render_config") is None:
+            user_prompt = user_prompt.strip()
+        if not user_prompt.strip():
             raise AdHocImageGenerationError("Enter a prompt before generating.")
         source_asset_id = str(payload.get("source_asset_id") or "").strip()
         source_checksum = str(payload.get("source_checksum") or "").strip()
@@ -164,7 +190,13 @@ class AdHocImageGenerationService:
                         extension = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}[image.format]
                 except (ValueError, KeyError) as exc:
                     raise AdHocImageGenerationError(str(exc)) from exc
-                reference_images.append({"label": label, "bytes": reference_bytes, "extension": extension})
+                metadata = item.get("metadata") or {}
+                if not isinstance(metadata, dict):
+                    raise AdHocImageGenerationError(f"Reference image {index} metadata is invalid.")
+                metadata = {key: metadata[key] for key in
+                            ("role", "prompt_role", "image_index", "view", "source_view") if key in metadata}
+                reference_images.append({"label": label, "bytes": reference_bytes, "extension": extension,
+                                         "metadata": metadata})
             if source_asset_id:
                 source_path = Path(str(source.get("image_path") or ""))
                 if not source_path.is_file():
@@ -176,19 +208,14 @@ class AdHocImageGenerationService:
                 with Image.open(BytesIO(contents)) as image:
                     extension = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}[image.format]
                 reference_images[0].update(bytes=contents, extension=extension)
-        preset_name = (
-            ("comfyui-qwen-local-character-edit" if payload.get("reference_images") is not None
-             else "comfyui-qwen-head-image-edit")
-            if mode == "img2img" else "comfyui-qwen-head-image-text"
-        )
+        render_config = self.render_configuration(payload, mode)
+        preset_name = render_config["preset"]
         if payload.get("model_family") and payload["model_family"] != "qwen-image-2.1":
             raise AdHocImageGenerationError("Local rendering supports only Qwen Image 2.1.")
         require_qwen_profile(self.project_root, str(payload.get("render_preset") or payload.get("profile") or preset_name),
                              str(payload.get("backend") or payload.get("image_generation") or "comfyui"),
                              str(payload.get("checkpoint") or ""), presets_path=self.presets_path)
-        checkpoint = str(self.zet_app.config.comfyui_checkpoint or "").strip()
-        if not checkpoint:
-            checkpoint = str(self._preset(preset_name).get("diffusion_model") or "")
+        checkpoint = render_config["checkpoint"]
 
         request_id = request_id or uuid4().hex
         self.proxy_paths.jobs.validate_id(request_id)
@@ -209,12 +236,15 @@ class AdHocImageGenerationService:
                     references.append({
                         "version": 1, "type": "reference_file", "role": reference["label"],
                         "label": reference["label"], "path": str(reference_path), "image_index": index,
+                        **reference["metadata"],
                     })
-                render_prompt += "\n\n" + "\n".join(label_lines)
-            prompt_path.write_text(
-                f"Prompt: {render_prompt}\nNegative: {str(payload.get('negative_prompt') or '').strip()}\n",
-                encoding="utf-8",
-            )
+                if render_config["append_reference_labels"]:
+                    render_prompt += "\n\n" + "\n".join(label_lines)
+            negative = str(payload.get("negative_prompt") or "").strip()
+            prompt_document = (f"Positive Prompt:\n{render_prompt}\n\nNegative Prompt:\n{negative}"
+                               if payload.get("render_config") is not None
+                               else f"Prompt: {render_prompt}\nNegative: {negative}\n")
+            prompt_path.write_text(prompt_document, encoding="utf-8")
         except Exception:
             shutil.rmtree(workspace, ignore_errors=True)
             raise
@@ -230,6 +260,7 @@ class AdHocImageGenerationService:
         job = self._new_job(request_id, mode, count, workspace, children, prompt_path, "QUEUED", "")
         job.update(self._request_details(payload, width, height, user_prompt))
         job["submission"] = {"checkpoint": checkpoint, "preset_name": preset_name, "references": references,
+                             "disable_prompt_globals": render_config["disable_prompt_globals"],
                              "width": width, "height": height, "workflow": payload.get("ai_workflow", "Image Generation"),
                              "owner": payload.get("ai_owner", {})}
         self._jobs[request_id] = job
@@ -286,7 +317,8 @@ class AdHocImageGenerationService:
              "workflow": intent["workflow"], "ai_owner": intent["owner"]},
             job["prompt_path"], job["workspace"], allow_parallel=True, seed=child["seed"],
             checkpoint=intent["checkpoint"], render_preset=intent["preset_name"], image_generation="comfyui",
-            render_overrides={"width": intent["width"], "height": intent["height"], "disable_prompt_globals": True},
+            render_overrides={"width": intent["width"], "height": intent["height"],
+                              "disable_prompt_globals": intent.get("disable_prompt_globals", True)},
             reference_files=intent["references"], consumer=IMAGE_GENERATION_CONSUMER)
         child.update(ask_id=staged.name, status="QUEUED", done=False, error="")
         self._save_job(job)
@@ -315,7 +347,7 @@ class AdHocImageGenerationService:
     @staticmethod
     def _request_details(payload, width, height, prompt):
         return {
-            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "reference_images", "reference_image", "source_asset_id", "source_checksum", "reconstruction") if key in payload},
+            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "reference_images", "reference_image", "source_asset_id", "source_checksum", "reconstruction", "render_config") if key in payload},
             "reconstruction": payload.get("reconstruction", {}),
             "prompt": prompt,
             "negative_prompt": str(payload.get("negative_prompt") or "").strip(),

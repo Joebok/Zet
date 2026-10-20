@@ -258,10 +258,11 @@
     return details;
   }
 
-  function addButton(host, text, action, { disabled = false, primary = false, view = "", candidate = "" } = {}) {
+  function addButton(host, text, action, { disabled = false, primary = false, view = "", candidate = "", title = "" } = {}) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = text;
+    if (title) button.title = title;
     if (["delete", "clear"].includes(action)) button.classList.add("danger-text-action");
     button.dataset.localAction = action;
     button.dataset.view = view;
@@ -561,6 +562,8 @@
       viewActions.className = "button-row compact";
       const viewReady = view === "FRONT" || run.use_front_anchor === false || Boolean(run.front_anchor);
       addRecompileOption(viewActions);
+      const stageReason = run.slot_controls?.[view]?.stage_reason || "";
+      addButton(viewActions, "Stage in Image Generator", "stage-image-generation", { disabled: Boolean(stageReason), view, title: stageReason });
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.status === "FAILED"), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
@@ -1393,6 +1396,22 @@
     const view = button.dataset.view;
     const candidateId = button.dataset.candidate || button.closest?.("[data-candidate]")?.dataset.candidate || "";
     if (action === "review") { openReview(candidateId); return; }
+    if (action === "stage-image-generation") {
+      const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation;
+      const params = new URLSearchParams();
+      if (isCostume()) params.set("costume", selectedCostume());
+      const recompile = Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
+      const current = () => state.pipeline === pipeline && state.run?.run_id === runId
+        && state.generation === generation && contextKey() === context
+        && document.querySelector("#local-pipeline-page").classList.contains("active");
+      button.disabled = true;
+      try {
+        await window.zetStageCharacterViewInImageGenerator(
+          `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/image-generation-stage?${params}`,
+          recompile, current);
+      } finally { button.disabled = Boolean(state.run?.slot_controls?.[view]?.stage_reason); }
+      return;
+    }
     if (action === "save-view-reference") {
       const value = button.closest(".local-pipeline-reference-recipe").querySelector("select").value;
       const params = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";

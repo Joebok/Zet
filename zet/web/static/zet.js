@@ -253,6 +253,10 @@ const imageGenerationReviewImport = document.querySelector("#image-generation-re
 const imageGenerationReviewUpdate = document.querySelector("#image-generation-review-update");
 const imageGenerationSource = document.querySelector("#image-generation-source");
 let imageGenerationMode = "txt2img";
+let imageGenerationRenderConfig = null;
+let imageGenerationContentVersion = 0;
+let imageGenerationStagePending = false;
+let imageGenerationDefaultModel = "";
 let imageGenerationReviewIndex = -1;
 let entityLibraryImportGeneration = null;
 let imageGenerationOptionsLoaded = false;
@@ -1233,6 +1237,7 @@ function showMessageElement(container, message, kind = "info") {
 }
 
 function setImageGenerationMode(mode) {
+  if (imageGenerationMode !== mode) clearImageGenerationRenderConfig();
   imageGenerationMode = mode;
   const editing = mode === "img2img";
   imageGenerationTxt2img.setAttribute("aria-pressed", String(!editing));
@@ -1240,6 +1245,11 @@ function setImageGenerationMode(mode) {
   imageGenerationTxt2img.classList.toggle("primary-action", !editing);
   imageGenerationImg2img.classList.toggle("primary-action", editing);
   imageGenerationReferenceSlotsElement.hidden = !editing;
+}
+
+function clearImageGenerationRenderConfig() {
+  imageGenerationRenderConfig = null;
+  imageGenerationModel.textContent = imageGenerationDefaultModel;
 }
 
 function renderImageGenerationReferenceSlots() {
@@ -1272,9 +1282,12 @@ function renderImageGenerationReferenceSlots() {
     fileInput.addEventListener("change", async () => {
       const file = fileInput.files[0];
       if (!file || !file.type.startsWith("image/")) return;
+      const contentVersion = imageGenerationContentVersion, universe = state.universeId;
       try {
+        const data = await readImageGenerationReference(file);
+        if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
         imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
-        imageGenerationReferenceSlots[index].data = await readImageGenerationReference(file);
+        imageGenerationReferenceSlots[index].data = data;
         renderImageGenerationReferenceSlots();
         await saveImageGenerationReferences();
         saveImageGenerationState();
@@ -1312,9 +1325,12 @@ function renderImageGenerationReferenceSlots() {
         const file = imageItem?.getAsFile();
         if (!file) return;
         event.preventDefault();
+        const contentVersion = imageGenerationContentVersion, universe = state.universeId;
         try {
+          const data = await readImageGenerationReference(file);
+          if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
           imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
-          imageGenerationReferenceSlots[index].data = await readImageGenerationReference(file);
+          imageGenerationReferenceSlots[index].data = data;
           renderImageGenerationReferenceSlots();
           await saveImageGenerationReferences();
           saveImageGenerationState();
@@ -1339,6 +1355,8 @@ function saveImageGenerationState() {
       width: imageGenerationWidth.value,
       height: imageGenerationHeight.value,
       referenceLabels: imageGenerationReferenceSlots.map((reference) => reference.label),
+      referenceMetadata: imageGenerationReferenceSlots.map((reference) => reference.metadata || {}),
+      renderConfig: imageGenerationRenderConfig,
       sourceAssetId: imageGenerationSource.dataset.assetId || "",
       sourceChecksum: imageGenerationSource.dataset.checksum || "",
       managedStyle: imageGenerationPrompt.dataset.managedStyle || "",
@@ -1359,15 +1377,18 @@ function openImageGenerationDatabase() {
 }
 
 async function saveImageGenerationReferences() {
+  const universe = state.universeId;
+  const references = imageGenerationReferenceSlots.map(reference => reference.data);
   const database = await openImageGenerationDatabase();
   await new Promise((resolve, reject) => {
     const transaction = database.transaction("state", "readwrite");
     const store = transaction.objectStore("state");
-    imageGenerationReferenceSlots.forEach((reference, index) => {
-      const key = `${state.universeId}:reference-${index}`;
-      if (reference.data) store.put(reference.data, key);
+    references.forEach((data, index) => {
+      const key = `${universe}:reference-${index}`;
+      if (data) store.put(data, key);
       else store.delete(key);
     });
+    store.delete(`${universe}:reference`);
 
     transaction.addEventListener("complete", resolve, { once: true });
     transaction.addEventListener("error", () => reject(transaction.error), { once: true });
@@ -1376,6 +1397,8 @@ async function saveImageGenerationReferences() {
 }
 
 async function restoreImageGenerationInputs() {
+  const contentVersion = ++imageGenerationContentVersion, universe = state.universeId;
+  clearImageGenerationRenderConfig();
   imageGenerationSlots = Array(8).fill(null);
   imageGenerationSelectedSlot = -1; imageGenerationJobIds = []; imageGenerationJobs.clear();
   imageGenerationPrompt.value = ""; imageGenerationNegative.value = "";
@@ -1398,7 +1421,10 @@ async function restoreImageGenerationInputs() {
     if (saved.width) imageGenerationWidth.value = saved.width;
     if (saved.height) imageGenerationHeight.value = saved.height;
     if (Array.isArray(saved.referenceLabels)) {
-      imageGenerationReferenceSlots.forEach((reference, index) => { reference.label = saved.referenceLabels[index] || ""; });
+      imageGenerationReferenceSlots.forEach((reference, index) => {
+        reference.label = saved.referenceLabels[index] || "";
+        reference.metadata = saved.referenceMetadata?.[index] || {};
+      });
     } else if (saved.referenceName) {
       imageGenerationReferenceSlots[0].label = saved.referenceName;
     }
@@ -1416,24 +1442,29 @@ async function restoreImageGenerationInputs() {
     imageGenerationSource.hidden = !saved.sourceAssetId;
     if (saved.sourceAssetId) imageGenerationSource.textContent = "Updating an image from the Image Inventory";
     setImageGenerationMode(saved.mode === "img2img" ? "img2img" : "txt2img");
+    imageGenerationRenderConfig = saved.renderConfig || null;
+    if (imageGenerationRenderConfig) imageGenerationModel.textContent = `Qwen Image 2.1 · ${imageGenerationRenderConfig.checkpoint}`;
   }
   try {
     const database = await openImageGenerationDatabase();
+    if (contentVersion !== imageGenerationContentVersion || state.universeId !== universe) { database.close(); return; }
     const store = database.transaction("state", "readonly").objectStore("state");
-    imageGenerationReferenceSlots = await Promise.all(imageGenerationReferenceSlots.map((reference, index) => new Promise((resolve, reject) => {
-      const request = store.get(`${state.universeId}:reference-${index}`);
+    const references = await Promise.all(imageGenerationReferenceSlots.map((reference, index) => new Promise((resolve, reject) => {
+      const request = store.get(`${universe}:reference-${index}`);
       request.addEventListener("success", () => resolve({...reference, data: request.result || ""}), { once: true });
       request.addEventListener("error", () => reject(request.error), { once: true });
     })));
-    if (!imageGenerationReferenceSlots.some((reference) => reference.data)) {
+    if (!references.some((reference) => reference.data)) {
       const legacy = await new Promise((resolve, reject) => {
-        const request = store.get(`${state.universeId}:reference`);
+        const request = store.get(`${universe}:reference`);
         request.addEventListener("success", () => resolve(request.result || ""), { once: true });
         request.addEventListener("error", () => reject(request.error), { once: true });
       });
-      if (legacy) imageGenerationReferenceSlots[0].data = legacy;
+      if (legacy) references[0].data = legacy;
     }
     database.close();
+    if (contentVersion !== imageGenerationContentVersion || state.universeId !== universe) return;
+    imageGenerationReferenceSlots = references;
     renderImageGenerationReferenceSlots();
   } catch {
     showMessageElement(imageGenerationMessage, "Unable to restore the saved reference image in this browser.", "warning");
@@ -1467,9 +1498,11 @@ async function restoreImageGenerationJob() {
     let legacy = null;
     try { legacy = JSON.parse(window.localStorage.getItem(IMAGE_GENERATION_STORAGE_KEY) || "null"); } catch { /* Ignore invalid historical browser state. */ }
     const board = await fetchJson("/api/image-generation/workspace/import", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({slots: legacy?.slots || imageGenerationSlots, selected_slot: legacy?.selectedSlot ?? -1})});
+    if (universe !== state.universeId) return;
     applyImageGenerationWorkspace(board);
     imageGenerationWorkspaceUniverse = universe;
   } else await pollImageGenerationWorkspace();
+  if (universe !== state.universeId) return;
   clearInterval(imageGenerationWorkspaceTimer);
   imageGenerationWorkspaceTimer = setInterval(() => void pollImageGenerationWorkspace(), 2000);
 }
@@ -1477,7 +1510,12 @@ async function restoreImageGenerationJob() {
 async function pollImageGenerationWorkspace() {
   if (imageGenerationWorkspacePolling || imageGenerationPending || !document.querySelector("#image-generation-page").classList.contains("active")) return;
   imageGenerationWorkspacePolling = true;
-  try { applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace")); await pollImageReconstruction(); }
+  const contentVersion = imageGenerationContentVersion, universe = state.universeId;
+  try {
+    const board = await fetchJson("/api/image-generation/workspace");
+    if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
+    applyImageGenerationWorkspace(board); await pollImageReconstruction();
+  }
   catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, `Unable to check renders: ${error.message}. Retrying automatically.`, "error"); }
   finally { imageGenerationWorkspacePolling = false; }
   await pollImageTrueUp();
@@ -1607,6 +1645,7 @@ async function startImageReconstruction() {
     window.localStorage.setItem(`zet:reconstruction-job:${universe}`, job.id);
     if (imageReconstructionSource !== source) return;
     imageReconstructionJob = {...job, fieldBaseline};
+    clearImageGenerationRenderConfig();
     setImageGenerationMode("txt2img");
     imageGenerationSource.hidden = true;
     delete imageGenerationSource.dataset.assetId;
@@ -1668,6 +1707,7 @@ reconstructionField("remove").addEventListener("click", () => {
 });
 reconstructionField("use-text").addEventListener("click", () => {
   if (!imageReconstructionJob?.content_prompt || !reconstructionField("prompt").value.trim()) return;
+  clearImageGenerationRenderConfig();
   imageGenerationPrompt.value = reconstructionField("prompt").value;
   imageGenerationPrompt.dataset.managedStyle = `Art style:\n${imageReconstructionJob.style.text}\n\n`;
   imageGenerationReconstruction = Object.fromEntries(["id", "version", "model", "source", "style", "instruction_version", "content_prompt", "uncertainties", "notes", "prompt", "target", "target_hash"].map(key => [key, imageReconstructionJob[key]]));
@@ -1695,6 +1735,7 @@ async function modifyEntityLibraryImageWithGenerator() {
     const data = await readImageGenerationReference(new File([blob], asset.file_name, { type: asset.mime_type }));
     await runGuardedTransition(async () => {
       await loadImageGenerationOptions();
+      clearImageGenerationRenderConfig();
       imageGenerationReview.close();
       imageGenerationSource.textContent = "Updating " + (asset.label || asset.file_name);
       imageGenerationSource.hidden = false;
@@ -1983,11 +2024,13 @@ document.querySelector("#image-true-up-compare").addEventListener("click", async
 document.querySelector("#image-true-up-apply").addEventListener("click", async () => {
   if (!canApplyImageTrueUp()) return;
   imageTrueUpBusy = true; renderImageTrueUp();
+  const contentVersion = imageGenerationContentVersion, universe = state.universeId;
   try {
     const job = await fetchJson("/api/image-generation/corrections", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({selected_result: imageGenerationSlots[imageGenerationSelectedSlot], task_id: imageTrueUpReport.task_id,
         report_id: imageTrueUpReport.id, item_ids: [...imageTrueUpItems], instructions: document.querySelector("#image-true-up-instructions").value,
         width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value)})});
+    if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
     imageReconstructionJob = {...job, fieldBaseline: reconstructionBaseline()};
     window.localStorage.setItem(`zet:reconstruction-job:${state.universeId}`, job.id);
     applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace"));
@@ -2118,9 +2161,10 @@ function currentImageGenerationInputs() {
   return {
     mode: imageGenerationMode, prompt: imageGenerationPrompt.value, negative_prompt: imageGenerationNegative.value,
     width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value),
-    reference_images: references.map(({label, data}) => ({label: label.trim(), image: data})),
+    reference_images: references.map(({label, data, metadata}) => ({label: label.trim(), image: data, ...(metadata ? {metadata} : {})})),
     source_asset_id: imageGenerationSource.dataset.assetId || "", source_checksum: imageGenerationSource.dataset.checksum || "",
     ...(imageGenerationReconstruction ? {reconstruction: imageGenerationReconstruction} : {}),
+    ...(imageGenerationRenderConfig ? {render_config: imageGenerationRenderConfig} : {}),
   };
 }
 
@@ -2133,20 +2177,92 @@ async function clearImageGenerationResults() {
   await imageGenerationSlotAction("clear_all");
 }
 
+window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent) => {
+  if (imageGenerationStagePending || imageGenerationPending) throw new Error("Wait for the current Image Generator action to finish.");
+  imageGenerationStagePending = true;
+  const universe = state.universeId, navigation = state.navigationRequest;
+  const current = () => state.universeId === universe && state.navigationRequest === navigation && isCurrent();
+  try {
+    await runGuardedTransition(async () => {
+      if (!current()) return false;
+      await loadImageGenerationOptions();
+      if (!current()) return false;
+      if (!imageGenerationOptionsLoaded || imageGenerationWorkspaceUniverse !== universe) {
+        throw new Error("Unable to initialize Image Generator. Try again.");
+      }
+      const staged = await fetchJson(url, {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({recompile})});
+      if (!current()) return false;
+      ++imageGenerationContentVersion;
+      imageGenerationReview.close();
+      imageGenerationReviewIndex = -1;
+      imageGenerationReviewImage.removeAttribute("src");
+      imageGenerationReviewPrompt.textContent = "";
+      imageGenerationReviewNegative.textContent = "";
+      delete imageGenerationReview.dataset.slot;
+      entityLibraryImportGeneration = null;
+      imageGenerationSource.hidden = true;
+      imageGenerationSource.textContent = "";
+      delete imageGenerationSource.dataset.assetId;
+      delete imageGenerationSource.dataset.checksum;
+      imageGenerationReconstruction = null;
+      imageGenerationPrompt.dataset.managedStyle = "";
+      ++imageReconstructionSourceVersion;
+      imageReconstructionSource = null;
+      imageReconstructionJob = null;
+      reconstructionField("source").textContent = "No source selected.";
+      reconstructionField("preview").hidden = true;
+      reconstructionField("preview").removeAttribute("src");
+      for (const name of ["file", "description", "prompt", "notes", "preserve", "changes"]) reconstructionField(name).value = "";
+      for (const name of ["uncertainties", "status"]) reconstructionField(name).textContent = "";
+      document.querySelector("#image-reconstruction-panel").open = false;
+      imageTrueUpReport = null; imageTrueUpItems.clear(); imageTrueUpSelection = "";
+      document.querySelector("#image-true-up-instructions").value = "";
+      for (const name of ["status", "pair", "findings"]) document.querySelector(`#image-true-up-${name}`).replaceChildren();
+      window.localStorage.removeItem(`zet:reconstruction-job:${universe}`);
+      window.localStorage.removeItem(`zet:true-up:${universe}`);
+      const inputs = staged.inputs;
+      imageGenerationPrompt.value = inputs.prompt;
+      imageGenerationNegative.value = inputs.negative_prompt;
+      imageGenerationWidth.value = inputs.width;
+      imageGenerationHeight.value = inputs.height;
+      imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, (_, index) => {
+        const reference = inputs.reference_images[index];
+        return reference ? {label: reference.label, data: reference.image, metadata: reference.metadata} : {label: "", data: ""};
+      });
+      setImageGenerationMode(inputs.mode);
+      imageGenerationRenderConfig = inputs.render_config;
+      imageGenerationModel.textContent = `Qwen Image 2.1 · ${inputs.render_config.checkpoint}`;
+      renderImageGenerationReferenceSlots();
+      applyImageGenerationWorkspace(staged.workspace);
+      saveImageGenerationState();
+      await saveImageGenerationReferences();
+      if (!current()) return false;
+      await activatePage("image-generation", {skipAutosave: true});
+      showMessageElement(imageGenerationMessage, "Character view staged. Ready to generate.", "info");
+    });
+  } finally { imageGenerationStagePending = false; }
+};
+
 async function loadImageGenerationOptions() {
+  const universe = state.universeId;
   if (!imageGenerationOptionsLoaded || imageGenerationWorkspaceUniverse !== state.universeId) {
     try {
       const payload = await fetchJson("/api/image-generation/options", { bindToPage: false });
-      imageGenerationModel.textContent = `${payload.model} · ${payload.checkpoint}`;
+      if (universe !== state.universeId) return;
+      imageGenerationDefaultModel = `${payload.model} · ${payload.checkpoint}`;
+      imageGenerationModel.textContent = imageGenerationDefaultModel;
       imageGenerationWidth.value = payload.default_width || 1024;
       imageGenerationHeight.value = payload.default_height || 1024;
       imageGenerationOptionsLoaded = true;
       await restoreImageGenerationInputs();
+      if (universe !== state.universeId) return;
       await loadImageReconstructionOptions();
     } catch (error) {
       showMessageElement(imageGenerationMessage, `Unable to load generation settings: ${error.message}`, "error");
     }
   }
+  if (universe !== state.universeId) return;
   await restoreImageGenerationJob();
 }
 

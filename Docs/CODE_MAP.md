@@ -137,6 +137,16 @@ remains queue/background/history regression coverage, without a new scenario.
   synthesis. Additional field-action/indicator checks are disposable, not permanent scenarios.
 
 ## Fixed render-slot entry points (2026-10-12)
+
+- Character-to-generator handoff: [image_generator_staging_service.py](../zet/services/image_generator_staging_service.py)
+  owns validated current-view preparation and replacement of the Image Generation
+  workspace. The local router exposes view `/image-generation-stage`;
+  `local_asset_pipeline.js` supplies per-view controls and `zet.js` applies/persists
+  the handoff. `AdHocImageGenerationService.render_configuration` preserves optional
+  pipeline settings through dispatch/retry; `ImageGenerationWorkspace.reset_for_staging`
+  atomically detaches selection/results. Disposable checks cover 32 view inputs,
+  eight matched-seed graphs and four browser handoffs; S1–S4 remain regressions.
+
 - Character allocation/protection: [render_slot_service.py](../zet/services/render_slot_service.py), called by [local_image_workflow_service.py](../zet/services/local_image_workflow_service.py). The local router exposes view `/slots` generation and `/slots/{slot}/{operation}` actions. Adapter details/summaries use the shared active-candidate merger; Run All Remaining startup recovery reattaches persisted supplemental targets and independent slot collectors. Slot collection uses its own runner lock; ordinary batch runners exclude slot-managed additions.
 - Image Generation board and prompt controls: [image_generation_workspace_service.py](../zet/services/image_generation_workspace_service.py), via `/api/image-generation/workspace` detail/import/actions; [ad_hoc_image_generation_service.py](../zet/services/ad_hoc_image_generation_service.py) retains job APIs and child-index result application. The prompt form in `zet.js` can prepend the selected universe's canonical art style.
 - Shared controls: [render_slots.js](../zet/web/static/render_slots.js); character live updates in [local_asset_pipeline.js](../zet/web/static/local_asset_pipeline.js), ad hoc board updates in `zet.js`. S2/S3 protect existing publication/Narrative behavior. Separately approved disposable checks verify the reported deep-link, containment, prompt and overlapping-action issues; full Body/Head generation and general recovery remain coverage gaps.

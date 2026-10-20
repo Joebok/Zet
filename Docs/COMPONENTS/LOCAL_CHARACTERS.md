@@ -119,6 +119,19 @@ For a new local asset operation use the local store/services and downstream sour
 [ADR 0003](../DECISIONS/0003-local-character-production-boundary.md) records the retirement/renderer boundary. [V5 Realignment](../../Docs-Joe/Zet%20V5%20Realignment.md) describes intent and open questions; it does not authorize a new implementation phase.
 
 ## Fixed render slots (2026-10-12)
+
+Each Body, Head, Assembly and Dressing view offers **Stage in Image Generator**.
+[ImageGeneratorStagingService](../../zet/services/image_generator_staging_service.py)
+uses `CharacterRenderSlots.prepare_input` with the current view recipe and Recompile
+choice, validating prerequisites and captured image bytes before clearing the
+generator board. This stages the next Generate inputs, rather than replaying a
+candidate. It preserves prompt text, render profile/checkpoint, effective dimensions,
+prompt-global behavior and ordered references. It neither allocates pipeline
+candidates nor changes selections/locks or submits inference. The independent
+generator results are not automatically adopted. Minor Characters and refinement
+windows are outside this handoff. Missing inputs and unsupported reference limits
+leave the existing generator board intact.
+
 All four local character pages display eight stable slots per view. Initial FRONT/other-view counts are integers 1–8 (defaults 8/4); planned candidates awaiting an anchor are reserved, not empty. Add renders fills empty positions only. Generate/Regen use the current view prompt with fresh seeds; the view’s Recompile checkbox also applies to these actions and compiles current templates first. Already submitted asks retain their frozen inputs. Regen replaces an unselected candidate with a new identity; render Retry retains the failed render inputs/seed. Failed advisory review keeps its separate retry behavior.
 
 [CharacterRenderSlots](../../zet/services/render_slot_service.py) owns atomic allocation and protection behind [LocalImagePipelineWorkflowService](../../zet/services/local_image_workflow_service.py). Detail includes `slots_by_view`, `slot_controls`, candidate slot numbers and action reasons. Render actions persist `slot_render_ids` before scheduling; an independent per-run collector submits/reconciles them without taking the batch runner lock. Other slots remain usable while renders run. Clear detaches running candidates so late answers cannot fill replacement slots. Startup recovery reattaches this collector. Candidate definitions added after creation live separately from mutable review state so rerun resets retain them. Clear detaches active membership and retains provenance/artifacts. Legacy galleries over eight remain visible; clear surplus unprotected candidates to reach capacity.

@@ -1,5 +1,21 @@
 # Local testing
 
+## Character Image Generator staging (2026-10-20)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (45.9 seconds).
+Disposable isolated checks compared all 32 Body/Head/Assembly/Dressing view inputs
+and eight FRONT/BACK matched-seed workflow graphs, including prompt text, ordered
+reference bytes and render settings. They also checked uploaded Head FRONT,
+unchanged run spec/state, selected/pending result detachment, reference-limit/missing
+image failures, cross-universe rejection, no inference on staging and Retry retaining
+the saved configuration/seed. Chromium checks passed on all four source pages for
+both modes, replacement of old content, reload persistence, return-to-source button
+availability, navigation cancellation and delayed-upload fencing. An initial browser
+check exposed the return-to-source disabled button; it was fixed and the check
+passed. Two JavaScript syntax checks, six Python AST checks and `git diff --check`
+passed. No maintained tests, dependencies or live inference were added. These checks
+establish prepared-job equivalence, not live rendered image quality.
+
 ## Compact image cards and review (2026-10-20)
 
 `npm.cmd run test:e2e` passed all four approved scenarios in 42.6 seconds after the

@@ -1186,7 +1186,6 @@ def _create_available_app(
         )
     )
     app.include_router(create_pipeline_inspection_router(lambda: _app(app.state.config_path)))
-    app.include_router(create_local_character_asset_pipeline_router(lambda: _app(app.state.config_path), PROJECT_ROOT))
     def _image_generation_service():
         selected = _app(app.state.config_path)
         with app.state.universe_lock:
@@ -1197,6 +1196,8 @@ def _create_available_app(
                 app.state.image_generation_service = selected._image_generation_service
             return selected._image_generation_service
 
+    app.include_router(create_local_character_asset_pipeline_router(
+        lambda: _app(app.state.config_path), PROJECT_ROOT, _image_generation_service))
     app.include_router(create_ad_hoc_image_generation_router(_image_generation_service))
 
     def quick_character_wizard_service():
