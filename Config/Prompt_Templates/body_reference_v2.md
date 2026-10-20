@@ -22,7 +22,7 @@ Create one new full-body technical body reference for {{CHARACTER_NAME}}, {{CHAR
 
 # Output Contract
 
-- One character, one {{VIEW_LABEL}} view, one finished image.
+- One character, one {{VIEW_LABEL}}, one finished image.
 - Entire body visible from the top of the head through both soles; no cropping.
 - Neutral standing pose, readable proportions, clean silhouette, and exact requested view.
 <!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->

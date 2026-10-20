@@ -263,6 +263,22 @@ S1/S3 protect representative library/Narrative authoring and assembly; S2 protec
 
 ## Final results
 
-Local UI implementation is complete. WP14's physical-iPad acceptance remains open, so the plan stays active. Review on Joe's iPad: confirm actual viewport/zoom, open/close review from a scrolled gallery, compare/select/navigate, and try copying from Photos and browser image content, including native Paste approval and Photos/Files fallback. No deployment was performed.
+Local UI implementation is complete. WP14's physical-iPad acceptance remains open, so the plan stays active. Review on Joe's iPad: confirm actual viewport/zoom, open/close review from a scrolled gallery, compare/select/navigate, and try copying from Photos and browser image content, including native Paste approval and Photos/Files fallback. The implementation phase did not deploy; the subsequent release handoff is recorded below.
 
 Observed validation and remaining limits are also recorded in Docs/Testing.md and Docs/DEVELOPMENT.md. Captures and disposable scripts live under ignored test-results/ui-responsive and test-results/ui-responsive-final; they are inspection artifacts, not new permanent tests.
+
+## Release handoff (2026-10-19)
+
+Joe authorized deployment to test remotely on the iPad. The development checkout
+was clean at 66c966d; the running f98ad93 release had one tracked template edit,
+removing the redundant word `view` after `{{VIEW_LABEL}}`. Preserve that exact edit
+in main and in Runtime state backup before restoring the old release's tracked
+file for the managed deployment guard. No creative image, selection, lock, or
+pending render inputs are changed by this reconciliation.
+
+Use the documented `/api/deployment/update` controller: stage merged origin/main,
+run its isolated approved E2E validation, then promote/restart with rollback
+protection. Actual operation status, target revision, and new boot identity are
+recorded under `Zet_Runtime/state`; success requires a ready health response for
+that target and verification through the remote HTTPS endpoint. Physical-iPad
+acceptance remains open after deployment.
