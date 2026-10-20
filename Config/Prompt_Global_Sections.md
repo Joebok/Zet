@@ -127,7 +127,7 @@ Use simple neutral fitment clothing.
 
 Clothing rules:
 
-* Translucent beige tube top.
+* Beige pasties.
 * Beige compression shorts.
 * No additional garments.
 * Keep the body silhouette readable.
@@ -140,7 +140,7 @@ Use simple neutral fitment clothing.
 
 Clothing rules:
 
-* olive green compression shorts.
+* Beige compression shorts.
 * No shirt.
 * Minimal detail and no additional garments.
 * Keep the body silhouette readable.
@@ -153,8 +153,8 @@ Use simple neutral fitment clothing.
 
 Clothing rules:
 
-* olive green shorts.
-* olive green t-shirt.
+* Olive green shorts.
+* Olive green t-shirt.
 * Minimal detail and no additional garments.
 * Keep the body silhouette readable.
 
