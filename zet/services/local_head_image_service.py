@@ -813,7 +813,14 @@ class LocalHeadImageService:
             model = "deterministic-single-survivor"
         else:
             prompt = (f"Rank all rendered head-image candidates for {view}. Assess every image on its visual merits. Compare orientation, clear identity, complete head and hair silhouette, "
-                      "character details, and usefulness as a reference. Return each candidate once with a concise reason. Candidate IDs: "
+                      "character details, and usefulness as a reference. Compare visible distinctive anatomy against each candidate's mapped supplied references, "
+                      "including shape, proportions relative to the head, attachment, taper, and perspective foreshortening. "
+                      "When the references establish elongated pointed ears, penalize exposed ears that become short, rounded or human-shaped, "
+                      "including a human ear with only a small pointed cap. Natural hair or skull occlusion is allowed; distinguish hidden anatomy "
+                      "from visibly incorrect anatomy. Do not reward exposing both ears, moving hair aside, or changing the requested head angle "
+                      "to display hidden features. Prioritize clear identity and anatomy failures over cosmetic polish. "
+                      "Return each candidate once with a concise reason describing its actually visible strengths or defects; "
+                      "do not call a shortened or rounded ear reference-consistent merely because it has a small point. Candidate IDs: "
                       + ", ".join(item["candidate_id"] for item in survivors))
             try:
                 from zet.services.local_view_reference_service import custom_references

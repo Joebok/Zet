@@ -145,6 +145,20 @@ empty. Historical candidates use saved reference-image metadata where available,
 otherwise the configured view recipe and existing pipeline inputs. Missing recorded
 images fail ranking instead of silently using FRONT. Existing rankings are unchanged
 until **Re-evaluate**; single-candidate views still receive deterministic rank #1.
+Head-Image ranking additionally compares visible distinctive anatomy (shape,
+head-relative proportions, attachment, taper and perspective) with each candidate's
+mapped references. It prioritizes clear identity/anatomy failures over cosmetic
+polish and explicitly penalizes shortened or human-shaped ears when the supplied
+design establishes elongated pointed ears. Natural hair/skull occlusion remains
+valid; exposing hidden features or changing the target angle earns no reward.
+Reasons must describe the visible anatomy accurately. This is advisory model
+guidance, not a deterministic anatomy gate or evidence of live ranking accuracy.
+Disposable prepared-response checks verified the Head ranking request, attachment
+mapping and result handling; approved S2 passed. Tsaeytte Adult's front-quarter
+ear wording was also added to its master and accepted batch revision for
+`20261019_170553_311743`; eight text previews passed without inference. See the
+[completed plan](../../plans/completed/tsaeytte-quarter-ear-ranking.md) for limits
+and unchanged-image/ranking checks.
 Disposable prepared-payload checks cover this mapping; S2 covers one-candidate
 Assembly/Dressing publication and does not establish comparative model quality.
 
