@@ -143,6 +143,20 @@
     };
   }
 
+  function continuationDisabled(run) {
+    return busy(run) || Boolean(run?.slot_render_ids?.length) || !run?.progression?.can_continue;
+  }
+
+  function frontRenderControl() {
+    const run = state.run;
+    return { disabled: continuationDisabled(run) || run?.progression?.stage !== -1,
+      reason: run?.progression?.stage >= 0 ? "FRONT has already started. Use the view controls to generate more images." : run?.progression?.reason || "Generate FRONT from the accepted template version.",
+      start: async () => {
+        if (continuationDisabled(state.run) || state.run?.progression?.stage !== -1) throw new Error("FRONT is not ready to start.");
+        await perform("proceed");
+      } };
+  }
+
   function setBusyControls() {
     const run = state.run;
     const isBusy = busy(run) || Boolean(run?.slot_render_ids?.length);
@@ -167,7 +181,7 @@
     if (run?.progression) {
       $("start").hidden = !resumable;
       $("proceed").hidden = false;
-      $("proceed").disabled = isBusy || !run.progression.can_continue;
+      $("proceed").disabled = continuationDisabled(run);
       $("proceed").textContent = run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
       $("proceed").title = run.progression.reason || "Generate the next stage from your selected images";
       $("anchor-option").hidden = true;
@@ -424,7 +438,7 @@
     const decision = $("review-panel").querySelector("input[name='local-human-decision']:checked")?.value;
     const oldRun = state.run;
     state.run = latest;
-    window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id));
+    window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id), frontRenderControl);
     const signature = run => JSON.stringify([run?.candidates, run?.slots_by_view, run?.slot_controls, run?.rankings, run?.evaluations, run?.selected_views, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
     const replacement = document.createElement("div");
@@ -738,7 +752,7 @@
 
   function render() {
     const run = state.run;
-    window.ZetTemplateImprovement?.update(run, state.pipeline, () => loadRun(run?.run_id || ""));
+    window.ZetTemplateImprovement?.update(run, state.pipeline, () => loadRun(run?.run_id || ""), frontRenderControl);
     renderLineageWarnings(run);
     if (!run) {
       $("lineage-warning").hidden = true;

@@ -1,5 +1,26 @@
 # Local testing
 
+## Governing-template review UI (2026-10-20)
+
+`npm.cmd run test:e2e -- --grep character-to-costume` passed the approved S2
+scenario (20.4 seconds including startup). Disposable service/API/Chromium checks
+verified eight-view master skips for Body, Head and Assembly without model calls;
+separate-window proposal saving and refreshed diffs; unchanged active inputs and
+master bytes until explicit use/promotion; current-master restart without the old
+overlay; checkbox-column layout, selected acceptance and bottom FRONT continuation.
+Stale editor/version saves and stale active-version skip requests were rejected.
+Polling preserved editor text; desktop, 800px and 390px bounds passed and screenshots
+were inspected. A follow-up changed button rows to wrap at their natural widths.
+Python AST, both changed JavaScript syntax checks and `git diff --check` passed.
+
+These checks used the private fixture library/queue and prepared text responses.
+Only the fixture character master was promoted; project templates and normal
+library data were unchanged. No maintained scenarios, dependencies, live inference
+or production deployment were added. Early disposable-check failures exposed
+fixture limitations (FRONT-only prerequisite locks, newline normalization, retained
+source/job state) and a transient-message assertion; the corrected check passed.
+See the [completed plan](../plans/completed/governing-template-review-ui.md).
+
 ## Responsive dashboard and image input (2026-10-19)
 
 The local implementation and acceptance limits are tracked in the

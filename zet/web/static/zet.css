@@ -5525,6 +5525,13 @@ dd {
 .template-improvement > summary { cursor: pointer; font-weight: 650; }
 .template-improvement label { display: grid; gap: .4rem; margin: .7rem 0; }
 .template-improvement textarea, .template-improvement select { width: 100%; min-width: 0; }
+.template-improvement .template-review-instructions { min-height: 4.5rem; box-sizing: border-box; }
+.template-improvement .button-row, .template-proposal-window .button-row { display: flex; flex-wrap: wrap; align-items: center; }
+.template-improvement .button-row button, .template-proposal-window .button-row button { max-width: 100%; }
+.template-workflow-status { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); }
+.template-workflow-status p:last-child { margin-bottom: 0; }
+.template-proposal-window { box-sizing: border-box; max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+.template-proposal-window textarea { box-sizing: border-box; width: 100%; min-height: 55vh; font-family: monospace; margin-bottom: 1rem; }
 .template-improvement pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); background: var(--surface-subtle); max-height: 36rem; overflow: auto; }
 .template-improvement .template-diff { border-left: 3px solid var(--primary); padding: .7rem; }
 .template-diff-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-family: monospace; font-size: .85rem; }
@@ -5561,7 +5568,11 @@ dd {
 #refine-comparisons { display: flex; flex-wrap: wrap; gap: 12px; }
 #refine-comparisons label { max-width: 150px; }
 #refine-comparisons img { display: block; width: 100%; max-height: 180px; object-fit: contain; }
-.template-correction { margin: 12px 0; padding: 12px; border: 1px solid var(--border, #888); border-radius: 8px; }
+.template-correction { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); gap: .75rem; align-items: start; margin: 12px 0; padding: 12px; border: 1px solid var(--border, #888); border-radius: 8px; }
+.template-improvement .template-correction-choice { margin: 0; display: flex; align-items: flex-start; }
+.template-correction-choice input { width: 2.25rem; height: 2.25rem; margin: 0; flex: none; }
+.template-correction-content { min-width: 0; }
+.template-correction-content > p:first-child { margin-top: 0; }
 .template-correction pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 850px) { .refinement-layout { grid-template-columns: 1fr; } .character-refinement { padding: 16px; } }
 

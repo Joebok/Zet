@@ -170,6 +170,26 @@ Every new Body, Head, Assembly and Dressing batch starts with text-only governin
 
 [LocalTemplateRevisionService](../../zet/services/local_template_revision_service.py) saves version-2 reviews with individual source corrections, affected views and rationale. Suggestions start unchecked. Checkbox decisions persist; acceptance applies only selected, nonoverlapping exact source edits after checking master baselines and recompiles a READY child version. No-change acceptance is valid. Operator feedback and manual child edits support iteration. Accepted sources are batch-local overlays; master promotion retains its separate confirmation, baseline checks and partial-write journal. Legacy version-1 records and pending continuations remain readable.
 
+The governing-template UI offers **Skip improvement — use current masters** to
+freeze, compile and accept current sources without AI analysis. **Restart from
+current masters** recompiles and starts a fresh analysis without inheriting the
+active batch overlay; earlier versions and existing images remain available.
+**Reload saved results** (formerly Refresh revisions) only reloads saved records
+and analysis status. Ordinary Analyze prompts can continue from a saved READY
+version. Restarting analysis before FRONT requires acceptance or skip again.
+
+Correction checkboxes sit beside their text, with acceptance actions below the
+findings. Master/proposed diffs precede batch-use and master-update actions; the
+parent-version diff is omitted. **Edit master template**, below each source diff,
+opens a separate proposal editor. **Save proposed** compiles a READY child without
+an AI job, changing masters or selecting that child for new renders. **Use for new
+renders** explicitly accepts/selects it for the batch; **Update master templates**
+retains the separate confirmed promotion. The status block before compiled prompts
+reports pending corrections, unsaved editor text, selected batch sources, master
+updates and drift from the captured baseline. **Start Front Renders** at the end
+uses the same FRONT continuation and readiness checks as the top Continue control;
+after FRONT opens, further generation uses the existing view controls.
+
 [LocalCharacterProgressionService](../../zet/services/local_character_progression_service.py) owns explicit Continue boundaries: FRONT, both front quarters, both profiles, both rear quarters, then BACK. Each pair uses the selected same-side predecessor. Body-Reference BACK uses selected FRONT; Head/Assembly/Dressing BACK default to the selected rear-left quarter and may use rear-right. The Body rule also applies to future Generate/Regenerate actions in existing staged batches; saved renders and Retry retain their frozen inputs. Existing matching Body/Head/Assembly/costume inputs retain their roles and order. Preview includes required ancestors for requested partial batches; front-only batches remain front-only. New generation, supplemental slots, runner resume and automation respect the opened stages. Overview automation and Run All Remaining pause for human prompt/selection/Continue actions. Existing batches retain legacy sequencing until explicitly entering prompt improvement.
 
 Prompt previews declare those future predecessor inputs through the same compiler contracts used for actual renders, even before any batch images exist. Shared reference descriptions keep preview and render prose identical for equivalent bindings; actual generation substitutes selected image paths and candidate provenance. Body task/image-input text is conditioned before its Qwen wrapper is added, and Head, Assembly and Dressing preserve their own ordered prerequisite roles. See [prompt preview compilation](PROMPTS.md#character-prompt-review-previews-2026-10-18) for the validation boundary and historical-review limitation.

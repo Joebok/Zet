@@ -159,6 +159,7 @@ class LocalTemplateRevisionService:
         records = [self._read(path) for path in sorted((directory / "revisions").glob("*.json"))]
         records.sort(key=lambda r: r["created_at"], reverse=True)
         active = active_revision(Path(run["root"]))
+        live_sources = self._sources(workflow, run)
         revision = self._record(directory, revision_id) if revision_id else (records[0] if records else None)
         if revision:
             if revision.get("version") == 2 and revision["status"] == "PROPOSING":
@@ -172,8 +173,12 @@ class LocalTemplateRevisionService:
                 source["master_diff"] = "".join(difflib.unified_diff(source["master_text"].splitlines(True), source["text"].splitlines(True),
                     fromfile=source["label"] + " (master)", tofile=source["label"] + " (revision)"))
                 source["master_diff_rows"] = template_diff_rows(source["master_text"], source["text"])
+        current_text = {s["source_id"]: s["text"] for s in live_sources}
         return {"run_id": run_id, "active_revision_id": active.get("revision_id", ""),
-                "sources": self._sources(workflow, run), "representatives": reps, "omitted_views": omitted,
+                "accepted_revision_id": (run.get("character_progression") or {}).get("accepted_revision_id", ""),
+                "active_revision": {"review_skipped": active.get("review_skipped", False),
+                    "differs_from_master": any(s["text"] != current_text.get(s["source_id"]) for s in active.get("sources", []))},
+                "sources": live_sources, "representatives": reps, "omitted_views": omitted,
                 "history": [{k: item.get(k) for k in ("revision_id", "parent_revision_id", "created_at", "status", "summary", "error", "promoted_at")} for item in records],
                 "revision": revision}
 
@@ -182,8 +187,14 @@ class LocalTemplateRevisionService:
         from zet.services.local_character_progression_service import enroll
         enroll(Path(run["root"]), run.get("views"))
         with file_lock(directory / "revisions.lock"):
+            from_master = payload.get("from_master", False)
+            skip_analysis = payload.get("skip_analysis", False)
+            if not isinstance(from_master, bool) or not isinstance(skip_analysis, bool):
+                raise ValueError("Master restart and skip choices must be boolean.")
+            if skip_analysis and (not from_master or payload.get("replacements") is not None):
+                raise ValueError("Skip improvement uses unchanged current master templates.")
             parent_id = payload.get("parent_revision_id")
-            parent = self._record(directory, parent_id) if parent_id else active_revision(Path(run["root"]))
+            parent = {} if from_master else (self._record(directory, parent_id) if parent_id else active_revision(Path(run["root"])))
             live = self._sources(workflow, run)
             sources = deepcopy(parent["sources"] if parent else live)
             current = {s["source_id"]: s for s in live}
@@ -193,7 +204,7 @@ class LocalTemplateRevisionService:
                 master = current[source["source_id"]]
                 source.update(master_text=master["text"], master_sha256=master["master_sha256"],
                               source_path=master["source_path"], before_text=source["text"])
-                if pipeline == "body-reference" and source["source_id"] == "project/Config/Prompt_Templates/body_reference_v2.md":
+                if not skip_analysis and pipeline == "body-reference" and source["source_id"] == "project/Config/Prompt_Templates/body_reference_v2.md":
                     # New proposals adopt the runtime input contract without rewriting their parent.
                     source["text"] = source["text"].replace(
                         "This is text-to-image generation with no source image.", "{{BODY_REFERENCE_INPUT_GUIDANCE}}")
@@ -214,7 +225,7 @@ class LocalTemplateRevisionService:
                         self._validate_text(source["text"], manual[source["source_id"]], allow_reference_changes=True)
                         source["text"] = manual[source["source_id"]]
             model = str(payload.get("model") or "codex:" + self.app.config.codex_default_model.removeprefix("codex:"))
-            if manual is None:
+            if manual is None and not skip_analysis:
                 from zet.services.ai_model_catalog_service import AIModelCatalogService
                 AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config).validate(model, required=["text"])
             rid = uuid4().hex
@@ -223,9 +234,30 @@ class LocalTemplateRevisionService:
                 "universe_id": self.app.universe_id, "pipeline": pipeline, "run_id": run_id, "created_at": _now(),
                 "status": "PROPOSING", "model": model, "direction": direction, "source_ids": editable,
                 "sources": sources, "representatives": [], "observations": {}, "findings": [], "selected_ids": [],
-                "compiler_guidance": compiler_guidance(), "manual": manual is not None, "summary": "", "error": "",
+                "compiler_guidance": compiler_guidance(), "manual": manual is not None,
+                "from_master": from_master, "review_skipped": skip_analysis, "summary": "", "error": "",
                 "owner": {owner_key: run_id, "pipeline": pipeline, "run_id": run_id, "revision_id": rid,
                     "character": run["character"], "phase": run["phase"], "costume": costume}}
+            if manual is not None or skip_analysis:
+                # Saving a proposal and skipping analysis both compile locally, without an AI job.
+                # Only an explicit skip also selects the frozen version for this batch.
+                from zet.services.local_prompt_preview_service import LocalPromptPreviewService
+                with file_lock(Path(run["root"]) / "state.lock"):
+                    if skip_analysis and "expected_active" in payload:
+                        if payload["expected_active"] != active_revision(Path(run["root"])).get("revision_id", ""):
+                            raise ValueError("The active revision changed; reload before skipping improvement.")
+                    record["compiled_views"] = LocalPromptPreviewService(workflow).compile(run, sources, directory / "compiled" / rid)
+                    record.update(status="READY", completed_at=_now(), summary=(
+                        "Improvement skipped; current master templates compiled for this batch." if skip_analysis
+                        else "Manual proposal compiled; choose whether to use it for this batch or update masters."))
+                    if skip_analysis:
+                        record["accepted_at"] = _now()
+                    self._write(directory / "revisions" / f"{rid}.json", record)
+                    if skip_analysis:
+                        self._write(directory / "active.json", {"revision_id": rid, "updated_at": _now()})
+                        from zet.services.local_character_progression_service import accept_prompts
+                        accept_prompts(Path(run["root"]), rid)
+                return self.detail(pipeline, run_id, costume, rid)
             self._write(directory / "revisions" / f"{rid}.json", record)
             from zet.services.local_image_pipeline_policy import mutate_local_run_state
             def reviewing(state):
@@ -481,8 +513,8 @@ class LocalTemplateRevisionService:
                 if record["status"] != "READY":
                     raise ValueError("Compile the revision successfully before trying it.")
             if run.get("character_progression"):
-                if not revision_id or not record.get("accepted_at"):
-                    raise ValueError("Analyze and accept a prompt version before using it in this staged batch.")
+                if not revision_id:
+                    raise ValueError("Compile current masters with Skip improvement before using them in this staged batch.")
                 from zet.services.local_character_progression_service import accept_prompts
                 accept_prompts(Path(run["root"]), revision_id)
             self._write(directory / "active.json", {"revision_id": revision_id, "updated_at": _now()})

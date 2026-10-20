@@ -25,6 +25,14 @@ Paths below are relative to the **bound universe root** unless stated otherwise.
 
 Character batches retain `template_improvement/revisions/<id>.json`, compiled artifacts and `active.json`. [LocalTemplateRevisionService](../zet/services/local_template_revision_service.py) reads historical version-1 image-evidence revisions and creates version-2 text reviews with frozen sources/prompts, independently selectable findings, saved decisions and accepted READY child versions. Sources retain stable `library/` and `project/` identities and master baselines. Acceptance selects a batch overlay; promotion remains an explicit separate master write.
 
+New version-2 records also retain additive `from_master` and `review_skipped`
+flags. A master restart ignores the active overlay and has no parent; skip creates
+an accepted, active READY snapshot without AI analysis. Manual replacements compile
+directly to an inactive READY child; explicit activation records its identity in
+progression just like correction acceptance. Detail responses include the accepted
+identity and whether active frozen text differs from current master sources for
+the UI status summary. Historical records need no migration.
+
 New batches have additive version-1 `character_progression` in `state.json`, owned by [LocalCharacterProgressionService](../zet/services/local_character_progression_service.py). It records accepted template identity, requested/required views, opened stage and BACK reference choice. Batch detail projects stage readiness and advisory reference warnings. Per-view recipes and frozen `render_input` preserve actual selected candidate identities, ordered reference bytes and template identity. Legacy batches have no progression record until explicitly enrolled; `review_version` is unchanged.
 
 [LocalCharacterRefinementService](../zet/services/local_character_refinement_service.py) owns `refinements/<session_id>/session.json`, private original/comparison snapshots and iterative outputs. Records bind universe, batch, view, original/adopted selection, comparison report and attempt identities, accepted direction, frozen single-image payload/seeds and resumable work IDs. `refinement_sessions` in batch state remembers each view's current session. Adoption adds a new gallery candidate in the original slot, detaches the prior working candidate and copies the adopted image to its own render directory; original/attempt history and published locks remain intact. No catalog schema migration is required. Operational paths use the existing portable library serializer.

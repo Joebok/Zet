@@ -86,6 +86,15 @@ disposable validation and live/release limits.
 
 Character template improvement: [LocalTemplateRevisionService](../zet/services/local_template_revision_service.py) owns text-only findings, exact selected corrections, accepted batch versions and conflict-checked master promotion. Historical representative-image records retain their continuation support. [TemplateSourceService](../zet/services/template_source_service.py) supplies context-local source overlays; [LocalViewReferenceService](../zet/services/local_view_reference_service.py) resolves selected same-batch reference recipes and shares their prompt descriptions with declared previews. [LocalPromptPreviewService](../zet/services/local_prompt_preview_service.py) uses the four production compilers with future ordered inputs; Body render slots pass resolved references into compilation before freezing the Qwen prompt. New progression and refinement services are mapped above. `AIWorkflowService` registers resumable prompt-review and image-refinement continuations. See [local characters](COMPONENTS/LOCAL_CHARACTERS.md#prompt-review-staged-generation-and-image-refinement-2026-10-18).
 
+Governing-template review UI: [local_template_improvement.js](../zet/web/static/local_template_improvement.js)
+owns skip/restart/reload controls, separate proposal-editor windows, diff ordering
+and pending/batch/master status. `LocalTemplateRevisionService.start` compiles
+explicit master skips and manual READY proposals without AI; `from_master` resets
+analysis inputs. [local_asset_pipeline.js](../zet/web/static/local_asset_pipeline.js)
+supplies `frontRenderControl`, sharing continuation readiness and `perform("proceed")`
+with the top control. Approved S2 covers existing acceptance/progression; disposable
+service/browser checks cover these new choices and layouts.
+
 Completed character batch publication: `LocalAssetStoreService.all_selected_views_locked`
 verifies requested selections against same-batch, costume-scoped lock identities and permanent image
 availability. Body, Head, Assembly and Dressing adapters use it in detail and summary
