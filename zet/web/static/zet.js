@@ -6432,22 +6432,123 @@ async function returnToScenesFromBuilder() {
 
 async function restartZetFromToolbar() {
   const dialog = document.createElement("dialog");
-  dialog.className = "task-capture-dialog";
+  dialog.className = "task-capture-dialog template-update-dialog";
   const heading = document.createElement("h2"); heading.textContent = "Restart Zet";
   const status = document.createElement("p"); status.setAttribute("role", "status");
+  const templates = document.createElement("fieldset"); templates.className = "template-publication"; templates.hidden = true;
   const update = document.createElement("button"); update.textContent = "Update and restart";
   const restart = document.createElement("button"); restart.textContent = "Restart current version";
   const cancel = document.createElement("button"); cancel.textContent = "Cancel";
-  dialog.append(heading, status, update, restart, cancel); document.body.append(dialog); dialog.showModal();
+  dialog.append(heading, status, templates, update, restart, cancel); document.body.append(dialog); dialog.showModal();
   cancel.onclick = () => dialog.close();
   dialog.addEventListener("close", () => dialog.remove(), { once: true });
   const deployment = await fetchJson("/api/deployment").catch(() => null);
-  update.disabled = !deployment?.configured || deployment.role === "development";
+  const configured = deployment?.configured && deployment.role !== "development";
+  let restarting = false;
+  let loading = false;
+  let preview = null;
+  let lastSignature = null;
+  const choices = new Map();
+  const publicationMessage = document.createElement("p"); publicationMessage.setAttribute("role", "status");
+  update.disabled = !configured;
   status.textContent = update.disabled ? "Updates are unavailable in this instance." : "Update installs merged main after isolated validation. Your library is preserved.";
+  async function refreshTemplates(force = false) {
+    if (!configured || loading || restarting || !dialog.isConnected) return;
+    loading = true;
+    try {
+      const value = await fetchJson("/api/deployment");
+      const local = value.local_edits || {};
+      const publication = local.publication || {};
+      update.disabled = Boolean(local.error || (local.files || []).some((file) => !file.reconciled)
+        || ["preparing", "validating", "publishing"].includes(publication.state));
+      const signature = JSON.stringify([local.snapshot_id, publication]);
+      if (!force && signature === lastSignature) return;
+      if (force || preview?.snapshot_id !== local.snapshot_id) preview = await fetchJson("/api/deployment/templates");
+      lastSignature = signature;
+      templates.replaceChildren();
+      const legend = document.createElement("legend"); legend.textContent = "Local template edits"; templates.append(legend);
+      const rows = preview?.files || [];
+      templates.hidden = !rows.length && !publication.id && !local.error;
+      if (local.error) { const error = document.createElement("p"); error.textContent = local.error; templates.append(error); }
+      const busy = ["preparing", "validating", "publishing"].includes(publication.state);
+      const canPublish = !busy && publication.state !== "awaiting-merge"
+        && (publication.state !== "ready" || rows.some((file) => file.eligible && !file.reconciled));
+      for (const file of rows) {
+        const details = document.createElement("details");
+        const summary = document.createElement("summary");
+        const label = document.createElement("label");
+        const check = document.createElement("input"); check.type = "checkbox";
+        check.checked = file.eligible && (choices.get(file.path) ?? true);
+        check.disabled = !file.eligible || !canPublish;
+        check.setAttribute("aria-label", `Include ${file.path}`);
+        check.onclick = (event) => event.stopPropagation();
+        check.onchange = () => choices.set(file.path, check.checked);
+        label.append(check, document.createTextNode(file.path)); summary.append(label); details.append(summary);
+        const reason = document.createElement("p"); reason.textContent = file.reason; details.append(reason);
+        if (file.reconciled) reason.textContent = "Merged template snapshot verified.";
+        if (file.diff) { const diff = document.createElement("pre"); diff.textContent = file.diff; details.append(diff); }
+        templates.append(details);
+      }
+      if (rows.some((file) => file.eligible)) {
+        const publish = document.createElement("button"); publish.type = "button"; publish.textContent = "Create template PR";
+        publish.disabled = !canPublish;
+        publish.onclick = () => void act("/api/deployment/templates", {
+          snapshot_id: preview.snapshot_id,
+          paths: rows.filter((file) => file.eligible && (choices.get(file.path) ?? true)).map((file) => file.path),
+        });
+        templates.append(publish);
+      }
+      if (publication.id) {
+        const progress = document.createElement("p");
+        const states = { preparing: "Preparing branch", validating: "Validating isolated templates", publishing: "Publishing PR",
+          "awaiting-merge": "Awaiting your merge on GitHub", ready: "Merged templates verified — ready to update",
+          conflict: "Template reconciliation needed", failed: "Publication failed; captured edits are retained", closed: "PR closed without merging" };
+        progress.textContent = `${states[publication.state] || publication.state}${publication.error ? `: ${publication.error}` : ""}`;
+        if (publication.newer_edits) progress.textContent += " Newer local template edits still need publication.";
+        templates.append(progress);
+        if (publication.pr_url) {
+          const url = new URL(publication.pr_url);
+          if (url.origin === "https://github.com") {
+            const link = document.createElement("a"); link.href = url.href; link.target = "_blank"; link.rel = "noopener";
+            link.textContent = "Open PR"; templates.append(link);
+          }
+          const merged = document.createElement("button"); merged.type = "button"; merged.textContent = "Check merge status";
+          merged.onclick = () => void act(`/api/deployment/templates/${encodeURIComponent(publication.id)}/refresh`);
+          templates.append(merged);
+        }
+        if (busy || ["failed", "conflict"].includes(publication.state)) {
+          const retry = document.createElement("button"); retry.type = "button";
+          retry.textContent = busy ? "Retry if interrupted" : "Retry publication";
+          retry.onclick = () => void act(`/api/deployment/templates/${encodeURIComponent(publication.id)}/retry`);
+          templates.append(retry);
+        }
+      }
+      templates.append(publicationMessage);
+    } catch (error) {
+      publicationMessage.textContent = error.message;
+      if (!templates.contains(publicationMessage)) templates.append(publicationMessage);
+      templates.hidden = false;
+      update.disabled = true;
+    } finally { loading = false; }
+  }
+  async function act(url, body) {
+    templates.disabled = true;
+    publicationMessage.textContent = "Working…";
+    try {
+      await fetchJson(url, { method: "POST", ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
+      publicationMessage.textContent = "";
+    } catch (error) { publicationMessage.textContent = error.message; }
+    finally { templates.disabled = false; await refreshTemplates(true); }
+  }
+  await refreshTemplates();
+  if (!dialog.isConnected) return;
+  const templatePoll = window.setInterval(() => void refreshTemplates(), 2000);
+  dialog.addEventListener("close", () => window.clearInterval(templatePoll), { once: true });
   async function begin(updating) {
     const returnUrl = window.location.href;
     const before = await fetchJson("/api/health");
     update.disabled = restart.disabled = cancel.disabled = true;
+    restarting = true; templates.disabled = true;
     toolbarRestartZet.disabled = true;
     status.textContent = updating ? "Staging and validating the merged release…" : "Restarting Zet…";
     try {
@@ -6483,6 +6584,8 @@ async function restartZetFromToolbar() {
       cancel.disabled = false;
       restart.disabled = false;
       toolbarRestartZet.disabled = false;
+      restarting = false; templates.disabled = false;
+      await refreshTemplates(true);
     }
   }
   update.onclick = () => void begin(true);

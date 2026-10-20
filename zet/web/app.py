@@ -3292,6 +3292,34 @@ def _create_available_app(
         except ValueError as exc:
             raise HTTPException(getattr(exc, "status_code", 400), str(exc)) from exc
 
+    @app.get("/api/deployment/templates")
+    def deployment_template_preview():
+        try:
+            return _app(app.state.config_path).deployment_service.templates.preview()
+        except ValueError as exc:
+            raise HTTPException(getattr(exc, "status_code", 400), str(exc)) from exc
+
+    @app.post("/api/deployment/templates", status_code=202)
+    def deployment_template_publish(payload: dict[str, Any] = Body(...)):
+        try:
+            return _app(app.state.config_path).deployment_service.templates.start(payload)
+        except ValueError as exc:
+            raise HTTPException(getattr(exc, "status_code", 400), str(exc)) from exc
+
+    @app.post("/api/deployment/templates/{identifier}/refresh")
+    def deployment_template_refresh(identifier: str):
+        try:
+            return _app(app.state.config_path).deployment_service.templates.refresh(identifier)
+        except ValueError as exc:
+            raise HTTPException(getattr(exc, "status_code", 400), str(exc)) from exc
+
+    @app.post("/api/deployment/templates/{identifier}/retry", status_code=202)
+    def deployment_template_retry(identifier: str):
+        try:
+            return _app(app.state.config_path).deployment_service.templates.retry(identifier)
+        except ValueError as exc:
+            raise HTTPException(getattr(exc, "status_code", 400), str(exc)) from exc
+
     @app.post("/api/deployment/stage", status_code=202)
     def deployment_stage():
         try:

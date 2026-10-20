@@ -10,6 +10,8 @@ from uuid import uuid4
 
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.github_client import TaskServiceError
+from zet.services.template_publication_core import BUSY, change_lock
+from zet.services.template_publication_service import TemplatePublicationService
 
 
 class DeploymentService:
@@ -17,6 +19,7 @@ class DeploymentService:
         self.app = app
         self.root = Path(app.config.runtime_root).resolve() if app.config.runtime_root else None
         self.store = app.task_service.store
+        self.templates = TemplatePublicationService(app)
 
     def status(self):
         record = self.store.get("deployment", "current", {}) if self.root else {}
@@ -28,18 +31,20 @@ class DeploymentService:
         return {"configured": bool(self.root), "role": self.app.config.runtime_role,
                 "running_revision": self.app.task_service.zet_revision, "available_revision": main,
                 "update_available": bool(main and main != self.app.task_service.zet_revision),
-                "operation": {key: record[key] for key in ("id", "state", "target_revision", "error", "recovery_error", "boot_id") if key in record}}
+                "operation": {key: record[key] for key in ("id", "state", "target_revision", "error", "recovery_error", "boot_id") if key in record},
+                "local_edits": self.templates.status()}
 
     def start(self, boot_id, *, stage_only=False):
         if not self.root or self.app.config.runtime_role == "development":
             raise TaskServiceError("Production deployment is not configured for this instance.", 409)
-        for parent in (self.root, *self.root.parents):
-            if (parent / ".git").exists():
-                raise TaskServiceError("Runtime.Root must be outside Git working trees.", 409)
-        for path in (self.app.config.base_library_path, self.app.config.base_ai_queue_path):
-            data = Path(path).resolve()
-            if self.root == data or data in self.root.parents or self.root in data.parents:
-                raise TaskServiceError("Runtime.Root must not overlap the creative library or queue.", 409)
+        self.templates.require_enabled()
+        with change_lock(self.root / "state"):
+            if self.templates.record().get("state") in BUSY:
+                raise TaskServiceError("A template publication is active or interrupted. Finish or retry it before updating.", 409)
+            receipt = self.templates.deployment_receipt()
+            return self._start(boot_id, stage_only=stage_only, receipt=receipt)
+
+    def _start(self, boot_id, *, stage_only, receipt):
         with self.store.transaction() as db:
             existing = self.store.read(db, "deployment", "current", {})
             if existing.get("status_path") and Path(existing["status_path"]).is_file():
@@ -50,6 +55,7 @@ class DeploymentService:
             state.mkdir(parents=True, exist_ok=True)
             helper = state / "deploy_release.py"
             shutil.copy2(Path(__file__).parents[1] / "scripts" / "deploy_release.py", helper)
+            shutil.copy2(Path(__file__).with_name("template_publication_core.py"), state / "template_publication_core.py")
             active = state / "active-release.json"
             previous = json.loads(active.read_text(encoding="utf-8")) if active.exists() else {}
             process = self.app.process_service
@@ -63,6 +69,7 @@ class DeploymentService:
             request = {"id": identifier, "state": "pending", "runtime_root": str(self.root), "source_root": str(process.project_root),
                        "workflow_state_root": str(self.store.root),
                        "config_path": str(self.app.config_path.resolve()), "mutable_state_root": role_state,
+                       "template_receipt": receipt,
                        "library_root": str(Path(self.app.config.base_library_path).resolve()),
                        "library_container": str(Path(self.app.config.library_container_path or self.app.config.base_library_path).resolve()),
                        "previous_release": previous.get("release"), "previous_revision": self.app.task_service.zet_revision,

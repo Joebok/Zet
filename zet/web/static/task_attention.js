@@ -22,6 +22,12 @@
   function render(value) {
     const items = [...(value.items || [])];
     const deploy = value.deployment;
+    const publication = deploy?.local_edits?.publication;
+    if (publication?.id) items.push({ id: "template-publication", kind: "templates",
+      title: `Template PR: ${publication.state}${publication.error ? ` — ${publication.error}` : ""}. Open Restart for recovery controls.`,
+      ...(publication.pr_url ? { url: publication.pr_url } : {}) });
+    if (deploy?.local_edits?.files?.some((file) => !file.reconciled)) items.push({ id: "template-edits", kind: "update",
+      title: "Local tracked edits block updating. Open Restart to review and publish eligible template edits." });
     if (deploy?.update_available) items.push({ id: "deployment-update", kind: "update", title: "Merged changes are available. Use Restart → Update and restart to install them." });
     if (["failed", "rolled-back", "recovery-required"].includes(deploy?.operation?.state)) {
       items.push({ id: "deployment-failure", kind: "failure", title: `Update ${deploy.operation.state}: ${deploy.operation.error || deploy.operation.recovery_error || "inspect deployment status"}` });

@@ -169,6 +169,13 @@ validated on submission as well as in the popup. See [Shared AI jobs](COMPONENTS
 
 ## Character template revisions
 
+Repository master-template edits may pass the deployment dirty guard only through
+an unchanged captured snapshot, verified merged PR, merge ancestry in the target,
+and exact published template blobs. The final check shares a cross-process fence
+with master promotion. Publication/reconciliation leaves live templates/index/HEAD
+intact; rollback retains the old release's edits. Other tracked edits still block.
+See [ADR 0026](DECISIONS/0026-template-edit-publication.md).
+
 New character prompt reviews are text-only and retain frozen sources, all eight compiled view prompts, selectable corrections and master baselines. Exact selected edits must not overlap or apply to changed source baselines. Acceptance creates a compiled READY batch version, including when no changes are chosen. Historical image-evidence proposals remain readable. Only compiled READY versions can become active or update masters; editing a proposal creates a child. Activation changes future render inputs, never queued asks or published image bytes. Explicit master promotion validates every changed source before writing and journals partial failures for explicit replay. Per-view custom references resolve only to a selected, available, non-rejected candidate in the same batch and preserve matching prerequisite bindings/order. See [ADR 0024](DECISIONS/0024-character-template-versions.md).
 
 ## Removable storage

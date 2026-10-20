@@ -13,6 +13,11 @@ import time
 import tomllib
 from urllib.request import urlopen
 
+try:  # The installed controller lives outside the release and imports its sibling.
+    from template_publication_core import change_lock, guard
+except ImportError:
+    from zet.services.template_publication_core import change_lock, guard
+
 
 @contextmanager
 def test_lock(state_root):
@@ -152,9 +157,11 @@ def stage(request, update):
             raise RuntimeError("Release data compatibility changed; migration and rollback need explicit review.")
         if int(old_contract.get("library_reference_version", 0)) < required_library_version:
             raise RuntimeError("The previous release cannot read the configured library path format; promotion is blocked to preserve rollback compatibility.")
-        dirty = run(["git", "-C", str(previous), "diff", "--name-only", "HEAD"])
-        if dirty:
-            raise RuntimeError("Production has local tracked edits. Preserve/reconcile them before update: " + dirty[:500])
+    if git_dirty := run(["git", "-C", str(release), "diff", "--name-only", "HEAD"]):
+        raise RuntimeError("Staged release has tracked edits; retained release needs inspection: " + git_dirty[:500])
+    guard(source, release, request.get("template_receipt"))
+    if request.get("previous_release") and Path(request["previous_release"]).resolve() != source.resolve():
+        guard(Path(request["previous_release"]), release, request.get("template_receipt"))
     update("staging", target_revision=revision, target_release=str(release))
     python = release_python(release)
     if not python.exists():
@@ -201,12 +208,27 @@ def execute(request_path):
     def update(state, **values):
         status.update(state=state, updated_at=time.time(), **values)
         atomic_json(status_path, status)
-    started = None
-    stopped = False
     try:
         release, revision = stage(request, update)
         if request.get("stage_only"):
             return
+        # Hold the cross-process master-write fence through stop/start. The old
+        # release remains byte-for-byte intact, including verified template edits.
+        with change_lock(Path(request["runtime_root"]) / "state"):
+            if run(["git", "-C", str(release), "diff", "--name-only", "HEAD"]):
+                raise RuntimeError("Staged release changed during validation; production was not stopped.")
+            guard(Path(request["source_root"]), release, request.get("template_receipt"))
+            if request.get("previous_release") and Path(request["previous_release"]).resolve() != Path(request["source_root"]).resolve():
+                guard(Path(request["previous_release"]), release, request.get("template_receipt"))
+            promote(request, release, revision, update)
+    except Exception as exc:
+        update("failed", error=str(exc))
+
+
+def promote(request, release, revision, update):
+    started = None
+    stopped = False
+    try:
         # Verify the exact old boot is still serving before touching any captured PID.
         with urlopen(request["health_url"] + "/api/health", timeout=3) as response:
             old = json.load(response)

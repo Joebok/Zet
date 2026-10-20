@@ -1,5 +1,32 @@
 # Local testing
 
+## Template-edit publication and deployment recovery (2026-10-20)
+
+`npm.cmd run test:e2e` passed all four approved scenarios twice (51.2s and
+47.9s). The final run emitted a nonfatal Windows fixture usage-maintenance
+file-sharing warning. No maintained scenario or dependency changed.
+
+Disposable repositories and mocked GitHub delivery verified snapshot/stale-preview
+fences, staged/unstaged and unrelated blockers, CRLF handling, three-way upstream
+preservation/conflicts, uncertain PR responses with one retained branch/PR,
+validation checkpoint reuse, normal/squash merges, local/target changes, later
+release receipts, final pre-stop rejection, and startup rollback preserving old
+template bytes. Route-wiring checks verified request/error codes; a copied
+controller loaded outside the repository and a second process could not acquire
+the promotion fence. These checks do not publish to GitHub or stop real processes.
+
+Prepared-response Chromium checks exercised diffs, selection, publication progress,
+close/reopen, PR links, merge refresh, unrelated blockers and ready actions at
+1280/800/390px. Mounted dashboard checks at 1280/390px used the actual controls and
+prepared deployment responses; actual isolated development APIs rejected every
+publication endpoint. Screenshots were inspected under ignored
+`test-results/template-publication/`. A pre-checkout clone check, mobile dialog
+overflow and CRLF diff-check handling were corrected during disposable validation.
+Python/JavaScript syntax and `git diff --check` passed. Live host credentials,
+actual GitHub delivery, physical iPad use and production promotion remain
+unverified; the first-install handoff is documented, not performed. See
+[the recovery workflow](GitHub_Task_Workflow.md#accepted-template-edits-and-update-recovery).
+
 ## Character Image Generator staging (2026-10-20)
 
 `npm.cmd run test:e2e` passed all four approved scenarios (45.9 seconds).

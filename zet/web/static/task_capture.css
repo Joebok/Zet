@@ -17,6 +17,12 @@
 .auxiliary-task-page .task-capture-dialog button, .auxiliary-task-page .task-capture-dialog input, .auxiliary-task-page .task-capture-dialog select, .auxiliary-task-page .task-capture-dialog textarea { font: inherit; padding: .5rem; border: 1px solid #b9c2d0; border-radius: 5px; }
 .auxiliary-task-page .task-capture-dialog button { background: #f5f7fb; color: #202124; cursor: pointer; }
 .task-capture-dialog button:disabled { opacity: .55; cursor: not-allowed; }
+.template-update-dialog { box-sizing: border-box; }
+.template-update-dialog > button { min-height: 44px; margin: 4px; }
+.task-capture-dialog .template-publication { min-width: 0; overflow-wrap: anywhere; }
+.task-capture-dialog .template-publication label { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+.task-capture-dialog .template-publication input { width: auto; flex: 0 0 auto; }
+.task-capture-dialog .template-publication button, .task-capture-dialog .template-publication a { margin: 4px; min-height: 44px; }
 #task-capture-paste { border: 1px dashed #8b95a5; padding: .6rem; border-radius: 5px; }
 .task-capture-dialog .image-input-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .task-capture-dialog .image-input-actions button { min-height: 44px; }

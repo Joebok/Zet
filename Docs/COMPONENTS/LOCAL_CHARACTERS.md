@@ -214,7 +214,11 @@ parent-version diff is omitted. **Edit master template**, below each source diff
 opens a separate proposal editor. **Save proposed** compiles a READY child without
 an AI job, changing masters or selecting that child for new renders. **Use for new
 renders** explicitly accepts/selects it for the batch; **Update master templates**
-retains the separate confirmed promotion. The status block before compiled prompts
+retains the separate confirmed promotion. Project-template edits can subsequently
+be published through Restart's **Create template PR** recovery action; promotion
+itself does not publish anything. See
+[update recovery](../GitHub_Task_Workflow.md#accepted-template-edits-and-update-recovery).
+The status block before compiled prompts
 reports pending corrections, unsaved editor text, selected batch sources, master
 updates and drift from the captured baseline. **Start Front Renders** at the end
 uses the same FRONT continuation and readiness checks as the top Continue control;

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import nullcontext
 from datetime import datetime
 import difflib
 import hashlib
@@ -14,6 +15,7 @@ from zet.services.atomic_file_service import write_text_atomic
 from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json, write_library_json
 from zet.services.template_source_service import active_revision, bind_revision_sources, template_sources
 from zet.services.workflow_storage import file_lock
+from zet.services.template_publication_core import change_lock
 
 
 def _now():
@@ -524,7 +526,9 @@ class LocalTemplateRevisionService:
         workflow, run, directory = self._load(pipeline, run_id, costume)
         if payload.get("confirm") is not True:
             raise ValueError("Confirm the reviewed source edits before updating master templates.")
-        with file_lock(Path(self.app.config.base_ai_queue_path) / "template_promotion.lock"):
+        runtime = self.app.config.runtime_root
+        fence = change_lock(Path(runtime) / "state") if runtime else nullcontext()
+        with fence, file_lock(Path(self.app.config.base_ai_queue_path) / "template_promotion.lock"):
             record = self._record(directory, revision_id)
             if record["status"] != "READY":
                 raise ValueError("Only a successfully compiled revision can update master templates.")

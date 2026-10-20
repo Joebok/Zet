@@ -119,10 +119,58 @@ an interrupted operation is inspected rather than starting a duplicate update.
 
 Config/Runtime_Contract.json declares deployment compatibility; it is NOT a library
 schema version. Missing/changed contracts, manual-migration releases and tracked
-production edits block updates. Incompatible authored-data changes must change this
+unreconciled production edits block updates. Incompatible authored-data changes must change this
 declaration and provide an explicitly reviewed migration. Code rollback does not
 establish data rollback safety. After promotion, run run_zet_runtime.bat independently
 of the development branch. First promotion requires merged main to contain this workflow.
+
+### Accepted template edits and update recovery
+
+Restart previews local tracked edits and offers **Create template PR** for global
+sections and the four active character governing templates. Review the diffs and
+select files. Other code/config edits remain blockers; character/costume library
+sources are excluded. Promotion itself does not publish anything.
+
+[TemplatePublicationService](../zet/services/template_publication_service.py)
+captures exact bytes/baselines outside Git, applies their patch three ways onto
+fetched main in a private checkout, runs the approved isolated baseline, then pushes
+`codex/template-edits-<id>` and creates a PR using existing host credentials. Live
+HEAD, index, templates and creative records stay unchanged. Reopen Restart to see
+progress; after a server interruption use **Retry if interrupted**. Uncertain
+delivery reconciles the same branch/PR. Failed attempts/snapshots are retained.
+
+Use **Open PR**, merge on GitHub, then **Check merge status** and **Update and
+restart**. Neither merge nor update is automatic. Update refreshes GitHub proof:
+the PR must have merged into this repository's main with the published head, the
+target must contain that merge and the exact published template blobs, and local
+raw bytes must still match the capture. Git contents normalize CRLF/LF. Newer local
+or target edits and unrelated tracked changes remain blockers. The final check
+shares a cross-process fence with master promotion; the old release retains its
+edits for rollback. Receipts belonging to earlier releases do not affect new ones.
+
+Three-way conflicts require reconciliation of retained work; no resolution is
+invented. Selected edits already matching main produce no PR diff and stop with a
+retained snapshot and explicit reconciliation message. Closed/unmerged PRs remain
+blocked. Failed/conflicted/closed attempts permit a fresh reviewed snapshot.
+
+`GET /api/deployment` adds compact `local_edits` blockers/publication status.
+`GET /api/deployment/templates` supplies diffs/snapshot identity; POST accepts
+selected paths and expected identity. POST `/api/deployment/templates/{id}/refresh`
+checks merge status; `/retry` resumes publication. Development instances cannot
+publish/deploy. Existing dashboard access boundaries apply; credentials are never
+sent to the browser.
+
+### First installation of template recovery
+
+The old updater cannot consume new receipts. With separate deployment
+authorization, an operator/agent first backs up exact dirty template bytes and
+baseline outside the release, publishes only those edits, and merges the PR.
+Verify fetched main preserves them and the live file still matches the backup.
+Only then reconcile that named file for the old guard and invoke the existing
+managed update. Preserve the backup/old release; never broadly reset/stash or drop
+other edits. Arrange a quiescent handoff before restoring an earlier template.
+Implementation/isolated validation does not perform this production action.
+Subsequent recoveries retain live bytes and require no routine filesystem cleanup.
 
 ## Validation and rollout
 The maintained three fast scenarios are unchanged. Disposable capture/browser,

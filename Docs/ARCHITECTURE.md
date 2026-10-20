@@ -55,6 +55,13 @@ CLI modules under [zet/scripts/](../zet/scripts/) are separate operations; some 
 
 ## Persistence, integrations, and constraints
 
+`TemplatePublicationService` owns explicit dashboard recovery of repository-template
+edits: snapshots in stable runtime state and validated delivery in a separate PR
+checkout. The stdlib `template_publication_core` is shared with the copied deployment
+controller and master promotion for snapshot guards and the final cross-process
+write fence. Routes/restart UI present services. See
+[deployment recovery](GitHub_Task_Workflow.md#accepted-template-edits-and-update-recovery).
+
 [DATA_MODEL](DATA_MODEL.md) owns storage layouts. File updates use repository transactions/atomic writes; workflow locks span threads and processes, and attempts/receipts fence stale or repeated results. Atomic replacement of one file is not a transaction across every artifact.
 
 AI Proxy is a separate project communicating through shared queues. Ollama performs text/vision work; current production local rendering is ComfyUI with registered Qwen Image 2.1 profiles. Direct ComfyUI utility code and historical Stable Matrix adapters remain present; they do not override [production policy](../zet/services/local_render_policy.py) or AGENTS' requirement to ask before using ComfyUI directly. Creative Codex calls use the same [AI job service](../zet/services/ai_job_service.py) and File Proxy as local providers. The proxy owns a separate cloud lane; Zet owns domain result application. Live integration availability is not verified by unit fixtures.

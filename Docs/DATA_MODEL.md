@@ -23,6 +23,15 @@ Paths below are relative to the **bound universe root** unless stated otherwise.
 
 ## Character template revisions
 
+Production template publication receipts use version 1 in
+`Runtime.Root/state/template-publication.json`; per-operation snapshots, patches,
+receipts and private checkouts remain under `state/template-publications/<id>/`.
+They bind the running root/revision, captured bytes/raw hashes, published Git
+content hashes, validation revision and PR/merge identity. These are machine-local
+deployment records, not universe/library data. New releases ignore receipts owned
+by earlier release roots. [The GitHub workflow](GitHub_Task_Workflow.md#accepted-template-edits-and-update-recovery)
+owns recovery actions and retention behavior.
+
 Character batches retain `template_improvement/revisions/<id>.json`, compiled artifacts and `active.json`. [LocalTemplateRevisionService](../zet/services/local_template_revision_service.py) reads historical version-1 image-evidence revisions and creates version-2 text reviews with frozen sources/prompts, independently selectable findings, saved decisions and accepted READY child versions. Sources retain stable `library/` and `project/` identities and master baselines. Acceptance selects a batch overlay; promotion remains an explicit separate master write.
 
 New version-2 records also retain additive `from_master` and `review_skipped`
