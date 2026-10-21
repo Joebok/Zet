@@ -1,5 +1,25 @@
 # Local testing
 
+## Costume rotation staging (2026-10-21)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (41.5s). Disposable
+isolated checks passed all eight Dressing rotation handoffs, ordered labels and
+bytes, single edit-base contract, accepted template overlays, source-batch file
+immutability, no inference, invalid/missing/rejected/foreign/self sources,
+unsupported pipelines, universe isolation and unchanged generator board on failure.
+Chromium clicked the actual BACK_LEFT Stage Rotation button and verified prompt,
+45-degree source note, reference labels, img2img mode, 832x1216 dimensions, empty
+board and persistence after reload. Python AST, both changed JavaScript syntax
+checks and `git diff --check` passed. No maintained tests or dependencies changed.
+
+Read-only preparation of Joe's Tsaeytte example resolved the selected LEFT_PROFILE,
+matching BACK_LEFT Assembly, embroidery and rear jewelry in order. The source
+image's shorter rear hem differs from the authored ankle-length specification;
+the new prompt gives authored construction precedence. These checks establish
+staging/compilation behavior, not live rendered fidelity. No production restart,
+deployment, live inference or modification of the existing generator session was
+performed. See the [completed plan](../plans/completed/costume-rotation-staging.md).
+
 ## Character review latency checks (2026-10-20)
 
 The approved four-scenario suite passed in 42.5s after the shared path-conversion

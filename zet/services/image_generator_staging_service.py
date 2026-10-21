@@ -23,7 +23,7 @@ class ImageGeneratorStagingService:
         self.workflow = workflow
         self.generator = generator
 
-    def stage(self, run_id: str, view: str, costume: str = "", *, recompile: bool = False):
+    def stage(self, run_id: str, view: str, costume: str = "", *, recompile: bool = False, rotation: bool = False):
         workflow = self.workflow
         run = workflow.prompt_improvement.detail(run_id, costume)
         with file_lock(Path(run["root"]) / "state.lock"), TemporaryDirectory(prefix="zet-stage-view-") as directory:
@@ -31,10 +31,14 @@ class ImageGeneratorStagingService:
             view = view.upper()
             if view not in run["views"]:
                 raise ValueError("Unknown character view.")
-            reason = workflow.slots._prerequisite(run, view)
-            if reason:
-                raise RenderSlotConflict(reason)
-            saved = workflow.slots.prepare_input(run, view, Path(directory), recompile=recompile)
+            if rotation:
+                from zet.services.costume_rotation_service import CostumeRotationService
+                saved = CostumeRotationService(workflow).prepare(run, view, Path(directory))
+            else:
+                reason = workflow.slots._prerequisite(run, view)
+                if reason:
+                    raise RenderSlotConflict(reason)
+                saved = workflow.slots.prepare_input(run, view, Path(directory), recompile=recompile)
             if not saved["prompt"].strip():
                 raise ValueError("This view has no image prompt to stage.")
             if len(saved["references"]) > IMAGE_GENERATION_MAX_REFERENCES:

@@ -90,7 +90,8 @@ def create_local_character_asset_pipeline_router(
                                    costume: str = Query(""), _pipeline: str = pipeline):
             from zet.services.image_generator_staging_service import ImageGeneratorStagingService
             return call(lambda: ImageGeneratorStagingService(service(_pipeline), image_generation_provider()).stage(
-                run_id, view, costume, recompile=bool(payload.get("recompile", False))))
+                run_id, view, costume, recompile=bool(payload.get("recompile", False)),
+                rotation=bool(payload.get("rotation", False))))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/refinement")
         def open_refinement(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):

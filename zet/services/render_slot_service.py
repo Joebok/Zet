@@ -100,6 +100,13 @@ class CharacterRenderSlots:
             run["slot_controls"][view] = {"empty_count": slots.count(None), "reason": reason,
                 "legacy": len(slots) > SLOT_COUNT, "can_generate": not reason and len(slots) <= SLOT_COUNT and None in slots,
                 "stage_reason": stage_reason}
+            if self.workflow.pipeline == "costume-dressing":
+                from zet.services.costume_rotation_service import rotation_source
+                try:
+                    source = rotation_source(run, view)
+                    run["slot_controls"][view].update(rotation_reason="", rotation_source_view=source["view"])
+                except ValueError as exc:
+                    run["slot_controls"][view]["rotation_reason"] = str(exc)
         for candidate in run.get("candidates") or []:
             slots = maps.get(candidate["view"], [])
             candidate["slot"] = slots.index(candidate["candidate_id"]) + 1 if candidate["candidate_id"] in slots else None

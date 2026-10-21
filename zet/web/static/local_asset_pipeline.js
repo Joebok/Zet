@@ -670,6 +670,12 @@
       addRecompileOption(viewActions);
       const stageReason = run.slot_controls?.[view]?.stage_reason || "";
       addButton(viewActions, "Stage in Image Generator", "stage-image-generation", { disabled: Boolean(stageReason), view, title: stageReason });
+      if (isCostume()) {
+        const controls = run.slot_controls?.[view] || {};
+        const reason = controls.rotation_reason || "";
+        addButton(viewActions, "Stage Rotation", "stage-rotation", { disabled: Boolean(reason), view,
+          title: reason || `Rotate selected ${controls.rotation_source_view || "dressed view"} into ${view}. Always compiles a fresh rotation prompt.` });
+      }
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.status === "FAILED" || item.human_review?.decision === "reject"), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
@@ -1505,7 +1511,8 @@
     const view = button.dataset.view;
     const candidateId = button.dataset.candidate || button.closest?.("[data-candidate]")?.dataset.candidate || "";
     if (action === "review") { openReview(candidateId); return; }
-    if (action === "stage-image-generation") {
+    if (action === "stage-image-generation" || action === "stage-rotation") {
+      const rotation = action === "stage-rotation";
       const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation;
       const params = new URLSearchParams();
       if (isCostume()) params.set("costume", selectedCostume());
@@ -1517,8 +1524,8 @@
       try {
         await window.zetStageCharacterViewInImageGenerator(
           `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/image-generation-stage?${params}`,
-          recompile, current);
-      } finally { button.disabled = Boolean(state.run?.slot_controls?.[view]?.stage_reason); }
+          recompile, current, rotation);
+      } finally { button.disabled = Boolean(state.run?.slot_controls?.[view]?.[rotation ? "rotation_reason" : "stage_reason"]); }
       return;
     }
     if (action === "save-view-reference") {

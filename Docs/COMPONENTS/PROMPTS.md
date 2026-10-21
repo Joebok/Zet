@@ -149,6 +149,19 @@ prompt-document formatting is retained for equivalent shared AI_Proxy compilatio
 ordinary ad hoc generation keeps its existing defaults. See
 [Local characters](LOCAL_CHARACTERS.md#fixed-render-slots-2026-10-12).
 
+Costume staging accepts `rotation: true` to use the alternate
+[costume_rotation_v1](../../Config/Prompt_Templates/costume_rotation_v1.md) template
+through `compile_costume_dressing_job(..., rotation=True)`. This mode is local
+generation only: it requires a dressed `costume_rotation_source` with prompt role
+`edit_base` first, and matching `character_assembly` with prompt role
+`layout_reference` second. Existing view conditioning, accepted template sources,
+auxiliary image resolution, citations and schema-2 edit validation remain shared.
+The ordinary dressing/anchor contract is not appended. Temporary compilation does
+not rewrite saved pipeline prompts or recipes. Authored costume construction takes
+precedence over source-image mistakes; orientation comes from Assembly and finished
+appearance from the dressed source. Generic opening/hem rules apply only to
+garments actually specified, without adding a costume-specific master edit.
+
 ### Shared target and true-up
 
 V2 reconstruction shares analysis/composition with the Quick Character Wizard. Source observations remain evidence; effective description/identity applies explicit preserve/change instructions before generation. Observations are not blindly appended into the intended result. Bound hair length using visible face/neck landmarks; unseen completions remain proposals. Universe style is composed separately and frozen for replay.

@@ -2177,7 +2177,7 @@ async function clearImageGenerationResults() {
   await imageGenerationSlotAction("clear_all");
 }
 
-window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent) => {
+window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent, rotation = false) => {
   if (imageGenerationStagePending || imageGenerationPending) throw new Error("Wait for the current Image Generator action to finish.");
   imageGenerationStagePending = true;
   const universe = state.universeId, navigation = state.navigationRequest;
@@ -2191,7 +2191,7 @@ window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent)
         throw new Error("Unable to initialize Image Generator. Try again.");
       }
       const staged = await fetchJson(url, {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({recompile})});
+        body: JSON.stringify({recompile, rotation})});
       if (!current()) return false;
       ++imageGenerationContentVersion;
       imageGenerationReview.close();
@@ -2239,7 +2239,7 @@ window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent)
       await saveImageGenerationReferences();
       if (!current()) return false;
       await activatePage("image-generation", {skipAutosave: true});
-      showMessageElement(imageGenerationMessage, "Character view staged. Ready to generate.", "info");
+      showMessageElement(imageGenerationMessage, rotation ? "Costume rotation staged. Ready to generate." : "Character view staged. Ready to generate.", "info");
     });
   } finally { imageGenerationStagePending = false; }
 };

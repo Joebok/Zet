@@ -174,6 +174,21 @@ generator results are not automatically adopted. Minor Characters and refinement
 windows are outside this handoff. Missing inputs and unsupported reference limits
 leave the existing generator board intact.
 
+Costume Dressing also offers **Stage Rotation**. It uses the view's explicit
+selected-view reference recipe, or the closest available different selected view
+when the recipe is default. A `none` recipe requires choosing a source first.
+The button tooltip names the source; unavailable/rejected/outside-batch sources
+are refused. [CostumeRotationService](../../zet/services/costume_rotation_service.py)
+compiles a fresh rotation alternative with the accepted batch template overlay
+(current templates otherwise), independently of the Recompile checkbox and saved
+dressing prompt. Image 1 is the selected dressed edit base; Image 2 is the
+original matching Assembly snapshot used only for orientation, stance and framing.
+View-filtered costume resources follow in citation order. The garment instructions
+preserve openings, continuous rear construction and authored hem landmarks while
+allowing template requirements to correct source-image errors. This handoff uses
+the same generator replacement/settings/reload behavior above and never adopts
+results or submits inference. Rendered fidelity remains an operator assessment.
+
 All four local character pages display eight stable slots per view. Initial FRONT/other-view counts are integers 1–8 (defaults 8/4); planned candidates awaiting an anchor are reserved, not empty. Add renders fills empty positions only. Generate/Regen use the current view prompt with fresh seeds; the view’s Recompile checkbox also applies to these actions and compiles current templates first. Already submitted asks retain their frozen inputs. Regen replaces an unselected candidate with a new identity; render Retry retains the failed render inputs/seed. Failed advisory review keeps its separate retry behavior.
 
 [CharacterRenderSlots](../../zet/services/render_slot_service.py) owns atomic allocation and protection behind [LocalImagePipelineWorkflowService](../../zet/services/local_image_workflow_service.py). Detail includes `slots_by_view`, `slot_controls`, candidate slot numbers and action reasons. Render actions persist `slot_render_ids` before scheduling; an independent per-run collector submits/reconciles them without taking the batch runner lock. Other slots remain usable while renders run. Clear detaches running candidates so late answers cannot fill replacement slots. Startup recovery reattaches this collector. Candidate definitions added after creation live separately from mutable review state so rerun resets retain them. Clear detaches active membership and retains provenance/artifacts. Legacy galleries over eight remain visible; clear surplus unprotected candidates to reach capacity.

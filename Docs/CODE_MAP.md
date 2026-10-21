@@ -156,6 +156,13 @@ remains queue/background/history regression coverage, without a new scenario.
   pipeline settings through dispatch/retry; `ImageGenerationWorkspace.reset_for_staging`
   atomically detaches selection/results. Disposable checks cover 32 view inputs,
   eight matched-seed graphs and four browser handoffs; S1–S4 remain regressions.
+  Costume **Stage Rotation** adds [costume_rotation_service.py](../zet/services/costume_rotation_service.py)
+  for same-batch selected-source choice and temporary compilation. The existing
+  costume compiler's `rotation=True` alternative and `costume_rotation_v1.md`
+  own the dressed-edit-base/Assembly-orientation prompt. Slot projection exposes
+  source/reason fields; the existing stage route accepts `rotation` and the same
+  browser handoff preserves labels/settings. See [prompt contracts](COMPONENTS/PROMPTS.md)
+  and [local character staging](COMPONENTS/LOCAL_CHARACTERS.md#fixed-render-slots-2026-10-12).
 
 - Character allocation/protection: [render_slot_service.py](../zet/services/render_slot_service.py), called by [local_image_workflow_service.py](../zet/services/local_image_workflow_service.py). The local router exposes view `/slots` generation and `/slots/{slot}/{operation}` actions. Adapter details/summaries use the shared active-candidate merger; Run All Remaining startup recovery reattaches persisted supplemental targets and independent slot collectors. Slot collection uses its own runner lock; ordinary batch runners exclude slot-managed additions.
 - Image Generation board and prompt controls: [image_generation_workspace_service.py](../zet/services/image_generation_workspace_service.py), via `/api/image-generation/workspace` detail/import/actions; [ad_hoc_image_generation_service.py](../zet/services/ad_hoc_image_generation_service.py) retains job APIs and child-index result application. The prompt form in `zet.js` can prepend the selected universe's canonical art style.

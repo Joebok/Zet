@@ -492,6 +492,7 @@ Reviewed At:
 def compile_costume_dressing_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
     pipeline_mode: str = "traditional", universe_root: str | Path | None = None,
+    rotation: bool = False,
 ) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
@@ -510,6 +511,10 @@ def compile_costume_dressing_job(
     bundle = load_bundle(project_root, "costume-dressing")
     if prompt_variant == "analysis" or pipeline_mode == "local":
         bundle = {**bundle, "legacy_static_prompt_template": ""}
+    if rotation:
+        if pipeline_mode != "local" or prompt_variant != "generation":
+            raise ValueError("Costume rotation is a local generation alternative only.")
+        bundle = {**bundle, "static_prompt_template": "costume_rotation_v1"}
     body_view_token = normalize_view(project_root, raw_body_view)
     head_view_token = normalize_view(project_root, raw_head_view)
     body_view_data = load_view_data(project_root, body_view_token)
@@ -530,6 +535,12 @@ def compile_costume_dressing_job(
     references = reference_files_for_job(job)
     character_assembly = reference_by_role(references, "character_assembly")
     validate_reference(character_assembly, "character_assembly")
+    if rotation:
+        source = reference_by_role(references, "costume_rotation_source")
+        validate_reference(source, "costume_rotation_source")
+        if (len(references) != 2 or references[0] is not source or references[1] is not character_assembly
+                or source.get("prompt_role") != "edit_base" or character_assembly.get("prompt_role") != "layout_reference"):
+            raise ValueError("Rotation requires a dressed edit base followed by the Assembly orientation reference.")
     for reference in references:
         if reference.get("role") == "batch_view_reference":
             validate_reference(reference, "batch_view_reference", project_root)
@@ -634,6 +645,9 @@ def compile_costume_dressing_job(
         **template_metadata(character_template_path),
         **costume_metadata(costume_path),
     }
+    if rotation:
+        metadata_values["ROTATION_SOURCE_VIEW"] = normalize_view(project_root, source["view"])
+        metadata_values["ROTATION_TARGET_VIEW"] = body_view_token
     metadata_sources = {
         **({"LOCAL_CANONICAL_ART_STYLE": universe_sources["CANONICAL_ART_STYLE"]}
            if universe_style else {}),
@@ -657,7 +671,7 @@ def compile_costume_dressing_job(
         "LOCAL_COSTUME_REFERENCE_GUIDANCE": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Local costume reference guidance", "editable": False},
     }
     from zet.services.local_view_reference_service import batch_reference_guidance
-    if pipeline_mode == "local":
+    if pipeline_mode == "local" and not rotation:
         metadata_values["LOCAL_COSTUME_REFERENCE_GUIDANCE"] += "\n" + batch_reference_guidance(references, body_view_token)
     prompt_text = render_static_prompt_artifacts(
         project_root=project_root,
@@ -689,6 +703,11 @@ def compile_costume_dressing_job(
         references,
         contract_manifest,
     )
+    if rotation:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest.update(compiler_alternative="rotation", required_reference_roles=["costume_rotation_source", "character_assembly"],
+                        notes=["Rotate the selected dressed source; Assembly controls target orientation only."])
+        write_json_file(manifest_path, manifest)
     write_prompt_review(prompt_review_path, metadata)
     write_image_review(image_review_path, metadata, expected_output)
 
