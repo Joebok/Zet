@@ -199,10 +199,11 @@
       $("proceed").hidden = false;
       $("proceed").disabled = continuationDisabled(run);
       $("proceed").textContent = state.pipeline === "character-assembly"
-        ? (run.progression.next_views.length ? "Run all views" : "All views rendered")
+        ? (run.progression.next_views.includes("FRONT") ? "Run front"
+          : run.progression.next_views.length ? "Run remaining" : "All views rendered")
         : run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
       $("proceed").title = run.progression.reason || (state.pipeline === "character-assembly"
-        ? "Render all remaining requested views from their matching head and body images"
+        ? "Render FRONT first, select it, then run remaining views. Luna compares proportions and identity with the selected FRONT."
         : "Generate the next stage from your selected images");
       $("anchor-option").hidden = true;
     }
@@ -213,11 +214,13 @@
       const label = document.createElement("p");
       label.textContent = run.progression.prompt_review_required ? "Phase 1 · Analyze and accept the governing prompts below."
         : run.progression.complete ? "All requested views selected. Refinement and publication remain available."
-          : run.progression.stage < 0 ? (state.pipeline === "character-assembly" ? "Ready to assemble all requested views." : "Prompts accepted · Ready to generate FRONT.")
+          : run.progression.stage < 0 ? (state.pipeline === "character-assembly" ? "Ready to assemble FRONT." : "Prompts accepted · Ready to generate FRONT.")
             : `Stage ${run.progression.stage + 1} · ${run.progression.current_views.join(" + ")}. ${run.progression.reason}`;
       if (state.pipeline === "character-assembly" && !run.progression.complete) {
         label.textContent = run.progression.reason || (run.progression.next_views.length
-          ? "Run all views to assemble the remaining requested views without selection pauses."
+          ? (run.progression.next_views.includes("FRONT")
+            ? "Run front, then select the FRONT image Luna should use to compare proportions and identity."
+            : "Run remaining views. Luna will prioritize head-to-body proportion and identity matches with your selected FRONT; renders use only matching body and head images.")
           : "All requested views rendered. Select and publish the images you want to keep.");
       }
       progression.append(label);
@@ -661,7 +664,9 @@
       const evaluation = run.evaluations?.[view] || {};
       const viewActions = document.createElement("span");
       viewActions.className = "button-row compact";
-      const viewReady = view === "FRONT" || run.use_front_anchor === false || Boolean(run.front_anchor);
+      const viewReady = view === "FRONT" || (state.pipeline === "character-assembly"
+        ? Boolean(run.selected_views?.FRONT) && !run.stale_selections?.includes("FRONT")
+        : run.use_front_anchor === false || Boolean(run.front_anchor));
       addRecompileOption(viewActions);
       const stageReason = run.slot_controls?.[view]?.stage_reason || "";
       addButton(viewActions, "Stage in Image Generator", "stage-image-generation", { disabled: Boolean(stageReason), view, title: stageReason });
@@ -1596,7 +1601,7 @@
         if (hasSharedAssetRouter()) $("use-anchor").checked = false;
         await refreshRuns(created.run_id);
         if (hasSharedAssetRouter()) void readiness();
-        setStatus(state.pipeline === "character-assembly" ? "Batch created. Run all views to assemble every requested view without selection pauses." : "Batch created. Analyze and accept its governing prompts, then Continue to generate FRONT.");
+        setStatus(state.pipeline === "character-assembly" ? "Batch created. Run front, select a FRONT image, then Run remaining. Luna will compare proportions and identity with your selected FRONT." : "Batch created. Analyze and accept its governing prompts, then Continue to generate FRONT.");
       } catch (error) { setStatus(error.message, true); await readiness(); }
     });
     $("rename").addEventListener("submit", async (event) => { event.preventDefault(); await handleAction({ dataset: { localAction: "rename" } }).catch((error) => setStatus(error.message, true)); });

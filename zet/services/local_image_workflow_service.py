@@ -84,7 +84,7 @@ class LocalImagePipelineWorkflowService:
         if name == "start":
             current = self.action("detail", run_id=run_id, costume=costume)
             if current.get("character_progression") and current["character_progression"]["stage"] < 0:
-                raise LocalImageWorkflowError("Use Run all views to start this assembly batch." if self.pipeline == "character-assembly"
+                raise LocalImageWorkflowError("Use Run front to start this assembly batch." if self.pipeline == "character-assembly"
                                               else "Analyze and accept prompts, then use Continue to generate FRONT.")
             if current.get("status") != "QUEUED":
                 raise LocalImageWorkflowError("Only a queued local image batch can be started.")
@@ -96,7 +96,7 @@ class LocalImagePipelineWorkflowService:
         if name == "rerun_batch":
             current = self.prompt_improvement.detail(run_id, costume)
             if current.get("character_progression") and current["character_progression"]["stage"] < 0:
-                raise LocalImageWorkflowError("Use Run all views before rerunning images." if self.pipeline == "character-assembly"
+                raise LocalImageWorkflowError("Use Run front before rerunning images." if self.pipeline == "character-assembly"
                                               else "Accept prompt review and Continue before rerunning images.")
             recompile = bool(args.get("recompile", False))
             if self.pipeline == "costume-dressing":
@@ -113,9 +113,9 @@ class LocalImagePipelineWorkflowService:
             if current.get("character_progression"):
                 from zet.services.local_image_pipeline_policy import mutate_local_run_state
                 def restart_front(state):
-                    state["character_progression"]["stage"] = 4 if self.pipeline == "character-assembly" else 0
+                    state["character_progression"]["stage"] = 0
                     state["view_reference_recipes"] = {}
-                    state.update(target_views=list(result["views"]) if self.pipeline == "character-assembly" else ["FRONT"],
+                    state.update(target_views=["FRONT"],
                                  target_candidate_ids=[], status="QUEUED")
                 mutate_local_run_state(Path(result["root"]), restart_front)
             self.prompt_improvement.reset_after_rerender(run_id, set(result.get("views") or []), costume)
@@ -260,6 +260,10 @@ class LocalImagePipelineWorkflowService:
         targets = [target for target in run.get("views", []) if any(item["view"] == target for item in images)]
         if not targets:
             raise LocalImageWorkflowError("No rendered images are available to re-evaluate.")
+        if self.pipeline == "character-assembly" and any(target != "FRONT" for target in targets):
+            from zet.services.local_character_progression_service import assembly_front
+            if not assembly_front(run):
+                raise LocalImageWorkflowError("Select an available FRONT image before ranking remaining views.")
         requires_anchor = self.pipeline in {"body-reference", "head-image"} or bool(run.get("use_front_anchor"))
         if requires_anchor and any(target != "FRONT" for target in targets):
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), {})

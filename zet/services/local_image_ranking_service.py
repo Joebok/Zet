@@ -53,8 +53,11 @@ def supplied_ranking_references(
             indices[key] = len(images)
         labels.append(
             f"Ranking-only comparison: image {indices[key]} is selected FRONT Assembly "
-            f"{comparison['candidate_id']}. Compare head-to-body scale, head/body proportions, silhouette "
-            "and visible identity details. Preserve the requested target orientation; account for "
+            f"{comparison['candidate_id']}. Prioritize matching its head-to-body proportions and identity "
+            "when ordering these candidates: float the closest proportionality matches to the top. "
+            "Compare relative head size, head width against shoulder width, neck scale, torso/limb "
+            "proportions, silhouette and visible identity details. Explain proportion matches or "
+            "mismatches in the ranking reasons. Preserve the requested target orientation; account for "
             "foreshortening, occlusion and intentional asymmetry. Do not reward copying FRONT's "
             "pose/camera or inventing hidden features. This comparison was not a render input.")
     labels.extend(f"Candidate {candidate['candidate_id']}: image {len(images) + index}"

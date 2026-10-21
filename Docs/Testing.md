@@ -343,3 +343,26 @@ Disposable isolated checks passed all eight Assembly compile/preview/prepare con
 ## Assembly Run all views validation (2026-10-20)
 
 Focused S2 passed (`npm.cmd run test:e2e -- --grep "character-to-costume"`, 13.3 seconds); all four approved fast scenarios passed (`npm.cmd run test:e2e`, 41.1 seconds). Disposable checks used the real Assembly runner with prepared render completion and evaluation dispatch: all eight views ran without selections, an old FRONT-only stage queued seven missing views, interrupted resume skipped the existing FRONT image, explicit single-view execution stayed bounded, whole-batch rerun targeted all requested views, and stop/other-pipeline review fences remained. Chromium verified that Run all views dispatches all eight targets in one action and Assembly's batch picker contains no stage/prompt-review labels, with no browser errors. Python/JavaScript syntax, final diff review and `git diff --check` passed. No permanent tests, dependencies, production data or live AI calls were added.
+
+## Assembly front ranking validation (2026-10-20)
+
+This supersedes the earlier same-day Run all views behavior. Focused S2 passed
+(`npm.cmd run test:e2e -- --grep character-to-costume`, 13.7s); all four approved
+fast scenarios passed (`npm.cmd run test:e2e`, 40.2s), using verified Python 3.14.6.
+Changed Python AST, JavaScript syntax and `git diff --check` passed.
+
+Disposable isolated checks exercised the real Assembly runner with prepared render
+completion: FRONT-only dispatch, the required human selection pause, then seven
+remaining views with exactly the matching body/head render inputs. Captured Luna
+requests verified comparison numbering after reference deduplication, proportionality
+priority and FRONT provenance. Invalid/missing/rejected/outside-run FRONT images
+were refused; selection changes retained downstream choices while staling advice;
+late results could not commit against a changed FRONT. Legacy recovery, advice
+without comparison provenance and FRONT-only whole-batch restart were checked.
+Mounted Chromium verified Run front, disabled Run remaining before selection,
+polling after API selection and seven-view dispatch with no page errors.
+
+No maintained tests, dependencies, production library writes or live AI calls were
+added. These checks verify software behavior; improved artistic proportionality
+ranking remains subject to live human review. See the
+[completed plan](../plans/completed/assembly-front-ranking.md).

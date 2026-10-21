@@ -51,6 +51,29 @@ def prompt_review_required(run):
     return run.get("kind") != "character-assembly" and not (run.get("character_progression") or {}).get("accepted_revision_id")
 
 
+def assembly_front(run):
+    """Return the available selected FRONT used only for Assembly ranking."""
+    selected = (run.get("selected_views") or {}).get("FRONT")
+    front = next((c for c in run.get("candidates", [])
+                  if c["candidate_id"] == selected and c["view"] == "FRONT"), {})
+    image = Path(str(front.get("image_path") or ""))
+    if (image.is_file() and image.resolve().is_relative_to(Path(run["root"]).resolve())
+            and (front.get("human_review") or {}).get("decision") != "reject"):
+        return front
+    return None
+
+
+def invalidate_assembly_rankings(state):
+    from zet.services.local_image_evaluation_service import supersede_evaluations
+    views = set(VIEW_ORDER) - {"FRONT"}
+    reason = "Selected FRONT changed; re-evaluate proportions and identity against the current FRONT."
+    supersede_evaluations(state, views, reason)
+    for view in views:
+        ranking = (state.get("rankings") or {}).get(view)
+        if ranking:
+            ranking.update(status="STALE", stale_reason=reason)
+
+
 def opened_views(run):
     flow = run.get("character_progression")
     if not flow:
@@ -58,29 +81,40 @@ def opened_views(run):
     if prompt_review_required(run):
         return set()
     if run.get("kind") == "character-assembly":
-        return set(flow["requested_views"]) if flow["stage"] >= 0 else set()
+        if flow["stage"] < 0:
+            return set()
+        return set(flow["requested_views"]) if flow["stage"] > 0 and assembly_front(run) else {"FRONT"}
     return {view for stage in STAGES[:flow["stage"] + 1] for view in stage
             if view in flow["requested_views"]}
 
 
 def guard_view(run, view):
+    if run.get("kind") == "character-assembly" and view != "FRONT" and not assembly_front(run):
+        raise ValueError("Select an available FRONT image before running or ranking remaining views.")
     if run.get("character_progression") and view not in opened_views(run):
-        raise ValueError("Use Run all views to start this assembly batch first." if run.get("kind") == "character-assembly"
+        raise ValueError("Use Run front, then select FRONT and Run remaining to open this view." if run.get("kind") == "character-assembly"
                          else "Accept prompt review and use Continue to open this generation stage first.")
 
 
 def execution_views(run, views=None):
     flow = run.get("character_progression")
+    if run.get("kind") == "character-assembly":
+        allowed = opened_views(run) if flow else set(run.get("views", []))
+        if not assembly_front(run):
+            allowed &= {"FRONT"}
+        targets = views if views is not None else run.get("target_views") or allowed
+        return set(targets) & allowed
     if not flow:
         return views
     if prompt_review_required(run) or flow["stage"] < 0:
         return set()
-    current = (set(flow["requested_views"]) if run.get("kind") == "character-assembly"
-               else set(STAGES[flow["stage"]]) & set(flow["requested_views"]))
+    current = set(STAGES[flow["stage"]]) & set(flow["requested_views"])
     return (set(views) & opened_views(run)) if views is not None else current
 
 
 def prepare_candidate(workflow, run, candidate):
+    if run.get("kind") == "character-assembly":
+        guard_view(run, candidate["view"])
     if not run.get("character_progression") or candidate.get("render_input"):
         return candidate
     guard_view(run, candidate["view"])
@@ -117,13 +151,17 @@ def project(run):
     next_stage = next((i for i in range(stage + 1, len(STAGES)) if set(STAGES[i]) & set(requested)), None)
     next_views = [v for v in STAGES[next_stage] if v in requested] if next_stage is not None else []
     if run.get("kind") == "character-assembly":
-        current = list(requested) if stage >= 0 else []
-        next_views = [view for view in requested if any(
+        front = assembly_front(run)
+        current = (["FRONT"] if stage == 0 else list(requested)) if stage >= 0 else []
+        missing = [view for view in requested if any(
             c["view"] == view and not c.get("slot_managed")
             and not Path(str(c.get("image_path") or "")).is_file() for c in candidates.values())]
-        # Assembly has no predecessor/selection dependencies. Keep only the
-        # existing stop and in-flight work fences before queuing missing views.
-        reason = "Resume the stopped batch first." if run.get("stop_requested") else ""
+        remaining = [v for v in missing if v != "FRONT"]
+        next_views = ["FRONT"] if not front and "FRONT" in missing else remaining
+        reason = ("Select an available FRONT image before running remaining views."
+                  if not front and next_views and next_views != ["FRONT"] else "")
+        if run.get("stop_requested"):
+            reason = "Resume the stopped batch first."
         if busy or (run.get("status") in {"RUNNING", "PREFLIGHT", "REEVALUATING", "STOPPING"}
                     and not run.get("interrupted")) or (run.get("status") == "QUEUED" and run.get("target_views")):
             reason = "Wait for queued batch work to finish."
@@ -161,7 +199,7 @@ def advance(workflow, run_id, costume="", expected_stage=None, back_reference=No
         if not run["progression"]["can_continue"]:
             raise ValueError(run["progression"]["reason"] or "All requested stages are already open.")
         targets = run["progression"]["next_views"]
-        next_stage = (len(STAGES) - 1 if workflow.pipeline == "character-assembly"
+        next_stage = ((0 if targets == ["FRONT"] else len(STAGES) - 1) if workflow.pipeline == "character-assembly"
                       else next(i for i, group in enumerate(STAGES) if targets[0] in group))
         back = "FRONT" if workflow.pipeline == "body-reference" else back_reference or flow.get("back_reference", "BACK_LEFT_3_4")
         back_sources = {"FRONT"} if workflow.pipeline == "body-reference" else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
@@ -208,6 +246,8 @@ def select(workflow, run, view, candidate_id):
             selected.pop(view, None)
         if view == "FRONT":
             state["front_anchor"] = candidate_id or None
+            if workflow.pipeline == "character-assembly" and (run.get("selected_views") or {}).get("FRONT") != candidate_id:
+                invalidate_assembly_rankings(state)
         if state.get("status") not in {"RUNNING", "PREFLIGHT", "REEVALUATING", "STOPPING"}:
             state["status"] = "AWAITING_HUMAN_SELECTION"
     mutate_local_run_state(root, update)
