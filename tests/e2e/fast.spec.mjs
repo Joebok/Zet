@@ -252,24 +252,26 @@ async function deliverEnvelope(page, id, output, failed = false) {
 async function processLocalFront(page, pipeline, runId, costume, pngPath) {
   const base = `/api/local/${pipeline}/runs/${runId}`;
   const query = `?universe_id=Test${costume ? `&costume=${encodeURIComponent(costume)}` : ""}`;
-  const reviewResponse = await page.request.post(`${base}/template-revisions${query}`, { data: { model: "codex:gpt-6-luna" } });
-  expect(reviewResponse.ok(), await reviewResponse.text()).toBeTruthy();
-  const reviewId = (await reviewResponse.json()).revision.revision_id;
-  const reviewAnswered = new Set();
-  await expect.poll(async () => {
-    const review = (await (await page.request.get(`${base}/template-revisions${query}&revision_id=${reviewId}`)).json()).revision;
-    if (review.status === "FAILED") throw new Error(review.error);
-    const queue = await (await page.request.get("/api/ai/jobs")).json();
-    for (const job of queue.items || []) {
-      if (job.task_type === "character_prompt_review" && job.status === "QUEUED" && !reviewAnswered.has(job.ask_id)) {
-        await deliverEnvelope(page, job.ask_id, { summary: "Prepared prompt review: no corrections needed.", findings: [] });
-        reviewAnswered.add(job.ask_id);
+  if (pipeline !== "character-assembly") {
+    const reviewResponse = await page.request.post(`${base}/template-revisions${query}`, { data: { model: "codex:gpt-6-luna" } });
+    expect(reviewResponse.ok(), await reviewResponse.text()).toBeTruthy();
+    const reviewId = (await reviewResponse.json()).revision.revision_id;
+    const reviewAnswered = new Set();
+    await expect.poll(async () => {
+      const review = (await (await page.request.get(`${base}/template-revisions${query}&revision_id=${reviewId}`)).json()).revision;
+      if (review.status === "FAILED") throw new Error(review.error);
+      const queue = await (await page.request.get("/api/ai/jobs")).json();
+      for (const job of queue.items || []) {
+        if (job.task_type === "character_prompt_review" && job.status === "QUEUED" && !reviewAnswered.has(job.ask_id)) {
+          await deliverEnvelope(page, job.ask_id, { summary: "Prepared prompt review: no corrections needed.", findings: [] });
+          reviewAnswered.add(job.ask_id);
+        }
       }
-    }
-    return review.status;
-  }, { timeout: 20000 }).toBe("REVIEW_READY");
-  const accepted = await page.request.post(`${base}/template-revisions/${reviewId}/accept${query}`, { data: { selected_ids: [] } });
-  expect(accepted.ok(), await accepted.text()).toBeTruthy();
+      return review.status;
+    }, { timeout: 20000 }).toBe("REVIEW_READY");
+    const accepted = await page.request.post(`${base}/template-revisions/${reviewId}/accept${query}`, { data: { selected_ids: [] } });
+    expect(accepted.ok(), await accepted.text()).toBeTruthy();
+  }
   const started = await page.request.post(`${base}/views/FRONT/proceed${query}`, { data: { expected_stage: -1 } });
   expect(started.ok(), await started.text()).toBeTruthy();
   const context = await (await page.request.get("/__test/context")).json();

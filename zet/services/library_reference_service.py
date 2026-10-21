@@ -77,25 +77,36 @@ class LibraryReferenceService:
         self._walk(result, encode=False, absolute_only=version is None)
         return result
 
-    def _walk(self, value: Any, *, encode: bool, absolute_only: bool = False) -> None:
+    def _walk(self, value: Any, *, encode: bool, absolute_only: bool = False,
+              converted: dict[str, str] | None = None) -> None:
+        # Candidate records repeat references extensively. Resolve each distinct
+        # value once per document, never across reads or library bindings.
+        if converted is None:
+            converted = {}
+
+        def convert(raw: str) -> str:
+            if raw not in converted:
+                converted[raw] = self._convert(raw, encode=encode, absolute_only=absolute_only)
+            return converted[raw]
+
         if isinstance(value, dict):
             for key, child in tuple(value.items()):
                 if key in _PATH_FIELDS:
                     if isinstance(child, str):
-                        value[key] = self._convert(child, encode=encode, absolute_only=absolute_only)
+                        value[key] = convert(child)
                     elif key in {"paths", "image_paths", "source_paths"} and isinstance(child, list):
-                        value[key] = [self._convert(item, encode=encode, absolute_only=absolute_only) if isinstance(item, str) else item for item in child]
+                        value[key] = [convert(item) if isinstance(item, str) else item for item in child]
                         for item in value[key]:
                             if isinstance(item, (dict, list)):
-                                self._walk(item, encode=encode, absolute_only=absolute_only)
+                                self._walk(item, encode=encode, absolute_only=absolute_only, converted=converted)
                     elif isinstance(child, (dict, list)):
-                        self._walk(child, encode=encode, absolute_only=absolute_only)
+                        self._walk(child, encode=encode, absolute_only=absolute_only, converted=converted)
                 elif isinstance(child, (dict, list)):
-                    self._walk(child, encode=encode, absolute_only=absolute_only)
+                    self._walk(child, encode=encode, absolute_only=absolute_only, converted=converted)
         elif isinstance(value, list):
             for child in value:
                 if isinstance(child, (dict, list)):
-                    self._walk(child, encode=encode, absolute_only=absolute_only)
+                    self._walk(child, encode=encode, absolute_only=absolute_only, converted=converted)
 
     def _convert(self, value: str, *, encode: bool, absolute_only: bool = False) -> str:
         raw = value.strip()

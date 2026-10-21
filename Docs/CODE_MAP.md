@@ -217,3 +217,7 @@ remains queue/background/history regression coverage, without a new scenario.
   metadata from captured bytes. LibraryIndexReconciler coalesces write requests;
   image dependencies do not rehash payloads. See
   [ADR 0023](DECISIONS/0023-streamlined-image-integrity.md).
+
+## Simplified Character Assembly (2026-10-20)
+
+`Run_Character_Assembly_Jobs.compile_character_assembly_job` and the Assembly task template own two-image natural-join compilation. `LocalCharacterAssetPipelineService` removes render/publication anchor requirements and supplies optional selected-FRONT ranking provenance; `supplied_ranking_references` numbers ranking-only comparison attachments. `CharacterRenderSlots.prepare_input` owns the preparation version and legacy prompt replacement, reused by Image Generator staging. Progression/workflow services bypass Assembly governing-template acceptance and recipes; template revision mutations reject Assembly. Shared dashboard controls hide Assembly's improvement/reference controls. S2 retains Assembly-to-Dressing publication coverage; disposable prepared-request/browser checks cover all views, comparison mapping and legacy preparation. Other pipelines retain their existing behavior.

@@ -9,6 +9,7 @@ from zet.services.candidate_review_contract import validate_ranking
 
 def supplied_ranking_references(
     candidates: list[dict], fallback: Callable[[], list[dict]],
+    *, comparisons: list[dict] | None = None, source_roles: tuple[str, ...] | None = None,
 ) -> tuple[list[Path], str]:
     """Map captured candidate references to the shared ranking attachment order."""
     images: list[Path] = []
@@ -28,6 +29,10 @@ def supplied_ranking_references(
             if legacy_references is None:
                 legacy_references = fallback()
             references = legacy_references
+        if source_roles is not None:
+            references = [ref for ref in references if ref.get("role") in source_roles]
+            if not references:
+                references = fallback()
         mapped = []
         for reference in references:
             path = Path(str(reference.get("path") or reference.get("image_path") or ""))
@@ -40,6 +45,18 @@ def supplied_ranking_references(
             description = ", ".join(str(reference[field]) for field in ("role", "view", "label") if reference.get(field))
             mapped.append(f"image {indices[key]} ({description or 'supplied reference'})")
         labels.append(f"Candidate {candidate['candidate_id']} references: " + ("; ".join(mapped) or "none supplied"))
+    for comparison in comparisons or []:
+        path = Path(comparison["path"])
+        key = str(comparison.get("sha256") or path.resolve())
+        if key not in indices:
+            images.append(path)
+            indices[key] = len(images)
+        labels.append(
+            f"Ranking-only comparison: image {indices[key]} is selected FRONT Assembly "
+            f"{comparison['candidate_id']}. Compare head-to-body scale, head/body proportions, silhouette "
+            "and visible identity details. Preserve the requested target orientation; account for "
+            "foreshortening, occlusion and intentional asymmetry. Do not reward copying FRONT's "
+            "pose/camera or inventing hidden features. This comparison was not a render input.")
     labels.extend(f"Candidate {candidate['candidate_id']}: image {len(images) + index}"
                   for index, candidate in enumerate(candidates, 1))
     guidance = (

@@ -7,12 +7,15 @@ from zet.services.library_reference_service import pipeline_library_root_for_pat
 from zet.services.local_image_pipeline_policy import mutate_local_run_state
 
 
-def reference_recipes(root: Path, pipeline: str = "") -> dict:
-    from zet.services.storage_health_service import guard_path
-    guard_path(root)
-    if not (root / "state.json").is_file() and not (root / "spec.json").is_file():
-        return {}  # Initial compilation precedes creation of the run records.
-    state = read_library_json(root / "state.json", pipeline_library_root_for_path(root))
+def reference_recipes(root: Path, pipeline: str = "", *, state: dict | None = None) -> dict:
+    if pipeline == "character-assembly":
+        return {}
+    if state is None:
+        from zet.services.storage_health_service import guard_path
+        guard_path(root)
+        if not (root / "state.json").is_file() and not (root / "spec.json").is_file():
+            return {}  # Initial compilation precedes creation of the run records.
+        state = read_library_json(root / "state.json", pipeline_library_root_for_path(root))
     recipes = dict(state.get("view_reference_recipes", {}))
     if pipeline == "body-reference" and state.get("character_progression"):
         # Apply to future renders in existing staged batches without rewriting
@@ -50,6 +53,8 @@ def selected_reference(run: dict, view: str, recipe: dict) -> dict | None:
 
 
 def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
+    if run.get("kind") == "character-assembly":
+        raise ValueError("Character Assembly uses only its matching body and head images.")
     view = str(view).upper()
     if view not in run.get("views", []):
         raise ValueError("Unknown character view.")
@@ -75,6 +80,9 @@ def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
 
 
 def custom_references(run: dict, view: str, pipeline: str, base: list[dict]) -> list[dict]:
+    if pipeline == "character-assembly":
+        return [next(ref for ref in base if ref.get("role") == role)
+                for role in ("body_reference", "head_image")]
     recipe = reference_recipes(Path(run["root"]), pipeline).get(view) or {"mode": "default"}
     if recipe["mode"] == "default":
         return base
@@ -94,8 +102,13 @@ def custom_references(run: dict, view: str, pipeline: str, base: list[dict]) -> 
 
 def recipe_requirement(run: dict, view: str) -> str | None:
     """None uses legacy prerequisites; an empty string explicitly needs no anchor."""
+    if run.get("kind") == "character-assembly":
+        return ""
     pipeline = "body-reference" if run.get("kind") == "local_body_reference" else ""
-    recipe = reference_recipes(Path(run["root"]), pipeline).get(view) or {"mode": "default"}
+    recipes = run.get("view_reference_recipes")
+    if recipes is None:
+        recipes = reference_recipes(Path(run["root"]), pipeline)
+    recipe = recipes.get(view) or {"mode": "default"}
     if recipe["mode"] == "default":
         return None
     try:

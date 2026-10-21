@@ -300,14 +300,14 @@ class LocalCharacterAssetPipelineService:
                 "character": character, "phase": phase, "costume": costume,
                 "views": requested_views, "front_count": front_count, "other_count": other_count,
                 "candidate_count": total, "inputs": inputs, "front_only": bool(payload.get("front_only")),
-                "use_front_anchor": bool(payload.get("use_front_anchor", True)),
-                "front_anchor_required_for_other_views": bool(payload.get("use_front_anchor", True)),
+                "use_front_anchor": self.pipeline != "character-assembly" and bool(payload.get("use_front_anchor", True)),
+                "front_anchor_required_for_other_views": self.pipeline != "character-assembly" and bool(payload.get("use_front_anchor", True)),
                 "source_batches": {role: str(source_batches.get(role) or "locked") for role, _ in self._requirements()},
                 "source_batch_options": self._source_batch_options(character, phase, costume),
                 "can_create": not blocking_reasons, "blocking_reasons": list(dict.fromkeys(blocking_reasons))}
 
     def _requires_front_anchor(self, run: dict[str, Any]) -> bool:
-        return bool(run.get("use_front_anchor", True))
+        return self.pipeline != "character-assembly" and bool(run.get("use_front_anchor", True))
 
     def _snapshot_inputs(self, root: Path, plan: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], str]:
         snapshot = {}
@@ -425,6 +425,8 @@ class LocalCharacterAssetPipelineService:
         result = {**spec, **state, "candidates": list(candidates.values()), "root": str(root),
                   "selected_views": state.get("selected_views") or {}, "rankings": state.get("rankings") or {},
                   "stop_requested": bool(state.get("stop_requested")), "interrupted": False}
+        if self.pipeline == "character-assembly":
+            result["use_front_anchor"] = False
         for candidate in result["candidates"]:
             candidate["image_filled"] = Path(str(candidate.get("image_path") or "")).is_file()
         if state.get("status") in ACTIVE_RUN_STATUSES:
@@ -650,7 +652,7 @@ class LocalCharacterAssetPipelineService:
                 source = inputs[role]
                 refs.append({"role": role, "path": source["image_path"], "view": view,
                              "body_view": view, "head_view": view, "character": run["character"], "phase": run["phase"]})
-        return custom_references(run, view, self.pipeline, refs) if use_recipe else refs
+        return custom_references(run, view, self.pipeline, refs) if use_recipe and self.pipeline != "character-assembly" else refs
 
     def _compile(self, run: dict[str, Any], view: str, refs: list[dict[str, Any]], *, output_dir: Path | None = None, use_reference_recipe: bool = False) -> dict[str, Any]:
         from zet.services.template_source_service import compile_with_revision
@@ -661,11 +663,8 @@ class LocalCharacterAssetPipelineService:
                "Character": run["character"], "Phase": run["phase"], "Output Directory": str(output),
                "Template Path": str(template), "Reference Files": refs}
         if self.pipeline == "character-assembly":
-            from zet.services.local_view_reference_service import reference_recipes
-            default_refs = not use_reference_recipe or (reference_recipes(root).get(view) or {}).get("mode", "default") == "default"
-            job.update({"Body View": view, "Head View": view,
-                        "use_front_anchor": self._requires_front_anchor(run) and default_refs})
-            result = compile_with_revision(root, compile_character_assembly_job,
+            job.update({"Body View": view, "Head View": view, "use_front_anchor": False})
+            result = compile_character_assembly_job(
                 job, self.project_root, pipeline_mode="local",
                 universe_root=self.app.config.base_library_path,
             )
@@ -964,6 +963,15 @@ class LocalCharacterAssetPipelineService:
         for survivor in survivors:
             require_candidate_harvest(self.app, run, survivor)
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in survivors}
+        comparisons = []
+        if self.pipeline == "character-assembly" and view != "FRONT":
+            front_id = (run.get("selected_views") or {}).get("FRONT")
+            front = next((item for item in run["candidates"] if item["candidate_id"] == front_id and item["view"] == "FRONT"), {})
+            image = Path(str(front.get("image_path") or ""))
+            if (image.is_file() and image.resolve().is_relative_to(Path(run["root"]).resolve())
+                    and (front.get("human_review") or {}).get("decision") != "reject"):
+                comparisons.append({"candidate_id": front_id, "view": "FRONT",
+                                    "path": str(image), "sha256": self._hash(image)})
         if not survivors:
             ranking = {"status": "EMPTY", "ordered_candidate_ids": [], "luna_ordered_candidate_ids": [], "entries": [], "input_hashes": {}, "recorded_at": self._now()}
         elif len(survivors) == 1:
@@ -980,7 +988,8 @@ class LocalCharacterAssetPipelineService:
             image_paths = [str(item["image_path"]) for item in survivors]
             try:
                 reference_image_paths, reference_guidance = supplied_ranking_references(
-                    survivors, lambda: self._references(run, view, use_recipe=True))
+                    survivors, lambda: self._references(run, view, use_recipe=True), comparisons=comparisons,
+                    source_roles=("body_reference", "head_image") if self.pipeline == "character-assembly" else None)
                 entries, model = rank_images_with_luna(
                     project_root=self.project_root,
                     model=str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
@@ -1000,6 +1009,8 @@ class LocalCharacterAssetPipelineService:
                        "luna_ordered_candidate_ids": [entry["candidate_id"] for entry in entries],
                            "entries": entries, "input_hashes": hashes,
                            "model": model, "recorded_at": self._now()}
+        if self.pipeline == "character-assembly":
+            ranking["comparison_references"] = comparisons if len(survivors) > 1 else []
         return ranking
 
     def rank_view(self, run_id: str, view: str, costume: str = "", *, evaluation_id: str = "") -> dict[str, Any]:

@@ -164,7 +164,7 @@ class LocalTemplateRevisionService:
         live_sources = self._sources(workflow, run)
         revision = self._record(directory, revision_id) if revision_id else (records[0] if records else None)
         if revision:
-            if revision.get("version") == 2 and revision["status"] == "PROPOSING":
+            if pipeline != "character-assembly" and revision.get("version") == 2 and revision["status"] == "PROPOSING":
                 from zet.services.ai_workflow_service import AIWorkflowService
                 AIWorkflowService(self.app).submit(self._review_job, [pipeline, run_id, costume, revision["revision_id"]],
                     service="template_revision", key="template_" + revision["revision_id"], owner=revision["owner"])
@@ -185,6 +185,8 @@ class LocalTemplateRevisionService:
                 "revision": revision}
 
     def start(self, pipeline, run_id, payload, costume=""):
+        if pipeline == "character-assembly":
+            raise ValueError("Governing-template improvement is unavailable for Character Assembly.")
         workflow, run, directory = self._load(pipeline, run_id, costume)
         from zet.services.local_character_progression_service import enroll
         enroll(Path(run["root"]), run.get("views"))
@@ -342,6 +344,8 @@ class LocalTemplateRevisionService:
                 self._write(path, record)
 
     def decisions(self, pipeline, run_id, revision_id, payload, costume=""):
+        if pipeline == "character-assembly":
+            raise ValueError("Governing-template improvement is unavailable for Character Assembly.")
         _, _, directory = self._load(pipeline, run_id, costume)
         with file_lock(directory / "revisions.lock"):
             record = self._record(directory, revision_id)
@@ -354,6 +358,8 @@ class LocalTemplateRevisionService:
         return self.detail(pipeline, run_id, costume, revision_id)
 
     def accept(self, pipeline, run_id, revision_id, payload, costume=""):
+        if pipeline == "character-assembly":
+            raise ValueError("Governing-template improvement is unavailable for Character Assembly.")
         workflow, run, directory = self._load(pipeline, run_id, costume)
         with file_lock(directory / "revisions.lock"):
             record = self._record(directory, revision_id)
@@ -505,6 +511,8 @@ class LocalTemplateRevisionService:
             self._write(path, record)
 
     def activate(self, pipeline, run_id, revision_id, costume="", expected_active=None):
+        if pipeline == "character-assembly":
+            raise ValueError("Governing-template improvement is unavailable for Character Assembly.")
         _, run, directory = self._load(pipeline, run_id, costume)
         with file_lock(Path(run["root"]) / "state.lock"):
             current = active_revision(Path(run["root"]))
@@ -523,6 +531,8 @@ class LocalTemplateRevisionService:
         return self.detail(pipeline, run_id, costume, revision_id)
 
     def promote(self, pipeline, run_id, revision_id, payload, costume=""):
+        if pipeline == "character-assembly":
+            raise ValueError("Governing-template improvement is unavailable for Character Assembly.")
         workflow, run, directory = self._load(pipeline, run_id, costume)
         if payload.get("confirm") is not True:
             raise ValueError("Confirm the reviewed source edits before updating master templates.")

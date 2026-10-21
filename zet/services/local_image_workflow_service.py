@@ -84,7 +84,8 @@ class LocalImagePipelineWorkflowService:
         if name == "start":
             current = self.action("detail", run_id=run_id, costume=costume)
             if current.get("character_progression") and current["character_progression"]["stage"] < 0:
-                raise LocalImageWorkflowError("Analyze and accept prompts, then use Continue to generate FRONT.")
+                raise LocalImageWorkflowError("Use Continue to assemble FRONT." if self.pipeline == "character-assembly"
+                                              else "Analyze and accept prompts, then use Continue to generate FRONT.")
             if current.get("status") != "QUEUED":
                 raise LocalImageWorkflowError("Only a queued local image batch can be started.")
             return {"started": True, "run_id": run_id}
@@ -95,7 +96,8 @@ class LocalImagePipelineWorkflowService:
         if name == "rerun_batch":
             current = self.prompt_improvement.detail(run_id, costume)
             if current.get("character_progression") and current["character_progression"]["stage"] < 0:
-                raise LocalImageWorkflowError("Accept prompt review and Continue before rerunning images.")
+                raise LocalImageWorkflowError("Use Continue before rerunning images." if self.pipeline == "character-assembly"
+                                              else "Accept prompt review and Continue before rerunning images.")
             recompile = bool(args.get("recompile", False))
             if self.pipeline == "costume-dressing":
                 result = self.adapter.rerun(run_id, costume,
@@ -163,6 +165,8 @@ class LocalImagePipelineWorkflowService:
             with file_lock(Path(run["root"]) / "state.lock"):
                 save_reference_recipe(self.prompt_improvement.detail(run_id, costume), view, payload)
             return self._present_run(self.prompt_improvement.detail(run_id, costume))
+        if self.pipeline == "character-assembly" and name.startswith("template_revision_") and name != "template_revision_detail":
+            raise LocalImageWorkflowError("Governing-template improvement is unavailable for Character Assembly.")
         if name.startswith("template_revision_"):
             from zet.services.local_template_revision_service import LocalTemplateRevisionService
             revisions = LocalTemplateRevisionService(self.app, self.project_root)

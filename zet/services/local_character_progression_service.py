@@ -47,11 +47,15 @@ def accept_prompts(root, revision_id):
     mutate_local_run_state(Path(root), update)
 
 
+def prompt_review_required(run):
+    return run.get("kind") != "character-assembly" and not (run.get("character_progression") or {}).get("accepted_revision_id")
+
+
 def opened_views(run):
     flow = run.get("character_progression")
     if not flow:
         return set(run.get("views", []))
-    if not flow.get("accepted_revision_id"):
+    if prompt_review_required(run):
         return set()
     return {view for stage in STAGES[:flow["stage"] + 1] for view in stage
             if view in flow["requested_views"]}
@@ -59,14 +63,15 @@ def opened_views(run):
 
 def guard_view(run, view):
     if run.get("character_progression") and view not in opened_views(run):
-        raise ValueError("Accept prompt review and use Continue to open this generation stage first.")
+        raise ValueError("Use Continue to open this generation stage first." if run.get("kind") == "character-assembly"
+                         else "Accept prompt review and use Continue to open this generation stage first.")
 
 
 def execution_views(run, views=None):
     flow = run.get("character_progression")
     if not flow:
         return views
-    if not flow.get("accepted_revision_id") or flow["stage"] < 0:
+    if prompt_review_required(run) or flow["stage"] < 0:
         return set()
     current = set(STAGES[flow["stage"]]) & set(flow["requested_views"])
     return (set(views) & opened_views(run)) if views is not None else current
@@ -82,7 +87,7 @@ def prepare_candidate(workflow, run, candidate):
 
 
 def project(run):
-    flow = read_progression(run["root"])
+    flow = run.get("character_progression")
     if not flow:
         return run
     run["character_progression"] = flow
@@ -98,7 +103,7 @@ def project(run):
     busy = any(c.get("render_status", c.get("status")) in {"QUEUED", "RUNNING"}
                and not Path(str(c.get("image_path") or "")).is_file() for c in candidates.values())
     reason = ""
-    if not flow.get("accepted_revision_id"):
+    if prompt_review_required(run):
         reason = "Analyze and accept the governing prompts first."
     elif run.get("stop_requested"):
         reason = "Resume the stopped batch first."
@@ -110,7 +115,7 @@ def project(run):
     run["progression"] = {"stage": stage, "current_views": current,
         "next_views": [v for v in STAGES[next_stage] if v in requested] if next_stage is not None else [],
         "can_continue": not reason and next_stage is not None, "reason": reason,
-        "complete": all(available(v) for v in requested), "prompt_review_required": not flow.get("accepted_revision_id")}
+        "complete": all(available(v) for v in requested), "prompt_review_required": prompt_review_required(run)}
     warnings = []
     warned = set()
     for candidate in candidates.values():
@@ -144,12 +149,12 @@ def advance(workflow, run_id, costume="", expected_stage=None, back_reference=No
         next_stage = next(i for i, group in enumerate(STAGES) if targets[0] in group)
         back = "FRONT" if workflow.pipeline == "body-reference" else back_reference or flow.get("back_reference", "BACK_LEFT_3_4")
         back_sources = {"FRONT"} if workflow.pipeline == "body-reference" else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
-        if back not in back_sources:
+        if workflow.pipeline != "character-assembly" and back not in back_sources:
             raise ValueError("Choose a selected back three-quarter reference.")
         from zet.services.local_view_reference_service import selected_reference
         recipes = {}
         for view in targets:
-            if view == "FRONT":
+            if view == "FRONT" or workflow.pipeline == "character-assembly":
                 continue
             source = back if view == "BACK" else PREDECESSORS[view]
             recipe = {"mode": "selected_view", "source_view": source}

@@ -15,6 +15,7 @@ from uuid import uuid4
 from zet.services.library_reference_service import pipeline_library_root_for_path, write_library_json
 
 SLOT_COUNT = 8
+ASSEMBLY_INPUT_VERSION = 1
 _SLOT_WORKERS: set[str] = set()
 _SLOT_WORKERS_LOCK = threading.Lock()
 
@@ -94,15 +95,16 @@ class CharacterRenderSlots:
         busy = self._busy_reason(run)
         run["slot_controls"] = {}
         for view, slots in maps.items():
-            reason = busy or self._prerequisite(run, view)
+            stage_reason = self._prerequisite(run, view)
+            reason = busy or stage_reason
             run["slot_controls"][view] = {"empty_count": slots.count(None), "reason": reason,
                 "legacy": len(slots) > SLOT_COUNT, "can_generate": not reason and len(slots) <= SLOT_COUNT and None in slots,
-                "stage_reason": self._prerequisite(run, view)}
+                "stage_reason": stage_reason}
         for candidate in run.get("candidates") or []:
             slots = maps.get(candidate["view"], [])
             candidate["slot"] = slots.index(candidate["candidate_id"]) + 1 if candidate["candidate_id"] in slots else None
             candidate["slot_reason"] = busy or self._protected(run, candidate)
-            candidate["slot_waiting"] = self._prerequisite(run, candidate["view"]) if candidate.get("render_status") == "PENDING" else ""
+            candidate["slot_waiting"] = run["slot_controls"][candidate["view"]]["stage_reason"] if candidate.get("render_status") == "PENDING" else ""
         return run
 
     @staticmethod
@@ -117,13 +119,17 @@ class CharacterRenderSlots:
         from zet.services.local_view_reference_service import custom_references, reference_recipes
         root = Path(run["root"])
         pipeline = self.workflow.pipeline
-        revision = active_revision(root)
+        revision = {} if pipeline == "character-assembly" else active_revision(root)
         output = output_dir or root / "prompts" / view
         stamp = output / "Template_Revision.json"
         compiled_revision = json.loads(stamp.read_text(encoding="utf-8")).get("revision_id", "") if stamp.is_file() else ""
         recipe = reference_recipes(root, pipeline).get(view) or {"mode": "default"}
         recipe_stamp = output / "Reference_Recipe.json"
         prior_recipe = json.loads(recipe_stamp.read_text(encoding="utf-8")) if recipe_stamp.is_file() else {"mode": "default"}
+        assembly_stamp = output / "Assembly_Input_Version.json"
+        if pipeline == "character-assembly":
+            version = json.loads(assembly_stamp.read_text(encoding="utf-8")).get("version") if assembly_stamp.is_file() else None
+            recompile = recompile or version != ASSEMBLY_INPUT_VERSION
         recompile = recompile or output_dir is not None or compiled_revision != revision.get("revision_id", "") or recipe != prior_recipe or recipe["mode"] != "default"
         if pipeline == "body-reference":
             snapshot = next(item for item in run["prompt_snapshots"] if item["view"] == view)
@@ -179,9 +185,14 @@ class CharacterRenderSlots:
         from zet.services.atomic_file_service import write_json_atomic
         if output_dir is None:
             write_json_atomic(recipe_stamp, recipe)
+        if pipeline == "character-assembly":
+            write_json_atomic(assembly_stamp, {"version": ASSEMBLY_INPUT_VERSION})
+            write_json_atomic(stamp, {"revision_id": ""})
         saved = frozen_input(directory, prompt, refs, preset)
         saved["template_revision_id"] = revision.get("revision_id", "")
         saved["reference_recipe"] = recipe
+        if pipeline == "character-assembly":
+            saved["assembly_input_version"] = ASSEMBLY_INPUT_VERSION
         return saved
 
     def _prerequisite(self, run: dict, view: str) -> str:

@@ -12,7 +12,8 @@ if __package__ in {None, ""} and str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from Scripts.Compile_Character_Template import TemplateCompileError
-from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts
+from Scripts.Auxiliary_Resource_Tags import auxiliary_references_for_texts, IMAGE_TAG_RE, LIB_REFERENCE_TAG_RE
+from zet.services.auxiliary_resource_tags import AUXILIARY_RESOURCE_TAG_RE
 from Scripts.Job_File_Utils import (
     bundle_output_paths,
     finalize_chatgpt_prompt,
@@ -44,7 +45,6 @@ from zet.services.pipeline_compiler_support import (
     character_assembly_style_instruction,
     view_orientation_intro,
     with_view_orientation_intro,
-    universe_art_style,
 )
 
 
@@ -171,14 +171,11 @@ def compile_character_assembly_job(
     expected_output = job_get(job, "Expected Output", "expected_output") or expected_output_for_job(job, body_view_data)
 
     references = reference_files_for_job(job)
+    if pipeline_mode == "local":
+        references = [reference_by_role(references, role) for role in ("body_reference", "head_image")]
     body_reference = reference_by_role(references, "body_reference")
     head_image = reference_by_role(references, "head_image")
     front_assembly = next((reference for reference in references if reference.get("role") == "front_assembly"), None)
-    anchor_setting = job_get(job, "Use Front Anchor", "use_front_anchor")
-    use_front_anchor = anchor_setting.lower() not in {"false", "0", "no", "off"}
-    if (pipeline_mode == "local" and use_front_anchor
-            and (body_view_token != "FRONT" or head_view_token != "FRONT") and not front_assembly):
-        raise TemplateCompileError("MISSING_REFERENCE", "Local non-front Character-Assembly requires the selected FRONT assembly anchor.")
     validate_reference(body_reference, "body_reference")
     validate_reference(head_image, "head_image")
     for reference in references:
@@ -224,10 +221,18 @@ def compile_character_assembly_job(
         prompt_variant=prompt_variant, pipeline_mode=pipeline_mode,
         body_view=body_view_token, head_view=head_view_token,
     )
-    references = auxiliary_references_for_texts(
-        project_root, ["\n".join(selection.sections.values())], references,
-        universe_root=universe_root,
-    )
+    if pipeline_mode == "local":
+        # These sources have already been rendered. Embedded reference tags must
+        # neither add images nor leave unresolved citations in this two-image task.
+        for name, text in selection.sections.items():
+            for pattern in (AUXILIARY_RESOURCE_TAG_RE, IMAGE_TAG_RE, LIB_REFERENCE_TAG_RE):
+                text = pattern.sub("", text)
+            selection.sections[name] = text
+    else:
+        references = auxiliary_references_for_texts(
+            project_root, ["\n".join(selection.sections.values())], references,
+            universe_root=universe_root,
+        )
     references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
         references, render_mode="composite"
     )
@@ -255,7 +260,6 @@ def compile_character_assembly_job(
         "head_view_token": head_view_token,
         "assembly_style_mode": assembly_style_mode,
     }
-    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
     metadata_values = {
             "CHARACTER_NAME": character,
             "CHARACTER_PHASE": phase,
@@ -271,33 +275,13 @@ def compile_character_assembly_job(
             "ASSEMBLY_STYLE_MODE": assembly_style_mode,
             "ASSEMBLY_STYLE_INSTRUCTION": character_assembly_style_instruction(assembly_style_mode),
             "LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE": (
-                "Image 1 is the selected Body-Reference image for the requested view. Image 2 is the selected "
-                "Head-Image for that same view. Image 3 is the selected FRONT Character-Assembly anchor. "
-                "Use Image 3 to preserve the established head-to-body scale, head and body proportions, silhouette, "
-                "and integrated character appearance across views. Use Images 1 and 2 as authoritative for the "
-                "requested view, pose, orientation, and view-specific details; do not copy Image 3's front orientation."
-                if pipeline_mode == "local" and front_assembly
-                else "Image 1 is the selected Body-Reference image for the requested view. Image 2 is the selected "
-                     "Head-Image for that same view. Use only these two images as visual sources."
-                if pipeline_mode == "local"
-                else ""
-            ),
-            "LOCAL_CANONICAL_ART_STYLE": (
-                f"Maintain the universe's Canonical Art Style: {universe_style}." if universe_style else ""
+                "Image 1 is the supplied body. Image 2 is the supplied head. Use only these two images."
+                if pipeline_mode == "local" else ""
             ),
             **contract_values,
             **template_metadata(template_path),
         }
-    from zet.services.local_view_reference_service import batch_reference_guidance
-    if pipeline_mode == "local":
-        guidance = batch_reference_guidance(references, body_view_token)
-        if guidance:
-            metadata_values["LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE"] = (
-                "Image 1 is the matching Body-Reference; Image 2 is the matching Head-Image. "
-                "These matching-view inputs control target pose, camera, anatomy and framing.\n" + guidance)
     metadata_sources = {
-        **({"LOCAL_CANONICAL_ART_STYLE": universe_sources["CANONICAL_ART_STYLE"]}
-           if universe_style else {}),
         "CHARACTER_NAME": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Asset character", "editable": False},
         "CHARACTER_PHASE": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Asset phase", "editable": False},
         "VIEW_TOKEN": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Normalized view token", "editable": False},

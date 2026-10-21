@@ -28,15 +28,14 @@ Judge the candidate image against the visible requirements below and the supplie
 
 <!-- ZET:BEGIN LOCAL_PIPELINE_ONLY -->
 {{LOCAL_CHARACTER_ASSEMBLY_REFERENCE_GUIDANCE}}
-{{LOCAL_CANONICAL_ART_STYLE}}
 <!-- ZET:END LOCAL_PIPELINE_ONLY -->
 
-- Preserve Image 1's body proportions, pose, stance, framing, and orientation.
-- Keep the body proportions, pose, stance, framing, and orientation exactly as they are.
-- Preserve Image 2's face, hair, ears, apparent age, and gaze.
-- Keep the face, hair, ears, and apparent age of the head exactly as they are.
-- Change only the head/neck junction and the minimum style integration needed for a natural join.
-- Preserve the sources' dimensional facial planes, skin variation and hair detail at the output scale. Preserving identity and geometry does not require copying incidental contour strokes or mismatched surface shading; surface adjustments remain limited by the selected assembly style mode.
+Put the head in Image 2 on the body in Image 1.
+- Keep the supplied face, hair, ears, apparent age, expression, and gaze unchanged.
+- Keep the body's proportions, pose, stance, clothing, framing, background, and orientation unchanged.
+- Preserve the head's identity and natural scale relative to the body.
+- Make only the changes needed to join the head and neck naturally, with local blending at the junction.
+- Preserve the supplied rendering style and detail; do not broadly repaint or reinterpret either source.
 
 # Subject Details
 

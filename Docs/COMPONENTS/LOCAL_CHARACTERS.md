@@ -107,10 +107,20 @@ responses carry the same presented run fields as detail, allowing the page to me
 them directly without another detail request. Candidate images use the focused
 resolver above; reference previews keep URLs stable for their saved content identity.
 
+Detail presentation uses the loaded run's progression and reference recipes;
+slot prerequisites are computed once per view per response. Compiler reference
+resolution still reads persisted recipes. Path conversion reuses identical values
+within each document walk (see [data model](../DATA_MODEL.md)). A read-only profile
+of the reported 64-candidate Assembly batch improved from 2.668s to 0.928s with an
+identical presented response; this measures service work, not browser click latency.
+The dashboard's startup asset filter preference also tolerates denied browser
+storage and keeps the current tab usable. The reported context-storage console
+error was not reproduced in a fresh in-app browser, so its exact origin is unverified.
+
 All four pipelines' detail and batch summaries recognize completed publication when
 every requested view's current selection matches a published lock from that batch,
-including the selected image checksum and the required FRONT anchor. Assembly and
-Dressing retain their optional-anchor setting; Dressing matches the costume qualifier.
+including the selected image checksum and any required FRONT anchor. Assembly has
+no render-anchor requirement; Dressing retains its optional-anchor setting and matches the costume qualifier.
 [LocalAssetStoreService.all_selected_views_locked](../../zet/services/local_asset_store_service.py)
 owns this shared check. Stale advisory rankings do not leave these fully locked
 batches awaiting selection. This projection does not rewrite saved rankings,
@@ -232,7 +242,7 @@ Existing S2 verifies Assembly/Dressing publication. Joe separately approved disp
 
 ## Prompt review, staged generation and image refinement (2026-10-18)
 
-Every new Body, Head, Assembly and Dressing batch starts with text-only governing-template review. [LocalPromptPreviewService](../../zet/services/local_prompt_preview_service.py) compiles all eight view prompts through the existing compilers with declared future reference roles. Preview artifacts are explicitly non-renderable; production compilation still validates actual image files. The analysis receives complete sources, compiled prompts and compact source maps, without images or image-review observations.
+New Body, Head and Dressing batches start with text-only governing-template review. Assembly bypasses this review, as described below. [LocalPromptPreviewService](../../zet/services/local_prompt_preview_service.py) compiles all eight view prompts through the existing compilers with declared future reference roles. Preview artifacts are explicitly non-renderable; production compilation still validates actual image files. The analysis receives complete sources, compiled prompts and compact source maps, without images or image-review observations.
 
 [LocalTemplateRevisionService](../../zet/services/local_template_revision_service.py) saves version-2 reviews with individual source corrections, affected views and rationale. Suggestions start unchecked. Checkbox decisions persist; acceptance applies only selected, nonoverlapping exact source edits after checking master baselines and recompiles a READY child version. No-change acceptance is valid. Operator feedback and manual child edits support iteration. Accepted sources are batch-local overlays; master promotion retains its separate confirmation, baseline checks and partial-write journal. Legacy version-1 records and pending continuations remain readable.
 
@@ -260,7 +270,7 @@ updates and drift from the captured baseline. **Start Front Renders** at the end
 uses the same FRONT continuation and readiness checks as the top Continue control;
 after FRONT opens, further generation uses the existing view controls.
 
-[LocalCharacterProgressionService](../../zet/services/local_character_progression_service.py) owns explicit Continue boundaries: FRONT, both front quarters, both profiles, both rear quarters, then BACK. Each pair uses the selected same-side predecessor. Body-Reference BACK uses selected FRONT; Head/Assembly/Dressing BACK default to the selected rear-left quarter and may use rear-right. The Body rule also applies to future Generate/Regenerate actions in existing staged batches; saved renders and Retry retain their frozen inputs. Existing matching Body/Head/Assembly/costume inputs retain their roles and order. Preview includes required ancestors for requested partial batches; front-only batches remain front-only. New generation, supplemental slots, runner resume and automation respect the opened stages. Overview automation and Run All Remaining pause for human prompt/selection/Continue actions. Existing batches retain legacy sequencing until explicitly entering prompt improvement.
+[LocalCharacterProgressionService](../../zet/services/local_character_progression_service.py) owns explicit Continue boundaries: FRONT, both front quarters, both profiles, both rear quarters, then BACK. Body, Head and Dressing pairs use the selected same-side predecessor. Body-Reference BACK uses selected FRONT; Head/Dressing BACK default to the selected rear-left quarter and may use rear-right. Assembly retains these stages but uses only matching body/head inputs. The Body rule also applies to future Generate/Regenerate actions in existing staged batches; saved renders and Retry retain their frozen inputs. Existing matching Body/Head/Assembly/costume inputs retain their roles and order. Preview includes required ancestors for requested partial batches; front-only batches remain front-only. New generation, supplemental slots, runner resume and automation respect the opened stages. Overview automation and Run All Remaining pause for human prompt/selection/Continue actions. Existing batches retain legacy sequencing until explicitly entering prompt improvement.
 
 Prompt previews declare those future predecessor inputs through the same compiler contracts used for actual renders, even before any batch images exist. Shared reference descriptions keep preview and render prose identical for equivalent bindings; actual generation substitutes selected image paths and candidate provenance. Body task/image-input text is conditioned before its Qwen wrapper is added, and Head, Assembly and Dressing preserve their own ordered prerequisite roles. See [prompt preview compilation](PROMPTS.md#character-prompt-review-previews-2026-10-18) for the validation boundary and historical-review limitation.
 
@@ -272,7 +282,7 @@ Routes extend `template-revisions` with decisions/acceptance, retain `activate`/
 
 ## Style-unification batch review (2026-10-14)
 
-Body and Head bootstrap from text; other views may use newly generated local front anchors. Assembly and Dressing use that local chain, with costume-only references remaining narrowly bound. Shared character instructions use the existing fine-grained head/body visibility tags to separate visible identity facts from rendering treatment. Prompt wording seeks dimensional anatomy and differentiated materials; it does not establish observed image quality.
+Body and Head bootstrap from text; other views may use newly generated local front anchors. Dressing uses that local chain, with costume-only references remaining narrowly bound. Assembly uses matching body/head sources without a view anchor. Shared character instructions use the existing fine-grained head/body visibility tags to separate visible identity facts from rendering treatment. Prompt wording seeks dimensional anatomy and differentiated materials; it does not establish observed image quality.
 
 Joe approved initial Tsaeytte batch review for FRONT (8), FRONT_LEFT_3_4 (4), and BACK_RIGHT_3_4 (4), through Canonical Adventure Gear, in existing galleries. Provisional selected-batch sources can advance this chain without replacing published locks. New images require explicit source-layer refresh before appearing in an already frozen Narrative assembly. Local implementation checks passed; live batch review remains pending rollout of the new prompt templates.
 
@@ -339,3 +349,11 @@ Zet versions and current memberships instead of rehashing images. Explicit
 Re-evaluate may refresh bookkeeping; fresh render/analysis handoffs still freeze
 ordered actual input bytes. Upstream drift is advisory for published locks.
 See [ADR 0023](../DECISIONS/0023-streamlined-image-integrity.md).
+
+## Simplified Character Assembly (2026-10-20)
+
+Local Assembly renders use exactly the matching Body-Reference and Head-Image, in that order. The prompt asks for a natural head/neck join while preserving both sources, their orientation and rendering style. FRONT/predecessor references and supplemental image tags do not supply render inputs. Assembly ignores legacy anchor flags and recipes for fresh generation and publication; Body, Head and Dressing retain their existing rules.
+
+Assembly uses the existing Continue stages without governing-template acceptance or predecessor recipes. Its template improvement panel and render-reference controls are unavailable, and service mutation actions reject governing-template changes. Existing batch revision history remains readable; fresh compilation uses current masters. `CharacterRenderSlots.prepare_input` upgrades old prompt/manifests with the versioned two-image preparation contract, shared by Image Generator staging. Submitted requests and Retry retain their frozen inputs.
+
+For multi-candidate non-front ranking, Luna receives the current selected, readable, non-rejected same-batch FRONT as a separately labeled comparison for head/body proportions, silhouette and visible identity. Matching body/head inputs remain candidate-specific evidence. FRONT is optional for ranking, is never a new render/publication dependency, and does not control target camera angle or hidden features. Rankings retain comparison provenance; the single-candidate shortcut remains deterministic. See [Testing](../Testing.md#simplified-assembly-validation-2026-10-20) for observed validation and artistic limits.

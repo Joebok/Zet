@@ -44,8 +44,8 @@ still recompiles all eight previews and validates the referenced image files.
 
 Template image tags supplement pipeline prerequisites; their presence is not an
 unexpected-reference error. Body-Reference validates its optional batch design
-anchor separately, then appends images from the view-filtered template. Head,
-Assembly and Dressing retain their required source roles. Supplemental resolution
+anchor separately, then appends images from the view-filtered template. Head and Dressing retain their required source roles. Local Assembly now excludes
+supplemental images and tags, as described below. Supplemental resolution
 uses the supplied universe; images never substitute for missing required sources.
 Compilers and render slots preserve the complete ordered resource manifest for
 fresh and cached prompts, including initial Body candidates. Retry still replays
@@ -170,8 +170,12 @@ Minor Character style reconstruction retains preserve/change intent, model choic
 
 [LocalPromptPreviewService](../../zet/services/local_prompt_preview_service.py) runs the four character compilers for all eight orientations using explicit declared reference roles before generated anchors exist. The context-local `prompt_preview_compiler` boundary marks results and dependency manifests non-renderable; declared references fail normal validation and cannot enter frozen render inputs. Composition, source selection, view conditioning and source maps remain shared with real rendering. Preview source maps retain compact provenance without repeating every fragment's text. Actual generation recompiles the accepted batch sources with real ordered references. Template acceptance and staged/image refinement behavior belong to [Local characters](LOCAL_CHARACTERS.md#prompt-review-staged-generation-and-image-refinement-2026-10-18).
 
-Preview and render inputs share stable selected-view descriptions, including preserve/ignore guidance, without candidate IDs in prompt prose. All four pipelines declare the same-side predecessor; Body-Reference BACK instead uses selected FRONT, while Head/Assembly/Dressing BACK use the chosen rear quarter. Matching Body/Head/Assembly inputs and compiler-added costume resources retain their order. Preview `reference_inputs` come from the compiler result, including those additional resources. Head's uploaded FRONT remains an optional input. The reviewer is told that future inputs and `renderable: false` are intentional.
+Preview and render inputs share stable selected-view descriptions, including preserve/ignore guidance, without candidate IDs in prompt prose. Body, Head and Dressing declare the same-side predecessor; Body-Reference BACK instead uses selected FRONT, while Head/Dressing BACK use the chosen rear quarter. Assembly declares only matching body/head inputs. Matching Body/Head/Assembly inputs and compiler-added costume resources retain their order. Preview `reference_inputs` come from the compiler result, including those additional resources. Head's uploaded FRONT remains an optional input. The reviewer is told that future inputs and `renderable: false` are intentional.
 
 Preview listings follow the progression service's actual generation stages: FRONT, both front quarters, both profiles, both rear quarters, then BACK. Review guidance includes those same stages and identifies the general supported-view list as orientation order, not execution order. The clockwise view catalog must not be interpreted as a generation schedule.
 
 The local Body compiler accepts one explicitly supplied batch design reference, validates it at the normal file boundary, and compiles its image-input contract and dependency manifest before the shared Qwen wrapper is applied. Its task wording says no source image only when no reference is supplied. Traditional Body compilation still rejects image inputs. Saved reviews and frozen asks are not rewritten. New body proposals replace the former literal no-image clause in inherited task-template text with the compiler-controlled input placeholder, preserving other source edits; reanalyze and accept a new version to update an existing batch.
+
+## Simple local Assembly prompt (2026-10-20)
+
+`compile_character_assembly_job` limits local generation and previews to ordered `body_reference`/`head_image` inputs. The required head retains its existing internal `subject_reference` schema role. Additional anchor/subject references and embedded supplemental-image tags are omitted. The task template follows the older natural-join wording: preserve supplied body, head, orientation, gaze and style; blend only the immediate junction. No canonical-style restyling directive is added. Local Assembly no longer compiles through accepted governing-template overlays. Its ranking-only FRONT attachment is owned by the ranking service and is absent from render prompts/manifests. Traditional pipeline retirement remains unchanged.

@@ -92,6 +92,10 @@ reconciliation, not a detail read.
 
 Library-owned typed JSON paths use portable format version 1: forward-slash paths relative to the owning universe, such as `PipelineCandidates/Character-Pipeline/...` or `images/<asset-id>`. [LibraryReferenceService](../zet/services/library_reference_service.py) owns the explicit path-field selectors and storage-boundary codec; [PathService](../zet/services/path_service.py) resolves these against the configured, universe-bound root with containment checks. Runtime reads return resolved filesystem paths while stored records retain portable paths. Document-relative and job-relative names, logical keys, IDs, repository templates, and explicitly external paths keep their existing owners. Legacy absolute paths remain readable; relocation is performed only by the offline updater with explicitly supplied old roots. Unsupported path-format versions fail closed. See [the portable-path ADR](DECISIONS/0011-portable-library-references.md) and [development command](DEVELOPMENT.md#existing-library-path-update).
 
+The path codec memoizes identical typed strings only within one encode/decode
+walk. Each subsequent document read resolves them again against its bound
+universe; no cross-request filesystem or containment result is retained.
+
 ## Configuration and templates
 
 [config.toml](../config.toml) is loaded into frozen [Config](../zet/services/config_service.py). Platform-specific `BaseFoldersByPlatform` overlays base folders; environment/user expansion and relative subfolder resolution belong to `ConfigService`. `Storage.Root` resolves relative to the config file; child settings must remain relative and contained beneath it. Windows production selects `E:/Zet/AppData`. Other platforms and older configs keep their prior machine-local default. [StoragePathService](../zet/services/storage_path_service.py) rejects overlap with the creative library/shared queue and reports an unavailable configured drive instead of falling back. `UniverseService.bind_config` changes library/character/asset/pipeline roots while retaining the shared queue and repository templates.
@@ -244,3 +248,7 @@ scoped by library configuration, with a bounded lock pool. `asset_usages` retain
 schema and direct-ID/key-only semantics; no bulk catalog migration is required.
 Archive confirmations carry `confirm_ids` and per-image `expected_versions` derived
 from catalog metadata, checked under the catalog transaction.
+
+## Simplified Assembly preparation (2026-10-20)
+
+Fresh local Assembly frozen inputs add `assembly_input_version: 1`; view prompt directories carry `Assembly_Input_Version.json` with `version: 1`. Missing/older markers trigger compilation before Generate/Regenerate or Image Generator staging. Historical frozen inputs remain valid for Retry. Existing anchor/recipe/revision fields remain readable but do not govern new Assembly rendering. Multi-candidate Assembly rankings add `comparison_references`, containing the selected FRONT candidate ID, view, portable path and SHA-256 actually supplied to Luna, or an empty list when unavailable. These references are advisory evidence and create no publication dependency; existing document/schema versions remain unchanged.

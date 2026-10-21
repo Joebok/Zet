@@ -3319,12 +3319,20 @@ async function loadWorkspaceSummary(options = {}) {
 }
 function loadStoredAssetFilters() {
   // Keep the base-image visibility preference across browser sessions.
-  state.assetFilters.hideBaseImages = window.localStorage.getItem(HIDE_BASE_IMAGES_STORAGE_KEY) === "true";
+  try {
+    state.assetFilters.hideBaseImages = window.localStorage.getItem(HIDE_BASE_IMAGES_STORAGE_KEY) === "true";
+  } catch {
+    // Keep the in-memory default when embedded/private contexts deny storage.
+  }
   assetFilterHideBase.checked = state.assetFilters.hideBaseImages;
 }
 
 function saveStoredAssetFilters() {
-  window.localStorage.setItem(HIDE_BASE_IMAGES_STORAGE_KEY, state.assetFilters.hideBaseImages ? "true" : "false");
+  try {
+    window.localStorage.setItem(HIDE_BASE_IMAGES_STORAGE_KEY, state.assetFilters.hideBaseImages ? "true" : "false");
+  } catch {
+    // The preference remains usable for this tab without persistent storage.
+  }
 }
 
 function updateStartupRecoveryStatus(recovery) {

@@ -1,5 +1,18 @@
 # Local testing
 
+## Character review latency checks (2026-10-20)
+
+The approved four-scenario suite passed in 42.5s after the shared path-conversion
+and character projection changes. Disposable checks verified complete before/after
+response equality for the reported 64-candidate Assembly batch, review save/reload
+in a temporary copy, portable-path guards and per-walk freshness, Body BACK recipe
+defaults, and asset-filter behavior with denied browser storage. Python/JavaScript
+syntax and diff checks passed. A symlink retargeting check was unavailable because
+Windows denied symlink creation. No maintained scenarios were added. See the
+[completed plan](../plans/completed/character-review-latency.md) for measured service
+timings and limits; production browser click timing and the exact reported console
+error remain unverified.
+
 ## Template-edit publication and deployment recovery (2026-10-20)
 
 `npm.cmd run test:e2e` passed all four approved scenarios twice (51.2s and
@@ -320,3 +333,9 @@ metadata therefore do not share normal application recovery state. The existing
 local-response helper copies the original ask's attempt ID; scenario purposes and
 counts are unchanged. Disposable outage checks are recorded in
 [Development](DEVELOPMENT.md#storage-recovery-verification-2026-10-17).
+
+## Simplified Assembly validation (2026-10-20)
+
+`npm.cmd run test:e2e -- --grep "character-to-costume"` passed S2 (11.6 seconds including setup); `npm.cmd run test:e2e` passed all four maintained scenarios (37.8 seconds; final rerun after compiler/error-message adjustments: 38.2 seconds). Python AST, changed JavaScript syntax and `git diff --check` passed. The existing S2 helper bypasses governing-template review for Assembly and still exercises that review for Dressing. No maintained scenarios or dependencies were added.
+
+Disposable isolated checks passed all eight Assembly compile/preview/prepare contracts, replacement of legacy three-image manifests and accepted overlays, preservation of current prompt edits and frozen Retry inputs, suppression of supplemental tags, two-image Image Generator staging, all five Continue stages without acceptance/recipes, and BACK publication with only body/head dependencies while FRONT is unselected. Captured multi-candidate Luna requests verified ranking-only FRONT numbering/guidance and portable provenance, plus absent/rejected/missing FRONT cases. Chromium checks verified enabled Assembly Continue, hidden governing/anchor/recipe/BACK controls, rejected template-write API, retained Body review UI and no browser errors. These prepared checks establish software behavior, not live artistic quality; no live model/render calls or production data were used.

@@ -323,7 +323,11 @@
   function update(run, pipeline, reload, frontControl) {
     const universe = document.querySelector("#universe-select").value;
     const key = `${universe}:${pipeline}:${run?.run_id || ""}`;
-    host.hidden = !run;
+    host.hidden = !run || pipeline === "character-assembly";
+    if (pipeline === "character-assembly") {
+      serial++; context = null; loading = false; data = null; host.open = false; host.replaceChildren();
+      return;
+    }
     if (context?.key !== key) {
       serial++; loading = false; lastFetch = 0; data = null; selectedRevision = ""; signature = "";
       context = { key, run, pipeline, reload, universe, frontControl }; build();

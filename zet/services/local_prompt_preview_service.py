@@ -54,7 +54,7 @@ class LocalPromptPreviewService:
                     declare("head_image")
                 if pipeline == "costume-dressing":
                     declare("character_assembly")
-                if view != "FRONT":
+                if view != "FRONT" and pipeline != "character-assembly":
                     reference = batch_view_reference(source_view, view, "declared:batch_view_reference", "declared")
                     if pipeline == "head-image":
                         reference.update(role="head_image_source", prompt_role="edit_base")
