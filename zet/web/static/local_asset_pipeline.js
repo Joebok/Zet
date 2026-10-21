@@ -150,7 +150,7 @@
   function orderedViews(run) {
     const order = ["FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"];
     const position = view => order.includes(view) ? order.indexOf(view) : order.length;
-    return [...(run.views || [])].sort((a, b) => position(a) - position(b));
+    return [...(run?.views || [])].sort((a, b) => position(a) - position(b));
   }
 
   function syncViewContinueButtons(host = $("views")) {
@@ -1192,7 +1192,7 @@
 
   function orderedReviewCandidates() {
     const run = state.run;
-    const views = run?.views || [];
+    const views = orderedViews(run);
     return views.flatMap(view => sortCandidatesByDisplayOrder(run, view,
       (run?.candidates || []).filter(item => item.view === view),
       item => item.candidate_id, item => physicalSlotNumber(run, view, item)));
@@ -1236,7 +1236,7 @@
     try {
       await saveReviewDecision(candidate);
       state.reviewCandidates = orderedReviewCandidates();
-      const availableViews = (state.run?.views || []).filter((view) =>
+      const availableViews = orderedViews(state.run).filter((view) =>
         state.reviewCandidates.some((item) => item.view === view));
       const targetView = availableViews[availableViews.indexOf(candidate.view) + direction];
       if (!targetView) return;
@@ -1482,7 +1482,7 @@
     }
     $("review-prev").disabled = state.reviewIndex <= 0;
     $("review-next").disabled = state.reviewIndex >= state.reviewCandidates.length - 1;
-    const availableViews = (run.views || []).filter((view) => state.reviewCandidates.some((item) => item.view === view));
+    const availableViews = orderedViews(run).filter((view) => state.reviewCandidates.some((item) => item.view === view));
     const currentViewIndex = availableViews.indexOf(candidate.view);
     $("review-prev-view").disabled = currentViewIndex <= 0;
     $("review-next-view").disabled = currentViewIndex < 0 || currentViewIndex >= availableViews.length - 1;

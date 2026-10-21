@@ -34,10 +34,12 @@ and live inference were not exercised. No maintained scenario was added.
 
 All four character pipeline pages display view sections and selected-view cards in
 render stage order: FRONT, front three-quarters, profiles, rear three-quarters,
-then BACK. This is presentation order; saved view lists and render scheduling are
-unchanged. Each view has a Continue control below its observations and Luna ranking
-status. It appears when the top Continue control is available and enabled, shares
-its label and action, and updates during polling without replacing unsaved observations.
+then BACK. The review panel's previous/next view controls use this same order,
+skipping views without review candidates. This is presentation order; saved view
+lists and render scheduling are unchanged. Each view has a Continue control below
+its observations and Luna ranking status. It appears when the top Continue control
+is available and enabled, shares its label and action, and updates during polling
+without replacing unsaved observations.
 
 Validation: the approved character-to-costume E2E scenario passed (1 test, 16.6s).
 Disposable Chromium checks covered all four pipelines' view order, control placement,
