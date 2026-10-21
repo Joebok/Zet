@@ -84,7 +84,7 @@ class LocalImagePipelineWorkflowService:
         if name == "start":
             current = self.action("detail", run_id=run_id, costume=costume)
             if current.get("character_progression") and current["character_progression"]["stage"] < 0:
-                raise LocalImageWorkflowError("Use Continue to assemble FRONT." if self.pipeline == "character-assembly"
+                raise LocalImageWorkflowError("Use Run all views to start this assembly batch." if self.pipeline == "character-assembly"
                                               else "Analyze and accept prompts, then use Continue to generate FRONT.")
             if current.get("status") != "QUEUED":
                 raise LocalImageWorkflowError("Only a queued local image batch can be started.")
@@ -96,7 +96,7 @@ class LocalImagePipelineWorkflowService:
         if name == "rerun_batch":
             current = self.prompt_improvement.detail(run_id, costume)
             if current.get("character_progression") and current["character_progression"]["stage"] < 0:
-                raise LocalImageWorkflowError("Use Continue before rerunning images." if self.pipeline == "character-assembly"
+                raise LocalImageWorkflowError("Use Run all views before rerunning images." if self.pipeline == "character-assembly"
                                               else "Accept prompt review and Continue before rerunning images.")
             recompile = bool(args.get("recompile", False))
             if self.pipeline == "costume-dressing":
@@ -113,9 +113,10 @@ class LocalImagePipelineWorkflowService:
             if current.get("character_progression"):
                 from zet.services.local_image_pipeline_policy import mutate_local_run_state
                 def restart_front(state):
-                    state["character_progression"]["stage"] = 0
+                    state["character_progression"]["stage"] = 4 if self.pipeline == "character-assembly" else 0
                     state["view_reference_recipes"] = {}
-                    state.update(target_views=["FRONT"], target_candidate_ids=[], status="QUEUED")
+                    state.update(target_views=list(result["views"]) if self.pipeline == "character-assembly" else ["FRONT"],
+                                 target_candidate_ids=[], status="QUEUED")
                 mutate_local_run_state(Path(result["root"]), restart_front)
             self.prompt_improvement.reset_after_rerender(run_id, set(result.get("views") or []), costume)
             return self.prompt_improvement.detail(run_id, costume)

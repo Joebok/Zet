@@ -57,13 +57,15 @@ def opened_views(run):
         return set(run.get("views", []))
     if prompt_review_required(run):
         return set()
+    if run.get("kind") == "character-assembly":
+        return set(flow["requested_views"]) if flow["stage"] >= 0 else set()
     return {view for stage in STAGES[:flow["stage"] + 1] for view in stage
             if view in flow["requested_views"]}
 
 
 def guard_view(run, view):
     if run.get("character_progression") and view not in opened_views(run):
-        raise ValueError("Use Continue to open this generation stage first." if run.get("kind") == "character-assembly"
+        raise ValueError("Use Run all views to start this assembly batch first." if run.get("kind") == "character-assembly"
                          else "Accept prompt review and use Continue to open this generation stage first.")
 
 
@@ -73,7 +75,8 @@ def execution_views(run, views=None):
         return views
     if prompt_review_required(run) or flow["stage"] < 0:
         return set()
-    current = set(STAGES[flow["stage"]]) & set(flow["requested_views"])
+    current = (set(flow["requested_views"]) if run.get("kind") == "character-assembly"
+               else set(STAGES[flow["stage"]]) & set(flow["requested_views"]))
     return (set(views) & opened_views(run)) if views is not None else current
 
 
@@ -112,9 +115,21 @@ def project(run):
     elif any(not available(view) for view in current):
         reason = "Select an available image for each view in this stage."
     next_stage = next((i for i in range(stage + 1, len(STAGES)) if set(STAGES[i]) & set(requested)), None)
+    next_views = [v for v in STAGES[next_stage] if v in requested] if next_stage is not None else []
+    if run.get("kind") == "character-assembly":
+        current = list(requested) if stage >= 0 else []
+        next_views = [view for view in requested if any(
+            c["view"] == view and not c.get("slot_managed")
+            and not Path(str(c.get("image_path") or "")).is_file() for c in candidates.values())]
+        # Assembly has no predecessor/selection dependencies. Keep only the
+        # existing stop and in-flight work fences before queuing missing views.
+        reason = "Resume the stopped batch first." if run.get("stop_requested") else ""
+        if busy or (run.get("status") in {"RUNNING", "PREFLIGHT", "REEVALUATING", "STOPPING"}
+                    and not run.get("interrupted")) or (run.get("status") == "QUEUED" and run.get("target_views")):
+            reason = "Wait for queued batch work to finish."
     run["progression"] = {"stage": stage, "current_views": current,
-        "next_views": [v for v in STAGES[next_stage] if v in requested] if next_stage is not None else [],
-        "can_continue": not reason and next_stage is not None, "reason": reason,
+        "next_views": next_views,
+        "can_continue": not reason and bool(next_views), "reason": reason,
         "complete": all(available(v) for v in requested), "prompt_review_required": prompt_review_required(run)}
     warnings = []
     warned = set()
@@ -146,7 +161,8 @@ def advance(workflow, run_id, costume="", expected_stage=None, back_reference=No
         if not run["progression"]["can_continue"]:
             raise ValueError(run["progression"]["reason"] or "All requested stages are already open.")
         targets = run["progression"]["next_views"]
-        next_stage = next(i for i, group in enumerate(STAGES) if targets[0] in group)
+        next_stage = (len(STAGES) - 1 if workflow.pipeline == "character-assembly"
+                      else next(i for i, group in enumerate(STAGES) if targets[0] in group))
         back = "FRONT" if workflow.pipeline == "body-reference" else back_reference or flow.get("back_reference", "BACK_LEFT_3_4")
         back_sources = {"FRONT"} if workflow.pipeline == "body-reference" else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
         if workflow.pipeline != "character-assembly" and back not in back_sources:

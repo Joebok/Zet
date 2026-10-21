@@ -198,8 +198,12 @@
       $("start").hidden = !resumable;
       $("proceed").hidden = false;
       $("proceed").disabled = continuationDisabled(run);
-      $("proceed").textContent = run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
-      $("proceed").title = run.progression.reason || "Generate the next stage from your selected images";
+      $("proceed").textContent = state.pipeline === "character-assembly"
+        ? (run.progression.next_views.length ? "Run all views" : "All views rendered")
+        : run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
+      $("proceed").title = run.progression.reason || (state.pipeline === "character-assembly"
+        ? "Render all remaining requested views from their matching head and body images"
+        : "Generate the next stage from your selected images");
       $("anchor-option").hidden = true;
     }
     const progression = $("progression");
@@ -209,8 +213,13 @@
       const label = document.createElement("p");
       label.textContent = run.progression.prompt_review_required ? "Phase 1 · Analyze and accept the governing prompts below."
         : run.progression.complete ? "All requested views selected. Refinement and publication remain available."
-          : run.progression.stage < 0 ? (state.pipeline === "character-assembly" ? "Ready to assemble FRONT from the matching head and body." : "Prompts accepted · Ready to generate FRONT.")
+          : run.progression.stage < 0 ? (state.pipeline === "character-assembly" ? "Ready to assemble all requested views." : "Prompts accepted · Ready to generate FRONT.")
             : `Stage ${run.progression.stage + 1} · ${run.progression.current_views.join(" + ")}. ${run.progression.reason}`;
+      if (state.pipeline === "character-assembly" && !run.progression.complete) {
+        label.textContent = run.progression.reason || (run.progression.next_views.length
+          ? "Run all views to assemble the remaining requested views without selection pauses."
+          : "All requested views rendered. Select and publish the images you want to keep.");
+      }
       progression.append(label);
       for (const warning of run.reference_warnings || []) {
         const note = document.createElement("p"); note.className = "muted";
@@ -975,7 +984,7 @@
     select.replaceChildren();
     for (const run of state.runs) {
       const phaseChangeLabel = state.pipeline === "head-image" && run.apply_phase_change ? " · Phase change rules" : "";
-      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel}${run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : ""} · ${run.run_id}`, run.run_id));
+      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel}${state.pipeline !== "character-assembly" && run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : ""} · ${run.run_id}`, run.run_id));
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
@@ -1587,7 +1596,7 @@
         if (hasSharedAssetRouter()) $("use-anchor").checked = false;
         await refreshRuns(created.run_id);
         if (hasSharedAssetRouter()) void readiness();
-        setStatus(state.pipeline === "character-assembly" ? "Batch created. Continue to assemble FRONT from the matching head and body." : "Batch created. Analyze and accept its governing prompts, then Continue to generate FRONT.");
+        setStatus(state.pipeline === "character-assembly" ? "Batch created. Run all views to assemble every requested view without selection pauses." : "Batch created. Analyze and accept its governing prompts, then Continue to generate FRONT.");
       } catch (error) { setStatus(error.message, true); await readiness(); }
     });
     $("rename").addEventListener("submit", async (event) => { event.preventDefault(); await handleAction({ dataset: { localAction: "rename" } }).catch((error) => setStatus(error.message, true)); });
