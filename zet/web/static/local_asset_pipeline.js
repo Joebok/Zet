@@ -547,10 +547,14 @@
   }
 
   function viewOverrideInput(run, view) {
-    const section = document.createElement("section");
+    const section = document.createElement("details");
     section.className = "local-pipeline-override";
-    const heading = document.createElement("strong");
+    const heading = document.createElement("summary");
     heading.textContent = `${view} override image`;
+    const body = document.createElement("div");
+    body.className = "local-pipeline-override-body";
+    const row = document.createElement("div");
+    row.className = "local-pipeline-override-input";
     const help = document.createElement("p");
     help.className = "muted";
     help.textContent = "Use your own image as the selected candidate, then Lock it from Selected views. Replaces the selected working slot; published images stay intact until explicitly unlocked and relocked.";
@@ -618,8 +622,12 @@
         apply.disabled = !stagedFile;
       }
     });
-    section.append(heading, help, input, zone, preview, apply, message);
+    row.append(input, zone);
+    body.append(help, row, preview, message);
+    section.append(heading, body);
     window.ZetImageInput.attach(zone, input);
+    const actions = zone.nextElementSibling;
+    actions.insertBefore(apply, actions.querySelector(".image-input-status"));
     return section;
   }
 

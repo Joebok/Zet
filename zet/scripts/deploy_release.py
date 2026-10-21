@@ -137,7 +137,7 @@ def stage(request, update):
         raise RuntimeError("Release target escaped the runtime releases directory.")
     if not release.exists():
         release.parent.mkdir(parents=True, exist_ok=True)
-        run(["git", "clone", "--no-checkout", "--no-hardlinks", str(source), str(release)], timeout=120)
+        run(["git", "-c", "core.longpaths=true", "clone", "--config", "core.longpaths=true", "--no-checkout", "--no-hardlinks", str(source), str(release)], timeout=120)
         run(["git", "-C", str(release), "checkout", "--detach", revision])
         origin = run(["git", "-C", str(source), "remote", "get-url", "origin"])
         run(["git", "-C", str(release), "remote", "set-url", "origin", origin])

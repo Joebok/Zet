@@ -139,6 +139,13 @@ HEAD, index, templates and creative records stay unchanged. Reopen Restart to se
 progress; after a server interruption use **Retry if interrupted**. Uncertain
 delivery reconciles the same branch/PR. Failed attempts/snapshots are retained.
 
+Publication checkouts and new staged releases enable Git `core.longpaths` locally
+before checkout, because their nested runtime directories can exceed Windows'
+default Git path limit even when the source checkout succeeds. This does not
+change user/global Git configuration. A publication failure before its commit
+checkpoint can use **Retry if interrupted** after the running publisher has the
+fix; the retry retains the captured template bytes and uses a fresh checkout.
+
 Use **Open PR**, merge on GitHub, then **Check merge status** and **Update and
 restart**. Neither merge nor update is automatic. Update refreshes GitHub proof:
 the PR must have merged into this repository's main with the published head, the

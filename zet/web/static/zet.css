@@ -3788,12 +3788,37 @@ tr.auxiliary-row td:last-child {
 }
 
 .local-pipeline-override {
-  display: grid;
-  gap: 8px;
   padding: 12px;
 }
 
-.local-pipeline-override > button { justify-self: start; }
+.local-pipeline-override > summary {
+  display: list-item;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.local-pipeline-override-body {
+  display: grid;
+  gap: 8px;
+}
+
+.local-pipeline-override-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.local-pipeline-override-input > .paste-zone {
+  flex: 1 1 180px;
+  min-height: 54px;
+}
+
+.local-pipeline-override-input > .image-input-actions {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+}
 
 .paste-zone {
   align-items: center;

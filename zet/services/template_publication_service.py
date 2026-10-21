@@ -176,10 +176,12 @@ class TemplatePublicationService:
             if not record.get("commit"):
                 self.save(record, checkout=checkout.name)
             if not checkout.exists():
-                git(folder, "clone", "--no-hardlinks", "--no-checkout", str(self.root), str(checkout))
+                git(folder, "-c", "core.longpaths=true", "clone", "--no-hardlinks", "--no-checkout", str(self.root), str(checkout))
             # All network destinations come from configured repository, not request data.
             remote = f"https://github.com/{record['repository']}.git"
             git(checkout, "remote", "set-url", "origin", remote)
+            # Private runtime paths are deeper than the source checkout on Windows.
+            git(checkout, "config", "core.longpaths", "true")
             git(checkout, "config", "core.autocrlf", "false")
             git(checkout, "fetch", "origin", "main")
             if not record.get("commit"):

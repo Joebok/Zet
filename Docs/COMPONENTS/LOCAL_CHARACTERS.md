@@ -5,6 +5,8 @@
 Body, Head, Assembly and Dressing batch views offer Choose image, Paste image and
 a keyboard paste target. PNG, JPEG and WebP images up to 32 MB are previewed before
 **Use as selected** imports them. No render or advisory model is requested.
+The override area starts collapsed. Expanded, its compact paste target sits beside
+the image/action buttons, wrapping when the available width requires it.
 [LocalCharacterOverrideService](../../zet/services/local_character_override_service.py)
 validates the bytes and current selection under the batch state lock. Imports
 replace the selected working slot, otherwise use an empty slot or an unprotected
