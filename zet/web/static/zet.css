@@ -3787,6 +3787,14 @@ tr.auxiliary-row td:last-child {
   cursor: default;
 }
 
+.local-pipeline-override {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.local-pipeline-override > button { justify-self: start; }
+
 .paste-zone {
   align-items: center;
   background: #f8fafc;

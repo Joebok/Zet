@@ -1,5 +1,33 @@
 # Local character assets
 
+## Per-view override images (2026-10-20)
+
+Body, Head, Assembly and Dressing batch views offer Choose image, Paste image and
+a keyboard paste target. PNG, JPEG and WebP images up to 32 MB are previewed before
+**Use as selected** imports them. No render or advisory model is requested.
+[LocalCharacterOverrideService](../../zet/services/local_character_override_service.py)
+validates the bytes and current selection under the batch state lock. Imports
+replace the selected working slot, otherwise use an empty slot or an unprotected
+slot without an image. A full board of available images requires selecting a
+candidate to replace or explicitly clearing a slot. Active batch/slot work blocks
+import. Original candidates/artifacts remain in history; downstream choices and
+published locks remain intact.
+
+Use the existing **Lock** action in Selected views to publish the override. When
+another image is already locked, **Unlock published image** exposes the explicit
+transition before Lock becomes available. Ordinary dependency/publication rules
+still apply. Browse/paste drafts survive gallery polling; stale selection uploads
+are rejected. Clipboard access uses the shared image-input helper and browser
+permissions; choosing a file remains available.
+
+Validation: approved S2 passed; disposable API checks covered all 32 pipeline/view
+imports, replacement, image delivery, stale/invalid refusal and lock preservation.
+Disposable Chromium checks covered all four pages, browse, clipboard events,
+explicit apply, polling, 390px bounds, and Dressing unlock/lock/reload. Service
+checks covered full reserved boards, active/slot fences, concurrent selection,
+portable storage and invalid/oversized input. Native device clipboard permissions
+and live inference were not exercised. No maintained scenario was added.
+
 ## Pipeline view order and continuation controls (2026-10-20)
 
 All four character pipeline pages display view sections and selected-view cards in
@@ -139,6 +167,12 @@ All four local character pages display eight stable slots per view. Initial FRON
 The browser polls at two-second intervals while active, including in review. Updates patch slot/status sections and preserve unsaved observations, human decisions, focus and current candidate. Once a view has a complete ranking, candidate cards and previous/next review navigation follow Luna order, with unranked occupied candidates after ranked candidates in physical slot order; empty slots remain after candidates. This is presentation only: each card retains its physical slot label and its actions remain bound to that slot. Incomplete, stale or failed rankings leave cards and review navigation in physical slot order. Selected/locked outputs require explicit protection transitions; adding alternatives does not modify immutable library locks. Body ranking compares the valid, non-rejected candidate set. See [ADR 0007](../DECISIONS/0007-stable-render-slots.md) for the original slot design; the review contract is now ranking-only.
 
 Re-running a whole view in Body-Reference, Head-Image, Assembly, or Dressing targets every candidate in that view, including candidates created through supplemental slots. The batch runner may skip slot-managed candidates during ordinary recovery because the slot collector owns those asks; the explicit view target lets the rerun render and rank the full replacement set.
+
+Head-Image **Re-run failed** persists the requested view and exactly the failed or
+human-rejected candidate IDs before dispatch. These explicit targets include
+supplemental slots without resetting kept candidates. Disposable checks exercise
+the actual reset/runner methods for both front-quarter views with prepared renders;
+S2 remains Assembly/Dressing regression coverage and does not prove live Head dispatch.
 
 Body-Reference batch/view **Recompile** refreshes the affected candidates' effective
 prompts, including mutable overrides and supplemental slot definitions, from the

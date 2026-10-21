@@ -1194,7 +1194,8 @@ class LocalHeadImageService:
                 render_error="", human_review={"decision": "undecided"},
                 retry_count=int(item.get("retry_count") or 0) + 1,
                 seed=str(random.SystemRandom().randrange(0, 2**63 - 1)))
-        state.update(status="QUEUED", stop_requested=False, error="")
+        state.update(status="QUEUED", stop_requested=False, error="", target_views=[view],
+                     target_candidate_ids=[item["candidate_id"] for item in candidates])
         self._write(root / "state.json", state)
         return self.detail(run_id)
 

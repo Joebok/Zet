@@ -68,6 +68,20 @@ def create_local_character_asset_pipeline_router(
         prefix = f"/api/local/{pipeline}"
         shared_sources = pipeline in {"character-assembly", "costume-dressing"}
 
+        @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/override")
+        async def import_override(request: Request, run_id: str, view: str,
+                                  filename: str = Query("override.png"),
+                                  expected_selected_id: str = Query(...), costume: str = Query(""),
+                                  _pipeline: str = pipeline):
+            contents = bytearray()
+            async for chunk in request.stream():
+                contents.extend(chunk)
+                if len(contents) > 32 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Choose an image under 32 MB.")
+            return call(lambda: service(_pipeline).action("import_override", run_id=run_id,
+                view=view, costume=costume if _pipeline == "costume-dressing" else "",
+                filename=filename, contents=bytes(contents), expected_selected_id=expected_selected_id))
+
         def action(_pipeline: str, name: str, **args: Any):
             return service(_pipeline).action(name, **args)
 

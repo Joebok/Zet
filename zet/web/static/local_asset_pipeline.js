@@ -331,8 +331,13 @@
         article.append(lockState);
         const controls = document.createElement("div");
         controls.className = "button-row compact";
+        const overrideNeedsUnlock = Boolean(candidate.override && asset?.locked && !locked);
+        if (overrideNeedsUnlock) {
+          lockState.textContent = "Override selected. Unlock the published image before locking this override.";
+          addButton(controls, "Unlock published image", "unlock", { view });
+        }
         addButton(controls, locked ? "Unlock" : "Lock", locked ? "unlock" : "lock",
-          { view });
+          { view, disabled: overrideNeedsUnlock });
         if (!locked) addButton(controls, "Unselect", "unselect", { view, candidate: candidate.candidate_id });
         const refine = document.createElement("a");
         refine.textContent = "Refine";
@@ -389,6 +394,7 @@
       : ranking.ordered_candidate_ids || [];
     const rank = rankingOrder.indexOf(candidate.candidate_id);
     status.textContent = `${candidate.slot_waiting ? `Waiting for prerequisites · ${candidate.slot_waiting}` : renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}${ranking.status === "STALE" ? " (stale)" : ""}` : ""}`;
+    if (candidate.override) status.textContent += " / Override";
     card.append(status);
     const renderError = renderErrorDetails(candidate);
     if (renderError) card.append(renderError);
@@ -540,6 +546,83 @@
     }
   }
 
+  function viewOverrideInput(run, view) {
+    const section = document.createElement("section");
+    section.className = "local-pipeline-override";
+    const heading = document.createElement("strong");
+    heading.textContent = `${view} override image`;
+    const help = document.createElement("p");
+    help.className = "muted";
+    help.textContent = "Use your own image as the selected candidate, then Lock it from Selected views. Replaces the selected working slot; published images stay intact until explicitly unlocked and relocked.";
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/webp";
+    input.setAttribute("aria-label", `${view} override image`);
+    const zone = document.createElement("div");
+    zone.className = "paste-zone";
+    zone.setAttribute("aria-label", `Paste ${view} override image`);
+    const preview = document.createElement("img");
+    preview.alt = `${view} override preview`;
+    preview.hidden = true;
+    preview.style.maxWidth = "240px";
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.textContent = "Use as selected";
+    apply.disabled = true;
+    const message = document.createElement("p");
+    message.setAttribute("role", "status");
+    let stagedFile = null, expectedSelected = "", uploading = false;
+    const generation = state.generation, pipeline = state.pipeline, context = contextKey();
+    const current = () => section.isConnected && state.generation === generation && state.pipeline === pipeline
+      && state.run?.run_id === run.run_id && contextKey() === context;
+    const stage = file => {
+      if (!file || !current() || uploading) return;
+      if (file.size > 32 * 1024 * 1024) { message.textContent = "Choose an image under 32 MB."; return; }
+      stagedFile = file;
+      expectedSelected = state.run.selected_views?.[view] || "";
+      const url = URL.createObjectURL(file);
+      preview.onload = preview.onerror = () => URL.revokeObjectURL(url);
+      preview.src = url;
+      preview.hidden = false;
+      apply.disabled = false;
+      message.textContent = "Override staged. Use as selected to apply it.";
+    };
+    input.addEventListener("change", () => stage(input.files?.[0]));
+    zone.addEventListener("paste", event => {
+      const file = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith("image/"))?.getAsFile();
+      if (file) { event.preventDefault(); stage(file); }
+    });
+    apply.addEventListener("click", async () => {
+      if (!stagedFile || !current() || uploading) return;
+      uploading = true;
+      apply.disabled = input.disabled = true;
+      message.textContent = "Importing override…";
+      const params = new URLSearchParams({ filename: stagedFile.name || "pasted-image.png",
+        expected_selected_id: expectedSelected, ...(isCostume() ? { costume: selectedCostume() } : {}) });
+      try {
+        const result = await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/views/${encodeURIComponent(view)}/override?${params}`, {
+          method: "POST", headers: { "Content-Type": stagedFile.type || "application/octet-stream" }, body: stagedFile,
+        });
+        if (!current()) return;
+        mergeLiveRun(result);
+        expectedSelected = result.selected_views?.[view] || "";
+        stagedFile = null;
+        input.value = "";
+        preview.hidden = true;
+        message.textContent = "Override selected. Use Lock in Selected views to publish it.";
+      } catch (error) {
+        if (current()) message.textContent = error.message;
+      } finally {
+        uploading = false;
+        input.disabled = false;
+        apply.disabled = !stagedFile;
+      }
+    });
+    section.append(heading, help, input, zone, preview, apply, message);
+    window.ZetImageInput.attach(zone, input);
+    return section;
+  }
+
   function renderViews(run, host = $("views")) {
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
     const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
@@ -570,6 +653,7 @@
       const ai = run.view_reviews?.[view]?.ai_observations || {};
       summary.append(viewActions);
       details.append(summary);
+      details.append(viewOverrideInput(run, view));
       if (hasSharedAssetRouter() || (state.pipeline === "head-image" && view === "FRONT" && run.front_source)) {
         const roles = state.pipeline === "head-image"
           ? ["front_reference"]
@@ -1258,6 +1342,7 @@
     });
     const content = document.createElement("section");
     content.className = "local-pipeline-review-content";
+    if (candidate.override) view.textContent += " / Override";
     const renderError = renderErrorDetails(candidate);
     // Errors remain visible even when prompt details are collapsed.
     const ranking = run.rankings?.[candidate.view] || {};

@@ -1,5 +1,15 @@
 # Capability code map
 
+Character view override imports (2026-10-20):
+[LocalCharacterOverrideService](../zet/services/local_character_override_service.py)
+owns byte validation, active-work/current-selection fencing, candidate/slot
+adoption and shared manual selection. `LocalImagePipelineWorkflowService` exposes
+`import_override`; the local router accepts raw image bytes at each pipeline's
+view `/override` endpoint. `local_asset_pipeline.js` owns per-view browse/paste,
+preview/apply and the explicit published-image unlock control. S2 protects existing
+publication; disposable checks cover 32 view imports and four pipeline UIs. See
+[local characters](COMPONENTS/LOCAL_CHARACTERS.md#per-view-override-images-2026-10-20).
+
 Head rear-view pilot (2026-10-19):
 [Investigate_Head_Views.py](../Scripts/Investigate_Head_Views.py) owns explicitly
 authorized private snapshot/compile/submit/collect/comparison operations for the

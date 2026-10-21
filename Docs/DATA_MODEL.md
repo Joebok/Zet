@@ -1,5 +1,15 @@
 # Data, configuration, and ownership
 
+Character view overrides use the existing batch `added_candidates`,
+`detached_candidates`, `slots_by_view`, `selected_views` and `front_anchor` state.
+[LocalCharacterOverrideService](../zet/services/local_character_override_service.py)
+creates a distinct candidate with validated uploaded bytes in its own render
+directory and additive `override` provenance (original filename and replaced
+candidate identity). It retains the view's recipe fields for future regeneration;
+these fields do not describe how the uploaded image was made. Existing portable
+path serialization applies. Historical artifacts and published library images
+remain unchanged; no schema migration is required.
+
 Paths below are relative to the **bound universe root** unless stated otherwise. Definitions in code own exact fields; this document describes relationships and compatibility, not a copy of every schema. [LIBRARY](COMPONENTS/LIBRARY.md) explains service workflows; [INVARIANTS](INVARIANTS.md) explains contracts.
 
 ## Persistence map

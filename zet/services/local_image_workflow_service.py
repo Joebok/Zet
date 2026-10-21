@@ -42,6 +42,11 @@ class LocalImagePipelineWorkflowService:
         costume = str(args.get("costume") or "")
         payload = args.get("payload") or {}
         direction = str(args.get("direction") or "")
+        if name == "import_override":
+            from zet.services.local_character_override_service import LocalCharacterOverrideService
+            return LocalCharacterOverrideService(self).import_image(
+                run_id, view, costume, args.get("filename", ""), args.get("contents", b""),
+                args.get("expected_selected_id", ""))
         if name.startswith("refinement_"):
             from zet.services.local_character_refinement_service import LocalCharacterRefinementService
             refinement = LocalCharacterRefinementService(self.app, self.project_root)
