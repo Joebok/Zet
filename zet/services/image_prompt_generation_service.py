@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 import json
 import hashlib
 from pathlib import Path
@@ -22,7 +24,7 @@ class ImagePromptGenerationService:
         "additionalProperties": False,
     }
     INSTRUCTIONS = (
-        "Analyze the supplied image for image generation. Write a concise positive prompt describing "
+        "Analyze the supplied image for image generation. Write a positive prompt describing "
         "the visible subject, composition, art style, lighting, and background. Write conservative "
         "negative guidance for artifacts or unwanted additions without negating visible required content. "
         "Do not infer hidden details. Return only the requested JSON object."
@@ -115,7 +117,7 @@ class ImagePromptGenerationService:
             with self._lock:
                 kind = self._jobs[job_id]["kind"]
             if kind == "identity":
-                draft = self._codex(self.zet_app.config.codex_default_model, asset["image_path"],
+                draft = self._codex(resolve_role_model(self.zet_app.config, "inventory_identity"), asset["image_path"],
                                     instructions=self.IDENTITY_INSTRUCTIONS, schema=self.IDENTITY_SCHEMA)
                 identity = draft.get("identity")
                 if not isinstance(identity, str) or not identity.strip():
@@ -123,9 +125,10 @@ class ImagePromptGenerationService:
                 with self._lock:
                     self._jobs[job_id].update(status="COMPLETE", draft={"identity": identity.strip()})
                 return
-            model = str(self.zet_app.config.ai_image_prompt_generation_model or "image-analysis:latest").strip()
+            model = resolve_role_model(self.zet_app.config, "image_prompt")
             draft = self.model_service.generate_json(model, "You describe image content for image generation.",
-                                                     self.INSTRUCTIONS, self.SCHEMA, images=[asset["image_path"]])
+                                                     self.INSTRUCTIONS, self.SCHEMA, images=[asset["image_path"]],
+                                                     role="image_prompt", render_context={"operation": "generate", "render_references": []})
             prompt = draft.get("prompt")
             negative = draft.get("negative_prompt")
             if not isinstance(prompt, str) or not isinstance(negative, str):
@@ -149,4 +152,4 @@ class ImagePromptGenerationService:
                schema: dict | None = None) -> dict:
         return self.zet_app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
             "codex:" + model.removeprefix("codex:"), "", instructions or self.INSTRUCTIONS,
-            schema or self.SCHEMA, [image_path], task_type="image_prompt_analysis")[0]
+            schema or self.SCHEMA, [image_path], task_type="image_prompt_analysis", role="inventory_identity")[0]

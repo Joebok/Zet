@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import json
 from pathlib import Path
@@ -41,6 +41,8 @@ class AutomationSettings:
     comfyui_timeout_seconds: float = 300.0
     ai_asset_workflow_model: str = "general:latest"
     codex_default_model: str = "gpt-6-luna"
+    ai_narrative_scene_model: str = "general:latest"
+    llm_role_models: dict[str, str] = field(default_factory=dict)
     prompt_condense_model: str = "general:latest"
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
@@ -130,36 +132,27 @@ class PipelineControlService:
         )
 
     def managed_llm_roles(self) -> list[dict]:
-        """Describe configured LLM tasks and their editable Markdown templates."""
-        return [
-            {
-                "key": "asset_workflow",
-                "description": "Asset pipeline analysis and workflow responses.",
-                "templates": [],
-            },
-            {
-                "key": "prompt_condense",
-                "description": "Condenses compiled image prompts before rendering.",
-                "templates": [self._llm_template("Condensation prompt", self.config.prompt_condense_file)],
-            },
-            {
-                "key": "prompt_analysis",
-                "description": "Reviews compiled scene prompts and writes AI prompt analysis.",
-                "templates": [
-                    self._llm_template("Analysis instructions", self.config.ai_prompt_analysis_instructions_file)
-                ],
-            },
-            {
-                "key": "image_description",
-                "description": "Creates Image Inventory catalog identity and costume metadata.",
-                "templates": [],
-            },
-            {
-                "key": "scene_builder",
-                "description": "Turns narrative prose into structured Scene Builder data.",
-                "templates": [],
-            },
-        ]
+        """Use the same inventory as request composition; no handwritten role list."""
+        from zet.services.llm_role_service import ROLES, resolve_role_model, skill_modules
+        from zet.services.llm_skill_service import SKILL_ROOT
+        result = []
+        for role in ROLES:
+            inherited = str(getattr(self.config, role.model_setting))
+            if role.model_setting == "codex_default_model":
+                inherited = "codex:" + inherited.removeprefix("codex:")
+            application = role.skill if role.status != "retired" else "off"
+            modules = skill_modules(role)
+            templates = [self._llm_template(name, str(SKILL_ROOT / name)) for name in modules]
+            if role.key == "prompt_condense":
+                templates.append(self._llm_template("Legacy condensation task", self.config.prompt_condense_file))
+            elif role.key == "prompt_analysis":
+                templates.append(self._llm_template("Legacy analysis instructions", self.config.ai_prompt_analysis_instructions_file))
+            result.append({"key": role.key, "label": role.label, "description": role.description,
+                "status": role.status, "providers": list(role.providers), "required": list(role.capabilities),
+                "skill_application": application, "model_setting": role.model_setting,
+                "inherited_model": inherited, "model": resolve_role_model(self.config, role.key),
+                "model_override": self.config.llm_role_models.get(role.key, ""), "templates": templates})
+        return result
 
     def _llm_template(self, label: str, path_value: str) -> dict:
         path = Path(path_value)
@@ -192,6 +185,8 @@ class PipelineControlService:
             comfyui_timeout_seconds=float(self.config.comfyui_timeout_seconds),
             ai_asset_workflow_model=str(self.config.ai_asset_workflow_model),
             codex_default_model=str(self.config.codex_default_model),
+            ai_narrative_scene_model=str(self.config.ai_narrative_scene_model),
+            llm_role_models=dict(self.config.llm_role_models),
             prompt_condense_model=str(self.config.prompt_condense_model),
             ai_prompt_analysis_model=str(self.config.ai_prompt_analysis_model),
             ai_prompt_analysis_auto_queue_on_render=bool(self.config.ai_prompt_analysis_auto_queue_on_render),
@@ -280,10 +275,21 @@ class PipelineControlService:
             ("AIModels", "LocalBodyReferenceReview"): settings.local_body_reference_review_model,
             ("AIPromptAnalysis", "InstructionsFile"): settings.ai_prompt_analysis_instructions_file,
         }
+        from zet.services.llm_role_service import ROLES
+        updates[("AIModels", "NarrativeScene")] = settings.ai_narrative_scene_model
+        for role in ROLES:
+            updates[("LLMRoles.Models", role.key)] = settings.llm_role_models.get(role.key, "")
         self._update_config_values(updates)
         ConfigService.load(self.config_path)
 
     def _validate_settings(self, settings: AutomationSettings) -> None:
+        from zet.services.llm_role_service import validate_overrides, get_role
+        from zet.services.ai_model_catalog_service import AIModelCatalogService
+        values = validate_overrides(settings.llm_role_models)
+        catalog = AIModelCatalogService(self.config.base_ai_queue_path, config=self.config)
+        for key, model in values.items():
+            if model != self.config.llm_role_models.get(key):
+                catalog.validate(model, required=list(get_role(key).capabilities))
         render_backend = settings.render_backend.strip()
         if render_backend not in self.SAFE_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_RENDER_BACKENDS))
@@ -318,6 +324,7 @@ class PipelineControlService:
         model_settings = (
             ("Asset workflow", settings.ai_asset_workflow_model),
             ("Codex default", settings.codex_default_model),
+            ("Narrative default", settings.ai_narrative_scene_model),
             ("Prompt condensation", settings.prompt_condense_model),
             ("AI prompt analysis", settings.ai_prompt_analysis_model),
             ("Image description", settings.ai_image_description_model),

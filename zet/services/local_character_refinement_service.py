@@ -1,4 +1,5 @@
 """Resumable, image-only character true-ups with explicit same-slot adoption."""
+from zet.services.llm_role_service import resolve_role_model
 from copy import deepcopy
 from pathlib import Path
 import base64
@@ -141,7 +142,7 @@ class LocalCharacterRefinementService:
             views = payload.get("comparison_views", [c["view"] for c in public["comparisons"]])
             if not isinstance(views, list) or set(views) - {c["view"] for c in public["comparisons"]}:
                 raise ValueError("Choose available selected views from this batch for comparison.")
-            model = str(payload.get("model") or "codex:" + self.app.config.codex_default_model.removeprefix("codex:"))
+            model = str(resolve_role_model(self.app.config, "character_refinement", str(payload.get("model") or "")))
             from zet.services.ai_model_catalog_service import AIModelCatalogService
             AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config).validate(model, required=["vision"])
             aid = uuid4().hex
@@ -176,7 +177,7 @@ class LocalCharacterRefinementService:
                 "preserve": "Preserve unaffected visible details; selected comparison views establish continuity.", "proposals": [], "notes": ""}
             def ask(model, prompt, schema, images):
                 return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(model, "", prompt, schema, images,
-                    task_type="character_image_refinement", workflow=pipeline)[0]
+                    task_type="character_image_refinement", role="character_refinement", render_context={"operation": "edit"}, workflow=pipeline)[0]
             report = ImageTrueUpService(ask).compare(analysis["model"], target,
                 [analysis["image_path"], *[i["image_path"] for i in analysis["inputs"]]],
                 {"view": record["view"], "roles": ["Selected image to improve", *["Selected " + i["view"] for i in analysis["inputs"]]],

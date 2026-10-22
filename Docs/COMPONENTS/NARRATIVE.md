@@ -193,3 +193,7 @@ Pending observations retry without invalidating committed authoring. Image
 availability follows [ADR 0023](../DECISIONS/0023-streamlined-image-integrity.md);
 required missing references fail only their dependent operation. Confirmed deletion
 may leave authored references unresolved; it does not silently remove them.
+
+## Prompt-writing role (2026-10-22)
+
+Interview and prompt writing are separate model roles, preserving explicit per-target choices. Synthesis receives repo-managed Qwen guidance selected from planned downstream generation/edit/composite intent while keeping the existing scene/rendering response fields and deterministic reference binding. [LLM roles](LLM_ROLES.md) owns model inheritance, skill adapters and frozen request provenance.

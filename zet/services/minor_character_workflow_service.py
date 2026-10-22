@@ -229,7 +229,8 @@ class MinorCharacterWorkflow:
         if candidate.get("reconstruction_id"):
             comparison = self._reconstruction().compare(candidate["reconstruction_id"], self._candidate_bytes(sid, candidate),
                 {"session_id": sid, "candidate_id": candidate_id}, context,
-                self._candidate_bytes(sid, anchor) if anchor else None, anchor_role="Selected style image: completed identity, costume and style; orientation may change")
+                self._candidate_bytes(sid, anchor) if anchor else None, anchor_role="Selected style image: completed identity, costume and style; orientation may change",
+                review_role="character_review", review_model=frozen["model"] if frozen.get("model_explicit", True) else "")
         else:
             from zet.services.image_true_up_service import ImageTrueUpService
             paths = [str(self._directory(sid) / candidate["filename"]), *self._reference_paths(frozen)]
@@ -240,7 +241,7 @@ class MinorCharacterWorkflow:
             target = {"description": frozen["description"], "identity": frozen["identity"],
                       "preserve": frozen["preserve"], "change_text": frozen["changes"], "proposals": frozen["proposals"],
                       "style": {}, "notes": frozen["notes"], "observations": [], "sources": []}
-            comparison = ImageTrueUpService(lambda model, prompt, schema, images: self._ask(prompt, schema, images, model)).compare(
+            comparison = ImageTrueUpService(lambda model, prompt, schema, images: self._ask(prompt, schema, images, model if frozen.get("model_explicit", True) else None, role="character_review")).compare(
                 frozen["model"], target, paths, {"roles": roles, "task": context})
         with self._lock(sid):
             current = self._read(sid)

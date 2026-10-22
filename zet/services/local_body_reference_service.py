@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 from datetime import datetime
 import hashlib
 import json
@@ -1394,10 +1396,8 @@ class LocalBodyReferenceService:
             "version": 1, "ask_id": ask_id, "character": run["character"], "phase": run["phase"],
             "universe_id": str(run.get("universe_id") or getattr(self.app.config, "universe_id", "Moonsea")),
             "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_ANALYSIS",
-            "worker_type": "ollama_generate", "ollama_model": model or str(
-                getattr(self.app.config, "local_body_reference_review_model", "image-analysis:latest")
-                or "image-analysis:latest"
-            ),
+            "worker_type": "ollama_generate", "ollama_model": resolve_role_model(self.app.config, "body_review_local", model or ""),
+            "llm_role": "body_review_local",
             "prompt_file": "OLLAMA_PROMPT.md", "image_files": [name for name, _ in files], "json_output": True,
             "response_schema": self.analysis_schema(), "expected_output": "response.json", "task_type": "local_body_reference_analysis",
             "auxiliary": True, "target_output_dir": str(output.parent), "target_output_file": output.name,
@@ -2501,8 +2501,8 @@ class LocalBodyReferenceService:
                                       facts=self._review_facts(run, candidate["view"]))
         started = time.perf_counter()
         result, _ = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
-            "codex:" + self.app.config.codex_default_model.removeprefix("codex:"), "", prompt,
-            self.analysis_schema(), images, task_type="local_body_reference_review",
+            resolve_role_model(self.app.config, "body_review_codex"), "", prompt,
+            self.analysis_schema(), images, task_type="local_body_reference_review", role="body_review_codex", render_context={},
             owner={"run_id": run_id, "candidate_id": candidate_id})
         hashes = {"candidate": str(candidate.get("image_sha256") or ""), "front_anchor": str((anchor or {}).get("image_sha256") or "") if len(images) == 2 else ""}
         self.record_analysis(run_id, candidate_id, "luna", result, hashes)

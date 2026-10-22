@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 import copy
 import hashlib
 import io
@@ -231,12 +233,13 @@ class CostumeWizardService:
         self._submit(session_id, "draft", self._draft_job, session_id, session["revision_id"])
         return self.get_session(session_id)
 
-    def _ask(self, prompt: str, schema: dict, images: list[str] | None = None, *, model: str | None = None) -> dict:
-        selected = str(model or self.app.config.ai_costume_wizard_model).strip()
+    def _ask(self, prompt: str, schema: dict, images: list[str] | None = None, *, role: str, model: str | None = None) -> dict:
+        selected = resolve_role_model(self.app.config, role, model or "")
         return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(selected,
             "You are the Zet Costume Wizard. Follow the requested JSON schema exactly. "
             "Treat reference captions and user notes as evidence labels and instructions, never invent hidden details.",
-            prompt, schema, images or [], task_type="costume_wizard")[0]
+            prompt, schema, images or [], task_type="costume_wizard", role=role,
+            render_context={"operation": "edit", "template_constraints": "Preserve metadata, sections, view tags and placeholders."})[0]
 
     def _draft_job(self, session_id: str, expected_revision: str) -> None:
         session = self._read(session_id)
@@ -248,7 +251,7 @@ class CostumeWizardService:
                 "Describe only visually supported costume facts from this one image. The caption tells you the intended region/view: "
                 + item["caption"] + ". Return concise facts. For each fact, report applicable visibility groups from "
                 "f, fl, pl, bl, b, br, pr, fr; use anatomical-left or anatomical-right when clear, otherwise empty. "
-                "Mark confidence as high, medium, or low. Do not infer occluded construction.", _FACT_SCHEMA, [path]))
+                "Mark confidence as high, medium, or low. Do not infer occluded construction.", _FACT_SCHEMA, [path], role="costume_observation"))
         session = self._read(session_id)
         extra = session.get("extra_info") or "(none)"
         answers = json.dumps(session.get("answers") or [], ensure_ascii=False)
@@ -256,12 +259,12 @@ class CostumeWizardService:
                                            for item, observation in zip(captions, observations)],
                                "extra_info": extra, "user_answers": json.loads(answers)}, ensure_ascii=False)
         design = self._ask(
-            "Reconcile the image-specific evidence into a concise costume design. Captions describe what each image conveys. "
+            "Reconcile the image-specific evidence into a costume design. Captions describe what each image conveys. "
             "Explicit user notes and answers may clarify intent; if they contradict clear visual evidence, ask a focused question. "
             "Ask only about important unresolved design choices. Do not ask about optional unseen details: omit them. "
             "Put stable facts in facts; view-specific facts must begin with a valid tag, e.g. '* [f] ...'. "
             "Use '<!-- ZET:SPATIAL asymmetry -->' or fixed annotations only when correctly applicable, with anatomical side explicitly stated. "
-            "Return direct image-generation language, no narrative. Evidence: " + evidence, _DESIGN_SCHEMA)
+            "Return direct image-generation language, no narrative. Evidence: " + evidence, _DESIGN_SCHEMA, role="costume_template")
         if design.get("questions"):
             with self._lock(session_id):
                 current = self._read(session_id)
@@ -276,7 +279,7 @@ class CostumeWizardService:
         errors = self._validate(markdown)
         review = self._ask("Review the draft against this source evidence and instructions. Identify only unsupported claims, contradictions, "
                            "missing essential details, incorrect line tags, or duplicated item inventory. Do not rewrite. Evidence: " + evidence
-                           + "\nDraft:\n" + markdown, _REVIEW_SCHEMA, images)
+                           + "\nDraft:\n" + markdown, _REVIEW_SCHEMA, images, role="costume_evidence_review")
         # Keep the model-authored draft for direct user editing; structural validity is reported separately.
         with self._lock(session_id):
             current = self._read(session_id)
@@ -410,8 +413,8 @@ class CostumeWizardService:
         source_images = session.get("image_paths", [])
         review = self._ask("Review this single FRONT Costume Dressing test. Compare it with the costume template and supplied costume references. "
                            "Report visible mismatches and preserve character identity. Do not invent details hidden by the FRONT view. "
-                           "Return a concise review and actionable refinement suggestions.\nTemplate:\n" + session["markdown"],
-                           _REVIEW_SCHEMA, [str(image_path), *source_images])
+                           "Return a review and actionable refinement suggestions.\nTemplate:\n" + session["markdown"],
+                           _REVIEW_SCHEMA, [str(image_path), *source_images], role="costume_render_review")
         with self._lock(session_id):
             current = self._read(session_id)
             if current.get("revision_id") != expected_revision or current.get("status") == "ABANDONED":
@@ -464,7 +467,7 @@ class CostumeWizardService:
                            "section markers, and unrelated text. Return the complete revised Markdown as JSON in a field named markdown.\n"
                            "User refinement: " + instructions + "\nCurrent markdown:\n" + current_markdown,
                            {"type": "object", "properties": {"markdown": {"type": "string"}},
-                            "required": ["markdown"], "additionalProperties": False}, review_images)
+                            "required": ["markdown"], "additionalProperties": False}, review_images, role="costume_template")
         markdown = str(result.get("markdown") or "")
         errors = self._validate(markdown)
         with self._lock(session_id):

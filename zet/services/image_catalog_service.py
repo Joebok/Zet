@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 import hashlib
 import json
 import re
@@ -821,7 +823,8 @@ Return only the requested JSON field."""
             "pipeline_stage": "DESCRIPTION",
             "ollama_attempt_id": f"{stamp}_IMAGE_DESCRIPTION",
             "worker_type": "ollama_generate",
-            "ollama_model": self.config.ai_image_description_model,
+            "ollama_model": resolve_role_model(self.config, "inventory_metadata"),
+            "llm_role": "inventory_metadata",
             "prompt_file": self.PROMPT_FILE,
             "expected_output": self.RESULT_FILE,
             "task_type": self.TASK_TYPE,

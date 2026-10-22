@@ -4241,7 +4241,7 @@ tr.auxiliary-row td:last-child {
 .managed-llm-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 }
 
 .managed-llm-role {
@@ -4255,6 +4255,19 @@ tr.auxiliary-row td:last-child {
 .managed-llm-role p {
   margin: 0;
 }
+
+.managed-llm-role {
+  align-content: start;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.managed-llm-role h3 { margin: 0; }
+.managed-llm-role button { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.managed-llm-role details button { display: block; width: 100%; margin-top: 6px; }
+.managed-llm-skill { font-weight: 600; }
+.managed-llm-compatibility { margin-top: 16px; min-width: 0; }
+
 
 .managed-llm-templates {
   align-items: center;

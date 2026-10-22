@@ -320,7 +320,7 @@ def main() -> int:
                 data.get("model", "general:latest"), "Return JSON", "Prepared unified queue check",
                 {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]},
                 images=[runtime.entity_library_asset(app.state.test_ids["asset"])["image_path"]] if data.get("vision") and universe == "Test" else [],
-                task_type="unified_queue_check")
+                task_type="unified_queue_check", role="asset_workflow")
             return {"ask_id": job_id}
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc

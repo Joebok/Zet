@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 import platform
 from pathlib import Path
@@ -36,6 +36,7 @@ class Config:
     codex_default_model: str = "gpt-6-luna"
     ai_scene_builder_model: str = "general:latest"
     ai_narrative_scene_model: str = "general:latest"
+    llm_role_models: dict[str, str] = field(default_factory=dict)
     local_body_reference_review_model: str = "image-analysis:latest"
     local_render_auto_queue_after_condense: bool = False
     local_render_backend: str = "comfyui"
@@ -246,6 +247,11 @@ class ConfigService:
             base_folders = ConfigService._base_folders_for_platform(payload)
             prompt_condense = ConfigService._prompt_condense_config(payload)
             ai_models = ConfigService._ai_models_config(payload)
+            from zet.services.llm_role_service import validate_overrides
+            try:
+                role_models = validate_overrides(payload.get("LLMRoles", {}).get("Models", {}))
+            except (ValueError, AttributeError) as exc:
+                raise ConfigServiceError(f"Invalid LLM role settings: {exc}") from exc
             local_render = ConfigService._local_render_config(payload)
             comfyui = ConfigService._comfyui_config(payload)
             zine = ConfigService._zine_config(payload)
@@ -300,6 +306,7 @@ class ConfigService:
                 prompt_condense_file=str(
                     prompt_condense.get("PromptFile", "Config/Prompt_Condense_Tasks/body_reference_condense.md")
                 ),
+                llm_role_models=role_models,
                 ai_asset_workflow_model=str(ai_models.get("AssetWorkflow", "general:latest")),
                 codex_default_model=str(ai_models.get("CodexDefault", "gpt-6-luna")),
                 ai_scene_builder_model=str(ai_models.get("SceneBuilder", "general:latest")),

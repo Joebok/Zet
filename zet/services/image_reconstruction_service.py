@@ -1,6 +1,8 @@
 """Shared reconstruction targets and true-up; original pixels are analysis-only."""
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 import base64
 import hashlib
 import json
@@ -54,12 +56,12 @@ class ImageReconstructionService:
         self.catalog = catalog or AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config)
         self._active = set()
         self._guard = threading.RLock()
-        self.true_up = ImageTrueUpService(self._ask)
+        self.true_up = ImageTrueUpService(lambda model, prompt, schema, images: self._ask(model, prompt, schema, images, role="reconstruction_review"))
 
-    def _ask(self, model, prompt, schema, images):
+    def _ask(self, model, prompt, schema, images, *, role, render_context=None):
         return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(model,
             "Follow the target contract and return the requested JSON.", prompt, schema, images,
-            task_type="image_reconstruction")[0]
+            task_type="image_reconstruction", role=role, render_context=render_context or {"operation": "edit"})[0]
 
     def _snapshot(self, directory, filename, contents):
         if not contents or len(contents) > 20 * 1024 * 1024:
@@ -111,9 +113,9 @@ class ImageReconstructionService:
         source["caption"] = "Primary identity and visible design, subject to explicit changes"
         return [(source, contents)], payload
 
-    def prepare(self, payload, references=None, *, style=None):
+    def prepare(self, payload, references=None, *, style=None, role="reconstruction_prompt"):
         """Create a board-independent target; callers own their render allocation."""
-        model = str(payload.get("model") or self.app.config.ai_image_prompt_generation_model).strip()
+        model = resolve_role_model(self.app.config, role, str(payload.get("model") or ""))
         if model not in self.options()["models"]:
             raise ValueError("Choose an available Codex or vision-capable Ollama analysis model.")
         style = style or universe_style(self.app.config.base_library_path)
@@ -153,9 +155,9 @@ class ImageReconstructionService:
                 old = self._read(job_id)
                 self.validate_sources(old)
                 return old
-            return self._prepare_record(job_id, directory, payload, references, model, style)
+            return self._prepare_record(job_id, directory, payload, references, model, style, role)
 
-    def _prepare_record(self, job_id, directory, payload, references, model, style):
+    def _prepare_record(self, job_id, directory, payload, references, model, style, role):
         sources = []
         for index, (metadata, contents) in enumerate(references):
             filename, checksum = self._snapshot(directory, f"sources/{index}", contents)
@@ -163,7 +165,7 @@ class ImageReconstructionService:
         if not sources:
             raise ValueError("Choose at least one identity reference.")
         target = target_brief(payload, style, sources)
-        job = {"id": job_id, "version": 2, "instruction_version": 2, "model": model,
+        job = {"id": job_id, "version": 2, "model_explicit": payload.get("model_explicit", bool(payload.get("model"))), "instruction_version": 2, "model": model, "llm_role": role,
                "status": "PREPARED", "error": "", "source": sources[0], "source_file": sources[0]["filename"],
                "style": style, "notes": target["notes"], "target": target, "target_hash": fingerprint(target),
                "content_prompt": "", "uncertainties": [], "prompt": "", "render_request_id": job_id}
@@ -212,7 +214,9 @@ class ImageReconstructionService:
               "discarded equipment; keep those designs in source observations only. Bound hair length using visible face/neck landmarks. For reference "
               "views omit source pose, gaze and background when the task context requests neutral views. "
               "Mark proposed unseen completions separately and ask material unresolved questions.\n"
-            + target_instructions(job["target"]), self.DRAFT_SCHEMA, images))
+            + target_instructions(job["target"]), self.DRAFT_SCHEMA, images, role=job.get("llm_role", "reconstruction_prompt"),
+            render_context={"operation": "mixed" if job.get("llm_role") == "character_description" else "generate",
+                "prompt_fields": ["content_prompt"], "render_references": [], "style": job["style"], "target": job["target"]}))
         job.update(content_prompt=draft["content_prompt"].strip(), uncertainties=draft["uncertainties"], status="READY")
         job["target"].update(description=job["content_prompt"], identity=draft["identity"],
                              proposals=draft["proposals"], questions=draft["questions"], observations=draft["observations"])
@@ -226,9 +230,10 @@ class ImageReconstructionService:
         refs = [(dict(r), self._source_bytes(old, r)) for r in old["target"]["sources"]]
         target = old["target"]
         new = self.prepare({"model": old["model"], "preserve": target["preserve"],
-            "changes": target["change_text"], "notes": target["notes"], "context": target["context"]}, refs, style=old["style"])
+            "changes": target["change_text"], "notes": target["notes"], "context": target["context"]}, refs, style=old["style"], role=old.get("llm_role", "reconstruction_prompt"))
         new["target"].update(description=description, identity=identity, proposals=proposals,
                              observations=target.get("observations", []))
+        new["model_explicit"] = old.get("model_explicit", True)
         new.update(content_prompt=description, status="READY", uncertainties=old["uncertainties"],
                    parent_task_id=job_id, target_hash=fingerprint(new["target"]))
         new["prompt"] = self.compose(new)
@@ -288,16 +293,18 @@ class ImageReconstructionService:
             raise ValueError("Invalid comparison ID.")
         return self._path(job_id).parent / "reports" / report_id / "report.json"
 
-    def compare(self, job_id, contents, candidate, context, anchor=None, *, report_id=None, anchor_role="Approved front: completed design and style"):
+    def compare(self, job_id, contents, candidate, context, anchor=None, *, report_id=None, anchor_role="Approved front: completed design and style",
+                review_role="reconstruction_review", review_model=""):
         job = self._read(job_id)
         self.validate_sources(job)
+        review_model = resolve_role_model(self.app.config, review_role, review_model or (job["model"] if job.get("model_explicit", True) else ""))
         report_id = report_id or work_id("reconstruction")
         path = self._report_path(job_id, report_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         filename, checksum = self._snapshot(path.parent, "candidate", contents)
         report = {"id": report_id, "task_id": job_id, "target_hash": job["target_hash"],
                   "candidate": candidate, "candidate_sha256": checksum, "context": context,
-                  "model": job["model"], "instruction_version": self.true_up.INSTRUCTION_VERSION,
+                  "model": review_model, "llm_role": review_role, "instruction_version": self.true_up.INSTRUCTION_VERSION,
                   "source_hashes": [r["sha256"] for r in job["target"]["sources"]],
                   "status": "RUNNING", "error": "", "items": [], "summary": ""}
         write_json_atomic(path, report)
@@ -309,7 +316,9 @@ class ImageReconstructionService:
                 anchor_file, anchor_hash = self._snapshot(path.parent, "front", anchor)
                 images.append(str(path.parent / anchor_file)); roles.append(anchor_role)
                 report["anchor_sha256"] = anchor_hash
-            report.update(self.true_up.compare(job["model"], job["target"], images,
+            reviewer = ImageTrueUpService(lambda model, prompt, schema, images: self._ask(
+                model, prompt, schema, images, role=review_role, render_context={"operation": "edit"}))
+            report.update(reviewer.compare(review_model, job["target"], images,
                                                {"roles": roles, "task": context}))
             report["status"] = "COMPLETE"
         except Exception as exc:
@@ -466,7 +475,7 @@ class ImageReconstructionService:
 
     def options(self):
         return {"models": [item["id"] for item in self.catalog.models(required=["vision"])],
-                "default_model": self.app.config.ai_image_prompt_generation_model,
+                "default_model": resolve_role_model(self.app.config, "reconstruction_prompt"),
                 "style": universe_style(self.app.config.base_library_path)}
 
     def start(self, payload):
@@ -512,7 +521,8 @@ class ImageReconstructionService:
             image = str(self._path(job_id).parent / job["source_file"])
             draft = self.analyzer.model_service.generate_json(job["model"],
                 "Describe visible content independently of rendering style.", self.INSTRUCTIONS,
-                self.SCHEMA, images=[image])
+                self.SCHEMA, images=[image], role="reconstruction_prompt", render_context={"operation": "generate",
+                    "render_references": [], "style": job["style"], "canvas": {"width": job["width"], "height": job["height"]}})
             content = draft.get("content_prompt")
             uncertainties = draft.get("uncertainties")
             if (not isinstance(content, str) or not content.strip() or not isinstance(uncertainties, list)

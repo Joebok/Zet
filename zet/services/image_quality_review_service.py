@@ -200,12 +200,12 @@ class ImageQualityReviewService:
             if hasattr(self.model_service, "generate_json_with_evidence"):
                 response, runtime_evidence = self.model_service.generate_json_with_evidence(
                     model, system, prompt, schema,
-                    images=[review_reference, *([review_pose] if review_pose else []), review_image]
+                    images=[review_reference, *([review_pose] if review_pose else []), review_image], role="recipe_qa"
                 )
             else:
                 response = self.model_service.generate_json(
                     model, system, prompt, schema,
-                    images=[review_reference, *([review_pose] if review_pose else []), review_image]
+                    images=[review_reference, *([review_pose] if review_pose else []), review_image], role="recipe_qa"
                 )
                 runtime_evidence = {}
             review = self.finalize_review(

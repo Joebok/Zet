@@ -453,6 +453,7 @@ const settingAiPromptAnalysisModel = document.querySelector("#setting-ai-prompt-
 const settingAiImageDescriptionModel = document.querySelector("#setting-ai-image-description-model");
 const settingImagePromptGenerationModel = document.querySelector("#setting-image-prompt-generation-model");
 const settingCostumeWizardModel = document.querySelector("#setting-costume-wizard-model");
+const settingNarrativeDefaultModel = document.querySelector("#setting-narrative-default-model");
 const settingQuickCharacterWizardModel = document.querySelector("#setting-quick-character-wizard-model");
 
 const settingLocalBodyReferenceReviewModel = document.querySelector("#setting-local-body-reference-review-model");
@@ -837,6 +838,7 @@ const builderImagePicker = {
   onError: (error) => showActionMessage(error.message, "error"),
 };
 const ollamaModelControls = () => [
+  settingNarrativeDefaultModel,
   settingAiAssetWorkflowModel,
   settingPromptCondenseModel,
   settingAiPromptAnalysisModel,
@@ -10653,6 +10655,7 @@ function renderPipelineControls(payload) {
   settingAiPromptAnalysisAutoQueueOnRender.checked = Boolean(automation.ai_prompt_analysis_auto_queue_on_render);
   setOllamaModelValue(settingAiAssetWorkflowModel, automation.ai_asset_workflow_model || "");
   setCodexDefaultModelValue(settingCodexDefaultModel, automation.codex_default_model || "gpt-6-luna");
+  setOllamaModelValue(settingNarrativeDefaultModel, automation.ai_narrative_scene_model || "general:latest");
   setOllamaModelValue(settingPromptCondenseModel, automation.prompt_condense_model || "");
   setOllamaModelValue(settingAiPromptAnalysisModel, automation.ai_prompt_analysis_model || "");
   setOllamaModelValue(settingAiImageDescriptionModel, automation.ai_image_description_model || "");
@@ -10687,41 +10690,62 @@ function setLocalRenderCheckpointValue(value) {
 
 
 function renderManagedLlmRoles(roles = []) {
-  const byKey = new Map(roles.map((role) => [role.key, role]));
-  for (const container of document.querySelectorAll("[data-llm-role]")) {
-    const role = byKey.get(container.dataset.llmRole) || {};
-    const description = container.querySelector(".managed-llm-description");
-    const templates = container.querySelector(".managed-llm-templates");
-    description.textContent = role.description || "";
-    templates.replaceChildren();
-    if (!(role.templates || []).length) {
-      const note = document.createElement("span");
-      note.className = "managed-llm-no-template";
-      note.textContent = "Prompt assembled by the task; no reusable Markdown template.";
-      templates.append(note);
-      continue;
-    }
-    for (const template of role.templates) {
+  const active = document.querySelector("#managed-llm-active");
+  const compatibility = document.querySelector("#managed-llm-compatibility");
+  active.replaceChildren();
+  compatibility.replaceChildren();
+  for (const role of roles) {
+    const card = document.createElement("article");
+    card.className = "managed-llm-role";
+    card.dataset.llmRole = role.key;
+    const heading = document.createElement("h3");
+    heading.textContent = role.label;
+    const description = document.createElement("p");
+    description.textContent = role.description;
+    const skill = document.createElement("p");
+    skill.className = "managed-llm-skill";
+    const enabled = role.skill_application !== "off";
+    skill.textContent = `Qwen Image 2.1: ${enabled ? `Yes — ${role.skill_application}` : "No"}. ${
+      role.status === "retired" ? "Inactive configuration." : enabled
+        ? "Uses the repository-managed rules for this purpose." : "This role does not write or analyze render prompts."}`;
+    const support = document.createElement("p");
+    support.textContent = `${role.providers.join(" / ")} · ${role.required.join(", ")} · ${role.status}`;
+    const inherited = document.createElement("p");
+    inherited.textContent = `Default: ${role.inherited_model} (${role.model_setting}). Effective model: ${role.model}.`;
+    const label = document.createElement("label");
+    label.textContent = "Role model override";
+    const control = document.createElement("select");
+    control.id = `llm-role-${role.key}`;
+    control.dataset.llmRoleModel = role.key;
+    control.setAttribute("form", "automation-form");
+    control.add(new Option(`Use default (${role.inherited_model})`, ""));
+    if (role.model_override) control.add(new Option(role.model_override, role.model_override));
+    control.value = role.model_override || "";
+    control.disabled = role.status === "retired";
+    label.append(control);
+    card.append(heading, description, skill, support, inherited, label);
+    control.addEventListener("change", () => {
+      inherited.textContent = `Default: ${role.inherited_model} (${role.model_setting}). Effective model: ${control.value || role.inherited_model}.`;
+      updateDirtyIndicators();
+    });
+    const instructions = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `Instruction files (${(role.templates || []).length})`;
+    instructions.append(summary);
+    for (const template of role.templates || []) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = `Edit ${template.label}`;
       button.title = template.path;
-      button.addEventListener("click", () => {
-        const sourcePath = role.key === "prompt_analysis"
-          ? settingAiPromptAnalysisFile.value
-          : template.path;
-        openSourceEditorForSource({
-          source_kind: "config_prompt_template",
-          source_path: sourcePath,
-          source_label: template.label,
-          editable: true,
-        }, showLocalImageConfigMessage);
-      });
-      const path = document.createElement("span");
-      path.className = "managed-llm-template-path";
-      path.textContent = template.display_path || template.path;
-      templates.append(button, path);
+      button.addEventListener("click", () => openSourceEditorForSource({
+        source_kind: "config_prompt_template", source_path: template.path,
+        source_label: template.label, editable: true,
+      }, showLocalImageConfigMessage));
+      instructions.append(button);
     }
+    if ((role.templates || []).length) card.append(instructions);
+    (role.status === "active" ? active : compatibility).append(card);
+    window.ZetModelPicker?.attach(control, { providers: role.providers, required: role.required, allowDefault: true });
   }
 }
 
@@ -10755,7 +10779,7 @@ async function refreshOllamaModelOptions(refresh = false) {
     for (const control of ollamaModelControls()) {
       setSelectOptions(control, control === settingImagePromptGenerationModel
         ? (payload.vision_models || []) : (payload.models || []));
-      if ([settingImagePromptGenerationModel, settingCostumeWizardModel, settingQuickCharacterWizardModel].includes(control)) addCodexPromptModels(control);
+      addCodexPromptModels(control);
       setOllamaModelValue(control, current.get(control));
     }
     const showMessage = activePageName() === "local-image-config" ? showLocalImageConfigMessage : showAiControlsMessage;
@@ -10860,6 +10884,8 @@ function automationPayloadFromForm() {
     ai_harvest_auto_enabled: settingAiHarvestAuto.checked,
     ai_harvest_interval_seconds: Number(settingAiHarvestInterval.value || 0),
     ai_prompt_analysis_auto_queue_on_render: settingAiPromptAnalysisAutoQueueOnRender.checked,
+    llm_role_models: Object.fromEntries([...document.querySelectorAll("[data-llm-role-model]")].map(control => [control.dataset.llmRoleModel, control.value])),
+    ai_narrative_scene_model: settingNarrativeDefaultModel.value,
     ai_asset_workflow_model: settingAiAssetWorkflowModel.value,
     codex_default_model: settingCodexDefaultModel.value.trim(),
     prompt_condense_model: settingPromptCondenseModel.value,

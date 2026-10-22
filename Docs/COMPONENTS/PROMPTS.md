@@ -86,10 +86,12 @@ The same machine table configures the Qwen prefix cache (`cache_device` accepts
 `int4`). Metadata records configured placement/precision separately from whether
 ComfyUI inserted and ran the cache node.
 
-Narrative text synthesis requests the shortest complete scene/rendering prose rather than fixed
-word/character limits. It explicitly retains equipment exclusions, anatomy, gesture ownership
-and the strength of relative-height comparisons. Action belongs in scene; rendering supplies
-visual treatment without repeating action. This is model guidance, not a guarantee of live output.
+Narrative text synthesis now uses the repo-owned Qwen skill to govern scene/rendering prose,
+including length and structure. Generic shortest/concise instructions and forced openings no
+longer compete with that guidance. It retains equipment exclusions, anatomy, gesture ownership
+and relative-height comparisons. Action belongs in scene; rendering supplies visual treatment
+without repeating action. [LLM roles](LLM_ROLES.md) owns skill adapters and routing. This is
+model guidance, not a guarantee of live output.
 Reference metadata does not establish physical height from source-image framing.
 
 Subscene `use_transparent_background` controls interview/synthesis context and
@@ -192,3 +194,7 @@ The local Body compiler accepts one explicitly supplied batch design reference, 
 ## Simple local Assembly prompt (2026-10-20)
 
 `compile_character_assembly_job` limits local generation and previews to ordered `body_reference`/`head_image` inputs. The required head retains its existing internal `subject_reference` schema role. Additional anchor/subject references and embedded supplemental-image tags are omitted. The task template follows the older natural-join wording: preserve supplied body, head, orientation, gaze and style; blend only the immediate junction. No canonical-style restyling directive is added. Local Assembly no longer compiles through accepted governing-template overlays. Its ranking-only FRONT attachment is owned by the ranking service and is absent from render prompts/manifests. Traditional pipeline retirement remains unchanged.
+
+## Prompt skill boundary (2026-10-22)
+
+Qwen guidance is applied only to appropriate existing LLM authoring, fragment and review calls. Analysis-only reconstruction images do not make a prompt an edit. Existing schemas, source markers, canvas settings, ordered reference bindings and deterministic character/alignment/correction compilation remain authoritative. [LLM roles](LLM_ROLES.md) owns the integration and package update procedure.

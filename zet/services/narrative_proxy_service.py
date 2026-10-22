@@ -39,10 +39,20 @@ class NarrativeProxyService:
             "workflow": "Narrative",
         }
         if schema:
+            detail = job["detail"]
+            role = "narrative_interview" if job["kind"] == "interview" else "narrative_prompt"
+            operation = ("composite" if detail["kind"] == "assembly" and detail.get("assembly_mode") == "assemble_references"
+                         else "edit" if detail["kind"] == "assembly" or detail.get("source_snapshot", {}).get("image_file")
+                         else "composite" if job.get("references") else "generate")
+            manifest.update(llm_role=role, llm_context={"operation": operation,
+                "render_references": [{key: ref.get(key) for key in ("label", "role", "image_index")} for ref in job.get("references", [])],
+                "bindings_owned_by_zet": True, "canvas": {"width": detail["width"], "height": detail["height"]},
+                "style": detail["context"].get("style", ""), "direction": job.get("message", ""),
+                "transparent_background": detail.get("use_transparent_background", False)})
             manifest.update(ollama_model=job.get("model") or self.config.ai_narrative_scene_model, ollama_chat=True, json_output=True,
                             ollama_allow_unmanaged_model=True,
                             response_schema=schema, ollama_temperature=0.2, ollama_think=False,
-                            ollama_request_options={"system": "You are a concise illustration assistant. Keep reasoning minimal. "
+                            ollama_request_options={"system": "You are an illustration assistant. Keep reasoning minimal. "
                                                     "Return only the requested JSON, without explaining your process."})
         else:
             manifest.update(ollama_model="", image_generation="comfyui", render_preset=RENDER_PRESET,

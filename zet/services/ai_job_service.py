@@ -125,7 +125,8 @@ class AIJobService:
         return None
 
     def submit_text(self, model, system, prompt, schema=None, images=None, *, job_id=None,
-                    consumer="zet-structured", owner=None, task_type="structured_inference", options=None, workflow=None, admission=None):
+                    consumer="zet-structured", owner=None, task_type="structured_inference", options=None, workflow=None, admission=None,
+                    role=None, render_context=None):
         from zet.services.storage_health_service import storage_health, StorageUnavailable
         if not storage_health(self.paths.config).poll()["available"]:
             from zet.services.ai_workflow_service import current_workflow, AIPending
@@ -158,6 +159,8 @@ class AIJobService:
                    "ollama_model": model, "ollama_attempt_id": job_id, "prompt_file": "prompt.md",
                    "image_files": files, "response_schema": schema, "expected_output": "answer.json",
                    "task_type": task_type, **(owner or {})}
+            ask["llm_role"] = role
+            ask["llm_context"] = render_context or {}
             ask["workflow"] = workflow or (owner or {}).get("pipeline") or task_type
             request = {"version": 1, "provider": provider, "model": model, "system": system,
                        "prompt": prompt, "images": files, "schema": schema, "output": "answer.json",
@@ -337,6 +340,8 @@ class AIJobService:
         from zet.services.ai_workflow_service import current_workflow, work_id, AIPending
         context = current_workflow.get()
         if context is not None:
+            # Keep existing continuation identities: guidance is frozen at publication,
+            # and changing the installed skill must not create another provider call.
             signature = json.dumps([system, prompt, schema,
                                    [hashlib.sha256(Path(image).read_bytes()).hexdigest() for image in images or []]], sort_keys=True)
             metadata.setdefault("job_id", "AI_" + hashlib.sha256((context["id"] + signature).encode()).hexdigest()[:32])

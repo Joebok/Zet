@@ -1793,58 +1793,32 @@
           <div class="review-header">
             <div>
               <h2>Managed LLM Roles</h2>
-              <p class="status-text">Each task uses the selected compatible Codex or Ollama model. Markdown instructions can be opened in the Template Editor.</p>
+              <p class="status-text">Each role shows its supported models and Qwen guidance. Task/session choices take precedence over role overrides; an empty override inherits the listed default. Instructions open in the Template Editor.</p>
             </div>
             <button id="refresh-ollama-models" type="button">Refresh Models</button>
           </div>
-          <div class="managed-llm-grid">
-            <article class="managed-llm-role">
-              <label>Codex default model<select id="setting-codex-default-model" form="automation-form"><option value="">Select a model</option></select></label>
-              <p class="managed-llm-description">Codex CLI runs this model with high reasoning effort.</p>
-            </article>
-            <article class="managed-llm-role" data-llm-role="asset_workflow">
-              <label>Asset workflow<select id="setting-ai-asset-workflow-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role" data-llm-role="prompt_condense">
-              <label>Prompt condensation<select id="setting-prompt-condense-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role" data-llm-role="prompt_analysis">
-              <label>AI prompt analysis<select id="setting-ai-prompt-analysis-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <label>Instructions file<input id="setting-ai-prompt-analysis-file" type="text" form="automation-form"></label>
-              <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role" data-llm-role="image_description">
-              <label>Image Inventory catalog metadata<select id="setting-ai-image-description-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role">
-              <label>Image prompt generation model<select id="setting-image-prompt-generation-model" form="automation-form"></select></label>
-              <p class="managed-llm-description">Describe images using an Ollama vision model or a Codex model.</p>
-            </article>
-            <article class="managed-llm-role">
-              <label>Costume Wizard model<select id="setting-costume-wizard-model" form="automation-form"></select></label>
-              <p class="managed-llm-description">Analyzes costume references, drafts templates, and reviews test renders. Defaults to Codex GPT-6 Luna.</p>
-            </article>
-            <article class="managed-llm-role">
-              <label>Minor Character model<select id="setting-quick-character-wizard-model" form="automation-form"></select></label>
-              <p class="managed-llm-description">Analyzes character references and reviews three-view drafts. Defaults to Codex GPT-6 Luna.</p>
-            </article>
-            <article class="managed-llm-role" data-llm-role="scene_builder">
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
-            <article class="managed-llm-role" data-llm-role="local_body_reference_review">
-              <label>Legacy Local Body-Reference review model<select id="setting-local-body-reference-review-model" form="automation-form"></select></label>
-              <p class="managed-llm-description"></p>
-              <div class="managed-llm-templates"></div>
-            </article>
+          <h3>Model defaults</h3>
+          <div class="settings-form">
+            <label>Codex default model<select id="setting-codex-default-model" form="automation-form"></select></label>
+            <label>Narrative default model<select id="setting-narrative-default-model" form="automation-form"></select></label>
+            <label>Inventory metadata default<select id="setting-ai-image-description-model" form="automation-form"></select></label>
+            <label>Image prompt / reconstruction default<select id="setting-image-prompt-generation-model" form="automation-form"></select></label>
+            <label>Costume Wizard default<select id="setting-costume-wizard-model" form="automation-form"></select></label>
+            <label>Minor / Quick Character default<select id="setting-quick-character-wizard-model" form="automation-form"></select></label>
+            <label>Body local assessment default<select id="setting-local-body-reference-review-model" form="automation-form"></select></label>
           </div>
+          <div id="managed-llm-active" class="managed-llm-grid"></div>
+          <details class="managed-llm-compatibility">
+            <summary>Compatibility and retired roles</summary>
+            <p>Saved settings and historical continuations are retained. These settings do not enable retired workflows.</p>
+            <div class="settings-form">
+              <label>Traditional asset default<select id="setting-ai-asset-workflow-model" form="automation-form"></select></label>
+              <label>Traditional condensation default<select id="setting-prompt-condense-model" form="automation-form"></select></label>
+              <label>Retired scene analysis default<select id="setting-ai-prompt-analysis-model" form="automation-form"></select></label>
+              <label>Retired analysis instructions<input id="setting-ai-prompt-analysis-file" form="automation-form"></label>
+            </div>
+            <div id="managed-llm-compatibility" class="managed-llm-grid"></div>
+          </details>
         </section>
         <section class="control-panel">
           <h2>Image Generation</h2>

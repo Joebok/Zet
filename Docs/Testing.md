@@ -1,5 +1,13 @@
 # Local testing
 
+## Repo-managed Qwen guidance and LLM roles (2026-10-22)
+
+`npm.cmd run test:e2e` passed all four approved scenarios initially (44.4s) and after final integration changes (40.8s). The final run emitted the existing nonfatal Windows usage-maintenance file-sharing warning. An intervening invocation correctly refused the disposable browser fixture's occupied port; the owned fixture was stopped before the successful final run. No maintained scenario was added; the queue fixture now supplies an explicit skill-free role.
+
+Disposable checks passed 371 request cases across role/provider/operation/publication variants, imported-source hashes, original request/schema/options/image preservation, appropriate modules despite analysis-only attachments, missing-file/invalid-role/operation failures, updated versus frozen instructions, role-model inheritance, Config TOML save/clear, complete cards and AST caller inventory. Actual isolated Chromium controls verified all 25 cards, Qwen indicators, popup selection, override save/reload/clear, Template Editor loading, no browser errors and containment at 1280px and 390px. Screenshots were inspected under ignored `test-results/qwen-ui/`. Changed Python AST, JavaScript syntax and `git diff --check` passed.
+
+These checks establish prepared-request integration and UI behavior, not live model adherence, image quality, production deployment or physical-device behavior. No live inference, normal-library writes, dependencies or permanent tests were added. See [LLM roles](COMPONENTS/LLM_ROLES.md) and the [completed plan](../plans/completed/qwen-llm-roles.md).
+
 ## Costume rotation staging (2026-10-21)
 
 `npm.cmd run test:e2e` passed all four approved scenarios (41.5s). Disposable

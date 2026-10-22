@@ -81,3 +81,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 | [0023 - Available images and verified handoffs](0023-streamlined-image-integrity.md) | File availability, managed versions, incremental usages, confirmed deletion and async indexes | Accepted 2026-10-17 |
 
 [0024 - Character template versions and explicit view references](0024-character-template-versions.md) records batch-local proposals, compiler overlays, confirmed promotion and selected-view conditioning (accepted locally 2026-10-17; artistic quality unverified).
+
+[0027 - Repository-managed LLM roles and skill composition](0027-repo-managed-llm-skills.md) records provider-independent skill ownership, explicit purpose classification, frozen guidance and role model inheritance (accepted locally 2026-10-22).

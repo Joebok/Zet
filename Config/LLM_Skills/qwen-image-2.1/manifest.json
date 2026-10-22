@@ -1,0 +1,12 @@
+{
+  "skill": "qwen-image-2-1-prompter",
+  "source_location": "C:/Users/Joe/.codex/skills/qwen-image-2-1-prompter",
+  "import_date": "2026-10-22",
+  "integration_version": 1,
+  "source_hashes": {
+    "SKILL.md": "4bc36802f16a4f58eab1a031f6cd1c917106fb6e840da0c82ffe7dc1003815f2",
+    "references/t2i_rules.md": "982a7dbae094ec89a6f1b39f0fda5f969caad930aba6cb6763984248060809f1",
+    "references/edit_rules.md": "c09fd43ac017ba97e6ae9e142d52ddb5a2a6c84802156fe5bfb935a09b265946",
+    "references/cheat_sheet.md": "b26849704b69c82cfadfd529c24c24ca2106320f95508dfef4f39e4192889350"
+  }
+}

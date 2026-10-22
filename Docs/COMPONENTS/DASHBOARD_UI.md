@@ -125,3 +125,7 @@ cover desktop, 1133 × 610 and 1133 × 560 iPad mini landscape, 1024 × 640, and
 sizes. Activation errors mean partial evidence, even without overflow. See
 [Testing](../Testing.md) for the four maintained fast scenarios, isolation, and
 approval requirements for new permanent tests.
+
+## Managed LLM Roles (2026-10-22)
+
+Config now renders the shared role registry, with active and compatibility/retired groups, separate model defaults, per-role inherited/overridden model choices, provider/capability requirements, Qwen applicability indicators and collapsible Template Editor links. [LLM roles](LLM_ROLES.md) owns the inventory and semantics. Disposable fixture checks cover actual override/save/reload/clear and source opening at 1280px/390px; physical-device and live-model behavior remain unverified.

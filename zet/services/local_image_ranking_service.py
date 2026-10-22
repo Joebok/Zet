@@ -1,6 +1,8 @@
 """Shared Luna invocation for comparative local image ranking."""
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 from collections.abc import Callable
 from pathlib import Path
 
@@ -102,7 +104,8 @@ def rank_images_with_luna(
         "required": ["ranking"],
         "additionalProperties": False,
     }
-    value, _ = paths.jobs.generate_json("codex:" + model.removeprefix("codex:"), "", prompt, schema,
+    model = resolve_role_model(paths.config, "image_ranking")
+    value, _ = paths.jobs.generate_json(model, "", prompt, schema,
                                       [*(reference_image_paths or []), *image_paths],
-                                      task_type="local_image_ranking", timeout=timeout, owner=owner or {}, admission=admission)
+                                      task_type="local_image_ranking", role="image_ranking", render_context={}, timeout=timeout, owner=owner or {}, admission=admission)
     return validate_ranking(value, candidate_ids), model

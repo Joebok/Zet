@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 import base64
 import binascii
 from datetime import datetime, timezone
@@ -211,7 +213,8 @@ class QuickCharacterWizardService:
                             "managed_checksum": ref.get("managed_checksum", "")})
         session = {"session_id": sid, "name": name, "notes": str(payload.get("notes") or "").strip(),
                    "version": 2, "style_mode": style_mode, "preserve": preserve, "changes": changes,
-                   "model": str(payload.get("model") or self.app.config.ai_quick_character_wizard_model),
+                   "model": resolve_role_model(self.app.config, "character_description", str(payload.get("model") or "")),
+                   "model_explicit": bool(payload.get("model")),
                    "framing": framing, "side": side, "references": records, "description": "", "identity": "",
                    "observations": [], "proposals": [], "proposals_approved": False,
                    "questions": [], "answers": [], "revision_id": uuid4().hex,
@@ -256,15 +259,16 @@ class QuickCharacterWizardService:
             with _LOCK:
                 _ACTIVE.discard(key)
 
-    def _ask(self, prompt: str, schema: dict, images: list[str], model: str | None = None) -> dict:
-        model = model or self.app.config.ai_quick_character_wizard_model
+    def _ask(self, prompt: str, schema: dict, images: list[str], model: str | None = None, *, role: str) -> dict:
+        model = resolve_role_model(self.app.config, role, model or "")
         system = ("You are the Zet Quick Character Wizard. Follow the JSON schema. Treat captions as reference roles. "
                   "Preserve stable identity, clothing, equipment, style and anatomical asymmetry. "
                   "Explicit user changes override conflicting reference details; retain all other details. "
                   "Do not restore deliberately removed equipment while correcting another feature. "
                   "Clearly identify proposed unseen details, never present them as observed facts.")
         return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
-            model, system, prompt, schema, images, task_type="character_analysis")[0]
+            model, system, prompt, schema, images, task_type="character_analysis", role=role, render_context={"operation": "mixed" if role == "character_description" else "edit",
+                "template_constraints": "Reusable stable appearance only; no source pose, camera, crop or background."})[0]
 
     @staticmethod
     def _ordered_references(session: dict) -> list[dict]:
@@ -289,7 +293,7 @@ class QuickCharacterWizardService:
                 contents = Path(path).read_bytes()
                 refs.append(({"asset_id": ref["asset_id"], "managed_checksum": ref.get("managed_checksum", ref["checksum"]), "caption": ref["caption"], "label": ref["caption"]}, contents))
             core = self._reconstruction()
-            prepared = core.prepare({"model": session["model"], "preserve": session["preserve"],
+            prepared = core.prepare({"model": session["model"], "model_explicit": session.get("model_explicit", True), "preserve": session["preserve"],
                 "changes": session["changes"], "notes": session["notes"],
                 "context": "Create neutral character reference views. Exclude source pose, camera, gaze and background from appearance. "
                     "The content_prompt must contain stable appearance only, without output count, a view list, "
@@ -297,7 +301,7 @@ class QuickCharacterWizardService:
                     + ("This stage establishes style and details without imposing a view angle. " if session.get("minor_character")
                        else "The host supplies exactly one view later. ")
                     + json.dumps({"answers": session["answers"], "current_description": session["description"],
-                                  "framing": session["framing"], "views": self._views(session)})}, refs)
+                                  "framing": session["framing"], "views": self._views(session)})}, refs, role="character_description")
             job = core.analyze(prepared["id"])
             target = job["target"]
             with self._lock(sid):
@@ -314,7 +318,7 @@ class QuickCharacterWizardService:
                 self._write(current)
             return
         draft = self._ask(
-            "Analyze these ordered references (first is primary identity). Return a compact, editable image-generation "
+            "Analyze these ordered references (first is primary identity). Return an editable image-generation "
             "description including identity, outfit, equipment, style and view-specific asymmetry with explicit anatomical sides when supported. Separate observations "
             "from minimal consistent proposals needed for unseen regions. Ask only important unresolved conflicts. "
             "Keep source camera angle, gaze direction, pose, crop and background out of the reusable description and "
@@ -323,7 +327,7 @@ class QuickCharacterWizardService:
                 "captions": [r["caption"] for r in self._ordered_references(session)], "notes": session["notes"],
                 "answers": session["answers"], "framing": session["framing"], "side": session["side"],
                 "current_description": session["description"], "preserve": session.get("preserve", ""),
-                "required_changes": session.get("changes", "")}), _DRAFT_SCHEMA, self._reference_paths(session), session.get("model"))
+                "required_changes": session.get("changes", "")}), _DRAFT_SCHEMA, self._reference_paths(session), session.get("model") if session.get("model_explicit", True) else None, role="character_description")
         if any(not isinstance(draft.get(key), str) or not draft[key].strip() for key in ("description", "identity")):
             raise QuickCharacterWizardError("The model returned an empty description or identity. Retry analysis.")
         if any(not isinstance(draft.get(key), list) or any(not isinstance(value, str) for value in draft[key])
@@ -410,7 +414,7 @@ class QuickCharacterWizardService:
         return self._generation().reconstruction
 
     def reconstruction_options(self):
-        return {**self._reconstruction().options(), "default_model": self.app.config.ai_quick_character_wizard_model}
+        return {**self._reconstruction().options(), "default_model": resolve_role_model(self.app.config, "character_description")}
 
     def render(self, sid: str, revision_id: str, view: str, instructions: str = "", candidate_id: str = "",
                item_ids: list | None = None) -> dict:
@@ -607,7 +611,8 @@ class QuickCharacterWizardService:
             comparison = self._reconstruction().compare(candidate["reconstruction_id"], self.image_path(sid, candidate_id=candidate_id).read_bytes(),
                 {"session_id": sid, "candidate_id": candidate_id, "revision_id": candidate["revision_id"],
                  "anchor_id": candidate["anchor_id"]}, context,
-                Path(paths[-1]).read_bytes() if candidate["anchor_id"] else None)
+                Path(paths[-1]).read_bytes() if candidate["anchor_id"] else None, review_role="character_review",
+                review_model=session["model"] if session.get("model_explicit", True) else "")
             review = {"review": comparison["summary"],
                       "refinements": [item["correction"] for item in comparison["items"] if item["correction"]]}
         else:
@@ -615,7 +620,7 @@ class QuickCharacterWizardService:
                            "Explicit changes in the requested prompt override source details; do not restore removed equipment. "
                            "Check identity, requested viewing angle, framing, clothing, equipment, anatomical asymmetry "
                            "and consistency with the approved front when supplied. Only report visible mismatches; "
-                               "give concise actionable refinements.\nRequested prompt: " + candidate["prompt"], _REVIEW_SCHEMA, paths, session.get("model"))
+                               "give actionable refinements.\nRequested prompt: " + candidate["prompt"], _REVIEW_SCHEMA, paths, session.get("model") if session.get("model_explicit", True) else None, role="character_review")
         with self._lock(sid):
             current = self._read(sid)
             if current["status"] == "ABANDONED" or (not current.get("minor_character") and current["revision_id"] != candidate["revision_id"]):

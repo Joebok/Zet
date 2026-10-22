@@ -1,6 +1,8 @@
 """Per-view prompt improvement observations and portable review packages."""
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import hashlib
@@ -269,8 +271,8 @@ class LocalPromptImprovementService:
             schema = {"type": "object", "properties": {"observations": {"type": "string"}},
                       "required": ["observations"], "additionalProperties": False}
             answer, _ = self.adapter.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
-                "codex:" + self.adapter.app.config.codex_default_model.removeprefix("codex:"), "", prompt,
-                schema, [path for _, path in images], task_type="local_prompt_improvement",
+                resolve_role_model(self.adapter.app.config, "local_prompt_improvement"), "", prompt,
+                schema, [path for _, path in images], task_type="local_prompt_improvement", role="local_prompt_improvement", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
                 owner={"run_id": run_id, "view": view, "analysis_id": job_id})
             observations = str(answer.get("observations") or "").strip()
             if not observations:
@@ -280,7 +282,7 @@ class LocalPromptImprovementService:
             current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item, path in current}
             self._save_ai(latest, view, job_id, {"status": "COMPLETE" if current_hashes == hashes else "STALE",
                 "text": observations, "input_hashes": hashes, "missing_candidates": missing,
-                "model": str(getattr(self.adapter.app.config, "codex_default_model", "gpt-6-luna")),
+                "model": resolve_role_model(self.adapter.app.config, "local_prompt_improvement"),
                 "completed_at": _now(), "error": ""})
         except Exception as exc:
             try:

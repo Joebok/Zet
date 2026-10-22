@@ -16,16 +16,22 @@ from zet.services.image_quality_review_service import ImageQualityReviewService
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Prefilter a Recipe Lab experiment with local vision QA.")
     parser.add_argument("experiment", type=Path)
-    parser.add_argument("--model", default="image-analysis:latest")
+    parser.add_argument("--model", default="")
+    parser.add_argument("--config", type=Path, default=PROJECT_ROOT / "config.toml")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        result = ImageQualityReviewService(PROJECT_ROOT).review_experiment(
+        from zet.app import ZetApp
+        from zet.services.llm_role_service import resolve_role_model
+        app = ZetApp.from_config(args.config)
+        model = resolve_role_model(app.config, "recipe_qa", args.model)
+        result = ImageQualityReviewService(PROJECT_ROOT,
+            proxy_path_service=app.ai_proxy_service.ai_proxy_path_service).review_experiment(
             args.experiment,
-            model=args.model,
+            model=model,
         )
         print(json.dumps(result, ensure_ascii=False))
         return 0

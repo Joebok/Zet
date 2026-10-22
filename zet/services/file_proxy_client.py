@@ -89,6 +89,9 @@ class FileProxyClient:
             raise ValueError(f"Unsupported Zet file-proxy worker type: {worker_type}")
         from zet.services.ai_request_preparation_service import prepare_request
         prepare_request(staging, worker_type, getattr(self, "config", None))
+        if worker_type in {"ollama_generate", "codex_generate"}:
+            from zet.services.llm_skill_service import compose_request
+            compose_request(staging, getattr(self, "config", None))
         if (staging / "ai_request.json").is_file():
             worker = {"ollama_generate": "ai_ollama", "codex_generate": "ai_codex", "local_image_render": "ai_comfyui"}[worker_type]
         route_required = self._externalize_routes(staging, job_id)

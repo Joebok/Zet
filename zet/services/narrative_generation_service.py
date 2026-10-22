@@ -1,4 +1,5 @@
 """Durable interview, synthesis and candidate lifecycle; no legacy scene orchestration."""
+from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
 from copy import deepcopy
 import json
@@ -62,7 +63,7 @@ class NarrativeGenerationService:
                 raise ValueError("The prompt belongs to another assembly mode. Write or edit the prompt before rendering.")
             refs = [] if detail["kind"] == "assembly" else (deepcopy(replay["references"]) if replay else self.author.references(detail))
             model_field = "interview_model" if kind == "interview" else "prompt_model"
-            model = record[model_field] or self.author.app.config.ai_narrative_scene_model
+            model = resolve_role_model(self.author.app.config, "narrative_interview" if kind == "interview" else "narrative_prompt", record[model_field])
             job = {"id": new_id(), "kind": kind, "status": "SUBMITTING", "error": "", "detail": detail_without_jobs(detail),
                    "references": refs, "candidate_ids": [], "result": None, "baseline": baseline,
                    "model": model, "provider": "codex" if model.startswith("codex:") else "ollama",

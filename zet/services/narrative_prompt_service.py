@@ -87,8 +87,8 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
         schema = INTERVIEW_SCHEMA
     else:
         instructions = (
-            "Write a concise Qwen Image 2.1 illustration prompt as JSON with scene and rendering paragraphs. "
-            "Begin with 'Create a new illustration' and use supplied images only for their stated roles. "
+            "Write a Qwen Image 2.1 illustration prompt as JSON with scene and rendering fields. "
+            "Use supplied images only for their stated roles. "
             "Integrate narrative, reactions, gestures, staging, important props, framing and visibility into one coherent event. "
             "Preserve named participants and essential facts. Use narrative direction over generic aesthetics. "
             "Use exact supplied element names when introducing participants and describing their actions. "
@@ -98,7 +98,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "changes take precedence over reference gear. Do not invent extra people or significant props. "
             "Only reference_images identifies supplied images. Other elements have text directions only. Do not claim that a "
             "text-only prop or subject has a supplied image. Do not mention image numbers or describe reference bindings in your paragraphs. "
-            "Write the shortest complete prompt without weakening or dropping supplied facts. Preserve explicit equipment "
+            "Preserve supplied facts, including explicit equipment "
             "and weapon exclusions, anatomy, gesture ownership and the strength of every relative-height comparison "
             "(for example 'head and shoulders taller', not just 'taller'). Explain height using supplied comparisons, "
             "ground plane and depth; never infer physical height from reference-image framing. Put action in scene and "
@@ -116,7 +116,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "lighting, joins and contact shadows. Do not restage, redraw or add participants. Do not request a neutral "
             "background or describe numeric layer coordinates. The supplied image is the placed final composition. "
             + ("Return proposals, conflicts and at most two optional questions as JSON."
-               if kind == "interview" else "Return concise scene and rendering paragraphs as JSON. Do not write image bindings.")
+               if kind == "interview" else "Return scene and rendering fields as JSON. Do not write image bindings.")
         )
         if detail.get("assembly_mode") == "assemble_references":
             instructions = (
@@ -127,7 +127,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
                 "do not restage or add participants. Source groups without reference_images are planning context only. "
                 "Do not claim a composite image is supplied. Numeric placement and image bindings are appended separately. "
                 + ("Return proposals, conflicts and at most two optional questions as JSON."
-                   if kind == "interview" else "Return concise scene and rendering paragraphs as JSON. Do not write image bindings.")
+                   if kind == "interview" else "Return scene and rendering fields as JSON. Do not write image bindings.")
             )
         elif detail.get("assembly_mode") == "harmonize_composite":
             context["source_groups"] = []
@@ -143,7 +143,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
                 "material-detail and edge-treatment rules, to unify the finish without changing identities or layout. "
                 "Do not request a neutral background or numeric placement coordinates. "
                 + ("Return proposals, conflicts and at most two optional questions as JSON."
-                   if kind == "interview" else "Return concise scene and rendering paragraphs as JSON. Do not write image bindings.")
+                   if kind == "interview" else "Return scene and rendering fields as JSON. Do not write image bindings.")
             )
     if transparent_subscene(detail):
         instructions += (
@@ -156,8 +156,6 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             + TRANSPARENT_BACKGROUND_RULE
         )
     if backdrop_source:
-        if kind != "interview":
-            instructions = instructions.replace("Begin with 'Create a new illustration'", "Begin with an instruction to adapt the supplied backdrop")
         instructions += (" Adapt the supplied backdrop, preserving its recognizable setting and architecture. "
                          "Apply the adaptation direction, output dimensions and requested expansion side or changed viewpoint. "
                          "Source text is historical context; current destination direction takes precedence. "

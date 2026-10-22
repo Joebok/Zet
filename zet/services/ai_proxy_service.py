@@ -1,3 +1,4 @@
+from zet.services.llm_role_service import resolve_role_model
 import json
 from zet.services.local_render_policy import require_qwen_profile, SCENE_PROFILE
 from dataclasses import replace
@@ -357,7 +358,11 @@ class AIProxyService:
         ask_path = self._create_ask_folder(ask.ask_id, ask.worker_type)
 
         manifest_path = ask_path / "ask_manifest.json"
-        self._write_json_atomic(manifest_path, self._manifest_payload(ask))
+        manifest = self._manifest_payload(ask)
+        if ask.worker_type == "ollama_generate":
+            manifest["llm_role"] = "asset_workflow"
+            manifest["ollama_model"] = resolve_role_model(self.path_service.config, "asset_workflow")
+        self._write_json_atomic(manifest_path, manifest)
         json.loads(manifest_path.read_text(encoding="utf-8"))
 
         prompt_path = ask_path / ask.prompt_file
@@ -422,7 +427,7 @@ class AIProxyService:
         return str(profile.get("prompt_workflow_kind") or profile.get("workflow_kind") or "").strip()
 
     def _prompt_condense_model(self) -> str:
-        return str(getattr(self.path_service.config, "prompt_condense_model", "general:latest"))
+        return resolve_role_model(self.path_service.config, "prompt_condense")
 
     def _prompt_condense_file(self) -> Path:
         configured_path = Path(str(getattr(
@@ -545,6 +550,8 @@ class AIProxyService:
         manifest = self._manifest_payload(ask)
         manifest["source_prompt_file"] = "Final_Image_Prompt.md"
         manifest["target_output_dir"] = str(context.prompt_path.parent.resolve())
+        manifest["llm_role"] = "prompt_condense"
+        manifest["llm_context"] = {"operation": "mixed", "bindings_owned_by_zet": True}
         manifest["prompt_condense_template"] = str(self._prompt_condense_file())
         self._write_json_atomic(ask_path / "ask_manifest.json", manifest)
         self._write_text_atomic(ask_path / ask.prompt_file, self._prompt_condense_contents(asset, context.prompt_text))
@@ -603,6 +610,7 @@ class AIProxyService:
             "expected_output": "Condensed_Image_Prompt.md",
             "candidate_output_file": None,
             "task_type": "prompt_condense",
+            "llm_role": "prompt_condense", "llm_context": {"operation": "mixed", "bindings_owned_by_zet": True},
             "auxiliary": True,
             "target_output_file": "Condensed_Image_Prompt.md",
             "target_output_dir": str(target_output_dir.resolve()),

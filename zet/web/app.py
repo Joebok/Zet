@@ -848,6 +848,8 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
             payload.get("ai_asset_workflow_model", defaults.ai_asset_workflow_model)
         ),
         codex_default_model=str(payload.get("codex_default_model", defaults.codex_default_model)),
+        ai_narrative_scene_model=str(payload.get("ai_narrative_scene_model", defaults.ai_narrative_scene_model)),
+        llm_role_models=payload.get("llm_role_models", defaults.llm_role_models),
         prompt_condense_model=str(payload.get("prompt_condense_model", defaults.prompt_condense_model)),
         ai_prompt_analysis_model=str(payload.get("ai_prompt_analysis_model", defaults.ai_prompt_analysis_model)),
         ai_prompt_analysis_auto_queue_on_render=bool(

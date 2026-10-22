@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
+from zet.services.llm_role_service import resolve_role_model
 from zet.services.image_reconstruction_contract import fingerprint, text
 from zet.services.quick_character_wizard_service import (
     QuickCharacterWizardService, QuickCharacterWizardError, QuickCharacterWizardConflict, _LOCK, _ACTIVE,
@@ -183,7 +184,7 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             sid = uuid4().hex
             record = {"session_id": sid, "name": name, "version": 2, "minor_character": True,
                 "notes": "", "style_mode": "universe", "preserve": "Preserve original identity, hair silhouette and length, body build and visible costume except requested changes.",
-                "changes": "", "model": self.app.config.ai_quick_character_wizard_model,
+                "changes": "", "model": resolve_role_model(self.app.config, "character_description"), "model_explicit": False,
                 "framing": "full_body", "side": "left", "references": [], "description": "", "identity": "",
                 "observations": [], "proposals": [], "proposals_approved": True, "questions": [], "answers": [],
                 "revision_id": uuid4().hex, "candidates": [], "selected": {}, "locked": {}, "status": "DRAFT_READY",
@@ -245,6 +246,7 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 if model not in self.reconstruction_options()["models"]:
                     raise QuickCharacterWizardError("Choose an available analysis model.")
                 session["model"] = model
+                session["model_explicit"] = True
             if "proposals" in payload:
                 if not isinstance(payload["proposals"], list) or any(not isinstance(p, str) for p in payload["proposals"]):
                     raise QuickCharacterWizardError("Proposed details must be text.")

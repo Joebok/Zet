@@ -1,6 +1,8 @@
 """Frozen multi-view evidence, reviewed template versions and explicit promotion."""
 from __future__ import annotations
 
+from zet.services.llm_role_service import resolve_role_model
+
 from copy import deepcopy
 from contextlib import nullcontext
 from datetime import datetime
@@ -228,7 +230,7 @@ class LocalTemplateRevisionService:
                     if source["source_id"] in manual:
                         self._validate_text(source["text"], manual[source["source_id"]], allow_reference_changes=True)
                         source["text"] = manual[source["source_id"]]
-            model = str(payload.get("model") or "codex:" + self.app.config.codex_default_model.removeprefix("codex:"))
+            model = str(resolve_role_model(self.app.config, "character_prompt_review", str(payload.get("model") or "")))
             if manual is None and not skip_analysis:
                 from zet.services.ai_model_catalog_service import AIModelCatalogService
                 AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config).validate(model, required=["text"])
@@ -314,7 +316,7 @@ class LocalTemplateRevisionService:
                     answer = {"summary": "Manual child revision; review and accept the compiled text.", "findings": []}
                 else:
                     answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
-                        record["model"], "", prompt, schema, [], task_type="character_prompt_review",
+                        record["model"], "", prompt, schema, [], task_type="character_prompt_review", role="character_prompt_review", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
                         workflow=pipeline, owner=record["owner"])
                     record["runtime"] = runtime
                 record["answer"] = answer
@@ -467,7 +469,7 @@ class LocalTemplateRevisionService:
                         "required": ["summary", "recommendations", "edits"], "additionalProperties": False}
                     answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
                         record["model"], "", self._prompt(record), schema,
-                        [Path(item["image_path"]) for item in record["representatives"]], task_type="character_template_revision",
+                        [Path(item["image_path"]) for item in record["representatives"]], task_type="character_template_revision", role="template_revision", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
                         workflow=pipeline, owner=record["owner"])
                     record["runtime"] = runtime
                 record["answer"] = answer

@@ -68,8 +68,9 @@ class OllamaModelService:
         schema: dict,
         *,
         images: list[str | Path] | None = None,
+        role: str, render_context: dict | None = None,
     ) -> dict:
-        value, _ = self.generate_json_with_evidence(model, system, prompt, schema, images=images)
+        value, _ = self.generate_json_with_evidence(model, system, prompt, schema, images=images, role=role, render_context=render_context)
         return value
 
     def generate_json_with_evidence(
@@ -80,12 +81,13 @@ class OllamaModelService:
         schema: dict,
         *,
         images: list[str | Path] | None = None,
+        role: str, render_context: dict | None = None,
     ) -> tuple[dict, dict]:
         from zet.services.ai_job_service import AIJobService
         if self.proxy_path_service is None:
             raise RuntimeError("AI inference requires the configured AI_Proxy queue.")
         return AIJobService(self.proxy_path_service).generate_json(
-            model, system, prompt, schema, images, timeout=self.timeout_seconds)
+            model, system, prompt, schema, images, timeout=self.timeout_seconds, role=role, render_context=render_context)
 
 
     # Compatibility only: immutable legacy envelopes use AI_Manager/ollama_proxy_worker.py.

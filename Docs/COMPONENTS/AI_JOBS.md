@@ -207,3 +207,7 @@ Generic legacy harvest cleanup must not complete a registered domain's answer me
 because it carries a shared harvest marker. The owning handler applies and commits
 its receipt before payload cleanup. This was verified with a disposable race check
 and the existing S3 retry journey. See [ADR 0023](../DECISIONS/0023-streamlined-image-integrity.md).
+
+## Role-aware text preparation (2026-10-22)
+
+New text producers name an explicit LLM role and downstream render context. FileProxyClient applies the repo-owned Qwen modules after native request preparation and before inventory/publication, covering prebuilt requests too. The frozen request retains effective instructions and guidance hashes; continuation identity, recovery, provider execution and collection remain with their existing owners. [LLM roles](LLM_ROLES.md) owns classification, model inheritance and provenance details.

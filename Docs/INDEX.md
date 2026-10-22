@@ -53,3 +53,7 @@ Keep links repository-relative, use stable module/symbol references, and maintai
 
 ## Removable storage recovery (2026-10-17)
 [Storage recovery](COMPONENTS/STORAGE_RECOVERY.md) owns outage classification, local evidence, startup/polling reconciliation, fresh attempts, and verification limits.
+
+## Repository-managed LLM roles (2026-10-22)
+
+[LLM roles and Qwen guidance](COMPONENTS/LLM_ROLES.md) owns the complete call inventory, model inheritance, Config indicators, repo-owned skill updates and frozen guidance. Consult it for prompt-writing/review or Config role changes, then follow the linked source registry and shared AI-job boundary.

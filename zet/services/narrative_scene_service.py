@@ -1,4 +1,5 @@
 """Authoring and image ownership for narrative scenes, independent of Scene Builder."""
+from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
 from pathlib import Path
 
@@ -253,7 +254,7 @@ class NarrativeSceneService:
                   "universe_style": style,
                   "field_purposes": FIELD_PURPOSES,
                   "scene_title": parent["title"], "effective_models": {
-                      key: record[key] or self.app.config.ai_narrative_scene_model
+                      key: resolve_role_model(self.app.config, "narrative_interview" if key == "interview_model" else "narrative_prompt", record[key])
                       for key in ("interview_model", "prompt_model")}}
         if record["kind"] == "assembly":
             detail["assembly_sources"] = self.app.narrative_assembly_service.sources(story, scene)
