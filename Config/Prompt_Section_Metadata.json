@@ -1,6 +1,13 @@
 {
   "schema_version": 2,
   "sections": {
+    "HEAD_EDIT_FRONT_DESCRIPTION": {"label": "Head Edit Front Description", "description": "Separate Head-Image Edit authoring; not consumed by legacy head generation.", "required_content": false, "optional_section": true},
+    "HEAD_EDIT_PRESERVE": {"label": "Head Edit Preserve", "description": "Separate Head-Image Edit authoring; not consumed by legacy head generation.", "required_content": false, "optional_section": true},
+    "HEAD_EDIT_VIEW_OVERRIDES": {"label": "Head Edit View Overrides", "description": "Separate Head-Image Edit authoring; not consumed by legacy head generation.", "required_content": false, "optional_section": true},
+    "HEAD_EDIT_REFERENCE_GUIDANCE": {"label": "Head Edit Reference Guidance", "description": "Separate Head-Image Edit authoring; not consumed by legacy head generation.", "required_content": false, "optional_section": true},
+    "HEAD_EDIT_EXPRESSION_GUIDANCE": {"label": "Head Edit Expression Guidance", "description": "Separate Head-Image Edit authoring; not consumed by legacy head generation.", "required_content": false, "optional_section": true},
+    "HEAD_EDIT_PHASE_CHANGES": {"label": "Head Edit Phase Changes", "description": "Separate Head-Image Edit authoring; not consumed by legacy head generation.", "required_content": false, "optional_section": true},
+    "HEAD_EDIT_REVIEW_CRITERIA": {"label": "Head Edit Review Criteria", "description": "Separate Head-Image Edit authoring; not consumed by legacy head generation.", "required_content": false, "optional_section": true},
     "BODY_DESCRIPTION_FACTS": {"label": "Body Description", "description": "Stable technical body proportions, anatomy, build, and silhouette.", "required_content": true},
     "BODY_DESCRIPTION_VIEW_OVERRIDES": {"label": "Body Description — Requested View", "description": "Only body details that change or become important in the requested view.", "required_content": true},
     "BODY_DESCRIPTION_VIEW_SUPPRESSION": {"label": "Body Description — View Suppression", "description": "Body orientation and view drift prevention.", "required_content": false},

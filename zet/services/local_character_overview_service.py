@@ -313,7 +313,7 @@ class LocalCharacterOverviewService:
         adapter = service.adapter
         if pipeline in {"character-assembly", "costume-dressing"}:
             adapter.execute_run(run_id, views={"FRONT"}, costume=costume)
-        elif pipeline == "head-image":
+        elif pipeline in {"head-image", "head-image-edit"}:
             adapter.execute_run(run_id, views={"FRONT"})
         else:
             adapter.execute_run(run_id, views={"FRONT"})
@@ -365,7 +365,7 @@ class LocalCharacterOverviewService:
             if not (run.get("selected_views") or {}).get("FRONT"):
                 if pipeline == "body-reference":
                     adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], autogenerate=True)
-                elif pipeline == "head-image":
+                elif pipeline in {"head-image", "head-image-edit"}:
                     adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], autogenerate=True)
                 else:
                     adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], costume, autogenerate=True)
@@ -424,7 +424,7 @@ class LocalCharacterOverviewService:
             raise LocalCharacterOverviewError(f"The #1 Luna FRONT candidate was rejected by human review for {pipeline}.")
         if pipeline == "body-reference":
             adapter.select_view(run_id, "FRONT", candidate_id, autogenerate=True)
-        elif pipeline == "head-image":
+        elif pipeline in {"head-image", "head-image-edit"}:
             adapter.select_view(run_id, "FRONT", candidate_id, autogenerate=True)
         else:
             adapter.select_view(run_id, "FRONT", candidate_id, costume, autogenerate=True)

@@ -106,6 +106,9 @@ class LocalTemplateRevisionService:
                  self.project_root / "Config" / "Prompt_Templates" / f"{workflow.pipeline.replace('-', '_')}_v2.md"]
         if workflow.pipeline == "costume-dressing":
             paths.insert(0, workflow.adapter._costume_path(run["character"], run["phase"], run["costume"]))
+        if workflow.pipeline == "head-image-edit":
+            paths = [path for path in paths if path.name != "Prompt_Global_Sections.md"]
+            paths.append(self.project_root / "Config/Prompt_Templates/head_image_edit_operations.md")
         result = []
         library = Path(self.app.config.base_library_path).resolve()
         for path in paths:
@@ -228,6 +231,7 @@ class LocalTemplateRevisionService:
                     raise ValueError("Manual edits must name the chosen sources.")
                 for source in sources:
                     if source["source_id"] in manual:
+                        self._validate_owned(pipeline, source, source["text"], manual[source["source_id"]])
                         self._validate_text(source["text"], manual[source["source_id"]], allow_reference_changes=True)
                         source["text"] = manual[source["source_id"]]
             model = str(resolve_role_model(self.app.config, "character_prompt_review", str(payload.get("model") or "")))
@@ -235,12 +239,12 @@ class LocalTemplateRevisionService:
                 from zet.services.ai_model_catalog_service import AIModelCatalogService
                 AIModelCatalogService(self.app.config.base_ai_queue_path, config=self.app.config).validate(model, required=["text"])
             rid = uuid4().hex
-            owner_key = {"body-reference": "local_body_reference_run_id", "head-image": "local_head_image_run_id"}.get(pipeline, "local_character_asset_run_id")
+            owner_key = {"body-reference": "local_body_reference_run_id", "head-image": "local_head_image_run_id", "head-image-edit": "local_head_image_edit_run_id"}.get(pipeline, "local_character_asset_run_id")
             record = {"version": 2, "revision_id": rid, "parent_revision_id": parent.get("revision_id", ""),
                 "universe_id": self.app.universe_id, "pipeline": pipeline, "run_id": run_id, "created_at": _now(),
                 "status": "PROPOSING", "model": model, "direction": direction, "source_ids": editable,
                 "sources": sources, "representatives": [], "observations": {}, "findings": [], "selected_ids": [],
-                "compiler_guidance": compiler_guidance(), "manual": manual is not None,
+                "compiler_guidance": ("Head-Image Edit: FRONT then all other views independently from selected FRONT. Scoped guides follow the canvas. Selected BACK guides a separate optional rear-quarter hair finishing attempt. Edit only HEAD_EDIT_* character sections and this pipeline task template. Preserve intentional eye/hair occlusion; never mirror. Use existing view tags and marker contracts." if pipeline == "head-image-edit" else compiler_guidance()), "manual": manual is not None,
                 "from_master": from_master, "review_skipped": skip_analysis, "summary": "", "error": "",
                 "owner": {owner_key: run_id, "pipeline": pipeline, "run_id": run_id, "revision_id": rid,
                     "character": run["character"], "phase": run["phase"], "costume": costume}}
@@ -329,6 +333,7 @@ class LocalTemplateRevisionService:
                 before = finding["before"]
                 if not before or source["text"].count(before) != 1:
                     raise ValueError("Correction text must match one unique source location; analyze again.")
+                self._validate_owned(pipeline, source, source["text"], source["text"].replace(before, finding["after"], 1))
                 self._validate_text(source["text"], source["text"].replace(before, finding["after"], 1))
                 findings.append({**finding, "id": str(index + 1)})
             record.update(status="REVIEW_READY", findings=findings, summary=record["answer"]["summary"], completed_at=_now())
@@ -388,6 +393,7 @@ class LocalTemplateRevisionService:
                     raise ValueError("Selected corrections overlap; choose one or request a revised analysis.")
                 for start, end, after in reversed(edits):
                     source["text"] = source["text"][:start] + after + source["text"][end:]
+                self._validate_owned(pipeline, source, original, source["text"])
                 self._validate_text(original, source["text"])
             child_id = uuid4().hex
             from zet.services.local_prompt_preview_service import LocalPromptPreviewService
@@ -429,6 +435,18 @@ class LocalTemplateRevisionService:
                 + "\nObservations:\n" + json.dumps(observations, ensure_ascii=False)
                 + "\nCurrent reference recipes:\n" + json.dumps(record["reference_recipes"])
                 + "\nRead-only view configuration (report needed configuration changes separately):\n" + json.dumps(record["view_configuration"]))
+
+    @staticmethod
+    def _validate_owned(pipeline, source, before, after):
+        if pipeline != "head-image-edit":
+            return
+        if Path(source["source_path"]).name == "Character.md":
+            pattern = r"(<!--\s*ZET:BEGIN\s+HEAD_EDIT_[A-Z_]+\s*-->).*?(<!--\s*ZET:END\s+HEAD_EDIT_[A-Z_]+\s*-->)"
+            protected = lambda value: re.sub(pattern, lambda match: match[1] + match[2], value, flags=re.S)
+            if protected(before) != protected(after):
+                raise ValueError("Head-Image Edit revisions may change only HEAD_EDIT_* character sections.")
+        elif Path(source["source_path"]).name not in {"head_image_edit_v2.md", "head_image_edit_operations.md"}:
+            raise ValueError("This source is not owned by Head-Image Edit.")
 
     @staticmethod
     def _validate_text(before, after, *, allow_reference_changes=False):
@@ -482,6 +500,7 @@ class LocalTemplateRevisionService:
                 if sid not in record["source_ids"] or sid in seen:
                     raise ValueError("Model changed an unapproved or duplicate source.")
                 seen.add(sid)
+                self._validate_owned(pipeline, sources[sid], sources[sid]["before_text"], edit["text"])
                 self._validate_text(sources[sid]["before_text"], edit["text"])
                 sources[sid].update(text=edit["text"], rationale=edit["rationale"])
             record.update(status="VALIDATING", summary=answer["summary"], recommendations=answer["recommendations"])
@@ -552,6 +571,7 @@ class LocalTemplateRevisionService:
                 live = allowed.get(source["source_id"])
                 if not live or Path(live["source_path"]).resolve() != Path(source["source_path"]).resolve():
                     raise ValueError("Template source ownership changed; start a new revision.")
+                self._validate_owned(pipeline, source, source["master_text"], source["text"])
                 digest = _digest(live["text"])
                 if digest not in {source["master_sha256"], _digest(source["text"])}:
                     raise ValueError(f"Master template changed since this revision: {source['label']}. Start a new revision before promoting.")

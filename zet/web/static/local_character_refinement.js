@@ -9,7 +9,7 @@
   let draft = {};
   try { draft = JSON.parse(localStorage.getItem(key) || "{}"); } catch (_) { /* Ignore unavailable saved drafts. */ }
   function saveDraft() {
-    draft = { current, feedback: $("feedback").value, model: $("model").value,
+    draft = { operation: $("operation").value, guideView: $("guide-view").value, guideScope: $("guide-scope").value, current, feedback: $("feedback").value, model: $("model").value,
       comparisons: [...$("comparisons").querySelectorAll("input:checked")].map(input => input.value),
       itemIds: [...$("analysis").querySelectorAll("input:checked")].map(input => input.value), analysisId: data?.analysis?.id };
     try { localStorage.setItem(key, JSON.stringify(draft)); } catch (_) { /* Controls remain usable without storage. */ }
@@ -63,6 +63,23 @@
       if (!data.comparisons.length) $("comparisons").append(el("p", "No other selected images yet. Analyze this image on its own."));
       comparisonsSignature = nextComparisons;
     }
+    if (pipeline === "head-image-edit") {
+      $("guide-controls").hidden = false;
+      const guide = $("guide-view"), selectedGuide = guide.value || draft.guideView || "";
+      const signature = JSON.stringify(data.comparisons);
+      if (guide.dataset.signature !== signature) {
+        guide.replaceChildren(new Option("None — text-only correction", ""));
+        for (const item of data.comparisons) guide.add(new Option(`Selected ${item.view.replaceAll("_", " ")}`, item.view));
+        guide.value = [...guide.options].some(option => option.value === selectedGuide) ? selectedGuide : "";
+        guide.dataset.signature = signature;
+      }
+      const hair = $("operation").value === "rear_hair";
+      $("operation").querySelector('[value="rear_hair"]').disabled = !["BACK_LEFT_3_4", "BACK_RIGHT_3_4"].includes(view);
+      guide.disabled = hair;
+      $("guide-scope").disabled = hair;
+      if (hair) guide.value = "BACK";
+      if (hair && !data.comparisons.some(item => item.view === "BACK")) $("edit").disabled = true;
+    }
     const analysis = data.analysis;
     const signature = JSON.stringify([analysis, current]);
     if (signature !== analysisSignature) {
@@ -94,6 +111,9 @@
     } catch (error) { message(error.message, true); }
     finally { acting = false; render(); }
   }
+  $("operation").value = draft.operation || "correction";
+  $("guide-scope").value = draft.guideScope || "";
+  for (const id of ["operation", "guide-view", "guide-scope"]) $(id).addEventListener("change", () => { saveDraft(); render(); });
   $("feedback").value = draft.feedback || ""; $("model").value = draft.model || "";
   current = draft.current || "original";
   $("feedback").addEventListener("input", saveDraft); $("model").addEventListener("input", saveDraft);
@@ -101,11 +121,11 @@
   $("analyze").addEventListener("click", () => action("analyze", { attempt_id: current, model: $("model").value,
     comparison_views: [...$("comparisons").querySelectorAll("input:checked")].map(input => input.value) }));
   $("edit").addEventListener("click", () => action("edit", { attempt_id: current, operation_id: crypto.randomUUID(),
-    analysis_id: data.analysis.id, item_ids: [...$("analysis").querySelectorAll("input:checked")].map(input => input.value), instructions: $("feedback").value }));
+    analysis_id: data.analysis.id, item_ids: [...$("analysis").querySelectorAll("input:checked")].map(input => input.value), instructions: $("feedback").value, operation: $("operation").value, guide_view: $("guide-view").value, guide_scope: $("guide-scope").value }));
   $("retry").addEventListener("click", () => action("retry", { attempt_id: current }));
   $("use").addEventListener("click", () => action("adopt", { attempt_id: current, expected_selected_id: data.adopted_candidate_id || data.base_candidate_id }));
   async function initialize() {
-    if (!["body-reference", "head-image", "character-assembly", "costume-dressing"].includes(pipeline) || !runId || !view || !universe) throw new Error("Open refinement from a selected image in its batch.");
+    if (!["body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"].includes(pipeline) || !runId || !view || !universe) throw new Error("Open refinement from a selected image in its batch.");
     const query = new URLSearchParams({ universe_id: universe, costume });
     data = await request(`/api/local/${pipeline}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/refinement?${query}`, {});
     const batch = await request(`/api/local/${pipeline}/runs/${encodeURIComponent(runId)}?${query}`);

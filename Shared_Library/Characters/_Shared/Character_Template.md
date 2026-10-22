@@ -422,3 +422,71 @@ Examples:
 * For expression sheets: avoid changing identity to exaggerate expression.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_EXPRESSION -->
+
+
+# Head-Image Edit (independent pipeline)
+
+These sections are optional for existing pipelines. Author them before using Head-Image Edit.
+
+## Front Description
+
+<!-- ZET:BEGIN HEAD_EDIT_FRONT_DESCRIPTION -->
+<!-- ZET:VIEW_DOMAIN head -->
+
+[Describe front description for this character; use head-domain view tags where appropriate.]
+
+<!-- ZET:END HEAD_EDIT_FRONT_DESCRIPTION -->
+
+## Preserve
+
+<!-- ZET:BEGIN HEAD_EDIT_PRESERVE -->
+<!-- ZET:VIEW_DOMAIN head -->
+
+[Describe preserve for this character; use head-domain view tags where appropriate.]
+
+<!-- ZET:END HEAD_EDIT_PRESERVE -->
+
+## View Overrides
+
+<!-- ZET:BEGIN HEAD_EDIT_VIEW_OVERRIDES -->
+<!-- ZET:VIEW_DOMAIN head -->
+
+[Describe view overrides for this character; use head-domain view tags where appropriate.]
+
+<!-- ZET:END HEAD_EDIT_VIEW_OVERRIDES -->
+
+## Reference Guidance
+
+<!-- ZET:BEGIN HEAD_EDIT_REFERENCE_GUIDANCE -->
+<!-- ZET:VIEW_DOMAIN head -->
+
+
+
+<!-- ZET:END HEAD_EDIT_REFERENCE_GUIDANCE -->
+
+## Expression Guidance
+
+<!-- ZET:BEGIN HEAD_EDIT_EXPRESSION_GUIDANCE -->
+<!-- ZET:VIEW_DOMAIN head -->
+
+
+
+<!-- ZET:END HEAD_EDIT_EXPRESSION_GUIDANCE -->
+
+## Phase Changes
+
+<!-- ZET:BEGIN HEAD_EDIT_PHASE_CHANGES -->
+<!-- ZET:VIEW_DOMAIN head -->
+
+
+
+<!-- ZET:END HEAD_EDIT_PHASE_CHANGES -->
+
+## Review Criteria
+
+<!-- ZET:BEGIN HEAD_EDIT_REVIEW_CRITERIA -->
+<!-- ZET:VIEW_DOMAIN head -->
+
+[Describe review criteria for this character; use head-domain view tags where appropriate.]
+
+<!-- ZET:END HEAD_EDIT_REVIEW_CRITERIA -->

@@ -1,5 +1,30 @@
 # Prompt compilation and reference contracts
 
+## Independent Head-Image Edit authoring (2026-10-22)
+
+[Run_Head_Image_Edit_Jobs.py](../../Scripts/Run_Head_Image_Edit_Jobs.py) compiles
+[head_image_edit_v2.md](../../Config/Prompt_Templates/head_image_edit_v2.md), with
+source-mapped operation wording in [head_image_edit_operations.md](../../Config/Prompt_Templates/head_image_edit_operations.md).
+It does not merge legacy Head-Image view/gaze instructions or head/hair sections.
+
+HEAD_EDIT_* sections are optional for existing onboarding; the new compiler
+requires authored FRONT_DESCRIPTION, PRESERVE, VIEW_OVERRIDES and REVIEW_CRITERIA.
+Reference, expression and opt-in uploaded-FRONT phase guidance remain optional.
+Existing head-domain tags, supplemental-image resolution and schema-2 contracts
+apply. Source-backed edits omit FRONT_DESCRIPTION, retain concise preservation and
+matching view notes, and attach one primary canvas first, then scoped guides.
+Governing-template revisions may edit only the new character sections and the two
+new task templates, preserving legacy sections and global sources.
+
+Dedicated versioned presets use the trial checkpoint and 1024-square output,
+empty negative text and disabled prompt globals. Staging disables reference-label
+appending. Saved inputs retain ordered private bytes/hashes, recipe/template
+revision and render settings. Optional `render_config.overrides` carries frozen
+steps, CFG, sampler, scheduler, denoise, text encoder and VAE through Image
+Generation submission/retry; absent overrides preserve existing behavior. Prepared
+provider requests retain their immutable graph/reference policy. Scheduling and
+human acceptance limits belong to [Local Characters](LOCAL_CHARACTERS.md#independent-head-image-edit-2026-10-22).
+
 Prompt generation spans character templates, structured scenes, and independent Narrative prose. This document owns shared compilation and attachment mechanics; scene workflow details live in [SCENE_BUILDER](SCENE_BUILDER.md) and [NARRATIVE](NARRATIVE.md).
 
 ## Character compilation path

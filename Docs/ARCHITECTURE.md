@@ -1,5 +1,13 @@
 # System architecture
 
+Head-Image Edit shares the head lifecycle through explicit identity/compiler
+hooks, with separate storage, queue identity and publications. Its service policy
+uses FRONT for every base view; scoped guide finishing belongs to the refinement
+service. Assembly freezes its chosen head family. Web controls delegate these
+decisions to services. Legacy Head-Image remains the default and existing chains
+are not migrated. See [ADR 0028](DECISIONS/0028-independent-head-image-edit.md)
+and [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#independent-head-image-edit-2026-10-22).
+
 Zet combines reusable character references, scene authoring/rendering, image review, and zine assembly in a local dashboard. It is a Python application with a FastAPI UI, universe-scoped durable stores, and filesystem-based AI jobs. [README](../README.md) describes product purpose; the flows below are confirmed by code, not inferred from that overview.
 
 ## Boundaries and communication

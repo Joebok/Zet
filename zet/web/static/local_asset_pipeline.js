@@ -2,6 +2,7 @@
   const pagePipelines = {
     "local-body-reference": "body-reference",
     "local-head-image": "head-image",
+    "local-head-image-edit": "head-image-edit",
     "local-character-assembly": "character-assembly",
     "local-costume-dressing": "costume-dressing",
   };
@@ -116,7 +117,7 @@
       case "unlock": return `${baseUrl()}/runs/${id}/views/${encodedView}/unlock${query()}`;
       case "proceed": return `${baseUrl()}/runs/${id}/views/FRONT/proceed${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "image-prompt": return `${baseUrl()}/runs/${id}/image-prompt/${encodedView}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-            case "source": return state.pipeline === "head-image"
+            case "source": return ["head-image", "head-image-edit"].includes(state.pipeline)
         ? `${baseUrl()}/runs/${id}/source`
         : `${baseUrl()}/runs/${id}/sources/${encodedView}/${encodeURIComponent(candidate)}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       default: throw new Error(`Unsupported Local workflow action: ${action}`);
@@ -136,9 +137,10 @@
       costume: isCostume() ? selectedCostume() : "",
       front_count: Number($("front-count").value),
       other_count: Number($("other-count").value),
-      use_front_anchor: state.pipeline === "character-assembly" ? false : hasSharedAssetRouter() ? $("use-anchor").checked : state.pipeline === "body-reference" || state.pipeline === "head-image",
+      use_front_anchor: state.pipeline === "character-assembly" ? false : hasSharedAssetRouter() ? $("use-anchor").checked : state.pipeline === "body-reference" || ["head-image", "head-image-edit"].includes(state.pipeline),
+      head_pipeline: state.pipeline === "character-assembly" ? $("head-pipeline").value : "head-image",
       front_source_path: state.frontSourcePath,
-      apply_phase_change: state.pipeline === "head-image" && Boolean(state.frontSourcePath) && $("apply-phase-change").checked,
+      apply_phase_change: ["head-image", "head-image-edit"].includes(state.pipeline) && Boolean(state.frontSourcePath) && $("apply-phase-change").checked,
       source_batches: hasSharedAssetRouter() ? Object.fromEntries(Array.from($("source-batches").querySelectorAll("select[data-source-role]"), (select) => [select.dataset.sourceRole, select.value])) : {},
     };
   }
@@ -230,7 +232,7 @@
       }
     }
     if (state.pipeline === "character-assembly") $("anchor-option").hidden = true;
-    $("back-reference-label").hidden = ["body-reference", "character-assembly"].includes(state.pipeline) || !run?.progression?.next_views.includes("BACK");
+    $("back-reference-label").hidden = ["body-reference", "head-image-edit", "character-assembly"].includes(state.pipeline) || !run?.progression?.next_views.includes("BACK");
     if (run && $("back-reference").dataset.runId !== run.run_id) {
       $("back-reference").value = run.character_progression?.back_reference || "BACK_LEFT_3_4";
       $("back-reference").dataset.runId = run.run_id;
@@ -683,8 +685,8 @@
       summary.append(viewActions);
       details.append(summary);
       details.append(viewOverrideInput(run, view));
-      if (hasSharedAssetRouter() || (state.pipeline === "head-image" && view === "FRONT" && run.front_source)) {
-        const roles = state.pipeline === "head-image"
+      if (hasSharedAssetRouter() || (["head-image", "head-image-edit"].includes(state.pipeline) && view === "FRONT" && run.front_source)) {
+        const roles = ["head-image", "head-image-edit"].includes(state.pipeline)
           ? ["front_reference"]
           : state.pipeline === "character-assembly"
           ? ["body_reference", "head_image"]
@@ -720,7 +722,7 @@
           }
         }
       }
-      const renderedRoles = state.pipeline === "head-image" && view === "FRONT" && run.front_source
+      const renderedRoles = ["head-image", "head-image-edit"].includes(state.pipeline) && view === "FRONT" && run.front_source
         ? new Set(["head_image_source"])
         : state.pipeline === "character-assembly"
         ? new Set(["body_reference", "head_image"])
@@ -776,13 +778,13 @@
       if (run.character_progression && view !== "BACK") {
         recipeSelect.disabled = true;
         recipeSection.querySelector("button").hidden = true;
-        recipeHelp.textContent = view === "FRONT" ? "Uses this pipeline’s FRONT prerequisites." : "Uses the selected predecessor from the preceding stage. Submitted renders retain their frozen reference.";
+        recipeHelp.textContent = view === "FRONT" ? "Uses this pipeline’s FRONT prerequisites." : state.pipeline === "head-image-edit" ? "Uses selected FRONT independently. Submitted renders retain their frozen reference." : "Uses the selected predecessor from the preceding stage. Submitted renders retain their frozen reference.";
       }
       if (run.character_progression && view === "BACK") {
-        const sources = state.pipeline === "body-reference" ? ["FRONT"] : ["BACK_LEFT_3_4", "BACK_RIGHT_3_4"];
+        const sources = ["body-reference", "head-image-edit"].includes(state.pipeline) ? ["FRONT"] : ["BACK_LEFT_3_4", "BACK_RIGHT_3_4"];
         for (const option of [...recipeSelect.options]) if (!sources.includes(option.value)) option.remove();
         recipeSelect.value = recipe.source_view || run.character_progression.back_reference;
-        if (state.pipeline === "body-reference") {
+        if (["body-reference", "head-image-edit"].includes(state.pipeline)) {
           recipeSelect.value = "FRONT";
           recipeSelect.disabled = true;
           recipeSection.querySelector("button").hidden = true;
@@ -911,8 +913,8 @@
     }
     const progress = run.page_summary || {};
     const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
-    const phaseChangeSummary = state.pipeline === "head-image" && run.apply_phase_change ? " · Phase change rules applied" : "";
-    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
+    const phaseChangeSummary = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules applied" : "";
+    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary}${state.pipeline === "character-assembly" ? ` · Heads: ${run.head_pipeline === "head-image-edit" ? "Head-Image Edit" : "Head-Image"}` : ""} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
     renderSelectedViews(run);
@@ -959,7 +961,14 @@
       if (sameRun) mergeLiveRun(loaded); else state.run = loaded;
       state.runState = "selected";
       state.polledRun = null;
-      if (!sameRun) render();
+      if (!sameRun) {
+        if (state.pipeline === "character-assembly" && $("head-pipeline").value !== (loaded.head_pipeline || "head-image")) {
+          $("head-pipeline").value = loaded.head_pipeline || "head-image";
+          $("source-batches").replaceChildren();
+          void readiness();
+        }
+        render();
+      }
     } catch (error) {
       if (requestId !== state.runRequest || generation !== state.generation) return;
       state.runState = "unavailable";
@@ -994,7 +1003,7 @@
     const select = $("runs");
     select.replaceChildren();
     for (const run of state.runs) {
-      const phaseChangeLabel = state.pipeline === "head-image" && run.apply_phase_change ? " · Phase change rules" : "";
+      const phaseChangeLabel = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules" : "";
       select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel}${state.pipeline !== "character-assembly" && run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : ""} · ${run.run_id}`, run.run_id));
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
@@ -1097,15 +1106,17 @@
     $("apply-phase-change").checked = false;
     $("apply-phase-change").disabled = true;
     document.querySelector("#local-pipeline-title").textContent = {
-      "body-reference": "Body-Reference", "head-image": "Head-Image",
+      "body-reference": "Body-Reference", "head-image": "Head-Image", "head-image-edit": "Head-Image Edit",
       "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing",
     }[pipeline];
     $("costume-label").hidden = !isCostume();
     $("anchor-option").hidden = state.pipeline === "character-assembly" || !hasSharedAssetRouter();
     $("source-batches").hidden = !hasSharedAssetRouter();
+    $("head-pipeline-label").hidden = pipeline !== "character-assembly";
+    $("head-pipeline").value = "head-image";
     $("rerun-refresh-option").hidden = !hasSharedAssetRouter();
     if (hasSharedAssetRouter()) $("use-anchor").checked = false;
-    $("source-option").hidden = pipeline !== "head-image";
+    $("source-option").hidden = !["head-image", "head-image-edit"].includes(pipeline);
     $("source-remove").hidden = true;
     $("source-preview").textContent = "No FRONT reference selected.";
     $("runs").replaceChildren(new Option("Loading batches…", ""));
@@ -1122,7 +1133,7 @@
     const context = { character: document.querySelector("#character-select").value, phase: document.querySelector("#phase-select").value };
     if (busy()) { setStatus("Stop the current batch before changing its reference image.", true); return; }
     try {
-      const response = await fetch(`/api/local/head-image/sources?${new URLSearchParams({ ...context, filename: file.name || "pasted-reference.png" })}`, {
+      const response = await fetch(`${baseUrl()}/sources?${new URLSearchParams({ ...context, filename: file.name || "pasted-reference.png" })}`, {
         method: "POST", headers: { "Content-Type": file.type || "application/octet-stream",
           "X-Zet-Universe": document.querySelector("#universe-select").value }, body: file,
       });
@@ -1621,6 +1632,7 @@
     $("other-count").addEventListener("change", () => void readiness());
     $("use-anchor").addEventListener("change", () => void readiness());
     $("source-batches").addEventListener("change", () => void readiness());
+    $("head-pipeline").addEventListener("change", () => { $("source-batches").replaceChildren(); void readiness(); });
     $("start").addEventListener("click", () => void perform(["INTERRUPTED", "STOPPED"].includes(state.run?.status)
       || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) ? "resume" : "start").catch((error) => setStatus(error.message, true)));
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));

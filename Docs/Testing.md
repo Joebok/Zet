@@ -1,5 +1,29 @@
 # Local testing
 
+## Independent Head-Image Edit (2026-10-22)
+
+`npm.cmd run test:e2e` passed all four approved scenarios; the final run took
+39.3s. S2 remains legacy Assembly/Dressing regression coverage. No maintained
+scenario, dependency, live inference or deployment was added.
+
+Disposable checks passed 16 new all-view generation/analysis compiles and eight
+byte-identical legacy prompts before/after separate authoring. Isolated services
+verified independent runs/locks, FRONT-based progression, accepted operation
+source maps, slot/staging bindings, both locked and selected-batch Assembly source
+choices and refresh, guided finishing/adoption/ancestry, text-only follow-up and
+stale-guide refusal. Isolated AI_Proxy preparation covered text FRONT and two-image
+BACK; no worker executed these requests. Actual Chromium checks verified both
+pages, Assembly selectors, guided finishing click/reload, 1280px/390px containment
+and no page errors. Screenshots were inspected. Changed Python/JSON/JavaScript
+syntax and `git diff --check` passed.
+
+Adult Tsaeytte's appended block preserves the original bytes and all 26 legacy
+sections. These checks establish implementation contracts, not live image quality.
+See [the completed plan](../plans/completed/head-image-edit.md) for observations,
+resolved disposable-check issues and limits, and
+[Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#independent-head-image-edit-2026-10-22)
+for operator behavior.
+
 ## Repo-managed Qwen guidance and LLM roles (2026-10-22)
 
 `npm.cmd run test:e2e` passed all four approved scenarios initially (44.4s) and after final integration changes (40.8s). The final run emitted the existing nonfatal Windows usage-maintenance file-sharing warning. An intervening invocation correctly refused the disposable browser fixture's occupied port; the owned fixture was stopped before the successful final run. No maintained scenario was added; the queue fixture now supplies an explicit skill-free role.

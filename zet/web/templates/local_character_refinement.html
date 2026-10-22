@@ -26,6 +26,13 @@
         <label>Analysis model <input id="refine-model" type="text" placeholder="Default analysis model"></label>
         <button id="refine-analyze" type="button">Analyze image and continuity</button>
         <section id="refine-analysis" aria-label="Suggested image corrections"></section>
+        <fieldset id="refine-guide-controls" hidden>
+          <legend>Render operation and guide</legend>
+          <label>Operation <select id="refine-operation"><option value="correction">Scoped correction</option><option value="rear_hair">Rear-quarter hair finishing from BACK</option></select></label>
+          <label>Render guide <select id="refine-guide-view"><option value="">None — text-only correction</option></select></label>
+          <label>Guide transfer scope <textarea id="refine-guide-scope" rows="2" maxlength="24000" placeholder="For a custom guide, name only the feature to transfer"></textarea></label>
+          <p>Render guides are attached to the image model. Analysis comparisons above are separate. Hair finishing uses selected BACK for lower-hair volume and length only.</p>
+        </fieldset>
         <label>Targeted changes / feedback <textarea id="refine-feedback" rows="5" maxlength="24000"></textarea></label>
         <button id="refine-edit" type="button">Generate refinement</button>
       </section>

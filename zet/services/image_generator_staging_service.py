@@ -45,6 +45,8 @@ class ImageGeneratorStagingService:
                 raise ValueError("Image Generator supports at most 10 references. This view cannot be staged without dropping inputs.")
             profile = require_qwen_profile(workflow.project_root, saved["preset"],
                                            presets_path=self.generator.presets_path)
+            if workflow.pipeline == "head-image-edit":
+                profile = saved.get("render_settings") or profile
             width, height = _render_size(None, profile)
             inputs = {
                 "mode": "img2img" if saved["references"] else "txt2img",
@@ -57,6 +59,9 @@ class ImageGeneratorStagingService:
                                   "disable_prompt_globals": bool(profile.get("disable_prompt_globals", False)),
                                   "append_reference_labels": False},
             }
+            if workflow.pipeline == "head-image-edit":
+                inputs["render_config"]["overrides"] = {key: profile[key] for key in
+                    ("steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae") if key in profile}
             self.generator.render_configuration(inputs, inputs["mode"])
             for index, reference in enumerate(saved["references"], 1):
                 contents = Path(reference["path"]).read_bytes()

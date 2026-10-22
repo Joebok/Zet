@@ -49,7 +49,7 @@ class StorageRecoveryService:
         LocalRunAllRemainingService(self.app, project).recover()
         # Normal batches do not need an active Run All Remaining campaign.
         from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
-        for pipeline in ("body-reference", "head-image", "character-assembly", "costume-dressing"):
+        for pipeline in ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"):
             workflow = LocalImagePipelineWorkflowService(self.app, project, pipeline)
             adapter = workflow.adapter
             for summary in adapter.list_runs():
@@ -72,7 +72,7 @@ class StorageRecoveryService:
                         targets = set(run.get("target_candidate_ids") or [])
                         views = set(run.get("target_views") or [])
                         state = adapter._read_json(root / "state.json") if pipeline == "body-reference" else (
-                            adapter._read_json(root / "state.json") if pipeline == "head-image" else adapter._read(root / "state.json"))
+                            adapter._read_json(root / "state.json") if pipeline in {"head-image", "head-image-edit"} else adapter._read(root / "state.json"))
                         # Preserve a review-only operation; do not turn it into generation.
                         state.update(status="QUEUED", error="")
                         if pipeline == "body-reference":

@@ -20,12 +20,13 @@ class LocalPromptPreviewService:
     def compile(self, run, sources, directory):
         from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
         from Scripts.Run_Head_Image_Jobs import compile_head_image_job
+        from Scripts.Run_Head_Image_Edit_Jobs import compile_head_image_edit_job
         from Scripts.Run_Character_Assembly_Jobs import compile_character_assembly_job
         from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
-        from zet.services.local_character_progression_service import STAGES
+        from zet.services.local_character_progression_service import stages_for
         workflow = self.workflow
         pipeline = workflow.pipeline
-        compiler = {"body-reference": compile_body_reference_job, "head-image": compile_head_image_job,
+        compiler = {"body-reference": compile_body_reference_job, "head-image": compile_head_image_job, "head-image-edit": compile_head_image_edit_job,
                     "character-assembly": compile_character_assembly_job,
                     "costume-dressing": compile_costume_dressing_job}[pipeline]
         character = Path(workflow.app.config.base_character_path) / run["character"] / run["phase"] / "Character.md"
@@ -33,21 +34,21 @@ class LocalPromptPreviewService:
         recipes = reference_recipes(Path(run["root"]), pipeline)
         result = []
         with template_sources(sources):
-            for view in (view for stage in STAGES for view in stage):
+            for view in (view for stage in stages_for(run) for view in stage):
                 references = []
                 def declare(role, source_view=view):
                     references.append({"role": role, "path": "declared:" + role,
                         "character": run["character"], "phase": run["phase"], "view": source_view,
                         "body_view": source_view, "head_view": source_view})
-                source_view = PREDECESSORS.get(view, "FRONT")
+                source_view = "FRONT" if pipeline == "head-image-edit" else PREDECESSORS.get(view, "FRONT")
                 if view == "BACK":
                     source_view = (run.get("character_progression") or {}).get("back_reference", source_view)
-                    if pipeline == "body-reference":
+                    if pipeline in {"body-reference", "head-image-edit"}:
                         source_view = "FRONT"
                 recipe = recipes.get(view) or {}
                 if recipe.get("mode") == "selected_view":
                     source_view = recipe["source_view"]
-                if pipeline == "head-image" and view == "FRONT" and run.get("front_source"):
+                if pipeline in {"head-image", "head-image-edit"} and view == "FRONT" and run.get("front_source"):
                     declare("head_image_source")
                 if pipeline == "character-assembly":
                     declare("body_reference")
@@ -56,7 +57,7 @@ class LocalPromptPreviewService:
                     declare("character_assembly")
                 if view != "FRONT" and pipeline != "character-assembly":
                     reference = batch_view_reference(source_view, view, "declared:batch_view_reference", "declared")
-                    if pipeline == "head-image":
+                    if pipeline in {"head-image", "head-image-edit"}:
                         reference.update(role="head_image_source", prompt_role="edit_base")
                     references.append(reference)
                 output = Path(directory) / view

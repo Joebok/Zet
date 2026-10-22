@@ -1,5 +1,23 @@
 # Data, configuration, and ownership
 
+## Independent head edits (2026-10-22)
+
+`head-image-edit` stores `kind: local_head_image_edit` batches under each character/
+phase's `Head-Image-Edit` directory using existing spec/state and portable-path
+formats. `recipe_version: 1` and `source_policy: independent_front` distinguish its
+FRONT/remaining policy. LocalAssets keys use `head-image-edit:<VIEW>`; catalog
+origins also include the pipeline. No catalog migration is required.
+
+Assembly adds `head_pipeline` to new specs, defaulting missing fields to
+`head-image`. Resolved source records retain actual pipeline/key/batch/candidate
+identities and frozen bytes; refresh and promotion keep the selected family.
+Head Edit refinement attempts add operation, guide view, recipe version and
+`render_references` for actual ordered render inputs. `reference_inputs` retains
+ancestry, including original FRONT and any BACK finishing guide. Parent attempt/
+session identities and frozen payload/seeds remain separate. See
+[Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#independent-head-image-edit-2026-10-22)
+and [Prompts](COMPONENTS/PROMPTS.md#independent-head-image-edit-authoring-2026-10-22).
+
 Character view overrides use the existing batch `added_candidates`,
 `detached_candidates`, `slots_by_view`, `selected_views` and `front_anchor` state.
 [LocalCharacterOverrideService](../zet/services/local_character_override_service.py)

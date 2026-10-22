@@ -1,5 +1,43 @@
 # Local character assets
 
+## Independent Head-Image Edit (2026-10-22)
+
+**Head-Image Edit** (`head-image-edit`, page `local-head-image-edit`) runs beside
+Head-Image. [LocalHeadImageEditService](../../zet/services/local_head_image_edit_service.py)
+reuses bounded identity/compiler hooks in the existing head lifecycle, with
+independent `Head-Image-Edit` runs, queue ownership, selections and publication
+keys. No batches or ad hoc trial results are migrated. Overview's automatic
+Body/Head/Assembly/Dressing chain continues to use legacy Head-Image; the new
+pipeline has its own page, batch status, Run All Remaining and recovery support.
+
+Accept prompts, run/select FRONT, then open the remaining requested views. Each
+independently edits same-batch selected FRONT, including BACK. Partial requests add
+only FRONT. Other pipelines retain their predecessor chains. Source changes retain
+existing selections/images and locks, with advisory stale-source flags. New
+publication/adoption validates captured source/guide identity and bytes.
+
+On a selected rear-quarter image's **Refine** page, choose **Rear-quarter hair
+finishing from BACK** after selecting BACK. The image model receives the quarter
+canvas first and BACK second, for lower-hair volume/length only. Scoped correction
+supports custom feedback and an optional selected-view render guide with an
+explicit transfer scope. Analysis comparison checkboxes do not attach render
+guides. Each render creates a separate attempt; **Use this image** explicitly
+adopts it into the original slot while retaining history and published bytes.
+Later text-only edits retain the established result without citing absent guides.
+
+Assembly's **Head pipeline** setting chooses either head family for each new
+batch, using that family's selected source batch or locked images. Saved
+`head_pipeline` governs refresh; missing values default to legacy and unavailable
+sources never fall back across families. Assembly retains the `head_image`
+compiler role and promotes actual source keys, including BACK finishing lineage.
+
+Adult Tsaeytte's separate HEAD_EDIT block follows [the trial evidence](../../Docs-Joe/Qwen-Head-Image-Prompts.md)
+without changing earlier sections. FRONT alone anchors front quarters/profiles;
+`elf-ears-back` guides rear-right/BACK. Rear-left correction and BACK-guided quarter
+finishing remain separate operations. The generalized compiler's live image
+quality is unverified. See [Prompts](PROMPTS.md#independent-head-image-edit-authoring-2026-10-22)
+and [ADR 0028](../DECISIONS/0028-independent-head-image-edit.md).
+
 ## Per-view override images (2026-10-20)
 
 Body, Head, Assembly and Dressing batch views offer Choose image, Paste image and

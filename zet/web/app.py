@@ -1258,6 +1258,10 @@ def _create_available_app(
     def local_body_reference_page() -> RedirectResponse:
         return RedirectResponse("/?page=local-body-reference", status_code=307)
 
+    @app.get("/local-head-image-edit")
+    def local_head_image_edit_page() -> RedirectResponse:
+        return RedirectResponse("/?page=local-head-image-edit", status_code=307)
+
     @app.get("/local-head-image")
     def local_head_image_page() -> RedirectResponse:
         return RedirectResponse("/?page=local-head-image", status_code=307)
@@ -3232,6 +3236,34 @@ def _create_available_app(
             payload = _ai_controls_payload(zet_app)
             payload["message"] = message
             return payload
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/config/processes")
+    def config_processes() -> dict[str, Any]:
+        """Return only managed process state for the lightweight Config page."""
+        return {"processes": [status.to_dict() for status in _app(app.state.config_path).process_statuses()]}
+
+    @app.post("/api/config/processes/{process_id}/{action}")
+    def config_process_action(process_id: str, action: str) -> dict[str, Any]:
+        """Manage a process without refreshing queue and harvest summaries."""
+        zet_app = _app(app.state.config_path)
+        try:
+            if action == "start":
+                zet_app.start_process(process_id)
+                message = f"Started {process_id}."
+            elif action == "stop":
+                count = zet_app.stop_process(process_id)
+                message = f"Stopped {count} process(es) for {process_id}."
+            elif action == "restart":
+                count = zet_app.restart_process(process_id)
+                message = f"Restarted {process_id}; stopped {count} old process(es)."
+            else:
+                raise ValueError(f"Unsupported process action: {action}")
+            return {
+                "processes": [status.to_dict() for status in zet_app.process_statuses()],
+                "message": message,
+            }
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

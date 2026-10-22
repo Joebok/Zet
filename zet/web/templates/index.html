@@ -77,6 +77,7 @@
         <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
           <button class="tab workflow-tab" data-page="local-body-reference">Body-Reference</button>
           <button class="tab workflow-tab" data-page="local-head-image">Head-Image</button>
+          <button class="tab workflow-tab" data-page="local-head-image-edit">Head-Image Edit</button>
           <button class="tab workflow-tab" data-page="local-character-assembly">Character-Assembly</button>
           <button class="tab workflow-tab" data-page="local-costume-dressing">Costume-Dressing</button>
         </div>
@@ -263,6 +264,9 @@
             <label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" max="8" value="8"></label>
             <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" max="8" value="4"></label>
             <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
+            <label id="local-pipeline-head-pipeline-label" hidden>Head pipeline
+              <select id="local-pipeline-head-pipeline"><option value="head-image">Head-Image</option><option value="head-image-edit">Head-Image Edit</option></select>
+            </label>
             <div id="local-pipeline-source-batches" class="local-pipeline-source-batches" hidden></div>
             <label id="local-pipeline-rerun-refresh-option" hidden><span>Refresh references from chosen batches when rerunning</span><input id="local-pipeline-rerun-refresh-sources" type="checkbox" checked></label>
             <div id="local-pipeline-source-option" hidden>

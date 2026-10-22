@@ -7,10 +7,11 @@ from typing import Any
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 
 
-PIPELINES = ("body-reference", "head-image", "character-assembly", "costume-dressing")
+PIPELINES = ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing")
 PIPELINE_LABELS = {
     "body-reference": "Body-Reference",
     "head-image": "Head-Image",
+    "head-image-edit": "Head-Image Edit",
     "character-assembly": "Character-Assembly",
     "costume-dressing": "Costume-Dressing",
 }

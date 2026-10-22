@@ -1,5 +1,19 @@
 # Capability code map
 
+Independent Head-Image Edit (2026-10-22):
+[LocalHeadImageEditService](../zet/services/local_head_image_edit_service.py)
+specializes the shared head lifecycle;
+[Run_Head_Image_Edit_Jobs.py](../Scripts/Run_Head_Image_Edit_Jobs.py) and the two
+`head_image_edit_*` task templates own separate authoring/compilation. Progression,
+references, previews, slots, routing, batch status and storage recovery recognize
+its identity. `LocalCharacterRefinementService` owns scoped render guides,
+BACK-guided hair finishing and explicit adoption. `LocalCharacterAssetPipelineService`
+owns Assembly's frozen `head_pipeline` and promotion lineage. New character
+sections are optional for legacy onboarding. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#independent-head-image-edit-2026-10-22),
+[ADR 0028](DECISIONS/0028-independent-head-image-edit.md) and the
+[plan](../plans/completed/head-image-edit.md). S2 remains legacy Assembly/Dressing
+regression coverage; disposable checks cover new contracts, not live image quality.
+
 Character view override imports (2026-10-20):
 [LocalCharacterOverrideService](../zet/services/local_character_override_service.py)
 owns byte validation, active-work/current-selection fencing, candidate/slot

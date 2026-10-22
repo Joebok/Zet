@@ -1,5 +1,9 @@
 # Architectural decision records
 
+[0028 - Independent head edits and explicit Assembly sources](0028-independent-head-image-edit.md)
+records parallel head authoring/storage, FRONT sources, separate guided finishing
+and per-Assembly head-family selection.
+
 [0026 - Publish and reconcile production template edits](0026-template-edit-publication.md)
 records explicit recovery PRs, exact merged snapshots and the master-write fence.
 

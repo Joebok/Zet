@@ -65,9 +65,9 @@ def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
     if run.get("character_progression"):
         from zet.services.local_prompt_preview_service import PREDECESSORS
         source = recipe["source_view"]
-        back_sources = {"FRONT"} if run.get("kind") == "local_body_reference" else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
+        back_sources = {"FRONT"} if run.get("kind") in {"local_body_reference", "local_head_image_edit"} else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
         valid = view == "BACK" and source in back_sources
-        valid = valid or view != "BACK" and source == PREDECESSORS.get(view) and bool(source)
+        valid = valid or view != "BACK" and source == ("FRONT" if run.get("kind") == "local_head_image_edit" else PREDECESSORS.get(view)) and bool(source)
         if recipe["mode"] != "selected_view" or not valid:
             raise ValueError("Staged batches use their selected predecessor; Body BACK uses FRONT, other BACK views use either rear quarter.")
     selected_reference(run, view, recipe)
@@ -89,12 +89,12 @@ def custom_references(run: dict, view: str, pipeline: str, base: list[dict]) -> 
     # These replace only the batch anchor. Matching Body/Head/Assembly inputs and
     # costume-specific resources retain their own roles and order.
     anchor_roles = {"body_reference_front_anchor", "front_assembly", "front_costume", "batch_view_reference"}
-    if pipeline == "head-image":
+    if pipeline in {"head-image", "head-image-edit"}:
         anchor_roles.add("head_image_source")
     refs = [ref for ref in base if ref.get("role") not in anchor_roles]
     reference = selected_reference(run, view, recipe)
     if reference:
-        if pipeline == "head-image":
+        if pipeline in {"head-image", "head-image-edit"}:
             reference.update(role="head_image_source", prompt_role="edit_base")
         refs.append(reference)
     return refs

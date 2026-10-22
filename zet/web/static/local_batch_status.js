@@ -12,6 +12,7 @@
   const pipelinePages = {
     "body-reference": "local-body-reference",
     "head-image": "local-head-image",
+    "head-image-edit": "local-head-image-edit",
     "character-assembly": "local-character-assembly",
     "costume-dressing": "local-costume-dressing",
   };

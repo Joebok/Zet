@@ -25,7 +25,10 @@ class LocalImagePipelineWorkflowService:
         self.pipeline = str(pipeline).lower()
         self.pipeline_config = local_image_pipeline_config(self.pipeline)
         self.config = pipeline_page_config(self.pipeline)
-        if self.pipeline_config.generation_adapter == "head-image":
+        if self.pipeline_config.generation_adapter == "head-image-edit":
+            from zet.services.local_head_image_edit_service import LocalHeadImageEditService
+            self.adapter = LocalHeadImageEditService(app, self.project_root)
+        elif self.pipeline_config.generation_adapter == "head-image":
             self.adapter = LocalHeadImageService(app, self.project_root)
         elif self.pipeline_config.generation_adapter == "body-reference":
             self.adapter = LocalBodyReferenceService(app, self.project_root)
@@ -148,7 +151,7 @@ class LocalImagePipelineWorkflowService:
         if name == "rank":
             return self.adapter.stage_view_evaluation(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.stage_view_evaluation(run_id, view)
         if name == "move_rank":
-            if self.pipeline in {"head-image", "body-reference"}:
+            if self.pipeline in {"head-image", "head-image-edit", "body-reference"}:
                 result = self.adapter.move_candidate_rank(run_id, view, candidate_id, direction)
             else:
                 result = self.adapter.move_rank(run_id, view, candidate_id, direction, costume)
@@ -264,7 +267,7 @@ class LocalImagePipelineWorkflowService:
             from zet.services.local_character_progression_service import assembly_front
             if not assembly_front(run):
                 raise LocalImageWorkflowError("Select an available FRONT image before ranking remaining views.")
-        requires_anchor = self.pipeline in {"body-reference", "head-image"} or bool(run.get("use_front_anchor"))
+        requires_anchor = self.pipeline in {"body-reference", "head-image", "head-image-edit"} or bool(run.get("use_front_anchor"))
         if requires_anchor and any(target != "FRONT" for target in targets):
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), {})
             if not Path(str(anchor.get("image_path") or "")).is_file():
@@ -272,7 +275,7 @@ class LocalImagePipelineWorkflowService:
         qualifier = self.adapter._qualifier(costume) if self.pipeline == "costume-dressing" else ""
         for target in targets:
             self.adapter.asset_store.assert_batch_change_allowed(
-                run["character"], run["phase"], self.pipeline_config.label, target, qualifier)
+                run["character"], run["phase"], getattr(self.adapter, "asset_pipeline", self.pipeline_config.label), target, qualifier)
         run = reconcile_candidate_harvest(
             self.app, lambda: self.prompt_improvement.detail(run_id, costume), run, images)
         for target in targets:

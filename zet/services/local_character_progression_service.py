@@ -16,10 +16,21 @@ def read_progression(root):
     return read_library_json(Path(root) / "state.json", pipeline_library_root_for_path(root)).get("character_progression")
 
 
-def required_views(views):
+def is_head_edit(run):
+    return run.get("kind") == "local_head_image_edit"
+
+
+def stages_for(run):
+    return (("FRONT",), tuple(v for v in VIEW_ORDER if v != "FRONT")) if is_head_edit(run) else STAGES
+
+
+def required_views(views, pipeline=""):
     requested = set(views)
     if requested - set(VIEW_ORDER):
         raise ValueError("Unknown requested character view.")
+    if pipeline == "head-image-edit":
+        requested.add("FRONT")
+        return [view for view in VIEW_ORDER if view in requested]
     for view in list(requested):
         while view in PREDECESSORS:
             view = PREDECESSORS[view]
@@ -27,17 +38,20 @@ def required_views(views):
     return [view for view in VIEW_ORDER if view in requested]
 
 
-def planned_views(payload, defaults=VIEW_ORDER):
+def planned_views(payload, defaults=VIEW_ORDER, pipeline=""):
     requested = ["FRONT"] if payload.get("front_only") else payload.get("views", list(defaults))
     if not isinstance(requested, list) or not requested:
         raise ValueError("Choose at least one character view.")
-    return required_views(requested)
+    return required_views(requested, pipeline)
 
 
 def enroll(root, views=None):
+    spec = read_library_json(Path(root) / "spec.json", pipeline_library_root_for_path(root))
+    edit = is_head_edit(spec)
     def update(state):
         state.setdefault("character_progression", {"version": 1, "accepted_revision_id": "", "stage": -1,
-            "requested_views": required_views(views or VIEW_ORDER), "back_reference": "BACK_LEFT_3_4"})
+            "requested_views": required_views(views or VIEW_ORDER, "head-image-edit" if edit else ""),
+            "back_reference": "FRONT" if edit else "BACK_LEFT_3_4", **({"recipe_version": 1} if edit else {})})
     mutate_local_run_state(Path(root), update)
 
 
@@ -84,7 +98,7 @@ def opened_views(run):
         if flow["stage"] < 0:
             return set()
         return set(flow["requested_views"]) if flow["stage"] > 0 and assembly_front(run) else {"FRONT"}
-    return {view for stage in STAGES[:flow["stage"] + 1] for view in stage
+    return {view for stage in stages_for(run)[:flow["stage"] + 1] for view in stage
             if view in flow["requested_views"]}
 
 
@@ -108,7 +122,7 @@ def execution_views(run, views=None):
         return views
     if prompt_review_required(run) or flow["stage"] < 0:
         return set()
-    current = set(STAGES[flow["stage"]]) & set(flow["requested_views"])
+    current = set(stages_for(run)[flow["stage"]]) & set(flow["requested_views"])
     return (set(views) & opened_views(run)) if views is not None else current
 
 
@@ -130,7 +144,8 @@ def project(run):
     run["character_progression"] = flow
     requested = flow["requested_views"]
     stage = flow["stage"]
-    current = [v for v in (STAGES[stage] if stage >= 0 else ()) if v in requested]
+    stages = stages_for(run)
+    current = [v for v in (stages[stage] if stage >= 0 else ()) if v in requested]
     selected = run.get("selected_views", {})
     candidates = {c["candidate_id"]: c for c in run.get("candidates", [])}
     def available(view):
@@ -148,8 +163,8 @@ def project(run):
         reason = "Wait for submitted renders to finish."
     elif any(not available(view) for view in current):
         reason = "Select an available image for each view in this stage."
-    next_stage = next((i for i in range(stage + 1, len(STAGES)) if set(STAGES[i]) & set(requested)), None)
-    next_views = [v for v in STAGES[next_stage] if v in requested] if next_stage is not None else []
+    next_stage = next((i for i in range(stage + 1, len(stages)) if set(stages[i]) & set(requested)), None)
+    next_views = [v for v in stages[next_stage] if v in requested] if next_stage is not None else []
     if run.get("kind") == "character-assembly":
         front = assembly_front(run)
         current = (["FRONT"] if stage == 0 else list(requested)) if stage >= 0 else []
@@ -182,8 +197,13 @@ def project(run):
                 warnings.append({"view": candidate["view"], "candidate_id": candidate["candidate_id"],
                     "message": f"Generated from an earlier {source_view} selection; your current choice has changed."})
     run["reference_warnings"] = warnings
+    if is_head_edit(run):
+        stale = {warning["view"] for warning in warnings}
+        run["stale_views"] = sorted(stale)
+        for candidate in candidates.values():
+            candidate["stale_source"] = any(w["candidate_id"] == candidate["candidate_id"] for w in warnings)
     # Ranking/reference drift is advice, not a new gate on human choices.
-    run["stale_selections"] = [v for v in selected if not available(v)]
+    run["stale_selections"] = [v for v in selected if not available(v) or (is_head_edit(run) and v in run["stale_views"])]
     if run["progression"]["complete"] and not busy and not run.get("stop_requested"):
         run["status"] = "COMPLETE"
     return run
@@ -200,9 +220,9 @@ def advance(workflow, run_id, costume="", expected_stage=None, back_reference=No
             raise ValueError(run["progression"]["reason"] or "All requested stages are already open.")
         targets = run["progression"]["next_views"]
         next_stage = ((0 if targets == ["FRONT"] else len(STAGES) - 1) if workflow.pipeline == "character-assembly"
-                      else next(i for i, group in enumerate(STAGES) if targets[0] in group))
-        back = "FRONT" if workflow.pipeline == "body-reference" else back_reference or flow.get("back_reference", "BACK_LEFT_3_4")
-        back_sources = {"FRONT"} if workflow.pipeline == "body-reference" else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
+                      else next(i for i, group in enumerate(stages_for(run)) if targets[0] in group))
+        back = "FRONT" if workflow.pipeline in {"body-reference", "head-image-edit"} else back_reference or flow.get("back_reference", "BACK_LEFT_3_4")
+        back_sources = {"FRONT"} if workflow.pipeline in {"body-reference", "head-image-edit"} else {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}
         if workflow.pipeline != "character-assembly" and back not in back_sources:
             raise ValueError("Choose a selected back three-quarter reference.")
         from zet.services.local_view_reference_service import selected_reference
@@ -210,7 +230,7 @@ def advance(workflow, run_id, costume="", expected_stage=None, back_reference=No
         for view in targets:
             if view == "FRONT" or workflow.pipeline == "character-assembly":
                 continue
-            source = back if view == "BACK" else PREDECESSORS[view]
+            source = "FRONT" if is_head_edit(run) else back if view == "BACK" else PREDECESSORS[view]
             recipe = {"mode": "selected_view", "source_view": source}
             selected_reference(run, view, recipe)
             recipes[view] = recipe
@@ -233,11 +253,16 @@ def select(workflow, run, view, candidate_id):
                          or (candidate.get("human_review") or {}).get("decision") == "reject"):
         raise ValueError("Choose an available, non-rejected candidate in this view.")
     adapter = workflow.adapter
-    pipeline = {"body-reference": "Body-Reference", "head-image": "Head-Image",
+    pipeline = {"body-reference": "Body-Reference", "head-image": "Head-Image", "head-image-edit": "Head-Image-Edit",
                 "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing"}[workflow.pipeline]
     qualifier = adapter._qualifier(run.get("costume", "")) if workflow.pipeline == "costume-dressing" else ""
     dependencies = [{"key": s["key"], "image_sha256": s.get("sha256", "")}
                     for s in (run.get("sources", {}).get(view) or {}).values() if s.get("key")]
+    if is_head_edit(run) and candidate:
+        refs = (candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", [])
+        dependencies = [{"key": adapter.asset_store.key(adapter.asset_pipeline, ref["view"]),
+                         "image_sha256": ref.get("sha256", "")} for ref in refs
+                        if ref.get("candidate_id") and ref.get("view") != view]
     def update(state):
         selected = state.setdefault("selected_views", {})
         if candidate_id:

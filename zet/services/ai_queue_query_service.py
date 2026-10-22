@@ -209,10 +209,12 @@ class AIQueueQueryService:
             params.update(page="narrative", story=owner["narrative_story_id"], scene=owner.get("narrative_scene_id", ""), target=owner.get("narrative_target_id", ""))
         elif owner.get("session_id"):
             params.update(page="minor-characters", minor_character=owner["session_id"])
-        elif any(owner.get(key) for key in ("local_body_reference_run_id", "local_head_image_run_id", "local_character_asset_run_id")):
+        elif any(owner.get(key) for key in ("local_body_reference_run_id", "local_head_image_run_id", "local_head_image_edit_run_id", "local_character_asset_run_id")):
             pipeline = row.get("workflow", "").lower()
             if owner.get("local_body_reference_run_id"):
                 page, batch = "local-body-reference", owner["local_body_reference_run_id"]
+            elif owner.get("local_head_image_edit_run_id"):
+                page, batch = "local-head-image-edit", owner["local_head_image_edit_run_id"]
             elif owner.get("local_head_image_run_id"):
                 page, batch = "local-head-image", owner["local_head_image_run_id"]
             else:

@@ -153,7 +153,7 @@ class CharacterRenderSlots:
                 if isinstance(resources, list):
                     refs = resources
             preset = "comfyui-qwen-body-reference-edit" if refs else "comfyui-qwen-body-reference-text"
-        elif pipeline == "head-image":
+        elif pipeline in {"head-image", "head-image-edit"}:
             anchor = next((c for c in run["candidates"] if c["candidate_id"] == run.get("front_anchor")), {})
             source = run.get("front_source") if view == "FRONT" else anchor.get("image_path")
             refs = [{"role": "head_image_source", "path": source}] if source else []
@@ -171,7 +171,7 @@ class CharacterRenderSlots:
                 if isinstance(resources, list):
                     refs = resources
             prompt = path.read_text(encoding="utf-8")
-            preset = "comfyui-qwen-head-image-edit" if refs else "comfyui-qwen-head-image-text"
+            preset = self.adapter.edit_preset if refs else self.adapter.text_preset
         else:
             if recompile and pipeline == "costume-dressing" and output_dir is None:
                 self.adapter._refresh_costume_snapshot(run)
@@ -198,6 +198,10 @@ class CharacterRenderSlots:
         saved = frozen_input(directory, prompt, refs, preset)
         saved["template_revision_id"] = revision.get("revision_id", "")
         saved["reference_recipe"] = recipe
+        if pipeline == "head-image-edit":
+            from zet.services.local_render_backend_service import LocalRenderBackendService
+            saved["recipe_version"] = 1
+            saved["render_settings"] = LocalRenderBackendService(self.workflow.app.config.state_file(self.workflow.project_root, "Local_Render_Presets.json"), config=self.workflow.app.config).preset(preset)
         if pipeline == "character-assembly":
             saved["assembly_input_version"] = ASSEMBLY_INPUT_VERSION
         return saved
@@ -212,7 +216,7 @@ class CharacterRenderSlots:
         custom = recipe_requirement(run, view)
         if custom is not None:
             return custom
-        requires = self.workflow.pipeline in {"body-reference", "head-image"} or run.get("use_front_anchor", False)
+        requires = self.workflow.pipeline in {"body-reference", "head-image", "head-image-edit"} or run.get("use_front_anchor", False)
         if view != "FRONT" and requires and not run.get("front_anchor"):
             return "Select a FRONT anchor before rendering this view."
         return ""
@@ -378,7 +382,7 @@ class CharacterRenderSlots:
                                 if self.workflow.pipeline == "body-reference":
                                     target = Path(candidate["image_path"])
                                     self.adapter._harvest_local_body_reference_answer(run_id, cid, candidate["ask_id"], target)
-                                elif self.workflow.pipeline == "head-image":
+                                elif self.workflow.pipeline in {"head-image", "head-image-edit"}:
                                     self.adapter._harvest(run_id, candidate)
                                 else:
                                     self.adapter._harvest_render(run, candidate)
@@ -450,7 +454,7 @@ class CharacterRenderSlots:
     def _update(self, run_id: str, cid: str, costume: str, updates: dict) -> None:
         if self.workflow.pipeline == "body-reference":
             self.adapter._candidate_update(run_id, cid, updates)
-        elif self.workflow.pipeline == "head-image":
+        elif self.workflow.pipeline in {"head-image", "head-image-edit"}:
             self.adapter._update(run_id, cid, **updates)
         else:
             self.adapter._update(run_id, cid, costume, **updates)

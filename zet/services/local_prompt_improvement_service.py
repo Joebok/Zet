@@ -448,7 +448,7 @@ class LocalPromptImprovementService:
                         continue
                     roles = {"character-assembly": ("body_reference", "head_image"),
                              "costume-dressing": ("character_assembly",)}.get(self.pipeline, ())
-                    if view != "FRONT" or (self.pipeline == "head-image" and run.get("front_source")):
+                    if view != "FRONT" or (self.pipeline in {"head-image", "head-image-edit"} and run.get("front_source")):
                         roles = (*roles, "front_reference")
                     for role in roles:
                         try:
@@ -468,7 +468,7 @@ class LocalPromptImprovementService:
             raise
 
     def _reference_path(self, run: dict[str, Any], view: str, role: str, costume: str) -> Path | None:
-        if role == "front_reference" and self.pipeline == "head-image" and view == "FRONT" and run.get("front_source"):
+        if role == "front_reference" and self.pipeline in {"head-image", "head-image-edit"} and view == "FRONT" and run.get("front_source"):
             return Path(str(run["front_source"]))
         if self.pipeline in {"character-assembly", "costume-dressing"} and role != "front_reference":
             try:

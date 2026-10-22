@@ -16,7 +16,7 @@ from zet.services.local_image_workflow_service import LocalImagePipelineWorkflow
 from zet.services.workflow_storage import file_lock
 
 
-PIPELINES = ("body-reference", "head-image", "character-assembly", "costume-dressing")
+PIPELINES = ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing")
 _CAMPAIGN_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="zet-run-all-remaining")
 _RENDER_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="zet-local-render-batch")
 _REVIEW_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="zet-local-image-review")
@@ -317,7 +317,7 @@ class LocalRunAllRemainingService:
                 self._set_batch(campaign_id, index, result="REVIEW_PENDING",
                     message="Open the batch to accept prompts or select images and Continue to the next stage.")
                 return
-        needs_anchor = pipeline in {"body-reference", "head-image"} or bool(run.get("use_front_anchor", True))
+        needs_anchor = pipeline in {"body-reference", "head-image", "head-image-edit"} or bool(run.get("use_front_anchor", True))
         if not run.get("front_anchor") and needs_anchor:
             missing_views.intersection_update({"FRONT"})
             if not missing_views:
@@ -439,7 +439,7 @@ class LocalRunAllRemainingService:
         run = adapter.detail(run_id, **kwargs)
         views = {str(item.get("view")) for item in run.get("candidates") or []
                  if Path(str(item.get("image_path") or "")).is_file()}
-        if not run.get("front_anchor") and (pipeline in {"body-reference", "head-image"} or run.get("use_front_anchor", True)):
+        if not run.get("front_anchor") and (pipeline in {"body-reference", "head-image", "head-image-edit"} or run.get("use_front_anchor", True)):
             views.intersection_update({"FRONT"})
         self._set_batch(campaign_id, index, review_status="RUNNING")
         try:
@@ -466,7 +466,7 @@ class LocalRunAllRemainingService:
             item.get("review_error") for item in refreshed.get("candidates") or []) or any(
                 ranking.get("status") == "FAILED" for ranking in (refreshed.get("rankings") or {}).values())
         result = "WAITING_FOR_SELECTION" if unselected or remaining else "COMPLETE"
-        needs_anchor = pipeline in {"body-reference", "head-image"} or bool(refreshed.get("use_front_anchor", True))
+        needs_anchor = pipeline in {"body-reference", "head-image", "head-image-edit"} or bool(refreshed.get("use_front_anchor", True))
         later_views_missing = bool(refreshed.get("front_anchor")) and any(
             item.get("view") != "FRONT" and not Path(str(item.get("image_path") or "")).is_file()
             for item in refreshed.get("candidates") or [])

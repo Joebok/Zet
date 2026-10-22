@@ -21,6 +21,25 @@
       "next_status": "READY_FOR_RENDER",
       "next_actor": "AI_AGENT"
     },
+    "head-image-edit": {
+      "description": "Independent FRONT-anchored head edits with scoped supporting references.",
+      "prompt_builder": "static",
+      "static_prompt_template": "head_image_edit_v2",
+      "legacy_static_prompt_template": "",
+      "resources": {
+        "required_reference_roles": [
+          "head_image_source"
+        ]
+      },
+      "output_files": {
+        "compiled_sections": "Compiled_Sections.md",
+        "final_prompt": "Final_Image_Prompt.md",
+        "dependency_manifest": "dependency_manifest.json",
+        "image_review": "Image_Review.md"
+      },
+      "next_status": "READY_FOR_RENDER",
+      "next_actor": "AI_AGENT"
+    },
     "head-image": {
       "description": "Static head prompt using exactly one required source image and either transform or standard character sections.",
       "prompt_builder": "static",

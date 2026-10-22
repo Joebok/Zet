@@ -134,3 +134,10 @@ Used by expression generation. List character- or phase-specific identity drift 
 ## Final completeness check
 
 Verify that metadata is filled, every required section contains useful content, view tags use documented tokens, the transform section is either complete or empty, head-image text is body-free, anatomical sides are unambiguous, no technical modesty or stale orientation text was added, uncertain facts were not invented, and every marker is unchanged.
+
+
+## Independent Head-Image Edit authoring
+
+The optional HEAD_EDIT_* family belongs only to Head-Image Edit. Keep existing head/hair sections unchanged when comparing pipelines. FRONT_DESCRIPTION establishes identity from text; PRESERVE contains concise geometry, hair attachment/length and material constraints that also reach source-backed edits. VIEW_OVERRIDES uses the existing head-domain view tags for anatomical sides and intentional visibility. REFERENCE_GUIDANCE binds only applicable universe LIB:REF images and explains the feature transferred and excluded material, identity, camera and background. Never assume a tag name proves anatomy is correct. EXPRESSION_GUIDANCE applies only to visible features. PHASE_CHANGES is opt-in for uploaded FRONT inputs. REVIEW_CRITERIA describes visible acceptance, including intentional eye concealment.
+
+Use one primary edit canvas, zero for text-only FRONT, followed by optional scoped guides. FRONT independently anchors every base side/rear view. Selected BACK can guide a separate rear-quarter hair finishing attempt; do not combine this with initial rotation or automatically adopt it. Do not prepend FRONT prose to edits, mirror the opposite side, force hidden eyes into view, or substitute shoulder-length framing for authored hair length. Other pipelines do not require these new sections.

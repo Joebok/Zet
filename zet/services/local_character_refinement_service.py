@@ -208,7 +208,23 @@ class LocalCharacterRefinementService:
             base_id = payload.get("attempt_id", "original")
             base = self._attempt(record, base_id)
             source = self.image_path(pipeline, run_id, costume, session_id, base_id)
+            operation = payload.get("operation", "correction")
+            guide_view = str(payload.get("guide_view") or "").upper()
+            if operation not in {"correction", "rear_hair"}:
+                raise ValueError("Unknown refinement operation.")
+            if (operation != "correction" or guide_view) and pipeline != "head-image-edit":
+                raise ValueError("Render guides are supported only by Head-Image Edit.")
+            if operation == "rear_hair":
+                if record["view"] not in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}:
+                    raise ValueError("BACK-guided hair finishing requires a rear-quarter canvas.")
+                guide_view = "BACK"
+            guide = None
+            if guide_view:
+                from zet.services.local_view_reference_service import selected_reference
+                guide = selected_reference(run, record["view"], {"mode": "selected_view", "source_view": guide_view})
             instructions = text(payload.get("instructions", ""), "Refinement instructions")
+            if operation == "rear_hair" and not instructions:
+                instructions = "Match lower-hair fullness and length to selected BACK while preserving the rear-quarter canvas."
             ids = payload.get("item_ids", [])
             analysis = record["analysis"]
             if ids and (analysis.get("attempt_id") != base_id or analysis.get("id") != payload.get("analysis_id")):
@@ -216,22 +232,58 @@ class LocalCharacterRefinementService:
             report = analysis.get("report", {"items": []}) if analysis.get("attempt_id") == base_id else {"items": []}
             corrections = correction_items(report, ids, instructions)
             direction = [c["correction"] for c in corrections] + ([instructions] if instructions else [])
+            if operation == "rear_hair":
+                direction.insert(0, "Edit only the lower hair mass in Image 1 using Image 2 as the hair-volume and length guide. Reproject the guide's lower-hair fullness into the canvas's existing rear-quarter pose. Preserve the canvas's crown height, head scale, ear attachment, ear silhouette and posterior surface, skin, neck proportions, hidden face, complete framing, background and rendering style. Do not copy the guide's camera or two-ear arrangement. Keep the same haircut; change only its lower fullness and length.")
             previous = base["accepted_direction"]
             prompt = ("Edit this selected character image. Change ONLY the requested details. Preserve unaffected identity, "
                 "costume, art style, pose, camera and orientation. Latest feedback overrides earlier direction.\n"
                 + "Earlier accepted direction (retain unless overridden):\n" + "\n".join(previous)
                 + "\nRequested changes:\n" + "\n".join(direction))
+            if guide and operation != "rear_hair":
+                scope = text(payload.get("guide_scope", ""), "Guide transfer scope")
+                if not scope.strip():
+                    raise ValueError("Describe the feature the render guide should transfer.")
+                prompt += "\nImage 1 is the canvas. Use Image 2 only for this feature: " + scope + ". Exclude its identity, material, style, camera, pose and background. Preserve all unaffected canvas content."
             with Image.open(source) as image:
                 width, height = image.size
             aid = uuid4().hex
+            reference_inputs = deepcopy(base.get("reference_inputs", record.get("reference_inputs", [])))
+            render_refs = [{"label": "Selected image to refine", "image": base64.b64encode(source.read_bytes()).decode("ascii")}]
+            render_references = [{"role": "head_image_source", "prompt_role": "edit_base", "image_index": 1,
+                "path": str(source), "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                "view": record["view"], "session_id": session_id, "attempt_id": base_id}]
+            if guide:
+                guide_source = Path(guide["path"])
+                snapshot = path.parent / (aid + "_guide" + guide_source.suffix.lower())
+                shutil.copy2(guide_source, snapshot)
+                guide.update(path=str(snapshot), sha256=hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+                             prompt_role="subject_reference", role="head_edit_guide",
+                             notes="Lower-hair volume and length only" if operation == "rear_hair" else scope)
+                reference_inputs = [ref for ref in reference_inputs if ref.get("view") != guide_view] + [guide]
+                render_refs.append({"label": guide["notes"], "image": base64.b64encode(snapshot.read_bytes()).decode("ascii")})
+                render_references.append({**guide, "image_index": 2})
             spec = {"mode": "img2img", "prompt": prompt, "count": 1, "width": width, "height": height,
-                "reference_images": [{"label": "Selected image to refine", "image": base64.b64encode(source.read_bytes()).decode("ascii")}],
+                "reference_images": render_refs,
                 "ai_owner": {"character_refinement_pipeline_id": pipeline, "run_id": run_id,
                     "character_refinement_session_id": session_id, "attempt_id": aid, "view": record["view"],
                     "costume": costume, "character": run["character"], "phase": run["phase"]},
                 "ai_workflow": "Character image refinement"}
+            if pipeline == "head-image-edit":
+                from zet.services.local_render_backend_service import LocalRenderBackendService
+                profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset("comfyui-qwen-head-image-edit-v1")
+                spec.update(negative_prompt="", render_config={"preset": "comfyui-qwen-head-image-edit-v1",
+                    "checkpoint": "qwen_image_2.1_int8_convrot.safetensors", "disable_prompt_globals": True,
+                    "append_reference_labels": False,
+                    "overrides": {key: profile[key] for key in ("steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae") if key in profile}})
+            accepted_direction = previous + direction
+            if operation == "rear_hair":
+                accepted_direction = previous + ["Retain the lower-hair fullness and length now established in this image, preserving pose, ears, identity and style."]
+                if payload.get("instructions"):
+                    accepted_direction.append(instructions)
             record["attempts"].append({"id": aid, "operation_id": operation_id, "status": "QUEUED", "image_path": "",
-                "base_attempt_id": base_id, "accepted_direction": previous + direction, "payload": spec,
+                **({"operation": operation, "guide_view": guide_view, "recipe_version": 1,
+                    "reference_inputs": reference_inputs, "render_references": render_references} if pipeline == "head-image-edit" else {}),
+                "base_attempt_id": base_id, "accepted_direction": accepted_direction, "payload": spec,
                 "seeds": [random.SystemRandom().randrange(0, 2**63 - 1)], "request_id": uuid4().hex, "error": ""})
             record["revision"] += 1
             self._write(run, record)
@@ -305,6 +357,16 @@ class LocalCharacterRefinementService:
                 raise ValueError("The selected image changed elsewhere. Open refinement from the new selection.")
             if payload.get("expected_selected_id") != selected:
                 raise ValueError("The selection changed. Refresh before adopting this attempt.")
+            if pipeline == "head-image-edit":
+                for ref in attempt.get("reference_inputs", record.get("reference_inputs", [])):
+                    source_view = ref.get("view")
+                    if ref.get("candidate_id") and source_view and source_view != record["view"]:
+                        current = next((c for c in run["candidates"] if c["candidate_id"] == run.get("selected_views", {}).get(source_view)), {})
+                        image_path = Path(str(current.get("image_path") or ""))
+                        if (current.get("candidate_id") != ref["candidate_id"] or not image_path.is_file()
+                                or (current.get("human_review") or {}).get("decision") == "reject"
+                                or (ref.get("sha256") and hashlib.sha256(image_path.read_bytes()).hexdigest() != ref["sha256"])):
+                            raise ValueError("A refinement source or guide changed. Create a new attempt before adoption.")
             image = self.image_path(pipeline, run_id, costume, session_id, attempt["id"])
             if (attempt.get("adopted_candidate_id") == selected
                     or owns_selection and candidate["refinement"]["attempt_id"] == attempt["id"]):
@@ -322,7 +384,8 @@ class LocalCharacterRefinementService:
                 "image_sha256": attempt["image_sha256"], "status": "COMPLETE", "render_status": "COMPLETE",
                 "ask_id": "", "render_error": "", "human_review": {"decision": "undecided"},
                 "refinement": {"session_id": session_id, "attempt_id": attempt["id"], "base_candidate_id": record["base_candidate_id"],
-                    "reference_inputs": record.get("reference_inputs", [])}}
+                    "reference_inputs": attempt.get("reference_inputs", record.get("reference_inputs", [])),
+                    **({"operation": attempt.get("operation", "correction"), "guide_view": attempt.get("guide_view", "")} if pipeline == "head-image-edit" else {})}}
             adopted.pop("render_input", None)
             adopted.pop("slot_managed", None)
             slots[record["view"]][index] = cid

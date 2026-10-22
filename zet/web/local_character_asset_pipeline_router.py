@@ -64,7 +64,13 @@ def create_local_character_asset_pipeline_router(
             character, phase, filename, request_body
         ))
 
-    for pipeline in ("body-reference", "head-image", "character-assembly", "costume-dressing"):
+    @router.post("/api/local/head-image-edit/sources")
+    async def upload_head_edit_source(request: Request, filename: str = Query(...),
+                                      character: str = Query(...), phase: str = Query(...)):
+        contents = await request.body()
+        return call(lambda: service("head-image-edit").adapter.upload_source(character, phase, filename, contents))
+
+    for pipeline in ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"):
         prefix = f"/api/local/{pipeline}"
         shared_sources = pipeline in {"character-assembly", "costume-dressing"}
 
@@ -206,7 +212,7 @@ def create_local_character_asset_pipeline_router(
             def source(run_id: str, view: str, role: str, costume: str = Query(""), _pipeline: str = pipeline):
                 path = call(lambda: service(_pipeline).adapter.source_path(run_id, view, role, costume), missing=404)
                 return FileResponse(path)
-        elif pipeline == "head-image":
+        elif pipeline in {"head-image", "head-image-edit"}:
             @router.get(f"{prefix}/runs/{{run_id}}/source")
             def front_source(run_id: str, _pipeline: str = pipeline):
                 path = call(lambda: service(_pipeline).adapter.front_source_path(run_id), missing=404)

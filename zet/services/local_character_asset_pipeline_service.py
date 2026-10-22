@@ -168,10 +168,10 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError(f"A locked {pipeline} file is required for {view}.")
         return record
 
-    def _requirements(self) -> tuple[tuple[str, str], ...]:
+    def _requirements(self, head_pipeline: str = "head-image") -> tuple[tuple[str, str], ...]:
         source_pipeline = {
             "body_reference": "Body-Reference",
-            "head_image": "Head-Image",
+            "head_image": "Head-Image-Edit" if head_pipeline == "head-image-edit" else "Head-Image",
             "character_assembly": "Character-Assembly",
         }
         return tuple((role, source_pipeline[role])
@@ -182,6 +182,9 @@ class LocalCharacterAssetPipelineService:
         if pipeline == "Body-Reference":
             from zet.services.local_body_reference_service import LocalBodyReferenceService
             return LocalBodyReferenceService(self.app, self.project_root)
+        if pipeline == "Head-Image-Edit":
+            from zet.services.local_head_image_edit_service import LocalHeadImageEditService
+            return LocalHeadImageEditService(self.app, self.project_root)
         if pipeline == "Head-Image":
             from zet.services.local_head_image_service import LocalHeadImageService
             return LocalHeadImageService(self.app, self.project_root)
@@ -193,9 +196,9 @@ class LocalCharacterAssetPipelineService:
         created = str(run.get("created_at") or "")
         return f"{name} · {created.replace('T', ' ')}" if created else name
 
-    def _source_batch_options(self, character: str, phase: str, costume: str) -> dict[str, list[dict[str, Any]]]:
+    def _source_batch_options(self, character: str, phase: str, costume: str, head_pipeline: str = "head-image") -> dict[str, list[dict[str, Any]]]:
         options: dict[str, list[dict[str, Any]]] = {}
-        for role, pipeline in self._requirements():
+        for role, pipeline in self._requirements(head_pipeline):
             adapter = self._source_adapter(pipeline)
             runs = adapter.list_run_summaries(character, phase)
             values = []
@@ -236,9 +239,9 @@ class LocalCharacterAssetPipelineService:
                 "selected": True, "locked": bool(candidate.get("locked"))}
 
     def _resolve_view_inputs(self, character: str, phase: str, costume: str, view: str,
-                             source_batches: dict[str, str]) -> dict[str, dict[str, Any]]:
+                             source_batches: dict[str, str], head_pipeline: str = "head-image") -> dict[str, dict[str, Any]]:
         result = {}
-        for role, pipeline in self._requirements():
+        for role, pipeline in self._requirements(head_pipeline):
             selected_batch = str(source_batches.get(role) or "").strip()
             if selected_batch and selected_batch != "locked":
                 result[role] = {**self._selected_batch_input(character, phase, pipeline, selected_batch, view, costume),
@@ -283,16 +286,19 @@ class LocalCharacterAssetPipelineService:
         if front_count < 1 or other_count < 1 or total > 256:
             raise LocalCharacterAssetPipelineError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
         inputs, blocking_reasons = {}, []
+        head_pipeline = str(payload.get("head_pipeline") or "head-image")
+        if head_pipeline not in {"head-image", "head-image-edit"}:
+            raise LocalCharacterAssetPipelineError("Choose Head-Image or Head-Image Edit as the head pipeline.")
         source_batches = payload.get("source_batches") or {}
         if not isinstance(source_batches, dict):
             raise LocalCharacterAssetPipelineError("Source batch choices must be an object keyed by source role.")
         for view in requested_views:
             resolved = {}
             try:
-                resolved = self._resolve_view_inputs(character, phase, costume, view, source_batches)
+                resolved = self._resolve_view_inputs(character, phase, costume, view, source_batches, head_pipeline)
             except LocalCharacterAssetPipelineError as exc:
                 blocking_reasons.append(str(exc))
-            if len(resolved) == len(self._requirements()):
+            if len(resolved) == len(self._requirements(head_pipeline)):
                 inputs[view] = resolved
         costume_path = self._costume_path(character, phase, costume) if costume else None
         if costume_path and not costume_path.is_file():
@@ -303,8 +309,9 @@ class LocalCharacterAssetPipelineService:
                 "candidate_count": total, "inputs": inputs, "front_only": bool(payload.get("front_only")),
                 "use_front_anchor": self.pipeline != "character-assembly" and bool(payload.get("use_front_anchor", True)),
                 "front_anchor_required_for_other_views": self.pipeline != "character-assembly" and bool(payload.get("use_front_anchor", True)),
-                "source_batches": {role: str(source_batches.get(role) or "locked") for role, _ in self._requirements()},
-                "source_batch_options": self._source_batch_options(character, phase, costume),
+                "source_batches": {role: str(source_batches.get(role) or "locked") for role, _ in self._requirements(head_pipeline)},
+                "head_pipeline": head_pipeline,
+                "source_batch_options": self._source_batch_options(character, phase, costume, head_pipeline),
                 "can_create": not blocking_reasons, "blocking_reasons": list(dict.fromkeys(blocking_reasons))}
 
     def _requires_front_anchor(self, run: dict[str, Any]) -> bool:
@@ -381,6 +388,7 @@ class LocalCharacterAssetPipelineService:
                 "costume": plan["costume"], "views": plan["views"], "front_count": plan["front_count"],
                 "other_count": plan["other_count"], "candidate_count": count, "sources": sources,
                 "source_batches": plan.get("source_batches") or {},
+                "head_pipeline": plan.get("head_pipeline", "head-image"),
                 "use_front_anchor": plan["use_front_anchor"],
                 "costume_path": costume_path, "costume_sha256": self._hash(Path(costume_path)) if costume_path else "",
                 "candidates": candidates, "front_anchor": None, "selected_views": {}, "rankings": {}}
@@ -540,7 +548,7 @@ class LocalCharacterAssetPipelineService:
 
     def _locked_view_inputs(self, run: dict[str, Any], view: str) -> dict[str, dict[str, Any]]:
         return self._resolve_view_inputs(run["character"], run["phase"], str(run.get("costume") or ""),
-                                         view, run.get("source_batches") or {})
+                                         view, run.get("source_batches") or {}, run.get("head_pipeline", "head-image"))
 
     def _lineage_warnings(self, run: dict[str, Any]) -> dict[str, list[str]]:
         warnings: dict[str, list[str]] = {}
@@ -1309,7 +1317,7 @@ class LocalCharacterAssetPipelineService:
                 self._collect_promotion_source(run, view, source, records, visiting)
                 dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
 
-        if pipeline in {"Body-Reference", "Head-Image"} and view != "FRONT":
+        if pipeline in {"Body-Reference", "Head-Image", "Head-Image-Edit"} and view != "FRONT":
             front_id = str(run.get("front_anchor") or "")
             if not front_id or str((run.get("selected_views") or {}).get("FRONT") or "") != front_id:
                 raise LocalCharacterAssetPipelineError(f"A selected FRONT {pipeline} anchor is required before promoting {view}.")
@@ -1317,6 +1325,22 @@ class LocalCharacterAssetPipelineService:
             front = next(item for item in run["candidates"] if item.get("candidate_id") == front_id)
             dependencies.append({"key": self.asset_store.key(pipeline, "FRONT", qualifier),
                                  "image_sha256": self._hash(Path(str(front["image_path"])))})
+
+        if pipeline == "Head-Image-Edit":
+            refs = (candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", [])
+            for ref in refs:
+                source_view = ref.get("view")
+                if ref.get("candidate_id") and source_view and source_view != view:
+                    source_candidate = next((c for c in run["candidates"] if c["candidate_id"] == (run.get("selected_views") or {}).get(source_view)), {})
+                    source_image = Path(str(source_candidate.get("image_path") or ""))
+                    if ((run.get("selected_views") or {}).get(source_view) != ref["candidate_id"] or not source_image.is_file()
+                            or (source_candidate.get("human_review") or {}).get("decision") == "reject"
+                            or (ref.get("sha256") and self._hash(source_image) != ref["sha256"])):
+                        raise LocalCharacterAssetPipelineError("The head finishing guide selection changed; refine again before promotion.")
+                    if source_view == "FRONT":
+                        continue
+                    self._collect_promotion_selection(run, pipeline, source_view, qualifier, records, visiting)
+                    dependencies.append({"key": self.asset_store.key(pipeline, source_view), "image_sha256": ref.get("sha256", "")})
 
         if pipeline in {"Character-Assembly", "Costume-Dressing"} and view != "FRONT" and self._requires_front_anchor(run):
             front_id = str(run.get("front_anchor") or "")
@@ -1358,7 +1382,7 @@ class LocalCharacterAssetPipelineService:
         source_run = adapter.detail(source_run_id)
         if str((source_run.get("selected_views") or {}).get(view) or "") != source_candidate_id:
             raise LocalCharacterAssetPipelineError(f"The {pipeline} source for {view} is no longer selected in its source batch.")
-        if pipeline in {"Character-Assembly", "Costume-Dressing", "Body-Reference", "Head-Image"}:
+        if pipeline in {"Character-Assembly", "Costume-Dressing", "Body-Reference", "Head-Image", "Head-Image-Edit"}:
             self._collect_promotion_selection(source_run, pipeline, view, qualifier, records, visiting)
         else:
             candidate = next((item for item in source_run.get("candidates", [])

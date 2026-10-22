@@ -66,6 +66,15 @@ GAZE_RULES = {
 class LocalHeadImageService:
     """Manage one local Head-Image workspace per character and phase."""
 
+    pipeline_id = "head-image"
+    asset_pipeline = "Head-Image"
+    run_kind = "local_head_image"
+    queue_pipeline = "Local-Head-Image"
+    ask_prefix = "LocalHeadImage"
+    compiler = staticmethod(compile_head_image_job)
+    edit_preset = "comfyui-qwen-head-image-edit"
+    text_preset = "comfyui-qwen-head-image-text"
+
     _active: set[str] = set()
     _active_lock = threading.Lock()
     _runner_lock = threading.Lock()
@@ -93,7 +102,10 @@ class LocalHeadImageService:
         return bool(owner) and owner == configured and run_owner == owner
 
     def _active_key(self, run_id: str) -> str:
-        return f"{self.library_root}::{run_id}"
+        return f"{self.library_root}::{self.pipeline_id}::{run_id}"
+
+    def _ranking_guidance(self, run: dict, view: str) -> str:
+        return ""
 
     @staticmethod
     def _now() -> str:
@@ -115,19 +127,19 @@ class LocalHeadImageService:
         return token
 
     def _workspace(self, character: str, phase: str) -> Path:
-        return self.root / self._safe(character) / self._safe(phase) / "Head-Image"
+        return self.root / self._safe(character) / self._safe(phase) / self.asset_pipeline
 
     def _run_root(self, run_id: str) -> Path:
         if not re.fullmatch(r"\d{8}_\d{6}_\d{6}", str(run_id or "")):
             raise LocalHeadImageError("Invalid Local Head-Image batch ID.")
-        for path in self.root.glob(f"*/ */Head-Image/{run_id}".replace(" ", "")):
-            if (path / "spec.json").is_file():
+        for path in self.root.glob(f"*/ */{self.asset_pipeline}/{run_id}".replace(" ", "")):
+            if (path / "spec.json").is_file() and self._read_json(path / "spec.json").get("kind") == self.run_kind:
                 return path
-        for path in self.root.glob(f"*/ */Head-Image/{run_id}".replace(" ", "")):
-            if (path / "spec.json").is_file():
+        for path in self.root.glob(f"*/ */{self.asset_pipeline}/{run_id}".replace(" ", "")):
+            if (path / "spec.json").is_file() and self._read_json(path / "spec.json").get("kind") == self.run_kind:
                 return path
-        for path in self.root.glob(f"*/*/Head-Image/{run_id}"):
-            if (path / "spec.json").is_file():
+        for path in self.root.glob(f"*/*/{self.asset_pipeline}/{run_id}"):
+            if (path / "spec.json").is_file() and self._read_json(path / "spec.json").get("kind") == self.run_kind:
                 return path
         raise LocalHeadImageError(f"Local Head-Image batch not found: {run_id}")
 
@@ -140,14 +152,14 @@ class LocalHeadImageService:
         if status is not None and not status.template_ready:
             raise LocalHeadImageError("A valid Character.md is required before local Head-Image can run: " + "; ".join(status.validation_errors))
         from zet.services.local_character_progression_service import planned_views
-        views = planned_views(payload)
+        views = planned_views(payload, pipeline=self.pipeline_id)
         front_count, other_count = render_count(payload.get("front_count"), 8), render_count(payload.get("other_count"), 4)
         if front_count < 1 or other_count < 1 or front_count + (len(views) - 1) * other_count > 256:
             raise LocalHeadImageError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
         return {"character": character, "phase": phase, "views": views, "front_count": front_count,
                 "other_count": other_count, "candidate_count": front_count + (len(views) - 1) * other_count,
                 "front_source_optional": True, "front_anchor_required_for_other_views": True,
-                "pipeline": "head-image", "pipeline_config": pipeline_page_config("head-image"),
+                "pipeline": self.pipeline_id, "pipeline_config": pipeline_page_config(self.pipeline_id),
                 "can_create": True, "blocking_reasons": []}
 
     def upload_source(self, character: str, phase: str, filename: str, contents: bytes) -> dict[str, str]:
@@ -176,14 +188,14 @@ class LocalHeadImageService:
         from zet.services.template_source_service import compile_with_revision
         output_dir = output_dir or run_root / "prompts" / view
         template_path = Path(self.app.config.base_character_path) / character / phase / "Character.md"
-        job = {"Job": f"LocalHeadImage_{run_root.name}_{view}", "Task": "head-image", "Character": character,
+        job = {"Job": f"{self.ask_prefix}_{run_root.name}_{view}", "Task": self.pipeline_id, "Character": character,
                "Phase": phase, "Head View": view, "Template Path": str(template_path),
                "Output Directory": str(output_dir), "Reference Files": references,
                "Apply Phase Change": apply_phase_change}
         from zet.services.local_view_reference_service import reference_recipes
         job["Allow Unanchored View"] = (reference_recipes(run_root).get(view) or {}).get("mode") == "none"
         try:
-            result = compile_with_revision(run_root, compile_head_image_job,
+            result = compile_with_revision(run_root, self.compiler,
                 job, self.project_root, pipeline_mode="local",
                 universe_root=self.app.config.base_library_path,
             )
@@ -233,7 +245,7 @@ class LocalHeadImageService:
         front_prompt = self._compile(root, plan["character"], plan["phase"], FRONT,
                                      ([{"role": "head_image_source", "path": source_snapshot}] if source_snapshot else []),
                                      apply_phase_change=apply_phase_change)
-        spec = {"schema_version": 1, "review_version": 3, "kind": "local_head_image", "run_id": run_id,
+        spec = {"schema_version": 1, "review_version": 3, "kind": self.run_kind, "run_id": run_id,
                 "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "batch_name": "",
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
@@ -317,10 +329,10 @@ class LocalHeadImageService:
             value["status"] = "REVIEW_REQUIRED"
         if ((state.get("status") or spec.get("status")) in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED", "COMPLETE"}
                 and value["status"] in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"}
-                and self.asset_store.all_selected_views_locked(value, "Head-Image")):
+                and self.asset_store.all_selected_views_locked(value, self.asset_pipeline)):
             value["status"] = "COMPLETE"
             value["stale_selections"] = []
-        return decorate_local_pipeline_detail(value, "head-image")
+        return decorate_local_pipeline_detail(value, self.pipeline_id)
 
     def rename_run(self, run_id: str, batch_name: str) -> dict[str, Any]:
         name = str(batch_name or "").strip()
@@ -343,10 +355,10 @@ class LocalHeadImageService:
 
     def list_runs(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
         result = []
-        for path in self.root.glob("*/*/Head-Image/*/spec.json"):
+        for path in self.root.glob(f"*/*/{self.asset_pipeline}/*/spec.json"):
             try:
                 spec = self._read_json(path)
-                if spec.get("kind") != "local_head_image":
+                if spec.get("kind") != self.run_kind:
                     continue
                 if character and spec.get("character") != character or phase and spec.get("phase") != phase:
                     continue
@@ -366,10 +378,10 @@ class LocalHeadImageService:
     def list_run_summaries(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
         """List batches without validating every candidate image."""
         result = []
-        for path in self.root.glob("*/*/Head-Image/*/spec.json"):
+        for path in self.root.glob(f"*/*/{self.asset_pipeline}/*/spec.json"):
             try:
                 spec = self._read_json(path)
-                if spec.get("kind") != "local_head_image":
+                if spec.get("kind") != self.run_kind:
                     continue
                 if (character and spec.get("character") != character) or (phase and spec.get("phase") != phase):
                     continue
@@ -385,7 +397,7 @@ class LocalHeadImageService:
                 if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self.asset_store.all_selected_views_locked({
                     **spec, **state, "run_id": run_id, "candidates": list(candidates.values()),
                     "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
-                }, "Head-Image"):
+                }, self.asset_pipeline):
                     status = "COMPLETE"
                 result.append({
                     "character_progression": state.get("character_progression"),
@@ -427,7 +439,7 @@ class LocalHeadImageService:
         from zet.services.local_character_progression_service import prepare_candidate
         if run.get("character_progression"):
             from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
-            candidate = prepare_candidate(LocalImagePipelineWorkflowService(self.app, self.project_root, "head-image"), run, candidate)
+            candidate = prepare_candidate(LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline_id), run, candidate)
 
         if not candidate.get("render_input") and candidate["view"] != FRONT and not run.get("front_anchor"):
             raise LocalHeadImageError("Select a FRONT anchor before generating other views.")
@@ -456,7 +468,7 @@ class LocalHeadImageService:
             compiled = self._compile(root, run["character"], run["phase"], candidate["view"], references,
                                      apply_phase_change=bool(run.get("apply_phase_change", False)))
             references = compiled["reference_files"]
-            preset_name = "comfyui-qwen-head-image-edit" if references else "comfyui-qwen-head-image-text"
+            preset_name = self.edit_preset if references else self.text_preset
             saved_input = frozen_input(candidate_dir / "inputs", Path(compiled["final_prompt"]).read_text(encoding="utf-8"), references, preset_name)
             saved_input["template_revision_id"] = compiled.get("template_revision_id", "")
             references = saved_input["references"]
@@ -469,13 +481,18 @@ class LocalHeadImageService:
         prompt_copy = candidate_dir / "Qwen_Head_Image_Prompt.md"
         prompt_copy.write_text("Positive Prompt:\n" + saved_input["prompt"] + "\n\nNegative Prompt:\n", encoding="utf-8")
         profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset(preset_name)
-        ask_id = f"LocalHeadImage_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}"
+        if self.pipeline_id == "head-image-edit":
+            profile = saved_input.get("render_settings") or profile
+            saved_input.update(render_settings=profile, recipe_version=1)
+            self._update(run_id, candidate_id, render_input=saved_input)
+        ask_id = f"{self.ask_prefix}_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
-                    "pipeline": "Local-Head-Image", "pipeline_stage": "HEAD_IMAGE_RENDER"}
+                    "pipeline": self.queue_pipeline, "pipeline_stage": "HEAD_IMAGE_RENDER"}
         ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
             manifest, prompt_copy, candidate_dir, allow_parallel=True, seed=int(candidate["seed"]),
             checkpoint=str(profile.get("diffusion_model") or ""), render_preset=preset_name,
             image_generation="comfyui", reference_files=references,
+            render_overrides=profile if self.pipeline_id == "head-image-edit" else None,
         )
         ask = self._read_json((ask_path / "ask_manifest.json"))
         output_path = render_dir / str(ask.get("target_output_file") or output_name)
@@ -506,7 +523,7 @@ class LocalHeadImageService:
         answer = self._read_json((answer_dir / "answer_manifest.json"))
         run = self.detail(run_id)
         if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
-                or ask.get("pipeline") != "Local-Head-Image" or not self._ask_belongs_to_run(ask, run)):
+                or ask.get("pipeline") != self.queue_pipeline or not self._ask_belongs_to_run(ask, run)):
             raise LocalHeadImageError("AI Proxy answer does not belong to this Local Head-Image candidate.")
         if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
             raise LocalHeadImageError(str(answer.get("error_message") or "AI Proxy render failed."))
@@ -708,7 +725,7 @@ class LocalHeadImageService:
         view = str(view or "").upper()
         if view not in VIEWS:
             raise LocalHeadImageError(f"Unknown view: {view}")
-        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, view)
         root, state = self._state(run_id)
         state.setdefault("rankings", {})[view] = {"status": "QUEUED", "queued_at": self._now()}
         self._write(root / "state.json", state)
@@ -784,7 +801,7 @@ class LocalHeadImageService:
         run = self.detail(run_id)
         if view not in VIEWS:
             raise LocalHeadImageError(f"Unknown view: {view}")
-        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, view)
         anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
         anchor_path = Path(str((anchor or {}).get("image_path") or ""))
         if view != FRONT and not anchor_path.is_file():
@@ -826,19 +843,19 @@ class LocalHeadImageService:
                 from zet.services.local_view_reference_service import custom_references
                 source = run.get("front_source") if view == FRONT else str(anchor_path)
                 reference_images, reference_guidance = supplied_ranking_references(
-                    survivors, lambda: custom_references(run, view, "head-image",
+                    survivors, lambda: custom_references(run, view, self.pipeline_id,
                         [{"role": "head_image_source", "view": "FRONT", "path": source}] if source else []))
                 model = str(getattr(self.app.config, "codex_default_model", "gpt-6-luna"))
                 entries, model = rank_images_with_luna(
                     project_root=self.project_root,
                     model=model,
-                    prompt=prompt + "\n\n" + reference_guidance,
+                    prompt=prompt + "\n\n" + reference_guidance + self._ranking_guidance(run, view),
                     candidate_ids=[item["candidate_id"] for item in survivors],
                     image_paths=[item["image_path"] for item in survivors],
                     reference_image_paths=reference_images,
                     paths=self.app.ai_proxy_service.ai_proxy_path_service,
                     admission=lambda: candidate_admission(self.app, lambda: self.detail(run_id), run, survivors),
-                    owner={"run_id": run_id, "view": view, "pipeline": 'Head-Image', "evaluation_id": evaluation_id},
+                    owner={"run_id": run_id, "view": view, "pipeline": self.asset_pipeline, "evaluation_id": evaluation_id},
                 )
             except Exception as exc:
                 from zet.services.storage_health_service import pause_on_storage_error
@@ -850,7 +867,7 @@ class LocalHeadImageService:
             "input_hashes": hashes, "anchor_hash": anchor_hash, "model": model, "recorded_at": self._now()}
         self._save_ranking_result(run_id, view, evaluation_id, hashes, ranking)
         from zet.services.local_prompt_improvement_service import after_initial_ranking
-        after_initial_ranking(self, "head-image", self.project_root, run_id, view)
+        after_initial_ranking(self, self.pipeline_id, self.project_root, run_id, view)
         return self.detail(run_id)
 
     def _save_ranking_result(self, run_id: str, view: str, evaluation_id: str,
@@ -881,16 +898,16 @@ class LocalHeadImageService:
         if run.get("character_progression"):
             from zet.services.local_character_progression_service import select
             from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
-            return select(LocalImagePipelineWorkflowService(self.app, self.project_root, "head-image"), run, view, candidate_id)
+            return select(LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline_id), run, view, candidate_id)
 
         selected = run.get("selected_views") or {}
         view = str(view or "").upper()
         if not candidate_id:
             if view == FRONT:
                 for downstream in VIEWS[1:]:
-                    self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream)
+                    self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, downstream)
             self.asset_store.clear_batch_selection(
-                run["character"], run["phase"], "Head-Image", view, run_id
+                run["character"], run["phase"], self.asset_pipeline, view, run_id
             )
             root, state = self._state(run_id)
             state.setdefault("selected_views", {}).pop(view, None)
@@ -922,16 +939,16 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Autogenerate requires a completed Luna ranking.")
         if view == FRONT and (run.get("front_anchor") != candidate_id):
             for downstream_view in VIEWS[1:]:
-                self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", downstream_view)
+                self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, downstream_view)
         if selected.get(view) != candidate_id:
-            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, view)
         dependencies = []
         if view != FRONT and run.get("front_anchor"):
             anchor = next((item for item in run["candidates"] if item["candidate_id"] == run["front_anchor"]), None)
             anchor_image = Path(str((anchor or {}).get("image_path") or ""))
             if anchor_image.is_file():
                 anchor_hash = str((anchor or {}).get("image_sha256") or "")
-                dependencies = [{"key": self.asset_store.key("Head-Image", FRONT), "image_sha256": anchor_hash}]
+                dependencies = [{"key": self.asset_store.key(self.asset_pipeline, FRONT), "image_sha256": anchor_hash}]
         root, state = self._state(run_id)
         previous_id = selected.get(view)
         state.setdefault("selected_views", {})[view] = candidate_id
@@ -942,7 +959,7 @@ class LocalHeadImageService:
                 self._mark_downstream_review_stale(run, state)
                 if state.get("status") not in ACTIVE_RUN_STATUSES:
                     state["status"] = "READY_FOR_VIEWS"
-        self.asset_store.record_batch_selection(run["character"], run["phase"], "Head-Image", view,
+        self.asset_store.record_batch_selection(run["character"], run["phase"], self.asset_pipeline, view,
                                           candidate_id=candidate_id, image_path=image, batch_id=run_id,
                                           dependencies=dependencies)
         update = {"selected_at": self._now()}
@@ -966,7 +983,7 @@ class LocalHeadImageService:
             decision = normalize_human_decision(payload.get("decision"))
         except ValueError as exc:
             raise LocalHeadImageError(str(exc)) from exc
-        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, candidate["view"])
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalHeadImageError("Candidate image must be complete before human review.")
@@ -988,16 +1005,16 @@ class LocalHeadImageService:
                            if item["candidate_id"] == run.get("front_anchor")), None)
             anchor_image = Path(str((anchor or {}).get("image_path") or ""))
             if anchor_image.is_file():
-                dependencies.append({"key": self.asset_store.key("Head-Image", FRONT),
+                dependencies.append({"key": self.asset_store.key(self.asset_pipeline, FRONT),
                                      "image_sha256": self._hash(anchor_image)})
         return self.asset_store.lock_batch_selection(
-            run["character"], run["phase"], "Head-Image", view,
+            run["character"], run["phase"], self.asset_pipeline, view,
             candidate_id=candidate_id, image_path=image, batch_id=run_id,
             dependencies=dependencies,
         )
 
     def unlock_view(self, character: str, phase: str, view: str) -> dict[str, Any]:
-        return self.asset_store.unlock(character, phase, "Head-Image", view)
+        return self.asset_store.unlock(character, phase, self.asset_pipeline, view)
 
     def proceed(self, run_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
@@ -1024,14 +1041,14 @@ class LocalHeadImageService:
         if self._runner_lock.locked() or self._active_key(run["run_id"]) in self._active:
             raise LocalHeadImageError("Wait for the local image runner to finish before re-running candidates.")
         for view in views:
-            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, view)
 
     def _clear_owned_selection(self, run: dict[str, Any], view: str) -> None:
         record = self.asset_store.detail(run["character"], run["phase"])["assets"].get(
-            self.asset_store.key("Head-Image", view), {}
+            self.asset_store.key(self.asset_pipeline, view), {}
         )
         if record.get("batch_id") == run["run_id"] and not record.get("locked"):
-            self.asset_store.clear_selection(run["character"], run["phase"], "Head-Image", view)
+            self.asset_store.clear_selection(run["character"], run["phase"], self.asset_pipeline, view)
 
     def _invalidate_downstream(self, run: dict[str, Any], state: dict[str, Any]) -> None:
         downstream = set(VIEWS[1:])
@@ -1205,7 +1222,7 @@ class LocalHeadImageService:
         for target in targets:
             if target not in VIEWS:
                 raise LocalHeadImageError(f"Unknown view: {target}")
-            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", target)
+            self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, target)
         root, state = self._state(run_id)
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, set(targets), "The view is being re-evaluated.")
@@ -1233,7 +1250,7 @@ class LocalHeadImageService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalHeadImageError(f"Unknown candidate: {candidate_id}")
-        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", candidate["view"])
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, candidate["view"])
         root, state = self._state(run_id)
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, {str(candidate["view"])}, "A candidate in this view is being retried.")
@@ -1245,7 +1262,7 @@ class LocalHeadImageService:
 
     def move_candidate_rank(self, run_id: str, view: str, candidate_id: str, direction: str) -> dict[str, Any]:
         run = self.detail(run_id)
-        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
+        self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, view)
         ranking = (run.get("rankings") or {}).get(view) or {}
         try:
             adjusted = adjust_candidate_ranking(ranking, candidate_id, direction, timestamp=self._now())
@@ -1273,7 +1290,7 @@ class LocalHeadImageService:
         if paths is None:
             return
         queue_root = Path(self.app.config.base_ai_queue_path)
-        prefixes = (f"LocalHeadImage_{run_id}_", f"Ask_LocalHeadImage_{run_id}_")
+        prefixes = (f"{self.ask_prefix}_{run_id}_", f"Ask_LocalHeadImage_{run_id}_")
         for task in paths.task_paths("ask"):
             if not task.name.startswith(prefixes):
                 continue
@@ -1308,13 +1325,13 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Stop the batch and wait before deleting it.")
         assets = run["local_assets"]
         for view in VIEWS:
-            record = assets.get(self.asset_store.key("Head-Image", view), {})
+            record = assets.get(self.asset_store.key(self.asset_pipeline, view), {})
             if record.get("selected") and record.get("batch_id") == run_id and not record.get("locked"):
-                self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Head-Image", view)
+                self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.asset_pipeline, view)
         for view in reversed(VIEWS):
-            record = assets.get(self.asset_store.key("Head-Image", view), {})
+            record = assets.get(self.asset_store.key(self.asset_pipeline, view), {})
             if record.get("selected") and record.get("batch_id") == run_id and not record.get("locked"):
-                self.asset_store.clear_selection(run["character"], run["phase"], "Head-Image", view)
+                self.asset_store.clear_selection(run["character"], run["phase"], self.asset_pipeline, view)
         self._withdraw_queued_asks(run_id)
         shutil.rmtree(root)
         return {"deleted": True, "run_id": run_id}

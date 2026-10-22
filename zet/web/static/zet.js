@@ -196,12 +196,12 @@ const IMAGE_GENERATION_STORAGE_KEY = "zet:image-generation";
 const CHARACTER_PAGES = new Set(["onboarding", "minor-characters", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
 const STORY_PAGES = new Set(["narrative", "scene-candidates", "zine"]);
 const LOCAL_PAGES = new Set([
-  "local-overview", "local-batch-status", "local-body-reference", "local-head-image", "local-character-assembly",
+  "local-overview", "local-batch-status", "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly",
   "local-costume-dressing", "local-identity-keys", "local-turnarounds", "local-costumes",
   "local-scene-appearances", "local-expressions", "local-comparison",
 ]);
 const LOCAL_ASSET_PAGES = new Set([
-  "local-body-reference", "local-head-image", "local-character-assembly", "local-costume-dressing",
+  "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly", "local-costume-dressing",
 ]);
 const PRODUCTION_PAGES = new Set(["prompt-review"]);
 const IMAGE_GENERATION_SLOT_COUNT = 8;
@@ -3084,7 +3084,7 @@ function renderHeaderStoryContext() {
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
     ["onboarding", "Overview"], ["local-body-reference", "Body-Reference"],
-    ["local-head-image", "Head-Image"], ["local-character-assembly", "Character-Assembly"],
+    ["local-head-image", "Head-Image"], ["local-head-image-edit", "Head-Image Edit"], ["local-character-assembly", "Character-Assembly"],
     ["local-costume-dressing", "Costume-Dressing"], ["identity-keys", "Identity Keys"],
     ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
     ["minor-characters", "Minor Characters"],
@@ -4448,6 +4448,7 @@ async function activatePage(page, options = {}) {
     const labels = {
       "local-body-reference": "Body-Reference",
       "local-head-image": "Head-Image",
+      "local-head-image-edit": "Head-Image Edit",
       "local-character-assembly": "Character-Assembly",
       "local-costume-dressing": "Costume-Dressing",
     };
@@ -4560,9 +4561,9 @@ async function activatePage(page, options = {}) {
     await loadPipelineInspections();
   }
   if (page === "local-image-config") {
-    await loadAiControls();
-    await loadPipelineControls();
-    await refreshOllamaModelOptions();
+    await Promise.all([loadConfigProcesses(), loadPipelineControls()]);
+    localImageConfigStatus.textContent = "Ready";
+    void refreshOllamaModelOptions();
   }
   if (page === "render-console") {
     await loadRenderConsoleTasks(options.preferredAskId || null);
@@ -10372,6 +10373,12 @@ async function loadAiControls() {
   }
 }
 
+async function loadConfigProcesses() {
+  localImageConfigStatus.textContent = "Loading configuration and process status...";
+  const payload = await fetchJson("/api/config/processes");
+  renderProcessRows(payload.processes || [], true);
+}
+
 function renderAiControls(payload) {
   state.aiControls = payload;
   const counts = payload.queue_counts || {};
@@ -10394,7 +10401,7 @@ async function loadRecentAiHarvests() {
   recentHarvestCount.textContent = `${rows.length} recent harvested job(s)`;
 }
 
-function renderProcessRows(processes) {
+function renderProcessRows(processes, configPage = false) {
   processTableBody.replaceChildren();
   for (const item of processes) {
     const row = document.createElement("tr");
@@ -10412,12 +10419,25 @@ function renderProcessRows(processes) {
       button.className = action === "stop" ? "danger-action" : "update-action";
       button.textContent = action;
       button.disabled = item.manageable !== "yes";
-      button.addEventListener("click", () => runAiControlsAction(`/api/ai-controls/processes/${item.process_id}/${action}`));
+      button.addEventListener("click", () => configPage
+        ? runConfigProcessAction(`/api/config/processes/${item.process_id}/${action}`)
+        : runAiControlsAction(`/api/ai-controls/processes/${item.process_id}/${action}`));
       actions.append(button);
     }
     actionCell.append(actions);
     row.append(actionCell);
     processTableBody.append(row);
+  }
+}
+
+async function runConfigProcessAction(url) {
+  showLocalImageConfigMessage("Working...");
+  try {
+    const payload = await fetchJson(url, { method: "POST" });
+    renderProcessRows(payload.processes || [], true);
+    showLocalImageConfigMessage(payload.message || "Action complete.");
+  } catch (error) {
+    showLocalImageConfigMessage(error.message, "error");
   }
 }
 

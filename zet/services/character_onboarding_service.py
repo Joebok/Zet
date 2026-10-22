@@ -213,7 +213,9 @@ class CharacterOnboardingService:
             template_sections = load_template_sections(template_path)
             validate_view_controls(str(template_path))
             shared_sections = load_template_sections(self.path_service.shared_character_path() / "Character_Template.md")
-            missing = sorted(set(shared_sections) - set(template_sections))
+            metadata = json.loads((self.project_root / "Config" / "Prompt_Section_Metadata.json").read_text(encoding="utf-8")).get("sections", {})
+            optional = {name for name, spec in metadata.items() if spec.get("optional_section")}
+            missing = sorted(set(shared_sections) - set(template_sections) - optional)
             extra = sorted(set(template_sections) - set(shared_sections) - COMPATIBLE_CHARACTER_SECTIONS)
             if missing:
                 errors.append(f"Missing canonical sections: {', '.join(missing)}")

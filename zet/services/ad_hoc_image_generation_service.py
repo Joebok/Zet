@@ -5,6 +5,7 @@ import binascii
 import hashlib
 from io import BytesIO
 import json
+import math
 from pathlib import Path
 import random
 import shutil
@@ -115,7 +116,18 @@ class AdHocImageGenerationService:
         if not checkpoint:
             checkpoint = (str(self.zet_app.config.comfyui_checkpoint or "").strip()
                           or str(profile.get("diffusion_model") or ""))
+        overrides = supplied.get("overrides", {})
+        allowed = {"steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae"}
+        if not isinstance(overrides, dict) or set(overrides) - allowed:
+            raise AdHocImageGenerationError("Invalid frozen render overrides.")
+        for key, value in overrides.items():
+            if key in {"steps", "cfg", "denoise"}:
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                    raise AdHocImageGenerationError(f"Invalid frozen {key} render setting.")
+            elif not isinstance(value, str) or not value.strip():
+                raise AdHocImageGenerationError(f"Invalid frozen {key} render setting.")
         return {"preset": preset, "checkpoint": checkpoint,
+                **({"overrides": dict(overrides)} if overrides else {}),
                 "disable_prompt_globals": supplied.get("disable_prompt_globals", True),
                 "append_reference_labels": supplied.get("append_reference_labels", True)}
 
@@ -260,6 +272,7 @@ class AdHocImageGenerationService:
         job = self._new_job(request_id, mode, count, workspace, children, prompt_path, "QUEUED", "")
         job.update(self._request_details(payload, width, height, user_prompt))
         job["submission"] = {"checkpoint": checkpoint, "preset_name": preset_name, "references": references,
+                             **({"overrides": render_config["overrides"]} if render_config.get("overrides") else {}),
                              "disable_prompt_globals": render_config["disable_prompt_globals"],
                              "width": width, "height": height, "workflow": payload.get("ai_workflow", "Image Generation"),
                              "owner": payload.get("ai_owner", {})}
@@ -318,7 +331,8 @@ class AdHocImageGenerationService:
             job["prompt_path"], job["workspace"], allow_parallel=True, seed=child["seed"],
             checkpoint=intent["checkpoint"], render_preset=intent["preset_name"], image_generation="comfyui",
             render_overrides={"width": intent["width"], "height": intent["height"],
-                              "disable_prompt_globals": intent.get("disable_prompt_globals", True)},
+                              "disable_prompt_globals": intent.get("disable_prompt_globals", True),
+                              **intent.get("overrides", {})},
             reference_files=intent["references"], consumer=IMAGE_GENERATION_CONSUMER)
         child.update(ask_id=staged.name, status="QUEUED", done=False, error="")
         self._save_job(job)
