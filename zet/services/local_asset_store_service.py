@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+import copy
 import hashlib
 import json
 from pathlib import Path
 import re
-import shutil
-import tempfile
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 from zet.services.library_reference_service import read_library_json, write_library_json
 from zet.services.workflow_storage import file_lock
@@ -26,9 +26,22 @@ class LocalAssetStoreService:
         self.library_root = Path(library_root).resolve()
         self.root = self.library_root / "PipelineCandidates" / "Character-Pipeline"
         self._entity_library = None
+        from zet.services.local_asset_publication_recovery_service import LocalAssetPublicationRecoveryService
+        self._publication_recovery = LocalAssetPublicationRecoveryService(
+            self.library_root, self._ensure_entity_library
+        )
 
     def _publish(self, image: Path, *, character: str, phase: str, pipeline: str, checksum: str,
+                 label: str = "",
                  qualifier: str = "", view: str = "", reference_key: str = "") -> dict[str, Any]:
+        self._ensure_entity_library()
+        return self._entity_library.register_locked_pipeline_image(
+            image, label=label.strip() or self._publication_label(character, phase, pipeline, qualifier, view),
+            pipeline=pipeline, character=character, phase=phase, checksum=checksum,
+            costume=qualifier, view=view, reference_key=reference_key,
+        )
+
+    def _ensure_entity_library(self):
         if self._entity_library is None:
             from zet.repositories.entity_library_repository import EntityLibraryRepository
             from zet.services.entity_library_service import EntityLibraryService
@@ -37,10 +50,29 @@ class LocalAssetStoreService:
             repository = EntityLibraryRepository(paths.entity_library_database_path())
             repository.initialize()
             self._entity_library = EntityLibraryService(paths, repository)
-        return self._entity_library.register_locked_pipeline_image(
-            image, label=image.stem, pipeline=pipeline, character=character, phase=phase, checksum=checksum,
-            costume=qualifier, view=view, reference_key=reference_key,
-        )
+        return self._entity_library
+
+    def _publication_journal_root(self, character: str, phase: str) -> Path:
+        return self.workspace_path(character, phase).parent / "publications"
+
+    def _recover_publications_locked(self, character: str, phase: str) -> None:
+        try:
+            self._publication_recovery.recover_locked(character, phase)
+        except (OSError, ValueError) as exc:
+            raise LocalAssetStoreError(f"Cannot recover local asset publication: {exc}") from exc
+
+    def recover_pending_publications(self) -> None:
+        try:
+            self._publication_recovery.recover_pending()
+        except (OSError, ValueError) as exc:
+            raise LocalAssetStoreError(f"Cannot recover local asset publication: {exc}") from exc
+
+    @staticmethod
+    def _publication_label(character: str, phase: str, pipeline: str, qualifier: str = "", view: str = "") -> str:
+        pipeline_name = str(pipeline or "local").replace("-", " ").strip().title()
+        return " · ".join(part for part in (str(character).strip(), str(phase).strip(),
+                                               str(qualifier).strip(), pipeline_name,
+                                               str(view).replace("_", " ").strip().title()) if part)
 
     @staticmethod
     def key(pipeline: str, view: str, qualifier: str = "") -> str:
@@ -61,12 +93,14 @@ class LocalAssetStoreService:
 
     def _read(self, character: str, phase: str) -> dict[str, Any]:
         path = self.workspace_path(character, phase)
-        if not path.is_file():
-            return {"schema_version": 1, "character": character, "phase": phase, "assets": {}}
-        try:
-            value = read_library_json(path, self.library_root)
-        except (OSError, json.JSONDecodeError) as exc:
-            raise LocalAssetStoreError(f"Local asset store is unreadable: {path}") from exc
+        with file_lock(path.with_suffix(".lock")):
+            try:
+                self._recover_publications_locked(character, phase)
+                if not path.is_file():
+                    return {"schema_version": 1, "character": character, "phase": phase, "assets": {}}
+                value = read_library_json(path, self.library_root)
+            except (OSError, json.JSONDecodeError) as exc:
+                raise LocalAssetStoreError(f"Local asset store is unreadable: {path}") from exc
         if not isinstance(value, dict) or not isinstance(value.get("assets", {}), dict):
             raise LocalAssetStoreError(f"Local asset store has an invalid format: {path}")
         return value
@@ -240,42 +274,22 @@ class LocalAssetStoreService:
 
     def lock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
         key = self.key(pipeline, view, qualifier)
-        path = self.workspace_path(character, phase)
-        with file_lock(path.with_suffix(".lock")):
-            value = self._read(character, phase)
-            record = value.get("assets", {}).get(key)
-            if not record or not record.get("selected") or record.get("stale"):
-                raise LocalAssetStoreError(f"Select a reviewed {key} candidate before locking it.")
-            source = Path(str(record.get("image_path") or "")).resolve()
-            if not source.is_relative_to(self.library_root) or not source.is_file():
-                raise LocalAssetStoreError(f"Selected image for {key} is missing.")
-            record["image_sha256"] = self._image_hash(source)
-            try:
-                published = self._publish(source, character=character, phase=phase, pipeline=pipeline,
-                                          checksum=record["image_sha256"], qualifier=qualifier, view=view,
-                                          reference_key=str(record.get("reference_key") or ""))
-            except Exception as exc:
-                raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
-            locked_path = Path(published["image_path"])
-            record.update({
-                "locked": True, "locked_image_path": str(locked_path), "entity_library_asset_id": published["asset_id"],
-                "reference_key": (published.get("logical_reference") or {}).get("reference_key", record.get("reference_key", "")),
-                "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-                "lock_history": [*record.get("lock_history", []), {
-                    "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-                    "image_sha256": record["image_sha256"],
-                }],
-            })
-            write_library_json(path, value, self.library_root)
-            return dict(record)
+        record = self.detail(character, phase)["assets"].get(key)
+        if not record or not record.get("selected") or record.get("stale"):
+            raise LocalAssetStoreError(f"Select a reviewed {key} candidate before locking it.")
+        return self.promote_chain(character, phase, [{
+            **record, "pipeline": pipeline, "view": view.upper(), "qualifier": qualifier,
+            "_require_current_selection": True,
+        }])[0]
 
     def promote_chain(self, character: str, phase: str, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Atomically publish a preflighted set of selected local assets as locked."""
+        """Publish a set of locks with idempotent recovery across catalog and workspace state."""
         path = self.workspace_path(character, phase)
-        staged: list[tuple[str, dict[str, Any], Path, Path, str]] = []
         with file_lock(path.with_suffix(".lock")):
             value = self._read(character, phase)
             assets = value.setdefault("assets", {})
+            previous = copy.deepcopy(value)
+            prepared = []
             for item in records:
                 pipeline, view = str(item["pipeline"]), str(item["view"]).upper()
                 qualifier = str(item.get("qualifier") or "")
@@ -284,52 +298,81 @@ class LocalAssetStoreService:
                     raise LocalAssetStoreError(f"Selected image for {pipeline} {view} is missing.")
                 digest = self._image_hash(image)
                 key = self.key(pipeline, view, qualifier)
-                staged.append((key, item, image, Path(), digest))
+                if item.get("_require_current_selection"):
+                    current = assets.get(key) or {}
+                    if (not current.get("selected") or current.get("stale")
+                            or current.get("candidate_id") != item.get("candidate_id")
+                            or current.get("batch_id") != item.get("batch_id")):
+                        raise LocalAssetStoreError(f"Selection for {key} changed before it could be locked.")
+                if not item.get("candidate_id") or not item.get("batch_id"):
+                    raise LocalAssetStoreError(f"Selected local image for {key} has no candidate or batch identity.")
+                prepared.append({**item, "character": character, "phase": phase,
+                                 "pipeline": pipeline, "view": view, "qualifier": qualifier,
+                                 "label": str(item.get("label") or item.get("batch_name") or self._publication_label(
+                                     character, phase, pipeline, qualifier, view)),
+                                 "source": image, "checksum": digest, "reference_key": str(
+                                     assets.get(key, {}).get("reference_key") or item.get("reference_key") or "")})
 
-            published_assets = []
-            with tempfile.TemporaryDirectory() as staging_dir:
-                staged_images = []
-                for index, (key, item, image, _locked_path, digest) in enumerate(staged):
-                    staging_image = Path(staging_dir) / f"{index}{image.suffix}"
-                    shutil.copy2(image, staging_image)
-                    staged_images.append((key, item, image, staging_image, digest))
-                for key, item, image, staging_image, digest in staged_images:
-                    try:
-                        published = self._publish(staging_image, character=character, phase=phase,
-                                                  pipeline=str(item["pipeline"]), checksum=digest,
-                                                  qualifier=str(item.get("qualifier") or ""), view=str(item["view"]),
-                                                  reference_key=str(assets.get(key, {}).get("reference_key") or ""))
-                    except Exception as exc:
-                        raise LocalAssetStoreError(f"Could not publish selected image for {key}: {exc}") from exc
-                    locked_path = Path(published["image_path"])
-                    if not locked_path.is_file():
-                        raise LocalAssetStoreError(f"Could not publish permanent image for {key}.")
-                    reference_key = (published.get("logical_reference") or {}).get("reference_key", "")
-                    published_assets.append((key, item, image, locked_path, digest, published["asset_id"], reference_key))
+            operation_id = uuid4().hex
+            journal_root = self._publication_journal_root(character, phase)
+            journal_root.mkdir(parents=True, exist_ok=True)
+            journal_path = journal_root / f"{operation_id}.json"
+            from zet.services.atomic_file_service import write_json_atomic
+            write_json_atomic(journal_path, {"operation_id": operation_id, "previous": previous, "next": None})
             result = []
-            for key, item, image, locked_path, digest, catalog_asset_id, published_reference_key in published_assets:
-                current = assets.get(key, {})
-                record = {
-                    **current, "pipeline": str(item["pipeline"]), "view": str(item["view"]).upper(),
-                    "qualifier": str(item.get("qualifier") or ""),
-                    "candidate_id": str(item["candidate_id"]), "batch_id": str(item["batch_id"]),
-                    "batch_name": str(item.get("batch_name") or ""),
-                    "image_path": str(image), "image_sha256": digest,
-                    "dependencies": list(item.get("dependencies") or []), "selected": True, "stale": False,
-                    "locked": True, "locked_image_path": str(locked_path), "entity_library_asset_id": catalog_asset_id,
-                    "reference_key": (published_reference_key or item.get("reference_key") or assets.get(key, {}).get("reference_key") or ""),
-                    "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-                    "locked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-                }
-                if current.get("image_sha256") != digest or current.get("candidate_id") != record["candidate_id"]:
-                    record["lock_history"] = [*current.get("lock_history", []), {
-                        "locked_at": record["locked_at"], "image_sha256": digest,
-                        "batch_id": record["batch_id"], "candidate_id": record["candidate_id"],
-                    }]
-                assets[key] = record
-                result.append(dict(record))
-            write_library_json(path, value, self.library_root)
-            return result
+
+            def publish_workspace_state(published_assets):
+                next_state = copy.deepcopy(previous)
+                next_records = next_state.setdefault("assets", {})
+                next_result = []
+                for item, published in zip(prepared, published_assets):
+                    key = self.key(item["pipeline"], item["view"], item.get("qualifier", ""))
+                    image = item["source"]
+                    digest = item["checksum"]
+                    current = next_records.get(key, {})
+                    stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+                    reference = published.get("logical_reference") or {}
+                    record = {
+                        **current, "pipeline": item["pipeline"], "view": item["view"],
+                        "qualifier": item.get("qualifier", ""),
+                        "candidate_id": str(item["candidate_id"]), "batch_id": str(item["batch_id"]),
+                        "batch_name": str(item.get("batch_name") or ""),
+                        "image_path": str(image), "image_sha256": digest,
+                        "dependencies": list(item.get("dependencies") or []), "selected": True, "stale": False,
+                        "locked": True, "locked_image_path": str(published["image_path"]),
+                        "entity_library_asset_id": published["asset_id"],
+                        "reference_key": (reference.get("reference_key") or item.get("reference_key")
+                                          or current.get("reference_key") or ""),
+                        "updated_at": stamp, "locked_at": stamp,
+                    }
+                    if current.get("image_sha256") != digest or current.get("candidate_id") != record["candidate_id"]:
+                        record["lock_history"] = [*current.get("lock_history", []), {
+                            "locked_at": stamp, "image_sha256": digest,
+                            "batch_id": record["batch_id"], "candidate_id": record["candidate_id"],
+                        }]
+                    next_records[key] = record
+                    next_result.append(dict(record))
+                write_json_atomic(journal_path, {"operation_id": operation_id,
+                                                 "previous": previous, "next": next_state})
+                write_library_json(path, next_state, self.library_root)
+                result.extend(next_result)
+
+            try:
+                self._ensure_entity_library().register_locked_pipeline_images(
+                    prepared, operation_id=operation_id, before_commit=publish_workspace_state,
+                )
+                journal_path.unlink(missing_ok=True)
+                return result
+            except Exception as exc:
+                try:
+                    self._recover_publications_locked(character, phase)
+                except Exception as recovery_exc:
+                    raise LocalAssetStoreError(
+                        f"Local asset publication failed and recovery is pending: {recovery_exc}"
+                    ) from exc
+                if isinstance(exc, LocalAssetStoreError):
+                    raise
+                raise LocalAssetStoreError(f"Could not publish selected local assets: {exc}") from exc
 
     def unlock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
         key = self.key(pipeline, view, qualifier)

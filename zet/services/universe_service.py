@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+import threading
+import time
 from typing import Any
 
 from zet.services.atomic_file_service import write_json_atomic
@@ -20,6 +22,9 @@ class UniverseService:
     def __init__(self, container: str | Path, selection_path: str | Path):
         self.container = Path(container).expanduser().resolve()
         self.selection_path = Path(selection_path).expanduser().resolve()
+        self._cache_lock = threading.RLock()
+        self._universe_cache: list[dict[str, Any]] | None = None
+        self._universe_cache_at = 0.0
 
     @staticmethod
     def _safe_id(value: str) -> str:
@@ -48,7 +53,22 @@ class UniverseService:
         return {"universe_id": path.name, "name": path.name, "canonical_art_style": "",
                 "layout_version": 0, "root": path, "legacy": True}
 
-    def list_universes(self) -> list[dict[str, Any]]:
+    def invalidate_cache(self) -> None:
+        with self._cache_lock:
+            self._universe_cache = None
+            self._universe_cache_at = 0.0
+
+    def list_universes(self, *, refresh: bool = False) -> list[dict[str, Any]]:
+        with self._cache_lock:
+            if (not refresh and self._universe_cache is not None
+                    and time.monotonic() - self._universe_cache_at < 2.0):
+                return [dict(item) for item in self._universe_cache]
+            result = self._discover_universes()
+            self._universe_cache = [dict(item) for item in result]
+            self._universe_cache_at = time.monotonic()
+            return [dict(item) for item in result]
+
+    def _discover_universes(self) -> list[dict[str, Any]]:
         if not self.container.is_dir():
             return []
         result = [self._descriptor(path) for path in sorted(self.container.iterdir(), key=lambda item: item.name.casefold())
@@ -60,9 +80,9 @@ class UniverseService:
                            "layout_version": 0, "root": self.container, "legacy": True})
         return result
 
-    def get_universe(self, universe_id: str) -> dict[str, Any]:
+    def get_universe(self, universe_id: str, *, refresh: bool = False) -> dict[str, Any]:
         wanted = self._safe_id(universe_id)
-        for universe in self.list_universes():
+        for universe in self.list_universes(refresh=refresh):
             if universe["universe_id"] == wanted:
                 return universe
         raise UniverseServiceError(f"Universe not found: {wanted}")
@@ -77,13 +97,21 @@ class UniverseService:
         except FileNotFoundError:
             selected = ""
         except (OSError, json.JSONDecodeError) as exc:
-            raise UniverseServiceError(f"Cannot read universe selection {self.selection_path}: {exc}") from exc
-        return selected if any(item["universe_id"] == selected for item in universes) else universes[0]["universe_id"]
+            if isinstance(exc, OSError):
+                raise UniverseServiceError(f"Cannot read universe selection {self.selection_path}: {exc}") from exc
+            import logging
+            logging.getLogger(__name__).warning("Ignoring malformed universe selection %s: %s", self.selection_path, exc)
+            selected = ""
+        except (AttributeError, TypeError) as exc:
+            import logging
+            logging.getLogger(__name__).warning("Ignoring malformed universe selection %s: %s", self.selection_path, exc)
+            selected = ""
+        return selected if isinstance(selected, str) and any(item["universe_id"] == selected for item in universes) else universes[0]["universe_id"]
 
     def select(self, universe_id: str) -> dict[str, Any]:
         universe = self.get_universe(universe_id)
         self.selection_path.parent.mkdir(parents=True, exist_ok=True)
-        self.selection_path.write_text(json.dumps({"universe_id": universe["universe_id"]}, indent=2) + "\n", encoding="utf-8")
+        write_json_atomic(self.selection_path, {"universe_id": universe["universe_id"]})
         return universe
 
     def bind_config(self, config, universe_id: str):
@@ -129,7 +157,8 @@ class UniverseService:
         })
         if selected_before:
             self.select(selected_before)
-        return self.get_universe(universe_id)
+        self.invalidate_cache()
+        return self.get_universe(universe_id, refresh=True)
 
     def update_settings(self, universe_id: str, *, canonical_art_style: str) -> dict[str, Any]:
         universe = self.get_universe(universe_id)
@@ -142,4 +171,5 @@ class UniverseService:
             raise UniverseServiceError(f"Cannot read universe descriptor {marker}: {exc}") from exc
         data["canonical_art_style"] = str(canonical_art_style or "").strip()
         write_json_atomic(marker, data)
-        return self.get_universe(universe_id)
+        self.invalidate_cache()
+        return self.get_universe(universe_id, refresh=True)

@@ -137,6 +137,30 @@ class PathService:
             return self.resolve_library_path(raw_path.as_posix())
         return self.project_root.joinpath(*parts)
 
+    def resolve_served_path(self, path: str | Path) -> Path:
+        """Resolve a browser file request inside this universe or Shared_Library."""
+        raw = str(path or "").strip()
+        if not raw:
+            raise ValueError("A file path is required.")
+        normalized = raw.replace("\\", "/")
+        if ".." in normalized.split("/"):
+            raise ValueError("File path escapes an allowed root.")
+        requested = self.resolve_path(raw).resolve()
+        roots = (self.entity_library_root(), (self.project_root / "Shared_Library").resolve())
+        if not any(requested == root or root in requested.parents for root in roots):
+            raise ValueError("File path is outside the selected universe.")
+
+        # A legacy universe can share its directory with nested descriptor-backed
+        # universes. Do not let that broad root grant browser access to their files.
+        container = getattr(self.config, "library_container_path", "")
+        if container and Path(container).resolve() == roots[0]:
+            for ancestor in (requested, *requested.parents):
+                if ancestor == roots[0]:
+                    break
+                if ancestor.is_dir() and (ancestor / "universe.json").is_file():
+                    raise ValueError("File path belongs to another universe.")
+        return requested
+
     def character_asset_path(self, character: str, phase: str) -> Path:
         """Return the character phase asset folder."""
         return Path(self.config.base_asset_path) / character / phase

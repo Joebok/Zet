@@ -140,6 +140,7 @@ class AIJobCoordinator:
 
     def sweep(self, *, retry_failed=False):
         from zet.services.storage_health_service import StorageUnavailable
+        self._refresh_host_app()
         try:
             self.recovery.health.require("queue", "application")
         except StorageUnavailable:
@@ -149,6 +150,16 @@ class AIJobCoordinator:
                 return self._sweep(retry_failed=retry_failed)
         except TimeoutError:
             return []
+
+    def _refresh_host_app(self):
+        app = self.resolve_app(self.app.universe_id)
+        if app is self.app:
+            return
+        self.app = app
+        self.root = app.ai_proxy_service.ai_proxy_path_service.lifecycle.root
+        self.repository = AIJobRepository(self.root)
+        from zet.services.storage_recovery_service import StorageRecoveryService
+        self.recovery = StorageRecoveryService(app)
 
     def _sweep(self, *, retry_failed=False):
         from zet.services.storage_health_service import StorageUnavailable

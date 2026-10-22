@@ -22,7 +22,9 @@ transfer and retention; workflow components own interpretation of their outputs.
   continuation methods/arguments in `Workflows/`. Text requests yield `AIPending`;
   resume reuses a stable task/request identity and compact `StructuredResults/`.
   Only registered service/method pairs can be resumed. Revision and source checks
-  remain with domain services.
+  remain with domain services. A process-wide active-task registry prevents repeated
+  sweeps from enqueueing the same lifecycle/universe/task concurrently; cross-process
+  task locks and recurring recovery remain authoritative.
 - [AIRequestPreparation](../../zet/services/ai_request_preparation_service.py)
   freezes text options/schema/ordered images and compiled ComfyUI graphs. It does
   not call model or render backends. Managed ComfyUI can be stopped during graph
@@ -211,3 +213,10 @@ and the existing S3 retry journey. See [ADR 0023](../DECISIONS/0023-streamlined-
 ## Role-aware text preparation (2026-10-22)
 
 New text producers name an explicit LLM role and downstream render context. FileProxyClient applies the repo-owned Qwen modules after native request preparation and before inventory/publication, covering prebuilt requests too. The frozen request retains effective instructions and guidance hashes; continuation identity, recovery, provider execution and collection remain with their existing owners. [LLM roles](LLM_ROLES.md) owns classification, model inheritance and provenance details.
+
+Image prompt and identity analysis starts and polls through the request-bound
+universe app. Its durable `_state/ImagePromptJobs/<job-id>.json` record carries
+`universe_id`; status reads only that record, rejects foreign ownership and keeps
+checksums/drafts on disk. State locks protect transitions, while model work happens
+outside the prompt-job lock. Historical drafts are retained without loading an
+unbounded in-memory history.

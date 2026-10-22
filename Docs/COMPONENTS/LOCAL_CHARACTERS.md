@@ -60,6 +60,11 @@ still apply. Browse/paste drafts survive gallery polling; stale selection upload
 are rejected. Clipboard access uses the shared image-input helper and browser
 permissions; choosing a file remains available.
 
+Lock publication carries the source batch label when available and otherwise uses
+character, phase, pipeline, and view context. Chain promotions preserve that label
+through the catalog transaction; Costume-Dressing still owns its costume
+classification and logical reference key.
+
 Validation: approved S2 passed; disposable API checks covered all 32 pipeline/view
 imports, replacement, image delivery, stale/invalid refusal and lock preservation.
 Disposable Chromium checks covered all four pages, browse, clipboard events,

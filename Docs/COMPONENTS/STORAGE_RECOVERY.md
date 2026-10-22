@@ -116,3 +116,12 @@ intent, lost child-state commits, runner stop/completion rechecks, stalled probe
 and surviving-worker lane/capacity fencing with successful publication after restart.
 They do not establish physical E: disconnect behavior or live provider
 settlement. No live drive, model, or production queue is used for these checks.
+
+## Local asset publication recovery
+
+Startup recovery scans local-asset publication journals. The catalog receipt decides
+whether recovery finishes the journaled next lock state or restores the previous
+state and removes only newly created image files. `LocalAssetStoreService` performs
+the same recovery under the workspace lock before returning lock data, so reads
+cannot observe an unresolved catalog/JSON boundary. Recovery is idempotent across
+repeated startup and read attempts.

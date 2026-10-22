@@ -184,106 +184,112 @@ class EntityLibraryService:
         )
 
     def list_assets(self, **filters) -> list[dict]:
-        include_archived = bool(filters.pop("include_archived", False))
-        hide_obsolete = bool(filters.pop("hide_obsolete", False))
-        rows = self.repository.fetchall("SELECT * FROM assets ORDER BY created_at DESC, asset_id")
+        rows, _ = self._asset_rows(filters)
+        return self._hydrate_asset_rows(rows)
+
+    def list_asset_page(self, *, offset: int = 0, limit: int = 10, **filters) -> dict:
+        if offset < 0 or limit < 1:
+            raise ValueError("Asset page offset must be non-negative and limit must be positive.")
+        rows, total = self._asset_rows(filters, limit=limit, offset=offset)
+        return {"assets": self._hydrate_asset_rows(rows, include_unavailable=True),
+                "total": total, "offset": offset, "limit": limit}
+
+    def _asset_rows(self, filters: dict, *, limit: int | None = None, offset: int = 0):
+        include_archived = bool(filters.get("include_archived", False))
+        hide_obsolete = bool(filters.get("hide_obsolete", False))
+        where, params = [], []
+        status = str(filters.get("status") or "")
+        if status:
+            where.append("a.status=?")
+            params.append(status)
+        elif not include_archived:
+            where.append("a.status<>'archived'")
+        if hide_obsolete and status != "obsolete":
+            where.append("a.status<>'obsolete'")
+        if filters.get("origin"):
+            where.append("a.origin=?")
+            params.append(filters["origin"])
+        for field, expression in (
+            ("entity_id", "ae.entity_id=?"), ("entity_type", "e.entity_type=?"),
+            ("variant_id", "ae.variant_id=?"),
+        ):
+            if filters.get(field):
+                where.append("EXISTS (SELECT 1 FROM asset_entities ae JOIN entities e USING(entity_id) WHERE ae.asset_id=a.asset_id AND " + expression + ")")
+                params.append(filters[field])
+        if filters.get("set_id"):
+            where.append("EXISTS (SELECT 1 FROM reference_set_assets sa WHERE sa.asset_id=a.asset_id AND sa.set_id=?)")
+            params.append(filters["set_id"])
+        for field, expression in (("facet_namespace", "f.namespace=?"), ("facet_value", "f.value=?")):
+            if filters.get(field):
+                where.append("EXISTS (SELECT 1 FROM asset_facets af JOIN facets f USING(facet_id) WHERE af.asset_id=a.asset_id AND " + expression + ")")
+                params.append(filters[field])
+
+        selected_reference = "COALESCE((SELECT lr.reference_key FROM logical_references lr WHERE lr.asset_id=a.asset_id AND lr.status='active' AND (lr.reference_key=a.preferred_reference_key OR a.preferred_reference_key IS NULL OR a.preferred_reference_key<>'') ORDER BY CASE WHEN lr.reference_key=a.preferred_reference_key THEN 0 ELSE 1 END,lr.reference_key LIMIT 1),'')"
+        haystack = " || ' ' || ".join((
+            "COALESCE(a.label,'')", "COALESCE(a.file_name,'')", "COALESCE(a.origin,'')", "COALESCE(a.notes,'')",
+            selected_reference,
+            "COALESCE((SELECT group_concat(e.name || ' ' || COALESCE(v.name,''),' ') FROM asset_entities ae JOIN entities e USING(entity_id) LEFT JOIN variants v ON v.variant_id=ae.variant_id WHERE ae.asset_id=a.asset_id),'')",
+            "COALESCE((SELECT group_concat(s.name,' ') FROM reference_set_assets sa JOIN reference_sets s USING(set_id) WHERE sa.asset_id=a.asset_id),'')",
+            "COALESCE((SELECT group_concat(tag,' ') FROM asset_tags WHERE asset_id=a.asset_id),'')",
+            "COALESCE((SELECT group_concat(f.namespace || ':' || f.value,' ') FROM asset_facets af JOIN facets f USING(facet_id) WHERE af.asset_id=a.asset_id),'')",
+        ))
+        for term in str(filters.get("q") or "").casefold().split():
+            where.append("instr(CASEFOLD(" + haystack + "),?)>0")
+            params.append(term)
+        clause = " WHERE " + " AND ".join(where) if where else ""
+        total = self.repository.fetchone("SELECT count(*) AS n FROM assets a" + clause, tuple(params))["n"]
+        sql = "SELECT a.* FROM assets a" + clause + " ORDER BY a.created_at DESC,a.asset_id"
+        query_params = tuple(params)
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            query_params += (limit, offset)
+        return self.repository.fetchall(sql, query_params), int(total)
+
+    def _hydrate_asset_rows(self, rows: list[dict], *, include_unavailable: bool = False) -> list[dict]:
         if not rows:
             return []
-        asset_ids = tuple(row["asset_id"] for row in rows)
-        placeholders = ",".join("?" for _ in asset_ids)
-        entities_by_asset: dict[str, list[dict]] = {}
-        for item in self.repository.fetchall(
-            f"SELECT ae.asset_id,e.entity_id,e.name,e.entity_type,ae.role,ae.variant_id,v.name AS variant_name "
-            f"FROM asset_entities ae JOIN entities e ON e.entity_id=ae.entity_id "
-            f"LEFT JOIN variants v ON v.variant_id=ae.variant_id WHERE ae.asset_id IN ({placeholders}) ORDER BY e.name",
-            asset_ids,
-        ):
-            entities_by_asset.setdefault(item["asset_id"], []).append(item)
-        sets_by_asset: dict[str, list[dict]] = {}
-        for item in self.repository.fetchall(
-            f"SELECT sa.asset_id,s.set_id,s.name,sa.role,sa.sort_order FROM reference_set_assets sa "
-            f"JOIN reference_sets s ON s.set_id=sa.set_id WHERE sa.asset_id IN ({placeholders}) "
-            f"ORDER BY sa.sort_order,s.name",
-            asset_ids,
-        ):
-            sets_by_asset.setdefault(item["asset_id"], []).append(item)
-        facets_by_asset: dict[str, list[dict]] = {}
-        for item in self.repository.fetchall(
-            f"SELECT af.asset_id,f.namespace,f.value FROM asset_facets af "
-            f"JOIN facets f ON f.facet_id=af.facet_id WHERE af.asset_id IN ({placeholders}) "
-            f"ORDER BY f.namespace,f.value",
-            asset_ids,
-        ):
-            facets_by_asset.setdefault(item["asset_id"], []).append(item)
-        tags_by_asset: dict[str, list[str]] = {}
-        for item in self.repository.fetchall(
-            f"SELECT asset_id,tag FROM asset_tags WHERE asset_id IN ({placeholders}) ORDER BY tag",
-            asset_ids,
-        ):
-            tags_by_asset.setdefault(item["asset_id"], []).append(item["tag"])
-        references_by_asset: dict[str, list[dict]] = {}
-        for item in self.repository.fetchall(
-            f"SELECT reference_key,label,set_id,status,asset_id FROM logical_references "
-            f"WHERE asset_id IN ({placeholders}) ORDER BY reference_key",
-            asset_ids,
-        ):
-            references_by_asset.setdefault(item["asset_id"], []).append({
-                key: item[key] for key in ("reference_key", "label", "set_id", "status")
-            })
-        descriptor_assets = {
-            item["asset_id"]
-            for item in self.repository.fetchall(
-                f"SELECT DISTINCT a.asset_id FROM assets a JOIN descriptors d ON d.enabled=1 "
-                f"AND d.descriptor_type IN ('prompt_identity','prompt_object','prompt_background','human_description') "
-                f"LEFT JOIN asset_entities ae ON ae.asset_id=a.asset_id "
-                f"LEFT JOIN reference_set_assets rsa ON rsa.asset_id=a.asset_id "
-                f"WHERE a.asset_id IN ({placeholders}) AND ((d.owner_type='asset' AND d.owner_id=a.asset_id) "
-                f"OR (d.owner_type='entity' AND d.owner_id=ae.entity_id) "
-                f"OR (d.owner_type='variant' AND d.owner_id=ae.variant_id) "
-                f"OR (d.owner_type='set' AND d.owner_id=rsa.set_id))",
-                asset_ids,
-            )
-        }
+        grouped = {key: {} for key in ("entities", "sets", "facets", "tags", "references")}
+        descriptor_assets = set()
+        asset_ids = [row["asset_id"] for row in rows]
+        for start in range(0, len(asset_ids), 500):
+            batch = asset_ids[start:start + 500]
+            marks = ",".join("?" for _ in batch)
+            queries = {
+                "entities": (f"SELECT ae.asset_id,e.entity_id,e.name,e.entity_type,ae.role,ae.variant_id,v.name AS variant_name FROM asset_entities ae JOIN entities e USING(entity_id) LEFT JOIN variants v ON v.variant_id=ae.variant_id WHERE ae.asset_id IN ({marks}) ORDER BY e.name", batch),
+                "sets": (f"SELECT sa.asset_id,s.set_id,s.name,sa.role,sa.sort_order FROM reference_set_assets sa JOIN reference_sets s USING(set_id) WHERE sa.asset_id IN ({marks}) ORDER BY sa.sort_order,s.name", batch),
+                "facets": (f"SELECT af.asset_id,f.namespace,f.value FROM asset_facets af JOIN facets f USING(facet_id) WHERE af.asset_id IN ({marks}) ORDER BY f.namespace,f.value", batch),
+                "tags": (f"SELECT asset_id,tag FROM asset_tags WHERE asset_id IN ({marks}) ORDER BY tag", batch),
+                "references": (f"SELECT asset_id,reference_key,label,set_id,status FROM logical_references WHERE asset_id IN ({marks}) ORDER BY reference_key", batch),
+                "descriptors": (f"SELECT DISTINCT a.asset_id FROM assets a JOIN descriptors d ON d.enabled=1 AND d.descriptor_type IN ('prompt_identity','prompt_object','prompt_background','human_description') LEFT JOIN asset_entities ae ON ae.asset_id=a.asset_id LEFT JOIN reference_set_assets rsa ON rsa.asset_id=a.asset_id WHERE a.asset_id IN ({marks}) AND ((d.owner_type='asset' AND d.owner_id=a.asset_id) OR (d.owner_type='entity' AND d.owner_id=ae.entity_id) OR (d.owner_type='variant' AND d.owner_id=ae.variant_id) OR (d.owner_type='set' AND d.owner_id=rsa.set_id))", batch),
+            }
+            for name, (sql, args) in queries.items():
+                for item in self.repository.fetchall(sql, tuple(args)):
+                    if name == "descriptors":
+                        descriptor_assets.add(item["asset_id"])
+                    elif name == "tags":
+                        grouped[name].setdefault(item["asset_id"], []).append(item["tag"])
+                    elif name == "references":
+                        grouped[name].setdefault(item["asset_id"], []).append({key: item[key] for key in ("reference_key", "label", "set_id", "status")})
+                    else:
+                        grouped[name].setdefault(item["asset_id"], []).append(item)
         output = []
-        query = str(filters.get("q") or "").casefold().split()
         for row in rows:
             asset_id = row["asset_id"]
             path = self._image_path(asset_id, row["file_name"])
-            if not path.is_file():
+            available = path.is_file()
+            if not available and not include_unavailable:
                 continue
-            entities = entities_by_asset.get(asset_id, [])
-            sets = sets_by_asset.get(asset_id, [])
-            facets = facets_by_asset.get(asset_id, [])
-            tags = tags_by_asset.get(asset_id, [])
-            logical_references = references_by_asset.get(asset_id, [])
-            logical = self._selected_logical_reference(
-                logical_references, row.get("preferred_reference_key"), row["status"] == "approved"
-            )
-            item = {**row, "image_path": str(path), "thumbnail_path": str(path), "entities": entities, "sets": sets, "facets": facets, "tags": tags, "logical_reference": logical, "logical_references": logical_references}
-            item["descriptor_ready"] = asset_id in descriptor_assets
-            if row["status"] == "archived" and filters.get("status") != "archived" and not include_archived:
-                continue
-            if row["status"] == "obsolete" and filters.get("status") != "obsolete" and hide_obsolete:
-                continue
-            if filters.get("status") and row["status"] != filters["status"]:
-                continue
-            if filters.get("origin") and row["origin"] != filters["origin"]:
-                continue
-            if filters.get("entity_id") and not any(value["entity_id"] == filters["entity_id"] for value in entities):
-                continue
-            if filters.get("entity_type") and not any(value["entity_type"] == filters["entity_type"] for value in entities):
-                continue
-            if filters.get("variant_id") and not any(value["variant_id"] == filters["variant_id"] for value in entities):
-                continue
-            if filters.get("set_id") and not any(value["set_id"] == filters["set_id"] for value in sets):
-                continue
-            if filters.get("facet_namespace") and not any(value["namespace"] == filters["facet_namespace"] for value in facets):
-                continue
-            if filters.get("facet_value") and not any(value["value"] == filters["facet_value"] for value in facets):
-                continue
-            haystack = " ".join([row["label"], row["file_name"], row["origin"], row["notes"], logical["reference_key"] if logical else "", *[value["name"] for value in entities], *[value["variant_name"] or "" for value in entities], *[value["name"] for value in sets], *tags, *[f'{value["namespace"]}:{value["value"]}' for value in facets]]).casefold()
-            if query and not all(term in haystack for term in query):
-                continue
+            logical_refs = grouped["references"].get(asset_id, [])
+            item = {**row, "image_path": str(path), "thumbnail_path": str(path),
+                    "image_available": available,
+                    "entities": grouped["entities"].get(asset_id, []),
+                    "sets": grouped["sets"].get(asset_id, []),
+                    "facets": grouped["facets"].get(asset_id, []),
+                    "tags": grouped["tags"].get(asset_id, []),
+                    "logical_references": logical_refs,
+                    "logical_reference": self._selected_logical_reference(
+                        logical_refs, row.get("preferred_reference_key"), row["status"] == "approved"),
+                    "descriptor_ready": asset_id in descriptor_assets}
             output.append(self._json(item))
         return output
 
@@ -414,42 +420,199 @@ class EntityLibraryService:
 
     def register_locked_pipeline_image(self, source: Path, *, label: str, pipeline: str, character: str, phase: str, checksum: str,
                                        costume: str = "", view: str = "", reference_key: str = "") -> dict:
-        """Publish one verified local candidate into permanent ID-addressed storage."""
-        data = source.read_bytes()
-        if hashlib.sha256(data).hexdigest() != checksum:
-            raise EntityLibraryServiceError("The selected image changed before it could be locked.")
-        import mimetypes
-        mime_type = mimetypes.guess_type(source.name)[0] or "image/png"
-        key = f"local:{pipeline}:{character}:{phase}:"
-        if str(pipeline).casefold() == "costume-dressing":
-            key += f"{str(costume).casefold()}:{str(view).upper()}:"
-        key += checksum
-        asset = self.import_asset(label, mime_type, data, origin="pipeline", origin_key=key, notes="Locked local pipeline image")
-        if asset["status"] == "archived":
-            # Explicit relocking is the operator's decision to restore this publication.
-            if not Path(asset["image_path"]).is_file():
-                from zet.services.atomic_file_service import write_bytes_atomic
-                write_bytes_atomic(Path(asset["image_path"]), data)
-            with self.repository.transaction() as connection:
-                connection.execute("UPDATE assets SET status='approved',updated_at=? WHERE asset_id=?", (_now(), asset["asset_id"]))
-                connection.execute("UPDATE logical_references SET status='active',updated_at=? WHERE asset_id=? AND status='inactive'",
-                                   (_now(), asset["asset_id"]))
-            asset = self.get_asset(asset["asset_id"])
-        if str(pipeline).casefold() == "costume-dressing" and costume and view:
-            return self.classify_costume_image(asset["asset_id"], character=character, phase=phase,
-                                                costume=costume, view=view, reference_key=reference_key)
+        """Publish one local candidate through the same receipt-backed transaction as a chain."""
+        operation_id = uuid4().hex
+        result = self.register_locked_pipeline_images([{
+            "source": source, "label": label, "pipeline": pipeline, "character": character,
+            "phase": phase, "checksum": checksum, "costume": costume, "view": view,
+            "reference_key": reference_key,
+        }], operation_id=operation_id)[0]
+        return result
+
+    def publication_receipt(self, operation_id: str) -> dict | None:
+        return self.repository.fetchone(
+            "SELECT * FROM catalog_publication_receipts WHERE operation_id=?", (operation_id,)
+        )
+
+    def register_locked_pipeline_images(self, items: list[dict], *, operation_id: str,
+                                       before_commit=None) -> list[dict]:
+        """Stage image bytes, then publish all related metadata and a durable receipt atomically."""
+        if not re.fullmatch(r"[a-f0-9]{32}", str(operation_id or "")):
+            raise EntityLibraryServiceError("Invalid local publication operation ID.")
+        receipt = self.publication_receipt(operation_id)
+        if receipt:
+            return [self.get_asset(asset_id) for asset_id in json.loads(receipt["asset_ids_json"])]
+        from mimetypes import guess_type
+        from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
+        from zet.services.workflow_storage import atomic_copy
+
+        prepared = []
+        for index, item in enumerate(items):
+            source = Path(item["source"])
+            data = source.read_bytes()
+            checksum = str(item.get("checksum") or "")
+            if not checksum or hashlib.sha256(data).hexdigest() != checksum:
+                raise EntityLibraryServiceError("The selected image changed before it could be locked.")
+            mime_type = guess_type(source.name)[0] or "image/png"
+            if mime_type not in IMAGE_TYPES:
+                raise EntityLibraryServiceError(f"Unsupported pipeline image type: {mime_type}")
+            pipeline = str(item["pipeline"])
+            origin_key = f"local:{pipeline}:{item['character']}:{item['phase']}:"
+            if pipeline.casefold() == "costume-dressing":
+                origin_key += f"{str(item.get('costume') or '').casefold()}:{str(item.get('view') or '').upper()}:"
+            origin_key += checksum
+            existing = self.repository.fetchone("SELECT * FROM assets WHERE origin='pipeline' AND origin_key=?", (origin_key,))
+            asset_id = existing["asset_id"] if existing else str(uuid4())
+            extension = IMAGE_TYPES[mime_type]
+            target = self._image_path(asset_id, existing["file_name"] if existing else extension)
+            prepared.append({**item, "asset_id": asset_id, "origin_key": origin_key,
+                             "mime_type": mime_type, "width": self._dimensions(data, mime_type)[0],
+                             "height": self._dimensions(data, mime_type)[1],
+                             "target_path": str(target), "file_was_present": target.is_file(),
+                             "existing": existing, "_data": data, "_extension": extension})
+
+        staging_root = self.images_root / ".publication-staging" / operation_id
+        staging_root.mkdir(parents=True, exist_ok=True)
+        try:
+            for index, row in enumerate(prepared):
+                staged = staging_root / f"{index}{row['_extension']}"
+                write_bytes_atomic(staged, row.pop("_data"))
+                row["staged_path"] = str(staged)
+                row.pop("_extension")
+            write_json_atomic(staging_root / "plan.json", {
+                "operation_id": operation_id,
+                "assets": [{key: row[key] for key in ("asset_id", "target_path", "file_was_present")} for row in prepared],
+            })
+        except Exception:
+            import shutil
+            shutil.rmtree(staging_root, ignore_errors=True)
+            raise
+
+        created_paths: list[Path] = []
         stamp = _now()
-        with self.repository.transaction() as connection:
-            entity = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='character'", (character,)).fetchone()
-            entity_id = entity["entity_id"] if entity else str(uuid4())
-            if not entity:
-                connection.execute("INSERT INTO entities VALUES(?,?,?,?,?,?,?)", (entity_id, character, "character", "", "active", stamp, stamp))
-            variant = connection.execute("SELECT variant_id FROM variants WHERE entity_id=? AND lower(name)=lower(?) AND variant_type='life_stage'", (entity_id, phase)).fetchone()
-            variant_id = variant["variant_id"] if variant else str(uuid4())
-            if not variant:
-                connection.execute("INSERT INTO variants VALUES(?,?,?,?,?,?,?)", (variant_id, entity_id, phase, "life_stage", "", stamp, stamp))
-            connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset["asset_id"], entity_id, variant_id, "primary_subject"))
-        return self.get_asset(asset["asset_id"])
+        try:
+            with self.repository.transaction() as connection:
+                receipt = connection.execute(
+                    "SELECT asset_ids_json FROM catalog_publication_receipts WHERE operation_id=?", (operation_id,)
+                ).fetchone()
+                if receipt:
+                    asset_ids = json.loads(receipt["asset_ids_json"])
+                    if before_commit is not None:
+                        raise EntityLibraryServiceError("A committed operation must be recovered before retrying publication.")
+                else:
+                    asset_ids = []
+                    published = []
+                    for row in prepared:
+                        current = connection.execute(
+                            "SELECT * FROM assets WHERE origin='pipeline' AND origin_key=?", (row["origin_key"],)
+                        ).fetchone()
+                        if current:
+                            asset_id = current["asset_id"]
+                            target = self._image_path(asset_id, current["file_name"])
+                            if not target.is_file():
+                                atomic_copy(Path(row["staged_path"]), target)
+                                if not row["file_was_present"]:
+                                    created_paths.append(target)
+                            if current["status"] == "archived":
+                                connection.execute("UPDATE assets SET status='approved',updated_at=? WHERE asset_id=?", (stamp, asset_id))
+                                connection.execute("UPDATE logical_references SET status='active',updated_at=? WHERE asset_id=? AND status='inactive'", (stamp, asset_id))
+                        else:
+                            asset_id = row["asset_id"]
+                            target = Path(row["target_path"])
+                            atomic_copy(Path(row["staged_path"]), target)
+                            created_paths.append(target)
+                            connection.execute(
+                                "INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,status,notes,prompt,negative_prompt,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                (asset_id, str(row.get("label") or ""), row["checksum"], target.name,
+                                 row["mime_type"], row["width"], row["height"], "pipeline", row["origin_key"],
+                                 "approved", "Locked local pipeline image", "", "", stamp, stamp),
+                            )
+                        if str(row["pipeline"]).casefold() == "costume-dressing" and row.get("costume") and row.get("view"):
+                            self._classify_costume_image_in_transaction(
+                                connection, asset_id, character=str(row["character"]), phase=str(row["phase"]),
+                                costume=str(row["costume"]), view=str(row["view"]),
+                                reference_key=str(row.get("reference_key") or ""), stamp=stamp,
+                            )
+                        else:
+                            self._link_locked_character_in_transaction(
+                                connection, asset_id, str(row["character"]), str(row["phase"]), stamp,
+                            )
+                        asset_ids.append(asset_id)
+                        logical_reference = None
+                        if str(row["pipeline"]).casefold() == "costume-dressing" and row.get("costume") and row.get("view"):
+                            reference_key = str(row.get("reference_key") or self.logical_costume_reference_key(
+                                str(row["character"]), str(row["phase"]),
+                                str(row["costume"]).replace("_", " ").strip(),
+                                str(row["view"]).replace("_", " ").strip(),
+                            ))
+                            ref = connection.execute("SELECT reference_key,label,set_id,status FROM logical_references WHERE reference_key=?", (reference_key,)).fetchone()
+                            logical_reference = dict(ref) if ref else None
+                        published.append({"asset_id": asset_id, "image_path": str(target),
+                                          "logical_reference": logical_reference})
+                    connection.execute(
+                        "INSERT INTO catalog_publication_receipts(operation_id,asset_ids_json,created_at) VALUES(?,?,?)",
+                        (operation_id, json.dumps(asset_ids), stamp),
+                    )
+                    if before_commit is not None:
+                        before_commit(published)
+            import shutil
+            shutil.rmtree(staging_root, ignore_errors=True)
+        except Exception:
+            if not self.publication_receipt(operation_id):
+                for path in created_paths:
+                    path.unlink(missing_ok=True)
+                import shutil
+                shutil.rmtree(staging_root, ignore_errors=True)
+            raise
+        return [self.get_asset(asset_id) for asset_id in asset_ids]
+
+    @staticmethod
+    def _link_locked_character_in_transaction(connection, asset_id: str, character: str, phase: str, stamp: str) -> None:
+        entity = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='character'", (character,)).fetchone()
+        entity_id = entity["entity_id"] if entity else str(uuid4())
+        if not entity:
+            connection.execute("INSERT INTO entities VALUES(?,?,?,?,?,?,?)", (entity_id, character, "character", "", "active", stamp, stamp))
+        variant = connection.execute("SELECT variant_id FROM variants WHERE entity_id=? AND lower(name)=lower(?) AND variant_type='life_stage'", (entity_id, phase)).fetchone()
+        variant_id = variant["variant_id"] if variant else str(uuid4())
+        if not variant:
+            connection.execute("INSERT INTO variants VALUES(?,?,?,?,?,?,?)", (variant_id, entity_id, phase, "life_stage", "", stamp, stamp))
+        connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset_id, entity_id, variant_id, "primary_subject"))
+
+    def _classify_costume_image_in_transaction(self, connection, asset_id: str, *, character: str,
+                                               phase: str, costume: str, view: str,
+                                               reference_key: str, stamp: str) -> None:
+        costume = costume.replace("_", " ").strip()
+        view = view.replace("_", " ").strip()
+        label = " · ".join(value for value in (character, phase, costume, view.title()) if value)
+        character_row = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='character'", (character,)).fetchone()
+        character_id = character_row["entity_id"] if character_row else str(uuid4())
+        if not character_row:
+            connection.execute("INSERT INTO entities VALUES(?,?,?,?,?,?,?)", (character_id, character, "character", "", "active", stamp, stamp))
+        costume_row = connection.execute("SELECT entity_id FROM entities WHERE lower(name)=lower(?) AND entity_type='costume'", (costume,)).fetchone()
+        costume_id = costume_row["entity_id"] if costume_row else str(uuid4())
+        if costume and not costume_row:
+            connection.execute("INSERT INTO entities VALUES(?,?,?,?,?,?,?)", (costume_id, costume, "costume", "", "active", stamp, stamp))
+        variant = connection.execute("SELECT variant_id FROM variants WHERE entity_id=? AND lower(name)=lower(?) AND variant_type='life_stage'", (character_id, phase)).fetchone()
+        variant_id = variant["variant_id"] if variant else str(uuid4())
+        if not variant:
+            connection.execute("INSERT INTO variants VALUES(?,?,?,?,?,?,?)", (variant_id, character_id, phase, "life_stage", "", stamp, stamp))
+        connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset_id, character_id, variant_id, "primary_subject"))
+        if costume:
+            connection.execute("INSERT OR IGNORE INTO asset_entities(asset_id,entity_id,variant_id,role) VALUES(?,?,?,?)", (asset_id, costume_id, None, "worn_costume"))
+        for namespace, value in (("pipeline", "costume-dressing"), ("view", view)):
+            if not value:
+                continue
+            facet = connection.execute("SELECT facet_id FROM facets WHERE namespace=? AND lower(value)=lower(?)", (namespace, value)).fetchone()
+            facet_id = facet["facet_id"] if facet else str(uuid4())
+            if not facet:
+                connection.execute("INSERT INTO facets VALUES(?,?,?,?)", (facet_id, namespace, value, 1))
+            connection.execute("INSERT OR IGNORE INTO asset_facets(asset_id,facet_id) VALUES(?,?)", (asset_id, facet_id))
+        connection.execute("UPDATE assets SET label=?,updated_at=? WHERE asset_id=?", (label, stamp, asset_id))
+        key = reference_key or self.logical_costume_reference_key(character, phase, costume, view)
+        existing = connection.execute("SELECT label,asset_id,status FROM logical_references WHERE reference_key=?", (key,)).fetchone()
+        if not existing or existing["label"] != label or existing["asset_id"] != asset_id or existing["status"] != "active":
+            self._save_logical_reference(connection, key=key, label=label, asset_id=asset_id,
+                                         set_id=None, stamp=stamp, allow_reassign=True)
 
     @staticmethod
     def logical_costume_reference_key(character: str, phase: str, costume: str, view: str) -> str:
@@ -988,14 +1151,23 @@ class EntityLibraryService:
         return self.repository.fetchone("SELECT * FROM entities WHERE entity_id=?", (entity_id,)) or {}
 
     def list_entities(self, entity_type: str = "") -> list[dict]:
-        if entity_type:
-            rows = self.repository.fetchall("SELECT * FROM entities WHERE entity_type=? ORDER BY name COLLATE NOCASE", (entity_type,))
-        else:
-            rows = self.repository.fetchall("SELECT * FROM entities ORDER BY name COLLATE NOCASE")
+        where = " WHERE e.entity_type=?" if entity_type else ""
+        params = (entity_type,) if entity_type else ()
+        rows = self.repository.fetchall(
+            "SELECT e.*,(SELECT count(DISTINCT ae.asset_id) FROM asset_entities ae WHERE ae.entity_id=e.entity_id) AS image_count,"
+            "(SELECT count(*) FROM variants v WHERE v.entity_id=e.entity_id) AS variant_count "
+            "FROM entities e" + where + " ORDER BY e.name COLLATE NOCASE", params,
+        )
+        descriptors = self.repository.fetchall(
+            "SELECT d.* FROM descriptors d JOIN entities e ON e.entity_id=d.owner_id "
+            "WHERE d.owner_type='entity'" + (" AND e.entity_type=?" if entity_type else "") +
+            " ORDER BY d.owner_id,d.descriptor_type", params,
+        )
+        by_entity: dict[str, list[dict]] = {}
+        for descriptor in descriptors:
+            by_entity.setdefault(descriptor["owner_id"], []).append(descriptor)
         for row in rows:
-            row["image_count"] = self.repository.fetchone("SELECT count(DISTINCT asset_id) AS n FROM asset_entities WHERE entity_id=?", (row["entity_id"],))["n"]
-            row["variant_count"] = self.repository.fetchone("SELECT count(*) AS n FROM variants WHERE entity_id=?", (row["entity_id"],))["n"]
-            row["descriptors"] = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type='entity' AND owner_id=? ORDER BY descriptor_type", (row["entity_id"],))
+            row["descriptors"] = by_entity.get(row["entity_id"], [])
         return rows
 
     def update_entity(self, entity_id: str, data: dict) -> dict:
@@ -1032,13 +1204,23 @@ class EntityLibraryService:
         return self.repository.fetchone("SELECT * FROM variants WHERE variant_id=?", (variant_id,)) or {}
 
     def list_variants(self, entity_id: str = "") -> list[dict]:
-        if entity_id:
-            rows = self.repository.fetchall("SELECT v.*,e.name AS entity_name FROM variants v JOIN entities e USING(entity_id) WHERE entity_id=? ORDER BY name COLLATE NOCASE", (entity_id,))
-        else:
-            rows = self.repository.fetchall("SELECT v.*,e.name AS entity_name FROM variants v JOIN entities e USING(entity_id) ORDER BY e.name COLLATE NOCASE,v.name COLLATE NOCASE")
+        where = " WHERE v.entity_id=?" if entity_id else ""
+        params = (entity_id,) if entity_id else ()
+        rows = self.repository.fetchall(
+            "SELECT v.*,e.name AS entity_name,(SELECT count(DISTINCT ae.asset_id) FROM asset_entities ae "
+            "WHERE ae.variant_id=v.variant_id) AS image_count FROM variants v JOIN entities e USING(entity_id)" +
+            where + " ORDER BY e.name COLLATE NOCASE,v.name COLLATE NOCASE", params,
+        )
+        descriptors = self.repository.fetchall(
+            "SELECT d.* FROM descriptors d JOIN variants v ON v.variant_id=d.owner_id "
+            "WHERE d.owner_type='variant'" + (" AND v.entity_id=?" if entity_id else "") +
+            " ORDER BY d.owner_id,d.descriptor_type", params,
+        )
+        by_variant: dict[str, list[dict]] = {}
+        for descriptor in descriptors:
+            by_variant.setdefault(descriptor["owner_id"], []).append(descriptor)
         for row in rows:
-            row["image_count"] = self.repository.fetchone("SELECT count(DISTINCT asset_id) AS n FROM asset_entities WHERE variant_id=?", (row["variant_id"],))["n"]
-            row["descriptors"] = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type='variant' AND owner_id=? ORDER BY descriptor_type", (row["variant_id"],))
+            row["descriptors"] = by_variant.get(row["variant_id"], [])
         return rows
 
     def update_variant(self, variant_id: str, data: dict) -> dict:
@@ -1457,7 +1639,7 @@ class EntityLibraryService:
         )
 
     def search_picker(self, **filters) -> list[dict]:
-        return [item for item in self.list_assets(**filters) if item["status"] == "approved"]
+        return self.list_assets(status="approved", **filters)
 
     def refresh_usages(self, library_root: str | Path) -> dict:
         """Compatibility entry point for an explicitly requested usage rebuild."""

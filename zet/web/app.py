@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 import markdown
 from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 
 from zet.app import ZetApp
 from zet.render_console.queue import RenderConsoleQueue
@@ -1011,6 +1012,7 @@ def _create_available_app(
     )
     app.state.task_status_service = app.state.zet_app.task_status_service
     app.state.worker_bridge_service = app.state.zet_app.worker_bridge_service
+    app.state.startup_universe_id = app.state.zet_app.universe_id
     app.state.universe_apps = {app.state.zet_app.universe_id: app.state.zet_app}
     app.state.image_generation_service = AdHocImageGenerationService(app.state.zet_app, PROJECT_ROOT)
     app.state.zet_app._image_generation_service = app.state.image_generation_service
@@ -1096,7 +1098,7 @@ def _create_available_app(
         finally:
             current_universe.reset(token)
 
-    from zet.services.ai_job_coordinator import AIJobCoordinator
+    from zet.services.ai_job_coordinator import AIJobCoordinator, image_services
     app.state.ai_job_coordinator = AIJobCoordinator(app.state.zet_app, resolve_job_app)
 
     @app.middleware("http")
@@ -1104,7 +1106,8 @@ def _create_available_app(
         universe_id = request.headers.get("x-zet-universe") or request.query_params.get("universe_id")
         if universe_id:
             try:
-                app.state.zet_app.universe_service.get_universe(universe_id)
+                descriptor = await run_in_threadpool(app.state.zet_app.universe_service.get_universe, universe_id)
+                universe_id = descriptor["universe_id"]
             except Exception as exc:
                 return PlainTextResponse(str(exc), status_code=400)
         token = current_universe.set(universe_id)
@@ -1115,26 +1118,34 @@ def _create_available_app(
 
     def _reload_app() -> ZetApp:
         selected = current_universe.get() or app.state.zet_app.universe_id
-        previous = app.state.universe_apps.get(selected)
-        if previous:
-            previous.library_index_reconciler.stop()
-        replacement = ZetApp.from_config(app.state.config_path, universe_id=selected)
-        generation = getattr(previous, "_image_generation_service", None)
-        if generation is not None and Path(previous.config.base_library_path) == Path(replacement.config.base_library_path):
-            generation.rebind_app(replacement)
-            replacement._image_generation_service = generation
-            replacement.quick_character_wizard_service.generation_service = generation
-        replacement.library_index_reconciler.start()
-        app.state.universe_apps[selected] = replacement
-        if selected == app.state.zet_app.universe_id:
-            app.state.zet_app = replacement
-        return replacement
+        with app.state.universe_lock:
+            previous_apps = dict(app.state.universe_apps)
+            previous_apps.setdefault(app.state.zet_app.universe_id, app.state.zet_app)
+            for previous in previous_apps.values():
+                previous.library_index_reconciler.stop()
+            required = {selected, app.state.startup_universe_id}
+            replacements = {}
+            for universe_id in required:
+                previous = previous_apps.get(universe_id)
+                replacement = ZetApp.from_config(app.state.config_path, universe_id=universe_id)
+                generation = getattr(previous, "_image_generation_service", None)
+                if generation is not None and Path(previous.config.base_library_path) == Path(replacement.config.base_library_path):
+                    generation.rebind_app(replacement)
+                    replacement._image_generation_service = generation
+                    replacement.quick_character_wizard_service.generation_service = generation
+                replacement.library_index_reconciler.start()
+                replacements[universe_id] = replacement
+            app.state.universe_apps = replacements
+            app.state.zet_app = replacements[app.state.startup_universe_id]
+            app.state.task_status_service = app.state.zet_app.task_status_service
+            app.state.worker_bridge_service = app.state.zet_app.worker_bridge_service
+            return replacements[selected]
 
     @app.get("/api/universes")
     def universes() -> dict[str, Any]:
         service = app.state.zet_app.universe_service
         return {"universes": [{key: value for key, value in item.items() if key not in {"root", "legacy"}}
-                              for item in service.list_universes()],
+                              for item in service.list_universes(refresh=True)],
                 "selected_universe_id": current_universe.get() or service.selection()}
 
     def public_universe(universe: dict[str, Any]) -> dict[str, Any]:
@@ -1197,6 +1208,11 @@ def _create_available_app(
             if selected is app.state.zet_app:
                 app.state.image_generation_service = selected._image_generation_service
             return selected._image_generation_service
+
+    def _image_prompt_generation_service():
+        selected = _app(app.state.config_path)
+        with app.state.universe_lock:
+            return image_services(selected)[1]
 
     app.include_router(create_local_character_asset_pipeline_router(
         lambda: _app(app.state.config_path), PROJECT_ROOT, _image_generation_service))
@@ -1697,8 +1713,8 @@ def _create_available_app(
             filters = {"q": q, "entity_id": entity_id, "entity_type": entity_type, "variant_id": variant_id,
                        "set_id": set_id, "facet_namespace": facet_namespace, "facet_value": facet_value,
                        "origin": origin, "status": status, "hide_obsolete": not include_obsolete}
-            assets = service.list_assets(**{key: value for key, value in filters.items() if value})
-            return {"assets": assets[offset:offset + limit], "total": len(assets), "offset": offset, "limit": limit}
+            return service.list_asset_page(offset=offset, limit=limit,
+                                           **{key: value for key, value in filters.items() if value})
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1722,9 +1738,10 @@ def _create_available_app(
         request: Request, label: str = Query(...), entity_ids: str = Query(""), set_ids: str = Query(""),
     ) -> dict[str, Any]:
         try:
-            zet_app = _app(app.state.config_path)
-            asset = zet_app.entity_library_import(
-                label, request.headers.get("content-type", ""), await request.body(),
+            body = await request.body()
+            zet_app = await run_in_threadpool(_app, app.state.config_path)
+            asset = await run_in_threadpool(zet_app.entity_library_import,
+                label, request.headers.get("content-type", ""), body,
                 entity_ids=[value for value in entity_ids.split(",") if value],
                 set_ids=[value for value in set_ids.split(",") if value],
             )
@@ -1738,8 +1755,10 @@ def _create_available_app(
         reference_role: str = Query("primary_subject"), provenance: str = Query(""),
     ) -> dict[str, Any]:
         try:
-            result = _app(app.state.config_path).entity_library_import_generated_image(
-                label, request.headers.get("content-type", ""), await request.body(),
+            body = await request.body()
+            zet_app = await run_in_threadpool(_app, app.state.config_path)
+            result = await run_in_threadpool(zet_app.entity_library_import_generated_image,
+                label, request.headers.get("content-type", ""), body,
                 entity_id=entity_id, reference_role=reference_role, provenance=provenance,
             )
             asset = result["asset"]
@@ -1758,21 +1777,21 @@ def _create_available_app(
     @app.post("/api/entity-library/assets/{asset_id}/generate-prompt")
     def entity_library_generate_prompt(asset_id: str) -> dict[str, Any]:
         try:
-            return app.state.image_prompt_generation_service.start(asset_id)
+            return _image_prompt_generation_service().start(asset_id)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/entity-library/assets/{asset_id}/generate-identity")
     def entity_library_generate_identity(asset_id: str) -> dict[str, Any]:
         try:
-            return app.state.image_prompt_generation_service.start_identity(asset_id)
+            return _image_prompt_generation_service().start_identity(asset_id)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/entity-library/prompt-generation/{job_id}")
     def entity_library_prompt_generation_status(job_id: str) -> dict[str, Any]:
         try:
-            return app.state.image_prompt_generation_service.status(job_id)
+            return _image_prompt_generation_service().status(job_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
 
@@ -1798,8 +1817,10 @@ def _create_available_app(
     @app.put("/api/entity-library/assets/{asset_id}/image")
     async def entity_library_asset_replace(asset_id: str, request: Request) -> dict[str, Any]:
         try:
-            zet_app = _app(app.state.config_path)
-            asset = zet_app.entity_library_replace_asset(asset_id, request.headers.get("content-type", ""), await request.body())
+            body = await request.body()
+            zet_app = await run_in_threadpool(_app, app.state.config_path)
+            asset = await run_in_threadpool(zet_app.entity_library_replace_asset, asset_id,
+                                            request.headers.get("content-type", ""), body)
             return {"asset": asset, "message": "Replacement added as a new immutable asset."}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2052,11 +2073,13 @@ def _create_available_app(
         reference_set_id: str = Query(""),
     ) -> dict[str, Any]:
         try:
-            item = _app(app.state.config_path).import_image_catalog_item(
+            body = await request.body()
+            zet_app = await run_in_threadpool(_app, app.state.config_path)
+            item = await run_in_threadpool(zet_app.import_image_catalog_item,
                 label,
                 semantic_category,
                 reference_set_id,
-                await request.body(),
+                body,
                 request.headers.get("content-type", ""),
             )
             return {"item": _jsonable(item), "message": f"Imported {item.managed_label}."}
@@ -2143,9 +2166,11 @@ def _create_available_app(
     @app.put("/api/image-catalog/{catalog_id}/content")
     async def image_catalog_replace_content(catalog_id: str, request: Request) -> dict[str, Any]:
         try:
-            item = _app(app.state.config_path).replace_image_catalog_content(
+            body = await request.body()
+            zet_app = await run_in_threadpool(_app, app.state.config_path)
+            item = await run_in_threadpool(zet_app.replace_image_catalog_content,
                 catalog_id,
-                await request.body(),
+                body,
                 request.headers.get("content-type", ""),
             )
             return {"item": _jsonable(item), "message": "Image content replaced."}
@@ -2313,9 +2338,11 @@ def _create_available_app(
     @app.post("/api/costume-wizard")
     async def costume_wizard_create(request: Request, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         """Create an isolated wizard session from up to three image references."""
-        zet_app = _app(app.state.config_path)
         try:
-            form = _parse_costume_wizard_multipart(request.headers.get("content-type", ""), await request.body())
+            body = await request.body()
+            content_type = request.headers.get("content-type", "")
+            form = await run_in_threadpool(_parse_costume_wizard_multipart, content_type, body)
+            zet_app = await run_in_threadpool(_app, app.state.config_path)
             images = []
             for index in range(1, 4):
                 upload = form.get(f"image_{index}")
@@ -2323,7 +2350,7 @@ def _create_available_app(
                 if upload is None or not upload.get("filename"):
                     continue
                 images.append({"filename": upload["filename"], "caption": caption, "contents": upload["contents"]})
-            result = zet_app.costume_wizard_service.create_session(
+            result = await run_in_threadpool(zet_app.costume_wizard_service.create_session,
                 character, phase, str(form.get("name") or ""), str(form.get("extra_info") or ""), images)
             return {"session": result}
         except Exception as exc:
@@ -2584,8 +2611,11 @@ def _create_available_app(
     def local_file(path: str = Query(...), download: bool = Query(False)):
         """Serve a local file inline or as a browser download."""
         zet_app = _app(app.state.config_path)
-        requested = zet_app.path_service.resolve_path(path)
-        if not requested.exists() or not requested.is_file():
+        try:
+            requested = zet_app.path_service.resolve_served_path(path)
+        except (OSError, ValueError):
+            raise HTTPException(status_code=404, detail=f"File not found: {path}") from None
+        if not requested.is_file():
             raise HTTPException(status_code=404, detail=f"File not found: {path}")
         if download:
             return FileResponse(requested, filename=requested.name)
@@ -3157,9 +3187,10 @@ def _create_available_app(
 
     @app.post("/api/head-image-sources")
     async def head_image_manifest_upload_source(request: Request, filename: str = Query(...), character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
-        zet_app = _app(app.state.config_path)
         try:
-            path = zet_app.upload_head_image_source(character, phase, filename, await request.body())
+            body = await request.body()
+            zet_app = await run_in_threadpool(_app, app.state.config_path)
+            path = await run_in_threadpool(zet_app.upload_head_image_source, character, phase, filename, body)
             return {"path": str(path), "name": path.name}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

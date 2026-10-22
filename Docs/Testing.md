@@ -418,3 +418,16 @@ No maintained tests, dependencies, production library writes or live AI calls we
 added. These checks verify software behavior; improved artistic proportionality
 ranking remains subject to live human review. See the
 [completed plan](../plans/completed/assembly-front-ranking.md).
+
+## Code review remediation (2026-10-22)
+
+All four approved fast scenarios passed after the remediation (`npm.cmd run
+test:e2e`, 38.7 seconds). Changed Python files compiled, `node --check
+zet/web/static/zet.js` passed, and `git diff --check` passed. Disposable checks
+covered valid/malformed universe selection plus failed-write preservation; allowed,
+traversal, absolute-outside and foreign-universe path resolution; descriptive
+Head-Image Edit lock labels; one-row inventory paging; bounded two-query entity and
+variant descriptor projections; pre-commit catalog rollback; committed and
+uncommitted publication recovery; and duplicate continuation enqueue suppression.
+These checks used temporary directories/catalogs and prepared data. They did not
+exercise live model/render services or add permanent scenarios.

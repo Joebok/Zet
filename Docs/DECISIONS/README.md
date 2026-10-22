@@ -86,4 +86,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 
 [0024 - Character template versions and explicit view references](0024-character-template-versions.md) records batch-local proposals, compiler overlays, confirmed promotion and selected-view conditioning (accepted locally 2026-10-17; artistic quality unverified).
 
+[0029 - Recoverable local asset publication](0029-recoverable-local-asset-publication.md) records the receipt-backed catalog transaction and local-state recovery protocol (accepted 2026-10-22).
 [0027 - Repository-managed LLM roles and skill composition](0027-repo-managed-llm-skills.md) records provider-independent skill ownership, explicit purpose classification, frozen guidance and role model inheritance (accepted locally 2026-10-22).

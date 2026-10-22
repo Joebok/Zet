@@ -1,6 +1,6 @@
 # System contracts
 
-These are supported by implementation and repository instructions, with earlier test evidence retained in Git history. [Testing](Testing.md) owns the current S1–S3 baseline and coverage approval. A scenario verifies only its named assertions; many contracts below require source inspection because dedicated tests were retired. Do not add coverage without explicit approval. See [DEVELOPMENT](DEVELOPMENT.md) for observed results.
+These are supported by implementation and repository instructions, with earlier test evidence retained in Git history. [Testing](Testing.md) owns the current S1–S4 baseline and coverage approval. A scenario verifies only its named assertions; many contracts below require source inspection because dedicated tests were retired. Do not add coverage without explicit approval. See [DEVELOPMENT](DEVELOPMENT.md) for observed results.
 
 ## 1. Reusable behavior belongs behind the web layer
 
@@ -10,15 +10,15 @@ These are supported by implementation and repository instructions, with earlier 
 
 ## 2. A universe owns its library, not the shared queue
 
-- **Rule/why:** bound universe paths, request context, and manifest ownership must agree. Shared queue location does not grant access to another universe's results.
-- **Implementation/impact:** [UniverseService.bind_config](../zet/services/universe_service.py), request `ContextVar` in [create_app](../zet/web/app.py), `_ask_belongs_to_run` in [local character service](../zet/services/local_character_asset_pipeline_service.py), ownership checks in [AIAnswerHarvester](../zet/services/ai_answer_harvester.py). Missing ownership is assigned Moonsea only for legacy config.
-- **Verify:** All fast scenarios run in the seeded Test universe. They do not test cross-universe switching/foreign-result rejection; inspect request context and owner checks. New coverage needs approval.
+- **Rule/why:** bound universe paths, request context, and manifest ownership must agree. Shared queue location does not grant access to another universe's results. Browser file reads resolve links before allowing only the selected universe or repository `Shared_Library`; prompt-analysis records are bound to their containing/requested universe.
+- **Implementation/impact:** [UniverseService.bind_config](../zet/services/universe_service.py), request `ContextVar` and `/api/file` in [create_app](../zet/web/app.py), [PathService.resolve_served_path](../zet/services/path_service.py), `_ask_belongs_to_run` in [local character service](../zet/services/local_character_asset_pipeline_service.py), and ownership checks in [AIAnswerHarvester](../zet/services/ai_answer_harvester.py). Missing ownership is assigned Moonsea only for legacy config.
+- **Verify:** All fast scenarios run in the seeded Test universe. Disposable probes cover allowed/outside/foreign file resolution and malformed universe selection; they do not exercise every cross-universe route. New coverage needs approval.
 
 ## 3. Authoritative images and a derived index are different stores
 
 - **Rule/why:** [EntityLibraryRepository](../zet/repositories/entity_library_repository.py) owns `catalog.sqlite3`; [LibraryIndexRepository](../zet/repositories/library_index_repository.py) owns a rebuildable machine-local cache outside Git/Dropbox. Losing the cache must not imply loss of authored state. Published index generations/freshness, not partial scans, drive indexed queries.
-- **Implementation/impact:** [LibraryIndexService](../zet/services/library_index_service.py), entity library, dashboard paging, compilation dependencies, image references.
-- **Verify:** Inspect repository schema/root validation and generation publication. S1/S2 use library state incidentally; no dedicated migration, corruption, freshness or paging scenario remains. Read any rebuild/migration command before use.
+- **Implementation/impact:** [LibraryIndexService](../zet/services/library_index_service.py), entity library, SQL-filtered inventory paging, compilation dependencies, image references.
+- **Verify:** Inspect repository schema/root validation and generation publication. S1/S2 use library state incidentally; disposable checks cover catalog paging and unavailable-blob metadata, but no dedicated migration/corruption/index freshness scenario remains. Read any rebuild/migration command before use.
 
 ## 4. Traditional character generation stays retired
 
@@ -28,9 +28,9 @@ These are supported by implementation and repository instructions, with earlier 
 
 ## 5. Approved local sources are available publications
 
-- **Rule/why:** `locked_assets` requires a recorded lock and an existing universe-owned permanent image. Original batch/candidate files, saved hashes and advisory upstream drift do not invalidate publication. Manual file replacement is trusted. Explicit catalog archival revokes availability; explicit relocking can restore it.
-- **Implementation/impact:** [LocalAssetStoreService](../zet/services/local_asset_store_service.py), [LocalAssetSourceService](../zet/services/local_asset_source_service.py) and entity publication. Managed hashes are recorded on writes/re-evaluation, not recomputed by detail/summary reads.
-- **Verify:** S2 covers publication and downstream prerequisites; disposable checks cover manual replacement, absent history/files and archive/relock. See [ADR 0023](DECISIONS/0023-streamlined-image-integrity.md).
+- **Rule/why:** `locked_assets` requires a recorded lock and an existing universe-owned permanent image. Original batch/candidate files, saved hashes and advisory upstream drift do not invalidate publication. Manual file replacement is trusted. Explicit catalog archival revokes availability; explicit relocking can restore it. A published chain commits catalog rows/references together and uses a receipt plus journal to recover its separate local JSON state.
+- **Implementation/impact:** [LocalAssetStoreService](../zet/services/local_asset_store_service.py), [LocalAssetPublicationRecoveryService](../zet/services/local_asset_publication_recovery_service.py), [StorageRecoveryService](../zet/services/storage_recovery_service.py), [LocalAssetSourceService](../zet/services/local_asset_source_service.py) and entity publication.
+- **Verify:** S2 covers publication and downstream prerequisites; disposable checks cover catalog rollback, committed/uncommitted journal recovery, manual replacement, absent history/files and archive/relock. See [ADR 0023](DECISIONS/0023-streamlined-image-integrity.md) and [ADR 0029](DECISIONS/0029-recoverable-local-asset-publication.md).
 
 ## 6. Ranking and human review define candidate eligibility
 

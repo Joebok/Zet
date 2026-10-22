@@ -1221,6 +1221,7 @@ function setCandidatePendingLink(link, document) {
 
 function downloadFileUrl(path) {
   const params = new URLSearchParams({ path, download: "true" });
+  if (state.universeId) params.set("universe_id", state.universeId);
   return `/api/file?${params.toString()}`;
 }
 
@@ -7916,13 +7917,24 @@ async function searchEntityLibrary(preserveOffset = false) {
     imageButton.className = "inventory-card-image";
     imageButton.setAttribute("aria-label", `Preview ${asset.label || asset.file_name || "library image"}`);
     const img = document.createElement("img");
-    img.src = fileUrl(asset.thumbnail_path || asset.image_path);
     img.alt = asset.label || "Library image";
     img.title = "Open full-size image";
-    imageButton.addEventListener("click", () => {
-      openFullscreenImage(fileUrl(asset.image_path), asset.label || asset.file_name || "Library image");
-    });
-    imageButton.append(img);
+    if (asset.image_available === false) {
+      imageButton.classList.add("inventory-card-image-missing");
+      const unavailable = document.createElement("span");
+      unavailable.textContent = "Image unavailable";
+      imageButton.append(unavailable);
+    } else {
+      img.src = fileUrl(asset.thumbnail_path || asset.image_path);
+      imageButton.append(img);
+    }
+    if (asset.image_available !== false) {
+      imageButton.addEventListener("click", () => {
+        openFullscreenImage(fileUrl(asset.image_path), asset.label || asset.file_name || "Library image");
+      });
+    } else {
+      imageButton.disabled = true;
+    }
     const title = document.createElement("strong");
     title.textContent = asset.label || asset.file_name;
     const detail = document.createElement("span");

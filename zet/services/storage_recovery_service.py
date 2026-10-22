@@ -42,6 +42,8 @@ class StorageRecoveryService:
             return
         self.health.require()
         self._last = time.monotonic()
+        from zet.services.local_asset_store_service import LocalAssetStoreService
+        LocalAssetStoreService(self.app.config.base_library_path).recover_pending_publications()
         from zet.services.local_character_overview_service import LocalCharacterOverviewService
         from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
         project = Path(__file__).resolve().parents[2]

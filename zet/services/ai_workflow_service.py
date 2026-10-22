@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
 import json
+import threading
 from datetime import datetime, timezone
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
@@ -17,6 +18,8 @@ class AIPending(BaseException):
 
 current_workflow = ContextVar("zet_ai_workflow", default=None)
 _POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="zet-ai-continuation")
+_ACTIVE_LOCK = threading.Lock()
+_ACTIVE: set[tuple[str, str, str]] = set()
 
 
 def work_id(label="item"):
@@ -79,8 +82,29 @@ class AIWorkflowService:
                 self._save(path, {"version": 1, "id": task_id, "universe_id": self.app.universe_id,
                     "service": service, "method": target.__name__, "args": list(args), "owner": owner,
                     "status": "WAITING", "created_at": now, "updated_at": now})
-        _POOL.submit(self.run, task_id, initial)
+        self._enqueue(task_id, initial)
         return task_id
+
+    def _enqueue(self, task_id, initial=None):
+        identity = (str(self.root.resolve()), self.app.universe_id, str(task_id))
+        with _ACTIVE_LOCK:
+            if identity in _ACTIVE:
+                return False
+            _ACTIVE.add(identity)
+        try:
+            _POOL.submit(self._run_enqueued, task_id, initial, identity)
+        except BaseException:
+            with _ACTIVE_LOCK:
+                _ACTIVE.discard(identity)
+            raise
+        return True
+
+    def _run_enqueued(self, task_id, initial, identity):
+        try:
+            self.run(task_id, initial)
+        finally:
+            with _ACTIVE_LOCK:
+                _ACTIVE.discard(identity)
 
     def _service(self, name):
         if name == "character_refinement":
@@ -149,7 +173,7 @@ class AIWorkflowService:
                 try:
                     record = self._read(path)
                     if record["universe_id"] == self.app.universe_id and record["status"] in {"WAITING", "RUNNING", "PAUSED_STORAGE", "RECOVERING"}:
-                        _POOL.submit(self.run, record["id"])
+                        self._enqueue(record["id"])
                 except (OSError, ValueError, KeyError):
                     import logging
                     logging.getLogger(__name__).exception("Unable to resume AI workflow %s", path)

@@ -15,7 +15,7 @@ class EntityLibraryRepositoryError(Exception):
 class EntityLibraryRepository:
     """Store the authoritative entity-centered image catalog in SQLite."""
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, database_path: str | Path):
         self.database_path = Path(database_path).resolve()
@@ -28,6 +28,7 @@ class EntityLibraryRepository:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 15000")
+        connection.create_function("CASEFOLD", 1, lambda value: str(value or "").casefold(), deterministic=True)
         return connection
 
     def initialize(self) -> None:
@@ -151,6 +152,10 @@ class EntityLibraryRepository:
                     provenance_id TEXT PRIMARY KEY, asset_id TEXT NOT NULL REFERENCES assets(asset_id) ON DELETE CASCADE,
                     relation_type TEXT NOT NULL, source_asset_id TEXT REFERENCES assets(asset_id),
                     details_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS catalog_publication_receipts (
+                    operation_id TEXT PRIMARY KEY, asset_ids_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 );
                 """
             )

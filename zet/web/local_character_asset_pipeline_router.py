@@ -6,6 +6,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse
 from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_character_overview_service import submit_local_pipeline_task
@@ -60,7 +61,7 @@ def create_local_character_asset_pipeline_router(
     async def upload_head_image_source(request: Request, filename: str = Query(...),
                                        character: str = Query(...), phase: str = Query(...)):
         request_body = await request.body()
-        return call(lambda: service("head-image").adapter.upload_source(
+        return await run_in_threadpool(call, lambda: service("head-image").adapter.upload_source(
             character, phase, filename, request_body
         ))
 
@@ -68,7 +69,7 @@ def create_local_character_asset_pipeline_router(
     async def upload_head_edit_source(request: Request, filename: str = Query(...),
                                       character: str = Query(...), phase: str = Query(...)):
         contents = await request.body()
-        return call(lambda: service("head-image-edit").adapter.upload_source(character, phase, filename, contents))
+        return await run_in_threadpool(call, lambda: service("head-image-edit").adapter.upload_source(character, phase, filename, contents))
 
     for pipeline in ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"):
         prefix = f"/api/local/{pipeline}"
@@ -84,7 +85,7 @@ def create_local_character_asset_pipeline_router(
                 contents.extend(chunk)
                 if len(contents) > 32 * 1024 * 1024:
                     raise HTTPException(status_code=413, detail="Choose an image under 32 MB.")
-            return call(lambda: service(_pipeline).action("import_override", run_id=run_id,
+            return await run_in_threadpool(call, lambda: service(_pipeline).action("import_override", run_id=run_id,
                 view=view, costume=costume if _pipeline == "costume-dressing" else "",
                 filename=filename, contents=bytes(contents), expected_selected_id=expected_selected_id))
 
