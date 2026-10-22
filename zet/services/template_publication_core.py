@@ -111,9 +111,14 @@ def inspect(root):
     return {"root": str(root), "revision": revision, "snapshot_id": identity, "files": rows}
 
 
-def guard(root, target, receipt=None):
-    """Allow only unchanged captures whose merged published blobs are in target."""
+def guard(root, target, receipt=None, config_path=None):
+    """Allow published template edits and the config consumed by deployment."""
     report = inspect(root)
+    # Deployment copies the active source config into the next release. Permit that
+    # exact root config as an input, while retaining the guard for every other edit.
+    config = Path(config_path).resolve() if config_path else None
+    allowed_config = (config if config and config.parent == Path(root).resolve()
+                      and config.name.casefold() == "config.toml" else None)
     receipt = receipt or {}
     valid = (receipt.get("state") == "ready" and receipt.get("source_root") == report["root"]
              and receipt.get("source_revision") == report["revision"])
@@ -129,6 +134,8 @@ def guard(root, target, receipt=None):
     captured = {row["path"]: row for row in receipt.get("files", [])} if valid else {}
     blockers = []
     for row in report["files"]:
+        if allowed_config and (Path(root) / row["path"]).resolve() == allowed_config:
+            continue
         saved = captured.get(row["path"], {})
         accepted = row["eligible"] and row["raw_sha256"] == saved.get("raw_sha256")
         if accepted:

@@ -108,7 +108,10 @@ Restart offers Update and restart or Restart current version. Update stages and
 runs the approved isolated baseline BEFORE stopping production. The controller is
 copied outside releases; a check lock serializes worker/staging fixed-port tests.
 `GET /api/deployment` reports status; `/stage` validates without promotion; `/update`
-promotes after validation. Development fixtures cannot deploy.
+promotes after validation. The root `config.toml` used by the active checkout may
+have local edits: deployment carries that exact file into the next release's
+runtime config. Other tracked edits remain blocked unless governing template edits
+were published and merged. Development fixtures cannot deploy.
 
 Health includes revision, boot_id and role/config identity. Process matching uses
 exact config identity; deployment rechecks Windows command lines before stopping

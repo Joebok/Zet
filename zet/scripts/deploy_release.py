@@ -159,7 +159,7 @@ def stage(request, update):
             raise RuntimeError("The previous release cannot read the configured library path format; promotion is blocked to preserve rollback compatibility.")
     if git_dirty := run(["git", "-C", str(release), "diff", "--name-only", "HEAD"]):
         raise RuntimeError("Staged release has tracked edits; retained release needs inspection: " + git_dirty[:500])
-    guard(source, release, request.get("template_receipt"))
+    guard(source, release, request.get("template_receipt"), request.get("config_path"))
     if request.get("previous_release") and Path(request["previous_release"]).resolve() != source.resolve():
         guard(Path(request["previous_release"]), release, request.get("template_receipt"))
     update("staging", target_revision=revision, target_release=str(release))
