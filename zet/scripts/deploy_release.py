@@ -54,6 +54,42 @@ def atomic_json(path, value):
     os.replace(temporary, path)
 
 
+def merge_render_presets(defaults_path, target_path, source_path=None):
+    """Merge newly shipped profiles into runtime state without dropping local profiles."""
+    target_path = Path(target_path)
+    source_path = Path(source_path) if source_path else None
+    defaults_path = Path(defaults_path)
+    merged = {}
+    loaded = set()
+
+    # Keep the established mutable-state source authoritative for conflicts, while
+    # preserving custom profiles that exist only in the production target.
+    for path in (source_path, target_path):
+        if path is None or not path.is_file():
+            continue
+        resolved = path.resolve()
+        if resolved in loaded:
+            continue
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(catalog, dict):
+            raise RuntimeError(f"Render profile catalog must be a JSON object: {path}")
+        loaded.add(resolved)
+        for name, profile in catalog.items():
+            merged.setdefault(name, profile)
+
+    if defaults_path.is_file():
+        defaults = json.loads(defaults_path.read_text(encoding="utf-8"))
+        if not isinstance(defaults, dict):
+            raise RuntimeError(f"Release render profile catalog must be a JSON object: {defaults_path}")
+        for name, profile in defaults.items():
+            merged.setdefault(name, profile)
+
+    if not merged:
+        return
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_json(target_path, merged)
+
+
 def run(command, cwd=None, env=None, timeout=600):
     result = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8",
                             errors="replace", timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -241,7 +277,9 @@ def promote(request, release, revision, update):
         for filename in ("universe-selection.json", "Local_Render_Presets.json", "ollama-models-cache.json"):
             source = Path(request["mutable_state_root"]) / filename
             target = Path(request["runtime_root"]) / "state" / filename
-            if source.is_file() and source.resolve() != target.resolve():
+            if filename == "Local_Render_Presets.json":
+                merge_render_presets(release / "Config" / filename, target, source)
+            elif source.is_file() and source.resolve() != target.resolve():
                 shutil.copy2(source, target)
         active_path = Path(request["runtime_root"]) / "state" / "active-release.json"
         atomic_json(active_path, {"release": str(release), "revision": revision, "host": request["host"], "port": request["port"]})

@@ -158,6 +158,11 @@ or target edits and unrelated tracked changes remain blockers. The final check
 shares a cross-process fence with master promotion; the old release retains its
 edits for rollback. Receipts belonging to earlier releases do not affect new ones.
 
+Promotion merges profiles shipped in the release into runtime
+`Local_Render_Presets.json`. Existing mutable-state definitions win same-name
+conflicts, production-only custom profiles are retained, and missing release
+profiles are added.
+
 Three-way conflicts require reconciliation of retained work; no resolution is
 invented. Selected edits already matching main produce no PR diff and stop with a
 retained snapshot and explicit reconciliation message. Closed/unmerged PRs remain
