@@ -5836,4 +5836,5 @@ body .image-icon-action:not(.review-close):not(.fullscreen-image-close):not(.ful
 .post-render-prompt textarea { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; }
 .post-finding { border: 1px solid var(--border-color, #666); border-radius: .5rem; padding: .7rem; margin: .7rem 0; }
 .post-finding pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 15rem; overflow: auto; }
-.post-template-diff { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 28rem; overflow: auto; }
+.post-template-diff { max-height: 28rem; overflow: auto; }
+.post-template-diff .template-diff-table { min-width: 640px; }

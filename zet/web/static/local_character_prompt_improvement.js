@@ -96,7 +96,7 @@
         check.checked = (analysis.selected_ids || []).includes(item.id);
         check.addEventListener("change", () => {
           const selected_ids = [...host.querySelectorAll("input:checked")].map(input => input.value);
-          void request(endpoint("/decisions"), "POST", { selected_ids }).then(value => { data = value; }).catch(error => message(error.message, true));
+          void request(endpoint("/decisions"), "POST", { selected_ids }).then(value => { data = value; renderDiff(); }).catch(error => message(error.message, true));
         });
         label.append(check, document.createTextNode(`${item.rationale} · ${item.views.join(", ")}`));
         row.append(label, el("p", "Before"), el("pre", item.before), el("p", "After"), el("pre", item.after)); host.append(row);
@@ -127,17 +127,48 @@
   }
   function renderDiff() {
     const host = $("diff"); host.replaceChildren();
-    if (!(data.diff_rows || []).length) return;
-    host.append(el("h3", "Character.md changes in this trial"));
-    const pre = el("pre"); pre.className = "post-template-diff";
-    pre.textContent = data.diff_rows.map(row => row.kind === "gap" ? "…" :
-      row.kind === "equal" ? `  ${row.master_text}` :
-      `${row.master_line == null ? "" : `− ${row.master_text}\n`}${row.proposed_line == null ? "" : `+ ${row.proposed_text}`}`).join("\n");
-    host.append(pre);
+    host.append(el("h3", "Character.md: master → proposed"));
+    if (!(data.diff_rows || []).length) {
+      host.append(el("p", "Select suggestions to preview the source diff.")); return;
+    }
+    const frame = el("div"); frame.className = "post-template-diff";
+    const table = el("table"); table.className = "template-diff-table";
+    table.append(el("caption", "Changes from master to the selected proposal"));
+    const columns = el("colgroup");
+    for (const cls of ["template-diff-number", "template-diff-text", "template-diff-number", "template-diff-text"]) {
+      const column = el("col"); column.className = cls; columns.append(column);
+    }
+    table.append(columns);
+    const head = el("thead"), headings = el("tr");
+    for (const label of ["Master baseline", "Proposed"]) {
+      const cell = el("th", label); cell.colSpan = 2; cell.scope = "colgroup"; headings.append(cell);
+    }
+    head.append(headings); table.append(head);
+    const body = el("tbody");
+    for (const row of data.diff_rows) {
+      const line = el("tr");
+      if (row.kind === "gap") {
+        const gap = el("td", "⋯ unchanged lines ⋯"); gap.className = "template-diff-gap"; gap.colSpan = 4; line.append(gap);
+      } else for (const side of ["master", "proposed"]) {
+        const number = row[`${side}_line`];
+        const changed = row.kind !== "equal" && number != null;
+        const cls = changed ? side === "master" ? "template-diff-removed" : "template-diff-added" : "";
+        const gutter = el("td", number == null ? "" : String(number)); gutter.className = `template-diff-line-number ${cls}`;
+        const code = el("td"); code.className = `template-diff-code ${cls}`;
+        if (number != null) {
+          const sign = el("span", changed ? side === "master" ? "− " : "+ " : "  "); sign.className = "template-diff-sign";
+          code.append(sign, document.createTextNode(row[`${side}_text`]));
+        } else code.classList.add("template-diff-empty");
+        line.append(gutter, code);
+      }
+      body.append(line);
+    }
+    table.append(body); frame.append(table); host.append(frame);
   }
   function render() {
     if (!data) return;
     if (data.status === "CANCELLED") { message("Improvement cancelled. Saved observations remain."); return; }
+    $("title").textContent = `${data.view || data.views?.[0]?.view || "View"} · Post Render Adjustments`;
     renderViews(); renderAnalysis(); renderDiff(); renderTrials();
     $("propose").disabled = !["OBSERVING", "TRIAL_READY", "REVIEW_READY", "FAILED"].includes(data.status);
     $("cancel").disabled = ["CANCELLED", "KEPT", "KEEPING"].includes(data.status);

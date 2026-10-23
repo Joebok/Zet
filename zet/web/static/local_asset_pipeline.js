@@ -246,7 +246,6 @@
     $("stop").disabled = !busy(run);
     $("rerun").disabled = !run || isBusy;
     $("reevaluate").disabled = !run || isBusy || !(run.candidates || []).some((item) => item.image_path);
-    $("post-render-improve").disabled = !run || !(run.candidates || []).some((item) => item.image_path);
     $("prompt-improvement-package").hidden = !run;
     if (run) $("prompt-improvement-package").href = route("prompt-improvement-package", run.run_id);
     $("delete").disabled = !run || isBusy;
@@ -741,6 +740,7 @@
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.status === "FAILED" || item.human_review?.decision === "reject"), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
+      addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
       const ai = run.view_reviews?.[view]?.ai_observations || {};
       summary.append(viewActions);
       details.append(summary);
@@ -1594,6 +1594,21 @@
     const view = button.dataset.view;
     const candidateId = button.dataset.candidate || button.closest?.("[data-candidate]")?.dataset.candidate || "";
     if (action === "review") { openReview(candidateId); return; }
+    if (action === "post-render-adjustments") {
+      button.disabled = true;
+      try {
+        const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
+        const query = costume ? `?costume=${encodeURIComponent(costume)}` : "";
+        const result = await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/post-render-prompt${query}`,
+          { method: "POST", body: JSON.stringify({ view }) });
+        const params = new URLSearchParams({ universe_id: document.querySelector("#universe-select").value,
+          pipeline, run_id: run.run_id, session_id: result.session_id, view,
+          page: Object.keys(pagePipelines).find(page => pagePipelines[page] === pipeline) });
+        if (costume) params.set("costume", costume);
+        location.href = `/local-character-prompt-improvement?${params}`;
+      } finally { button.disabled = false; }
+      return;
+    }
     if (action === "stage-image-generation" || action === "stage-rotation") {
       const rotation = action === "stage-rotation";
       const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation;
@@ -1719,19 +1734,6 @@
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));
     $("rerun").addEventListener("click", () => void handleAction({ dataset: { localAction: "rerun" } }).catch((error) => setStatus(error.message, true)));
     $("reevaluate").addEventListener("click", () => void perform("reevaluate").catch((error) => setStatus(error.message, true)));
-    $("post-render-improve").addEventListener("click", async () => {
-      $("post-render-improve").disabled = true;
-      try {
-        const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
-        const query = costume ? `?costume=${encodeURIComponent(costume)}` : "";
-        const result = await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/post-render-prompt${query}`,
-          { method: "POST", body: "{}" });
-        const params = new URLSearchParams({ universe_id: document.querySelector("#universe-select").value,
-          pipeline, run_id: run.run_id, session_id: result.session_id, page: Object.keys(pagePipelines).find(page => pagePipelines[page] === pipeline) });
-        if (costume) params.set("costume", costume);
-        location.href = `/local-character-prompt-improvement?${params}`;
-      } catch (error) { setStatus(error.message, true); $("post-render-improve").disabled = false; }
-    });
     $("delete").addEventListener("click", () => void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)));
     $("proceed").addEventListener("click", () => void perform("proceed").catch((error) => setStatus(error.message, true)));
     $("source-file").addEventListener("change", () => void uploadHeadSource($("source-file").files?.[0]));

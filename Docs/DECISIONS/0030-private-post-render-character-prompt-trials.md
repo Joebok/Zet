@@ -6,7 +6,7 @@ Date: 2026-10-23
 Rendered local character batches need a way to refine Character.md using image evidence without changing accepted prompts or gallery images during review. Body, Head, Head Edit, Assembly and Dressing share the character template but have separate render inputs and batch state.
 
 ## Decision
-Use a persistent, batch-scoped review session. Freeze the current batch version, Character.md baseline, submitted prompts, representative images and ordered render references. AI Observations run only on an explicit action. Review suggestions may edit only Character.md and are independently selectable. Compile selected edits and render two private trial images for each affected rendered view with valid reference bindings. Trial attempts never enter batch slots or galleries.
+Use a persistent, batch-owned review session for each chosen view. Freeze the current batch version, Character.md baseline, that view's submitted prompt, representative image and ordered render references. AI Observations run only on an explicit action. Review suggestions may edit any valid location in Character.md and are independently selectable. Compile selected edits and render two private trial images for the chosen view with valid reference bindings. Trial attempts never enter batch slots or galleries.
 
 Keep checks the frozen baseline and batch version, writes the reviewed Character.md with a recoverable session status, activates the child batch version and recompiles renderable prompts. Cancel fences pending trial work and removes private files; saved human observations remain. Assembly compilation honors the accepted batch version without introducing a pre-render gate.
 
