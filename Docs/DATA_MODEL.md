@@ -7,6 +7,10 @@ phase's `Head-Image-Edit` directory using existing spec/state and portable-path
 formats. `recipe_version: 1` and `source_policy: independent_front` distinguish its
 FRONT/remaining policy. LocalAssets keys use `head-image-edit:<VIEW>`; catalog
 origins also include the pipeline. No catalog migration is required.
+New phase-sourced batches may add `front_source_origin` to their spec with the
+source phase, locked asset key/ID, and actual snapshot checksum. `front_source`
+remains the batch-local copied FRONT input. The optional origin is cleared when
+that input is replaced through the upload action; older specs remain readable.
 
 Assembly adds `head_pipeline` to new specs, defaulting missing fields to
 `head-image`. Resolved source records retain actual pipeline/key/batch/candidate

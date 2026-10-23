@@ -35,5 +35,9 @@ Edit Image 1 to show the same head directly from behind, rotated 180 degrees fro
 <!-- ZET:END HEAD_EDIT_OPERATION_BACK -->
 
 <!-- ZET:BEGIN HEAD_EDIT_OPERATION_FRONT_SOURCE -->
-Edit Image 1 into an upright eye-level FRONT head reference. Preserve its identity and appearance; apply only explicitly enabled phase changes.
+Edit Image 1 into an upright eye-level FRONT head reference of the same phase. Preserve the character's established appearance.
 <!-- ZET:END HEAD_EDIT_OPERATION_FRONT_SOURCE -->
+
+<!-- ZET:BEGIN HEAD_EDIT_OPERATION_FRONT_PHASE_CHANGE -->
+Edit Image 1 into an upright eye-level FRONT head reference of the target phase. Apply the authored phase changes while retaining the same person's identity.
+<!-- ZET:END HEAD_EDIT_OPERATION_FRONT_PHASE_CHANGE -->

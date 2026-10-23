@@ -57,8 +57,14 @@ def compile_head_image_edit_job(job, project_root=PROJECT_ROOT, *, prompt_varian
     for ref in refs:
         validate_reference(ref, str(ref.get("role") or "supporting reference"), project_root)
     apply_phase = view == "FRONT" and bool(bases) and job.get("Apply Phase Change") is True
+    if job.get("Apply Phase Change") is True and view == "FRONT" and not bases:
+        raise TemplateCompileError("MISSING_REFERENCE", "Phase change requires a FRONT source image.")
+    if apply_phase and not re.sub(r"<!--.*?-->", "", sections.get("HEAD_EDIT_PHASE_CHANGES", ""), flags=re.S).strip():
+        raise TemplateCompileError("MISSING_PHASE_CHANGES", "Author one Head-Image Edit phase-change section before applying it.")
     if view != "FRONT" or bases:
         sections["HEAD_EDIT_FRONT_DESCRIPTION"] = ""
+    if view == "FRONT" and (not bases or apply_phase):
+        sections["HEAD_EDIT_PRESERVE"] = ""
     if not apply_phase:
         sections["HEAD_EDIT_PHASE_CHANGES"] = ""
     bundle = {**load_bundle(project_root, "head-image-edit"), "legacy_static_prompt_template": ""}
@@ -70,11 +76,14 @@ def compile_head_image_edit_job(job, project_root=PROJECT_ROOT, *, prompt_varian
     style, style_sources = universe_art_style(universe_root)
     operation_path = project_root / "Config/Prompt_Templates/head_image_edit_operations.md"
     operations, operation_sources = load_template_sections_with_sources(operation_path, source_kind="task_template_section")
-    operation_name = "HEAD_EDIT_OPERATION_" + ("FRONT_SOURCE" if bases and view == "FRONT" else view)
+    operation_name = "HEAD_EDIT_OPERATION_" + (
+        "FRONT_PHASE_CHANGE" if apply_phase else "FRONT_SOURCE" if bases and view == "FRONT" else view)
     operation = operations.get(operation_name, "").strip()
     if not operation:
         raise TemplateCompileError("MISSING_OPERATION", f"Missing Head-Image Edit operation: {operation_name}")
-    guidance = ("Image 1 is the character and edit canvas. Preserve identity, expression, hair asymmetry, skin, style, background and framing while reprojecting the whole head into the requested view. Keep anatomical attachments fixed on the head; never mirror the image."
+    guidance = ("Image 1 is the character and edit canvas. Preserve identity, skin, style, background and framing while applying the authored phase changes. Keep anatomical attachments fixed on the head; never mirror the image."
+                if apply_phase else
+                "Image 1 is the character and edit canvas. Preserve identity, expression, hair asymmetry, skin, style, background and framing while reprojecting the whole head into the requested view. Keep anatomical attachments fixed on the head; never mirror the image."
                 if bases else "Establish the character identity from the complete description below.")
     guidance += " Supporting images govern only the explicitly assigned features; exclude their material, identity, hairstyle, neck, shoulders, framing and background. They do not override the target camera."
     output = Path(require_job_field(job, "Output Directory", "output_directory"))

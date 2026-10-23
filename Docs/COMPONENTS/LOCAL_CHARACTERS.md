@@ -16,6 +16,15 @@ only FRONT. Other pipelines retain their predecessor chains. Source changes reta
 existing selections/images and locks, with advisory stale-source flags. New
 publication/adoption validates captured source/guide identity and bytes.
 
+For a new Head-Image Edit batch, Apply Phase Change can use an uploaded/pasted
+FRONT or the same character's available locked Head-Image Edit FRONT from a
+different phase. The dashboard previews the chosen lock and directs the user to
+lock FRONT in that phase if missing; preview and creation both enforce the gate.
+Creation snapshots the resolved image and records its source phase and lock key.
+Only the target FRONT uses that source; later views use the selected FRONT from
+the new batch. Replacing an existing batch's FRONT source with an upload clears
+the locked-phase provenance. Legacy batches need no migration.
+
 On a selected rear-quarter image's **Refine** page, choose **Rear-quarter hair
 finishing from BACK** after selecting BACK. The image model receives the quarter
 canvas first and BACK second, for lower-hair volume/length only. Scoped correction

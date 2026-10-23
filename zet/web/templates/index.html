@@ -271,11 +271,20 @@
             <div id="local-pipeline-source-batches" class="local-pipeline-source-batches" hidden></div>
             <label id="local-pipeline-rerun-refresh-option" hidden><span>Refresh references from chosen batches when rerunning</span><input id="local-pipeline-rerun-refresh-sources" type="checkbox" checked></label>
             <div id="local-pipeline-source-option" hidden>
-              <label>Optional FRONT reference<input id="local-pipeline-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
               <label id="local-pipeline-apply-phase-change-option" class="local-pipeline-recompile-option"><span>Apply Phase Change</span><input id="local-pipeline-apply-phase-change" type="checkbox" disabled></label>
-              <div id="local-pipeline-source-paste" class="local-pipeline-source-paste" contenteditable="true" role="textbox" aria-label="Paste optional FRONT reference image">Click here, then paste a reference image</div>
-              <div id="local-pipeline-source-preview" class="muted">No FRONT reference selected.</div>
-              <button id="local-pipeline-source-remove" type="button" hidden>Remove reference</button>
+              <label id="local-pipeline-source-mode-option" hidden>Phase-change source
+                <select id="local-pipeline-source-mode"><option value="upload">Upload or paste FRONT</option><option value="locked">Locked FRONT from another phase</option></select>
+              </label>
+              <div id="local-pipeline-upload-source">
+                <label>Optional FRONT reference<input id="local-pipeline-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+                <div id="local-pipeline-source-paste" class="local-pipeline-source-paste" contenteditable="true" role="textbox" aria-label="Paste optional FRONT reference image">Click here, then paste a reference image</div>
+                <div id="local-pipeline-source-preview" class="muted">No FRONT reference selected.</div>
+                <button id="local-pipeline-source-remove" type="button" hidden>Remove reference</button>
+              </div>
+              <div id="local-pipeline-locked-source" hidden>
+                <label>Source phase<select id="local-pipeline-source-phase"></select></label>
+                <div id="local-pipeline-locked-preview" class="muted">Choose a source phase.</div>
+              </div>
             </div>
             <button id="local-pipeline-preview" type="button">Check requirements</button>
             <button id="local-pipeline-create" class="primary-action" type="button" disabled>Create batch</button>

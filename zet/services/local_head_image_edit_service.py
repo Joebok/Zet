@@ -1,5 +1,6 @@
 """Independent FRONT-anchored edit pipeline using the shared head lifecycle."""
 from pathlib import Path
+import re
 
 from Scripts.Compile_Character_Template import TemplateCompileError
 from Scripts.Run_Head_Image_Edit_Jobs import compile_head_image_edit_job
@@ -15,6 +16,25 @@ class LocalHeadImageEditService(LocalHeadImageService):
     compiler = staticmethod(compile_head_image_edit_job)
     edit_preset = "comfyui-qwen-head-image-edit-v1"
     text_preset = "comfyui-qwen-head-image-edit-front-v1"
+
+    def _locked_phase_source(self, payload):
+        source_phase = str(payload.get("front_source_phase") or "").strip()
+        source_path = str(payload.get("front_source_path") or "").strip()
+        apply_phase = payload.get("apply_phase_change") is True
+        if source_phase and (not apply_phase or source_path):
+            raise LocalHeadImageError("Choose either a locked source phase or an uploaded FRONT image with Apply Phase Change.")
+        if not source_phase:
+            return None
+        character = str(payload.get("character") or "").strip()
+        target_phase = str(payload.get("phase") or "").strip()
+        character_root = (Path(self.app.config.base_character_path) / character).resolve()
+        source_dir = (character_root / source_phase).resolve()
+        if (source_phase == target_phase or source_dir.parent != character_root
+                or not (source_dir / "Character.md").is_file()):
+            raise LocalHeadImageError("Choose a different available phase of this character as the source.")
+        records = self.asset_store.locked_assets(character, source_phase, pipeline=self.asset_pipeline)
+        return next((record for record in records if record.get("view") == "FRONT"
+                     and not record.get("qualifier")), None)
 
     def _ranking_guidance(self, run, view):
         from Scripts.Compile_Character_Template import load_template_sections
@@ -32,18 +52,56 @@ class LocalHeadImageEditService(LocalHeadImageService):
         if not path.resolve().is_relative_to(Path(self.app.config.base_character_path).resolve()):
             raise ValueError("Character template must belong to this universe.")
         try:
-            validate_authoring(path)
+            sections = validate_authoring(path)
         except TemplateCompileError as exc:
             raise LocalHeadImageError(str(exc)) from exc
-        return super().preview(payload)
+        result = super().preview(payload)
+        if payload.get("apply_phase_change") is True and not re.sub(
+                r"<!--.*?-->", "", sections.get("HEAD_EDIT_PHASE_CHANGES", ""), flags=re.S).strip():
+            result["can_create"] = False
+            result["blocking_reasons"].append("Author Head-Image Edit phase-change rules in the target phase first.")
+        source_phase = str(payload.get("front_source_phase") or "").strip()
+        source_path = str(payload.get("front_source_path") or "").strip()
+        record = self._locked_phase_source(payload)
+        if source_phase and record is None:
+            result["can_create"] = False
+            result["blocking_reasons"].append(
+                f"Lock a FRONT Head-Image Edit image in {source_phase} before creating this batch.")
+        elif payload.get("apply_phase_change") is True and not (source_phase or source_path):
+            result["can_create"] = False
+            result["blocking_reasons"].append("Choose a source phase or upload a FRONT image for phase change.")
+        return result
+
+    def _front_source_for_create(self, payload):
+        source_phase = str(payload.get("front_source_phase") or "").strip()
+        if not source_phase:
+            return super()._front_source_for_create(payload)
+        record = self._locked_phase_source(payload)
+        if record is None:
+            raise LocalHeadImageError(
+                f"Lock a FRONT Head-Image Edit image in {source_phase} before creating this batch.")
+        return record["image_path"], {"kind": "locked_phase", "phase": source_phase,
+                                      "source_key": record["key"], "asset_id": record.get("entity_library_asset_id", "")}
 
     def create_run(self, payload):
+        preview = self.preview(payload)
+        if not preview["can_create"]:
+            raise LocalHeadImageError("; ".join(preview["blocking_reasons"]))
         run = super().create_run(payload)
         path = Path(run["root"]) / "spec.json"
         spec = self._read_json(path)
         spec.update(recipe_version=1, source_policy="independent_front")
         self._write(path, spec)
         return self.detail(run["run_id"])
+
+    def update_front_source(self, run_id, source_path):
+        super().update_front_source(run_id, source_path)
+        path = self._run_root(run_id) / "spec.json"
+        spec = self._read_json(path)
+        if "front_source_origin" in spec:
+            spec.pop("front_source_origin")
+            self._write(path, spec)
+        return self.detail(run_id)
 
     def lock_selected_view(self, run_id, view):
         run = self.detail(run_id)

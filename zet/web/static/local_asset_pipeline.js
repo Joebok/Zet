@@ -26,7 +26,7 @@
   };
   const activeStatuses = new Set(["PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"]);
   const state = { pipeline: "", generation: 0, run: null, runs: [], reviewCandidates: [], reviewIndex: -1,
-    frontSourcePath: "", poll: null, previewGeneration: 0, contextKey: "", compareOpposite: false,
+    frontSourcePath: "", poll: null, previewGeneration: 0, sourcePreviewGeneration: 0, contextKey: "", compareOpposite: false,
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
     runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false };
   const restoreParams = new URLSearchParams(window.location.search);
@@ -132,6 +132,7 @@
   }
 
   function payload() {
+    const lockedPhaseSource = state.pipeline === "head-image-edit" && $("apply-phase-change").checked && $("source-mode").value === "locked";
     return {
       character: document.querySelector("#character-select").value,
       phase: document.querySelector("#phase-select").value,
@@ -140,10 +141,67 @@
       other_count: Number($("other-count").value),
       use_front_anchor: state.pipeline === "character-assembly" ? false : hasSharedAssetRouter() ? $("use-anchor").checked : state.pipeline === "body-reference" || ["head-image", "head-image-edit"].includes(state.pipeline),
       head_pipeline: state.pipeline === "character-assembly" ? $("head-pipeline").value : "head-image",
-      front_source_path: state.frontSourcePath,
-      apply_phase_change: ["head-image", "head-image-edit"].includes(state.pipeline) && Boolean(state.frontSourcePath) && $("apply-phase-change").checked,
+      front_source_path: lockedPhaseSource ? "" : state.frontSourcePath,
+      front_source_phase: lockedPhaseSource ? $("source-phase").value : "",
+      apply_phase_change: state.pipeline === "head-image-edit" ? $("apply-phase-change").checked
+        : state.pipeline === "head-image" && Boolean(state.frontSourcePath) && $("apply-phase-change").checked,
       source_batches: hasSharedAssetRouter() ? Object.fromEntries(Array.from($("source-batches").querySelectorAll("select[data-source-role]"), (select) => [select.dataset.sourceRole, select.value])) : {},
     };
+  }
+
+  function lockedPhaseSourceSelected() {
+    return state.pipeline === "head-image-edit" && $("apply-phase-change").checked && $("source-mode").value === "locked";
+  }
+
+  function populateSourcePhases() {
+    const select = $("source-phase");
+    const previous = select.value;
+    const target = document.querySelector("#phase-select").value;
+    select.replaceChildren(new Option("Choose a source phase", ""));
+    for (const option of document.querySelector("#phase-select").options) {
+      if (option.value && option.value !== target) select.add(new Option(option.textContent, option.value));
+    }
+    select.value = Array.from(select.options).some(option => option.value === previous) ? previous : "";
+  }
+
+  function updateSourceControls() {
+    const phaseChange = state.pipeline === "head-image-edit" && $("apply-phase-change").checked;
+    $("source-mode-option").hidden = !phaseChange;
+    $("upload-source").hidden = lockedPhaseSourceSelected();
+    $("locked-source").hidden = !lockedPhaseSourceSelected();
+    if (state.pipeline === "head-image-edit") $("apply-phase-change").disabled = false;
+  }
+
+  async function refreshLockedPhaseSource() {
+    const generation = ++state.sourcePreviewGeneration;
+    const host = $("locked-preview");
+    host.replaceChildren();
+    if (!lockedPhaseSourceSelected()) return;
+    const character = document.querySelector("#character-select").value;
+    const phase = $("source-phase").value;
+    if (!phase) { host.textContent = "Choose a source phase."; return; }
+    host.textContent = "Checking locked FRONT image…";
+    try {
+      const result = await request(`/api/local/assets?${new URLSearchParams({ character, phase })}`);
+      if (generation !== state.sourcePreviewGeneration || !lockedPhaseSourceSelected() || $("source-phase").value !== phase) return;
+      const asset = (result.assets || []).find(item => item.pipeline?.toLowerCase() === "head-image-edit"
+        && item.view === "FRONT" && !item.qualifier);
+      host.replaceChildren();
+      if (asset) {
+        const image = document.createElement("img");
+        image.src = universeImageUrl(`/api/local/assets/${encodeURIComponent(asset.key)}/image?${new URLSearchParams({ character, phase, v: asset.image_sha256 || "" })}`);
+        image.alt = `Locked FRONT Head-Image Edit image from ${phase}`;
+        host.append(image);
+      } else {
+        host.append(`No locked FRONT Head-Image Edit image in ${phase}. `);
+        const link = document.createElement("a");
+        link.href = `/?${new URLSearchParams({ page: "local-head-image-edit", character, phase })}`;
+        link.textContent = `Go to ${phase} and lock FRONT first`;
+        host.append(link);
+      }
+    } catch (error) {
+      if (generation === state.sourcePreviewGeneration) host.textContent = error.message;
+    }
   }
 
   function continuationDisabled(run) {
@@ -1024,6 +1082,7 @@
 
   async function readiness() {
     const generation = ++state.previewGeneration;
+    if (lockedPhaseSourceSelected()) void refreshLockedPhaseSource();
     $("create").disabled = true;
     $("readiness").textContent = "Checking required inputs…";
     try {
@@ -1052,9 +1111,14 @@
     state.run = null;
     state.polledRun = null;
     state.renderedSelections = {};
+    state.sourcePreviewGeneration += 1;
     state.frontSourcePath = "";
     $("apply-phase-change").checked = false;
-    $("apply-phase-change").disabled = true;
+    $("apply-phase-change").disabled = state.pipeline !== "head-image-edit";
+    $("source-mode").value = "upload";
+    populateSourcePhases();
+    updateSourceControls();
+    $("locked-preview").textContent = "Choose a source phase.";
     $("source-preview").textContent = "No FRONT reference selected.";
     $("source-file").value = "";
     $("source-remove").hidden = true;
@@ -1108,7 +1172,10 @@
     state.run = null;
     state.frontSourcePath = "";
     $("apply-phase-change").checked = false;
-    $("apply-phase-change").disabled = true;
+    $("apply-phase-change").disabled = pipeline !== "head-image-edit";
+    $("source-mode").value = "upload";
+    populateSourcePhases();
+    updateSourceControls();
     document.querySelector("#local-pipeline-title").textContent = {
       "body-reference": "Body-Reference", "head-image": "Head-Image", "head-image-edit": "Head-Image Edit",
       "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing",
@@ -1144,7 +1211,7 @@
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || "Could not upload the reference image.");
       state.frontSourcePath = data.path || "";
-      $("apply-phase-change").disabled = !state.frontSourcePath;
+      $("apply-phase-change").disabled = state.pipeline !== "head-image-edit" && !state.frontSourcePath;
       $("source-preview").replaceChildren();
       const image = document.createElement("img");
       image.src = URL.createObjectURL(file);
@@ -1152,6 +1219,7 @@
       $("source-preview").append(image);
       $("source-remove").hidden = false;
       setStatus("Reference staged for the next batch.");
+      void readiness();
     } catch (error) { setStatus(error.message, true); }
   }
 
@@ -1622,7 +1690,10 @@
         const created = await request(route("create"), { method: "POST", body: JSON.stringify(payload()) });
         state.frontSourcePath = "";
         $("apply-phase-change").checked = false;
-        $("apply-phase-change").disabled = true;
+        $("apply-phase-change").disabled = state.pipeline !== "head-image-edit";
+        $("source-mode").value = "upload";
+        $("source-phase").value = "";
+        updateSourceControls();
         $("source-file").value = "";
         $("source-preview").textContent = "No FRONT reference selected.";
         $("source-remove").hidden = true;
@@ -1664,6 +1735,23 @@
     $("delete").addEventListener("click", () => void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)));
     $("proceed").addEventListener("click", () => void perform("proceed").catch((error) => setStatus(error.message, true)));
     $("source-file").addEventListener("change", () => void uploadHeadSource($("source-file").files?.[0]));
+    $("apply-phase-change").addEventListener("change", () => {
+      updateSourceControls();
+      void readiness();
+    });
+    $("source-mode").addEventListener("change", () => {
+      if (lockedPhaseSourceSelected()) {
+        state.frontSourcePath = "";
+        $("source-file").value = "";
+        $("source-preview").textContent = "No FRONT reference selected.";
+        $("source-remove").hidden = true;
+      } else $("source-phase").value = "";
+      updateSourceControls();
+      void readiness();
+    });
+    $("source-phase").addEventListener("change", () => {
+      void readiness();
+    });
     window.ZetImageInput.attach($("source-paste"), $("source-file"));
     $("source-paste").addEventListener("paste", (event) => {
       const file = Array.from(event.clipboardData?.items || []).map((item) => item.getAsFile()).find(Boolean);
@@ -1674,10 +1762,12 @@
     $("source-remove").addEventListener("click", async () => {
       state.frontSourcePath = "";
       $("apply-phase-change").checked = false;
-      $("apply-phase-change").disabled = true;
+      $("apply-phase-change").disabled = state.pipeline !== "head-image-edit";
+      updateSourceControls();
       $("source-file").value = "";
       $("source-preview").textContent = "No FRONT reference selected.";
       $("source-remove").hidden = true;
+      void readiness();
     });
     for (const host of [$("views"), $("selected")]) host.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-local-action]");

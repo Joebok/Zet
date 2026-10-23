@@ -656,7 +656,7 @@ main {
   padding: 8px;
 }
 
-#local-pipeline-source-preview img {
+#local-pipeline-source-preview img, #local-pipeline-locked-preview img {
   display: block;
   height: 140px;
   max-width: 260px;

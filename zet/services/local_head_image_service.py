@@ -183,6 +183,9 @@ class LocalHeadImageService:
         target.write_bytes(contents)
         return {"path": str(target), "name": target.name}
 
+    def _front_source_for_create(self, payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        return str(payload.get("front_source_path") or "").strip(), {}
+
     def _compile(self, run_root: Path, character: str, phase: str, view: str, references: list[dict],
                  *, apply_phase_change: bool = False, output_dir: Path | None = None) -> dict[str, Any]:
         from zet.services.template_source_service import compile_with_revision
@@ -207,10 +210,12 @@ class LocalHeadImageService:
 
     def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         plan = self.preview(payload)
+        source_path, source_origin = self._front_source_for_create(payload)
+        if source_path and not Path(source_path).resolve().is_file():
+            raise LocalHeadImageError(f"Front reference image not found: {source_path}")
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         root = self._workspace(plan["character"], plan["phase"]) / run_id
         root.mkdir(parents=True, exist_ok=False)
-        source_path = str(payload.get("front_source_path") or "").strip()
         source_snapshot = ""
         if source_path:
             source = Path(source_path).resolve()
@@ -255,6 +260,8 @@ class LocalHeadImageService:
                 "front_source_sha256": self._hash(Path(source_snapshot)) if source_snapshot else "",
                 "front_prompt_path": front_prompt["final_prompt"], "front_prompt_sha256": self._hash(Path(front_prompt["final_prompt"])),
                 "candidates": candidates, "front_anchor": None, "selected_views": {}, "rankings": {}, "created_by": "zet"}
+        if source_origin:
+            spec["front_source_origin"] = {**source_origin, "snapshot_sha256": spec["front_source_sha256"]}
         spec["slots_by_view"] = slot_maps(spec)
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": "QUEUED", "updated_at": self._now(),
