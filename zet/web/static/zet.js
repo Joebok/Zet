@@ -1507,7 +1507,7 @@ async function restoreImageGenerationJob() {
   } else await pollImageGenerationWorkspace();
   if (universe !== state.universeId) return;
   clearInterval(imageGenerationWorkspaceTimer);
-  imageGenerationWorkspaceTimer = setInterval(() => void pollImageGenerationWorkspace(), 2000);
+  imageGenerationWorkspaceTimer = setInterval(() => void pollImageGenerationWorkspace(), 5000);
 }
 
 async function pollImageGenerationWorkspace() {

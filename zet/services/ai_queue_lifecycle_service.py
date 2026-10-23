@@ -48,7 +48,9 @@ class AIQueueLifecycleService:
         try:
             value = read_json(self.receipt_path(job_id))
         except FileNotFoundError:
-            guard_path(self.root, force=True)
+            # Pending work normally has no receipt. Verify the root without
+            # starting a full probe for every missing receipt on each poll.
+            guard_path(self.root)
             return {}
         except (UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"Receipt is unreadable; preserve the result for recovery: {self.receipt_path(job_id)}") from exc

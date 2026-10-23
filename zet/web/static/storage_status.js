@@ -24,5 +24,5 @@
     finally { pending = false; }
   }
   void poll();
-  setInterval(poll, 2000);
+  setInterval(poll, 10000);
 })();

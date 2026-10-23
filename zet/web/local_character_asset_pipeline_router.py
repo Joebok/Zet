@@ -13,6 +13,8 @@ from zet.services.local_character_overview_service import submit_local_pipeline_
 from zet.services.local_batch_status_service import LocalBatchStatusService
 from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
 from zet.services.render_slot_service import RenderSlotConflict
+from zet.services.storage_health_service import StorageUnavailable
+from zet.services.storage_bootstrap_service import RETRY_AFTER_SECONDS
 
 
 def create_local_character_asset_pipeline_router(
@@ -36,6 +38,8 @@ def create_local_character_asset_pipeline_router(
             raise
         except RenderSlotConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except StorageUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": RETRY_AFTER_SECONDS}) from exc
         except Exception as exc:
             raise HTTPException(status_code=missing, detail=str(exc)) from exc
 

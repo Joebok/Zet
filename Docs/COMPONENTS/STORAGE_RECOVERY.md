@@ -7,8 +7,9 @@ on E:. Recovery does not substitute an empty library or move its contents to C:.
 ## Owners and local evidence
 
 - [storage_health_service.py](../../zet/services/storage_health_service.py) probes
-  configured roots every two seconds and requires two successful probes separated
-  by two seconds after a failure. Observed directory/volume identities must match.
+  configured roots at most every ten seconds during routine polling and requires
+  two successful probes separated by five seconds after a failure. Observed
+  directory/volume identities must match.
   Required authoritative catalogs are checked through closed read-only SQLite
   connections. Confirmed corruption is `RECOVERY_REQUIRED`, not an index rebuild.
 - Recovery metadata lives under `Runtime.Root/state/StorageRecovery`, or the
@@ -19,7 +20,8 @@ on E:. Recovery does not substitute an empty library or move its contents to C:.
   existing paths. Shared queue/library locks resolve to stable local OS locks.
 - [storage_recovery_service.py](../../zet/services/storage_recovery_service.py)
   owns recurring per-universe recovery, used by web startup and the common
-  coordinator/standalone harvester. Health polling is two seconds; batch discovery
+  coordinator/standalone harvester. The recovery loop checks health every two
+  seconds, while full routine probes are limited to once per ten seconds. Batch discovery
   is bounded to once per ten seconds per host, with a process-shared recovery
   lease and runner eligibility checked again when an executor starts.
 
@@ -27,13 +29,15 @@ Local locks coordinate hosts on this machine; they do not provide distributed
 queue safety. The one-assigned-proxy-per-queue contract still applies.
 
 Probes run in at most one background thread per monitor. A device call taking more
-than one second pauses its resource without holding the status lock or spawning
+than five seconds pauses its resource without holding the status lock or spawning
 more probe workers. Independent verified resources remain usable. The ten most
 recent outage causes remain in diagnostic history when active errors clear. Exclusive local
 identity markers prevent competing startup hosts from replacing the first root
 observation. Fast fixtures keep recovery metadata under their own Runtime folder.
-When a direct root stat briefly reports `FileNotFoundError`, `require()` forces a
-fresh full probe before classifying the root as disappeared; a successful probe
+Expected missing job records and receipts use the routine check and verify their
+root without starting another full probe for each missing file. When a direct
+root stat briefly reports `FileNotFoundError`, `require()` forces a fresh full
+probe before classifying the root as disappeared; a successful probe
 and stat keep it available, while a confirmed missing root still pauses recovery.
 
 ## Execution, collection, and continuation
@@ -86,7 +90,9 @@ inspection/activity adds logical/current attempt identity, recovery stage and ti
 `PAUSED_STORAGE` and `RECOVERING` are nonterminal; `HELD` can identify an unsettled
 backend. During outages, compact local activity is explicitly stale and counts are
 unknown, not zero. The dashboard displays a storage banner and retains known work.
-Storage-dependent API actions return HTTP 503 with `Retry-After: 2`.
+Storage-dependent API actions return HTTP 503 with `Retry-After: 10`, including
+temporary exceptions during render-status reads. Active Image Generation and local
+character pages poll every five seconds; the storage banner polls every ten seconds.
 
 [storage_bootstrap_service.py](../../zet/services/storage_bootstrap_service.py)
 provides a waiting dashboard if initialization cannot access storage. It initializes

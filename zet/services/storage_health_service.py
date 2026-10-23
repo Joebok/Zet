@@ -40,6 +40,7 @@ class StorageHealth:
         self._probe_thread = None
         self._probe_event = None
         self._probing_name = None
+        self._probing_since = 0.0
         self._probe_timed_out = False
         self._rows = {}
         try:
@@ -70,7 +71,7 @@ class StorageHealth:
                 if self._probe_timed_out:
                     return self.status()
                 event = self._probe_event
-            elif not force and time.monotonic() - self._last_probe < 2:
+            elif not force and time.monotonic() - self._last_probe < 10:
                 return self.status()
             else:
                 self._last_probe = time.monotonic()
@@ -79,11 +80,16 @@ class StorageHealth:
                 self._probe_thread = threading.Thread(target=self._probe_cycle, args=(event,),
                                                        name="storage-health", daemon=True)
                 self._probe_thread.start()
-        if not event.wait(1):
+        while not event.wait(.1):
             with self._lock:
-                self._probe_timed_out = True
+                if self._probe_timed_out:
+                    return self.status()
                 name = self._probing_name or next(iter(self.resources))
-                self._mark_paused(name, "Storage probe has not completed; waiting for the device")
+                since = self._probing_since or self._last_probe
+                if time.monotonic() - since >= 5 and not event.is_set():
+                    self._probe_timed_out = True
+                    self._mark_paused(name, "Storage probe has not completed; waiting for the device")
+                    return self.status()
         return self.status()
 
     def _mark_paused(self, name, message):
@@ -104,6 +110,7 @@ class StorageHealth:
             for name, path in resources:
                 with self._lock:
                     self._probing_name = name
+                    self._probing_since = time.monotonic()
                     row = dict(self._rows.get(name, {"path": str(path), "status": "AVAILABLE"}))
                 failure = None
                 corrupt = False
@@ -133,7 +140,7 @@ class StorageHealth:
                         row.update(status="RECOVERY_REQUIRED" if corrupt else "PAUSED_STORAGE", error=failure)
                     elif current.get("status") != "AVAILABLE":
                         now = time.monotonic()
-                        if now - self._last_success.get(name, 0) >= 2:
+                        if now - self._last_success.get(name, 0) >= 5:
                             self._successes[name] = self._successes.get(name, 0) + 1
                             self._last_success[name] = now
                         row.update({key: current.get(key, "") for key in ("paused_at", "outage_id", "error")})
@@ -153,6 +160,7 @@ class StorageHealth:
         finally:
             with self._lock:
                 self._probing_name = None
+                self._probing_since = 0.0
                 self._probe_timed_out = False
             event.set()
 

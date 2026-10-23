@@ -34,6 +34,7 @@ flowchart LR
 `drain_answer` verifies direct-child location, symlink restrictions, matching producer, readiness, and equal copied contents before removing the shared source. Copy failure leaves the source available. Receipts handle a leftover shared duplicate; debug retention preserves selected local payload when enabled.
 
 After result application, the durable receipt is the completion barrier. Removing the local Inbox payload is best effort because another process may temporarily hold a file open on Windows; the receipt keeps the result from being applied again, and a leftover payload can be cleaned up later.
+An absent receipt or job record while work is pending uses the routine storage-health check and verifies the root; it does not start a full probe for every status read. Actual storage I/O failures still enter the storage recovery path.
 
 [AIAnswerHarvester](../../zet/services/ai_answer_harvester.py) dispatches supported task results, reconstructs routes, checks ownership/attempts, writes harvest status and delegates scene review where required. Domain services interpret their own records through common collection; registered consumers are coordinated by AIJobCoordinator rather than separate provider wait loops. [workflow_storage.py](../../zet/services/workflow_storage.py) supplies image validation, locks, immutable manual snapshots and supersession markers. Stopping/withdrawing queued work must fence late answers even when a running worker cannot be removed immediately.
 

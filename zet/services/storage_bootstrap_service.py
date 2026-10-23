@@ -7,7 +7,15 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from zet.services.storage_health_service import storage_health
+from zet.services.storage_health_service import StorageUnavailable, storage_health
+
+
+RETRY_AFTER_SECONDS = "10"
+
+
+def storage_paused_response(message="Storage unavailable; retry automatically"):
+    return JSONResponse({"status": "PAUSED_STORAGE", "detail": message},
+                        status_code=503, headers={"Retry-After": RETRY_AFTER_SECONDS})
 
 
 WAITING_PAGE = """<!doctype html><html><head><title>Zet — Storage paused</title></head>
@@ -15,10 +23,14 @@ WAITING_PAGE = """<!doctype html><html><head><title>Zet — Storage paused</titl
 Work will resume automatically when storage returns. Reconnect the drive if needed.</p>
 <pre id="status"></pre><script>setInterval(async()=>{try{const r=await fetch('/api/storage/status');
 const s=await r.json();document.getElementById('status').textContent=JSON.stringify(s,null,2);
-if(s.available&&s.initialized)location.reload();}catch(e){}},2000);</script></body></html>"""
+if(s.available&&s.initialized)location.reload();}catch(e){}},10000);</script></body></html>"""
 
 
 def install_storage_status(app, health, config):
+    @app.exception_handler(StorageUnavailable)
+    async def storage_unavailable(_request: Request, _exc: StorageUnavailable):
+        return storage_paused_response()
+
     def for_request(request):
         universe = request.query_params.get("universe_id")
         if universe and universe != app.state.zet_app.universe_id:
@@ -53,11 +65,10 @@ def install_storage_status(app, health, config):
                 from zet.services.ai_queue_query_service import AIQueueQueryService
                 return JSONResponse({**AIQueueQueryService.cached(config), "storage": status})
             return JSONResponse({"status": "PAUSED_STORAGE", "detail": "Storage unavailable; retry automatically", "storage": status},
-                                status_code=503, headers={"Retry-After": "2"})
+                                status_code=503, headers={"Retry-After": RETRY_AFTER_SECONDS})
         response = await call_next(request)
         if response.status_code >= 400 and not (await asyncio.to_thread(request_health.poll, force=True))["available"]:
-            return JSONResponse({"status": "PAUSED_STORAGE", "detail": "Storage unavailable; recovery is automatic"},
-                                status_code=503, headers={"Retry-After": "2"})
+            return storage_paused_response("Storage unavailable; recovery is automatic")
         return response
 
 
@@ -117,7 +128,7 @@ def waiting_app(config, factory):
                 await JSONResponse({**AIQueueQueryService.cached(config), "storage": health.status()})(scope, receive, send)
                 return
             response = JSONResponse({"status": "PAUSED_STORAGE", "detail": "Waiting for configured storage", "storage": health.status()},
-                                    status_code=503, headers={"Retry-After": "2"}) if scope.get("path", "").startswith("/api/") else HTMLResponse(WAITING_PAGE)
+                                    status_code=503, headers={"Retry-After": RETRY_AFTER_SECONDS}) if scope.get("path", "").startswith("/api/") else HTMLResponse(WAITING_PAGE)
             await response(scope, receive, send)
 
     outer.mount("/", dispatch)

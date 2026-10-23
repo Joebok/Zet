@@ -1091,7 +1091,7 @@
     clearInterval(state.poll);
     state.poll = setInterval(() => {
       if (state.pipeline && document.querySelector("#local-pipeline-page").classList.contains("active") && state.run?.run_id) void pollForImages(state.run.run_id, state.generation);
-    }, 2000);
+    }, 5000);
   }
 
   function configurePipeline(pipeline) {

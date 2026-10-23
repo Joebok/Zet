@@ -33,7 +33,9 @@ class AIJobRepository:
             value = read_json(self.path(job_id))
             return value if isinstance(value, dict) else {}
         except FileNotFoundError:
-            guard_path(self.root, force=True)
+            # A not-yet-recorded job is common during polling; require() still
+            # checks the root even when the full probe is on its normal cadence.
+            guard_path(self.root)
             return {}
         except ValueError:
             return {}
