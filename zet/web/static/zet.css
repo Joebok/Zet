@@ -5825,3 +5825,15 @@ body .image-icon-action:not(.review-close):not(.fullscreen-image-close):not(.ful
 @media (max-width: 760px) and (pointer: coarse) {
   .local-pipeline-review-layout { grid-template-rows: minmax(120px, .65fr) minmax(440px, 1fr); }
 }
+.post-render-prompt { max-width: 1500px; margin: 0 auto; padding: 1.25rem; }
+.post-render-prompt > .control-panel, .post-render-prompt #post-views > .control-panel { margin: 1rem 0; }
+.post-render-prompt #post-views { display: grid; gap: 1rem; }
+.post-view-gallery, #post-trial-cards { display: flex; gap: .85rem; overflow-x: auto; padding: .5rem 0; }
+.post-view-card { flex: 0 0 min(210px, 55vw); min-width: 0; padding: .55rem; border: 1px solid var(--border-color, #666); border-radius: .5rem; }
+.post-view-card img { display: block; width: 100%; height: 250px; object-fit: contain; }
+.post-view-card p { overflow-wrap: anywhere; }
+.post-render-prompt details { margin-top: .8rem; }
+.post-render-prompt textarea { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; }
+.post-finding { border: 1px solid var(--border-color, #666); border-radius: .5rem; padding: .7rem; margin: .7rem 0; }
+.post-finding pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 15rem; overflow: auto; }
+.post-template-diff { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 28rem; overflow: auto; }

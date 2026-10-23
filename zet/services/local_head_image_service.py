@@ -866,8 +866,6 @@ class LocalHeadImageService:
             "luna_ordered_candidate_ids": [item["candidate_id"] for item in entries], "entries": entries,
             "input_hashes": hashes, "anchor_hash": anchor_hash, "model": model, "recorded_at": self._now()}
         self._save_ranking_result(run_id, view, evaluation_id, hashes, ranking)
-        from zet.services.local_prompt_improvement_service import after_initial_ranking
-        after_initial_ranking(self, self.pipeline_id, self.project_root, run_id, view)
         return self.detail(run_id)
 
     def _save_ranking_result(self, run_id: str, view: str, evaluation_id: str,

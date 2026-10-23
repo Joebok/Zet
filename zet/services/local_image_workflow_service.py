@@ -189,6 +189,30 @@ class LocalImagePipelineWorkflowService:
                 return revisions.promote(self.pipeline, run_id, revision_id, payload, costume)
         if name == "reanalyze":
             return self.prompt_improvement.start(run_id, view, costume)
+        if name.startswith("post_render_prompt_"):
+            from zet.services.local_post_render_prompt_service import LocalPostRenderPromptService
+            sessions = LocalPostRenderPromptService(self.app, self.project_root)
+            session_id = str(args.get("session_id") or "")
+            if name == "post_render_prompt_open":
+                return sessions.open(self.pipeline, run_id, costume, payload)
+            if name == "post_render_prompt_detail":
+                return sessions.detail(self.pipeline, run_id, costume, session_id)
+            if name == "post_render_prompt_propose":
+                return sessions.propose(self.pipeline, run_id, costume, session_id, payload)
+            if name == "post_render_prompt_representative":
+                return sessions.representative(self.pipeline, run_id, costume, session_id, payload)
+            if name == "post_render_prompt_decisions":
+                return sessions.decisions(self.pipeline, run_id, costume, session_id, payload)
+            if name == "post_render_prompt_trial":
+                return sessions.trial(self.pipeline, run_id, costume, session_id, payload)
+            if name == "post_render_prompt_retry":
+                return sessions.retry(self.pipeline, run_id, costume, session_id, payload)
+            if name == "post_render_prompt_keep":
+                return sessions.keep(self.pipeline, run_id, costume, session_id)
+            if name == "post_render_prompt_cancel":
+                return sessions.cancel(self.pipeline, run_id, costume, session_id)
+            if name == "post_render_prompt_image_path":
+                return sessions.image_path(self.pipeline, run_id, costume, session_id, str(args.get("attempt_id") or ""))
         if name in {"select_view", "unselect_view"}:
             selected_id = candidate_id if name == "select_view" else ""
             method = self.adapter.select_view
@@ -245,7 +269,7 @@ class LocalImagePipelineWorkflowService:
                                      render_only=render_only)
 
     def reevaluate(self, run_id: str, view: str = "", *, costume: str = "") -> dict[str, Any]:
-        """Refresh ranking and prompt observations using existing harvested images."""
+        """Refresh ranking using existing harvested images; observations are opt-in."""
         from zet.services.image_harvest_service import reconcile_candidate_harvest
         from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
 
@@ -279,7 +303,6 @@ class LocalImagePipelineWorkflowService:
         run = reconcile_candidate_harvest(
             self.app, lambda: self.prompt_improvement.detail(run_id, costume), run, images)
         for target in targets:
-            self.prompt_improvement.start(run_id, target, costume)
             self.stage_view_evaluation(run_id, target, costume=costume)
         return self.action("detail", run_id=run_id, costume=costume)
 

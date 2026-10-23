@@ -63,6 +63,8 @@ owns recovery actions and retention behavior.
 
 Character batches retain `template_improvement/revisions/<id>.json`, compiled artifacts and `active.json`. [LocalTemplateRevisionService](../zet/services/local_template_revision_service.py) reads historical version-1 image-evidence revisions and creates version-2 text reviews with frozen sources/prompts, independently selectable findings, saved decisions and accepted READY child versions. Sources retain stable `library/` and `project/` identities and master baselines. Acceptance selects a batch overlay; promotion remains an explicit separate master write.
 
+Post-render improvement stores `post_render_prompt/<session_id>/session.json`, frozen evidence, compiled previews and private trial images under the batch. [LocalPostRenderPromptService](../zet/services/local_post_render_prompt_service.py) owns the session, source baseline, round decisions, two frozen render attempts per affected view, cancellation and resumable keep status. `post_render_prompt_session_id` in batch state locates the current session. Keep writes a READY `template_improvement` revision and activates it; trials and cancellation never add gallery candidates or catalog records. No schema migration is required.
+
 New version-2 records also retain additive `from_master` and `review_skipped`
 flags. A master restart ignores the active overlay and has no parent; skip creates
 an accepted, active READY snapshot without AI analysis. Manual replacements compile

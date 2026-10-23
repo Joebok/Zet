@@ -88,3 +88,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 
 [0029 - Recoverable local asset publication](0029-recoverable-local-asset-publication.md) records the receipt-backed catalog transaction and local-state recovery protocol (accepted 2026-10-22).
 [0027 - Repository-managed LLM roles and skill composition](0027-repo-managed-llm-skills.md) records provider-independent skill ownership, explicit purpose classification, frozen guidance and role model inheritance (accepted locally 2026-10-22).
+
+[0030 - Private post-render Character.md trials](0030-private-post-render-character-prompt-trials.md) records isolated review sessions, trial renders and recoverable promotion (accepted locally 2026-10-23).

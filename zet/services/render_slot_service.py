@@ -126,7 +126,7 @@ class CharacterRenderSlots:
         from zet.services.local_view_reference_service import custom_references, reference_recipes
         root = Path(run["root"])
         pipeline = self.workflow.pipeline
-        revision = {} if pipeline == "character-assembly" else active_revision(root)
+        revision = active_revision(root)
         output = output_dir or root / "prompts" / view
         stamp = output / "Template_Revision.json"
         compiled_revision = json.loads(stamp.read_text(encoding="utf-8")).get("revision_id", "") if stamp.is_file() else ""
@@ -194,7 +194,7 @@ class CharacterRenderSlots:
             write_json_atomic(recipe_stamp, recipe)
         if pipeline == "character-assembly":
             write_json_atomic(assembly_stamp, {"version": ASSEMBLY_INPUT_VERSION})
-            write_json_atomic(stamp, {"revision_id": ""})
+            write_json_atomic(stamp, {"revision_id": revision.get("revision_id", "")})
         saved = frozen_input(directory, prompt, refs, preset)
         saved["template_revision_id"] = revision.get("revision_id", "")
         saved["reference_recipe"] = recipe

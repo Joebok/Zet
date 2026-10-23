@@ -17,13 +17,14 @@ class LocalPromptPreviewService:
     def __init__(self, workflow):
         self.workflow = workflow
 
-    def compile(self, run, sources, directory):
+    def compile(self, run, sources, directory, *, all_orientations=False):
         from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
         from Scripts.Run_Head_Image_Jobs import compile_head_image_job
         from Scripts.Run_Head_Image_Edit_Jobs import compile_head_image_edit_job
         from Scripts.Run_Character_Assembly_Jobs import compile_character_assembly_job
         from Scripts.Run_Costume_Dressing_Jobs import compile_costume_dressing_job
         from zet.services.local_character_progression_service import stages_for
+        from zet.services.view_conditioning_service import VIEW_ORDER
         workflow = self.workflow
         pipeline = workflow.pipeline
         compiler = {"body-reference": compile_body_reference_job, "head-image": compile_head_image_job, "head-image-edit": compile_head_image_edit_job,
@@ -34,7 +35,8 @@ class LocalPromptPreviewService:
         recipes = reference_recipes(Path(run["root"]), pipeline)
         result = []
         with template_sources(sources):
-            for view in (view for stage in stages_for(run) for view in stage):
+            views = VIEW_ORDER if all_orientations else [view for stage in stages_for(run) for view in stage]
+            for view in views:
                 references = []
                 def declare(role, source_view=view):
                     references.append({"role": role, "path": "declared:" + role,

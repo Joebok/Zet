@@ -1774,8 +1774,6 @@ class LocalBodyReferenceService:
                 current.setdefault("evaluations", {})[view] = active
             current["updated_at"] = self._now()
         mutate_local_run_state(root, save_ranking)
-        from zet.services.local_prompt_improvement_service import after_initial_ranking
-        after_initial_ranking(self, "body-reference", self.project_root, run_id, view)
         return self.detail(run_id)
 
     def _save_ranking_result(self, run_id: str, view: str, evaluation_id: str,

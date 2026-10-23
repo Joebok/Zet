@@ -65,6 +65,14 @@ recompile before generating new renders. Manual child edits may change valid
 and model-proposed edits retain the stricter reference-preservation rule. Acceptance
 still recompiles all eight previews and validates the referenced image files.
 
+Post-render Character.md trials use the same context-local source overlay and
+ordered render-input freezer. Selected corrections affect only Character.md;
+the compiled eight-view previews and two private renders per affected rendered
+view do not change the batch prompt artifacts. Keep writes the accepted source
+and active revision, then recompiles currently renderable batch prompts. Assembly
+now consults an accepted post-render revision during future compilation while
+continuing to skip pre-render prompt acceptance.
+
 ### Supplemental template images (2026-10-19)
 
 Template image tags supplement pipeline prerequisites; their presence is not an
@@ -223,3 +231,5 @@ The local Body compiler accepts one explicitly supplied batch design reference, 
 ## Prompt skill boundary (2026-10-22)
 
 Qwen guidance is applied only to appropriate existing LLM authoring, fragment and review calls. Analysis-only reconstruction images do not make a prompt an edit. Existing schemas, source markers, canvas settings, ordered reference bindings and deterministic character/alignment/correction compilation remain authoritative. [LLM roles](LLM_ROLES.md) owns the integration and package update procedure.
+
+Minor Character deterministic render prompts identify ordered multi-image style references with Qwen `<imageN>` tags while retaining their original bytes and order. One-image alignment and true-up prompts refer to the image naturally. Alignment changes viewpoint by visible anatomical side and keeps character design fixed; true-ups identify the input as the canvas and scope edits to selected corrections and operator feedback. The image service does not append its generic reference-label block to these prompts. Candidate payloads freeze the instruction for regeneration and retry.

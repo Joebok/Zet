@@ -682,7 +682,7 @@ class LocalCharacterAssetPipelineService:
                "Template Path": str(template), "Reference Files": refs}
         if self.pipeline == "character-assembly":
             job.update({"Body View": view, "Head View": view, "use_front_anchor": False})
-            result = compile_character_assembly_job(
+            result = compile_with_revision(root, compile_character_assembly_job,
                 job, self.project_root, pipeline_mode="local",
                 universe_root=self.app.config.base_library_path,
             )
@@ -1099,8 +1099,6 @@ class LocalCharacterAssetPipelineService:
                     active["status"] = "COMPLETE"
                 current.setdefault("evaluations", {})[view] = active
         mutate_local_run_state(root, save)
-        from zet.services.local_prompt_improvement_service import after_initial_ranking
-        after_initial_ranking(self, self.pipeline, self.project_root, run_id, view, costume)
         return self.detail(run_id, costume)
 
     def move_rank(self, run_id: str, view: str, candidate_id: str, direction: str, costume: str = "") -> dict[str, Any]:

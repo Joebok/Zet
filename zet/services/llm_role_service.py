@@ -34,6 +34,7 @@ ROLES = (
     LLMRole("character_prompt_review", "Character governing-template review", "Proposes selectable corrections to source wording and compiled previews.", "codex_default_model", "review", prompt_fields=("findings[].after",)),
     LLMRole("template_revision", "Historical template revision", "Continues historical image-evidence template proposals.", "codex_default_model", "review", ("vision",), status="compatibility", prompt_fields=("edits[].text",)),
     LLMRole("local_prompt_improvement", "Local prompt improvement", "Diagnoses prompt wording from rendered evidence.", "codex_default_model", "review", ("vision",), ("codex",), prompt_fields=("observations",)),
+    LLMRole("post_render_character_prompt", "Post-render Character.md improvement", "Proposes scoped Character.md edits from observations and rendered evidence.", "codex_default_model", "review", ("vision",), ("codex",), prompt_fields=("findings[].after",)),
     LLMRole("character_refinement", "Dedicated character image refinement", "Suggests scoped corrections to the selected character image.", "codex_default_model", "review", ("vision",), prompt_fields=("items[].correction",)),
     LLMRole("image_ranking", "Comparative candidate ranking", "Orders candidates by visible compliance; not a prompt-writing task.", "codex_default_model", capabilities=("vision",), providers=("codex",)),
     LLMRole("body_review_codex", "Body candidate assessment — Codex", "Assesses anatomy, orientation and visible compliance.", "codex_default_model", capabilities=("vision",), providers=("codex",)),

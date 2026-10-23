@@ -183,7 +183,7 @@ class LocalPromptImprovementService:
             from zet.services.local_view_reference_service import reference_recipes
             from zet.services.template_source_service import active_revision
             run["view_reference_recipes"] = reference_recipes(self._root(run), self.pipeline, state=run)
-            run["active_template_revision_id"] = "" if self.pipeline == "character-assembly" else active_revision(self._root(run)).get("revision_id", "")
+            run["active_template_revision_id"] = active_revision(self._root(run)).get("revision_id", "")
         for candidate in run.get("candidates") or []:
             (candidate.get("human_review") or {}).pop("notes", None)
         for view, record in (run.get("view_reviews") or {}).items():
@@ -495,13 +495,3 @@ class LocalPromptImprovementService:
                 "Identify issues that template edits alone cannot adequately address. Where evidence supports it, recommend specific "
                 "improvements to compilation, review, image selection, or other parts of the process, and keep these recommendations "
                 "separate from the proposed templates. Do not edit files or treat any suggested change as approved.\n")
-
-
-def after_initial_ranking(adapter: Any, pipeline: str, project_root: Path,
-                          run_id: str, view: str, costume: str = "") -> None:
-    """Called after a ranking commit; state prevents repeats on later rankings."""
-    try:
-        LocalPromptImprovementService(adapter, pipeline, project_root).start(run_id, view, costume, automatic=True)
-    except Exception:
-        # Ranking is advisory and must remain independent of prompt improvement.
-        pass

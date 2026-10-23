@@ -28,6 +28,10 @@ def create_local_character_asset_pipeline_router(
     def refinement_page():
         return (root / "zet/web/templates/local_character_refinement.html").read_text(encoding="utf-8")
 
+    @router.get("/local-character-prompt-improvement", response_class=HTMLResponse)
+    def post_render_prompt_page():
+        return (root / "zet/web/templates/local_character_prompt_improvement.html").read_text(encoding="utf-8")
+
     def service(pipeline: str) -> LocalImagePipelineWorkflowService:
         return LocalImagePipelineWorkflowService(app_factory(), root, pipeline)
 
@@ -251,6 +255,27 @@ def create_local_character_asset_pipeline_router(
         def reanalyze(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "reanalyze", run_id=run_id, view=view,
                                        costume=costume if _pipeline == "costume-dressing" else ""))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/post-render-prompt")
+        def open_post_render_prompt(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "post_render_prompt_open", run_id=run_id, payload=payload, costume=costume))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/post-render-prompt/{{session_id}}")
+        def post_render_prompt_detail(run_id: str, session_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "post_render_prompt_detail", run_id=run_id, session_id=session_id, costume=costume), missing=404)
+
+        @router.post(f"{prefix}/runs/{{run_id}}/post-render-prompt/{{session_id}}/{{operation}}")
+        def post_render_prompt_action(run_id: str, session_id: str, operation: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+            if operation not in {"propose", "representative", "decisions", "trial", "retry", "keep", "cancel"}:
+                raise HTTPException(status_code=404, detail="Unknown prompt improvement action.")
+            return call(lambda: action(_pipeline, "post_render_prompt_" + operation, run_id=run_id,
+                                       session_id=session_id, payload=payload, costume=costume))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/post-render-prompt/{{session_id}}/images/{{attempt_id}}")
+        def post_render_prompt_image(run_id: str, session_id: str, attempt_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            path = call(lambda: action(_pipeline, "post_render_prompt_image_path", run_id=run_id,
+                                       session_id=session_id, attempt_id=attempt_id, costume=costume), missing=404)
+            return FileResponse(path)
 
         @router.get(f"{prefix}/runs/{{run_id}}/prompt-improvement-package")
         def prompt_improvement_package(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):

@@ -62,13 +62,27 @@ class MinorCharacterWorkflow:
 
     @staticmethod
     def alignment_prompt(view):
-        preserve = "Preserve the character's identity, costume, and art style."
+        preserve = ("Preserve the character's identity, facial features, costume, equipment, "
+                    "anatomical asymmetry, colors, and art style from the image.")
         if view == "FRONT":
-            return "Show this character directly from the front. Head and body face straight toward the camera, with both shoulders equally visible. " + preserve
+            return ("Turn the character in the image to a straight-on front view. Head, torso, and hips face the camera; "
+                    "both shoulders are equally visible. " + preserve)
         side = "left" if "LEFT" in view else "right"
-        orientation = f"a front-{side} three-quarter view" if "3_4" in view else f"a strict {side} profile"
-        return (f"Show this character from {orientation}, facing toward the {side} side of the image. "
-                "Align head and body. The character should not look at the camera. " + preserve)
+        if "3_4" in view:
+            orientation = (f"Turn the character in the image to a front three-quarter view showing the character's anatomical {side} side. "
+                           "Keep part of the far side of the face and front of the torso visible.")
+        else:
+            orientation = (f"Turn the character in the image to a strict profile showing the character's anatomical {side} side. "
+                           "The near side of the face is visible; the far eye is hidden.")
+        return (orientation + " Head, torso, and hips share the same rotation; gaze follows the face. " + preserve)
+
+    @staticmethod
+    def _style_reference_prompt(references):
+        if len(references) == 1:
+            return f"Use the image as the primary identity and appearance reference ({references[0][0]})."
+        return " ".join(
+            f"Use <image{index}> as {'the primary identity and appearance reference' if index == 1 else 'a supporting reference'} ({label})."
+            for index, (label, _) in enumerate(references, start=1))
 
     def _forget_selection(self, session, board, candidate_id=None):
         if candidate_id is None or board["selected_id"] == candidate_id:
@@ -159,12 +173,18 @@ class MinorCharacterWorkflow:
         anchor = by_id.get(candidate["anchor_id"])
         try:
             refs = []
-            context = ("Style alignment: preserve the character's identity and design in the requested style. "
-                       "Do not require a front, three-quarter, or profile orientation.") if view == "STYLE" else self.alignment_prompt(view)
+            framing = "Full body, head to toe, feet visible." if frozen["framing"] == "full_body" else "Head-and-shoulders portrait."
+            context = ("Create one character reference in the requested art style, preserving the character's identity, "
+                       "costume, equipment, and anatomical asymmetry. Use a neutral pose and plain neutral background. "
+                       "Choose a natural angle that shows the design clearly. " + framing
+                       if view == "STYLE" else self.alignment_prompt(view) + " Keep one character in a neutral pose "
+                       "against a plain neutral background. " + framing)
             if base:
                 refs = [("Candidate to correct; preserve unaffected details", self._candidate_bytes(sid, base))]
-                prompt = "\n".join(filter(None, [
-                    "Edit this character image. Change only the requested details. Preserve its identity, costume, art style, and orientation unless explicitly corrected below.",
+                prompt = " ".join(filter(None, [
+                    "Edit the image as the canvas. Apply only these corrections, with the operator's final instruction taking precedence. "
+                    "Preserve the existing composition, framing, orientation, identity, costume, equipment, anatomical asymmetry, "
+                    "colors, and art style wherever a correction does not explicitly change them.",
                     *candidate["corrections"], candidate["instructions"]]))
                 payload = self._image_spec(prompt, refs)
             elif view != "STYLE":
@@ -172,12 +192,12 @@ class MinorCharacterWorkflow:
                     raise QuickCharacterWizardError("The selected style image is unavailable.")
                 payload = self._image_spec(context, [("Selected style image; change orientation only", self._candidate_bytes(sid, anchor))])
             elif candidate.get("reconstruction_id"):
-                framing = "Full body, head to toe, feet visible." if frozen["framing"] == "full_body" else "Head-and-shoulders portrait."
-                payload = self._reconstruction().render_spec(candidate["reconstruction_id"], context + " " + framing)
+                payload = self._reconstruction().render_spec(candidate["reconstruction_id"], context)
             else:
                 prompt = "\n".join([context, frozen["description"], frozen["identity"], *frozen["proposals"], frozen.get("changes", "")])
                 refs = [(r["caption"], path.read_bytes()) for r, path in
                         zip(self._ordered_references(frozen), map(Path, self._reference_paths(frozen)))]
+                prompt = self._style_reference_prompt(refs) + "\n" + prompt
                 payload = self._image_spec(prompt, refs)
             payload.update(count=1, width=832 if frozen["framing"] == "full_body" else 1024,
                            height=1216 if frozen["framing"] == "full_body" else 1024)
@@ -196,6 +216,7 @@ class MinorCharacterWorkflow:
     @staticmethod
     def _image_spec(prompt, references):
         return {"mode": "img2img", "prompt": prompt, "negative_prompt": "", "count": 1,
+                "render_config": {"append_reference_labels": False},
                 "reference_images": [{"label": label, "image": base64.b64encode(contents).decode("ascii")}
                                      for label, contents in references]}
 

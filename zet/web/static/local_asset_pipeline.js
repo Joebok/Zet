@@ -106,6 +106,7 @@
       case "rerun-view": return `${baseUrl()}/runs/${id}/views/${encodedView}/rerun${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun-failed": return `${baseUrl()}/runs/${id}/rerun-failed${query({ view })}`;
       case "observations": return `${baseUrl()}/runs/${id}/views/${encodedView}/observations${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "reanalyze": return `${baseUrl()}/runs/${id}/views/${encodedView}/reanalyze${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "prompt-improvement-package": return `${baseUrl()}/runs/${id}/prompt-improvement-package${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "move-rank": return `${baseUrl()}/runs/${id}/views/${encodedView}/ranking/move${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "select":
@@ -187,6 +188,7 @@
     $("stop").disabled = !busy(run);
     $("rerun").disabled = !run || isBusy;
     $("reevaluate").disabled = !run || isBusy || !(run.candidates || []).some((item) => item.image_path);
+    $("post-render-improve").disabled = !run || !(run.candidates || []).some((item) => item.image_path);
     $("prompt-improvement-package").hidden = !run;
     if (run) $("prompt-improvement-package").href = route("prompt-improvement-package", run.run_id);
     $("delete").disabled = !run || isBusy;
@@ -818,6 +820,8 @@
       aiContent.className = "muted local-pipeline-ai-observations";
       aiContent.textContent = `${ai.status || "Pending"}${ai.error ? ` · ${ai.error}` : ""}${ai.stale_reason ? ` · ${ai.stale_reason}` : ""}${ai.text ? `\n\n${ai.text}` : ""}`;
       observationSection.append(aiHeading, aiContent);
+      addButton(observationSection, ai.status === "COMPLETE" ? "Run AI Observations again" : "Run AI Observations", "run-observations",
+        { view, disabled: ["QUEUED", "RUNNING"].includes(ai.status) || !candidates.some(item => item.image_available) });
       observationDetails.append(observationSection);
       const reviewProgress = document.createElement("p");
       if (evaluation.evaluation_id || ranking.status) {
@@ -1554,6 +1558,12 @@
       setStatus("Observations saved.");
       return;
     }
+    if (action === "run-observations") {
+      await request(route("reanalyze", state.run.run_id, view), { method: "POST" });
+      await loadRun(state.run.run_id);
+      setStatus(`AI Observations started for ${view}.`);
+      return;
+    }
     if (action === "lock") {
       if (hasSharedAssetRouter()) {
         const plan = await request(route("lock-preview", state.run.run_id, view));
@@ -1638,6 +1648,19 @@
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));
     $("rerun").addEventListener("click", () => void handleAction({ dataset: { localAction: "rerun" } }).catch((error) => setStatus(error.message, true)));
     $("reevaluate").addEventListener("click", () => void perform("reevaluate").catch((error) => setStatus(error.message, true)));
+    $("post-render-improve").addEventListener("click", async () => {
+      $("post-render-improve").disabled = true;
+      try {
+        const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
+        const query = costume ? `?costume=${encodeURIComponent(costume)}` : "";
+        const result = await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/post-render-prompt${query}`,
+          { method: "POST", body: "{}" });
+        const params = new URLSearchParams({ universe_id: document.querySelector("#universe-select").value,
+          pipeline, run_id: run.run_id, session_id: result.session_id, page: Object.keys(pagePipelines).find(page => pagePipelines[page] === pipeline) });
+        if (costume) params.set("costume", costume);
+        location.href = `/local-character-prompt-improvement?${params}`;
+      } catch (error) { setStatus(error.message, true); $("post-render-improve").disabled = false; }
+    });
     $("delete").addEventListener("click", () => void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)));
     $("proceed").addEventListener("click", () => void perform("proceed").catch((error) => setStatus(error.message, true)));
     $("source-file").addEventListener("change", () => void uploadHeadSource($("source-file").files?.[0]));
