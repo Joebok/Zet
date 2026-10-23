@@ -33,7 +33,7 @@ Judge the candidate image against the visible requirements below and the supplie
 
 {{LOCAL_CANONICAL_ART_STYLE}}
 
-Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume. Preserve identity, anatomy, body proportions, pose, body and head orientation, camera, crop, lighting, and all non-costume content from Image 1. The costume conforms to the existing body; the body does not change to fit the costume.
+Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume. Preserve identity, anatomy, body proportions, pose, body and head orientation, camera, and crop from Image 1. The costume conforms to the existing body; the body does not change to fit the costume.
 
 Preserve the dimensional facial planes, skin variation and hair detail of Image 1 at the output scale. Render the new costume in the same visual treatment, distinguishing woven cloth and seams, weighted folds, leather grain and creases, metal highlights and gemstone reflections where these materials are specified. Do not simplify the face or exposed body while adding the costume. Supporting design images control their assigned designs and visible details, not the overall rendering style.
 
