@@ -1,10 +1,12 @@
 import { defineConfig } from "@playwright/test";
+import path from "node:path";
+import { resultsRoot } from "./tests/e2e/results-path.mjs";
 
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "live.spec.mjs",
   workers: 1,
-  outputDir: "./test-results/playwright-live",
+  outputDir: path.join(resultsRoot, "playwright-live"),
   timeout: Number(process.env.ZET_LIVE_TEST_TIMEOUT_MS || 20 * 60 * 1000),
   expect: { timeout: 30_000 },
   use: {

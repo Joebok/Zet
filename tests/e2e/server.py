@@ -19,7 +19,9 @@ import uvicorn
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SEED = PROJECT_ROOT / "tests" / "library"
-RUN_ROOT = PROJECT_ROOT / "test-results" / "narrative-e2e"
+RESULTS_ROOT = Path(os.environ.get("ZET_TEST_RESULTS_ROOT") or
+                    Path(tempfile.gettempdir()) / "Zet-test-results" / PROJECT_ROOT.name).expanduser().resolve()
+RUN_ROOT = RESULTS_ROOT / "narrative-e2e"
 
 
 def scenario_slug(value: str) -> str:
@@ -111,7 +113,7 @@ def start_private_proxy(root: Path, config: Path, comfy_url: str):
 
 def prepare(mode: str) -> Path:
     root = RUN_ROOT / mode
-    expected_parent = (PROJECT_ROOT / "test-results").resolve()
+    expected_parent = RESULTS_ROOT
     if root.resolve().parent.parent != expected_parent:
         raise RuntimeError(f"Refusing to prepare unexpected test path: {root}")
     if root.exists():
@@ -284,7 +286,7 @@ def main() -> int:
                                 proxy_process.kill()
                     atexit.register(stop_private_proxy)
                     if proxy_process.poll() is not None:
-                        live_blockers.append("The private AI Proxy process stopped during startup; see test-results/narrative-e2e/live/ai-proxy.log.")
+                        live_blockers.append(f"The private AI Proxy process stopped during startup; see {RUN_ROOT / 'live' / 'ai-proxy.log'}.")
                 except (OSError, subprocess.SubprocessError) as exc:
                     live_blockers.append(f"Could not start the private AI Proxy: {exc}")
     app.state.live_blockers = live_blockers
@@ -367,7 +369,7 @@ def main() -> int:
         source = (config.parent / "Library" / "Test").resolve()
         failure_root = (RUN_ROOT / "failures" / f"scenario-{scenario_number}-{scenario_slug(str(data.get('title') or 'failed'))}").resolve()
         if not source.is_relative_to(RUN_ROOT.resolve()) or not failure_root.is_relative_to(RUN_ROOT.resolve()):
-            raise RuntimeError("Refusing to retain test files outside the local test-results directory.")
+            raise RuntimeError("Refusing to retain test files outside the selected test results directory.")
         shutil.rmtree(failure_root, ignore_errors=True)
         failure_root.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, failure_root / "Library")

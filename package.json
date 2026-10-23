@@ -2,8 +2,8 @@
   "scripts": {
     "capture:ui": "node Scripts/capture-dashboard-ui.mjs",
     "pretest:e2e": "node Scripts/ensure-e2e-tools.mjs",
-    "test:e2e": "playwright test --config playwright.config.mjs",
-    "test:e2e:live": "playwright test --config playwright.live.config.mjs",
+    "test:e2e": "node Scripts/run-e2e.mjs fast",
+    "test:e2e:live": "node Scripts/run-e2e.mjs live",
     "test:library": "python3 tests/e2e/server.py --open-library"
   },
   "devDependencies": {

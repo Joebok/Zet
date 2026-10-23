@@ -1,10 +1,12 @@
 import { defineConfig } from "@playwright/test";
+import path from "node:path";
+import { resultsRoot } from "./tests/e2e/results-path.mjs";
 
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "fast.spec.mjs",
   workers: 1,
-  outputDir: "./test-results/playwright",
+  outputDir: path.join(resultsRoot, "playwright"),
   timeout: 90_000,
   expect: {
     timeout: 8_000,

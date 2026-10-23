@@ -207,6 +207,9 @@ def stage(request, update):
     run([str(python), "-m", "pip", "install", "-e", str(release), "--no-deps"], timeout=180)
     env = os.environ.copy()
     env["ZET_TEST_PYTHON"] = str(python)
+    validation_root = root / "state" / "validation" / request["id"]
+    results_root = validation_root / "test-results"
+    env["ZET_TEST_RESULTS_ROOT"] = str(results_root)
     env.pop("PYTHONPATH", None)
     env.pop("ZET_WORKER_MODE", None)
     update("validating")
@@ -215,8 +218,15 @@ def stage(request, update):
         raise RuntimeError("npm is unavailable; production was not stopped.")
     # npm's Windows command shim is invoked directly via cmd with a fixed command, no data interpolation.
     command = ["cmd.exe", "/d", "/c", "npm.cmd run test:e2e"] if os.name == "nt" else [npm, "run", "test:e2e"]
-    with test_lock(request["workflow_state_root"]):
-        run(command, cwd=release, env=env, timeout=600)
+    try:
+        with test_lock(request["workflow_state_root"]):
+            run(command, cwd=release, env=env, timeout=600)
+    finally:
+        packages = release / "node_modules"
+        if packages.is_dir() and packages.resolve().parent == release.resolve():
+            shutil.rmtree(packages)
+    if validation_root.is_dir() and validation_root.resolve().parent == (root / "state" / "validation").resolve():
+        shutil.rmtree(validation_root)
     run(["git", "-C", str(release), "diff", "--check"])
     config = Path(request["config_path"]).read_text(encoding="utf-8")
     if "[Runtime]" in config:

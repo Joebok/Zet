@@ -2,8 +2,9 @@ import { expect, test } from "@playwright/test";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { resultsRoot } from "./results-path.mjs";
 
-const image = (width, height) => path.resolve("test-results/narrative-e2e/fast", `render-${width}x${height}.png`);
+const image = (width, height) => path.join(resultsRoot, "narrative-e2e", "fast", `render-${width}x${height}.png`);
 
 test.beforeEach(async ({ page }) => {
   const reset = await page.request.post("/__test/reset");

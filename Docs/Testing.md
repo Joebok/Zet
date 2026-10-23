@@ -257,7 +257,7 @@ Run the default suite with:
 npm run test:e2e
 ```
 
-On Windows, `npm.cmd run test:e2e` avoids PowerShell script-policy restrictions. Its pretest setup uses `npm ci` when the locked Playwright packages are missing and installs Chromium only when the matching browser executable is absent. Browser downloads use Playwright's shared user cache, while npm packages are installed into the current checkout or worktree. [package.json](../package.json) calls [playwright.config.mjs](../playwright.config.mjs), which runs only `fast.spec.mjs` on Chromium with one worker, a 90-second scenario timeout, 8-second default assertion timeout, and port **8765**. The local-front helper has a bounded 70-second poll. Reuse of an existing server is disabled; keep suites serial across worktrees and resolve port conflicts before rerunning.
+On Windows, `npm.cmd run test:e2e` avoids PowerShell script-policy restrictions. Its pretest setup uses `npm ci` when the locked Playwright packages are missing and installs Chromium only when the matching browser executable is absent. Browser downloads use Playwright's shared user cache, while npm packages are installed into the current checkout or worktree. [package.json](../package.json) calls [run-e2e.mjs](../Scripts/run-e2e.mjs) and [playwright.config.mjs](../playwright.config.mjs), which run only `fast.spec.mjs` on Chromium with one worker, a 90-second scenario timeout, 8-second default assertion timeout, and port **8765**. Each run writes to a unique folder under the system temp directory's `Zet-test-results/<checkout-name>/`; `ZET_TEST_RESULTS_ROOT` overrides that parent path. Successful runs delete their folder; failed runs retain it for diagnosis. The local-front helper has a bounded 70-second poll. Reuse of an existing server is disabled; keep suites serial across worktrees and resolve port conflicts before rerunning.
 
 The bootstrap removes only the lifecycle-exported `npm_config_allow_scripts`
 override (including case and hyphen variants) from its nested `npm ci`
@@ -288,13 +288,13 @@ Use an existing verified Python 3.11+ runtime, project packages, Node, Playwrigh
 
 ## Fixture and response boundaries
 
-[server.py](../tests/e2e/server.py) copies [tests/library](../tests/library/README.md) into `test-results/narrative-e2e/<mode>/` at process startup. The seed owns `Test/universe.json`, `seed.json`, Traveler character/costume sources, reference images, and prepared response images. It is never written back from a run. App construction seeds Narrative records through real services and creates valid Body/Head batch specs and locks; fixture-only `/__test/*` routes are added by this server, not production routes.
+[server.py](../tests/e2e/server.py) copies [tests/library](../tests/library/README.md) into the selected results root's `narrative-e2e/<mode>/` at process startup. The seed owns `Test/universe.json`, `seed.json`, Traveler character/costume sources, reference images, and prepared response images. It is never written back from a run. App construction seeds Narrative records through real services and creates valid Body/Head batch specs and locks; fixture-only `/__test/*` routes are added by this server, not production routes.
 
 Before each fast scenario, `/__test/reset` replaces the Narrative story and resets the Traveler local lock/batch state and File Proxy folders, then reseeds prerequisites. The app, Test universe, and entity catalog persist within the run; this is **not a full database rebuild per scenario**. S1 restores the source template/costume edits it makes. Library/queue paths are disposable; the derived index uses a separate temporary directory outside Git with exit cleanup. Producer-local queue routes/receipts are keyed by the disposable queue path, distinct from the normal queue.
 
 The server suppresses Ollama catalog refresh and supplies prepared local-prompt observations. Fast helper functions deliver prepared envelopes and images into the private File Proxy folders. Narrative envelopes include proxy-result inventory and an external-consumer harvest marker; local-pipeline answers use their own reconciliation path. This exercises packaging, persistence and supported result application without running the external dispatcher, Ollama, Codex, or ComfyUI. It does not independently prove all readiness, ownership or stale-result rejection branches.
 
-Failure traces are retained under `test-results/playwright`. `/__test/retain-failure` copies the Test library, queue, and fixture config to `test-results/narrative-e2e/failures/scenario-<number>-<title>/`. Inspect these plus terminal output before rerunning; another run prepares fresh mode data.
+Failure traces are retained under the failed run's `playwright` folder. `/__test/retain-failure` copies the Test library, queue, and fixture config to its `narrative-e2e/failures/scenario-<number>-<title>/`. Inspect these plus terminal output before rerunning; another run uses a separate folder.
 
 To inspect the seed in a separate dashboard process and port, run:
 
@@ -304,7 +304,7 @@ npm run test:library
 
 This opens `http://127.0.0.1:8766/narrative` against an inspection copy. Stop the server with `Ctrl+C`.
 
-Inspection uses `test-results/narrative-e2e/inspection`, not the normal library. It shares port 8766 with the live check; do not run both at once.
+Inspection uses the selected results root's `narrative-e2e/inspection`, not the normal library. It shares port 8766 with the live check; do not run both at once.
 
 ## Optional live Narrative check
 
@@ -321,7 +321,7 @@ npm run test:e2e:live
 
 It preflights the Zet and AI Proxy Python runtimes, the configured Ollama model, and the ComfyUI service/checkpoint. It starts AI Proxy with a run-local registry, runtime configuration, and private queue; normal AI Proxy configuration and queues are not changed. Prepared backdrop and subscene inputs keep the live portion focused on real final-assembly prompt synthesis and rendering. Its overall timeout defaults to 20 minutes and can be changed with `ZET_LIVE_TEST_TIMEOUT_MS`. Missing prerequisites block the live check; Joe reviews artistic quality.
 
-[playwright.live.config.mjs](../playwright.live.config.mjs) selects only [live.spec.mjs](../tests/e2e/live.spec.mjs), port **8766**, one worker, 30-second assertions, and `test-results/playwright-live`. The server expects sibling `AI_Proxy` with its existing `.venv` runtime; it starts a private File Proxy process with external ComfyUI and records `test-results/narrative-e2e/live/ai-proxy.log`. The check verifies final synthesis/render completion, selection/lock, reload and displayed/published image. It skips when the explicit enable flag or preflight requirements are absent; **skipped means unverified, not passed**. Run only when Joe requests this live check, and follow the existing ComfyUI operating instructions.
+[playwright.live.config.mjs](../playwright.live.config.mjs) selects only [live.spec.mjs](../tests/e2e/live.spec.mjs), port **8766**, one worker, 30-second assertions, and the selected results root's `playwright-live`. The server expects sibling `AI_Proxy` with its existing `.venv` runtime; it starts a private File Proxy process with external ComfyUI and records `narrative-e2e/live/ai-proxy.log` under that root. The check verifies final synthesis/render completion, selection/lock, reload and displayed/published image. It skips when the explicit enable flag or preflight requirements are absent; **skipped means unverified, not passed**. Run only when Joe requests this live check, and follow the existing ComfyUI operating instructions.
 
 ## Coverage policy
 

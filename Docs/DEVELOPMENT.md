@@ -76,7 +76,7 @@ derived index databases during relocation. Shared transport and the external arc
 remain report-only until their records have verified ownership and no remaining
 consumer.
 
-Fast browser tests use fixed port **8765**, one worker, and a disposable fixture in `test-results/narrative-e2e/fast`. [server.py](../tests/e2e/server.py) prepares this fixture from [tests/library](../tests/library/README.md). Run suites serially across worktrees because they share the port. The fast suite uses prepared queue answers; live artistic quality remains unverified.
+Fast browser tests use fixed port **8765**, one worker, and a disposable fixture under the system temp directory's `Zet-test-results/<checkout-name>/run-*/narrative-e2e/fast` (or `ZET_TEST_RESULTS_ROOT/run-*/narrative-e2e/fast`). [server.py](../tests/e2e/server.py) prepares this fixture from [tests/library](../tests/library/README.md). Successful runs remove their fixture and Playwright output; failed runs retain both. Run suites serially across worktrees because they share the port. The fast suite uses prepared queue answers; live artistic quality remains unverified.
 
 ## LAN and Tailscale HTTPS on Joe's Windows machine
 

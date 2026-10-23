@@ -107,6 +107,10 @@ renderer presets and model caches have explicit persistent-state paths.
 Restart offers Update and restart or Restart current version. Update stages and
 runs the approved isolated baseline BEFORE stopping production. The controller is
 copied outside releases; a check lock serializes worker/staging fixed-port tests.
+Staging writes test output under runtime `state/validation/<operation-id>`, removes
+it after a passing run, and removes npm test packages from the release after validation.
+Failed test output remains in state for diagnosis; new release directories do not
+retain generated test output or npm packages after validation.
 `GET /api/deployment` reports status; `/stage` validates without promotion; `/update`
 promotes after validation. The root `config.toml` used by the active checkout may
 have local edits: deployment carries that exact file into the next release's

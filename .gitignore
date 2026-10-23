@@ -38,4 +38,3 @@ Config/ollama-models-cache.json
 .DS_Store
 Docs/ToDo.md
 Docs/Template_Schema_Review
-test-results/
