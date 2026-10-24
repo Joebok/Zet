@@ -62,14 +62,17 @@
       section.append(node("h3", `${round.kind === "baseline" ? "Baseline" : `Trial round ${round.round}`} · ${new Set(round.attempts.map(item => item.seed)).size} seeds · ${round.attempts.length} submissions`));
       for (const attempt of round.attempts) {
         if (attempt.status === "READY" && !reviewStarted.has(attempt.id)) reviewStarted.set(attempt.id, Date.now());
-        const card = node("article", ""); card.className = "post-view-card";
+        const card = node("article", ""); card.className = "post-view-card prompt-generator-card";
         card.append(node("p", `Seed ${attempt.seed} · ${attempt.status}${attempt.error ? ` · ${attempt.error}` : ""}`));
         if (attempt.status === "READY") {
-          const img = document.createElement("img"); img.src = endpoint(`/images/${encodeURIComponent(attempt.id)}`); img.alt = `Seed ${attempt.seed}`; img.loading = "lazy"; card.append(img);
+          const layout = node("div", ""); layout.className = "pg-review-layout";
+          const imageColumn = node("div", ""); imageColumn.className = "pg-review-image";
+          const scoringColumn = node("div", ""); scoringColumn.className = "pg-review-scoring";
+          const img = document.createElement("img"); img.src = endpoint(`/images/${encodeURIComponent(attempt.id)}`); img.alt = `Seed ${attempt.seed}`; img.loading = "lazy"; imageColumn.append(img);
           const adopt = node("button", "Adopt into empty batch slot"); adopt.type = "button";
-          adopt.addEventListener("click", () => void act("adopt", { round_id: round.id, attempt_id: attempt.id })); card.append(adopt);
+          adopt.addEventListener("click", () => void act("adopt", { round_id: round.id, attempt_id: attempt.id })); imageColumn.append(adopt);
           const editBase = node("button", "Use as edit base for a new packet revision"); editBase.type = "button";
-          editBase.addEventListener("click", () => void act("edit-base", { round_id: round.id, attempt_id: attempt.id })); card.append(editBase);
+          editBase.addEventListener("click", () => void act("edit-base", { round_id: round.id, attempt_id: attempt.id })); imageColumn.append(editBase);
           const outcomes = [];
           const criteria = round.criterion_sets?.length
             ? round.criterion_sets.flatMap(set => (set.criteria || []).map(criterion => `${set.version}: ${criterion}`))
@@ -80,17 +83,18 @@
             for (const [value, text] of [["", "Unscored"], ["pass", "Pass"], ["fail", "Fail"], ["unclear", "Unclear"]]) {
               const option = node("option", text); option.value = value; select.append(option);
             }
-            label.append(select); card.append(label); outcomes.push({ criterion, select });
+            label.append(select); scoringColumn.append(label); outcomes.push({ criterion, select });
           }
-          const notes = document.createElement("textarea"); notes.rows = 2; notes.placeholder = "Notes on this image"; card.append(notes);
+          const notes = document.createElement("textarea"); notes.rows = 3; notes.placeholder = "Notes on this image"; scoringColumn.append(notes);
           for (const decision of ["accept", "reject"]) {
             const review = node("button", decision === "accept" ? "Accept image" : "Reject image"); review.type = "button";
             review.addEventListener("click", () => void act("review", { round_id: round.id, attempt_id: attempt.id,
               decision, notes: notes.value, review_seconds: Math.round((Date.now() - reviewStarted.get(attempt.id)) / 1000),
               criteria: outcomes.map(x => ({ criterion: x.criterion, result: x.select.value })).filter(x => x.result) }));
-            card.append(review);
+            scoringColumn.append(review);
           }
-          if (attempt.human_review?.decision) card.append(node("p", `Recorded: ${attempt.human_review.decision}${attempt.human_review.notes ? ` · ${attempt.human_review.notes}` : ""}`));
+          if (attempt.human_review?.decision) scoringColumn.append(node("p", `Recorded: ${attempt.human_review.decision}${attempt.human_review.notes ? ` · ${attempt.human_review.notes}` : ""}`));
+          layout.append(imageColumn, scoringColumn); card.append(layout);
         }
         if (attempt.status === "FAILED") {
           const retry = node("button", "Retry this seed using its frozen prompt and settings"); retry.type = "button";

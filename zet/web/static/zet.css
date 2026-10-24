@@ -5838,3 +5838,35 @@ body .image-icon-action:not(.review-close):not(.fullscreen-image-close):not(.ful
 .post-finding pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 15rem; overflow: auto; }
 .post-template-diff { max-height: 28rem; overflow: auto; }
 .post-template-diff .template-diff-table { min-width: 640px; }
+
+/* Prompt Generator Pilot: keep the image large beside its scoring controls. */
+.prompt-generator-card {
+  box-sizing: border-box;
+  flex: none;
+  width: 100%;
+  padding: 1rem;
+}
+.pg-review-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr);
+  align-items: start;
+}
+.pg-review-image,
+.pg-review-scoring { min-width: 0; }
+.pg-review-image img {
+  display: block;
+  width: 100%;
+  height: min(78vh, 860px);
+  min-height: 460px;
+  object-fit: contain;
+}
+.pg-review-image button,
+.pg-review-scoring button { margin: .35rem .35rem .35rem 0; }
+.pg-review-scoring label { display: block; margin: 0 0 .65rem; }
+.pg-review-scoring select { display: block; width: 100%; margin-top: .25rem; }
+
+@media (max-width: 850px) {
+  .pg-review-layout { grid-template-columns: minmax(0, 1fr); }
+  .pg-review-image img { height: min(65vh, 700px); min-height: 320px; }
+}
