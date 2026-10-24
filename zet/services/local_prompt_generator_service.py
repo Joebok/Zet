@@ -12,7 +12,7 @@ import shutil
 from uuid import uuid4
 
 from zet.models.prompt_generator import (
-    MAX_CASE_LLM_CALLS, MAX_CASE_RENDER_SUBMISSIONS, PROMPT_PACKET_VERSION,
+    MAX_CASE_LLM_CALLS, MAX_CASE_RENDER_SUBMISSIONS, PROMPT_PACKET_VERSION, PromptPacket,
     PROMPT_SESSION_VERSION, SEED_COUNT, TRIAL_ROUNDS,
 )
 from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
