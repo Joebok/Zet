@@ -177,8 +177,13 @@ Approved `npm.cmd run test:e2e` passed all three fast scenarios after backend/re
 ## GitHub pickup and production releases
 
 [GitHub task workflow](GitHub_Task_Workflow.md) owns capture/setup, worker authority,
-quota and deployment. Automated work sets ZET_WORKER_MODE=1 and loads only disposable
-development configuration. prepare_issue_workspace prepares the existing inspection
+quota and deployment. Automated work sets ZET_WORKER_MODE=1; ordinary configuration
+loads remain limited to disposable development fixtures. A scoped AI_Proxy opt-in to
+`ConfigService.load(..., worker_render_root=...)` accepts this checkout's local config
+only with an existing private directory under `test-results/`. It binds creative
+library paths to that private directory while retaining AI_Proxy transport settings;
+the caller must still freeze inputs and enforce a render budget. It does not call
+ComfyUI directly. prepare_issue_workspace prepares the existing inspection
 seed from an isolated worktree; it does not load the live library. Production uses
 Zet_Runtime/releases/<sha> with stable state and its existing authored-data roots.
 After the first explicit promotion, run_zet_runtime.bat starts that release. Merged

@@ -96,6 +96,7 @@ hashes before resuming. Configuration changes apply only to new submissions.
 ## 12. Production local renders use supported profiles
 
 - **Rule/why:** [require_qwen_profile](../zet/services/local_render_policy.py) accepts ComfyUI profiles with `model_family=qwen-image-2.1` and registered diffusion models. Historical Stable Matrix files are not production-policy exceptions. AGENTS says ComfyUI normally runs through AI Proxy; direct operation requires asking for ComfyUI Desktop.
+- **Worker boundary:** ordinary issue-worker loads of local/production configuration remain blocked. The explicit `ConfigService.load(..., worker_render_root=...)` path returns a Config with creative paths confined to an existing private `test-results/` directory; AI_Proxy queue, storage and preset settings remain available for a separately budgeted render harness. It does not authorize writing to the normal creative library.
 - **Implementation/impact:** [LocalRenderBackendService](../zet/services/local_render_backend_service.py), queue producers, ConfigService normalization, [Local_Render_Presets.json](../Config/Local_Render_Presets.json).
 - **Verify:** Inspect profile validation and producer/backend consumers. Fast tests use prepared images. The separately requested live check verifies configured Narrative final-assembly rendering; skipped or unrequested live checks establish no service/model availability.
 

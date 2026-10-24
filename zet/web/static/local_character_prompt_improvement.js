@@ -91,15 +91,20 @@
     if (analysis.status) host.append(el("h3", `Review · ${analysis.status}`), el("p", analysis.error || analysis.summary || "Analyzing…"));
     if (data.status === "REVIEW_READY") {
       for (const item of analysis.findings || []) {
-        const row = el("section"); row.className = "post-finding";
-        const label = el("label"); const check = el("input"); check.type = "checkbox"; check.value = item.id;
+        const row = el("section"); row.className = "template-correction post-finding";
+        const label = el("label"); label.className = "template-correction-choice";
+        const check = el("input"); check.type = "checkbox"; check.value = item.id;
+        check.setAttribute("aria-label", `Apply correction: ${item.rationale}`);
         check.checked = (analysis.selected_ids || []).includes(item.id);
         check.addEventListener("change", () => {
           const selected_ids = [...host.querySelectorAll("input:checked")].map(input => input.value);
           void request(endpoint("/decisions"), "POST", { selected_ids }).then(value => { data = value; renderDiff(); }).catch(error => message(error.message, true));
         });
-        label.append(check, document.createTextNode(`${item.rationale} · ${item.views.join(", ")}`));
-        row.append(label, el("p", "Before"), el("pre", item.before), el("p", "After"), el("pre", item.after)); host.append(row);
+        label.append(check);
+        const content = el("div"); content.className = "template-correction-content";
+        content.append(el("p", `${item.rationale} · ${item.views.join(", ")}`),
+          el("p", "Before"), el("pre", item.before), el("p", "After"), el("pre", item.after));
+        row.append(label, content); host.append(row);
       }
       if (!(analysis.findings || []).length) host.append(el("p", "No Character.md changes suggested. Add observations or direction and analyze again."));
     }

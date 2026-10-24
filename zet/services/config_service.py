@@ -214,7 +214,11 @@ class ConfigService:
         return tuple(sources)
 
     @staticmethod
-    def load(config_path: str | Path) -> Config:
+    def load(config_path: str | Path, *, worker_render_root: str | Path | None = None) -> Config:
+        """Load settings; worker render opt-in redirects creative paths to a private root.
+
+        The caller remains responsible for validating frozen asks and render budgets.
+        """
         path = Path(config_path)
         if not path.exists():
             raise ConfigServiceError(f"Config file not found: {path}")
@@ -283,7 +287,19 @@ class ConfigService:
                         authored = Path(ConfigService._normalize_path_value(authored_path)).resolve()
                         if state_root == authored or authored in state_root.parents:
                             raise ConfigServiceError("Runtime/task state must be outside the creative library and queue.")
-            if os.environ.get("ZET_WORKER_MODE") == "1" and role != "development":
+            render_root = None
+            if worker_render_root is not None:
+                checkout = Path(__file__).resolve().parents[2]
+                private_root = (checkout / "test-results").resolve()
+                render_root = Path(worker_render_root).resolve()
+                if (os.environ.get("ZET_WORKER_MODE") != "1" or role != "local"
+                        or path.resolve() != checkout / "config.toml"
+                        or not render_root.is_dir() or not render_root.is_relative_to(private_root)
+                        or render_root == private_root):
+                    raise ConfigServiceError(
+                        "Worker render access requires the local config and an existing private test-results directory."
+                    )
+            if os.environ.get("ZET_WORKER_MODE") == "1" and role != "development" and render_root is None:
                 raise ConfigServiceError("Issue workers may load only a development fixture configuration, never production config.toml.")
             if role == "development":
                 fixture_root = path.resolve().parent
@@ -293,11 +309,15 @@ class ConfigService:
                         raise ConfigServiceError("Development library and queue must be inside the fixture config directory.")
                 if ConfigService._scene_candidate_sources(payload):
                     raise ConfigServiceError("Development fixtures cannot attach external candidate source documents.")
+            creative_root = str(render_root) if render_root else library_base
             config = Config(
-                base_library_path=library_base,
-                base_character_path=ConfigService._resolve_base_folder(library_base, base_folders["BaseCharacterPath"]),
-                base_asset_path=ConfigService._resolve_base_folder(library_base, base_folders["BaseAssetPath"]),
-                base_pipeline_path=ConfigService._resolve_base_folder(library_base, base_folders["BasePipelinePath"]),
+                base_library_path=creative_root,
+                base_character_path=(str(render_root / "Characters") if render_root else
+                                     ConfigService._resolve_base_folder(library_base, base_folders["BaseCharacterPath"])),
+                base_asset_path=(str(render_root / "Assets") if render_root else
+                                 ConfigService._resolve_base_folder(library_base, base_folders["BaseAssetPath"])),
+                base_pipeline_path=(str(render_root / "PipelineCandidates") if render_root else
+                                    ConfigService._resolve_base_folder(library_base, base_folders["BasePipelinePath"])),
                 base_ai_queue_path=ConfigService._normalize_path_value(base_folders["BaseAIQueuePath"]),
                 prompt_condense_enabled=bool(prompt_condense.get("Enabled", False)),
                 prompt_condense_model=str(
@@ -350,7 +370,7 @@ class ConfigService:
                     ai_prompt_analysis.get("InstructionsFile", "Config/AI_Prompt_Analysis_Instructions.md")
                 ),
                 ai_prompt_analysis_auto_queue_on_render=bool(ai_prompt_analysis.get("AutoQueueOnRender", False)),
-                scene_candidate_sources=ConfigService._scene_candidate_sources(payload),
+                scene_candidate_sources=() if render_root else ConfigService._scene_candidate_sources(payload),
                 github_repository=github_repository,
                 github_timeout_seconds=timeout,
                 task_state_path=ConfigService._normalize_path_value(github.get("StatePath", "")),
