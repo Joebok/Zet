@@ -627,7 +627,7 @@ def compile_costume_dressing_job(
         "VIEW_INSTRUCTION": view_instruction(body_view_data, "body", task, include_intro=True),
         "BACKGROUND_TREATMENT": load_background_treatment(project_root),
         "LOCAL_COSTUME_REFERENCE_GUIDANCE": (
-            "For non-FRONT views, Image 1 is the matching assembled character for this view. "
+            "Image 1 is the matching assembled character for this view. "
             + ("Image 2 is the selected FRONT costume image and guides costume appearance only. "
                if has_front_costume_reference else "")
             + "Preserve the requested view and the Image 1 pose, body, and framing."

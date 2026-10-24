@@ -51,6 +51,8 @@ Custom same-batch reference recipes preserve matching prerequisite inputs and re
 
 Use [shared templates/instructions](../../Shared_Library/Characters/_Shared/) and the authoritative parser for exact syntax. `ZET:VIEW_DOMAIN` chooses body or head context; `ZET:VIEW_DEFAULT` supplies visibility defaults; bullet view tags filter prose; `ZET:CANON_ONLY` and `ZET:SPATIAL` carry specialized semantics. Body and head can have independent orientations. `normalize_view` accepts supported aliases, while `resolve_anatomical_side` translates anatomical sides into screen/depth language for the requested view. Fixed spatial features require explicit visibility; unqualified left/right in spatial annotations can fail compilation.
 
+Costume reference prompts are compiled for a known body and head view. Put visibility choices in view-tagged source lines so the emitted prompt states important visible or hidden details directly. The Tsaeytte rear-view repair uses this pattern for the overskirt, jewelry, and near-side earring; the local costume orientation text fixes the rear-quarter face contour and hides the eye.
+
 Generation and analysis templates use `IMAGE_PROMPT_ONLY`/`ANALYSIS_PROMPT_ONLY` blocks; malformed/nested/unclosed variants fail. Consult the mode-filter implementation before changing local/traditional content. [View tagging specification](../../Docs-Joe/ZET_View_Conditioned_Template_Tagging_Spec.md) provides preserved design intent, but parser/tests own supported behavior.
 
 For local Head-Image, place view-specific image instructions such as

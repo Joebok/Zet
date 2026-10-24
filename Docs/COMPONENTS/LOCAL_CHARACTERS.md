@@ -98,6 +98,18 @@ Disposable Chromium checks covered all four pipelines' view order, control place
 readiness/polling/busy states, and preservation of unsaved observations. No maintained
 tests were added; live inference was not exercised.
 
+## Tsaeytte costume rear-view quality trial (2026-10-24)
+
+The [active repair plan](../../plans/active/tsaeytte-costume-fix.md) and its private
+evidence packet record matched-seed AI_Proxy renders against the accepted FRONT
+hem and Joe-approved corrected visual targets. The Tsaeytte costume source now
+states the rear hem relative to visible boot shafts and resolves view-specific
+garment and jewelry visibility before prompt emission. The shared costume template,
+compiler guidance, and rear-quarter costume orientation locks also use direct
+view-specific wording. Existing selected and locked images remain unchanged;
+the corrected visual targets are diagnostic inputs only. Image quality and
+promotion decisions remain in the active plan.
+
 ## Head rear-view quality pilot (2026-10-19)
 
 [Investigate_Head_Views.py](../../Scripts/Investigate_Head_Views.py) prepares a private

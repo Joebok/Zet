@@ -1,5 +1,22 @@
 # Local testing
 
+## Tsaeytte costume rear-view improvement (2026-10-24)
+
+`npm.cmd run test:e2e -- --grep character-to-costume` ran and passed all four
+approved fast scenarios in 38.8 seconds. A private text-only compile passed for
+all eight Tsaeytte Costume-Dressing views with the updated library source,
+template, orientation text, and compiler guidance. Its audit found no conditional
+visibility clauses in the emitted image prompts. Python syntax, JSON parsing,
+and `git diff --check` passed. The private evidence packet verified 44 frozen
+controls before source edits and all 41 unchanged controls afterward. Diagnostic
+AI_Proxy renders and Joe's visual review are recorded in the
+[active plan](../plans/active/tsaeytte-costume-fix.md); these checks do not
+constitute a selected or locked production image.
+The completed diagnostic screen used all 36 authorized renders (30 AI_Proxy,
+six imagegen). Two direct BACK renders of the updated compiled prompt still
+ended above the boot cuffs. The final BACK source clarification requiring full
+cuff coverage passed text compilation but has no live render check under this cap.
+
 ## Independent Head-Image Edit (2026-10-22)
 
 `npm.cmd run test:e2e` passed all four approved scenarios; the final run took
