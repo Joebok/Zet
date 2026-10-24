@@ -17,6 +17,8 @@ Requested head view: {{HEAD_VIEW_DISPLAY}}.
 # Preserve Contract
 
 {{CHATGPT_PRESERVE_CONTRACT}}
+
+<!-- ZET:PROMPT_PACKET {"version":1,"references":[{"id":"selected-front","role":"character_identity","label":"Selected FRONT from this Dressing batch","audience":"analysis","views":["BACK_LEFT_3_4","BACK_RIGHT_3_4","BACK"],"source":{"kind":"batch_view","view":"FRONT","state":"selected"}}]} -->
 <!-- ZET:END IMAGE_PROMPT_ONLY -->
 
 <!-- ZET:BEGIN ANALYSIS_PROMPT_ONLY -->

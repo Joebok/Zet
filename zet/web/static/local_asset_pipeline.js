@@ -741,6 +741,9 @@
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.status === "FAILED" || item.human_review?.decision === "reject"), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
       addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
+      if (["costume-dressing", "head-image-edit"].includes(state.pipeline)) {
+        addButton(viewActions, "Prompt Generator Pilot", "prompt-generator", { disabled: !candidates.some((item) => item.image_path), view });
+      }
       const ai = run.view_reviews?.[view]?.ai_observations || {};
       summary.append(viewActions);
       details.append(summary);
@@ -1607,6 +1610,21 @@
         if (costume) params.set("costume", costume);
         location.href = `/local-character-prompt-improvement?${params}`;
       } finally { button.disabled = false; }
+      return;
+    }
+    if (action === "prompt-generator") {
+      button.disabled = true;
+      try {
+        const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
+        const query = costume ? `?costume=${encodeURIComponent(costume)}` : "";
+        const result = await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/prompt-generator${query}`,
+          { method: "POST", body: JSON.stringify({ view }) });
+        const params = new URLSearchParams({ universe_id: document.querySelector("#universe-select").value,
+          pipeline, run_id: run.run_id, session_id: result.session_id, view });
+        if (costume) params.set("costume", costume);
+        location.href = `/local-character-prompt-generator?${params}`;
+      } catch (error) { setStatus(error.message, true); }
+      finally { button.disabled = false; }
       return;
     }
     if (action === "stage-image-generation" || action === "stage-rotation") {

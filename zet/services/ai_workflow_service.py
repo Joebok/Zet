@@ -40,6 +40,7 @@ class AIWorkflowService:
         "template_revision": {"_propose_job", "_review_job"},
         "character_refinement": {"_analysis_job", "_render_job"},
         "post_render_prompt": {"_analysis_job", "_render_job"},
+        "prompt_generator": {"_draft_job", "_render_job"},
     }
 
     def __init__(self, app):
@@ -112,6 +113,10 @@ class AIWorkflowService:
             from pathlib import Path
             from zet.services.local_post_render_prompt_service import LocalPostRenderPromptService
             return LocalPostRenderPromptService(self.app, Path(__file__).resolve().parents[2])
+        if name == "prompt_generator":
+            from pathlib import Path
+            from zet.services.local_prompt_generator_service import LocalPromptGeneratorService
+            return LocalPromptGeneratorService(self.app, Path(__file__).resolve().parents[2])
         if name == "character_refinement":
             from pathlib import Path
             from zet.services.local_character_refinement_service import LocalCharacterRefinementService

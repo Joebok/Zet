@@ -201,13 +201,14 @@ class LocalAssetStoreService:
         self, character: str, phase: str, pipeline: str, view: str, *,
         candidate_id: str, image_path: str | Path, batch_id: str,
         dependencies: list[dict[str, str]] | None = None, qualifier: str = "",
+        prompt_generator: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Publish a reviewed batch selection only when its view can be locked."""
         self.assert_change_allowed(character, phase, pipeline, view, qualifier)
         self.record_selection(
             character, phase, pipeline, view, candidate_id=candidate_id,
             image_path=image_path, batch_id=batch_id,
-            dependencies=dependencies, qualifier=qualifier,
+            dependencies=dependencies, qualifier=qualifier, prompt_generator=prompt_generator,
         )
         return self.lock(character, phase, pipeline, view, qualifier)
 
@@ -223,7 +224,7 @@ class LocalAssetStoreService:
         self, character: str, phase: str, pipeline: str, view: str, *,
         candidate_id: str, image_path: str | Path, batch_id: str,
         dependencies: list[dict[str, str]] | None = None,
-        qualifier: str = "",
+        qualifier: str = "", prompt_generator: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         image = Path(image_path).resolve()
         if not image.is_file():
@@ -249,6 +250,7 @@ class LocalAssetStoreService:
                 "image_path": str(image), "image_sha256": digest,
                 "dependencies": list(dependencies or []),
                 "selected": True, "stale": False,
+                **({"prompt_generator": copy.deepcopy(prompt_generator)} if prompt_generator else {}),
                 "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             }
             assets[key] = record
@@ -345,6 +347,8 @@ class LocalAssetStoreService:
                                           or current.get("reference_key") or ""),
                         "updated_at": stamp, "locked_at": stamp,
                     }
+                    if item.get("prompt_generator"):
+                        record["prompt_generator"] = copy.deepcopy(item["prompt_generator"])
                     if current.get("image_sha256") != digest or current.get("candidate_id") != record["candidate_id"]:
                         record["lock_history"] = [*current.get("lock_history", []), {
                             "locked_at": stamp, "image_sha256": digest,

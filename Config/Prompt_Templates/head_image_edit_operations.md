@@ -24,14 +24,17 @@ Edit Image 1 by rotating the whole head 90 degrees toward screen-right into a tr
 
 <!-- ZET:BEGIN HEAD_EDIT_OPERATION_BACK_LEFT_3_4 -->
 Edit Image 1 to show the same head from behind and on its anatomical left side, a rear-left three-quarter view approximately 135 degrees from front. The near anatomical-left ear is on screen-left. Reproject the entire head, hair and attached ears together.
+<!-- ZET:PROMPT_PACKET {"version":1,"references":[{"id":"selected-front","role":"character_identity","label":"Selected FRONT from this Head-Image Edit batch","audience":"analysis","source":{"kind":"batch_view","view":"FRONT","state":"selected"}}]} -->
 <!-- ZET:END HEAD_EDIT_OPERATION_BACK_LEFT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_EDIT_OPERATION_BACK_RIGHT_3_4 -->
 Edit Image 1 to show the same head from behind and on its anatomical right side, a rear-right three-quarter view approximately 135 degrees from front. The near anatomical-right ear is on screen-right. Reproject the entire head, hair and attached ears together.
+<!-- ZET:PROMPT_PACKET {"version":1,"references":[{"id":"selected-front","role":"character_identity","label":"Selected FRONT from this Head-Image Edit batch","audience":"analysis","source":{"kind":"batch_view","view":"FRONT","state":"selected"}}]} -->
 <!-- ZET:END HEAD_EDIT_OPERATION_BACK_RIGHT_3_4 -->
 
 <!-- ZET:BEGIN HEAD_EDIT_OPERATION_BACK -->
 Edit Image 1 to show the same head directly from behind, rotated 180 degrees from front. Keep the back of the skull and nape square to the camera, with the face pointing straight away.
+<!-- ZET:PROMPT_PACKET {"version":1,"references":[{"id":"selected-front","role":"character_identity","label":"Selected FRONT from this Head-Image Edit batch","audience":"analysis","source":{"kind":"batch_view","view":"FRONT","state":"selected"}}]} -->
 <!-- ZET:END HEAD_EDIT_OPERATION_BACK -->
 
 <!-- ZET:BEGIN HEAD_EDIT_OPERATION_FRONT_SOURCE -->

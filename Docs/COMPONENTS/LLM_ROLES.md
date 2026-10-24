@@ -1,5 +1,9 @@
 # LLM roles and Qwen Image 2.1 guidance
 
+## Prompt Generator Pilot role (2026-10-24)
+
+`prompt_generator` is a vision-capable authoring role. It uses the configured Codex Luna default, accepts capability-checked local models, and exposes higher Codex tiers only after an explicit escalation request or repeated failed drafts. Costume and Head-Image Edit adapters are repo-owned modules. Packet preparation records integration and module hashes; before submission the service rejects a changed instruction package. The normal FileProxyClient boundary composes and freezes effective instructions with each native request. Codex submissions are gated by `CodexUsageService`'s configured 10% reserve; unavailable usage pauses while preserving the session. See [Prompt Generator Pilot packets](PROMPTS.md#prompt-generator-pilot-packets-2026-10-24).
+
 This document owns role classification, model inheritance and repo-managed skill composition. [AI jobs](AI_JOBS.md) owns transport and collection; [Prompts](PROMPTS.md) owns compilation and ordered image bindings.
 
 ## Ownership and inventory

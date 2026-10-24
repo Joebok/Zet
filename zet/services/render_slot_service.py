@@ -122,6 +122,8 @@ class CharacterRenderSlots:
 
     def prepare_input(self, run: dict, view: str, directory: Path, *, recompile: bool = False, output_dir: Path | None = None) -> dict:
         """Read the current view prompt, optionally compile it, then freeze this ask."""
+        packet_facts = {}
+        packet_declarations = []
         from zet.services.template_source_service import active_revision
         from zet.services.local_view_reference_service import custom_references, reference_recipes
         root = Path(run["root"])
@@ -163,6 +165,10 @@ class CharacterRenderSlots:
                 compiled = self.adapter._compile(root, run["character"], run["phase"], view, refs,
                     apply_phase_change=bool(run.get("apply_phase_change")), output_dir=output)
                 path = Path(compiled["final_prompt"])
+                packet_facts = compiled.get("packet_facts", {})
+                source_map_path = Path(str(compiled.get("source_map") or ""))
+                if source_map_path.is_file():
+                    packet_declarations = json.loads(source_map_path.read_text(encoding="utf-8")).get("prompt_packet_declarations", [])
             # Keep compiler-added images in the same order as the prompt citations,
             # including when reusing a saved prompt without recompilation.
             manifest = path.parent / "dependency_manifest.json"
@@ -181,6 +187,10 @@ class CharacterRenderSlots:
             if recompile or not path.is_file():
                 compiled = self.adapter._compile(run, view, refs, output_dir=output, use_reference_recipe=True)
                 path = Path(compiled["final_prompt"])
+                packet_facts = compiled.get("packet_facts", {})
+                source_map_path = Path(str(compiled.get("source_map") or ""))
+                if source_map_path.is_file():
+                    packet_declarations = json.loads(source_map_path.read_text(encoding="utf-8")).get("prompt_packet_declarations", [])
             # Compilation may package additional ordered costume references.
             manifest = output / "dependency_manifest.json"
             if manifest.is_file():
@@ -196,6 +206,10 @@ class CharacterRenderSlots:
             write_json_atomic(assembly_stamp, {"version": ASSEMBLY_INPUT_VERSION})
             write_json_atomic(stamp, {"revision_id": revision.get("revision_id", "")})
         saved = frozen_input(directory, prompt, refs, preset)
+        if packet_facts:
+            saved["compiler_facts"] = packet_facts
+        if packet_declarations:
+            saved["prompt_packet_declarations"] = packet_declarations
         saved["template_revision_id"] = revision.get("revision_id", "")
         saved["reference_recipe"] = recipe
         if pipeline == "head-image-edit":

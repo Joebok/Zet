@@ -725,6 +725,10 @@ def compile_costume_dressing_job(
         "body_view_token": body_view_token,
         "head_view_token": head_view_token,
         "reference_files": references,
+        "packet_facts": {"selected_sections": dict(selection.sections),
+                         "orientation": orientation_metadata,
+                         "universe_style": universe_style,
+                         "suppressed_sections": suppressed_sections},
     }
 
 

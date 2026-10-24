@@ -4,6 +4,10 @@ This document owns the unified creative AI request, collection, activity and mod
 selection interfaces introduced on 2026-10-16. [Queues](QUEUES.md) owns envelope
 transfer and retention; workflow components own interpretation of their outputs.
 
+## Prompt Generator Pilot
+
+Prompt drafting registers the `prompt_generator` continuation with `AIWorkflowService`; image trials use the existing image service and fixed request identities, retaining their results inside the owning batch session. Session budget reservations precede dispatch, while duplicate continuation recovery and cancellation are fenced by session/task identity. Codex usage is read before each cloud call; the displayed remaining quota is an admission check, not a per-job price. The browser requires explicit operator authorization before any live call. Pilot limits are 12 LLM calls/16 render submissions per case and 36/48 in aggregate. See [LLM roles](LLM_ROLES.md#prompt-generator-pilot-role-2026-10-24) and [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24).
+
 ## Ownership and entry points
 
 - [AIJobService](../../zet/services/ai_job_service.py) submits structured requests,

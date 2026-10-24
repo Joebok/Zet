@@ -31,6 +31,10 @@ def compose_request(staging: Path, config=None, *, skill_root: Path | None = Non
                   "context": context, "modules": [], "hashes": {}}
     if role.skill != "off" and role.status != "retired":
         modules = skill_modules(role, context.get("operation"))
+        if role.key == "prompt_generator":
+            pipeline = str(context.get("pipeline") or "")
+            if pipeline in {"costume-dressing", "head-image-edit"}:
+                modules.append(f"adapters/prompt_generator-{pipeline}.md")
         root = skill_root or SKILL_ROOT
         try:
             manifest_bytes = (root / "manifest.json").read_bytes()

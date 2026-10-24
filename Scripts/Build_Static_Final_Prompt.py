@@ -8,6 +8,7 @@ from Scripts.Compile_Character_Template import CompiledSelection, TemplateCompil
 from Scripts.Library_Paths import library_root
 from zet.services.auxiliary_resource_tags import AUXILIARY_RESOURCE_TAG_RE, auxiliary_resource_image_for_tag
 from Scripts.Auxiliary_Resource_Tags import IMAGE_TAG_RE, LIB_REFERENCE_TAG_RE, load_managed_image_lookup
+from zet.services.prompt_packet_metadata import extract_prompt_packet_metadata
 
 
 RAW_SECTION_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_{}]+)\}\}")
@@ -240,6 +241,7 @@ def render_static_prompt(
     required_section_names: list[str],
     view_token: str,
 ) -> str:
+    template_text, _ = extract_prompt_packet_metadata(template_text)
     legacy = LEGACY_SECTION_PLACEHOLDER_RE.search(template_text)
     if legacy:
         raise TemplateCompileError("LEGACY_SECTION_PLACEHOLDER", f"Legacy section placeholder is not supported: {legacy.group(0)}")
@@ -292,6 +294,7 @@ def render_static_prompt_with_source_map(
     final_prompt_name: str,
     image_inputs: list[dict] | None = None,
 ) -> tuple[str, dict]:
+    template_text, packet_declarations = extract_prompt_packet_metadata(template_text)
     legacy = LEGACY_SECTION_PLACEHOLDER_RE.search(template_text)
     if legacy:
         raise TemplateCompileError("LEGACY_SECTION_PLACEHOLDER", f"Legacy section placeholder is not supported: {legacy.group(0)}")
@@ -423,6 +426,7 @@ def render_static_prompt_with_source_map(
         "schema_version": 1,
         "final_prompt": final_prompt_name,
         "fragments": fragments,
+        **({"prompt_packet_declarations": packet_declarations} if packet_declarations else {}),
     }
 
 

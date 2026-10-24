@@ -1,5 +1,13 @@
 # Local character assets
 
+## Prompt Generator Pilot (2026-10-24)
+
+Costume-Dressing and Head-Image Edit expose a per-view **Prompt Generator Pilot** entry after an image exists. `LocalPromptGeneratorService` stores a universe/run-bound session below its owning batch. It compiles packet facts through the pipeline compiler, freezes source/image bytes and render settings, and records packet revisions, drafts, approvals, human criterion scores, seeds, request identities, results, retry history and reported model usage. Four fixed seeds are used for each baseline/trial round. The first prompt defaults to configured Codex Luna; capability-valid local models can be selected, and higher Codex models require a saved escalation request or repeated failed drafts.
+
+The page requires a separate explicit live-submission authorization before a draft call or render. It reserves budget before dispatch, enforces 12 LLM calls/16 render submissions per case and 36/48 across three cases, and resumes existing work by request identity. A failed render can be retried with its frozen input for one additional submission. Trial images remain private until Joe accepts an image and separately adopts it into an empty batch slot; adoption does not select or lock it. Locking a pilot candidate stores its prompt and compact reference manifest in catalog provenance during the existing publication transaction. Pilot guide checks use its captured manifest, while normal candidate publication keeps current guide checks. Saved reusable decisions remain separate review proposals and do not edit sources.
+
+The implementation adds no maintained scenario. The approved E2E suite protects existing behavior, while disposable contract checks cover packet validation and pilot caps; neither validates artistic quality. Live evaluation of Tsaeytte BACK_LEFT_3_4, the additional costume, and Head-Image Edit still requires fresh user authorization. See [ADR 0031](../DECISIONS/0031-prompt-generator-pilot.md).
+
 ## Independent Head-Image Edit (2026-10-22)
 
 **Head-Image Edit** (`head-image-edit`, page `local-head-image-edit`) runs beside

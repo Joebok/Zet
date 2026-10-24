@@ -537,6 +537,32 @@ class EntityLibraryService:
                             self._link_locked_character_in_transaction(
                                 connection, asset_id, str(row["character"]), str(row["phase"]), stamp,
                             )
+                        pilot = row.get("prompt_generator")
+                        if isinstance(pilot, dict):
+                            details = {
+                                "source": "prompt_generator_pilot",
+                                "session_id": str(pilot.get("session_id") or ""),
+                                "packet_hash": str(pilot.get("packet_hash") or ""),
+                                "round_id": str(pilot.get("round_id") or ""),
+                                "attempt_id": str(pilot.get("attempt_id") or ""),
+                                "prompt": str(pilot.get("prompt") or ""),
+                                "preset": str(pilot.get("preset") or ""),
+                                "seed": pilot.get("seed"),
+                                "model": str(pilot.get("model") or ""),
+                                "criteria": list(pilot.get("criteria") or []),
+                                "references": [{key: ref.get(key) for key in
+                                    ("id", "role", "label", "sha256", "render_index", "candidate_id", "view", "tag")}
+                                    for ref in pilot.get("references", [])],
+                            }
+                            prior = connection.execute(
+                                "SELECT 1 FROM provenance WHERE asset_id=? AND relation_type='generated_from' AND details_json LIKE ? LIMIT 1",
+                                (asset_id, f'%"attempt_id": "{details["attempt_id"]}"%'),
+                            ).fetchone()
+                            if not prior:
+                                connection.execute(
+                                    "INSERT INTO provenance(provenance_id,asset_id,relation_type,details_json,created_at) VALUES(?,?,?,?,?)",
+                                    (str(uuid4()), asset_id, "generated_from", json.dumps(details, ensure_ascii=False), stamp),
+                                )
                         asset_ids.append(asset_id)
                         logical_reference = None
                         if str(row["pipeline"]).casefold() == "costume-dressing" and row.get("costume") and row.get("view"):

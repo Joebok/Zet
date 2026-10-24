@@ -32,6 +32,10 @@ def create_local_character_asset_pipeline_router(
     def post_render_prompt_page():
         return (root / "zet/web/templates/local_character_prompt_improvement.html").read_text(encoding="utf-8")
 
+    @router.get("/local-character-prompt-generator", response_class=HTMLResponse)
+    def prompt_generator_page():
+        return (root / "zet/web/templates/local_character_prompt_generator.html").read_text(encoding="utf-8")
+
     def service(pipeline: str) -> LocalImagePipelineWorkflowService:
         return LocalImagePipelineWorkflowService(app_factory(), root, pipeline)
 
@@ -259,6 +263,28 @@ def create_local_character_asset_pipeline_router(
         @router.post(f"{prefix}/runs/{{run_id}}/post-render-prompt")
         def open_post_render_prompt(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "post_render_prompt_open", run_id=run_id, payload=payload, costume=costume))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/prompt-generator")
+        def open_prompt_generator(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "prompt_generator_open", run_id=run_id, payload=payload, costume=costume))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}")
+        def prompt_generator_detail(run_id: str, session_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "prompt_generator_detail", run_id=run_id, session_id=session_id, costume=costume), missing=404)
+
+        @router.post(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}/{{operation}}")
+        def prompt_generator_action(run_id: str, session_id: str, operation: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+            if operation not in {"draft", "approve", "edit", "edit-baseline", "render", "adopt", "retry", "edit-base", "cancel", "criteria", "review", "decision", "authorize", "escalate"}:
+                raise HTTPException(status_code=404, detail="Unknown prompt-generator action.")
+            return call(lambda: action(_pipeline, "prompt_generator_" + operation.replace("-", "_"), run_id=run_id,
+                                       session_id=session_id, payload=payload, costume=costume))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}/images/{{attempt_id}}")
+        def prompt_generator_image(run_id: str, session_id: str, attempt_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            from zet.services.local_prompt_generator_service import LocalPromptGeneratorService
+            path = call(lambda: LocalPromptGeneratorService(app_factory(), root).image_path(
+                _pipeline, run_id, costume, session_id, attempt_id), missing=404)
+            return FileResponse(path)
 
         @router.get(f"{prefix}/runs/{{run_id}}/post-render-prompt/{{session_id}}")
         def post_render_prompt_detail(run_id: str, session_id: str, costume: str = Query(""), _pipeline: str = pipeline):

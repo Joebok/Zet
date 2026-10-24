@@ -113,4 +113,7 @@ def compile_head_image_edit_job(job, project_root=PROJECT_ROOT, *, prompt_varian
     paths["image_review"].write_text("# Head-Image Edit review\n\n" + review, encoding="utf-8")
     return {"status": "READY_FOR_RENDER", "next_actor": "AI_AGENT", "view_token": view,
             "output_dir": str(output), "reference_files": refs, "recipe_version": RECIPE_VERSION,
+            "packet_facts": {"selected_sections": dict(selection.sections), "operation": operation,
+                             "input_guidance": guidance, "review_criteria": review,
+                             "style": values.get("HEAD_EDIT_STYLE", "")},
             **{key: str(value) for key, value in paths.items()}}

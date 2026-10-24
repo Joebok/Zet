@@ -17,6 +17,20 @@ class LocalHeadImageEditService(LocalHeadImageService):
     edit_preset = "comfyui-qwen-head-image-edit-v1"
     text_preset = "comfyui-qwen-head-image-edit-front-v1"
 
+    @staticmethod
+    def prompt_packet_constraints(run, view):
+        phrases = {
+            "BACK_LEFT_3_4": "rear-left three-quarter view approximately 135 degrees from front",
+            "BACK_RIGHT_3_4": "rear-right three-quarter view approximately 135 degrees from front",
+            "BACK": "directly from behind, rotated 180 degrees from front",
+            "LEFT_PROFILE": "true anatomical-left profile",
+            "RIGHT_PROFILE": "true anatomical-right profile",
+            "FRONT_LEFT_3_4": "anatomical left side in front three-quarter view",
+            "FRONT_RIGHT_3_4": "anatomical right side in front three-quarter view",
+        }
+        phrase = phrases.get(str(view).upper())
+        return [phrase] if phrase else []
+
     def _locked_phase_source(self, payload):
         source_phase = str(payload.get("front_source_phase") or "").strip()
         source_path = str(payload.get("front_source_path") or "").strip()
@@ -110,7 +124,8 @@ class LocalHeadImageEditService(LocalHeadImageService):
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalHeadImageError("Select an available image before locking.")
-        refs = (candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", [])
+        prompt_pilot = bool(candidate.get("prompt_generator"))
+        refs = [] if prompt_pilot else ((candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", []))
         dependencies = []
         for ref in refs:
             source_view = ref.get("view")
@@ -123,4 +138,5 @@ class LocalHeadImageEditService(LocalHeadImageService):
                     raise LocalHeadImageError("The selected source or guide changed; regenerate or refine before locking.")
                 dependencies.append({"key": self.asset_store.key(self.asset_pipeline, source_view), "image_sha256": self._hash(source)})
         return self.asset_store.lock_batch_selection(run["character"], run["phase"], self.asset_pipeline, view,
-            candidate_id=cid, image_path=image, batch_id=run_id, dependencies=dependencies)
+            candidate_id=cid, image_path=image, batch_id=run_id, dependencies=dependencies,
+            prompt_generator=candidate.get("prompt_generator"))

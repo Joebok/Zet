@@ -172,6 +172,10 @@ class PromptTemplateService:
             final_prompt_name=final_prompt_path.name,
             image_inputs=image_inputs,
         )
+        from zet.services.prompt_packet_metadata import extract_prompt_packet_metadata
+        prompt_text, packet_blocks = extract_prompt_packet_metadata(prompt_text)
+        if packet_blocks:
+            source_map["prompt_packet_declarations"] = packet_blocks
         if prompt_variant == "generation" and "ZET:SPATIAL" in prompt_text:
             raise TemplateCompileError("SPATIAL_ANNOTATION_LEAK", "A spatial template annotation reached the generation prompt.")
         final_prompt_path.write_text(prompt_text, encoding="utf-8")

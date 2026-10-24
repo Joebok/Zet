@@ -83,6 +83,18 @@ class LocalCharacterAssetPipelineService:
         self.asset_store = LocalAssetStoreService(self.library_root)
         self._runner_lock = threading.Lock()
 
+    @staticmethod
+    def prompt_packet_constraints(run: dict[str, Any], view: str) -> list[str]:
+        if view not in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
+            return []
+        return [
+            "Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume.",
+            "Preserve identity, anatomy, body proportions, pose, body and head orientation, camera, and crop from Image 1.",
+            "The costume conforms to the existing body; the body does not change to fit the costume.",
+            "Do not leave generic fitment clothing visible.",
+            "Do not add unlisted garments, jewelry, equipment, weapons, or props.",
+        ]
+
     def _ask_belongs_to_run(self, ask: dict[str, Any], run: dict[str, Any]) -> bool:
         configured = str(getattr(self.app.config, "universe_id", "Moonsea"))
         owner = str(ask.get("universe_id") or "").strip()
@@ -1300,6 +1312,7 @@ class LocalCharacterAssetPipelineService:
         image = Path(str((candidate or {}).get("image_path") or "")).resolve()
         if not candidate_id or not candidate or not image.is_file():
             raise LocalCharacterAssetPipelineError(f"Select a readable {pipeline} image for {view} before promoting its lineage.")
+        prompt_pilot = bool(candidate.get("prompt_generator"))
         # Locking captures the selected image; review freshness is tracked separately.
         digest = self._hash(image)
 
@@ -1315,7 +1328,7 @@ class LocalCharacterAssetPipelineService:
                 self._collect_promotion_source(run, view, source, records, visiting)
                 dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
 
-        if pipeline in {"Body-Reference", "Head-Image", "Head-Image-Edit"} and view != "FRONT":
+        if pipeline in {"Body-Reference", "Head-Image", "Head-Image-Edit"} and view != "FRONT" and not prompt_pilot:
             front_id = str(run.get("front_anchor") or "")
             if not front_id or str((run.get("selected_views") or {}).get("FRONT") or "") != front_id:
                 raise LocalCharacterAssetPipelineError(f"A selected FRONT {pipeline} anchor is required before promoting {view}.")
@@ -1324,7 +1337,7 @@ class LocalCharacterAssetPipelineService:
             dependencies.append({"key": self.asset_store.key(pipeline, "FRONT", qualifier),
                                  "image_sha256": self._hash(Path(str(front["image_path"])))})
 
-        if pipeline == "Head-Image-Edit":
+        if pipeline == "Head-Image-Edit" and not prompt_pilot:
             refs = (candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", [])
             for ref in refs:
                 source_view = ref.get("view")
@@ -1340,7 +1353,7 @@ class LocalCharacterAssetPipelineService:
                     self._collect_promotion_selection(run, pipeline, source_view, qualifier, records, visiting)
                     dependencies.append({"key": self.asset_store.key(pipeline, source_view), "image_sha256": ref.get("sha256", "")})
 
-        if pipeline in {"Character-Assembly", "Costume-Dressing"} and view != "FRONT" and self._requires_front_anchor(run):
+        if pipeline in {"Character-Assembly", "Costume-Dressing"} and view != "FRONT" and self._requires_front_anchor(run) and not prompt_pilot:
             front_id = str(run.get("front_anchor") or "")
             if not front_id:
                 raise LocalCharacterAssetPipelineError(f"A selected FRONT {pipeline} anchor is required before promotion of {view}.")
@@ -1354,7 +1367,8 @@ class LocalCharacterAssetPipelineService:
         records[key] = {"pipeline": pipeline, "view": view, "qualifier": qualifier,
                         "candidate_id": candidate_id, "batch_id": run["run_id"],
                         "batch_name": self._batch_label(run),
-                        "image_path": str(image), "image_sha256": digest, "dependencies": dependencies}
+                        "image_path": str(image), "image_sha256": digest, "dependencies": dependencies,
+                        **({"prompt_generator": deepcopy(candidate["prompt_generator"])} if prompt_pilot else {})}
         visiting.remove(marker)
 
     def _collect_promotion_source(self, owner: dict[str, Any], view: str, source: dict[str, Any],

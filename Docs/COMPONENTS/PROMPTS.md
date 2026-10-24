@@ -1,5 +1,11 @@
 # Prompt compilation and reference contracts
 
+## Prompt Generator Pilot packets (2026-10-24)
+
+`PromptPacket` and `LocalPromptGeneratorService` bind compiled Costume-Dressing or Head-Image Edit facts, criteria, source hashes, exact baseline text, instruction-module hashes, render settings, and separate ordered analysis/render image lists. Templates may include versioned `ZET:PROMPT_PACKET` declarations for explicit inventory, selected/locked batch, or named locked-pipeline sources. The compiler strips declaration comments from emitted render prose and keeps them in the source map; packet preparation resolves them, snapshots bytes, and fails on missing or ambiguous inputs. Existing templates without declarations keep their prior behavior.
+
+The page at `/local-character-prompt-generator` supports a four-seed baseline, editable packet-bound drafts, explicit review, four-seed trial rounds, prior-round image feedback, single-seed retry, acceptance, and separate adoption into an empty slot. Changing criteria or edit base creates a new packet revision. Live LLM/render work is unavailable until the operator explicitly authorizes a case. Per-case caps are 12 LLM calls and 16 render submissions; the universe pilot ledger caps three cases at 36/48. These checks are operational limits, not evidence of image quality. See [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24), [AI jobs](AI_JOBS.md#prompt-generator-pilot), and [ADR 0031](../DECISIONS/0031-prompt-generator-pilot.md).
+
 ## Independent Head-Image Edit authoring (2026-10-22)
 
 [Run_Head_Image_Edit_Jobs.py](../../Scripts/Run_Head_Image_Edit_Jobs.py) compiles

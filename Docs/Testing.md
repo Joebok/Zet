@@ -1,5 +1,11 @@
 # Local testing
 
+## Prompt Generator Pilot implementation (2026-10-24)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (39.5s) after integration. Changed Python files passed `py -3 -m py_compile`; both changed JavaScript files passed `node --check`; `git diff --check` passed. Disposable Python checks passed nested template-metadata parsing/stripping, packet round-trip/version rejection, packet ID/hash binding, accepted and rejected citation/constraint cases, deterministic image numbering, and temporary-ledger 36-call/48-render cap enforcement. The normal-library and live model/render services were not used by these checks. No permanent test or scenario was added.
+
+S2 verifies existing costume workflow compatibility, not the new page, prompt quality, render variance, or visual acceptance. No dedicated browser check has been run for the new prompt-generator controls. The three-case live pilot remains unperformed because fresh live budget authorization is required; software validation does not establish artistic success.
+
 ## Tsaeytte costume rear-view improvement (2026-10-24)
 
 `npm.cmd run test:e2e -- --grep character-to-costume` ran and passed all four
