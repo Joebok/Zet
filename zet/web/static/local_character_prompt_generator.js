@@ -78,6 +78,9 @@
     clearTimeout(saveTimer); saveTimer = setTimeout(() => { void flushReview(); }, 500);
   }
   async function flushReview(confirm = false, selected) {
+    if (confirm && reviewForm?.draft.criteria.some(c => !c.result || !c.chosen)) {
+      message("Choose Pass, Fail or Unclear for every criterion before confirming this image.", true); return false;
+    }
     clearTimeout(saveTimer);
     if (!reviewForm || (!dirty && !confirm)) return true;
     if (busy) return false;
@@ -156,7 +159,10 @@
     let draft = drafts.get(key);
     if (!draft) {
       const human = attempt.human_correction?.criteria_revision === round.criteria_revision ? attempt.human_correction : null;
-      draft = {criteria: (round.criteria_records || []).map(c => { const saved = human?.criteria?.find(s => s.id === c.id) || evaluation.criteria?.find(s => s.id === c.id); return {id:c.id, result:saved?.result || "unclear", explanation:human?.criteria?.find(s => s.id === c.id)?.explanation || ""}; }), notes:human?.notes || "", confirmed:human?.confirmed || false}; drafts.set(key, draft);
+      draft = {criteria: (round.criteria_records || []).map(c => {
+        const saved = human?.criteria?.find(s => s.id === c.id), chosen = saved?.chosen === true || human?.confirmed === true;
+        return {id:c.id, result:chosen ? saved?.result || "" : "", chosen:Boolean(chosen && saved?.result), explanation:saved?.explanation || ""};
+      }), notes:human?.notes || "", confirmed:human?.confirmed || false}; drafts.set(key, draft);
     }
     if (!readOnly) reviewForm = {draft, key, attemptId: attempt.id};
     for (const criterion of round.criteria_records || []) {
@@ -167,7 +173,9 @@
       else finding.textContent = "AI evaluation not yet available.";
       row.append(finding);
       if (readOnly) {
-        const conclusion = node("p"); conclusion.append(node("span", `You: ${correction.result.toUpperCase()}`, `pg-result-pill pg-result-${correction.result}`));
+        const conclusion = node("p"); conclusion.append(correction.result
+          ? node("span", `You: ${correction.result.toUpperCase()}`, `pg-result-pill pg-result-${correction.result}`)
+          : node("span", "Your conclusion: Not reviewed", "pg-muted"));
         if (correction.explanation) conclusion.append(node("span", ` ${correction.explanation}`)); row.append(conclusion);
       }
       else {
@@ -175,7 +183,7 @@
         for (const value of ["pass", "fail", "unclear"]) {
           const label = node("label", undefined, "pg-result-choice"), radio = node("input");
           radio.type = "radio"; radio.name = `pg-conclusion-${attempt.id}-${criterion.id}`; radio.value = value; radio.checked = correction.result === value;
-          radio.addEventListener("change", () => { if (radio.checked) { correction.result = value; editReview(); } });
+          radio.addEventListener("change", () => { if (radio.checked) { correction.result = value; correction.chosen = true; editReview(); } });
           label.append(radio, node("span", value[0].toUpperCase() + value.slice(1), `pg-result-pill pg-result-${value}`)); choices.append(label);
         }
         row.append(choices);

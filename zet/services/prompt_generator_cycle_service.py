@@ -337,14 +337,18 @@ class PromptGeneratorCycle:
             raise ValueError("Wait for this image’s AI evaluation before reviewing it.")
         criteria = payload.get("criteria") or []
         expected = {c["id"] for c in current["criteria_records"]}
-        if len(criteria) != len(expected) or {c.get("id") for c in criteria} != expected or any(c.get("result") not in {"pass", "fail", "unclear"} for c in criteria):
+        if len(criteria) != len(expected) or {c.get("id") for c in criteria} != expected or any(c.get("result") not in {"", "pass", "fail", "unclear"} for c in criteria):
             raise ValueError("Review every current criterion exactly once.")
+        confirmed = payload.get("confirm") is True
+        if confirmed and any(not c.get("result") or c.get("chosen") is not True for c in criteria):
+            raise ValueError("Choose Pass, Fail or Unclear for every criterion before confirming this image.")
+        criteria = [{**c, "result": c["result"] if c.get("chosen") is True else ""} for c in criteria]
         previous = attempt.get("human_correction") or {}
-        if previous.get("confirmed"):
+        if previous.get("confirmed") or any("chosen" not in c for c in previous.get("criteria", [])):
             attempt.setdefault("review_history", []).append(deepcopy(previous))
         attempt["human_correction"] = {"criteria": deepcopy(criteria), "notes": str(payload.get("notes") or ""),
-            "decision": "accept" if all(c["result"] == "pass" for c in criteria) else "reject",
-            "criteria_revision": current["criteria_revision"], "confirmed": payload.get("confirm") is True, "saved_at": stamp()}
+            "decision": "undecided" if any(not c["result"] for c in criteria) else ("accept" if all(c["result"] == "pass" for c in criteria) else "reject"),
+            "criteria_revision": current["criteria_revision"], "confirmed": confirmed, "saved_at": stamp()}
         record["status"] = "REVIEW_ROUND" if all(a.get("human_correction", {}).get("confirmed") for a in self._attempts(current)) else "REVIEW_IMAGES"
 
     def _start_draft(self, record):
