@@ -6,13 +6,8 @@ from typing import Any
 
 
 PROMPT_PACKET_VERSION = 1
-PROMPT_SESSION_VERSION = 1
-MAX_CASE_LLM_CALLS = 12
-MAX_CASE_RENDER_SUBMISSIONS = 16
-PILOT_RENDER_SUBMISSIONS = 48
-PILOT_LLM_CALLS = 36
+PROMPT_SESSION_VERSION = 2
 SEED_COUNT = 4
-TRIAL_ROUNDS = 3
 
 
 @dataclass(frozen=True)
@@ -108,15 +103,6 @@ class PromptDecision:
 
 
 @dataclass(frozen=True)
-class PromptBudget:
-    case_llm_calls: int = 0
-    case_render_submissions: int = 0
-    pilot_llm_calls: int = 0
-    pilot_render_submissions: int = 0
-    version: int = PROMPT_SESSION_VERSION
-
-
-@dataclass(frozen=True)
 class PromptSeedSet:
     seeds: tuple[int, ...]
     version: int = 1
@@ -131,6 +117,6 @@ class PromptGeneratorSession:
     view: str
     packet: PromptPacket
     seeds: PromptSeedSet
-    budget: PromptBudget
-    status: str = "READY"
+    status: str = "SETUP"
+    revision: int = 0
     version: int = PROMPT_SESSION_VERSION

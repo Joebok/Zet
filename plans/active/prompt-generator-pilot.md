@@ -1,5 +1,5 @@
 # Prompt Generator Dashboard Pilot
-Status: active
+Status: superseded by [Guided Prompt Generator Pilot](../completed/guided-prompt-generator.md). Historical implementation/validation below describes the original pilot, not the current workflow or authorization policy.
 Related specification: [Prompt Generator Pilot Overview](../../Docs-Joe/Prompt_Generator_Pilot_Overview.md)
 
 ## Goal

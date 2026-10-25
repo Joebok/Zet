@@ -3,43 +3,18 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Prompt Generator Pilot · Zet</title>
-  <link rel="stylesheet" href="/static/zet.css?v=20261024-prompt-generator">
-  <script defer src="/static/local_character_prompt_generator.js?v=20261024-prompt-generator"></script>
+  <link rel="stylesheet" href="/static/zet.css?v=20261024-guided-pilot">
+  <script defer src="/static/local_character_prompt_generator.js?v=20261024-guided-pilot"></script>
 </head>
-<body>
-  <main class="post-render-prompt">
-    <a id="pg-return" href="/">← Return to batch</a>
-    <h1>Prompt Generator Pilot</h1>
-    <p id="pg-context"></p>
-    <p id="pg-message" role="status" aria-live="polite"></p>
-    <section class="control-panel"><p>Live submissions are disabled until you authorize this case. Authorization allows up to 12 LLM calls and 16 render submissions for this case, within the three-case pilot totals of 36 calls and 48 renders.</p><button id="pg-authorize">Authorize live submissions for this case</button><span id="pg-authorized"></span></section>
-    <section class="control-panel">
-      <h2>Frozen packet</h2><div id="pg-packet"></div>
-      <label>Visual acceptance criteria<textarea id="pg-criteria" rows="4" placeholder="One concrete requirement per line"></textarea></label>
-      <button id="pg-save-criteria">Apply criteria and prepare a new packet revision</button>
-      <label>Manual baseline prompt<textarea id="pg-baseline-prompt" rows="12"></textarea></label>
-      <button id="pg-save-baseline-prompt">Save timed manual baseline prompt</button>
-      <label>Direction for the next prompt<textarea id="pg-direction" rows="4"></textarea></label>
-      <label>Trial round to include for visual feedback<select id="pg-feedback-round"><option value="">No prior trial images</option></select></label>
-      <label>Authoring model<select id="pg-model"></select></label>
-      <label>Escalation reason<textarea id="pg-escalation-reason" rows="2" placeholder="Repeated constraint failure, conflicting evidence, or your request"></textarea></label>
-      <button id="pg-escalate">Request higher Codex tier</button><span id="pg-escalation-state"></span>
-      <div class="button-row"><button id="pg-draft">Draft prompt</button><button id="pg-baseline">Render four-seed baseline</button></div>
-    </section>
-    <section class="control-panel">
-      <h2>Render prompt</h2>
-      <textarea id="pg-prompt" rows="16" aria-label="Render prompt"></textarea>
-      <div class="button-row"><button id="pg-save">Save edits</button><button id="pg-approve">Approve prompt</button><button id="pg-trial">Render four-seed trial</button></div>
-      <p id="pg-usage"></p>
-    </section>
-    <section class="control-panel"><h2>Baseline and trial rounds</h2><div id="pg-history"></div></section>
-    <section class="control-panel">
-      <h2>Reusable decision proposal</h2>
-      <p>Save a proposal for separate review. This does not change source files or templates.</p>
-      <label>Destination<select id="pg-decision-destination"><option value="costume_source">Costume source</option><option value="Character.md">Character.md</option><option value="pipeline_template">Pipeline template</option><option value="shared_template">Shared template</option></select></label>
-      <label>Proposed change<textarea id="pg-decision-text" rows="3"></textarea></label>
-      <button id="pg-decision-save">Save proposal for review</button><div id="pg-decisions"></div>
-    </section>
-  </main>
+<body class="pg-guided">
+  <header class="pg-header">
+    <div class="pg-heading"><a id="pg-return" href="/">← Return to batch</a><h1>Prompt Generator Pilot</h1><p id="pg-context"></p></div>
+    <div class="pg-run-actions"><a id="pg-current" href="#">Current stage</a><details id="pg-menu"><summary>Run &amp; history</summary><div id="pg-run-menu"></div></details></div>
+    <nav id="pg-steps" aria-label="Refinement cycle"></nav>
+    <div class="pg-status"><strong id="pg-stage">Loading run…</strong><span id="pg-next"></span></div>
+    <p id="pg-message" role="status" aria-live="polite">Loading saved progress…</p>
+  </header>
+  <main id="pg-workspace" aria-label="Pilot workspace"></main>
+  <dialog id="pg-zoom"><button id="pg-close-zoom" type="button">Close image</button><img id="pg-zoom-image" alt="Full-size pilot image"></dialog>
 </body>
 </html>

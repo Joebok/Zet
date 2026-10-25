@@ -2,7 +2,9 @@
 
 ## Prompt Generator Pilot role (2026-10-24)
 
-`prompt_generator` is a vision-capable authoring role. It uses the configured Codex Luna default, accepts capability-checked local models, and exposes higher Codex tiers only after an explicit escalation request or repeated failed drafts. Costume and Head-Image Edit adapters are repo-owned modules. Packet preparation records integration and module hashes; before submission the service rejects a changed instruction package. The normal FileProxyClient boundary composes and freezes effective instructions with each native request. Codex submissions are gated by `CodexUsageService`'s configured 10% reserve; unavailable usage pauses while preserving the session. See [Prompt Generator Pilot packets](PROMPTS.md#prompt-generator-pilot-packets-2026-10-24).
+The pilot registers three vision-capable roles: `prompt_generator_evaluation` scores visible criterion evidence without prompt guidance; `prompt_generator_direction` uses review guidance to propose evidence-backed directions; `prompt_generator` uses authoring guidance and the pipeline-specific adapter to write the final prompt. They inherit the configured Codex default or their existing role override; effective model assignments are frozen with the round. No pilot tier-escalation or quota-reserve gate remains.
+
+Packet preparation records authoring integration/module hashes and rejects a changed authoring package before drafting. The shared FileProxy boundary freezes effective instructions in each native request. Human corrections remain separate from model evaluation and authoritative for later directions and drafting. See [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24).
 
 This document owns role classification, model inheritance and repo-managed skill composition. [AI jobs](AI_JOBS.md) owns transport and collection; [Prompts](PROMPTS.md) owns compilation and ordered image bindings.
 
@@ -32,7 +34,7 @@ The native request and ask manifest retain `llm_guidance` with role, application
 
 Optional `[LLMRoles.Models]` TOML entries map registry role keys to models. Precedence is explicit task/session choice, role override, then the original model setting. Empty overrides inherit. Existing saved sessions without `model_explicit` retain their saved model as an explicit selection; new character/reconstruction records distinguish operator selections from inherited defaults. Shared character reviews retain their domain role even when using reconstruction's comparison engine.
 
-Config shows all 26 roles (21 active and five compatibility/retired), purpose, effective and inherited model, provider/capability requirements, and a Qwen Yes—authoring/fragments/review or No indicator. Instruction-file disclosures open existing Template Editor sources. Selectors use the shared capability-aware popup. Provider restrictions are validated locally; changed overrides also validate against the existing proxy-owned model catalog. Unknown saved model choices remain visible. Model defaults and compatibility settings remain separately editable; no normal-library migration or model-setting rewrite happens on load.
+Config shows every registered role, purpose, effective and inherited model, provider/capability requirements, and a Qwen Yes—authoring/fragments/review or No indicator. Instruction-file disclosures open existing Template Editor sources. Selectors use the shared capability-aware popup. Provider restrictions are validated locally; changed overrides also validate against the existing proxy-owned model catalog. Unknown saved model choices remain visible. Model defaults and compatibility settings remain separately editable; no normal-library migration or model-setting rewrite happens on load.
 
 Recipe Lab's CLI accepts `--config` and optional `--model`, binds the configured universe and common AI_Proxy paths, and resolves `recipe_qa` before requesting inference. It does not call a local model directly.
 

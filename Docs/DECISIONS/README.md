@@ -1,5 +1,8 @@
 # Architectural decision records
 
+[0032 - Guided prompt refinement with round authorization](0032-guided-prompt-generator.md)
+replaces the original pilot workflow and budget gates while retaining frozen inputs and separate publication.
+
 [0028 - Independent head edits and explicit Assembly sources](0028-independent-head-image-edit.md)
 records parallel head authoring/storage, FRONT sources, separate guided finishing
 and per-Assembly head-family selection.

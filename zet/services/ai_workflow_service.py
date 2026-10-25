@@ -40,7 +40,7 @@ class AIWorkflowService:
         "template_revision": {"_propose_job", "_review_job"},
         "character_refinement": {"_analysis_job", "_render_job"},
         "post_render_prompt": {"_analysis_job", "_render_job"},
-        "prompt_generator": {"_draft_job", "_render_job"},
+        "prompt_generator": {"_draft_job", "_render_job", "_evaluation_job", "_direction_job"},
     }
 
     def __init__(self, app):

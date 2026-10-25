@@ -1613,7 +1613,9 @@
       return;
     }
     if (action === "prompt-generator") {
+      const originalLabel = button.textContent;
       button.disabled = true;
+      button.textContent = "Opening pilot…";
       try {
         const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
         const query = costume ? `?costume=${encodeURIComponent(costume)}` : "";
@@ -1624,7 +1626,7 @@
         if (costume) params.set("costume", costume);
         location.href = `/local-character-prompt-generator?${params}`;
       } catch (error) { setStatus(error.message, true); }
-      finally { button.disabled = false; }
+      finally { button.disabled = false; button.textContent = originalLabel; }
       return;
     }
     if (action === "stage-image-generation" || action === "stage-rotation") {

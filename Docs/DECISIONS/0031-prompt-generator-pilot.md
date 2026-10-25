@@ -1,5 +1,5 @@
 # 0031 — Prompt Generator Pilot packets and budget boundaries
-Status: accepted locally; live artistic evaluation pending fresh authorization
+Status: workflow and spending policy superseded by [0032](0032-guided-prompt-generator.md); packet and publication boundaries retained
 Date: 2026-10-24
 
 ## Context

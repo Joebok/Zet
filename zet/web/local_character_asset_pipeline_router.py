@@ -274,10 +274,21 @@ def create_local_character_asset_pipeline_router(
 
         @router.post(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}/{{operation}}")
         def prompt_generator_action(run_id: str, session_id: str, operation: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
-            if operation not in {"draft", "approve", "edit", "edit-baseline", "render", "adopt", "retry", "edit-base", "cancel", "criteria", "review", "decision", "authorize", "escalate"}:
+            if operation not in {"start", "approve", "next-round", "evaluate", "directions", "revise", "retry-step", "finish", "scrap", "restart", "criteria", "review", "adopt"}:
                 raise HTTPException(status_code=404, detail="Unknown prompt-generator action.")
             return call(lambda: action(_pipeline, "prompt_generator_" + operation.replace("-", "_"), run_id=run_id,
                                        session_id=session_id, payload=payload, costume=costume))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}/prompts/{{target}}", response_class=HTMLResponse)
+        def prompt_generator_prompt(run_id: str, session_id: str, target: str, costume: str = Query(""), _pipeline: str = pipeline):
+            from html import escape
+            from zet.services.local_prompt_generator_service import LocalPromptGeneratorService
+            prompt = call(lambda: LocalPromptGeneratorService(app_factory(), root).prompt_text(
+                _pipeline, run_id, costume, session_id, target), missing=404)
+            return HTMLResponse("<!doctype html><html><head><meta charset='utf-8'><title>Pilot prompt · Zet</title>"
+                "<style>body{font:16px system-ui;margin:2rem;max-width:90rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}</style>"
+                "</head><body><h1>Read-only pilot prompt</h1><p>Frozen baseline, draft, or round text.</p><pre>"
+                + escape(prompt) + "</pre></body></html>")
 
         @router.get(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}/images/{{attempt_id}}")
         def prompt_generator_image(run_id: str, session_id: str, attempt_id: str, costume: str = Query(""), _pipeline: str = pipeline):

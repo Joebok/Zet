@@ -221,34 +221,12 @@ class LocalImagePipelineWorkflowService:
                 return sessions.open(self.pipeline, run_id, costume, payload)
             if name == "prompt_generator_detail":
                 return sessions.detail(self.pipeline, run_id, costume, session_id)
-            if name == "prompt_generator_draft":
-                return sessions.draft(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_approve":
-                return sessions.approve(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_authorize":
-                return sessions.authorize(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_escalate":
-                return sessions.request_escalation(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_edit":
-                return sessions.edit(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_edit_baseline":
-                return sessions.edit_baseline(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_render":
-                return sessions.render(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_adopt":
+            operation = name.removeprefix("prompt_generator_").replace("_", "-")
+            if operation in {"scrap", "restart"}:
+                return sessions.archive(self.pipeline, run_id, costume, session_id, payload, restart=operation == "restart")
+            if operation == "adopt":
                 return sessions.adopt(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_retry":
-                return sessions.retry(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_edit_base":
-                return sessions.set_edit_base(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_criteria":
-                return sessions.update_criteria(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_review":
-                return sessions.review_image(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_decision":
-                return sessions.save_decision(self.pipeline, run_id, costume, session_id, payload)
-            if name == "prompt_generator_cancel":
-                return sessions.cancel(self.pipeline, run_id, costume, session_id)
+            return sessions.transition(self.pipeline, run_id, costume, session_id, operation, payload)
         if name in {"select_view", "unselect_view"}:
             selected_id = candidate_id if name == "select_view" else ""
             method = self.adapter.select_view

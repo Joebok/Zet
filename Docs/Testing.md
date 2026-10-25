@@ -1,10 +1,14 @@
 # Local testing
 
-## Prompt Generator Pilot implementation (2026-10-24)
+## Guided Prompt Generator Pilot (2026-10-24)
 
-`npm.cmd run test:e2e` passed all four approved scenarios (39.5s) after integration. Changed Python files passed `py -3 -m py_compile`; both changed JavaScript files passed `node --check`; `git diff --check` passed. Disposable Python checks passed nested template-metadata parsing/stripping, packet round-trip/version rejection, packet ID/hash binding, accepted and rejected citation/constraint cases, deterministic image numbering, and temporary-ledger 36-call/48-render cap enforcement. The normal-library and live model/render services were not used by these checks. No permanent test or scenario was added.
+`npm.cmd run test:e2e` passed all four approved fast scenarios (39.6s) after the guided-cycle integration, using a verified Python 3 interpreter via `ZET_TEST_PYTHON`. The approved scenarios remain regression coverage rather than pilot-quality coverage. No permanent tests or scenarios were added. Changed Python compilation, both changed JavaScript syntax checks and `git diff --check` passed.
 
-S2 verifies existing costume workflow compatibility, not the new page, prompt quality, render variance, or visual acceptance. No dedicated browser check has been run for the new prompt-generator controls. The three-case live pilot remains unperformed because fresh live budget authorization is required; software validation does not establish artistic success.
+Disposable prepared-response checks exercised both pilot pipelines through five rounds, criteria reassessment without replacement rendering, separate saved human corrections, direction/draft/image/evaluation failures and selective retries, exact prompt history, stale revision rejection, archive/restart, adoption without selection/locking, and a deliberately blocked evaluator returning after archive. A read-only copy of the real Tsaeytte legacy session retained all four images/reviews/notes and its failed-draft diagnostic; the source file remained unchanged.
+
+Isolated Chromium exercised setup through baseline/evaluation/review, autosave and reload, immediate busy feedback, read-only prompt popup, criteria reassessment/history, next-round direction approval, draft rejection/regeneration/approval, the next image round and archive/restart. Screenshots were inspected at 1440×900, 1920×1080 and 390×844; image-left/review-right proportions and page-width containment were asserted. The new browser page had no uncaught JavaScript errors. Evidence is disposable under ignored `test-results/guided-pilot/`.
+
+These checks use temporary library records and prepared responses, not live AI/render execution. They do not establish artistic success or production deployment. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24) and [ADR 0032](DECISIONS/0032-guided-prompt-generator.md).
 
 ## Tsaeytte costume rear-view improvement (2026-10-24)
 

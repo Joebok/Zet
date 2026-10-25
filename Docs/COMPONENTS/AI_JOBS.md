@@ -6,7 +6,9 @@ transfer and retention; workflow components own interpretation of their outputs.
 
 ## Prompt Generator Pilot
 
-Prompt drafting registers the `prompt_generator` continuation with `AIWorkflowService`; image trials use the existing image service and fixed request identities, retaining their results inside the owning batch session. Session budget reservations precede dispatch, while duplicate continuation recovery and cancellation are fenced by session/task identity. Codex usage is read before each cloud call; the displayed remaining quota is an admission check, not a per-job price. The browser requires explicit operator authorization before any live call. Pilot limits are 12 LLM calls/16 render submissions per case and 36/48 in aggregate. See [LLM roles](LLM_ROLES.md#prompt-generator-pilot-role-2026-10-24) and [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24).
+`AIWorkflowService` registers `_render_job`, `_evaluation_job`, `_direction_job` and `_draft_job` for the pilot service. `PromptGeneratorCycle` persists stage-specific tasks and request identities; evaluations and direction/draft work use the shared native AI_Proxy JSON request path. Image rounds use the existing image service with frozen bindings, settings and four fixed seeds. Recovered continuations reuse identities; explicit retries preserve completed work and create fresh failed-step identities. Session/task checks fence late collection after archive.
+
+Starting the baseline or approving the next round authorizes its associated AI work. Direction approval gates drafting; exact draft approval gates rendering, followed by evaluations. No pilot budget ledger admission, call/render/case/round cap or Codex reserve check remains. Old ledger files are retained as historical data and are not consulted. Model assignments are captured with the authorized round. See [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24) and [LLM roles](LLM_ROLES.md#prompt-generator-pilot-role-2026-10-24).
 
 ## Ownership and entry points
 
