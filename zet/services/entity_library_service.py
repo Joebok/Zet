@@ -224,7 +224,16 @@ class EntityLibraryService:
                 where.append("EXISTS (SELECT 1 FROM asset_facets af JOIN facets f USING(facet_id) WHERE af.asset_id=a.asset_id AND " + expression + ")")
                 params.append(filters[field])
 
-        selected_reference = "COALESCE((SELECT lr.reference_key FROM logical_references lr WHERE lr.asset_id=a.asset_id AND lr.status='active' AND (lr.reference_key=a.preferred_reference_key OR a.preferred_reference_key IS NULL OR a.preferred_reference_key<>'') ORDER BY CASE WHEN lr.reference_key=a.preferred_reference_key THEN 0 ELSE 1 END,lr.reference_key LIMIT 1),'')"
+        # SQLite cannot resolve outer columns in a correlated subquery's ORDER BY.
+        selected_reference = (
+            "COALESCE((SELECT lr.reference_key FROM logical_references lr "
+            "WHERE lr.asset_id=a.asset_id AND lr.status='active' "
+            "AND lr.reference_key=a.preferred_reference_key),"
+            "(SELECT lr.reference_key FROM logical_references lr "
+            "WHERE lr.asset_id=a.asset_id AND lr.status='active' "
+            "AND (a.preferred_reference_key IS NULL OR a.preferred_reference_key<>'') "
+            "ORDER BY lr.reference_key LIMIT 1),'')"
+        )
         haystack = " || ' ' || ".join((
             "COALESCE(a.label,'')", "COALESCE(a.file_name,'')", "COALESCE(a.origin,'')", "COALESCE(a.notes,'')",
             selected_reference,
