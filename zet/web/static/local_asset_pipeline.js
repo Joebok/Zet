@@ -733,6 +733,9 @@
       addButton(viewActions, "Stage in Image Generator", "stage-image-generation", { disabled: Boolean(stageReason), view, title: stageReason });
       if (isCostume()) {
         const controls = run.slot_controls?.[view] || {};
+        const noCostumeRefReason = controls.no_costume_ref_reason || "";
+        addButton(viewActions, "Stage no Costume Ref", "stage-no-costume-ref", { disabled: Boolean(noCostumeRefReason), view,
+          title: noCostumeRefReason || "Freshly compiles this view using its matching Assembly image and applicable template references, without a prior costume view." });
         const reason = controls.rotation_reason || "";
         addButton(viewActions, "Stage Rotation", "stage-rotation", { disabled: Boolean(reason), view,
           title: reason || `Rotate selected ${controls.rotation_source_view || "dressed view"} into ${view}. Always compiles a fresh rotation prompt.` });
@@ -1664,8 +1667,9 @@
       finally { button.disabled = false; button.textContent = originalLabel; }
       return;
     }
-    if (action === "stage-image-generation" || action === "stage-rotation") {
+    if (action === "stage-image-generation" || action === "stage-rotation" || action === "stage-no-costume-ref") {
       const rotation = action === "stage-rotation";
+      const noCostumeRef = action === "stage-no-costume-ref";
       const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation;
       const params = new URLSearchParams();
       if (isCostume()) params.set("costume", selectedCostume());
@@ -1677,8 +1681,9 @@
       try {
         await window.zetStageCharacterViewInImageGenerator(
           `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/image-generation-stage?${params}`,
-          recompile, current, rotation);
-      } finally { button.disabled = Boolean(state.run?.slot_controls?.[view]?.[rotation ? "rotation_reason" : "stage_reason"]); }
+          recompile, current, rotation, noCostumeRef);
+      } finally { button.disabled = Boolean(state.run?.slot_controls?.[view]?.[
+        rotation ? "rotation_reason" : noCostumeRef ? "no_costume_ref_reason" : "stage_reason"]); }
       return;
     }
     if (action === "save-view-reference") {

@@ -276,6 +276,13 @@ allowing template requirements to correct source-image errors. This handoff uses
 the same generator replacement/settings/reload behavior above and never adopts
 results or submits inference. Rendered fidelity remains an operator assessment.
 
+Every Costume Dressing view also offers **Stage no Costume Ref**. It freshly
+compiles the requested view using its matching Character-Assembly snapshot and
+view-filtered template resources, without requiring or attaching a prior dressed
+view. It follows the batch's accepted template revision and stages through the
+same validated Image Generator handoff. This does not change batch prompts,
+reference recipes, selections, candidates, or locks.
+
 All four local character pages display eight stable slots per view. Initial FRONT/other-view counts are integers 1–8 (defaults 8/4); planned candidates awaiting an anchor are reserved, not empty. Add renders fills empty positions only. Generate/Regen use the current view prompt with fresh seeds; the view’s Recompile checkbox also applies to these actions and compiles current templates first. Already submitted asks retain their frozen inputs. Regen replaces an unselected candidate with a new identity; render Retry retains the failed render inputs/seed. Failed advisory review keeps its separate retry behavior.
 
 [CharacterRenderSlots](../../zet/services/render_slot_service.py) owns atomic allocation and protection behind [LocalImagePipelineWorkflowService](../../zet/services/local_image_workflow_service.py). Detail includes `slots_by_view`, `slot_controls`, candidate slot numbers and action reasons. Render actions persist `slot_render_ids` before scheduling; an independent per-run collector submits/reconciles them without taking the batch runner lock. Other slots remain usable while renders run. Clear detaches running candidates so late answers cannot fill replacement slots. Startup recovery reattaches this collector. Candidate definitions added after creation live separately from mutable review state so rerun resets retain them. Clear detaches active membership and retains provenance/artifacts. Legacy galleries over eight remain visible; clear surplus unprotected candidates to reach capacity.

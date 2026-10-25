@@ -2180,7 +2180,7 @@ async function clearImageGenerationResults() {
   await imageGenerationSlotAction("clear_all");
 }
 
-window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent, rotation = false) => {
+window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent, rotation = false, noCostumeRef = false) => {
   if (imageGenerationStagePending || imageGenerationPending) throw new Error("Wait for the current Image Generator action to finish.");
   imageGenerationStagePending = true;
   const universe = state.universeId, navigation = state.navigationRequest;
@@ -2194,7 +2194,7 @@ window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent,
         throw new Error("Unable to initialize Image Generator. Try again.");
       }
       const staged = await fetchJson(url, {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({recompile, rotation})});
+        body: JSON.stringify({recompile, rotation, no_costume_ref: noCostumeRef})});
       if (!current()) return false;
       ++imageGenerationContentVersion;
       imageGenerationReview.close();
@@ -2242,7 +2242,8 @@ window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent,
       await saveImageGenerationReferences();
       if (!current()) return false;
       await activatePage("image-generation", {skipAutosave: true});
-      showMessageElement(imageGenerationMessage, rotation ? "Costume rotation staged. Ready to generate." : "Character view staged. Ready to generate.", "info");
+      showMessageElement(imageGenerationMessage, noCostumeRef ? "Costume view staged without a prior costume reference. Ready to generate."
+        : rotation ? "Costume rotation staged. Ready to generate." : "Character view staged. Ready to generate.", "info");
     });
   } finally { imageGenerationStagePending = false; }
 };

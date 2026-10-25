@@ -23,8 +23,13 @@ class ImageGeneratorStagingService:
         self.workflow = workflow
         self.generator = generator
 
-    def stage(self, run_id: str, view: str, costume: str = "", *, recompile: bool = False, rotation: bool = False):
+    def stage(self, run_id: str, view: str, costume: str = "", *, recompile: bool = False,
+              rotation: bool = False, no_costume_ref: bool = False):
         workflow = self.workflow
+        if no_costume_ref and rotation:
+            raise ValueError("Stage no Costume Ref cannot be combined with Stage Rotation.")
+        if no_costume_ref and workflow.pipeline != "costume-dressing":
+            raise ValueError("Stage no Costume Ref is available only for Costume Dressing.")
         run = workflow.prompt_improvement.detail(run_id, costume)
         with file_lock(Path(run["root"]) / "state.lock"), TemporaryDirectory(prefix="zet-stage-view-") as directory:
             run = workflow.prompt_improvement.detail(run_id, costume)
@@ -34,6 +39,9 @@ class ImageGeneratorStagingService:
             if rotation:
                 from zet.services.costume_rotation_service import CostumeRotationService
                 saved = CostumeRotationService(workflow).prepare(run, view, Path(directory))
+            elif no_costume_ref:
+                from zet.services.costume_no_reference_service import CostumeNoReferenceService
+                saved = CostumeNoReferenceService().prepare(workflow, run, view, Path(directory))
             else:
                 reason = workflow.slots._prerequisite(run, view)
                 if reason:

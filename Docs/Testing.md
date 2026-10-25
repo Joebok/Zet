@@ -104,6 +104,19 @@ staging/compilation behavior, not live rendered fidelity. No production restart,
 deployment, live inference or modification of the existing generator session was
 performed. See the [completed plan](../plans/completed/costume-rotation-staging.md).
 
+## Costume Dressing no-reference staging (2026-10-25)
+
+`npm.cmd run test:e2e -- --grep "character-to-costume"` passed all four approved
+fast scenarios (38.7s). Disposable compiler checks exercised all eight view prompts
+with a prepared active template revision, confirming the matching Assembly image
+was attached and no previous costume view was added. A disposable BACK staging
+service check verified Image Generator reference packaging and rejection of
+conflicting modes before workspace replacement. The new browser click path and
+missing-snapshot failure path were not exercised in Chromium. Python AST, both
+changed JavaScript syntax checks, and `git diff --check` passed. No permanent tests,
+live AI calls, or normal-library writes were used. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md) and the
+[completed plan](../plans/completed/stage-no-costume-ref.md).
+
 ## Character review latency checks (2026-10-20)
 
 The approved four-scenario suite passed in 42.5s after the shared path-conversion

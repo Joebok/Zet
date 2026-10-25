@@ -101,6 +101,9 @@ class CharacterRenderSlots:
                 "legacy": len(slots) > SLOT_COUNT, "can_generate": not reason and len(slots) <= SLOT_COUNT and None in slots,
                 "stage_reason": stage_reason}
             if self.workflow.pipeline == "costume-dressing":
+                from zet.services.costume_no_reference_service import CostumeNoReferenceService
+                run["slot_controls"][view]["no_costume_ref_reason"] = CostumeNoReferenceService.availability_reason(
+                    self.workflow, run, view)
                 from zet.services.costume_rotation_service import rotation_source
                 try:
                     source = rotation_source(run, view)
