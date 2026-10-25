@@ -1,5 +1,12 @@
 # Capability code map
 
+Prompt Generator rotation (2026-10-25): `CostumeRotationService.prepare` retains
+compiler facts/declarations for both staging and Pilot. `LocalPromptGeneratorService`
+freezes mode-specific packets; `PromptGeneratorCycle` discovers/restarts one active
+session per view and mode. Batch entry owns the mode dialog; the Pilot page labels
+mode and history. `PilotAIReview` passes the fixed reference strategy to AI roles;
+adoption and entity-library catalog provenance retain mode and image roles.
+
 Code-review remediation (2026-10-22): `PathService.resolve_served_path` and
 `/api/file` own browser file confinement; `UniverseService` owns recoverable
 selection and cached descriptor discovery; image prompt routes resolve the

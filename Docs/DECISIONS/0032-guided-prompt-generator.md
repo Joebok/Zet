@@ -18,6 +18,14 @@ Scrapping retains read-only evidence and fences late tasks. Starting over freeze
 
 ## Rationale and consequences
 
+2026-10-25 extension: Costume Dressing supports independently resumable
+Doll-dressing and Rotate sessions per target view. Mode belongs to the frozen
+packet and its hash; restarting preserves it. Rotate reuses Stage Rotation's
+compiler and image bindings, with mode-specific constraints rather than normal
+dressing's source-angle lock. Existing packets remain Doll-dressing without hash
+migration. This allows comparison without archiving the other approach, while
+preserving the existing human gates and AI_Proxy execution boundary.
+
 The pilot now measures automated review and prompt writing while Joe controls each round and corrects findings. Removing caps reflects a manually supervised experiment, not a future autonomous workflow. History supports learning from failed runs. Archived requests may already be executing externally; fencing prevents their results from advancing discarded state but cannot undo execution.
 
 Prepared-response and isolated browser checks establish transitions, persistence and presentation, not live image quality. No new dependency or permanent scenario is introduced. Live evaluation and production deployment remain separate actions.

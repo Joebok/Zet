@@ -1,5 +1,30 @@
 # Local testing
 
+## Prompt Generator rotation modes (2026-10-25)
+
+`npm.cmd run test:e2e` passed all four approved scenarios twice (39.1s, final
+39.6s). Changed Python AST checks, both changed JavaScript syntax checks and
+`git diff --check` passed. Existing disposable guided-cycle checks also passed
+five rounds for Doll-dressing and Head-Image Edit, including reassessment,
+selective retries, stale revisions and late-result fencing.
+
+Disposable isolated checks passed all eight existing Stage Rotation handoffs and
+source/overlay guards, then compared a Rotate Pilot baseline with the staged prompt
+and ordered image hashes. Pilot checks covered compiler facts, reference roles,
+separate mode sessions, legacy file/hash preservation, invalid modes, frozen resume
+after recipe changes, failed/successful restart, concurrent opens, prepared baseline
+and trial cycles for both modes, replay, adoption provenance and corrupt-byte rejection.
+An actual rotation template declaration survived source-map extraction and froze
+analysis-only bytes without changing renderer bindings. Isolated catalog publication
+retained Rotate mode, edit-base/orientation roles and source-view identity.
+No live AI/render execution or normal-library writes were used.
+
+Isolated Chromium exercised the actual batch mode dialog with an unrendered target,
+Doll-dressing default, cancellation, source label, mode-specific resume, reload,
+history and Rotate restart. Screenshots were inspected at desktop and narrow widths;
+dialog containment passed and there were no uncaught page errors. Disposable evidence
+is under ignored `test-results/pilot-rotation/`. No permanent scenario was added.
+
 ## Guided Prompt Generator Pilot (2026-10-24)
 
 `npm.cmd run test:e2e` passed all four approved fast scenarios (39.6s) after the guided-cycle integration, using a verified Python 3 interpreter via `ZET_TEST_PYTHON`. The approved scenarios remain regression coverage rather than pilot-quality coverage. No permanent tests or scenarios were added. Changed Python compilation, both changed JavaScript syntax checks and `git diff --check` passed.

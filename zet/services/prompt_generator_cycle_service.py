@@ -29,6 +29,22 @@ class PromptGeneratorCycle:
     ACTIVE = {"RENDERING", "EVALUATING", "DIRECTIONS_GENERATING", "DRAFTING"}
 
     @staticmethod
+    def _rendering_mode(pipeline, value=None):
+        if pipeline == "costume-dressing":
+            mode = "doll-dressing" if value is None else value
+            if isinstance(mode, str) and mode in {"doll-dressing", "rotate"}:
+                return mode
+            raise ValueError("Choose Doll-dressing or Rotate for Costume Dressing.")
+        if value not in (None, ""):
+            raise ValueError("Rendering modes are available only for Costume Dressing.")
+        return ""
+
+    @staticmethod
+    def _record_mode(record):
+        return record.get("packet", {}).get("rendering_mode") or (
+            "doll-dressing" if record["pipeline"] == "costume-dressing" else "")
+
+    @staticmethod
     def _attempts(round_record):
         return list({item["seed"]: item for item in round_record.get("attempts", [])}.values())
 
@@ -77,16 +93,17 @@ class PromptGeneratorCycle:
         for session_id in session_ids:
             record = self._read(run, session_id)
             result.append({"session_id": record["session_id"], "view": record["view"],
+                           "rendering_mode": self._record_mode(record),
                            "status": record["status"], "created_at": record["created_at"]})
         return sorted(result, key=lambda item: item["created_at"])
 
     def _save_registry(self, run):
         write_json_atomic(self._registry_path(run), {"version": 1, "sessions": self._registry(run)})
 
-    def _new_record(self, workflow, run, pipeline, costume, view, criteria):
+    def _new_record(self, workflow, run, pipeline, costume, view, criteria, rendering_mode=""):
         session_id = uuid4().hex
         records = criterion_records(criteria)
-        packet = self._packet(workflow, run, view, self._session_path(run, session_id).parent, [c["text"] for c in records])
+        packet = self._packet(workflow, run, view, self._session_path(run, session_id).parent, [c["text"] for c in records], rendering_mode)
         return {"version": PROMPT_SESSION_VERSION, "revision": 0, "session_id": session_id,
                 "universe_id": self.app.universe_id, "pipeline": pipeline, "run_id": run["run_id"],
                 "costume": costume, "view": view, "created_at": stamp(), "status": "SETUP",
@@ -100,14 +117,16 @@ class PromptGeneratorCycle:
         view = str(payload.get("view") or "").upper()
         if view not in run.get("views", []):
             raise ValueError("Choose a valid pipeline view.")
+        rendering_mode = self._rendering_mode(pipeline, payload.get("rendering_mode"))
         path = self._registry_path(run)
         with file_lock(path.with_suffix(".lock")):
             existing = next((item for item in reversed(self._registry(run))
-                             if item["view"] == view and item["status"] not in self.TERMINAL), None)
+                             if item["view"] == view and item["rendering_mode"] == rendering_mode
+                             and item["status"] not in self.TERMINAL), None)
             if existing:
                 session_id = existing["session_id"]
             else:
-                record = self._new_record(workflow, run, pipeline, costume, view, payload.get("criteria") or [])
+                record = self._new_record(workflow, run, pipeline, costume, view, payload.get("criteria") or [], rendering_mode)
                 self._write(run, record)
                 self._save_registry(run)
                 session_id = record["session_id"]
@@ -118,6 +137,7 @@ class PromptGeneratorCycle:
         record = self._read(run, session_id)
         self._resume(run, record)
         public = deepcopy(record)
+        public["rendering_mode"] = self._record_mode(record)
         public["stage"] = record["status"]
         public["next_action"] = {
             "SETUP": "Set acceptance criteria, then start four baseline images.",
@@ -388,11 +408,13 @@ class PromptGeneratorCycle:
         with file_lock(registry_path.with_suffix(".lock")), file_lock(self._session_path(run, session_id).with_suffix(".lock")):
             record = self._checked(run, session_id, payload, set(self.ACTIVE) | {
                 "SETUP", "NEEDS_EVALUATION", "REVIEW_IMAGES", "REVIEW_ROUND", "DIRECTIONS_REVIEW", "DRAFT_REVIEW", "FAILED", *self.TERMINAL})
-            other = next((s for s in self._registry(run) if s["view"] == record["view"] and s["session_id"] != session_id and s["status"] not in self.TERMINAL), None)
+            other = next((s for s in self._registry(run) if s["view"] == record["view"]
+                          and s["rendering_mode"] == self._record_mode(record)
+                          and s["session_id"] != session_id and s["status"] not in self.TERMINAL), None)
             if restart and other:
-                raise ValueError("Another active run already exists for this view. Open it from run history.")
+                raise ValueError("Another active run already exists for this view and mode. Open it from run history.")
             fresh = self._new_record(workflow, run, pipeline, costume, record["view"],
-                [c["text"] for c in record["criteria_records"]]) if restart else None
+                [c["text"] for c in record["criteria_records"]], self._record_mode(record)) if restart else None
             if record["status"] not in self.TERMINAL:
                 record.update(status="SCRAPPED", archived_at=stamp(), pending=[])
                 self._write(run, record)

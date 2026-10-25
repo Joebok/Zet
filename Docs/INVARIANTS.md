@@ -193,6 +193,13 @@ Refinement compares a frozen working image with an operator-chosen subset of sel
 
 ## Prompt Generator Pilot snapshots and human gates (2026-10-24)
 
+Costume Dressing has one active Pilot per target view and rendering mode. Mode is
+fixed at packet creation and inherited on restart; legacy mode means Doll-dressing.
+Rotate always edits the frozen dressed source first, with the matching Assembly
+second for orientation, stance and framing only. It must not inherit normal
+dressing constraints that preserve the edit base's original angle. Resume uses the
+frozen packet even if the current source-selection recipe is no longer usable.
+
 A prepared packet binds universe, batch, target, compiled baseline, source/guidance hashes, frozen ordered analysis/render images and settings. Later source edits, selection or unlock do not rewrite those inputs. Missing/changed frozen bytes block replay. Citation numbering derives from frozen renderer bindings; valid tokens are normalized before required compiler clauses are checked. Criteria changes create packet/assessment revisions, retain prior evidence, revoke downstream unrendered approvals and require reassessment and renewed human confirmation.
 
 Starting a baseline or approving a new round authorizes its AI work; directions and exact generated draft still require human approval. There are no pilot spending/case/round caps or reserve gates. All four human reviews must be confirmed before another round is approved. Recovered submissions reuse identities; stale revisions, scrapped sessions and obsolete tasks cannot advance the cycle. Starting over creates a fresh setup without dispatch. Acceptance does not select an image; adoption, selection and lock remain separate. Published prompt/reference provenance is committed with the authoritative catalog lock. See [ADR 0032](DECISIONS/0032-guided-prompt-generator.md).

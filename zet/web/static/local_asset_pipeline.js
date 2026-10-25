@@ -742,7 +742,7 @@
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
       addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
       if (["costume-dressing", "head-image-edit"].includes(state.pipeline)) {
-        addButton(viewActions, "Prompt Generator Pilot", "prompt-generator", { disabled: !candidates.some((item) => item.image_path), view });
+        addButton(viewActions, "Prompt Generator Pilot", "prompt-generator", { disabled: !isCostume() && !candidates.some((item) => item.image_path), view });
       }
       const ai = run.view_reviews?.[view]?.ai_observations || {};
       summary.append(viewActions);
@@ -1592,6 +1592,38 @@
     $("review-dialog").showModal();
   }
 
+  function choosePilotMode(run, view) {
+    return new Promise((resolve) => {
+      const dialog = document.createElement("dialog");
+      dialog.className = "local-pipeline-pilot-mode";
+      dialog.setAttribute("aria-label", "Choose Pilot rendering mode");
+      const form = document.createElement("form"); form.method = "dialog";
+      const heading = document.createElement("h2"); heading.textContent = `Prompt Generator Pilot · ${view}`; form.append(heading);
+      for (const [value, title, explanation] of [
+        ["doll-dressing", "Doll-dressing", "Edit the Assembly image to dress it with the costume."],
+        ["rotate", "Rotate", "Rotate a selected dressed image, using Assembly for orientation, stance and framing only."],
+      ]) {
+        const label = document.createElement("label"), input = document.createElement("input"), text = document.createElement("span");
+        input.type = "radio"; input.name = "rendering_mode"; input.value = value; input.checked = value === "doll-dressing";
+        label.append(input, document.createTextNode(` ${title}`)); text.textContent = explanation; label.append(text); form.append(label);
+      }
+      const controls = run.slot_controls?.[view] || {}, source = document.createElement("p");
+      source.textContent = controls.rotation_source_view ? `Rotate source: selected ${controls.rotation_source_view}.`
+        : `New Rotate run: ${controls.rotation_reason || "Requires a selected dressed image in a different view and the matching Assembly snapshot."}`;
+      form.append(source);
+      const note = document.createElement("p"); note.textContent = "Open resumes this mode’s active run, or prepares a new setup. No AI work starts yet."; form.append(note);
+      for (const [value, title] of [["cancel", "Cancel"], ["open", "Open pilot"]]) {
+        const button = document.createElement("button"); button.type = "submit"; button.value = value; button.textContent = title; form.append(button);
+      }
+      dialog.append(form); document.body.append(dialog);
+      dialog.addEventListener("close", () => {
+        const selected = dialog.returnValue === "open" ? form.elements.rendering_mode.value : null;
+        dialog.remove(); resolve(selected);
+      }, { once: true });
+      dialog.showModal();
+    });
+  }
+
   async function handleAction(button) {
     const action = button.dataset.localAction;
     const view = button.dataset.view;
@@ -1613,14 +1645,17 @@
       return;
     }
     if (action === "prompt-generator") {
+      const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
+      const context = contextKey(), generation = state.generation;
+      const renderingMode = isCostume() ? await choosePilotMode(run, view) : "";
+      if (renderingMode === null || context !== contextKey() || generation !== state.generation || state.run?.run_id !== run.run_id) return;
       const originalLabel = button.textContent;
       button.disabled = true;
       button.textContent = "Opening pilot…";
       try {
-        const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
         const query = costume ? `?costume=${encodeURIComponent(costume)}` : "";
         const result = await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/prompt-generator${query}`,
-          { method: "POST", body: JSON.stringify({ view }) });
+          { method: "POST", body: JSON.stringify({ view, ...(renderingMode ? { rendering_mode: renderingMode } : {}) }) });
         const params = new URLSearchParams({ universe_id: document.querySelector("#universe-select").value,
           pipeline, run_id: run.run_id, session_id: result.session_id, view });
         if (costume) params.set("costume", costume);

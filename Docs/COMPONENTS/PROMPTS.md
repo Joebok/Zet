@@ -2,6 +2,15 @@
 
 ## Prompt Generator Pilot packets (2026-10-24)
 
+New Costume Dressing packets include `rendering_mode` (`doll-dressing` or `rotate`)
+in their hash, separately from the `edit`/`generate` operation. Rotate preparation
+uses `CostumeRotationService` and retains compiler facts and source-map declarations.
+Ordered renderer bindings start with the dressed edit base and Assembly orientation
+reference; applicable costume resources follow. Rotate supplies its own required
+edit-base/orientation clauses instead of the normal dressing constraints, which
+would incorrectly preserve the source angle. Evaluation, direction and drafting
+receive the fixed mode and reference roles. Legacy packet hashes remain unchanged.
+
 `PromptPacket` and `LocalPromptGeneratorService` bind compiled Costume-Dressing or Head-Image Edit facts, criteria, source hashes, exact baseline text, instruction-module hashes, render settings, and separate ordered analysis/render image lists. Versioned `ZET:PROMPT_PACKET` declarations resolve explicit inventory, selected/locked batch, or named locked-pipeline sources. The compiler removes declaration comments from render prose; packet preparation snapshots the resolved bytes and rejects missing or ambiguous inputs.
 
 The guided pilot freezes the current compiled baseline without a manual prompt-save step. Human-approved directions drive automatic prompt authoring. Prompts are read-only in separate tabs; draft approval binds exact text and packet revision before four-seed rendering. Citation tokens are resolved against frozen renderer bindings before required compiler clauses are checked. Invalid responses and diagnostics remain inspectable; no invalid draft can render. Criteria revisions invalidate downstream unrendered approvals and trigger reassessment. Workflow and authorization policy belong to [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24); see [ADR 0032](../DECISIONS/0032-guided-prompt-generator.md).

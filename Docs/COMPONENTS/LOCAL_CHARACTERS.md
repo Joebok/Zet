@@ -2,6 +2,17 @@
 
 ## Prompt Generator Pilot (2026-10-24)
 
+Costume Dressing entry offers **Doll-dressing** (the default: dress the Assembly
+edit base) and **Rotate** (turn a selected dressed edit base, using the matching
+Assembly snapshot only for orientation, stance and framing). Rotate reuses Stage
+Rotation's recipe/nearest-selected-view source rules and accepted template overlay.
+There is one active session per target view **and mode**; opening resumes that
+mode before checking fresh-creation prerequisites. The target needs no existing
+rendered candidate. Mode stays fixed through rounds and restart, appears in setup
+and history, and follows adoption into catalog provenance. Existing Costume Dressing
+sessions are Doll-dressing without rewriting historical packets. Head-Image Edit
+retains its existing flow. Source changes after setup do not replace frozen images.
+
 Costume-Dressing and Head-Image Edit expose a guided per-view pilot through `LocalPromptGeneratorService`. `PromptGeneratorCycle` owns stage transitions, session discovery, human gates and durable jobs; `PilotAIReview` owns structured evaluation, direction and drafting requests. Sessions freeze the current compiled prompt, references and render settings. A run reuses four fixed seeds across its baseline and subsequent rounds.
 
 The workspace presents setup → four baseline images → AI evaluations → human review → round approval → suggested directions → direction approval → generated draft → draft approval → four trial images and evaluations. Starting a baseline or approving a subsequent round authorizes its associated AI work; directions and drafts still require explicit human approval. There are no pilot budgets, case/round caps, tier escalation gates or quota-reserve checks. Existing configured role defaults select models. Provider/runtime failures remain visible and retryable.

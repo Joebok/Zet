@@ -286,7 +286,15 @@ Optional `[LLMRoles.Models]` entries override registry model defaults by role ke
 
 ## Prompt Generator Pilot records (2026-10-24)
 
-`<batch>/prompt_generator/<session-id>/session.json` is a version-2 universe/run-bound record. `PromptGeneratorCycle` owns stage/revision, per-round authorization/model snapshots, stable criterion IDs and assessment history, independent AI evaluations/human corrections, confirmed reviews, approved directions, generated drafts/failed responses/exact approvals, and four-seed render attempts. Version-1 packets, frozen image bytes and catalog provenance retain their formats. The batch-local `prompt_generator/sessions.json` registry tracks session identities; discovery also includes legacy sessions. There is one active run per target view. Scrapped sessions are read-only and excluded from active discovery.
+New packets add optional `rendering_mode`, also projected into session summaries
+and registry entries: `doll-dressing` or `rotate` for Costume Dressing, empty for
+Head-Image Edit. Missing legacy Costume Dressing mode means Doll-dressing;
+historical packet hashes and stored records are not rewritten on read. Active-run
+identity is target view plus mode. Restart preserves mode. Adopted candidate and
+catalog provenance retain mode, reference roles and source-view identity without
+a catalog schema change.
+
+`<batch>/prompt_generator/<session-id>/session.json` is a version-2 universe/run-bound record. `PromptGeneratorCycle` owns stage/revision, per-round authorization/model snapshots, stable criterion IDs and assessment history, independent AI evaluations/human corrections, confirmed reviews, approved directions, generated drafts/failed responses/exact approvals, and four-seed render attempts. Version-1 packets, frozen image bytes and catalog provenance retain their formats. The batch-local `prompt_generator/sessions.json` registry tracks session identities; discovery also includes legacy sessions. There is one active run per target view and rendering mode. Scrapped sessions are read-only and excluded from active discovery.
 
 Version-1 sessions are converted in memory on read and written as version 2 only on a user mutation. Existing images, scores, notes and failure diagnostics are preserved; identical displayed criterion sets collapse to one list with original records retained. Catch-up evaluation requires a user action. The former universe `_state/PromptGeneratorPilot/<universe>.json` budget ledger is neither consulted nor rewritten.
 

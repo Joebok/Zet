@@ -105,7 +105,8 @@
     return input;
   }
   function paintHeader() {
-    $("context").textContent = `${pipeline} · ${data.packet.view}${costume ? ` · ${costume}` : ""} · Run ${sessionId.slice(0, 8)} · ${data.history.length ? `Round ${currentRound().round}` : "Baseline setup"}`;
+    const renderingLabel = data.rendering_mode === "rotate" ? "Rotate" : data.rendering_mode === "doll-dressing" ? "Doll-dressing" : "";
+    $("context").textContent = `${pipeline}${renderingLabel ? ` · ${renderingLabel}` : ""} · ${data.packet.view}${costume ? ` · ${costume}` : ""} · Run ${sessionId.slice(0, 8)} · ${data.history.length ? `Round ${currentRound().round}` : "Baseline setup"}`;
     $("stage").textContent = labels[data.stage]; $("next").textContent = `Next: ${data.next_action}`;
     const steps = $("steps"); steps.replaceChildren();
     const stageIndex = {SETUP:0, NEEDS_EVALUATION:1, RENDERING:data.history.length < 2 ? 0 : 5, EVALUATING:1, REVIEW_IMAGES:2, REVIEW_ROUND:2, DIRECTIONS_GENERATING:3, DIRECTIONS_REVIEW:3, DRAFTING:4, DRAFT_REVIEW:4};
@@ -114,14 +115,18 @@
     for (const round of data.history) button(`${round.kind === "baseline" ? "Baseline" : `Round ${round.round}`} · view results`, () => navigate("history", round.id), menu);
     for (const item of data.sessions || []) {
       if (item.session_id === sessionId) continue;
-      const link = node("a", `Run ${item.session_id.slice(0, 8)} · ${labels[item.status] || item.status}`), url = new URL(location.href);
+      const renderingLabel = item.rendering_mode === "rotate" ? "Rotate · " : item.rendering_mode === "doll-dressing" ? "Doll-dressing · " : "";
+      const link = node("a", `${renderingLabel}Run ${item.session_id.slice(0, 8)} · ${labels[item.status] || item.status}`), url = new URL(location.href);
       url.searchParams.set("session_id", item.session_id); url.searchParams.set("stage", "current"); url.searchParams.delete("round"); link.href = url; menu.append(link);
     }
     if (!terminal.has(data.stage)) button("Scrap run", b => act("scrap", {}, b, "Run archived. All evidence has been retained."), menu, "pg-secondary");
     button("Scrap and start over", b => act("restart", {}, b, "Fresh setup prepared. No AI work has started."), menu, "pg-secondary");
   }
   function setup(host) {
-    const section = panel("Start with the current compiled prompt", "Zet has frozen the current prompt, reference images and render settings. Set concrete visual criteria before starting."), input = criteriaEditor(section, true);
+    const rotation = data.rendering_mode === "rotate";
+    const section = panel(rotation ? "Start with the compiled Rotate prompt" : "Start with the current compiled prompt", rotation
+      ? "Rotate the frozen dressed source into the Assembly orientation. Assembly controls orientation, stance and framing only. Set concrete visual criteria before starting."
+      : "Zet has frozen the current prompt, reference images and render settings. Set concrete visual criteria before starting."), input = criteriaEditor(section, true);
     section.append(node("p", "Start generates four baseline images and evaluates each against these criteria. Each later round requires your approval and reuses these four seeds."));
     promptLink(section, "baseline", "View compiled baseline prompt ↗");
     button("Start baseline — 4 images", b => act("start", {criteria: input.value.split(/\r?\n/)}, b, "Baseline approved. Rendering four images; AI evaluations follow."), section); host.append(section);

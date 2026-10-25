@@ -34,10 +34,16 @@ class PilotAIReview:
         round_record = next(r for r in record["history"] if r["id"] == task["round_id"])
         refs = packet.get("analysis_references", [])
         images = verified_images(refs)
-        reference_map = [{k: r.get(k) for k in ("id", "role", "label", "render_index", "audience")} for r in refs]
+        reference_map = [{k: r.get(k) for k in ("id", "role", "prompt_role", "view", "source_view", "label", "render_index", "audience")} for r in refs]
         context = {"target": {k: packet.get(k) for k in ("pipeline", "view", "costume", "facts", "required_constraints")},
                    "criteria": round_record["criteria_records"], "criteria_revision": round_record["criteria_revision"],
                    "references": reference_map, "rendered_prompt": round_record["prompt"]}
+        context["target"]["rendering_mode"] = self.service._record_mode(record)
+        if context["target"]["rendering_mode"] == "rotate":
+            context["reference_strategy"] = (
+                "Rotate the dressed edit base in Image 1 into the target view. Image 2 is the Assembly "
+                "orientation, stance and framing reference only; never dress or copy its fitment clothing. "
+                "Preserve the dressed source's identity and costume, subject to authored construction requirements.")
         if task["kind"] == "evaluation":
             attempt = next(a for a in round_record["attempts"] if a["id"] == task["attempt_id"])
             images += verified_images([attempt])

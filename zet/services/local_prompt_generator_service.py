@@ -74,11 +74,15 @@ class LocalPromptGeneratorService(PromptGeneratorCycle):
         AIWorkflowService(self.app).submit(method, [pipeline, run_id, costume, session_id, task],
             service="prompt_generator", key=f"promptgen_{session_id}_{task}", owner=owner)
 
-    def _packet(self, workflow, run, view, session_dir, criteria):
+    def _packet(self, workflow, run, view, session_dir, criteria, rendering_mode=""):
         session_dir.mkdir(parents=True, exist_ok=True)
         output = session_dir / "compiled"
         baseline_dir = session_dir / "baseline-input"
-        saved = workflow.slots.prepare_input(run, view, baseline_dir, recompile=True, output_dir=output)
+        if rendering_mode == "rotate":
+            from zet.services.costume_rotation_service import CostumeRotationService
+            saved = CostumeRotationService(workflow).prepare(run, view, baseline_dir)
+        else:
+            saved = workflow.slots.prepare_input(run, view, baseline_dir, recompile=True, output_dir=output)
         from zet.services.local_render_backend_service import LocalRenderBackendService
         preset_service = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config)
         saved["render_settings"] = deepcopy(saved.get("render_settings") or preset_service.preset(saved.get("preset", "")))
@@ -86,9 +90,10 @@ class LocalPromptGeneratorService(PromptGeneratorCycle):
         if not prompt:
             raise ValueError("The compiler returned an empty baseline prompt.")
         from zet.services.prompt_packet_metadata import extract_prompt_packet_metadata
-        prompt, declarations = extract_prompt_packet_metadata(prompt)
+        prompt, raw_prompt_declarations = extract_prompt_packet_metadata(prompt)
+        declarations = []
         declaration_ids = set()
-        raw_declarations = [*declarations, *saved.get("prompt_packet_declarations", [])]
+        raw_declarations = [*raw_prompt_declarations, *saved.get("prompt_packet_declarations", [])]
         for raw_declaration in raw_declarations:
             try:
                 declaration = json.loads(raw_declaration) if isinstance(raw_declaration, str) else raw_declaration
@@ -146,17 +151,18 @@ class LocalPromptGeneratorService(PromptGeneratorCycle):
             ref["render_index"] = index
         metadata = {"universe_id": self.app.universe_id, "pipeline": workflow.pipeline,
             "run_id": run["run_id"], "costume": str(run.get("costume") or ""), "view": view,
-            "operation": "edit" if render_refs else "generate", "prompt": prompt,
+            "operation": "edit" if render_refs else "generate", "rendering_mode": rendering_mode, "prompt": prompt,
             "baseline_prompt": prompt,
             "facts": deepcopy(saved.get("compiler_facts") or {}),
             "render_preset": saved.get("preset", ""),
             "render_settings": saved.get("render_settings", {}),
             "instruction_modules": self._instruction_modules(workflow.pipeline, "edit" if render_refs else "generate"),
-            "references": [{k: ref.get(k) for k in ("id", "role", "label", "audience", "sha256", "render_index")}
+            "references": [{k: ref.get(k) for k in ("id", "role", "prompt_role", "view", "source_view", "candidate_id", "label", "audience", "sha256", "render_index")}
                            for ref in render_refs],
             "analysis_references": [{k: ref.get(k) for k in ("id", "role", "label", "audience", "sha256", "render_index")}
                                     for ref in analysis_refs],
-            "required_constraints": self._required_constraints(workflow, run, view, prompt),
+            "required_constraints": (saved["required_constraints"] if "required_constraints" in saved
+                                     else self._required_constraints(workflow, run, view, prompt)),
             "sources": self._source_hashes(run, workflow, view), "criteria": list(criteria),
             "revision": 1, "version": PROMPT_PACKET_VERSION}
         packet_id = uuid4().hex
@@ -412,7 +418,7 @@ class LocalPromptGeneratorService(PromptGeneratorCycle):
             candidate = {"candidate_id": cid, "view": record["view"], "status": "COMPLETE",
                 "render_status": "COMPLETE", "image_path": str(destination), "image_sha256": attempt["sha256"],
                 "prompt": attempt["input"]["prompt"], "render_input": deepcopy(attempt["input"]),
-                "prompt_generator": {"session_id": session_id, "packet_hash": round_record["packet_hash"],
+                "prompt_generator": {"session_id": session_id, "rendering_mode": self._record_mode(record), "packet_hash": round_record["packet_hash"],
                                      "packet_id": round_record["packet_id"],
                                      "packet_revision": round_record["packet_revision"],
                                      "round_id": round_record["id"], "attempt_id": attempt["id"],
@@ -421,7 +427,7 @@ class LocalPromptGeneratorService(PromptGeneratorCycle):
                                      "preset": attempt["input"].get("preset", ""),
                                      "criteria": round_record.get("criteria", []),
                                      "seed": attempt["seed"], "model": round_record.get("model", ""),
-                                     "references": [{k: ref.get(k) for k in ("id", "role", "label", "sha256", "render_index", "candidate_id", "view", "tag")}
+                                     "references": [{k: ref.get(k) for k in ("id", "role", "prompt_role", "source_view", "label", "sha256", "render_index", "candidate_id", "view", "tag")}
                                                     for ref in attempt["input"].get("references", [])]},
                 "human_review": {"decision": "undecided"}}
             def update(state):

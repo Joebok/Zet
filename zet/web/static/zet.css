@@ -4582,6 +4582,12 @@ dialog {
   width: min(760px, calc(100vw - 32px));
 }
 
+.local-pipeline-pilot-mode { max-height: calc(100dvh - 32px); overflow: auto; }
+.local-pipeline-pilot-mode label { grid-template-columns: auto 1fr; align-items: center; margin: 16px 0; font-size: 14px; }
+.local-pipeline-pilot-mode label span { grid-column: 2; }
+.local-pipeline-pilot-mode input[type="radio"] { width: 18px; height: 18px; min-height: 18px; margin: 0 8px 0 0; }
+.local-pipeline-pilot-mode button { margin-right: 8px; }
+
 .wide-dialog {
   max-width: 1180px;
   width: min(1180px, calc(100vw - 32px));

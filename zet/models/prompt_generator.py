@@ -37,6 +37,7 @@ class PromptPacket:
     direction: str = ""
     prior_attempts: dict[str, Any] | None = None
     edit_base_attempt_id: str = ""
+    rendering_mode: str = ""
     revision: int = 1
     version: int = PROMPT_PACKET_VERSION
 

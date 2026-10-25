@@ -541,6 +541,7 @@ class EntityLibraryService:
                         if isinstance(pilot, dict):
                             details = {
                                 "source": "prompt_generator_pilot",
+                                "rendering_mode": str(pilot.get("rendering_mode") or ""),
                                 "session_id": str(pilot.get("session_id") or ""),
                                 "packet_hash": str(pilot.get("packet_hash") or ""),
                                 "round_id": str(pilot.get("round_id") or ""),
@@ -551,7 +552,7 @@ class EntityLibraryService:
                                 "model": str(pilot.get("model") or ""),
                                 "criteria": list(pilot.get("criteria") or []),
                                 "references": [{key: ref.get(key) for key in
-                                    ("id", "role", "label", "sha256", "render_index", "candidate_id", "view", "tag")}
+                                    ("id", "role", "prompt_role", "source_view", "label", "sha256", "render_index", "candidate_id", "view", "tag")}
                                     for ref in pilot.get("references", [])],
                             }
                             prior = connection.execute(

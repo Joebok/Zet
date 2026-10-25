@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from zet.services.local_view_reference_service import selected_reference
 
@@ -69,5 +70,14 @@ class CostumeRotationService:
         with template_sources(active_revision(Path(run["root"])).get("sources", [])):
             result = compile_costume_dressing_job(job, self.workflow.project_root,
                 pipeline_mode="local", rotation=True, universe_root=adapter.app.config.base_library_path)
-        return frozen_input(directory / "inputs", Path(result["final_prompt"]).read_text(encoding="utf-8"),
-                            result["reference_files"], adapter.definition["preset"])
+        saved = frozen_input(directory / "inputs", Path(result["final_prompt"]).read_text(encoding="utf-8"),
+                             result["reference_files"], adapter.definition["preset"])
+        saved["compiler_facts"] = {**result.get("packet_facts", {}),
+            "rotation": {"source_view": source["view"], "target_view": view,
+                         "source_candidate_id": source["candidate_id"]}}
+        saved["required_constraints"] = ["Edit Image 1.",
+            "Image 2 controls target orientation, stance and framing only."]
+        source_map = Path(result["final_prompt"]).parent / "Prompt_Source_Map.json"
+        if source_map.is_file():
+            saved["prompt_packet_declarations"] = json.loads(source_map.read_text(encoding="utf-8")).get("prompt_packet_declarations", [])
+        return saved
