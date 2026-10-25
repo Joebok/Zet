@@ -51,7 +51,7 @@
   function pending(on, selected, text) {
     busy = on; $("workspace").setAttribute("aria-busy", String(on));
     document.querySelectorAll("button").forEach(b => { b.disabled = on || b.dataset.unavailable === "true"; });
-    if (selected) document.querySelectorAll("textarea, select").forEach(el => { el.disabled = on; });
+    if (selected) document.querySelectorAll("textarea, select, input[type=radio]").forEach(el => { el.disabled = on; });
     if (on && selected) { selected.dataset.label = selected.textContent; selected.textContent = text; selected.setAttribute("aria-busy", "true"); }
     if (!on && selected) { selected.textContent = selected.dataset.label || selected.textContent; selected.removeAttribute("aria-busy"); }
   }
@@ -161,12 +161,24 @@
     if (!readOnly) reviewForm = {draft, key, attemptId: attempt.id};
     for (const criterion of round.criteria_records || []) {
       const row = node("section", undefined, "pg-criterion"), ai = evaluation.criteria?.find(s => s.id === criterion.id), correction = draft.criteria.find(c => c.id === criterion.id);
-      row.append(node("h3", criterion.text), node("p", ai ? `AI: ${ai.result.toUpperCase()} — ${ai.explanation}` : "AI evaluation not yet available.", "pg-ai-finding"));
-      if (readOnly) row.append(node("p", `Your conclusion: ${correction.result}${correction.explanation ? ` — ${correction.explanation}` : ""}`));
+      row.append(node("h3", criterion.text));
+      const finding = node("p", undefined, "pg-ai-finding");
+      if (ai) finding.append(node("span", `AI: ${ai.result.toUpperCase()}`, `pg-result-pill pg-result-${ai.result}`), node("span", ai.explanation));
+      else finding.textContent = "AI evaluation not yet available.";
+      row.append(finding);
+      if (readOnly) {
+        const conclusion = node("p"); conclusion.append(node("span", `You: ${correction.result.toUpperCase()}`, `pg-result-pill pg-result-${correction.result}`));
+        if (correction.explanation) conclusion.append(node("span", ` ${correction.explanation}`)); row.append(conclusion);
+      }
       else {
-        const label = node("label", "Your conclusion"), select = node("select");
-        for (const value of ["pass", "fail", "unclear"]) { const option = node("option", value[0].toUpperCase() + value.slice(1)); option.value = value; select.append(option); }
-        select.value = correction.result; select.addEventListener("change", () => { correction.result = select.value; editReview(); }); label.append(select); row.append(label);
+        const choices = node("fieldset", undefined, "pg-conclusion"); choices.setAttribute("aria-label", `Your conclusion: ${criterion.text}`); choices.append(node("legend", "Your conclusion"));
+        for (const value of ["pass", "fail", "unclear"]) {
+          const label = node("label", undefined, "pg-result-choice"), radio = node("input");
+          radio.type = "radio"; radio.name = `pg-conclusion-${attempt.id}-${criterion.id}`; radio.value = value; radio.checked = correction.result === value;
+          radio.addEventListener("change", () => { if (radio.checked) { correction.result = value; editReview(); } });
+          label.append(radio, node("span", value[0].toUpperCase() + value.slice(1), `pg-result-pill pg-result-${value}`)); choices.append(label);
+        }
+        row.append(choices);
         const why = node("textarea"); why.rows = 2; why.placeholder = "Correction or explanation (optional)"; why.setAttribute("aria-label", `Your explanation: ${criterion.text}`); why.value = correction.explanation;
         why.addEventListener("input", () => { correction.explanation = why.value; editReview(); }); row.append(why);
       } right.append(row);
