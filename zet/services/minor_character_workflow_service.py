@@ -177,7 +177,7 @@ class MinorCharacterWorkflow:
             context = ("Create one character reference in the requested art style, preserving the character's identity, "
                        "costume, equipment, and anatomical asymmetry. Use a neutral pose and plain neutral background. "
                        "Choose a natural angle that shows the design clearly. " + framing
-                       if view == "STYLE" else self.alignment_prompt(view) + " Keep one character in a neutral pose "
+                       if view == "STYLE" else self.alignment_prompt(view) + " Keep the character in a neutral pose "
                        "against a plain neutral background. " + framing)
             if base:
                 refs = [("Candidate to correct; preserve unaffected details", self._candidate_bytes(sid, base))]
