@@ -1,5 +1,11 @@
 # Capability code map
 
+AI Queue deletion (2026-10-26): `AIJobCleanupService.delete` commits the local
+deletion fence without collection locks; `cleanup_pending` runs from coordinator
+sweeps under existing locks and retries disk cleanup automatically. Query snapshots
+omit pending deletions, including when loading the saved startup snapshot. See
+[AI jobs](COMPONENTS/AI_JOBS.md#deleting-retained-failures).
+
 Costume modes and adjustments (2026-10-26): `CostumeRenderModeService` owns persisted settings, availability and shared preparation for generation/staging/previews. `CostumeAdjustmentCriteriaService` owns cross-batch view criteria; `costume_mode_conditioning_service` composes source-line view/mode scopes. `LocalCostumePostRenderService` specializes shared private trials with costume-only suggestions, four fixed seeds, advisory assessment and explicit master save. The workflow/router and existing batch/post-render controllers expose these behaviors. `AIWorkflowService` fences retired Pilot continuations; legacy adopted-image provenance readers remain. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#costume-dressing-modes-and-adjustments-2026-10-26).
 
 Code-review remediation (2026-10-22): `PathService.resolve_served_path` and

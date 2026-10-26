@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 import re
 import shutil
 import socket
-import time
 
 from zet.repositories.ai_job_repository import AIJobRepository, timestamp
 from zet.services.atomic_file_service import write_json_atomic
@@ -57,22 +57,39 @@ class AIJobCleanupService:
         self.paths.jobs.validate_id(job_id)
         if job_id.endswith(".") or re.fullmatch(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", job_id, re.IGNORECASE):
             raise ValueError("Invalid AI job identifier for deletion.")
-        deadline = time.monotonic() + 1.0
-        with file_lock(self.lifecycle.root / "Locks/coordinator.lock", timeout=1.0):
-            remaining = max(0.0, deadline - time.monotonic())
-            with file_lock(self.lifecycle.lock_path(job_id), timeout=remaining):
-                result = self._delete(job_id)
-                from zet.services.storage_health_service import remember_request
-                remember_request(self.paths.config, job_id, status="DELETED")
-                from zet.services.ai_queue_metadata_service import AIQueueMetadataService
-                AIQueueMetadataService.for_root(self.lifecycle.root.parent).invalidate()
-                from zet.services.ai_queue_query_service import AIQueueQueryService
-                AIQueueQueryService.mark_deleted(self.paths, job_id)
-                return result
+        # Commit the user's intent independently of background collection. The
+        # durable fence is authoritative even while payloads are still in use.
+        result = self._delete(job_id, cleanup=False)
+        from zet.services.ai_queue_query_service import AIQueueQueryService
+        AIQueueQueryService.mark_deleted(self.paths, job_id)
+        return result
 
-    def _delete(self, job_id):
+    def cleanup_pending(self):
+        """Retry disk cleanup during a sweep, with the coordinator lease held."""
+        for marker in (self.lifecycle.root / "DeletedJobs").glob("*.json"):
+            deletion = self._read(marker)
+            if not deletion or deletion.get("cleanup_complete"):
+                continue
+            job_id = deletion.get("ask_id", "")
+            try:
+                self.paths.jobs.validate_id(job_id)
+                if marker != self.repository.deletion_path(job_id):
+                    continue
+                with file_lock(self.lifecycle.lock_path(job_id), timeout=0):
+                    from zet.services.storage_health_service import remember_request
+                    remember_request(self.paths.config, job_id, status="DELETED")
+                    self._delete(job_id)
+                    self.repository.metadata.invalidate()
+            except TimeoutError:
+                continue
+            except (OSError, ValueError) as exc:
+                logging.getLogger(__name__).warning("Deferred AI job cleanup failed for %s: %s", job_id, exc)
+
+    def _delete(self, job_id, *, cleanup=True):
         marker = self.repository.deletion_path(job_id)
         previous = self._read(marker)
+        if previous and not cleanup:
+            return {"ask_id": job_id, "deleted": True}
         row = None
         if not previous:
             from zet.services.ai_job_service import AIJobService
@@ -139,6 +156,8 @@ class AIJobCleanupService:
                     "universe_id": (row or previous).get("universe_id", ""),
                     "deleted_at": previous.get("deleted_at") or timestamp(), "cleanup_complete": False}
         write_json_atomic(marker, deletion)
+        if not cleanup:
+            return {"ask_id": job_id, "deleted": True}
         try:
             for path, root in targets:
                 self._safe(path, root)

@@ -124,16 +124,6 @@ class AIQueueQueryService:
             rows[job_id] = {**rows.get(job_id, {}), **receipt, "status": normalized,
                            "harvested_at": receipt.get("harvested_at") or receipt.get("recorded_at", ""),
                            "details": receipt.get("error_message") or receipt.get("message", "")}
-        deleted_root = self.repository.root.parent / "DeletedJobs"
-        for path in deleted_root.glob("*.json"):
-            try:
-                deleted = self._read_metadata(path)
-                if not deleted.get("cleanup_complete"):
-                    rows[deleted["ask_id"]] = {**deleted, "status": "HARVEST_FAILED",
-                        "failure_stage": "deletion", "details": deleted.get("error") or "Cleanup interrupted; retry Delete job.",
-                        "created_at": deleted.get("deleted_at", "")}
-            except (OSError, ValueError, KeyError):
-                continue
         for row in rows.values():
             if row.get("status") == "RECONCILING" and row.get("ask_id"):
                 job_id = row["ask_id"]
@@ -274,7 +264,9 @@ class AIQueueQueryService:
             if snapshot is None:
                 try:
                     payload = json.loads(self.cache_path(self.paths.config).read_text(encoding="utf-8"))
-                    snapshot = {"items": payload.get("items", []), "updated_at": payload.get("updated_at", ""), "error": ""}
+                    snapshot = {"items": [row for row in payload.get("items", [])
+                                          if not self.repository.is_deleted(row.get("ask_id", ""))],
+                                "updated_at": payload.get("updated_at", ""), "error": ""}
                     self._snapshots[key] = snapshot
                 except (OSError, ValueError):
                     snapshot = {"items": [], "updated_at": "", "error": ""}

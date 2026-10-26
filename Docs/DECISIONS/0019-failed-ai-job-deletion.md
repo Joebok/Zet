@@ -2,6 +2,10 @@
 Status: accepted locally
 Date: 2026-10-16
 
+Updated by [ADR 0034](0034-immediate-ai-job-deletion.md): deletion now commits
+immediately and pending disk cleanup retries automatically without restoring rows.
+The synchronous/incomplete-row behavior below describes the original decision.
+
 ## Context
 AI Queue merges shared payloads, producer-local records and receipts. Users need
 to permanently remove retained harvest/recovery failures, including records whose

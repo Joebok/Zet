@@ -141,8 +141,8 @@ removed.
 `DELETE /api/ai/jobs/{job_id}`, through `ZetApp.delete_failed_ai_job`, delegates
 to [AIJobCleanupService](../../zet/services/ai_job_cleanup_service.py). AI Queue
 offers a confirmed **Delete job** action beside the status on `HARVEST_FAILED` and
-`RECOVERY_REQUIRED` rows. The service freshly inspects only the selected job under
-the coordinator and common job locks, with a shared one-second lock deadline. It
+`RECOVERY_REQUIRED` rows. The service freshly inspects only the selected job and
+commits a durable deletion marker without waiting for collection locks. It
 refuses Ask/Running work and explicit foreign-producer
 metadata, rejects conflicting job identities and linked/junction paths, and removes
 only known job-scoped transport/local-state files. Missing ownership metadata does
@@ -153,7 +153,11 @@ Cleanup includes Answer, Inbox, Debug, manual queue payloads, matching archived
 payloads, staging/partial transfers, Jobs, Routes, Receipts, StructuredResults and
 parent Followup reservations/queue markers. It never follows output destinations
 into the library or deletes domain workflow records, images or shared lock files.
-Busy files leave a visible `HARVEST_FAILED` deletion row with a retry action.
+The row disappears as soon as deletion is committed. Coordinator sweeps remove
+pending payloads under the coordinator and common job locks; busy locks/files
+are retried automatically, including after restart. Cleanup errors stay in the
+deletion marker for diagnostics and never restore the queue row. Disk cleanup
+requires the coordinator to be running and storage to be available.
 Shared `Superseded` markers are validated against `Zet_File_Proxy_State` under
 the shared queue; producer-local markers use the configured local lifecycle root.
 
@@ -167,7 +171,8 @@ recovery/deletion guidance; no request is automatically removed or replayed.
 A minimal hashed `DeletedJobs` marker is committed before payload removal. Queries,
 collection, adoption and publication fence the deleted identity, including late
 synced answers and deterministic continuation replay. Start a new workflow attempt
-to request replacement work. See [ADR 0019](../DECISIONS/0019-failed-ai-job-deletion.md).
+to request replacement work. See [ADR 0019](../DECISIONS/0019-failed-ai-job-deletion.md)
+and [ADR 0034](../DECISIONS/0034-immediate-ai-job-deletion.md).
 
 ## Model catalog and shared control
 

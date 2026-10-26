@@ -163,6 +163,8 @@ class AIJobCoordinator:
 
     def _sweep(self, *, retry_failed=False):
         from zet.services.storage_health_service import StorageUnavailable
+        from zet.services.ai_job_cleanup_service import AIJobCleanupService
+        AIJobCleanupService(self.app.ai_proxy_service.ai_proxy_path_service).cleanup_pending()
         lifecycle = self.app.ai_proxy_service.ai_proxy_path_service.lifecycle
         before = {row.get("ask_id") for _, row in lifecycle.iter_receipts() or ()}
         self.import_legacy_history()
