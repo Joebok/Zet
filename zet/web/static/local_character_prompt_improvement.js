@@ -5,9 +5,11 @@
   const sessionId = params.get("session_id") || "", costume = params.get("costume") || "";
   const universe = params.get("universe_id") || "", page = params.get("page") || "";
   const $ = id => document.getElementById(`post-${id}`);
-  let data, busy = false, refreshing = false, deciding = false;
+  let data, busy = false, refreshing = false, deciding = false, criteriaSaving = false, responseVersion = 0;
   const isCostume = pipeline === "costume-dressing";
   let criteriaDraft = null, criteriaRevision = 0, criteriaDirty = false;
+  let criteriaStatus = "", criteriaStatusError = false, criteriaInvalidIndex = null;
+  let suggestionStatus = "", suggestionStatusError = false;
   const sourceLabel = () => data?.source_label || "Character.md";
   const query = () => { const q = new URLSearchParams({ universe_id: universe }); if (costume) q.set("costume", costume); return q; };
   const base = `/api/local/${encodeURIComponent(pipeline)}/runs/${encodeURIComponent(runId)}`;
@@ -26,12 +28,20 @@
   }
   const el = (tag, value = "") => { const node = document.createElement(tag); node.textContent = value; return node; };
   function message(value, error = false) { $("message").textContent = value; $("message").classList.toggle("error", error); }
+  function inlineStatus(id, value, error = false) {
+    const target = $(id);
+    target.textContent = value;
+    target.classList.toggle("error", error);
+  }
   async function act(operation, body = {}) {
     if (busy) return;
     busy = true;
+    responseVersion += 1;
+    let succeeded = true;
     try { data = await request(endpoint(`/${operation}`), "POST", body); render(); }
-    catch (error) { message(error.message, true); }
-    finally { busy = false; }
+    catch (error) { succeeded = false; message(error.message, true); }
+    finally { busy = false; render(); }
+    return succeeded;
   }
   function cardImage(candidateId) { return `${base}/images/${encodeURIComponent(candidateId)}?${query()}`; }
   function renderViews() {
@@ -65,6 +75,7 @@
       const label = el("label", "Your observations"); label.append(notes); details.append(label);
       const save = el("button", "Save observations"); save.type = "button";
       save.addEventListener("click", async () => {
+        responseVersion += 1;
         try { await request(`${base}/views/${encodeURIComponent(view.view)}/observations?${query()}`, "PUT", { observations: notes.value });
           message(`Observations saved for ${view.view}.`); await refresh(); }
         catch (error) { message(error.message, true); }
@@ -76,6 +87,7 @@
       const run = el("button", ai.status === "COMPLETE" ? "Run AI Observations again" : "Run AI Observations"); run.type = "button";
       run.disabled = ["QUEUED", "RUNNING"].includes(ai.status) || !view.candidates.some(item => item.image_available);
       run.addEventListener("click", async () => {
+        responseVersion += 1;
         try { await request(`${base}/views/${encodeURIComponent(view.view)}/reanalyze?${query()}`, "POST", {});
           message(`AI Observations started for ${view.view}.`); await refresh(); }
         catch (error) { message(error.message, true); }
@@ -132,6 +144,7 @@
   async function saveDecisions() {
     if (deciding) return;
     deciding = true; $("trial").disabled = true;
+    responseVersion += 1;
     const rows = [...$("analysis").querySelectorAll("[data-finding-id]")];
     const selected = rows.filter(row => row.querySelector("[data-finding-choice]").checked);
     const payload = isCostume ? {expected_revision: data.revision, choices: selected.map(row => ({id: row.dataset.findingId,
@@ -152,30 +165,88 @@
     if (!isCostume || criteriaDirty) return;
     criteriaDraft = structuredClone(data.criteria.items); criteriaRevision = data.criteria.revision;
     drawCriteria();
+    inlineStatus("criteria-status", criteriaStatus, criteriaStatusError);
   }
   function drawCriteria() {
     const host = $("criteria"); host.replaceChildren();
-    for (const item of criteriaDraft) {
+    for (const [index, item] of criteriaDraft.entries()) {
       const row = el("div"); row.className = "post-criterion";
+      if (item.id) row.dataset.criterionId = item.id;
       const status = el("input"); status.type = "checkbox"; status.checked = item.status === "accomplished";
+      status.disabled = criteriaSaving;
       status.setAttribute("aria-label", `Accomplished: ${item.text || "new criterion"}`);
       status.addEventListener("change", () => { item.status = status.checked ? "accomplished" : "in_progress"; criteriaDirty = true; });
       const text = el("input"); text.type = "text"; text.maxLength = 4000; text.value = item.text;
       text.readOnly = item.status === "accomplished";
+      text.disabled = criteriaSaving;
+      if (criteriaInvalidIndex === index) text.setAttribute("aria-invalid", "true");
       text.setAttribute("aria-label", "Acceptance criterion");
-      text.addEventListener("input", () => { item.text = text.value; criteriaDirty = true; });
+      text.addEventListener("input", () => {
+        item.text = text.value; criteriaDirty = true;
+        criteriaInvalidIndex = null;
+        text.removeAttribute("aria-invalid");
+        if (criteriaStatusError) { criteriaStatus = ""; criteriaStatusError = false; inlineStatus("criteria-status", ""); }
+      });
       row.append(status, text); host.append(row);
     }
+    $("add-criterion").disabled = criteriaSaving;
+    $("save-criteria").disabled = criteriaSaving;
+    inlineStatus("criteria-status", criteriaStatus, criteriaStatusError);
   }
   async function saveCriteria() {
-    if (busy) return;
-    busy = true; $("save-criteria").disabled = true;
+    if (busy || criteriaSaving) {
+      criteriaStatus = "Wait for the current request to finish before saving criteria.";
+      criteriaStatusError = true;
+      inlineStatus("criteria-status", criteriaStatus, true);
+      return;
+    }
+    const rows = [...$("criteria").querySelectorAll(".post-criterion")];
+    const submitted = rows.map(row => ({row, id: row.dataset.criterionId || "",
+      text: row.querySelector('input[type="text"]').value, status: row.querySelector('input[type="checkbox"]').checked ? "accomplished" : "in_progress"}));
+    const items = submitted.filter(item => item.id || item.text.trim());
+    const invalid = items.find(item => !item.text.trim() || item.text.length > 4000);
+    if (!items.length || invalid) {
+      const row = invalid?.row || rows.find(item => !item.querySelector('input[type="text"]').value.trim());
+      criteriaInvalidIndex = rows.indexOf(row);
+      const field = row?.querySelector('input[type="text"]');
+      field?.setAttribute("aria-invalid", "true");
+      field?.focus();
+      criteriaStatus = invalid ? "Enter text for every saved criterion (maximum 4,000 characters)." : "Enter a criterion before saving.";
+      criteriaStatusError = true;
+      inlineStatus("criteria-status", criteriaStatus, true);
+      return;
+    }
+    criteriaInvalidIndex = null;
+    for (const item of submitted) item.row.querySelector('input[type="text"]').removeAttribute("aria-invalid");
+    const payloadRows = items.map(item => item.row);
+    const payload = {expected_revision: criteriaRevision,
+      items: items.map(({id, text, status}) => ({...(id ? {id} : {}), text: text.trim(), status}))};
+    criteriaSaving = true;
+    busy = true;
+    responseVersion += 1;
+    criteriaStatus = "Saving acceptance criteria…";
+    criteriaStatusError = false;
+    drawCriteria();
     try {
-      data.criteria = await request(`${base}/views/${encodeURIComponent(data.view)}/acceptance-criteria?${query()}`, "PUT",
-        {expected_revision: criteriaRevision, items: criteriaDraft});
+      data.criteria = await request(`${base}/views/${encodeURIComponent(data.view)}/acceptance-criteria?${query()}`, "PUT", payload);
       criteriaDirty = false; renderCriteria(); message("Acceptance criteria saved for this costume and view.");
-    } catch (error) { message(error.message, true); }
-    finally { busy = false; $("save-criteria").disabled = false; }
+      criteriaStatus = "Acceptance criteria saved for this costume and view.";
+      criteriaStatusError = false;
+    } catch (error) {
+      message(error.message, true);
+      const match = error.message.match(/criterion\s+(\d+)/i);
+      const badRow = match ? payloadRows[Number(match[1]) - 1] : null;
+      criteriaInvalidIndex = badRow ? Number(match[1]) - 1 : null;
+      const field = badRow?.querySelector('input[type="text"]');
+      field?.setAttribute("aria-invalid", "true");
+      criteriaStatus = error.message;
+      criteriaStatusError = true;
+    } finally {
+      criteriaSaving = false;
+      busy = false;
+      drawCriteria();
+      inlineStatus("criteria-status", criteriaStatus, criteriaStatusError);
+    }
   }
   function renderTrials() {
     const section = $("results"), host = $("trial-cards"), attempts = data.trial?.attempts || [];
@@ -266,8 +337,21 @@
       $("trial-explanation").textContent = "Four private target-view renders reuse this session’s seeds across rounds. They do not enter the batch gallery. Mark accomplished criteria yourself after reviewing the images.";
     }
     renderViews(); renderCriteria(); renderAnalysis(); renderDiff(); renderTrials();
+    if (data.analysis?.status === "FAILED") {
+      suggestionStatus = data.analysis.error || "Suggestion analysis failed.";
+      suggestionStatusError = true;
+    } else if (data.status === "ANALYZING" || ["QUEUED", "RUNNING"].includes(data.analysis?.status)) {
+      suggestionStatus = "Analyzing the selected image and unfinished criteria…";
+      suggestionStatusError = false;
+    } else if (data.status === "REVIEW_READY") {
+      const count = data.analysis?.findings?.length || 0;
+      suggestionStatus = count ? `${count} costume template suggestion${count === 1 ? "" : "s"} ready for review.`
+        : "No edits were suggested. Add observations or direction, then try again.";
+      suggestionStatusError = false;
+    }
+    inlineStatus("suggestion-status", suggestionStatus, suggestionStatusError);
     $("history-items").replaceChildren(...(data.history || []).map(item => el("p", `Round ${item.round} · ${item.trial_id}`)));
-    $("propose").disabled = !["OBSERVING", "TRIAL_READY", "REVIEW_READY", "FAILED"].includes(data.status);
+    $("propose").disabled = busy || !["OBSERVING", "TRIAL_READY", "REVIEW_READY", "FAILED"].includes(data.status);
     $("cancel").disabled = ["CANCELLED", "KEPT", "KEEPING"].includes(data.status);
     if (data.status === "KEPT") message(`${sourceLabel()} updated and available batch prompts recompiled. Return to the batch.`);
     else if (data.status === "KEEPING") message(`Finalizing template change: ${data.error || "in progress"}`, Boolean(data.error));
@@ -277,16 +361,64 @@
   async function refresh() {
     if (refreshing || busy || deciding) return;
     refreshing = true;
-    try { data = await request(endpoint()); render(); }
+    const requestedVersion = responseVersion;
+    try {
+      const latest = await request(endpoint());
+      if (requestedVersion === responseVersion) { data = latest; render(); }
+    }
     catch (error) { message(error.message, true); }
     finally { refreshing = false; }
   }
   $("return").href = returnUrl();
   $("propose").addEventListener("click", () => {
-    if (criteriaDirty) { message("Save acceptance criteria before analysis.", true); return; }
-    void act("propose", { direction: $("direction").value });
+    if (criteriaDirty) {
+      criteriaStatus = "Save acceptance criteria before suggesting costume template edits.";
+      criteriaStatusError = true;
+      inlineStatus("criteria-status", criteriaStatus, true);
+      $("save-criteria").focus();
+      $("criteria-section").scrollIntoView({behavior: "smooth", block: "center"});
+      return;
+    }
+    if (busy) {
+      suggestionStatus = "Wait for the current request to finish before suggesting edits.";
+      suggestionStatusError = true;
+      inlineStatus("suggestion-status", suggestionStatus, true);
+      return;
+    }
+    suggestionStatus = "Submitting costume template suggestion request…";
+    suggestionStatusError = false;
+    inlineStatus("suggestion-status", suggestionStatus);
+    $("propose").disabled = true;
+    void (async () => {
+      try {
+        const succeeded = await act("propose", {direction: $("direction").value});
+        if (!succeeded) {
+          suggestionStatus = $("message").textContent || "Suggestion request failed.";
+          suggestionStatusError = true;
+          return;
+        }
+        if (data?.status === "ANALYZING" || data?.analysis?.status === "QUEUED") {
+          suggestionStatus = "Analyzing the selected image and unfinished criteria…";
+          suggestionStatusError = false;
+        } else if (data?.analysis?.status === "FAILED") {
+          suggestionStatus = data.analysis.error || "Suggestion analysis failed.";
+          suggestionStatusError = true;
+        } else if (data?.status === "REVIEW_READY") {
+          const count = data.analysis?.findings?.length || 0;
+          suggestionStatus = count ? `${count} costume template suggestion${count === 1 ? "" : "s"} ready for review.`
+            : "No edits were suggested. Add observations or direction, then try again.";
+          suggestionStatusError = false;
+        }
+      } finally {
+        inlineStatus("suggestion-status", suggestionStatus, suggestionStatusError);
+        $("propose").disabled = busy || !["OBSERVING", "TRIAL_READY", "REVIEW_READY", "FAILED"].includes(data?.status);
+      }
+    })();
   });
-  $("add-criterion").addEventListener("click", () => { criteriaDraft.push({text: "", status: "in_progress"}); criteriaDirty = true; drawCriteria(); });
+  $("add-criterion").addEventListener("click", () => {
+    if (criteriaSaving) return;
+    criteriaDraft.push({text: "", status: "in_progress"}); criteriaDirty = true; criteriaStatus = ""; drawCriteria();
+  });
   $("save-criteria").addEventListener("click", () => void saveCriteria());
   $("refine").addEventListener("click", () => { $("direction").focus(); message("Add or revise observations, then suggest another round of edits."); });
   $("trial").addEventListener("click", () => {

@@ -35,23 +35,24 @@ class CostumeAdjustmentCriteriaService:
             if not isinstance(items, list) or len(items) > 100:
                 raise ValueError("Supply at most 100 acceptance criteria.")
             saved, identities = [], set()
-            for item in items:
+            for index, item in enumerate(items, 1):
+                label = f"Criterion {index}"
                 if not isinstance(item, dict):
-                    raise ValueError("Invalid acceptance criterion.")
+                    raise ValueError(f"{label} is invalid.")
                 identity = item.get("id") or uuid4().hex
                 text = item.get("text")
                 status = item.get("status", "in_progress")
                 if identity in identities or item.get("id") and identity not in previous:
-                    raise ValueError("Criterion identities must be unique existing IDs or omitted for new items.")
+                    raise ValueError(f"{label} must use a unique existing ID or omit its ID when new.")
                 if not isinstance(text, str) or not text.strip() or len(text) > 4000 or status not in {"in_progress", "accomplished"}:
-                    raise ValueError("Each criterion needs text and an in_progress or accomplished status.")
+                    raise ValueError(f"{label} needs text of at most 4,000 characters and an in_progress or accomplished status.")
                 old = previous.get(identity)
                 if old and old["status"] == "accomplished" and text != old["text"]:
-                    raise ValueError("Reopen an accomplished criterion before editing its text.")
+                    raise ValueError(f"{label} is accomplished; reopen it before editing its text.")
                 identities.add(identity)
                 saved.append({"id": identity, "text": text.strip(), "status": status})
             if set(previous) - identities:
-                raise ValueError("Keep existing criteria; change their status or text instead of removing them.")
+                raise ValueError("Keep every existing criterion; change its status or text instead of removing it.")
             record = read_library_json(path, pipeline_library_root_for_path(path)) if path.is_file() else {"version": 1, "views": {}}
             record["views"][view] = {"revision": current["revision"] + 1, "items": saved}
             write_library_json(path, record, pipeline_library_root_for_path(path))

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Post Render Adjustments · Zet</title>
-  <link rel="stylesheet" href="/static/zet.css?v=20261026-costume-adjustments">
-  <script defer src="/static/local_character_prompt_improvement.js?v=20261026-costume-adjustments"></script>
+  <link rel="stylesheet" href="/static/zet.css?v=20261026-post-render-feedback-2">
+  <script defer src="/static/local_character_prompt_improvement.js?v=20261026-post-render-feedback-2"></script>
 </head>
 <body>
   <main class="post-render-prompt">
@@ -18,11 +18,13 @@
       <p>Saved for this costume and view across batches and render modes. Checked items are accomplished and excluded from analysis. Reopen and save an accomplished item before editing its text.</p>
       <div id="post-criteria"></div>
       <div class="button-row"><button id="post-add-criterion" type="button">Add criterion</button><button id="post-save-criteria" type="button">Save acceptance criteria</button></div>
+      <p id="post-criteria-status" class="post-inline-status" role="status" aria-live="polite"></p>
     </section>
     <section class="control-panel" aria-label="Template suggestions">
       <h2 id="post-suggestion-title">Character.md suggestions</h2>
       <label>Further direction <textarea id="post-direction" rows="3" maxlength="20000"></textarea></label>
       <div class="button-row"><button id="post-propose" type="button">Suggest Character.md edits</button><button id="post-cancel" type="button">Cancel without template changes</button></div>
+      <p id="post-suggestion-status" class="post-inline-status" role="status" aria-live="polite"></p>
       <div id="post-analysis"></div>
       <div id="post-diff"></div>
       <button id="post-trial" type="button" hidden>Accept selected suggestions and render trials</button>

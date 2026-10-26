@@ -5844,6 +5844,10 @@ body .image-icon-action:not(.review-close):not(.fullscreen-image-close):not(.ful
 .local-stage-items { display: flex; flex-direction: column; gap: .4rem; padding: .6rem; border: 1px solid var(--border-color, #64748b); border-radius: .5rem; }
 .post-criterion { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .6rem; align-items: start; margin: .7rem 0; }
 .post-criterion input[type="text"] { width: 100%; min-width: 0; box-sizing: border-box; }
+.post-inline-status { min-height: 1.4em; margin: .45rem 0; font-weight: 600; }
+.post-inline-status:empty { display: none; }
+.post-inline-status.error { color: var(--error-color, #b42318); }
+.post-criterion [aria-invalid="true"] { outline: 2px solid var(--error-color, #b42318); outline-offset: 1px; }
 .post-scope { display: flex; flex-wrap: wrap; gap: .4rem .8rem; border: 0; margin: .5rem 0; padding: 0; }
 .post-scope label { display: inline-flex; align-items: center; gap: .25rem; font-size: .85rem; }
 .post-scope legend { font-weight: 600; }
