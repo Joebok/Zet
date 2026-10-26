@@ -5833,6 +5833,18 @@ body .image-icon-action:not(.review-close):not(.fullscreen-image-close):not(.ful
 .post-view-card { flex: 0 0 min(210px, 55vw); min-width: 0; padding: .55rem; border: 1px solid var(--border-color, #666); border-radius: .5rem; }
 .post-view-card img { display: block; width: 100%; height: 250px; object-fit: contain; }
 .post-view-card p { overflow-wrap: anywhere; }
+.post-trial-expand { display: block; width: 100%; padding: 0; background: transparent; cursor: zoom-in; }
+.post-prompt-link { background: transparent; color: var(--primary-color, #087f8c); text-decoration: underline; cursor: pointer; }
+.post-trial-viewer, .post-trial-prompt { box-sizing: border-box; border: 0; border-radius: 10px; width: min(1500px, 96vw); max-width: 96vw; max-height: 94vh; max-height: 94dvh; padding: 1rem; }
+.post-trial-viewer { height: 94vh; height: 94dvh; overflow: hidden; }
+.post-trial-viewer[open] { display: flex; flex-direction: column; gap: .5rem; }
+.post-trial-viewer::backdrop, .post-trial-prompt::backdrop { background: rgb(0 0 0 / 82%); }
+.post-viewer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; flex-shrink: 0; }
+.post-viewer-toolbar h2 { flex: 1 1 100%; margin: 0; font-size: 1.1rem; }
+.post-viewer-toolbar button { min-height: 44px; }
+#post-viewer-image { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+.post-trial-prompt { width: min(1000px, 96vw); overflow: auto; }
+.post-trial-prompt pre { white-space: pre-wrap; overflow-wrap: anywhere; color: inherit; }
 .post-render-prompt details { margin-top: .8rem; }
 .post-render-prompt textarea { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; }
 .costume-render-settings { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; margin: 1rem 0; }

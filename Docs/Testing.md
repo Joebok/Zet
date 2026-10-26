@@ -6,6 +6,12 @@
 
 ## Post-render criteria and suggestion feedback (2026-10-26)
 
+Trial-viewer follow-up: all four approved fast scenarios passed (41.1s). Disposable
+prepared-response Chromium checks passed image expansion, button/keyboard navigation,
+end boundaries, per-trial frozen prompt display, Escape/Close, thumbnail focus restoration,
+and 390px layout containment. The narrow screenshot was inspected. Python AST,
+JavaScript syntax and `git diff --check` passed; no permanent tests or live AI calls were added.
+
 `npm.cmd run test:e2e` passed all four approved fast scenarios (38.2s). Disposable service checks verified two-item persistence/reload, row-specific validation and atomic rejection. A prepared-response Chromium check verified blank-new-row omission, retained input and invalid-row marking after a server error, unsaved-criteria guidance, suggestion progress/empty/error states, and a delayed poll not overwriting a newer criteria save. Changed JavaScript syntax and `git diff --check` passed. No permanent test or dependency was added. No live inference or production-library write occurred.
 
 Ignored disposable checks under `test-results/costume-adjustments/` verified all supported view/mode compiles and ordered inputs; independent readiness; explicit-source blocking; view/mode line partitioning and production compiler annotation filtering/source maps; shared criteria/revisions; two four-seed rounds with stable seeds; render and assessment failure/selective retry; exact diff approval; costume-only master save/replay; retained earlier trial images; unchanged gallery counts; existing Assembly Character.md analysis; costume rename; staging alternatives and failed-stage workspace preservation; frozen slot/runner retries; circular lineage rejection; cancelled sessions; and retired continuation dispatch fencing.

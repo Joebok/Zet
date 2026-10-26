@@ -36,6 +36,13 @@ interaction; [narrative.js](../../zet/web/static/narrative.js) adapts shared sty
 to Narrative's independent records. Minor Characters retains its own comparison
 controller and selected-versus-preview distinction.
 
+Post-render trial thumbnails open a viewing-only dialog with Previous/Next buttons,
+left/right arrow keys, and Close/Escape. Navigation includes ready images in the
+current round and preserves the displayed trial while polling. Each trial card and
+the viewer offer a read-only generation prompt dialog, sourced from the frozen
+trial input exposed by `LocalPostRenderPromptService.detail`, rather than the
+current proposed template. Closing the image viewer restores thumbnail focus.
+
 ## Compact image cards and review (2026-10-20)
 
 Character view action rows retain the text button **Stage in Image Generator**,

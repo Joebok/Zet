@@ -217,6 +217,7 @@ class LocalPostRenderPromptService:
         for item in public["representatives"]:
             item.pop("path", None)
         for item in public.get("trial", {}).get("attempts", []):
+            item["prompt"] = (item.get("input") or {}).get("prompt", "")
             item.pop("payload", None)
             item.pop("input", None)
             item.pop("image_path", None)

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Post Render Adjustments · Zet</title>
-  <link rel="stylesheet" href="/static/zet.css?v=20261026-post-render-feedback-2">
-  <script defer src="/static/local_character_prompt_improvement.js?v=20261026-post-render-feedback-2"></script>
+  <link rel="stylesheet" href="/static/zet.css?v=20261026-post-render-viewer-1">
+  <script defer src="/static/local_character_prompt_improvement.js?v=20261026-post-render-viewer-1"></script>
 </head>
 <body>
   <main class="post-render-prompt">
@@ -38,5 +38,19 @@
     </section>
     <details id="post-history"><summary>Adjustment rounds</summary><div id="post-history-items"></div></details>
   </main>
+  <dialog id="post-viewer" class="post-trial-viewer" aria-labelledby="post-viewer-title">
+    <div class="post-viewer-toolbar">
+      <h2 id="post-viewer-title"></h2>
+      <button id="post-viewer-previous" type="button">← Previous</button>
+      <button id="post-viewer-next" type="button">Next →</button>
+      <button id="post-viewer-prompt" class="post-prompt-link" type="button">View generation prompt</button>
+      <button id="post-viewer-close" type="button" autofocus>Close</button>
+    </div>
+    <img id="post-viewer-image" alt="">
+  </dialog>
+  <dialog id="post-prompt-dialog" class="post-trial-prompt" aria-labelledby="post-prompt-title">
+    <div class="post-viewer-toolbar"><h2 id="post-prompt-title">Trial generation prompt</h2><button id="post-prompt-close" type="button" autofocus>Close</button></div>
+    <pre id="post-prompt-text"></pre>
+  </dialog>
 </body>
 </html>

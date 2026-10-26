@@ -10,6 +10,7 @@
   let criteriaDraft = null, criteriaRevision = 0, criteriaDirty = false;
   let criteriaStatus = "", criteriaStatusError = false, criteriaInvalidIndex = null;
   let suggestionStatus = "", suggestionStatusError = false;
+  let viewerAttemptId = "", viewerOriginId = "";
   const sourceLabel = () => data?.source_label || "Character.md";
   const query = () => { const q = new URLSearchParams({ universe_id: universe }); if (costume) q.set("costume", costume); return q; };
   const base = `/api/local/${encodeURIComponent(pipeline)}/runs/${encodeURIComponent(runId)}`;
@@ -248,6 +249,28 @@
       inlineStatus("criteria-status", criteriaStatus, criteriaStatusError);
     }
   }
+  function readyTrials() { return (data?.trial?.attempts || []).filter(attempt => attempt.status === "READY"); }
+  function showPrompt(attempt) {
+    $("prompt-title").textContent = `${attempt.view.replaceAll("_", " ")} · Trial ${attempt.number} generation prompt`;
+    $("prompt-text").textContent = attempt.prompt || "The saved generation prompt is unavailable for this trial.";
+    $("prompt-dialog").showModal();
+  }
+  function renderViewer() {
+    const attempts = readyTrials(), index = attempts.findIndex(attempt => attempt.id === viewerAttemptId);
+    if (index < 0) { $("viewer").close(); return; }
+    const attempt = attempts[index];
+    $("viewer-title").textContent = `${attempt.view.replaceAll("_", " ")} · Trial ${attempt.number} · ${index + 1} of ${attempts.length}`;
+    const image = $("viewer-image"), url = endpoint(`/images/${encodeURIComponent(attempt.id)}`);
+    if (image.getAttribute("src") !== url) image.src = url;
+    image.alt = `${attempt.view} trial ${attempt.number}`;
+    $("viewer-previous").disabled = index === 0;
+    $("viewer-next").disabled = index === attempts.length - 1;
+  }
+  function moveViewer(step) {
+    const attempts = readyTrials(), index = attempts.findIndex(attempt => attempt.id === viewerAttemptId);
+    const next = attempts[index + step];
+    if (next) { viewerAttemptId = next.id; renderViewer(); }
+  }
   function renderTrials() {
     const section = $("results"), host = $("trial-cards"), attempts = data.trial?.attempts || [];
     section.hidden = !attempts.length; host.replaceChildren();
@@ -256,8 +279,16 @@
       card.append(el("h3", `${attempt.view.replaceAll("_", " ")} · Trial ${attempt.number}`));
       if (attempt.status === "READY") {
         const img = el("img"); img.src = endpoint(`/images/${encodeURIComponent(attempt.id)}`); img.alt = `${attempt.view} trial ${attempt.number}`;
-        card.append(img);
+        const expand = el("button"); expand.type = "button"; expand.className = "post-trial-expand";
+        expand.dataset.trialId = attempt.id;
+        expand.setAttribute("aria-label", `Expand ${attempt.view} trial ${attempt.number}`);
+        expand.addEventListener("click", () => {
+          viewerAttemptId = attempt.id; viewerOriginId = attempt.id; renderViewer(); $("viewer").showModal();
+        });
+        expand.append(img); card.append(expand);
       }
+      const prompt = el("button", "View generation prompt"); prompt.type = "button"; prompt.className = "post-prompt-link";
+      prompt.addEventListener("click", () => showPrompt(attempt)); card.append(prompt);
       card.append(el("p", attempt.error || attempt.status));
       if (attempt.status === "FAILED") {
         const retry = el("button", "Retry render"); retry.type = "button";
@@ -265,6 +296,7 @@
       }
       host.append(card);
     }
+    if ($("viewer").open) renderViewer();
     const assessment = data.trial?.assessment;
     $("assessment").replaceChildren();
     if (isCostume && assessment) {
@@ -370,6 +402,24 @@
     finally { refreshing = false; }
   }
   $("return").href = returnUrl();
+  $("viewer-close").addEventListener("click", () => $("viewer").close());
+  $("viewer-previous").addEventListener("click", () => moveViewer(-1));
+  $("viewer-next").addEventListener("click", () => moveViewer(1));
+  $("viewer-prompt").addEventListener("click", () => {
+    const attempt = readyTrials().find(item => item.id === viewerAttemptId);
+    if (attempt) showPrompt(attempt);
+  });
+  $("viewer").addEventListener("keydown", event => {
+    if ($("prompt-dialog").open) return;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault(); moveViewer(event.key === "ArrowLeft" ? -1 : 1);
+    }
+  });
+  $("viewer").addEventListener("close", () => {
+    [...$("trial-cards").querySelectorAll("[data-trial-id]")].find(node => node.dataset.trialId === viewerOriginId)?.focus({preventScroll: true});
+    viewerAttemptId = "";
+  });
+  $("prompt-close").addEventListener("click", () => $("prompt-dialog").close());
   $("propose").addEventListener("click", () => {
     if (criteriaDirty) {
       criteriaStatus = "Save acceptance criteria before suggesting costume template edits.";
