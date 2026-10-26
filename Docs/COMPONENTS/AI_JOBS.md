@@ -111,15 +111,27 @@ are separate operator actions; historical-job repair is not required for rollout
 ## Activity APIs and UI
 
 `GET /api/ai/jobs` accepts `universe_filter`, `provider`, `workflow`, `status`,
-`cursor` and `limit`. It merges request records, queue folders, Inbox and receipts,
-deduplicates by job identity, then paginates. Active work is ordered before terminal
-history. All local-producer universes are included by default. Workflow links use
-the recorded universe and target identifiers. Manual tasks are labeled separately.
+`cursor` and `limit`. One background refresher per physical queue builds the activity
+snapshot. Requests filter, count and paginate that in-memory snapshot; a saved local
+snapshot is available during startup. `AIQueueMetadataService` shares incremental
+job/receipt metadata across bound universes, rereads changed JSON after directory
+metadata changes, and keeps prompts, requests and input inventories out of compact
+job projections. Cross-process updates are observed on the two-second refresh
+cadence. These caches are display/collection discovery aids only; targeted mutation
+and execution checks still read authoritative files. A refresh failure retains the
+last complete rows and reports `refresh_error`; storage pauses are reported
+separately with unknown counts. Activity cache files are rewritten only when rows
+change. Active work is ordered before terminal history. All local-producer universes
+are included by default. Workflow links use the recorded universe and target
+identifiers. Manual tasks are labeled separately.
 
 [ai_queue.js](../../zet/web/static/ai_queue.js) loads on page activation and polls
 every two seconds while visible; navigation stops its timer and aborts its request.
 Errors preserve previous rows and display an unavailable message. Queue counters
 and recent harvests use the same durable feed, independent of index reconciliation.
+The legacy queue/history fetch and renderers are removed from this page; process
+controls remain on their existing endpoint. During startup the UI distinguishes a
+refresh in progress from storage being unavailable.
 The activity table displays Universe, Status, Workflow / target, Task, Model,
 Created and Details, in that order. The former Body-Reference-only Codex panel is
 removed.
@@ -129,8 +141,9 @@ removed.
 `DELETE /api/ai/jobs/{job_id}`, through `ZetApp.delete_failed_ai_job`, delegates
 to [AIJobCleanupService](../../zet/services/ai_job_cleanup_service.py). AI Queue
 offers a confirmed **Delete job** action beside the status on `HARVEST_FAILED` and
-`RECOVERY_REQUIRED` rows. The service rechecks current status under the coordinator
-and common job locks, refuses Ask/Running work and explicit foreign-producer
+`RECOVERY_REQUIRED` rows. The service freshly inspects only the selected job under
+the coordinator and common job locks, with a shared one-second lock deadline. It
+refuses Ask/Running work and explicit foreign-producer
 metadata, rejects conflicting job identities and linked/junction paths, and removes
 only known job-scoped transport/local-state files. Missing ownership metadata does
 not prevent cleanup of an eligible failed/recovery-required row. Missing files are
@@ -143,6 +156,13 @@ into the library or deletes domain workflow records, images or shared lock files
 Busy files leave a visible `HARVEST_FAILED` deletion row with a retry action.
 Shared `Superseded` markers are validated against `Zet_File_Proxy_State` under
 the shared queue; producer-local markers use the configured local lifecycle root.
+
+A saved request with no receipt, Ask/Running/Answer/Inbox folder, staging publication
+or active replacement attempt becomes `RECOVERY_REQUIRED` with reason
+`MISSING_JOB_EVIDENCE` only after two complete, storage-available observations.
+Storage unavailability and transient evidence gaps remain `PAUSED_STORAGE` or
+`RECONCILING`; age alone never triggers this classification. The row gives explicit
+recovery/deletion guidance; no request is automatically removed or replayed.
 
 A minimal hashed `DeletedJobs` marker is committed before payload removal. Queries,
 collection, adoption and publication fence the deleted identity, including late

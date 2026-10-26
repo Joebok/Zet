@@ -44,10 +44,13 @@ An absent receipt or job record while work is pending uses the routine storage-h
 
 Both dashboard restart paths manage the harvester lifecycle. ProcessService recognizes release configs under the same `Runtime.Root/releases` directory, so workers left by an earlier release remain visible and manageable. A current-version self-restart stops matching harvesters before scheduling Zet shutdown; the detached restart helper starts Zet and then the harvester with the active config. Update promotion captures managed Zet and harvester PIDs before staging, stops those exact processes after validation, then starts the promoted dashboard and harvester.
 
-The AI Queue dashboard merges durable request records, Ask/Running/Answer, local Inbox
-and receipts directly. All local-producer universes are shown by default. Its current
-and recent-history APIs do not depend on derived library-index generations. See
-[Shared AI jobs](AI_JOBS.md) for paging, filters, handlers and the shared model popup.
+The AI Queue dashboard's single activity feed merges durable request records,
+Ask/Running/Answer, local Inbox and receipts. A background refresher publishes an
+in-memory snapshot; changed JSON metadata is incrementally reread and requests do
+not rebuild history. Cross-process changes are picked up on the two-second cadence.
+All local-producer universes are shown by default. Its current and recent-history
+APIs do not depend on derived library-index generations. See [Shared AI jobs](AI_JOBS.md)
+for paging, filters, handlers and the shared model popup.
 
 The confirmed per-row **Delete job** action removes retained
 `HARVEST_FAILED` / `RECOVERY_REQUIRED` payloads and job-scoped state through

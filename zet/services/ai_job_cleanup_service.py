@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import shutil
 import socket
+import time
 
 from zet.repositories.ai_job_repository import AIJobRepository, timestamp
 from zet.services.atomic_file_service import write_json_atomic
@@ -56,17 +57,27 @@ class AIJobCleanupService:
         self.paths.jobs.validate_id(job_id)
         if job_id.endswith(".") or re.fullmatch(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", job_id, re.IGNORECASE):
             raise ValueError("Invalid AI job identifier for deletion.")
-        with file_lock(self.lifecycle.root / "Locks/coordinator.lock"), file_lock(self.lifecycle.lock_path(job_id)):
-            result = self._delete(job_id)
-            from zet.services.storage_health_service import remember_request
-            remember_request(self.paths.config, job_id, status="DELETED")
-            return result
+        deadline = time.monotonic() + 1.0
+        with file_lock(self.lifecycle.root / "Locks/coordinator.lock", timeout=1.0):
+            remaining = max(0.0, deadline - time.monotonic())
+            with file_lock(self.lifecycle.lock_path(job_id), timeout=remaining):
+                result = self._delete(job_id)
+                from zet.services.storage_health_service import remember_request
+                remember_request(self.paths.config, job_id, status="DELETED")
+                from zet.services.ai_queue_metadata_service import AIQueueMetadataService
+                AIQueueMetadataService.for_root(self.lifecycle.root.parent).invalidate()
+                from zet.services.ai_queue_query_service import AIQueueQueryService
+                AIQueueQueryService.mark_deleted(self.paths, job_id)
+                return result
 
     def _delete(self, job_id):
-        from zet.services.ai_queue_query_service import AIQueueQueryService
         marker = self.repository.deletion_path(job_id)
         previous = self._read(marker)
-        row = next((row for row in AIQueueQueryService(self.paths).rows() if row["ask_id"] == job_id), None)
+        row = None
+        if not previous:
+            from zet.services.ai_job_service import AIJobService
+            info = AIJobService(self.paths).inspect(job_id)
+            row = {**info, "universe_id": self.paths.config.universe_id}
         if not previous and (not row or row["status"] not in self.ELIGIBLE):
             raise ValueError("Only HARVEST_FAILED or RECOVERY_REQUIRED jobs can be deleted. Refresh the queue.")
         # Never race the external dispatcher or delete an executing request, even

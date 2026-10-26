@@ -224,3 +224,20 @@ completion race; the helper and receipt barrier were repaired before passing run
 Real E: disconnection, live inference, manual external-backend settlement and
 production deployment/restart were not performed. Operational contracts and code
 owners: [storage recovery](COMPONENTS/STORAGE_RECOVERY.md).
+
+## AI Queue metadata and activity refresh (2026-10-26)
+
+The four approved fast scenarios passed (`npm.cmd run test:e2e`: **4 passed**).
+Python compilation, browser-script syntax checks and `git diff --check` passed.
+AI_Proxy's isolated suite passed (**7 passed, 1 deselected**). Disposable cache
+checks verified unchanged reads, changed/add/remove record discovery, storage
+outage snapshot retention and reconnect rebuild; Proxy checks verified warm reuse,
+changed-input rejection and cold revalidation after restart.
+
+A temporary fixture with 14,331 receipt JSON files, 1,730 job envelopes and four
+sparse 10 MiB image inputs took 84.648 seconds for its cold parse (16,061 JSON
+content reads). The subsequent metadata refresh and one-row in-memory filter took
+0.682 seconds and reopened zero JSON contents. The activity HTTP handler's request
+latency was not separately instrumented; requests now filter/paginate the latest
+memory snapshot. This fixture ran under the local temp directory, not on the live
+queue or E: drive. No production service was started or restarted.

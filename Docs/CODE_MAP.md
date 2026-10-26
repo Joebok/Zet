@@ -161,6 +161,16 @@ partial failure under coordinator/job locks. `ZetApp.delete_failed_ai_job`,
 late/replayed answers. Disposable service/API/browser checks cover cleanup; S4
 remains queue/background/history regression coverage, without a new scenario.
 
+AI Queue performance: [AIQueueMetadataService](../zet/services/ai_queue_metadata_service.py)
+shares changed-record metadata for the physical queue and producer;
+[AIQueueQueryService](../zet/services/ai_queue_query_service.py) refreshes one activity
+snapshot in the background and serves filters/pagination from memory. The activity
+feed owns counts/history, while process controls remain on their existing `zet.js` path.
+`AIJobCoordinator` uses receipt/job summaries to find collection candidates, and
+`StorageRecoveryService` reads spec/state-only summaries before candidate details.
+Missing request evidence is classified after two available observations; deletion
+inspects and removes only the selected identity under a bounded shared lock deadline.
+
 1. Search the capability's named symbol with `rg -n '<symbol>' zet Scripts tests` to find real consumers; do not assume all entry points go through a facade method.
 2. Read the relevant approved E2E scenario and [fixture server](../tests/e2e/server.py) as well as implementation. Fast fixtures isolate their library and replace external model/render responses; they do not prove live-service correctness. Obtain explicit approval before adding scenarios.
 3. For serialization changes inspect both producer and consumer plus [DATA_MODEL](DATA_MODEL.md). For async changes inspect the owning workflow and queue contract.

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import socket
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from zet.repositories.ai_job_repository import AIJobRepository
@@ -10,15 +12,24 @@ from zet.repositories.ai_job_repository import AIJobRepository
 
 class AIQueueQueryService:
     TERMINAL = {"APPLIED", "COMPLETE", "FAILED", "SUPERSEDED"}
+    _snapshot_lock = threading.RLock()
+    _snapshots: dict[str, dict] = {}
+    _refreshers: dict[str, threading.Event] = {}
+    _deleted_ids: set[tuple[str, str]] = set()
 
     def __init__(self, paths):
         self.paths = paths
         self.repository = AIJobRepository(paths.lifecycle.root)
+        self.metadata = paths.lifecycle.metadata
+
+    def _read_metadata(self, path):
+        return self.metadata.read(path) or {}
 
     def rows(self):
         from zet.services.storage_health_service import storage_health
         health = storage_health(self.paths.config)
         status = health.poll()
+        self.metadata.storage_state(all(status["resources"][name]["status"] == "AVAILABLE" for name in ("queue", "application")))
         if any(status["resources"][name]["status"] != "AVAILABLE" for name in ("queue", "application")):
             return self.cached(self.paths.config)["items"]
         receipts = list(self.paths.lifecycle.iter_receipts() or ())
@@ -41,10 +52,10 @@ class AIQueueQueryService:
             if job_id and (receipt.get("retention_compacted") or expired_success):
                 expired.add(job_id)
         rows = {row["ask_id"]: {**row, "status": "HARVEST_FAILED" if row.get("harvest_state") == "HARVEST_FAILED" else "RECONCILING", "details": row.get("error", "")}
-                for row in self.repository.all() if row["ask_id"] not in expired}
+                for row in self.repository.summaries() if row["ask_id"] not in expired}
         client = self.paths.file_proxy_client
         try:
-            execution = json.loads((client.root / "Control/execution_status.json").read_text(encoding="utf-8"))
+            execution = self._read_metadata(client.root / "Control/execution_status.json")
         except (OSError, ValueError):
             execution = {}
         locations = [(client.ask_root, "QUEUED"), (client.running_root, "RUNNING"),
@@ -59,8 +70,8 @@ class AIQueueQueryService:
                 if path.name in expired:
                     continue
                 try:
-                    ask = json.loads((path / "ask_manifest.json").read_text(encoding="utf-8"))
-                    envelope = json.loads((path / "job.json").read_text(encoding="utf-8")) if (path / "job.json").is_file() else {}
+                    ask = self._read_metadata(path / "ask_manifest.json")
+                    envelope = self._read_metadata(path / "job.json") if (path / "job.json").is_file() else {}
                     producer = str(envelope.get("producer_id") or "")
                     if producer and producer.casefold() != socket.gethostname().casefold():
                         continue
@@ -82,7 +93,7 @@ class AIQueueQueryService:
                             row["status"] = "AWAITING_HARVEST"
                     marker = path / "harvest_manifest.json"
                     if marker.is_file():
-                        harvested = json.loads(marker.read_text(encoding="utf-8"))
+                        harvested = self._read_metadata(marker)
                         if harvested.get("status") != "HARVESTED_FOR_EXTERNAL_CONSUMER":
                             row.update(status="FAILED" if "FAIL" in str(harvested.get("status", "")) else "COMPLETE",
                                        harvested_at=harvested.get("harvested_at", ""), details=harvested.get("message", ""))
@@ -116,7 +127,7 @@ class AIQueueQueryService:
         deleted_root = self.repository.root.parent / "DeletedJobs"
         for path in deleted_root.glob("*.json"):
             try:
-                deleted = json.loads(path.read_text(encoding="utf-8"))
+                deleted = self._read_metadata(path)
                 if not deleted.get("cleanup_complete"):
                     rows[deleted["ask_id"]] = {**deleted, "status": "HARVEST_FAILED",
                         "failure_stage": "deletion", "details": deleted.get("error") or "Cleanup interrupted; retry Delete job.",
@@ -124,6 +135,19 @@ class AIQueueQueryService:
             except (OSError, ValueError, KeyError):
                 continue
         for row in rows.values():
+            if row.get("status") == "RECONCILING" and row.get("ask_id"):
+                job_id = row["ask_id"]
+                evidence_roots = (client.ask_root, client.running_root, client.answer_root,
+                                 self.paths.lifecycle.inbox_root)
+                evidence = any((root / job_id).exists() for root in evidence_roots) or client.staging_path(job_id).exists()
+                evidence = evidence or bool(row.get("current_attempt_id") and row.get("current_attempt_id") != job_id)
+                from zet.services.ai_job_service import AIJobService
+                if evidence:
+                    AIJobService.clear_missing_evidence(self.paths.lifecycle.root, job_id)
+                elif AIJobService.observe_missing_evidence(self.paths.lifecycle.root, job_id):
+                    row.update(status="RECOVERY_REQUIRED", reason_code="MISSING_JOB_EVIDENCE",
+                               details="No receipt, transport folder, staging publication, or replacement attempt was found after two available-storage observations.",
+                               recovery_action="Review this missing request, then delete it or create a new attempt from its owning workflow.")
             try:
                 row["age_seconds"] = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(str(row.get("created_at") or "").replace("Z", "+00:00"))).total_seconds()))
             except (ValueError, TypeError):
@@ -140,8 +164,9 @@ class AIQueueQueryService:
             for internal in ("request", "manifest", "input_inventory", "envelope"):
                 row.pop(internal, None)
         # Replacement envelopes are transport details, not independent user tasks.
+        universe_health: dict[str, bool] = {}
         for job_id, row in list(rows.items()):
-            saved = self.repository.get(job_id)
+            saved = row
             if saved.get("logical_job_id"):
                 del rows[job_id]
                 continue
@@ -152,13 +177,15 @@ class AIQueueQueryService:
                 app = getattr(self.paths, "app", None)
                 if app and row["status"] not in self.TERMINAL:
                     try:
-                        bound = app.universe_service.bind_config(self.paths.config, universe)
-                        if not storage_health(bound).poll()["available"]:
+                        if universe not in universe_health:
+                            bound = app.universe_service.bind_config(self.paths.config, universe)
+                            universe_health[universe] = bool(storage_health(bound).poll()["available"])
+                        if not universe_health[universe]:
                             info.update(status="PAUSED_STORAGE", blocking_reason="This universe's storage is unavailable")
                     except (ValueError, OSError):
                         info.update(status="RECOVERY_REQUIRED", blocking_reason="Universe ownership cannot currently be resolved")
             else:
-                info = self.paths.jobs.inspect(job_id)
+                info = {key: saved.get(key) for key in ("status", "recovery_stage", "logical_job_id", "current_attempt_id", "last_recovered_at", "blocking_reason") if saved.get(key)}
             if info.get("status") == "PAUSED_STORAGE" and row["status"] not in self.TERMINAL:
                 row.update(status="PAUSED_STORAGE", details=info.get("blocking_reason", ""))
             if info.get("recovery_stage"):
@@ -169,7 +196,13 @@ class AIQueueQueryService:
         result = sorted(rows.values(), key=lambda row: (row["status"] not in self.TERMINAL,
                       row.get("harvested_at") or row.get("created_at") or "", row["ask_id"]), reverse=True)
         from zet.services.atomic_file_service import write_json_atomic
-        write_json_atomic(self.cache_path(self.paths.config), {"items": result})
+        cache_path = self.cache_path(self.paths.config)
+        try:
+            previous = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            previous = {}
+        if previous.get("items") != result:
+            write_json_atomic(cache_path, {"items": result, "updated_at": datetime.now(timezone.utc).isoformat()})
         return result
 
     @staticmethod
@@ -231,7 +264,21 @@ class AIQueueQueryService:
         return "/?" + urlencode(params)
 
     def query(self, *, universe="", provider="", workflow="", status="", cursor="", limit=50, history=False):
-        all_rows = self.rows()
+        key = str(self.paths.lifecycle.queue_root).casefold()
+        with self._snapshot_lock:
+            snapshot = self._snapshots.get(key)
+            if key not in self._refreshers:
+                stop = threading.Event()
+                self._refreshers[key] = stop
+                threading.Thread(target=self._refresh_loop, args=(key, stop), name="ai-queue-activity-refresh", daemon=True).start()
+            if snapshot is None:
+                try:
+                    payload = json.loads(self.cache_path(self.paths.config).read_text(encoding="utf-8"))
+                    snapshot = {"items": payload.get("items", []), "updated_at": payload.get("updated_at", ""), "error": ""}
+                    self._snapshots[key] = snapshot
+                except (OSError, ValueError):
+                    snapshot = {"items": [], "updated_at": "", "error": ""}
+        all_rows = snapshot["items"]
         rows = [row for row in all_rows if (not universe or row.get("universe_id") == universe)
                 and (not provider or row.get("provider") == provider)
                 and (not workflow or row.get("workflow") == workflow)
@@ -246,7 +293,37 @@ class AIQueueQueryService:
                 "counts": {state: sum(row["status"] == state for row in all_rows) for state in
                            {row["status"] for row in all_rows}},
                 "facets": {"universes": sorted({row.get("universe_id", "") for row in all_rows} - {""}),
-                           "workflows": sorted({row.get("workflow", "") for row in all_rows} - {""})}}
+                           "workflows": sorted({row.get("workflow", "") for row in all_rows} - {""})},
+                "refreshing": not bool(snapshot.get("updated_at")), "updated_at": snapshot.get("updated_at", ""),
+                "refresh_error": snapshot.get("error", ""),
+                "stale": any(row.get("status") == "PAUSED_STORAGE" for row in all_rows)}
+
+    @classmethod
+    def mark_deleted(cls, paths, job_id):
+        key = str(paths.lifecycle.queue_root).casefold()
+        with cls._snapshot_lock:
+            cls._deleted_ids.add((key, str(job_id)))
+            snapshot = cls._snapshots.get(key)
+            if snapshot is not None:
+                snapshot["items"] = [row for row in snapshot["items"] if row.get("ask_id") != job_id]
+                snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def _refresh_loop(self, key: str, stop: threading.Event) -> None:
+        while not stop.is_set():
+            try:
+                rows = self.rows()
+                with self._snapshot_lock:
+                    rows = [row for row in rows if (key, str(row.get("ask_id"))) not in self._deleted_ids]
+                    previous = self._snapshots.get(key, {})
+                    updated_at = previous.get("updated_at") or datetime.now(timezone.utc).isoformat()
+                    if previous.get("items") != rows:
+                        updated_at = datetime.now(timezone.utc).isoformat()
+                    self._snapshots[key] = {"items": rows, "updated_at": updated_at, "error": ""}
+            except Exception as exc:
+                with self._snapshot_lock:
+                    previous = self._snapshots.get(key, {"items": [], "updated_at": ""})
+                    self._snapshots[key] = {**previous, "error": str(exc)}
+            stop.wait(2.0)
 
     def snapshot(self):
         rows = self.rows()

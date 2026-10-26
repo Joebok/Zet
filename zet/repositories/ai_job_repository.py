@@ -16,6 +16,8 @@ def timestamp():
 class AIJobRepository:
     def __init__(self, root: Path):
         self.root = root / "Jobs"
+        from zet.services.ai_queue_metadata_service import AIQueueMetadataService
+        self.metadata = AIQueueMetadataService.for_root(root.parent)
 
     def path(self, job_id):
         return self.root / (hashlib.sha256(str(job_id).encode()).hexdigest() + ".json")
@@ -44,6 +46,7 @@ class AIJobRepository:
         if self.is_deleted(job_id):
             return
         write_json_atomic(self.path(job_id), {**record, "ask_id": job_id, "updated_at": timestamp()})
+        self.metadata.invalidate(self.path(job_id))
 
     def update(self, job_id, **changes):
         self.put(job_id, {**self.get(job_id), **changes})
@@ -70,6 +73,20 @@ class AIJobRepository:
                     continue
                 except ValueError:
                     continue
+
+    def summaries(self):
+        """Compact cache view; request prompts and input inventories stay on disk."""
+        from zet.services.storage_health_service import guard_path
+        guard_path(self.root)
+        keep = {"ask_id", "created_at", "updated_at", "producer_id", "logical_job_id", "universe_id",
+                "task_type", "consumer", "model", "provider", "workflow", "worker_type", "asset_id",
+                "owner", "harvest_state", "error", "failure_stage", "exception_type",
+                "affected_path", "failed_at", "collection_failures", "collection_retry_at",
+                "recovery_stage", "current_attempt_id", "last_recovered_at", "status"}
+        for value in self.metadata.snapshot(self.root, projector=lambda row: {key: row[key] for key in keep if key in row}):
+            job_id = value.get("ask_id")
+            if job_id and not self.is_deleted(job_id):
+                yield dict(value)
 
     def register(self, job_id, manifest, envelope, request=None):
         current = self.get(job_id)

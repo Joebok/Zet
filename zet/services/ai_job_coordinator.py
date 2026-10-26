@@ -167,17 +167,17 @@ class AIJobCoordinator:
         before = {row.get("ask_id") for _, row in lifecycle.iter_receipts() or ()}
         self.import_legacy_history()
         self.adopt()
-        records = list(self.repository.all())
+        records = list(self.repository.summaries())
         for record in records:
             retry_at = record.get("collection_retry_at")
             if record.get("harvest_state") == "HARVEST_FAILED" and retry_at and retry_at <= timestamp():
                 self.repository.update(record["ask_id"], harvest_state="AWAITING_HARVEST", collection_retry_at="")
-        records = list(self.repository.all())
+                record.update(harvest_state="AWAITING_HARVEST", collection_retry_at="")
         if retry_failed:
             for record in records:
                 if record.get("harvest_state") == "HARVEST_FAILED":
                     self.repository.update(record["ask_id"], harvest_state="AWAITING_HARVEST", error="")
-            records = list(self.repository.all())
+                    record.update(harvest_state="AWAITING_HARVEST", error="")
         universes = {self.app.universe_id}
         universes.update(item["universe_id"] for item in self.app.universe_service.list_universes())
         universes.update(row.get("universe_id") for row in records if row.get("harvest_state") not in {"APPLIED", "FAILED", "SUPERSEDED"})
@@ -196,11 +196,21 @@ class AIJobCoordinator:
                 if not hasattr(app, "_storage_recovery"):
                     from zet.services.storage_recovery_service import StorageRecoveryService
                     app._storage_recovery = StorageRecoveryService(app)
-                app._storage_recovery.recover()
+                try:
+                    app._storage_recovery.recover()
+                except StorageUnavailable:
+                    continue
+                except Exception:
+                    logging.getLogger(__name__).exception("Unable to recover local batches for %s; continuing AI collection", universe)
                 if universe not in self._discovered:
                     self._adopt_narrative(app)
                     self._discovered.add(universe)
-                self._collect_app(app, [row for row in records if row.get("universe_id") == universe])
+                receipt_ids = {row.get("ask_id") for _, row in lifecycle.iter_receipts() or ()}
+                candidates = [row for row in records if row.get("universe_id") == universe
+                              and row.get("ask_id") not in receipt_ids
+                              and row.get("harvest_state") not in {"SUPERSEDED", "HARVEST_FAILED"}
+                              and not self.repository.is_deleted(row.get("ask_id", ""))]
+                self._collect_app(app, [self.repository.get(row["ask_id"]) for row in candidates])
             except StorageUnavailable:
                 continue
             except Exception:

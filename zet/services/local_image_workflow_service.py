@@ -37,6 +37,40 @@ class LocalImagePipelineWorkflowService:
         self.prompt_improvement = LocalPromptImprovementService(self.adapter, self.pipeline, self.project_root)
         self.slots = CharacterRenderSlots(self)
 
+    def list_recovery_summaries(self) -> list[dict[str, Any]]:
+        """Read only run spec/state metadata for background recovery discovery."""
+        from zet.services.workflow_storage import runner_lock_active
+        from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
+        root = Path(getattr(self.adapter, "runs_root", getattr(self.adapter, "root", "")))
+        result = []
+        for spec_path in root.rglob("spec.json"):
+            try:
+                reader = getattr(self.adapter, "_read_json", None) or self.adapter._read
+                spec = reader(spec_path)
+                expected_kind = getattr(self.adapter, "run_kind", "") or (
+                    "local_body_reference" if self.pipeline == "body-reference" else str(getattr(self.adapter, "pipeline", "")))
+                kind = str(spec.get("kind") or "")
+                if kind != expected_kind:
+                    continue
+                state_path = spec_path.with_name("state.json")
+                state = reader(state_path) if state_path.is_file() else {}
+                run_id = str(spec.get("run_id") or spec_path.parent.name)
+                status = str(state.get("status") or spec.get("status") or "UNKNOWN")
+                if status in ACTIVE_RUN_STATUSES and not runner_lock_active(spec_path.parent):
+                    status = "INTERRUPTED"
+                result.append({
+                    "run_id": run_id, "root": str(spec_path.parent),
+                    "costume": str(spec.get("costume") or ""), "status": status,
+                    "stop_requested": bool(state.get("stop_requested")),
+                    "slot_render_ids": list(state.get("slot_render_ids") or []),
+                    "slot_review_views": list(state.get("slot_review_views") or []),
+                    "target_candidate_ids": list(state.get("target_candidate_ids") or []),
+                    "target_views": list(state.get("target_views") or []),
+                })
+            except (OSError, ValueError, KeyError):
+                continue
+        return result
+
     def action(self, name: str, **args: Any) -> dict[str, Any] | list[dict[str, Any]]:
         """Call a stable action name while preserving adapter-specific render details."""
         run_id = str(args.get("run_id") or "")

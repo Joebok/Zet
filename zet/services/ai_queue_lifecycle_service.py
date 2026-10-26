@@ -28,6 +28,8 @@ class AIQueueLifecycleService:
         self.receipt_root = self.root / "Receipts"
         self.route_root = self.root / "Routes"
         self.debug_root = self.root / "Debug"
+        from zet.services.ai_queue_metadata_service import AIQueueMetadataService
+        self.metadata = AIQueueMetadataService.for_root(self.root.parent)
 
     @property
     def storage_root(self) -> Path:
@@ -58,6 +60,7 @@ class AIQueueLifecycleService:
 
     def write_receipt(self, job_id: str, receipt: dict) -> None:
         write_json_atomic(self.receipt_path(job_id), receipt)
+        self.metadata.invalidate(self.receipt_path(job_id))
         from zet.services.storage_health_service import remember_request
         state = str(receipt.get("status", "APPLIED"))
         remember_request(self.config, job_id, status="SUPERSEDED" if "SUPERSEDED" in state else
@@ -262,13 +265,10 @@ class AIQueueLifecycleService:
     def iter_receipts(self):
         if not self.receipt_root.is_dir():
             return
-        for path in self.receipt_root.glob("*.json"):
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeError, json.JSONDecodeError):
-                continue
-            if isinstance(payload, dict):
-                yield path, payload
+        for payload in self.metadata.snapshot(self.receipt_root):
+            job_id = str(payload.get("ask_id") or "")
+            if job_id:
+                yield self.receipt_path(job_id), payload
 
     def cleanup_report(self) -> dict:
         """Describe legacy shared payloads without deleting anything."""

@@ -20,6 +20,8 @@ class AIExecutionError(RuntimeError):
 
 
 class AIJobService:
+    _missing_evidence_lock = __import__("threading").RLock()
+    _missing_evidence_observations: dict[tuple[str, str], int] = {}
     @staticmethod
     def validate_id(job_id):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,239}", str(job_id)):
@@ -82,7 +84,27 @@ class AIJobService:
             break
         if record.get("harvest_state") == "HARVEST_FAILED":
             info.update(status="HARVEST_FAILED", blocking_reason=record.get("error", ""))
+        elif not info.get("location") and record and not recovery:
+            roots = (self.client.ask_root, self.client.running_root, self.client.answer_root, self.lifecycle.inbox_root)
+            evidence = any((root / job_id).exists() for root in roots) or self.client.staging_path(job_id).exists()
+            if not evidence and self.observe_missing_evidence(self.lifecycle.root, job_id):
+                info.update(status="RECOVERY_REQUIRED", reason_code="MISSING_JOB_EVIDENCE",
+                            blocking_reason="No receipt, transport folder, staging publication, or replacement attempt was found after two available-storage observations.")
         return info
+
+    @classmethod
+    def observe_missing_evidence(cls, root, job_id):
+        key = (str(Path(root).resolve()), str(job_id))
+        with cls._missing_evidence_lock:
+            count = cls._missing_evidence_observations.get(key, 0) + 1
+            cls._missing_evidence_observations[key] = count
+            return count >= 2
+
+    @classmethod
+    def clear_missing_evidence(cls, root, job_id):
+        key = (str(Path(root).resolve()), str(job_id))
+        with cls._missing_evidence_lock:
+            cls._missing_evidence_observations.pop(key, None)
 
     def is_pending(self, job_id):
         """Known unfinished requests do not expire while queued or being collected."""

@@ -6,6 +6,11 @@ on E:. Recovery does not substitute an empty library or move its contents to C:.
 
 ## Owners and local evidence
 
+Local pipeline recovery reads compact run specification/state summaries first.
+Completed, stopped and otherwise irrelevant batches are skipped before `detail()`
+performs candidate or locked-image validation. Interrupted work still uses the
+persisted runner lease and current ownership/image checks before resubmission.
+
 - [storage_health_service.py](../../zet/services/storage_health_service.py) probes
   configured roots at most every ten seconds during routine polling and requires
   two successful probes separated by five seconds after a failure. Observed

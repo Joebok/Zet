@@ -397,15 +397,6 @@ const harvestAiButton = document.querySelector("#harvest-ai");
 const archiveHarvestedAiButton = document.querySelector("#archive-harvested-ai");
 const refreshAiControlsButton = document.querySelector("#refresh-ai-controls");
 const processTableBody = document.querySelector("#process-table tbody");
-const queueCounts = document.querySelector("#queue-counts");
-const queueAskTableBody = document.querySelector("#queue-ask-table tbody");
-const queueRunningTableBody = document.querySelector("#queue-running-table tbody");
-const queueAnswerTableBody = document.querySelector("#queue-answer-table tbody");
-const openRenderConsoleTab = document.querySelector("#open-render-console-tab");
-const manualRenderCount = document.querySelector("#manual-render-count");
-const manualRenderTableBody = document.querySelector("#manual-render-table tbody");
-const recentHarvestCount = document.querySelector("#recent-harvest-count");
-const recentHarvestTableBody = document.querySelector("#recent-harvest-table tbody");
 const pipelineControlsStatus = document.querySelector("#pipeline-controls-status");
 const pipelineControlsMessage = document.querySelector("#pipeline-controls-message");
 const pipelineInspectionStatus = document.querySelector("#pipeline-inspection-status");
@@ -10377,13 +10368,6 @@ async function loadAiControls() {
   status.textContent = "Loading processes and queues...";
   const payload = await fetchJson("/api/ai-controls");
   renderAiControls(payload);
-  if (activePageName() === "ai-controls") {
-    try {
-      await loadRecentAiHarvests();
-    } catch (error) {
-      showAiControlsMessage(`Queue loaded, but recent history could not be loaded: ${error.message}`, "error");
-    }
-  }
 }
 
 async function loadConfigProcesses() {
@@ -10394,24 +10378,9 @@ async function loadConfigProcesses() {
 
 function renderAiControls(payload) {
   state.aiControls = payload;
-  const counts = payload.queue_counts || {};
-  queueCounts.textContent =
-    `Ask: ${counts.ask || 0} | Running: ${counts.running || 0} | Answer: ${counts.answer || 0}`;
-  renderRows(queueAskTableBody, payload.queue?.ask || [], ["ask_id", "asset_id", "pipeline_stage", "worker_type", "task_type"]);
-  renderRows(queueRunningTableBody, payload.queue?.running || [], ["ask_id", "asset_id", "worker_type", "task_type"]);
-  renderRows(queueAnswerTableBody, payload.queue?.answer || [], ["ask_id", "asset_id", "status", "worker_id", "recovery"]);
-  renderRows(manualRenderTableBody, payload.manual_render_asks || [], ["ask_id", "asset_id", "pipeline_stage", "task_type"]);
-  manualRenderCount.textContent = `${(payload.manual_render_asks || []).length} manual render task(s) waiting`;
   renderProcessRows(payload.processes || []);
   aiControlsStatus.textContent = "Ready";
   if (activePageName() === "local-image-config") localImageConfigStatus.textContent = "Ready";
-}
-
-async function loadRecentAiHarvests() {
-  const payload = await fetchJson("/api/ai-controls/recent-harvests");
-  const rows = payload.items || [];
-  renderRows(recentHarvestTableBody, rows, ["harvested_at", "ask_id", "task_type", "asset_id", "status", "details"]);
-  recentHarvestCount.textContent = `${rows.length} recent harvested job(s)`;
 }
 
 function renderProcessRows(processes, configPage = false) {
@@ -12595,9 +12564,6 @@ refreshAiControlsButton.addEventListener("click", async () => {
 });
 harvestAiButton.addEventListener("click", () => runAiControlsAction("/api/ai-controls/harvest"));
 archiveHarvestedAiButton.addEventListener("click", archiveHarvestedAiAnswers);
-openRenderConsoleTab.addEventListener("click", () => {
-  document.querySelector('.tab[data-page="render-console"]').click();
-});
 automationForm.addEventListener("submit", saveAutomationSettings);
 automationForm.addEventListener("input", updateDirtyIndicators);
 automationForm.addEventListener("change", updateDirtyIndicators);

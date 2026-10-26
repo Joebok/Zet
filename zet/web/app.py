@@ -741,16 +741,8 @@ def _character_assembly_manifest_context_payload(zet_app: ZetApp, character: str
 
 
 def _ai_controls_payload(zet_app: ZetApp) -> dict[str, Any]:
-    queue_snapshot = zet_app.queue_snapshot()
-    manual_render_asks = [
-        item for item in queue_snapshot["ask"]
-        if item.get("worker_type") == "manual_chatgpt_render"
-    ]
     return {
         "harvested_answer_count": zet_app.harvested_answer_count(),
-        "queue": _jsonable(queue_snapshot),
-        "queue_counts": {key: len(value) for key, value in queue_snapshot.items()},
-        "manual_render_asks": _jsonable(manual_render_asks),
         "processes": [status.to_dict() for status in zet_app.process_statuses()],
     }
 

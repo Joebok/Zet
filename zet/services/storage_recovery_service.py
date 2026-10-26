@@ -54,17 +54,17 @@ class StorageRecoveryService:
         for pipeline in ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"):
             workflow = LocalImagePipelineWorkflowService(self.app, project, pipeline)
             adapter = workflow.adapter
-            for summary in adapter.list_runs():
+            for summary in workflow.list_recovery_summaries():
                 run_id = summary.get("run_id")
                 kwargs = {"costume": summary.get("costume") or ""} if pipeline in {"character-assembly", "costume-dressing"} else {}
                 try:
-                    run = adapter.detail(run_id, **kwargs)
-                    if run.get("stop_requested") or run.get("status") in {"CANCELLED", "STOPPED", "COMPLETE"}:
+                    if summary.get("stop_requested") or summary.get("status") in {"CANCELLED", "STOPPED", "COMPLETE"}:
                         continue
-                    if run.get("slot_render_ids") or run.get("slot_review_views"):
+                    if summary.get("slot_render_ids") or summary.get("slot_review_views"):
                         workflow.slots.start(run_id, kwargs.get("costume", ""))
-                    if run.get("status") not in {"INTERRUPTED", "PAUSED_STORAGE", "RECOVERING"}:
+                    if summary.get("status") not in {"INTERRUPTED", "PAUSED_STORAGE", "RECOVERING"}:
                         continue
+                    run = adapter.detail(run_id, **kwargs)
                     root = Path(run["root"])
                     # Probe the actual cross-process lease, not another process's active set.
                     with file_lock(root / "runner.lock", timeout=0):

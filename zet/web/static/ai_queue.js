@@ -85,7 +85,8 @@
         recent.append(row);
       }
       document.querySelector("#recent-harvest-count").textContent = `${(payload.recent_harvests || []).length} recent harvested job(s)`;
-      status.textContent = actionError || (rows.length ? `${payload.total} job(s) Â· Updated ${new Date().toLocaleTimeString()}` : "No AI jobs match these filters.");
+      const refreshed = payload.updated_at ? `Updated ${new Date(payload.updated_at).toLocaleTimeString()}` : "Loading activity snapshot…";
+      status.textContent = actionError || payload.refresh_error || (payload.refreshing ? "Refreshing activity…" : rows.length ? `${payload.total} job(s) · ${refreshed}` : `No AI jobs match these filters. ${refreshed}`);
     } catch (error) {
       if (error.name !== "AbortError") status.textContent = `${rows.length ? "Showing previous activity. " : ""}Queue unavailable: ${error.message}`;
     } finally { if (request === controller) request = null; }
