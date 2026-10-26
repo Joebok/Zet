@@ -60,13 +60,18 @@
     characters = (await api()).characters;
     $("mc-list").replaceChildren(); $("mc-continue-choice").replaceChildren();
     for (const item of characters) {
-      const row = button("", () => open(item.character_id)); row.className = "mc-list-row";
-      if (item.locked.FRONT) { const img = document.createElement("img"); img.src = url(item.locked.FRONT.image_url); img.alt = `${item.name} locked front`; row.append(img); }
-      else row.append(element("span", "No locked front", "mc-no-front"));
-      row.append(element("strong", item.name));
+      const card = element("article", "", "mc-list-card");
+      card.append(element("strong", item.name, "mc-list-name"));
+      const image = button("", () => open(item.character_id)); image.className = "mc-list-image";
+      image.setAttribute("aria-label", `Edit ${item.name}`);
+      if (item.locked.FRONT) { const img = document.createElement("img"); img.src = url(item.locked.FRONT.image_url); img.alt = `${item.name} locked front`; img.loading = "lazy"; image.append(img); }
+      else image.append(element("span", "No locked front", "mc-no-front"));
+      const edit = button("Edit", () => open(item.character_id));
+      edit.setAttribute("aria-label", `Edit ${item.name}`);
       const remove=button("Delete",()=>deleteCharacter(item.character_id,item.name));
       remove.className="danger";remove.setAttribute("aria-label",`Delete ${item.name}`);
-      const entry=element("div","","mc-list-item");entry.append(row,remove);$("mc-list").append(entry);
+      const actions = element("div", "", "button-row mc-list-actions"); actions.append(edit, remove);
+      card.append(image, actions); $("mc-list").append(card);
       $("mc-continue-choice").add(new Option(item.name, item.character_id));
     }
     if (!characters.length) $("mc-list").append(element("p", "Create your first Minor Character."));

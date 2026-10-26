@@ -36,6 +36,11 @@ interaction; [narrative.js](../../zet/web/static/narrative.js) adapts shared sty
 to Narrative's independent records. Minor Characters retains its own comparison
 controller and selected-versus-preview distinction.
 
+The Minor Characters list uses a responsive card grid with each character's name,
+locked FRONT image (or an empty-image placeholder), and Edit/Delete buttons.
+Clicking the image or Edit opens the existing editor; Delete retains its confirmation
+and preserves published Inventory images.
+
 Post-render trial thumbnails open a viewing-only dialog with Previous/Next buttons,
 left/right arrow keys, and Close/Escape. Navigation includes ready images in the
 current round and preserves the displayed trial while polling. Each trial card and
