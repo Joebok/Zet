@@ -68,6 +68,15 @@ class LocalImagePipelineWorkflowService:
             current = self.prompt_improvement.detail(run_id, costume)
             if current.get("slot_work_pending") or current.get("slot_render_ids"):
                 raise RenderSlotConflict("Wait for submitted slot renders to start and finish.")
+        if name in {"save_render_settings", "acceptance_criteria", "save_acceptance_criteria"}:
+            run = self.prompt_improvement.detail(run_id, costume)
+            if name == "save_render_settings":
+                from zet.services.costume_render_mode_service import CostumeRenderModeService
+                CostumeRenderModeService(self).save(run, view.upper(), payload)
+                return self.action("detail", run_id=run_id, costume=costume)
+            from zet.services.costume_adjustment_criteria_service import CostumeAdjustmentCriteriaService
+            criteria = CostumeAdjustmentCriteriaService(self)
+            return criteria.save(run, view.upper(), payload) if name == "save_acceptance_criteria" else criteria.detail(run, view.upper())
         if name == "preview":
             return self.adapter.preview(payload)
         if name == "create":
@@ -86,7 +95,11 @@ class LocalImagePipelineWorkflowService:
             return self.adapter.delete_run(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.delete_run(run_id)
         if name == "start":
             current = self.action("detail", run_id=run_id, costume=costume)
-            if current.get("character_progression") and current["character_progression"]["stage"] < 0:
+            if self.pipeline == "costume-dressing":
+                from zet.services.local_character_progression_service import execution_views
+                if not execution_views(current):
+                    raise LocalImageWorkflowError("Accept governing prompts and choose available rendering mode inputs before starting.")
+            if self.pipeline != "costume-dressing" and current.get("character_progression") and current["character_progression"]["stage"] < 0:
                 raise LocalImageWorkflowError("Use Run front to start this assembly batch." if self.pipeline == "character-assembly"
                                               else "Analyze and accept prompts, then use Continue to generate FRONT.")
             if current.get("status") != "QUEUED":
@@ -98,7 +111,11 @@ class LocalImagePipelineWorkflowService:
             return self.adapter.resume(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.resume(run_id)
         if name == "rerun_batch":
             current = self.prompt_improvement.detail(run_id, costume)
-            if current.get("character_progression") and current["character_progression"]["stage"] < 0:
+            if self.pipeline == "costume-dressing" and current.get("character_progression"):
+                from zet.services.local_character_progression_service import prompt_review_required
+                if prompt_review_required(current):
+                    raise LocalImageWorkflowError("Accept governing prompts before rerunning this costume batch.")
+            if self.pipeline != "costume-dressing" and current.get("character_progression") and current["character_progression"]["stage"] < 0:
                 raise LocalImageWorkflowError("Use Run front before rerunning images." if self.pipeline == "character-assembly"
                                               else "Accept prompt review and Continue before rerunning images.")
             recompile = bool(args.get("recompile", False))
@@ -113,7 +130,7 @@ class LocalImagePipelineWorkflowService:
                 result = self.adapter.rerun(run_id, recompile=recompile)
             else:
                 result = self.adapter.rerun(run_id)
-            if current.get("character_progression"):
+            if current.get("character_progression") and self.pipeline != "costume-dressing":
                 from zet.services.local_image_pipeline_policy import mutate_local_run_state
                 def restart_front(state):
                     state["character_progression"]["stage"] = 0
@@ -191,7 +208,11 @@ class LocalImagePipelineWorkflowService:
             return self.prompt_improvement.start(run_id, view, costume)
         if name.startswith("post_render_prompt_"):
             from zet.services.local_post_render_prompt_service import LocalPostRenderPromptService
-            sessions = LocalPostRenderPromptService(self.app, self.project_root)
+            if self.pipeline == "costume-dressing":
+                from zet.services.local_costume_post_render_service import LocalCostumePostRenderService
+                sessions = LocalCostumePostRenderService(self.app, self.project_root)
+            else:
+                sessions = LocalPostRenderPromptService(self.app, self.project_root)
             session_id = str(args.get("session_id") or "")
             if name == "post_render_prompt_open":
                 return sessions.open(self.pipeline, run_id, costume, payload)
@@ -213,20 +234,6 @@ class LocalImagePipelineWorkflowService:
                 return sessions.cancel(self.pipeline, run_id, costume, session_id)
             if name == "post_render_prompt_image_path":
                 return sessions.image_path(self.pipeline, run_id, costume, session_id, str(args.get("attempt_id") or ""))
-        if name.startswith("prompt_generator_"):
-            from zet.services.local_prompt_generator_service import LocalPromptGeneratorService
-            sessions = LocalPromptGeneratorService(self.app, self.project_root)
-            session_id = str(args.get("session_id") or "")
-            if name == "prompt_generator_open":
-                return sessions.open(self.pipeline, run_id, costume, payload)
-            if name == "prompt_generator_detail":
-                return sessions.detail(self.pipeline, run_id, costume, session_id)
-            operation = name.removeprefix("prompt_generator_").replace("_", "-")
-            if operation in {"scrap", "restart"}:
-                return sessions.archive(self.pipeline, run_id, costume, session_id, payload, restart=operation == "restart")
-            if operation == "adopt":
-                return sessions.adopt(self.pipeline, run_id, costume, session_id, payload)
-            return sessions.transition(self.pipeline, run_id, costume, session_id, operation, payload)
         if name in {"select_view", "unselect_view"}:
             selected_id = candidate_id if name == "select_view" else ""
             method = self.adapter.select_view

@@ -32,10 +32,6 @@ def create_local_character_asset_pipeline_router(
     def post_render_prompt_page():
         return (root / "zet/web/templates/local_character_prompt_improvement.html").read_text(encoding="utf-8")
 
-    @router.get("/local-character-prompt-generator", response_class=HTMLResponse)
-    def prompt_generator_page():
-        return (root / "zet/web/templates/local_character_prompt_generator.html").read_text(encoding="utf-8")
-
     def service(pipeline: str) -> LocalImagePipelineWorkflowService:
         return LocalImagePipelineWorkflowService(app_factory(), root, pipeline)
 
@@ -103,6 +99,18 @@ def create_local_character_asset_pipeline_router(
 
         def action(_pipeline: str, name: str, **args: Any):
             return service(_pipeline).action(name, **args)
+
+        @router.put(f"{prefix}/runs/{{run_id}}/views/{{view}}/render-settings")
+        def save_render_settings(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "save_render_settings", run_id=run_id, view=view, costume=costume, payload=payload))
+
+        @router.get(f"{prefix}/runs/{{run_id}}/views/{{view}}/acceptance-criteria")
+        def acceptance_criteria(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "acceptance_criteria", run_id=run_id, view=view, costume=costume))
+
+        @router.put(f"{prefix}/runs/{{run_id}}/views/{{view}}/acceptance-criteria")
+        def save_acceptance_criteria(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "save_acceptance_criteria", run_id=run_id, view=view, costume=costume, payload=payload))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/image-generation-stage")
         def stage_image_generation(run_id: str, view: str, payload: dict[str, Any] = Body(default={}),
@@ -264,39 +272,6 @@ def create_local_character_asset_pipeline_router(
         @router.post(f"{prefix}/runs/{{run_id}}/post-render-prompt")
         def open_post_render_prompt(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "post_render_prompt_open", run_id=run_id, payload=payload, costume=costume))
-
-        @router.post(f"{prefix}/runs/{{run_id}}/prompt-generator")
-        def open_prompt_generator(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "prompt_generator_open", run_id=run_id, payload=payload, costume=costume))
-
-        @router.get(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}")
-        def prompt_generator_detail(run_id: str, session_id: str, costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "prompt_generator_detail", run_id=run_id, session_id=session_id, costume=costume), missing=404)
-
-        @router.post(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}/{{operation}}")
-        def prompt_generator_action(run_id: str, session_id: str, operation: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
-            if operation not in {"start", "approve", "next-round", "evaluate", "directions", "revise", "retry-step", "finish", "scrap", "restart", "criteria", "review", "adopt"}:
-                raise HTTPException(status_code=404, detail="Unknown prompt-generator action.")
-            return call(lambda: action(_pipeline, "prompt_generator_" + operation.replace("-", "_"), run_id=run_id,
-                                       session_id=session_id, payload=payload, costume=costume))
-
-        @router.get(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}/prompts/{{target}}", response_class=HTMLResponse)
-        def prompt_generator_prompt(run_id: str, session_id: str, target: str, costume: str = Query(""), _pipeline: str = pipeline):
-            from html import escape
-            from zet.services.local_prompt_generator_service import LocalPromptGeneratorService
-            prompt = call(lambda: LocalPromptGeneratorService(app_factory(), root).prompt_text(
-                _pipeline, run_id, costume, session_id, target), missing=404)
-            return HTMLResponse("<!doctype html><html><head><meta charset='utf-8'><title>Pilot prompt · Zet</title>"
-                "<style>body{font:16px system-ui;margin:2rem;max-width:90rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}</style>"
-                "</head><body><h1>Read-only pilot prompt</h1><p>Frozen baseline, draft, or round text.</p><pre>"
-                + escape(prompt) + "</pre></body></html>")
-
-        @router.get(f"{prefix}/runs/{{run_id}}/prompt-generator/{{session_id}}/images/{{attempt_id}}")
-        def prompt_generator_image(run_id: str, session_id: str, attempt_id: str, costume: str = Query(""), _pipeline: str = pipeline):
-            from zet.services.local_prompt_generator_service import LocalPromptGeneratorService
-            path = call(lambda: LocalPromptGeneratorService(app_factory(), root).image_path(
-                _pipeline, run_id, costume, session_id, attempt_id), missing=404)
-            return FileResponse(path)
 
         @router.get(f"{prefix}/runs/{{run_id}}/post-render-prompt/{{session_id}}")
         def post_render_prompt_detail(run_id: str, session_id: str, costume: str = Query(""), _pipeline: str = pipeline):

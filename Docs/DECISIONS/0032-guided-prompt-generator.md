@@ -1,5 +1,5 @@
 # 0032 — Guided prompt refinement with round authorization
-Status: accepted locally; supersedes the workflow and spending policy of [0031](0031-prompt-generator-pilot.md)
+Status: superseded for executable workflow by [0033 - Costume adjustments](0033-costume-post-render-adjustments.md); historical decisions below are preserved.
 Date: 2026-10-24
 
 ## Context

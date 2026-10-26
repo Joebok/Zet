@@ -5,7 +5,10 @@
   const sessionId = params.get("session_id") || "", costume = params.get("costume") || "";
   const universe = params.get("universe_id") || "", page = params.get("page") || "";
   const $ = id => document.getElementById(`post-${id}`);
-  let data, busy = false, refreshing = false;
+  let data, busy = false, refreshing = false, deciding = false;
+  const isCostume = pipeline === "costume-dressing";
+  let criteriaDraft = null, criteriaRevision = 0, criteriaDirty = false;
+  const sourceLabel = () => data?.source_label || "Character.md";
   const query = () => { const q = new URLSearchParams({ universe_id: universe }); if (costume) q.set("costume", costume); return q; };
   const base = `/api/local/${encodeURIComponent(pipeline)}/runs/${encodeURIComponent(runId)}`;
   const endpoint = suffix => `${base}/post-render-prompt/${encodeURIComponent(sessionId)}${suffix || ""}?${query()}`;
@@ -94,21 +97,85 @@
         const row = el("section"); row.className = "template-correction post-finding";
         const label = el("label"); label.className = "template-correction-choice";
         const check = el("input"); check.type = "checkbox"; check.value = item.id;
+        check.dataset.findingChoice = item.id;
+        row.dataset.findingId = item.id;
         check.setAttribute("aria-label", `Apply correction: ${item.rationale}`);
         check.checked = (analysis.selected_ids || []).includes(item.id);
-        check.addEventListener("change", () => {
-          const selected_ids = [...host.querySelectorAll("input:checked")].map(input => input.value);
-          void request(endpoint("/decisions"), "POST", { selected_ids }).then(value => { data = value; renderDiff(); }).catch(error => message(error.message, true));
-        });
+        check.addEventListener("change", () => void saveDecisions());
         label.append(check);
         const content = el("div"); content.className = "template-correction-content";
         content.append(el("p", `${item.rationale} · ${item.views.join(", ")}`),
           el("p", "Before"), el("pre", item.before), el("p", "After"), el("pre", item.after));
+        if (isCostume) {
+          content.append(el("p", `Criteria: ${(item.criteria_ids || []).join(", ")}. ${item.scope_note || ""}`));
+          for (const [key, title, values, selected] of [
+            ["views", "Affected views", data.all_views, item.selected_views],
+            ["modes", "Rendering modes", data.render_modes, item.selected_modes],
+          ]) {
+            const group = el("fieldset"); group.className = "post-scope"; group.append(el("legend", title));
+            for (const value of values) {
+              const choice = el("input"); choice.type = "checkbox"; choice.value = value; choice.dataset.scope = key;
+              choice.checked = (selected || []).includes(value);
+              choice.addEventListener("change", () => void saveDecisions());
+              const option = el("label", value.replaceAll("_", " ")); option.prepend(choice); group.append(option);
+            }
+            content.append(group);
+          }
+        }
         row.append(label, content); host.append(row);
       }
-      if (!(analysis.findings || []).length) host.append(el("p", "No Character.md changes suggested. Add observations or direction and analyze again."));
+      if (!(analysis.findings || []).length) host.append(el("p", `No ${sourceLabel()} changes suggested. Add observations or direction and analyze again.`));
     }
     $("trial").hidden = data.status !== "REVIEW_READY" || !(analysis.findings || []).length;
+    $("trial").disabled = deciding || !(analysis.selected_ids || []).length;
+  }
+  async function saveDecisions() {
+    if (deciding) return;
+    deciding = true; $("trial").disabled = true;
+    const rows = [...$("analysis").querySelectorAll("[data-finding-id]")];
+    const selected = rows.filter(row => row.querySelector("[data-finding-choice]").checked);
+    const payload = isCostume ? {expected_revision: data.revision, choices: selected.map(row => ({id: row.dataset.findingId,
+      views: [...row.querySelectorAll('[data-scope="views"]:checked')].map(input => input.value),
+      modes: [...row.querySelectorAll('[data-scope="modes"]:checked')].map(input => input.value)}))}
+      : {selected_ids: selected.map(row => row.dataset.findingId)};
+    for (const input of $("analysis").querySelectorAll("input")) input.disabled = true;
+    try { data = await request(endpoint("/decisions"), "POST", payload); renderDiff(); }
+    catch (error) { message(error.message, true); renderAnalysis(); }
+    finally {
+      deciding = false;
+      for (const input of $("analysis").querySelectorAll("input")) input.disabled = false;
+      $("trial").disabled = !(data.analysis?.selected_ids || []).length;
+    }
+  }
+  function renderCriteria() {
+    $("criteria-section").hidden = !isCostume;
+    if (!isCostume || criteriaDirty) return;
+    criteriaDraft = structuredClone(data.criteria.items); criteriaRevision = data.criteria.revision;
+    drawCriteria();
+  }
+  function drawCriteria() {
+    const host = $("criteria"); host.replaceChildren();
+    for (const item of criteriaDraft) {
+      const row = el("div"); row.className = "post-criterion";
+      const status = el("input"); status.type = "checkbox"; status.checked = item.status === "accomplished";
+      status.setAttribute("aria-label", `Accomplished: ${item.text || "new criterion"}`);
+      status.addEventListener("change", () => { item.status = status.checked ? "accomplished" : "in_progress"; criteriaDirty = true; });
+      const text = el("input"); text.type = "text"; text.maxLength = 4000; text.value = item.text;
+      text.readOnly = item.status === "accomplished";
+      text.setAttribute("aria-label", "Acceptance criterion");
+      text.addEventListener("input", () => { item.text = text.value; criteriaDirty = true; });
+      row.append(status, text); host.append(row);
+    }
+  }
+  async function saveCriteria() {
+    if (busy) return;
+    busy = true; $("save-criteria").disabled = true;
+    try {
+      data.criteria = await request(`${base}/views/${encodeURIComponent(data.view)}/acceptance-criteria?${query()}`, "PUT",
+        {expected_revision: criteriaRevision, items: criteriaDraft});
+      criteriaDirty = false; renderCriteria(); message("Acceptance criteria saved for this costume and view.");
+    } catch (error) { message(error.message, true); }
+    finally { busy = false; $("save-criteria").disabled = false; }
   }
   function renderTrials() {
     const section = $("results"), host = $("trial-cards"), attempts = data.trial?.attempts || [];
@@ -127,12 +194,22 @@
       }
       host.append(card);
     }
+    const assessment = data.trial?.assessment;
+    $("assessment").replaceChildren();
+    if (isCostume && assessment) {
+      $("assessment").append(el("h3", "AI acceptance assessment · advisory"), el("p", assessment.error || assessment.summary || assessment.status));
+      for (const item of assessment.items || []) $("assessment").append(el("p", `${data.criteria.items.find(c => c.id === item.criterion_id)?.text || item.criterion_id}: ${item.assessment} — ${item.evidence}`));
+      if (assessment.status === "FAILED") {
+        const retry = el("button", "Retry assessment"); retry.type = "button";
+        retry.addEventListener("click", () => void act("retry", {evaluation: true})); $("assessment").append(retry);
+      }
+    }
     const ready = data.status === "TRIAL_READY" && attempts.every(item => item.status === "READY");
     $("keep").disabled = !ready && data.status !== "KEEPING"; $("refine").disabled = !ready;
   }
   function renderDiff() {
     const host = $("diff"); host.replaceChildren();
-    host.append(el("h3", "Character.md: master → proposed"));
+    host.append(el("h3", `${sourceLabel()}: session baseline → cumulative proposal`));
     if (!(data.diff_rows || []).length) {
       host.append(el("p", "Select suggestions to preview the source diff.")); return;
     }
@@ -169,34 +246,60 @@
       body.append(line);
     }
     table.append(body); frame.append(table); host.append(frame);
+    if (isCostume && JSON.stringify(data.master_diff_rows) !== JSON.stringify(data.diff_rows)) {
+      const master = el("details"); master.append(el("summary", "Complete master → proposed changes (includes existing batch costume edits)"));
+      const changes = (data.master_diff_rows || []).filter(row => row.kind !== "equal" && row.kind !== "gap");
+      master.append(el("pre", changes.map(row => `${row.master_text ? `− ${row.master_text}\n` : ""}${row.proposed_text ? `+ ${row.proposed_text}` : ""}`).join("\n")));
+      host.append(master);
+    }
   }
   function render() {
     if (!data) return;
     if (data.status === "CANCELLED") { message("Improvement cancelled. Saved observations remain."); return; }
     $("title").textContent = `${data.view || data.views?.[0]?.view || "View"} · Post Render Adjustments`;
-    renderViews(); renderAnalysis(); renderDiff(); renderTrials();
+    if (isCostume) {
+      const settings = data.render_settings;
+      $("explanation").textContent = `${sourceLabel()} · ${settings.mode} · ${settings.mode !== "doll-dressing-no-ref" && settings.costume_reference_view ? `costume reference ${settings.costume_reference_view}` : "matching Assembly only"}. Review scoped costume edits and four private target-view trials.`;
+      $("suggestion-title").textContent = "Costume template suggestions";
+      $("propose").textContent = "Suggest costume template edits";
+      $("keep").textContent = "Save reviewed costume template to master";
+      $("trial-explanation").textContent = "Four private target-view renders reuse this session’s seeds across rounds. They do not enter the batch gallery. Mark accomplished criteria yourself after reviewing the images.";
+    }
+    renderViews(); renderCriteria(); renderAnalysis(); renderDiff(); renderTrials();
+    $("history-items").replaceChildren(...(data.history || []).map(item => el("p", `Round ${item.round} · ${item.trial_id}`)));
     $("propose").disabled = !["OBSERVING", "TRIAL_READY", "REVIEW_READY", "FAILED"].includes(data.status);
     $("cancel").disabled = ["CANCELLED", "KEPT", "KEEPING"].includes(data.status);
-    if (data.status === "KEPT") message("Character.md updated and batch prompts recompiled. Return to the batch.");
+    if (data.status === "KEPT") message(`${sourceLabel()} updated and available batch prompts recompiled. Return to the batch.`);
     else if (data.status === "KEEPING") message(`Finalizing template change: ${data.error || "in progress"}`, Boolean(data.error));
     else if (data.status === "CANCELLED") message("Improvement cancelled. Saved observations remain.");
     else if (data.error) message(data.error, true);
   }
   async function refresh() {
-    if (refreshing || busy) return;
+    if (refreshing || busy || deciding) return;
     refreshing = true;
     try { data = await request(endpoint()); render(); }
     catch (error) { message(error.message, true); }
     finally { refreshing = false; }
   }
   $("return").href = returnUrl();
-  $("propose").addEventListener("click", () => void act("propose", { direction: $("direction").value }));
+  $("propose").addEventListener("click", () => {
+    if (criteriaDirty) { message("Save acceptance criteria before analysis.", true); return; }
+    void act("propose", { direction: $("direction").value });
+  });
+  $("add-criterion").addEventListener("click", () => { criteriaDraft.push({text: "", status: "in_progress"}); criteriaDirty = true; drawCriteria(); });
+  $("save-criteria").addEventListener("click", () => void saveCriteria());
   $("refine").addEventListener("click", () => { $("direction").focus(); message("Add or revise observations, then suggest another round of edits."); });
-  $("trial").addEventListener("click", () => void act("trial", { selected_ids: [...$("analysis").querySelectorAll("input:checked")].map(input => input.value) }));
-  $("keep").addEventListener("click", async () => { await act("keep"); if (data?.status === "KEPT") location.href = returnUrl(); });
+  $("trial").addEventListener("click", () => {
+    if (deciding || criteriaDirty) { message("Finish saving your choices and criteria before accepting the diff.", true); return; }
+    void act("trial", {selected_ids: data.analysis.selected_ids,
+      ...(isCostume ? {diff_sha256: data.diff_sha256, expected_revision: data.revision} : {})});
+  });
+  $("keep").addEventListener("click", async () => {
+    if (criteriaDirty) { message("Save acceptance criteria before saving the template.", true); return; }
+    await act("keep"); if (data?.status === "KEPT") location.href = returnUrl(); });
   $("cancel").addEventListener("click", async () => { await act("cancel"); if (data?.status === "CANCELLED") location.href = returnUrl(); });
   void refresh(); setInterval(() => {
     const aiPending = Object.values(data?.observations || {}).some(review => ["QUEUED", "RUNNING"].includes(review?.ai_observations?.status));
-    if (["ANALYZING", "TRIAL_RUNNING", "KEEPING"].includes(data?.status) || aiPending) void refresh();
+    if (["ANALYZING", "TRIAL_RUNNING", "KEEPING"].includes(data?.status) || aiPending || ["QUEUED", "RUNNING"].includes(data?.trial?.assessment?.status)) void refresh();
   }, 2500);
 })();

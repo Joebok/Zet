@@ -1,5 +1,7 @@
 # Architectural decision records
 
+[0033 - Costume modes and private source adjustments](0033-costume-post-render-adjustments.md) replaces Pilot execution with independent modes, persistent criteria, scoped edits and four-render private trials.
+
 [0032 - Guided prompt refinement with round authorization](0032-guided-prompt-generator.md)
 replaces the original pilot workflow and budget gates while retaining frozen inputs and separate publication.
 

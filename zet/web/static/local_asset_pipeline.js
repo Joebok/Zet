@@ -226,6 +226,7 @@
 
   function frontRenderControl() {
     const run = state.run;
+    if (isCostume()) return null;
     return { disabled: continuationDisabled(run) || run?.progression?.stage !== -1,
       reason: run?.progression?.stage >= 0 ? "FRONT has already started. Use the view controls to generate more images." : run?.progression?.reason || "Generate FRONT from the accepted template version.",
       start: async () => {
@@ -262,7 +263,7 @@
       $("proceed").textContent = state.pipeline === "character-assembly"
         ? (run.progression.next_views.includes("FRONT") ? "Run front"
           : run.progression.next_views.length ? "Run remaining" : "All views rendered")
-        : run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
+        : isCostume() ? (run.progression.next_views.length ? "Run ready views" : "No unrendered views ready") : run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
       $("proceed").title = run.progression.reason || (state.pipeline === "character-assembly"
         ? "Render FRONT first, select it, then run remaining views. Luna compares proportions and identity with the selected FRONT."
         : "Generate the next stage from your selected images");
@@ -284,6 +285,9 @@
             : "Run remaining views. Luna will prioritize head-to-body proportion and identity matches with your selected FRONT; renders use only matching body and head images.")
           : "All requested views rendered. Select and publish the images you want to keep.");
       }
+      if (isCostume()) label.textContent = run.progression.prompt_review_required
+        ? "Analyze and accept governing prompts, then choose each view’s rendering mode and reference."
+        : run.progression.reason || "Run any view with available mode inputs, or use Run ready views for the remaining candidates.";
       progression.append(label);
       for (const warning of run.reference_warnings || []) {
         const note = document.createElement("p"); note.className = "muted";
@@ -291,7 +295,7 @@
       }
     }
     if (state.pipeline === "character-assembly") $("anchor-option").hidden = true;
-    $("back-reference-label").hidden = ["body-reference", "head-image-edit", "character-assembly"].includes(state.pipeline) || !run?.progression?.next_views.includes("BACK");
+    $("back-reference-label").hidden = ["body-reference", "head-image-edit", "character-assembly", "costume-dressing"].includes(state.pipeline) || !run?.progression?.next_views.includes("BACK");
     if (run && $("back-reference").dataset.runId !== run.run_id) {
       $("back-reference").value = run.character_progression?.back_reference || "BACK_LEFT_3_4";
       $("back-reference").dataset.runId = run.run_id;
@@ -705,6 +709,31 @@
     return section;
   }
 
+  function costumeRenderControls(run, view) {
+    const settings = run.render_settings?.[view] || {}, section = document.createElement("div");
+    section.className = "costume-render-settings";
+    const modeLabel = document.createElement("label"); modeLabel.textContent = "Render mode";
+    const mode = document.createElement("select"); mode.dataset.renderMode = view;
+    for (const [value, text] of [["doll-dressing-ref", "Doll-dressing (w/ Ref)"], ["doll-dressing-no-ref", "Doll-dressing (no Ref)"], ["rotate", "Rotate"]]) {
+      if (view !== "FRONT" || value === "doll-dressing-ref") mode.add(new Option(text, value));
+    }
+    mode.value = settings.mode; modeLabel.append(mode);
+    const referenceLabel = document.createElement("label"); referenceLabel.textContent = "Costume reference view";
+    const reference = document.createElement("select"); reference.dataset.costumeReference = view;
+    reference.add(new Option(view === "FRONT" ? "FRONT uses matching Assembly only" : "Choose a different view", ""));
+    for (const sourceView of run.views || []) if (sourceView !== view) {
+      reference.add(new Option(`${sourceView}${run.selected_views?.[sourceView] ? " · selected" : " · image not selected"}`, sourceView));
+    }
+    reference.value = settings.costume_reference_view || "";
+    const sync = () => { reference.disabled = view === "FRONT" || mode.value === "doll-dressing-no-ref"; };
+    mode.addEventListener("change", sync); sync(); referenceLabel.append(reference);
+    section.append(modeLabel, referenceLabel);
+    addButton(section, "Save render settings", "save-costume-render-settings", {view});
+    const help = document.createElement("p"); help.className = "muted";
+    help.textContent = run.slot_controls?.[view]?.stage_reason || "Ready. Views run independently with their chosen mode inputs. Retry retains the submitted prompt and images.";
+    section.append(help); return section;
+  }
+
   function renderViews(run, host = $("views")) {
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
     const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
@@ -725,28 +754,27 @@
       const evaluation = run.evaluations?.[view] || {};
       const viewActions = document.createElement("span");
       viewActions.className = "button-row compact";
-      const viewReady = view === "FRONT" || (state.pipeline === "character-assembly"
+      const viewReady = isCostume() ? !run.slot_controls?.[view]?.stage_reason : view === "FRONT" || (state.pipeline === "character-assembly"
         ? Boolean(run.selected_views?.FRONT) && !run.stale_selections?.includes("FRONT")
         : run.use_front_anchor === false || Boolean(run.front_anchor));
       addRecompileOption(viewActions);
       const stageReason = run.slot_controls?.[view]?.stage_reason || "";
-      addButton(viewActions, "Stage in Image Generator", "stage-image-generation", { disabled: Boolean(stageReason), view, title: stageReason });
+      const stageMenu = document.createElement("details"); stageMenu.className = "local-stage-menu";
+      const stageLabel = document.createElement("summary"); stageLabel.textContent = "Stage…"; stageMenu.append(stageLabel);
+      const stageItems = document.createElement("div"); stageItems.className = "local-stage-items"; stageMenu.append(stageItems);
+      addButton(stageItems, "Stage in Image Generator", "stage-image-generation", { disabled: Boolean(stageReason), view, title: stageReason });
       if (isCostume()) {
         const controls = run.slot_controls?.[view] || {};
-        const noCostumeRefReason = controls.no_costume_ref_reason || "";
-        addButton(viewActions, "Stage no Costume Ref", "stage-no-costume-ref", { disabled: Boolean(noCostumeRefReason), view,
-          title: noCostumeRefReason || "Freshly compiles this view using its matching Assembly image and applicable template references, without a prior costume view." });
-        const reason = controls.rotation_reason || "";
-        addButton(viewActions, "Stage Rotation", "stage-rotation", { disabled: Boolean(reason), view,
-          title: reason || `Rotate selected ${controls.rotation_source_view || "dressed view"} into ${view}. Always compiles a fresh rotation prompt.` });
+        addButton(stageItems, "Stage no Costume ref", "stage-no-costume-ref", { disabled: Boolean(controls.no_costume_ref_reason), view,
+          title: controls.no_costume_ref_reason || "Stage without a prior rendered costume view." });
+        addButton(stageItems, "Stage Rotation", "stage-rotation", { disabled: Boolean(controls.rotation_reason), view,
+          title: controls.rotation_reason || `Rotate selected ${controls.rotation_source_view} into ${view}.` });
       }
+      viewActions.append(stageMenu);
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.status === "FAILED" || item.human_review?.decision === "reject"), view });
-      addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.image_path), view });
+      addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || (!isCostume() && !viewReady) || !candidates.some((item) => item.image_path), view });
       addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
-      if (["costume-dressing", "head-image-edit"].includes(state.pipeline)) {
-        addButton(viewActions, "Prompt Generator Pilot", "prompt-generator", { disabled: !isCostume() && !candidates.some((item) => item.image_path), view });
-      }
       const ai = run.view_reviews?.[view]?.ai_observations || {};
       summary.append(viewActions);
       details.append(summary);
@@ -860,7 +888,8 @@
         }
       }
       recipeSection.append(recipeHelp);
-      if (state.pipeline !== "character-assembly") details.append(recipeSection);
+      if (isCostume()) details.append(costumeRenderControls(run, view));
+      else if (state.pipeline !== "character-assembly") details.append(recipeSection);
       const observationDetails = document.createElement("details");
       observationDetails.className = "local-pipeline-observations";
       observationDetails.dataset.view = view;
@@ -941,7 +970,7 @@
       if (reviewProgress.textContent) details.append(reviewProgress);
       const continuation = document.createElement("div");
       continuation.className = "button-row compact";
-      addButton(continuation, "Continue", "proceed", { primary: true });
+      if (!isCostume()) addButton(continuation, "Continue", "proceed", { primary: true });
       details.append(continuation);
       host.append(details);
     }
@@ -1072,7 +1101,7 @@
     select.replaceChildren();
     for (const run of state.runs) {
       const phaseChangeLabel = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules" : "";
-      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel}${state.pipeline !== "character-assembly" && run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : ""} · ${run.run_id}`, run.run_id));
+      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel}${!["character-assembly", "costume-dressing"].includes(state.pipeline) && run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : ""} · ${run.run_id}`, run.run_id));
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
@@ -1595,41 +1624,10 @@
     $("review-dialog").showModal();
   }
 
-  function choosePilotMode(run, view) {
-    return new Promise((resolve) => {
-      const dialog = document.createElement("dialog");
-      dialog.className = "local-pipeline-pilot-mode";
-      dialog.setAttribute("aria-label", "Choose Pilot rendering mode");
-      const form = document.createElement("form"); form.method = "dialog";
-      const heading = document.createElement("h2"); heading.textContent = `Prompt Generator Pilot · ${view}`; form.append(heading);
-      for (const [value, title, explanation] of [
-        ["doll-dressing", "Doll-dressing", "Edit the Assembly image to dress it with the costume."],
-        ["rotate", "Rotate", "Rotate a selected dressed image, using Assembly for orientation, stance and framing only."],
-      ]) {
-        const label = document.createElement("label"), input = document.createElement("input"), text = document.createElement("span");
-        input.type = "radio"; input.name = "rendering_mode"; input.value = value; input.checked = value === "doll-dressing";
-        label.append(input, document.createTextNode(` ${title}`)); text.textContent = explanation; label.append(text); form.append(label);
-      }
-      const controls = run.slot_controls?.[view] || {}, source = document.createElement("p");
-      source.textContent = controls.rotation_source_view ? `Rotate source: selected ${controls.rotation_source_view}.`
-        : `New Rotate run: ${controls.rotation_reason || "Requires a selected dressed image in a different view and the matching Assembly snapshot."}`;
-      form.append(source);
-      const note = document.createElement("p"); note.textContent = "Open resumes this mode’s active run, or prepares a new setup. No AI work starts yet."; form.append(note);
-      for (const [value, title] of [["cancel", "Cancel"], ["open", "Open pilot"]]) {
-        const button = document.createElement("button"); button.type = "submit"; button.value = value; button.textContent = title; form.append(button);
-      }
-      dialog.append(form); document.body.append(dialog);
-      dialog.addEventListener("close", () => {
-        const selected = dialog.returnValue === "open" ? form.elements.rendering_mode.value : null;
-        dialog.remove(); resolve(selected);
-      }, { once: true });
-      dialog.showModal();
-    });
-  }
-
   async function handleAction(button) {
     const action = button.dataset.localAction;
     const view = button.dataset.view;
+    if (action?.startsWith("stage-")) button.closest(".local-stage-menu")?.removeAttribute("open");
     const candidateId = button.dataset.candidate || button.closest?.("[data-candidate]")?.dataset.candidate || "";
     if (action === "review") { openReview(candidateId); return; }
     if (action === "post-render-adjustments") {
@@ -1645,26 +1643,6 @@
         if (costume) params.set("costume", costume);
         location.href = `/local-character-prompt-improvement?${params}`;
       } finally { button.disabled = false; }
-      return;
-    }
-    if (action === "prompt-generator") {
-      const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
-      const context = contextKey(), generation = state.generation;
-      const renderingMode = isCostume() ? await choosePilotMode(run, view) : "";
-      if (renderingMode === null || context !== contextKey() || generation !== state.generation || state.run?.run_id !== run.run_id) return;
-      const originalLabel = button.textContent;
-      button.disabled = true;
-      button.textContent = "Opening pilot…";
-      try {
-        const query = costume ? `?costume=${encodeURIComponent(costume)}` : "";
-        const result = await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/prompt-generator${query}`,
-          { method: "POST", body: JSON.stringify({ view, ...(renderingMode ? { rendering_mode: renderingMode } : {}) }) });
-        const params = new URLSearchParams({ universe_id: document.querySelector("#universe-select").value,
-          pipeline, run_id: run.run_id, session_id: result.session_id, view });
-        if (costume) params.set("costume", costume);
-        location.href = `/local-character-prompt-generator?${params}`;
-      } catch (error) { setStatus(error.message, true); }
-      finally { button.disabled = false; button.textContent = originalLabel; }
       return;
     }
     if (action === "stage-image-generation" || action === "stage-rotation" || action === "stage-no-costume-ref") {
@@ -1684,6 +1662,19 @@
           recompile, current, rotation, noCostumeRef);
       } finally { button.disabled = Boolean(state.run?.slot_controls?.[view]?.[
         rotation ? "rotation_reason" : noCostumeRef ? "no_costume_ref_reason" : "stage_reason"]); }
+      return;
+    }
+    if (action === "save-costume-render-settings") {
+      const controls = button.closest(".costume-render-settings");
+      const settings = state.run.render_settings[view];
+      const params = new URLSearchParams({costume: selectedCostume()});
+      button.disabled = true;
+      try {
+        await request(`${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/views/${encodeURIComponent(view)}/render-settings?${params}`,
+          {method: "PUT", body: JSON.stringify({mode: controls.querySelector("[data-render-mode]").value,
+            costume_reference_view: controls.querySelector("[data-costume-reference]").value, expected_revision: settings.revision})});
+        await loadRun(state.run.run_id); setStatus("Rendering settings saved for future renders. Retry keeps its frozen inputs.");
+      } finally { button.disabled = false; }
       return;
     }
     if (action === "save-view-reference") {

@@ -315,7 +315,8 @@ class LocalRunAllRemainingService:
             missing_views.intersection_update(allowed or set())
             if not missing_views:
                 self._set_batch(campaign_id, index, result="REVIEW_PENDING",
-                    message="Open the batch to accept prompts or select images and Continue to the next stage.")
+                    message=("Open the batch to accept governing prompts and choose available rendering mode inputs." if pipeline == "costume-dressing"
+                             else "Open the batch to accept prompts or select images and Continue to the next stage."))
                 return
         needs_anchor = pipeline in {"body-reference", "head-image", "head-image-edit"} or bool(run.get("use_front_anchor", True))
         if not run.get("front_anchor") and needs_anchor:

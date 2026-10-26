@@ -55,9 +55,14 @@ class LocalPromptPreviewService:
                 if pipeline == "character-assembly":
                     declare("body_reference")
                     declare("head_image")
+                settings = None
                 if pipeline == "costume-dressing":
-                    declare("character_assembly")
-                if view != "FRONT" and pipeline != "character-assembly":
+                    from zet.services.costume_render_mode_service import CostumeRenderModeService, render_settings
+                    # All-orientation previews may include views outside a partial batch.
+                    preview_run = {**run, "views": list(VIEW_ORDER)}
+                    settings = render_settings(preview_run, view)
+                    references = CostumeRenderModeService(workflow).references(preview_run, view, settings, text_preview=True)
+                if view != "FRONT" and pipeline not in {"character-assembly", "costume-dressing"}:
                     reference = batch_view_reference(source_view, view, "declared:batch_view_reference", "declared")
                     if pipeline in {"head-image", "head-image-edit"}:
                         reference.update(role="head_image_source", prompt_role="edit_base")
@@ -71,7 +76,8 @@ class LocalPromptPreviewService:
                     job.update(Costume=run["costume"], **{"Costume Path": str(workflow.adapter._costume_path(
                         run["character"], run["phase"], run["costume"]))})
                 compiled = compiler(job, workflow.project_root, pipeline_mode="local",
-                    universe_root=workflow.app.config.base_library_path, text_preview=True)
+                    universe_root=workflow.app.config.base_library_path, text_preview=True,
+                    **({"render_mode": settings["mode"], "rotation": settings["mode"] == "rotate"} if settings else {}))
                 prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
                 if pipeline == "body-reference":
                     prompt = workflow.adapter._qwen_prompt(prompt, view, anchor=view != "FRONT",

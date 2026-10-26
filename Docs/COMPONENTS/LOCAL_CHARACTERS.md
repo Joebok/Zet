@@ -1,27 +1,18 @@
 # Local character assets
 
-## Prompt Generator Pilot (2026-10-24)
+## Costume-Dressing modes and adjustments (2026-10-26)
 
-Costume Dressing entry offers **Doll-dressing** (the default: dress the Assembly
-edit base) and **Rotate** (turn a selected dressed edit base, using the matching
-Assembly snapshot only for orientation, stance and framing). Rotate reuses Stage
-Rotation's recipe/nearest-selected-view source rules and accepted template overlay.
-There is one active session per target view **and mode**; opening resumes that
-mode before checking fresh-creation prerequisites. The target needs no existing
-rendered candidate. Mode stays fixed through rounds and restart, appears in setup
-and history, and follows adoption into catalog provenance. Existing Costume Dressing
-sessions are Doll-dressing without rewriting historical packets. Head-Image Edit
-retains its existing flow. Source changes after setup do not replace frozen images.
+`CostumeRenderModeService` owns per-view settings, availability and ordered input preparation for slots, previews and Image Generator staging. FRONT retains its Assembly-based Doll-dressing behavior. Other views choose Doll-dressing (w/ Ref), Doll-dressing (no Ref), or Rotate. The first edits the matching Assembly with a selected same-batch costume view as design guidance; no Ref omits prior dressed views but retains authored resource images; Rotate edits the selected dressed view with Assembly second for target orientation, stance and framing. Sources are explicit: an unavailable chosen source blocks new work without nearest-view fallback. Rotation wording includes source, target, angular distance and direction.
 
-Costume-Dressing and Head-Image Edit expose a guided per-view pilot through `LocalPromptGeneratorService`. `PromptGeneratorCycle` owns stage transitions, session discovery, human gates and durable jobs; `PilotAIReview` owns structured evaluation, direction and drafting requests. Sessions freeze the current compiled prompt, references and render settings. A run reuses four fixed seeds across its baseline and subsequent rounds.
+After governing prompts are accepted, Costume-Dressing views run independently when their mode inputs exist. **Run ready views** queues remaining eligible candidates without Continue/predecessor stages. Per-view mode/reference settings persist; Retry uses frozen prompts, references, settings and seeds. Publication follows captured lineage rather than an unused FRONT prerequisite. Mode/reference changes do not rewrite existing candidates or locks.
 
-The workspace presents setup → four baseline images → AI evaluations → human review → round approval → suggested directions → direction approval → generated draft → draft approval → four trial images and evaluations. Starting a baseline or approving a subsequent round authorizes its associated AI work; directions and drafts still require explicit human approval. There are no pilot budgets, case/round caps, tier escalation gates or quota-reserve checks. Existing configured role defaults select models. Provider/runtime failures remain visible and retryable.
+Each view has a **Stage…** menu: **Stage in Image Generator** uses saved settings; **Stage no Costume ref** and **Stage Rotation** prepare alternatives without changing them. FRONT rejects the unsupported alternatives.
 
-Desktop image review uses a large image on the left and independently scrolling findings/corrections on the right. Every new image's human conclusion pills start unselected; AI scores do not populate them. Partial choices and comments autosave, but both browser and service require an explicit choice for every criterion before confirmation. Saved explicit choices and previously confirmed reviews restore on reopen; older unconfirmed scores remain historical rather than counting as deliberate choices. Confirming all four reviews enables round approval or finishing. Stable criterion identities and immutable assessment revisions preserve earlier AI findings and human corrections. Editing criteria reassesses the same four images and requires renewed confirmation. Directions use all four outputs, confirmed human conclusions and earlier round context, including baseline evidence. Prompts are machine-authored, hidden by default and inspectable in read-only new tabs. The server validates packet identity, normalized reference citations and required compiler clauses before exact draft approval starts rendering.
+**Post Render Adjustments** opens `LocalCostumePostRenderService` through the existing post-render URL. `CostumeAdjustmentCriteriaService` saves stable criterion IDs/text and in_progress/accomplished status in the costume workspace, independently of batches and modes. Accomplished criteria remain visible and must be reopened and saved before text editing. Only unfinished criteria enter analysis.
 
-Failed steps preserve diagnostics and completed work. Explicit retries use a fresh task only for failed work; continuation replay reuses request identities. Scrapping archives evidence and fences late results; starting over freezes fresh inputs and seeds with copied editable criteria, without submitting AI work. Batch entry resumes the active run; the run menu exposes historical rounds and other runs. Version-1 sessions remain readable without a write-on-read migration; their first action persists version 2. Existing images without evaluations require **Evaluate existing round**, preserving saved human notes/scores and failed-draft diagnostics.
+Analysis proposes independently selectable costume prose-line changes with criterion links and view/mode scopes. Target and symmetric mirror are favored; other selected views, including a selected mirror, default unchecked. Intentional asymmetry suppresses mirror defaults. The operator adjusts scopes and accepts a cumulative source diff before four private target-view renders. Session seeds, render profile and ordered inputs are frozen; advisory AI assessment never changes human accomplishment statuses. Further rounds use the private trials and unfinished criteria. Earlier rounds remain inspectable. Explicit save promotes only the reviewed costume source, activates a batch revision and recompiles available views; unavailable views compile later. Partial progress may be saved while criteria remain unfinished. Other batches keep their own accepted versions.
 
-Image acceptance, explicit adoption into an empty managed slot, batch selection and catalog locking remain separate. Adoption verifies captured image bytes and stores exact prompt/ordered-reference provenance; source/template changes are outside the guided cycle. No permanent pilot scenario was added; disposable prepared-response and browser checks establish workflow behavior, not live image quality. See [ADR 0032](../DECISIONS/0032-guided-prompt-generator.md) and [Testing](../Testing.md).
+Character.md adjustments remain available for the other pipelines. Historical Costume-Dressing Character.md sessions are read-only. Prompt Generator Pilot pages/services/actions have been retired from Costume-Dressing and Head-Image Edit; stored images/session records and adopted-image publication provenance remain. Old continuations terminalize without dispatch. See [ADR 0033](../DECISIONS/0033-costume-post-render-adjustments.md), [Prompts](PROMPTS.md#costume-render-mode-conditioning-2026-10-26) and [Testing](../Testing.md).
 
 ## Independent Head-Image Edit (2026-10-22)
 
@@ -261,9 +252,9 @@ generator results are not automatically adopted. Minor Characters and refinement
 windows are outside this handoff. Missing inputs and unsupported reference limits
 leave the existing generator board intact.
 
-Costume Dressing also offers **Stage Rotation**. It uses the view's explicit
-selected-view reference recipe, or the closest available different selected view
-when the recipe is default. A `none` recipe requires choosing a source first.
+Costume Dressing also offers **Stage Rotation**. It uses the view's saved explicit
+costume-reference view. Missing selections require an explicit source choice;
+there is no nearest-view fallback.
 The button tooltip names the source; unavailable/rejected/outside-batch sources
 are refused. [CostumeRotationService](../../zet/services/costume_rotation_service.py)
 compiles a fresh rotation alternative with the accepted batch template overlay
@@ -276,7 +267,7 @@ allowing template requirements to correct source-image errors. This handoff uses
 the same generator replacement/settings/reload behavior above and never adopts
 results or submits inference. Rendered fidelity remains an operator assessment.
 
-Every Costume Dressing view also offers **Stage no Costume Ref**. It freshly
+Non-FRONT Costume Dressing views also offer **Stage no Costume ref** through the staging menu. It freshly
 compiles the requested view using its matching Character-Assembly snapshot and
 view-filtered template resources, without requiring or attaching a prior dressed
 view. It follows the batch's accepted template revision and stages through the
@@ -381,7 +372,7 @@ updates and drift from the captured baseline. **Start Front Renders** at the end
 uses the same FRONT continuation and readiness checks as the top Continue control;
 after FRONT opens, further generation uses the existing view controls.
 
-[LocalCharacterProgressionService](../../zet/services/local_character_progression_service.py) owns explicit Continue boundaries: FRONT, both front quarters, both profiles, both rear quarters, then BACK. Body, Head and Dressing pairs use the selected same-side predecessor. Body-Reference BACK uses selected FRONT; Head/Dressing BACK default to the selected rear-left quarter and may use rear-right. Assembly runs its requested views without stage waits, using only matching body/head inputs. The Body rule also applies to future Generate/Regenerate actions in existing staged batches; saved renders and Retry retain their frozen inputs. Existing matching Body/Head/Assembly/costume inputs retain their roles and order. Preview includes required ancestors for requested partial batches; front-only batches remain front-only. New generation, supplemental slots, runner resume and automation respect the opened stages. Overview automation and Run All Remaining pause for human prompt/selection/Continue actions. Existing batches retain legacy sequencing until explicitly entering prompt improvement.
+[LocalCharacterProgressionService](../../zet/services/local_character_progression_service.py) owns explicit Continue boundaries: FRONT, both front quarters, both profiles, both rear quarters, then BACK. Body and Head pairs use the selected same-side predecessor; Costume-Dressing now uses independent mode inputs as described above. Body-Reference BACK uses selected FRONT; Head BACK defaults to the selected rear-left quarter and may use rear-right; Costume-Dressing reference choices are independent. Assembly runs its requested views without stage waits, using only matching body/head inputs. The Body rule also applies to future Generate/Regenerate actions in existing staged batches; saved renders and Retry retain their frozen inputs. Existing matching Body/Head/Assembly/costume inputs retain their roles and order. Body/Head previews include required ancestors for partial batches; Costume-Dressing preserves its requested views. Front-only batches remain front-only. New generation, supplemental slots, runner resume and automation respect the opened stages. Overview automation and Run All Remaining pause for human prompt/selection/Continue actions. Existing batches retain legacy sequencing until explicitly entering prompt improvement.
 
 Prompt previews declare those future predecessor inputs through the same compiler contracts used for actual renders, even before any batch images exist. Shared reference descriptions keep preview and render prose identical for equivalent bindings; actual generation substitutes selected image paths and candidate provenance. Body task/image-input text is conditioned before its Qwen wrapper is added, and Head, Assembly and Dressing preserve their own ordered prerequisite roles. See [prompt preview compilation](PROMPTS.md#character-prompt-review-previews-2026-10-18) for the validation boundary and historical-review limitation.
 
@@ -477,7 +468,7 @@ Character descriptions and costume template wording use Qwen fragment guidance; 
 
 ## Post-render Character.md improvement (2026-10-23)
 
-AI Observations no longer start after ranking or Re-evaluate. Each view's Observations section offers an explicit run action; human notes are saved separately. Each rendered view in the five local character pipelines has a **Post Render Adjustments** button opening `/local-character-prompt-improvement`. A view-scoped private session freezes one review image and its submitted prompt plus the batch source text; it snapshots that view's observations for each proposal. The operator can switch the representative within the view before analysis. Review suggestions are individually selectable and confined to `Character.md` but may change any valid location in that file; other active batch source overlays remain in place. The page uses the same side-by-side master/proposed source diff as prompt improvement.
+AI Observations no longer start after ranking or Re-evaluate. Each view's Observations section offers an explicit run action; human notes are saved separately. Each rendered view has a **Post Render Adjustments** button (Costume-Dressing uses the costume workflow above; the other four pipelines use Character.md) opening `/local-character-prompt-improvement`. A view-scoped private session freezes one review image and its submitted prompt plus the batch source text; it snapshots that view's observations for each proposal. The operator can switch the representative within the view before analysis. Review suggestions are individually selectable and confined to `Character.md` but may change any valid location in that file; other active batch source overlays remain in place. The page uses the same side-by-side master/proposed source diff as prompt improvement.
 
 The selected edits compile all eight text previews and two private renders of the chosen view with current ordered inputs, even if a suggestion cites another affected view. Trial images do not enter slots, selections, rankings, or Inventory. Another observation round can build on the trial. Cancel discards the private trial and leaves only explicitly saved observations. Keep requires completed trials and unchanged source/batch baselines, then writes `Character.md`, activates a batch version, and recompiles available renderable prompts. Unopened views compile from that version when generated. Assembly gains this post-render version path without changing its initial Run front gate. Frozen asks, Retry and locks remain unchanged.
 

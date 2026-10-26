@@ -1,19 +1,20 @@
 # Prompt compilation and reference contracts
 
-## Prompt Generator Pilot packets (2026-10-24)
+## Costume render-mode conditioning (2026-10-26)
 
-New Costume Dressing packets include `rendering_mode` (`doll-dressing` or `rotate`)
-in their hash, separately from the `edit`/`generate` operation. Rotate preparation
-uses `CostumeRotationService` and retains compiler facts and source-map declarations.
-Ordered renderer bindings start with the dressed edit base and Assembly orientation
-reference; applicable costume resources follow. Rotate supplies its own required
-edit-base/orientation clauses instead of the normal dressing constraints, which
-would incorrectly preserve the source angle. Evaluation, direction and drafting
-receive the fixed mode and reference roles. Legacy packet hashes remain unchanged.
+`Run_Costume_Dressing_Jobs.compile_costume_dressing_job` takes a rendering mode independently of local/traditional pipeline mode. `CostumeRenderModeService` supplies the same ordered references to slots, staging and text previews. Rotate uses `costume_rotation_v1` with an explicit source/target turn instruction; dressing modes retain Assembly as the edit base. Mode settings and image profiles are captured with each prepared request.
 
-`PromptPacket` and `LocalPromptGeneratorService` bind compiled Costume-Dressing or Head-Image Edit facts, criteria, source hashes, exact baseline text, instruction-module hashes, render settings, and separate ordered analysis/render image lists. Versioned `ZET:PROMPT_PACKET` declarations resolve explicit inventory, selected/locked batch, or named locked-pipeline sources. The compiler removes declaration comments from render prose; packet preparation snapshots the resolved bytes and rejects missing or ambiguous inputs.
+Existing view bullets compose with an optional inline annotation, for example:
 
-The guided pilot freezes the current compiled baseline without a manual prompt-save step. Human-approved directions drive automatic prompt authoring. Prompts are read-only in separate tabs; draft approval binds exact text and packet revision before four-seed rendering. Citation tokens are resolved against frozen renderer bindings before required compiler clauses are checked. Invalid responses and diagnostics remain inspectable; no invalid draft can render. Criteria revisions invalidate downstream unrendered approvals and trigger reassessment. Workflow and authorization policy belong to [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24); see [ADR 0032](../DECISIONS/0032-guided-prompt-generator.md).
+```markdown
+- [bl,br] Preserve the continuous rear hem. <!-- ZET:RENDER_MODES rotate -->
+```
+
+Supported values are `doll-dressing-ref`, `doll-dressing-no-ref`, and `rotate`, comma-separated. Untagged prose applies across modes. The costume compiler filters modes before deriving normalized equipment/visibility facts; `ViewContext.render_mode` also supports mode-conditioned source lines. Compilation strips annotations and records mode decisions/source lines under `render_mode_conditioning` in the source map. Malformed/unknown annotations and annotation leakage fail compilation. Mode tags are for reusable source instructions whose applicability differs across modes, not for duplicating compiler-owned reference binding.
+
+`costume_mode_conditioning_service.scoped_replacement` partitions an existing prose line into disjoint view/mode scopes. Unchecked cells retain original wording; checked cells receive the replacement. Source markers, placeholders, resource declarations and canonical metadata are protected. Costume post-render sessions propose source edits rather than replacing compiled image prompts. The complete session diff is approved before private tests and explicit master save. See [Local Characters](LOCAL_CHARACTERS.md#costume-dressing-modes-and-adjustments-2026-10-26) and [ADR 0033](../DECISIONS/0033-costume-post-render-adjustments.md).
+
+Prompt Generator Pilot drafting/packet services are retired; historical adopted-image prompt provenance remains stored.
 
 ## Independent Head-Image Edit authoring (2026-10-22)
 

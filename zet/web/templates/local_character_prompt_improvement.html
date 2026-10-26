@@ -2,19 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Post-render Character.md improvement · Zet</title>
-  <link rel="stylesheet" href="/static/zet.css?v=20261023-single-view">
-  <script defer src="/static/local_character_prompt_improvement.js?v=20261023-suggestion-layout"></script>
+  <title>Post Render Adjustments · Zet</title>
+  <link rel="stylesheet" href="/static/zet.css?v=20261026-costume-adjustments">
+  <script defer src="/static/local_character_prompt_improvement.js?v=20261026-costume-adjustments"></script>
 </head>
 <body>
   <main class="post-render-prompt">
     <a id="post-return" href="/">← Return to batch</a>
     <h1 id="post-title">Post Render Adjustments</h1>
-    <p>Review this view's images and observations. Character.md edits may affect any view; the private trials render this view.</p>
+    <p id="post-explanation">Review this view's images and observations. Character.md edits may affect any view; the private trials render this view.</p>
     <p id="post-message" role="status" aria-live="polite"></p>
     <section id="post-views" aria-label="Rendered view cards"></section>
+    <section id="post-criteria-section" class="control-panel" aria-label="Visual acceptance criteria" hidden>
+      <h2>Visual acceptance criteria</h2>
+      <p>Saved for this costume and view across batches and render modes. Checked items are accomplished and excluded from analysis. Reopen and save an accomplished item before editing its text.</p>
+      <div id="post-criteria"></div>
+      <div class="button-row"><button id="post-add-criterion" type="button">Add criterion</button><button id="post-save-criteria" type="button">Save acceptance criteria</button></div>
+    </section>
     <section class="control-panel" aria-label="Template suggestions">
-      <h2>Character.md suggestions</h2>
+      <h2 id="post-suggestion-title">Character.md suggestions</h2>
       <label>Further direction <textarea id="post-direction" rows="3" maxlength="20000"></textarea></label>
       <div class="button-row"><button id="post-propose" type="button">Suggest Character.md edits</button><button id="post-cancel" type="button">Cancel without template changes</button></div>
       <div id="post-analysis"></div>
@@ -23,10 +29,12 @@
     </section>
     <section id="post-results" class="control-panel" aria-label="Trial render results" hidden>
       <h2>Trial renders</h2>
-      <p>Two private renders are queued for this view. They will not enter the batch gallery.</p>
+      <p id="post-trial-explanation">Two private renders are queued for this view. They will not enter the batch gallery.</p>
       <div id="post-trial-cards"></div>
+      <div id="post-assessment" class="post-assessment"></div>
       <div class="button-row"><button id="post-keep" type="button">Keep Character.md changes</button><button id="post-refine" type="button">Observe and refine again</button></div>
     </section>
+    <details id="post-history"><summary>Adjustment rounds</summary><div id="post-history-items"></div></details>
   </main>
 </body>
 </html>

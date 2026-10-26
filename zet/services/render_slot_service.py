@@ -101,15 +101,14 @@ class CharacterRenderSlots:
                 "legacy": len(slots) > SLOT_COUNT, "can_generate": not reason and len(slots) <= SLOT_COUNT and None in slots,
                 "stage_reason": stage_reason}
             if self.workflow.pipeline == "costume-dressing":
-                from zet.services.costume_no_reference_service import CostumeNoReferenceService
-                run["slot_controls"][view]["no_costume_ref_reason"] = CostumeNoReferenceService.availability_reason(
-                    self.workflow, run, view)
-                from zet.services.costume_rotation_service import rotation_source
-                try:
-                    source = rotation_source(run, view)
-                    run["slot_controls"][view].update(rotation_reason="", rotation_source_view=source["view"])
-                except ValueError as exc:
-                    run["slot_controls"][view]["rotation_reason"] = str(exc)
+                from zet.services.costume_render_mode_service import CostumeRenderModeService, render_settings, MODES
+                service = CostumeRenderModeService(self.workflow)
+                settings = render_settings(run, view)
+                reasons = {mode: service.reason(run, view, {**settings, "mode": mode}) for mode in MODES}
+                run.setdefault("render_settings", {})[view] = settings
+                run["slot_controls"][view].update(mode_reasons=reasons,
+                    no_costume_ref_reason=reasons["doll-dressing-no-ref"], rotation_reason=reasons["rotate"],
+                    rotation_source_view=settings["costume_reference_view"])
         for candidate in run.get("candidates") or []:
             slots = maps.get(candidate["view"], [])
             candidate["slot"] = slots.index(candidate["candidate_id"]) + 1 if candidate["candidate_id"] in slots else None
@@ -125,6 +124,10 @@ class CharacterRenderSlots:
 
     def prepare_input(self, run: dict, view: str, directory: Path, *, recompile: bool = False, output_dir: Path | None = None) -> dict:
         """Read the current view prompt, optionally compile it, then freeze this ask."""
+        if self.workflow.pipeline == "costume-dressing":
+            from zet.services.costume_render_mode_service import CostumeRenderModeService
+            return CostumeRenderModeService(self.workflow).prepare(run, view, directory,
+                output_dir=output_dir or Path(run["root"]) / "prompts" / view)
         packet_facts = {}
         packet_declarations = []
         from zet.services.template_source_service import active_revision
@@ -224,6 +227,9 @@ class CharacterRenderSlots:
         return saved
 
     def _prerequisite(self, run: dict, view: str) -> str:
+        if self.workflow.pipeline == "costume-dressing":
+            from zet.services.costume_render_mode_service import CostumeRenderModeService
+            return CostumeRenderModeService(self.workflow).reason(run, view)
         from zet.services.local_character_progression_service import guard_view
         try:
             guard_view(run, view)
@@ -284,7 +290,8 @@ class CharacterRenderSlots:
                     raise RenderSlotConflict("This slot is occupied. Clear it explicitly first.")
                 if old and self._protected(run, old):
                     raise RenderSlotConflict(self._protected(run, old))
-                if action != "clear" and self._prerequisite(run, view):
+                frozen_retry = action == "retry" and self.workflow.pipeline == "costume-dressing"
+                if action != "clear" and not frozen_retry and self._prerequisite(run, view):
                     raise RenderSlotConflict(self._prerequisite(run, view))
                 if action == "retry" and (old.get("render_status") != "FAILED" or Path(str(old.get("image_path") or "")).is_file()):
                     raise RenderSlotConflict("Render Retry requires a failed image render. Use review retry for failed advice.")

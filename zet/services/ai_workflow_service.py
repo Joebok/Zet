@@ -40,7 +40,7 @@ class AIWorkflowService:
         "template_revision": {"_propose_job", "_review_job"},
         "character_refinement": {"_analysis_job", "_render_job"},
         "post_render_prompt": {"_analysis_job", "_render_job"},
-        "prompt_generator": {"_draft_job", "_render_job", "_evaluation_job", "_direction_job"},
+        "post_render_costume": {"_analysis_job", "_render_job", "_evaluation_job"},
     }
 
     def __init__(self, app):
@@ -109,14 +109,14 @@ class AIWorkflowService:
                 _ACTIVE.discard(identity)
 
     def _service(self, name):
+        if name == "post_render_costume":
+            from pathlib import Path
+            from zet.services.local_costume_post_render_service import LocalCostumePostRenderService
+            return LocalCostumePostRenderService(self.app, Path(__file__).resolve().parents[2])
         if name == "post_render_prompt":
             from pathlib import Path
             from zet.services.local_post_render_prompt_service import LocalPostRenderPromptService
             return LocalPostRenderPromptService(self.app, Path(__file__).resolve().parents[2])
-        if name == "prompt_generator":
-            from pathlib import Path
-            from zet.services.local_prompt_generator_service import LocalPromptGeneratorService
-            return LocalPromptGeneratorService(self.app, Path(__file__).resolve().parents[2])
         if name == "character_refinement":
             from pathlib import Path
             from zet.services.local_character_refinement_service import LocalCharacterRefinementService
@@ -145,6 +145,11 @@ class AIWorkflowService:
             with file_lock(path.with_suffix(".lock"), timeout=0.05):
                 record = self._read(path)
                 if record["universe_id"] != self.app.universe_id or record["status"] in {"COMPLETE", "FAILED"}:
+                    return
+                if record["service"] == "prompt_generator" or (record["service"] == "post_render_prompt" and (record.get("args") or [None])[0] == "costume-dressing"):
+                    record.update(status="FAILED", error="Workflow retired; use Costume Post Render Adjustments for costume template changes.",
+                                  updated_at=datetime.now(timezone.utc).isoformat())
+                    self._save(path, record)
                     return
                 if record["method"] not in self.METHODS.get(record["service"], set()):
                     raise ValueError("Unregistered persisted workflow")

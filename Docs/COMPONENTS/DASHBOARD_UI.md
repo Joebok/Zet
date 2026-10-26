@@ -129,3 +129,7 @@ approval requirements for new permanent tests.
 ## Managed LLM Roles (2026-10-22)
 
 Config now renders the shared role registry, with active and compatibility/retired groups, separate model defaults, per-role inherited/overridden model choices, provider/capability requirements, Qwen applicability indicators and collapsible Template Editor links. [LLM roles](LLM_ROLES.md) owns the inventory and semantics. Disposable fixture checks cover actual override/save/reload/clear and source opening at 1280px/390px; physical-device and live-model behavior remain unverified.
+
+## Costume-Dressing controls (2026-10-26)
+
+`local_asset_pipeline.js` presents saved per-view render mode/reference choices and one three-action Stage menu. FRONT only offers its supported mode. Independent mode readiness supplies disabled reasons and Run ready views. The existing post-render page/controller presents persistent accomplished/in-progress criteria, suggestion view/mode checkboxes, a cumulative source diff, four private target-view images, advisory assessments and earlier rounds. Checklist saving is independent of explicit costume master promotion; unsaved checklist changes block analysis/trial/save actions. Other character pipelines retain their Character.md workflow. Prompt Generator Pilot entry points and pages are retired. Domain behavior belongs to [Local Characters](LOCAL_CHARACTERS.md#costume-dressing-modes-and-adjustments-2026-10-26).

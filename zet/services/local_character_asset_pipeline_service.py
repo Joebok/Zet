@@ -83,18 +83,6 @@ class LocalCharacterAssetPipelineService:
         self.asset_store = LocalAssetStoreService(self.library_root)
         self._runner_lock = threading.Lock()
 
-    @staticmethod
-    def prompt_packet_constraints(run: dict[str, Any], view: str) -> list[str]:
-        if view not in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
-            return []
-        return [
-            "Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume.",
-            "Preserve identity, anatomy, body proportions, pose, body and head orientation, camera, and crop from Image 1.",
-            "The costume conforms to the existing body; the body does not change to fit the costume.",
-            "Do not leave generic fitment clothing visible.",
-            "Do not add unlisted garments, jewelry, equipment, weapons, or props.",
-        ]
-
     def _ask_belongs_to_run(self, ask: dict[str, Any], run: dict[str, Any]) -> bool:
         configured = str(getattr(self.app.config, "universe_id", "Moonsea"))
         owner = str(ask.get("universe_id") or "").strip()
@@ -293,8 +281,8 @@ class LocalCharacterAssetPipelineService:
                     )
         front_count, other_count = render_count(payload.get("front_count"), 8), render_count(payload.get("other_count"), 4)
         from zet.services.local_character_progression_service import planned_views
-        requested_views = planned_views(payload)
-        total = front_count + (len(requested_views) - 1) * other_count
+        requested_views = planned_views(payload, pipeline=self.pipeline)
+        total = sum(front_count if view == "FRONT" else other_count for view in requested_views)
         if front_count < 1 or other_count < 1 or total > 256:
             raise LocalCharacterAssetPipelineError("Candidate counts must be positive and the run cannot exceed 256 candidates.")
         inputs, blocking_reasons = {}, []
@@ -327,7 +315,7 @@ class LocalCharacterAssetPipelineService:
                 "can_create": not blocking_reasons, "blocking_reasons": list(dict.fromkeys(blocking_reasons))}
 
     def _requires_front_anchor(self, run: dict[str, Any]) -> bool:
-        return self.pipeline != "character-assembly" and bool(run.get("use_front_anchor", True))
+        return self.pipeline not in {"character-assembly", "costume-dressing"} and bool(run.get("use_front_anchor", True))
 
     def _snapshot_inputs(self, root: Path, plan: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], str]:
         snapshot = {}
@@ -658,6 +646,10 @@ class LocalCharacterAssetPipelineService:
         return sources
 
     def _references(self, run: dict[str, Any], view: str, *, use_recipe: bool = False) -> list[dict[str, Any]]:
+        if self.pipeline == "costume-dressing":
+            from zet.services.costume_render_mode_service import CostumeRenderModeService
+            from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+            return CostumeRenderModeService(LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline)).references(run, view)
         from zet.services.local_view_reference_service import custom_references, reference_recipes
         inputs = run.get("sources", {}).get(view)
         if inputs is None:
@@ -684,7 +676,7 @@ class LocalCharacterAssetPipelineService:
                              "body_view": view, "head_view": view, "character": run["character"], "phase": run["phase"]})
         return custom_references(run, view, self.pipeline, refs) if use_recipe and self.pipeline != "character-assembly" else refs
 
-    def _compile(self, run: dict[str, Any], view: str, refs: list[dict[str, Any]], *, output_dir: Path | None = None, use_reference_recipe: bool = False) -> dict[str, Any]:
+    def _compile(self, run: dict[str, Any], view: str, refs: list[dict[str, Any]], *, output_dir: Path | None = None, use_reference_recipe: bool = False, render_mode: str | None = None) -> dict[str, Any]:
         from zet.services.template_source_service import compile_with_revision
         root = Path(run["root"])
         output = output_dir or root / "prompts" / view
@@ -701,9 +693,13 @@ class LocalCharacterAssetPipelineService:
         else:
             job.update({"Body View": view, "Head View": view, "Costume": run["costume"],
                         "Costume Path": run["costume_path"]})
+            if render_mode is None:
+                from zet.services.costume_render_mode_service import render_settings
+                render_mode = render_settings(run, view)["mode"]
             result = compile_with_revision(root, compile_costume_dressing_job,
                 job, self.project_root, pipeline_mode="local",
                 universe_root=self.app.config.base_library_path,
+                render_mode=render_mode, rotation=render_mode == "rotate",
             )
         return result
 
@@ -715,7 +711,7 @@ class LocalCharacterAssetPipelineService:
         if self.pipeline == "character-assembly":
             guard_view(run, candidate["view"])
         from zet.services.local_character_progression_service import prepare_candidate
-        if run.get("character_progression"):
+        if run.get("character_progression") or self.pipeline == "costume-dressing":
             from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
             candidate = prepare_candidate(LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline), run, candidate)
 
@@ -742,6 +738,7 @@ class LocalCharacterAssetPipelineService:
         prompt_copy.write_text("Positive Prompt:\n" + saved_input["prompt"] + "\n\nNegative Prompt:\n", encoding="utf-8")
         preset_name = saved_input["preset"]
         profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset(preset_name)
+        profile = saved_input.get("render_profile") or profile
         ask_id = f"LocalCharacterAsset_{run_id}_{candidate_id}_{candidate.get('retry_count', 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
                     "pipeline": f"Local-{self.definition['label'].removeprefix('Local ')}", "pipeline_stage": "LOCAL_CHARACTER_RENDER"}
@@ -750,6 +747,7 @@ class LocalCharacterAssetPipelineService:
             manifest, prompt_copy, candidate_root, allow_parallel=True, seed=int(candidate["seed"]),
             checkpoint=str(profile.get("diffusion_model") or ""), render_preset=preset_name,
             image_generation="comfyui", reference_files=render_references,
+            render_overrides=saved_input.get("render_profile"),
         )
         ask = self._read(ask_path / "ask_manifest.json")
         target = render_root / str(ask.get("target_output_file") or target.name)
@@ -903,8 +901,13 @@ class LocalCharacterAssetPipelineService:
                     candidate_ids: set[str] | None = None, render_only: bool = False) -> None:
         from zet.services.local_character_progression_service import execution_views
         staged = self.detail(run_id, costume)
-        if staged.get("character_progression") or self.pipeline == "character-assembly":
+        if staged.get("character_progression") or self.pipeline in {"character-assembly", "costume-dressing"}:
+            requested = views
             views = execution_views(staged, views)
+            frozen_ids = candidate_ids or set(staged.get("target_candidate_ids") or [])
+            if self.pipeline == "costume-dressing" and frozen_ids:
+                views |= {c["view"] for c in staged["candidates"] if c["candidate_id"] in frozen_ids and c.get("render_input")
+                          and (requested is None or c["view"] in requested)}
             if not views:
                 return
         root = self._run_root(run_id, costume)
@@ -1304,6 +1307,8 @@ class LocalCharacterAssetPipelineService:
                                      visiting: set[tuple[str, str, str]]) -> None:
         marker = (pipeline, qualifier, view)
         if marker in visiting:
+            if pipeline == "Costume-Dressing":
+                raise LocalCharacterAssetPipelineError("Costume reference lineage is circular. Render a view independently before publishing this chain.")
             return
         visiting.add(marker)
         candidate_id = str((run.get("selected_views") or {}).get(view) or "")
@@ -1363,6 +1368,25 @@ class LocalCharacterAssetPipelineService:
             front_key = self.asset_store.key(pipeline, "FRONT", qualifier)
             dependencies.append({"key": front_key, "image_sha256": front_hash})
 
+        if pipeline == "Costume-Dressing" and not prompt_pilot:
+            references = (candidate.get("render_input") or {}).get("references", [])
+            if not candidate.get("render_input") and run.get("use_front_anchor") and view != "FRONT":
+                references = [{"role": "front_costume", "view": "FRONT"}]
+            for ref in references:
+                source_view, source_id = ref.get("view"), ref.get("candidate_id")
+                if ref.get("role") == "front_costume" and not source_id:
+                    source_id = (run.get("selected_views") or {}).get("FRONT")
+                    if not source_id:
+                        raise LocalCharacterAssetPipelineError("Select the FRONT image used by this legacy render before publishing its lineage.")
+                if not source_id or not source_view or source_view == view:
+                    continue
+                source = next((c for c in run["candidates"] if c["candidate_id"] == source_id and c["view"] == source_view), None)
+                if not source or (run.get("selected_views") or {}).get(source_view) != source_id:
+                    raise LocalCharacterAssetPipelineError("The costume reference selection changed; render again before publishing its lineage.")
+                if ref.get("sha256") and self._hash(Path(source["image_path"])) != ref["sha256"]:
+                    raise LocalCharacterAssetPipelineError("The costume reference image changed; render again before publishing.")
+                self._collect_promotion_selection(run, pipeline, source_view, qualifier, records, visiting)
+                dependencies.append({"key": self.asset_store.key(pipeline, source_view, qualifier), "image_sha256": self._hash(Path(source["image_path"]))})
         key = self.asset_store.key(pipeline, view, qualifier)
         records[key] = {"pipeline": pipeline, "view": view, "qualifier": qualifier,
                         "candidate_id": candidate_id, "batch_id": run["run_id"],
@@ -1536,10 +1560,11 @@ class LocalCharacterAssetPipelineService:
               recompile: bool = False) -> dict[str, Any]:
         refresh_sources = refresh_sources or recompile
         run = self.detail(run_id, costume)
-        for view in VIEWS:
+        rerun_views = run["views"] if self.pipeline == "costume-dressing" else VIEWS
+        for view in rerun_views:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.definition["asset_pipeline"], view, self._qualifier(costume))
         if refresh_sources:
-            fresh_sources = {view: self._locked_view_inputs(run, view) for view in VIEWS}
+            fresh_sources = {view: self._locked_view_inputs(run, view) for view in rerun_views}
             for view, sources in fresh_sources.items():
                 for role, source in sources.items():
                     path = Path(str(source.get("image_path") or ""))
@@ -1547,7 +1572,7 @@ class LocalCharacterAssetPipelineService:
                     if not path.is_file():
                         raise LocalCharacterAssetPipelineError(f"Chosen {role.replace('_', ' ')} reference for {view} is missing or changed.")
         else:
-            for view in VIEWS:
+            for view in rerun_views:
                 if view in (run.get("sources") or {}):
                     self._verify_snapshot_view(run, view)
         if recompile:
@@ -1561,13 +1586,17 @@ class LocalCharacterAssetPipelineService:
                 self._snapshot_view_inputs(run, view, sources)
         if recompile:
             run = self.detail(run_id, costume)
-            views_to_compile = VIEWS if not self._requires_front_anchor(run) else ("FRONT",)
+            views_to_compile = rerun_views if not self._requires_front_anchor(run) else ("FRONT",)
             for view in views_to_compile:
+                if self.pipeline == "costume-dressing":
+                    from zet.services.costume_render_mode_service import input_reason
+                    if view not in run["views"] or input_reason(run, view, include_review=False):
+                        continue
                 self._compile(run, view, self._references(run, view))
         from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
         for candidate in run["candidates"]:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
-        for view in VIEWS:
+        for view in rerun_views:
             selected = (state.get("selected_views") or {}).get(view)
             if selected:
                 self.asset_store.clear_batch_selection(run["character"], run["phase"], self.definition["asset_pipeline"], view, run_id, self._qualifier(costume))

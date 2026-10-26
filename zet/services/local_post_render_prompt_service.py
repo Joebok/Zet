@@ -13,6 +13,7 @@ from uuid import uuid4
 from zet.services.atomic_file_service import write_bytes_atomic, write_text_atomic
 from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json, write_library_json
 from zet.services.local_template_revision_service import LocalTemplateRevisionService, template_diff_rows
+from zet.services.llm_role_service import resolve_role_model
 from zet.services.template_source_service import active_revision, template_sources
 from zet.services.workflow_storage import file_lock
 
@@ -26,6 +27,35 @@ def _hash(data: bytes) -> str:
 
 
 class LocalPostRenderPromptService:
+    session_kind = "character"
+    source_label = "Character.md"
+    workflow_service = "post_render_prompt"
+    trial_count = 2
+
+    def _initialize(self, record, workflow, run):
+        pass
+
+    def _decorate(self, public, record, workflow, run):
+        return public
+
+    def _validate_round(self, record, workflow, run, operation, payload=None):
+        pass
+
+    def _prepare_finding(self, record, finding, run):
+        return finding
+
+    def _freeze_trial_input(self, record, saved):
+        return saved
+
+    def _apply_findings(self, record, findings):
+        original = record["current_text"]
+        edits = sorted((original.index(f["before"]), original.index(f["before"]) + len(f["before"]), f["after"]) for f in findings)
+        if any(left[1] > right[0] for left, right in zip(edits, edits[1:])):
+            raise ValueError("Selected corrections overlap.")
+        for start, end, after in reversed(edits):
+            original = original[:start] + after + original[end:]
+        return original
+
     def __init__(self, app, project_root):
         self.app = app
         self.project_root = Path(project_root).resolve()
@@ -34,6 +64,8 @@ class LocalPostRenderPromptService:
     def _context(self, pipeline, run_id, costume=""):
         if pipeline not in {"body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"}:
             raise ValueError("Unknown character pipeline.")
+        if pipeline == "costume-dressing" and self.session_kind != "costume":
+            raise ValueError("Historical Character.md costume sessions are read-only. Open Costume Post Render Adjustments instead.")
         return self.revisions._load(pipeline, run_id, costume)[:2]
 
     def _path(self, run, session_id):
@@ -46,6 +78,8 @@ class LocalPostRenderPromptService:
         record = read_library_json(path, pipeline_library_root_for_path(path))
         if record["universe_id"] != self.app.universe_id or record["run_id"] != run["run_id"]:
             raise ValueError("Improvement session does not belong to this batch.")
+        if record.get("kind", "character") != self.session_kind:
+            raise ValueError("Historical adjustment session is read-only; open a new adjustment session.")
         return record
 
     def _write(self, run, record):
@@ -61,7 +95,7 @@ class LocalPostRenderPromptService:
 
     def _submit(self, method, args, key, owner):
         from zet.services.ai_workflow_service import AIWorkflowService
-        AIWorkflowService(self.app).submit(method, args, service="post_render_prompt", key=key, owner=owner)
+        AIWorkflowService(self.app).submit(method, args, service=self.workflow_service, key=key, owner=owner)
 
     def open(self, pipeline, run_id, costume="", payload=None):
         workflow, run = self._context(pipeline, run_id, costume)
@@ -79,6 +113,9 @@ class LocalPostRenderPromptService:
                     return self.detail(pipeline, run_id, costume, existing)
             except FileNotFoundError:
                 pass
+            except ValueError as exc:
+                if "Historical adjustment session" not in str(exc):
+                    raise
         choices = dict(payload.get("representatives") or {})
         representatives, omitted = self.revisions.representatives(run, choices)
         for item in omitted:
@@ -114,7 +151,7 @@ class LocalPostRenderPromptService:
             frozen.append({"view": item["view"], "candidate_id": item["candidate_id"],
                            "path": str(target), "sha256": _hash(target.read_bytes()), "reason": item["reason"],
                            "prompt": str(saved_prompt)})
-        record = {"version": 1, "session_id": session_id, "universe_id": self.app.universe_id,
+        record = {"version": 1, "kind": self.session_kind, "source_label": self.source_label, "session_id": session_id, "universe_id": self.app.universe_id,
                   "pipeline": pipeline, "run_id": run_id, "costume": costume, "view": view,
                   "created_at": _now(), "status": "OBSERVING", "round": 0,
                   "base_revision_id": active.get("revision_id", ""), "sources": sources,
@@ -122,6 +159,7 @@ class LocalPostRenderPromptService:
                   "master_before_text": master.read_text(encoding="utf-8"),
                   "base_text": character["text"], "current_text": character["text"], "representatives": frozen,
                   "analysis": {}, "trial": {}, "history": [], "error": ""}
+        self._initialize(record, workflow, run)
         with file_lock(Path(run["root"]) / "state.lock"):
             self._write(run, record)
             from zet.services.local_image_pipeline_policy import mutate_local_run_state
@@ -165,13 +203,14 @@ class LocalPostRenderPromptService:
         if record["status"] == "REVIEW_READY":
             selected = set(record["analysis"].get("selected_ids") or [])
             findings = [finding for finding in record["analysis"].get("findings", []) if finding["id"] in selected]
-            edits = sorted((record["current_text"].index(finding["before"]), finding["before"], finding["after"])
-                           for finding in findings)
-            if all(left[0] + len(left[1]) <= right[0] for left, right in zip(edits, edits[1:])):
-                for start, before, after in reversed(edits):
-                    proposed_text = proposed_text[:start] + after + proposed_text[start + len(before):]
+            proposed_text = self._apply_findings(record, findings)
         public["diff_rows"] = template_diff_rows(record.get("base_text", self._character_source(record["sources"])["text"]), proposed_text)
-        public["history"] = [{"round": item["round"], "trial_id": item["trial_id"]} for item in public["history"]]
+        public["diff_sha256"] = _hash(proposed_text.encode("utf-8"))
+        public["master_diff_rows"] = template_diff_rows(record["master_before_text"], proposed_text)
+        public["history"] = [{"round": item["round"], "trial_id": item["trial_id"],
+            "attempts": [{k: a.get(k) for k in ("id", "view", "number", "status")} for a in (item.get("trial") or
+                (record["trial"] if item["trial_id"] == record["trial"].get("id") else {})).get("attempts", [])]}
+            for item in record["history"]]
         public.get("trial", {}).pop("sources", None)
         public.get("trial", {}).pop("text", None)
         public.get("trial", {}).pop("preview", None)
@@ -181,7 +220,7 @@ class LocalPostRenderPromptService:
             item.pop("payload", None)
             item.pop("input", None)
             item.pop("image_path", None)
-        return public
+        return self._decorate(public, record, workflow, run)
 
     @staticmethod
     def _owner(record):
@@ -189,15 +228,18 @@ class LocalPostRenderPromptService:
                 "post_render_prompt_session_id": record["session_id"]}
 
     def propose(self, pipeline, run_id, costume, session_id, payload):
-        _, run = self._context(pipeline, run_id, costume)
+        workflow, run = self._context(pipeline, run_id, costume)
         path = self._path(run, session_id)
         with file_lock(path.with_suffix(".lock")):
             record = self._read(run, session_id)
+            self._validate_round(record, workflow, run, "propose", payload)
             if record["status"] not in {"OBSERVING", "TRIAL_READY", "REVIEW_READY", "FAILED"}:
                 raise ValueError("Finish or cancel the current improvement step first.")
             if record["status"] == "TRIAL_READY" and any(a["status"] != "READY" for a in record["trial"]["attempts"]):
                 raise ValueError("Retry failed trial renders before refining again.")
             if record["status"] == "TRIAL_READY":
+                if record["history"]:
+                    record["history"][-1]["trial"] = deepcopy(record["trial"])
                 record["current_text"] = record["trial"]["text"]
                 record["sources"] = deepcopy(record["trial"]["sources"])
             direction = payload.get("direction", "")
@@ -249,6 +291,32 @@ class LocalPostRenderPromptService:
             self._write(run, record)
         return self.detail(pipeline, run_id, costume, session_id)
 
+    def _suggestions(self, record, workflow, run, evidence):
+        pipeline = record["pipeline"]
+        character = self._character_source(record["sources"])
+        observations = record["analysis"]["observations"]
+        schema = {"type": "object", "properties": {"summary": {"type": "string"}, "findings": {"type": "array", "items": {"type": "object", "properties": {
+            "before": {"type": "string"}, "after": {"type": "string"}, "rationale": {"type": "string"},
+            "views": {"type": "array", "items": {"type": "string"}}},
+            "required": ["before", "after", "rationale", "views"], "additionalProperties": False}}},
+            "required": ["summary", "findings"], "additionalProperties": False}
+        prompt = ("Use rendered evidence and observations to propose small independent changes ONLY to Character.md. "
+                  "Human observations and direction take priority. Distinguish recurring prompt defects from isolated render mistakes. "
+                  "Each before must match exactly once in the supplied Character.md. Keep markers, placeholders, view tags, identity and intended asymmetry valid. "
+                  "Edits may target any valid Character.md location even when evidence comes from only one view. "
+                  "Name views the text may affect; no change is valid. Do not modify other sources or treat suggestions as accepted.\n"
+                  + "Character.md:\n" + record["current_text"] + "\nOther batch source IDs (read only): "
+                  + str([s["source_id"] for s in record["sources"] if s["source_id"] != character["source_id"]])
+                  + "\nDirection:\n" + record["analysis"]["direction"] + "\nObservations:\n" + str(observations)
+                  + "\nEvidence view/id/prompt:\n" + str([{k: item[k] for k in ("view", "candidate_id", "prompt")}
+                                                             for item in evidence]))
+        answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
+            resolve_role_model(self.app.config, "post_render_character_prompt"), "", prompt, schema,
+            [Path(item["path"]) for item in evidence], task_type="post_render_character_prompt",
+            role="post_render_character_prompt", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
+            workflow=pipeline, owner=self._owner(record))
+        return answer, runtime
+
     def _analysis_job(self, pipeline, run_id, costume, session_id, round_number):
         workflow, run = self._context(pipeline, run_id, costume)
         record = self._read(run, session_id)
@@ -265,26 +333,7 @@ class LocalPostRenderPromptService:
             for item in evidence:
                 if not Path(item["path"]).is_file() or (item.get("sha256") and _hash(Path(item["path"]).read_bytes()) != item["sha256"]):
                     raise ValueError("Frozen review evidence changed; start a new session.")
-            schema = {"type": "object", "properties": {"summary": {"type": "string"}, "findings": {"type": "array", "items": {"type": "object", "properties": {
-                "before": {"type": "string"}, "after": {"type": "string"}, "rationale": {"type": "string"},
-                "views": {"type": "array", "items": {"type": "string"}}},
-                "required": ["before", "after", "rationale", "views"], "additionalProperties": False}}},
-                "required": ["summary", "findings"], "additionalProperties": False}
-            prompt = ("Use rendered evidence and observations to propose small independent changes ONLY to Character.md. "
-                      "Human observations and direction take priority. Distinguish recurring prompt defects from isolated render mistakes. "
-                      "Each before must match exactly once in the supplied Character.md. Keep markers, placeholders, view tags, identity and intended asymmetry valid. "
-                      "Edits may target any valid Character.md location even when evidence comes from only one view. "
-                      "Name views the text may affect; no change is valid. Do not modify other sources or treat suggestions as accepted.\n"
-                      + "Character.md:\n" + record["current_text"] + "\nOther batch source IDs (read only): "
-                      + str([s["source_id"] for s in record["sources"] if s["source_id"] != character["source_id"]])
-                      + "\nDirection:\n" + record["analysis"]["direction"] + "\nObservations:\n" + str(observations)
-                      + "\nEvidence view/id/prompt:\n" + str([{k: item[k] for k in ("view", "candidate_id", "prompt")}
-                                                                 for item in evidence]))
-            answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
-                resolve_role_model(self.app.config, "post_render_character_prompt"), "", prompt, schema,
-                [Path(item["path"]) for item in evidence], task_type="post_render_character_prompt",
-                role="post_render_character_prompt", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
-                workflow=pipeline, owner=self._owner(record))
+            answer, runtime = self._suggestions(record, workflow, run, evidence)
             findings = []
             from zet.services.view_conditioning_service import VIEW_ORDER
             available = set(VIEW_ORDER)
@@ -296,7 +345,7 @@ class LocalPostRenderPromptService:
                 after = record["current_text"].replace(before, finding["after"], 1)
                 self.revisions._validate_owned(pipeline, character, record["current_text"], after)
                 self.revisions._validate_text(record["current_text"], after)
-                findings.append({**finding, "id": str(index)})
+                findings.append({**self._prepare_finding(record, finding, run), "id": str(index)})
             path = self._path(run, session_id)
             with file_lock(path.with_suffix(".lock")):
                 current = self._read(run, session_id)
@@ -336,14 +385,10 @@ class LocalPostRenderPromptService:
             ids = payload.get("selected_ids", record["analysis"].get("selected_ids", []))
             chosen = [f for f in record["analysis"]["findings"] if f["id"] in ids]
             if not chosen:
-                raise ValueError("Choose at least one Character.md correction for a trial.")
+                raise ValueError(f"Choose at least one {self.source_label} correction for a trial.")
             original = record["current_text"]
-            edits = sorted((original.index(f["before"]), original.index(f["before"]) + len(f["before"]), f["after"]) for f in chosen)
-            if any(left[1] > right[0] for left, right in zip(edits, edits[1:])):
-                raise ValueError("Selected corrections overlap.")
-            updated = original
-            for start, end, after in reversed(edits):
-                updated = updated[:start] + after + updated[end:]
+            self._validate_round(record, workflow, run, "trial", payload)
+            updated = self._apply_findings(record, chosen)
             source = self._character_source(record["sources"])
             self.revisions._validate_owned(pipeline, source, original, updated)
             self.revisions._validate_text(original, updated)
@@ -358,12 +403,13 @@ class LocalPostRenderPromptService:
                 for view in run["views"]:
                     if view not in affected:
                         continue
-                    for index in range(2):
+                    for index in range(self.trial_count):
                         aid = uuid4().hex
                         directory = path.parent / "compiled" / trial_id / view / aid
                         saved = workflow.slots.prepare_input(run, view, directory / "inputs", recompile=True, output_dir=directory / "prompt")
+                        saved = self._freeze_trial_input(record, saved)
                         attempts.append({"id": aid, "view": view, "number": index + 1, "status": "QUEUED",
-                                         "input": saved, "request_id": uuid4().hex, "seed": random.SystemRandom().randrange(0, 2**63 - 1),
+                                         "input": saved, "request_id": uuid4().hex, "seed": record["seeds"][index] if record.get("seeds") else random.SystemRandom().randrange(0, 2**63 - 1),
                                          "image_path": "", "error": ""})
             if not attempts:
                 raise ValueError("Selected changes have no rendered view to trial.")
@@ -393,6 +439,7 @@ class LocalPostRenderPromptService:
             from zet.services.render_slot_service import verify_input
             verify_input(saved)
             profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset(saved["preset"])
+            profile = saved.get("render_profile") or profile
             refs = [{"label": str(ref.get("label") or ref.get("role") or f"Image {index}"),
                      "image": base64.b64encode(Path(ref["path"]).read_bytes()).decode("ascii")}
                     for index, ref in enumerate(saved["references"], 1)]
@@ -400,7 +447,10 @@ class LocalPostRenderPromptService:
                     "width": profile.get("width", 832), "height": profile.get("height", 1216),
                     "render_config": {"preset": saved["preset"], "checkpoint": profile.get("diffusion_model", ""),
                         "disable_prompt_globals": True, "append_reference_labels": False},
-                    "ai_owner": {**self._owner(record), "attempt_id": attempt_id}, "ai_workflow": "Character prompt trial"}
+                    "ai_owner": {**self._owner(record), "attempt_id": attempt_id}, "ai_workflow": f"{self.source_label} template trial"}
+            if saved.get("render_profile"):
+                spec["render_config"]["overrides"] = {key: profile[key] for key in
+                    ("steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae") if key in profile}
             if refs:
                 spec["reference_images"] = refs
             try:
@@ -450,7 +500,8 @@ class LocalPostRenderPromptService:
     def image_path(self, pipeline, run_id, costume, session_id, attempt_id):
         _, run = self._context(pipeline, run_id, costume)
         record = self._read(run, session_id)
-        attempt = next((a for a in record["trial"].get("attempts", []) if a["id"] == attempt_id), None)
+        attempts = record["trial"].get("attempts", []) + [a for h in record.get("history", []) for a in h.get("trial", {}).get("attempts", [])]
+        attempt = next((a for a in attempts if a["id"] == attempt_id), None)
         if not attempt or attempt["status"] != "READY":
             raise FileNotFoundError("Trial image unavailable.")
         path = Path(attempt["image_path"]).resolve()
@@ -465,7 +516,7 @@ class LocalPostRenderPromptService:
             record = self._read(run, session_id)
             if record["status"] in {"KEPT", "KEEPING"}:
                 raise ValueError("An accepted template change cannot be cancelled.")
-            record = {key: record[key] for key in ("version", "session_id", "universe_id", "pipeline", "run_id", "costume", "created_at")}
+            record = {key: record[key] for key in ("version", "revision", "kind", "view", "session_id", "universe_id", "pipeline", "run_id", "costume", "created_at") if key in record}
             record.update(status="CANCELLED", cancelled_at=_now())
             self._write(run, record)
         root = path.parent.resolve()
@@ -490,12 +541,13 @@ class LocalPostRenderPromptService:
                     self._write(run, record)
                 return self.detail(pipeline, run_id, costume, session_id)
             if record["status"] not in {"TRIAL_READY", "KEEPING"} or any(a["status"] != "READY" for a in record["trial"].get("attempts", [])):
-                raise ValueError("Complete both renders for every affected view before keeping changes.")
+                raise ValueError(f"Complete all {self.trial_count} renders before keeping changes.")
+            self._validate_round(record, workflow, run, "keep")
             master = Path(self._character_source(record["sources"])["source_path"])
             new_text = record["trial"]["text"]
             master_is_original = _hash(master.read_bytes()) == record["master_sha256"]
             if not master_is_original and master.read_text(encoding="utf-8") != new_text:
-                raise ValueError("Character.md changed since this review. Start a new session.")
+                raise ValueError(f"{self.source_label} changed since this review. Start a new session.")
             revision_id = record.get("final_revision_id") or uuid4().hex
             if active_revision(Path(run["root"])).get("revision_id", "") not in {record["base_revision_id"], revision_id}:
                 raise ValueError("The batch prompt version changed. Start a new session.")
@@ -504,6 +556,9 @@ class LocalPostRenderPromptService:
             LocalPromptPreviewService(workflow).compile(run, sources, path.parent / "compiled" / record["trial"]["id"] / "final-preview", all_orientations=True)
             rendered_views = [view for view in run["views"] if any(
                 c["view"] == view and Path(str(c.get("image_path") or "")).is_file() for c in run["candidates"])]
+            if self.session_kind == "costume":
+                from zet.services.costume_render_mode_service import input_reason
+                rendered_views = [v for v in rendered_views if not input_reason(run, v, include_review=False)]
             with template_sources(sources):
                 for view in rendered_views:
                     staging = path.parent / "compiled" / revision_id / "preflight" / view
@@ -512,7 +567,7 @@ class LocalPostRenderPromptService:
             revision = {"version": 2, "revision_id": revision_id, "parent_revision_id": record["base_revision_id"],
                 "universe_id": self.app.universe_id, "pipeline": pipeline, "run_id": run_id,
                 "created_at": _now(), "status": "READY", "sources": sources,
-                "source_ids": [record["character_source_id"]], "summary": "Accepted post-render Character.md improvement",
+                "source_ids": [record["character_source_id"]], "summary": f"Accepted post-render {self.source_label} improvement",
                 "compiled_views": record["trial"]["preview"], "accepted_at": _now(), "findings": []}
             directory.mkdir(parents=True, exist_ok=True)
             record["status"] = "KEEPING"

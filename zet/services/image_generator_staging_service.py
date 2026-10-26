@@ -36,7 +36,17 @@ class ImageGeneratorStagingService:
             view = view.upper()
             if view not in run["views"]:
                 raise ValueError("Unknown character view.")
-            if rotation:
+            if workflow.pipeline == "costume-dressing":
+                from zet.services.costume_render_mode_service import CostumeRenderModeService, render_settings
+                settings = render_settings(run, view)
+                if rotation or no_costume_ref:
+                    settings = {**settings, "mode": "rotate" if rotation else "doll-dressing-no-ref"}
+                modes = CostumeRenderModeService(workflow)
+                reason = modes.reason(run, view, settings)
+                if reason:
+                    raise RenderSlotConflict(reason)
+                saved = modes.prepare(run, view, Path(directory), settings=settings)
+            elif rotation:
                 from zet.services.costume_rotation_service import CostumeRotationService
                 saved = CostumeRotationService(workflow).prepare(run, view, Path(directory))
             elif no_costume_ref:
@@ -55,6 +65,8 @@ class ImageGeneratorStagingService:
                                            presets_path=self.generator.presets_path)
             if workflow.pipeline == "head-image-edit":
                 profile = saved.get("render_settings") or profile
+            if workflow.pipeline == "costume-dressing":
+                profile = saved.get("render_profile") or profile
             width, height = _render_size(None, profile)
             inputs = {
                 "mode": "img2img" if saved["references"] else "txt2img",
@@ -67,7 +79,7 @@ class ImageGeneratorStagingService:
                                   "disable_prompt_globals": bool(profile.get("disable_prompt_globals", False)),
                                   "append_reference_labels": False},
             }
-            if workflow.pipeline == "head-image-edit":
+            if workflow.pipeline in {"head-image-edit", "costume-dressing"}:
                 inputs["render_config"]["overrides"] = {key: profile[key] for key in
                     ("steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae") if key in profile}
             self.generator.render_configuration(inputs, inputs["mode"])

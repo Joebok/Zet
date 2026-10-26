@@ -9,6 +9,8 @@ Create one full-body reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, weari
 
 # Rotation
 
+{{ROTATION_INSTRUCTION}}
+
 Edit Image 1. Turn the entire standing figure in three dimensions into the body and head direction shown by Image 2. Rotate head, neck, shoulders, torso, hips, legs and feet coherently. Match which surfaces face the viewer and which are hidden in Image 2. Reconstruct newly exposed surfaces of the same dressed character.
 
 Image 2 controls target orientation, stance and framing only. Its fitment underwear, bare feet and rendering details are not costume instructions. Keep the finished clothing, footwear, character identity, anatomy, proportions, hair, ears, materials and visual treatment of Image 1, except for the rotation and authored construction requirements below. Preserve both feet planted and the complete figure including footwear.

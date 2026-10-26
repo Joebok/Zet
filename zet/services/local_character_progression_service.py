@@ -28,6 +28,8 @@ def required_views(views, pipeline=""):
     requested = set(views)
     if requested - set(VIEW_ORDER):
         raise ValueError("Unknown requested character view.")
+    if pipeline == "costume-dressing":
+        return [view for view in VIEW_ORDER if view in requested]
     if pipeline == "head-image-edit":
         requested.add("FRONT")
         return [view for view in VIEW_ORDER if view in requested]
@@ -50,7 +52,7 @@ def enroll(root, views=None):
     edit = is_head_edit(spec)
     def update(state):
         state.setdefault("character_progression", {"version": 1, "accepted_revision_id": "", "stage": -1,
-            "requested_views": required_views(views or VIEW_ORDER, "head-image-edit" if edit else ""),
+            "requested_views": required_views(views or VIEW_ORDER, "head-image-edit" if edit else spec.get("kind", "")),
             "back_reference": "FRONT" if edit else "BACK_LEFT_3_4", **({"recipe_version": 1} if edit else {})})
     mutate_local_run_state(Path(root), update)
 
@@ -94,6 +96,8 @@ def opened_views(run):
         return set(run.get("views", []))
     if prompt_review_required(run):
         return set()
+    if run.get("kind") == "costume-dressing":
+        return set(flow["requested_views"])
     if run.get("kind") == "character-assembly":
         if flow["stage"] < 0:
             return set()
@@ -103,6 +107,12 @@ def opened_views(run):
 
 
 def guard_view(run, view):
+    if run.get("kind") == "costume-dressing":
+        from zet.services.costume_render_mode_service import input_reason
+        reason = input_reason(run, view)
+        if reason:
+            raise ValueError(reason)
+        return
     if run.get("kind") == "character-assembly" and view != "FRONT" and not assembly_front(run):
         raise ValueError("Select an available FRONT image before running or ranking remaining views.")
     if run.get("character_progression") and view not in opened_views(run):
@@ -112,6 +122,11 @@ def guard_view(run, view):
 
 def execution_views(run, views=None):
     flow = run.get("character_progression")
+    if run.get("kind") == "costume-dressing":
+        from zet.services.costume_render_mode_service import input_reason
+        allowed = {v for v in run["views"] if not input_reason(run, v)}
+        targets = views if views is not None else run.get("target_views") or allowed
+        return set(targets) & allowed
     if run.get("kind") == "character-assembly":
         allowed = opened_views(run) if flow else set(run.get("views", []))
         if not assembly_front(run):
@@ -129,7 +144,7 @@ def execution_views(run, views=None):
 def prepare_candidate(workflow, run, candidate):
     if run.get("kind") == "character-assembly":
         guard_view(run, candidate["view"])
-    if not run.get("character_progression") or candidate.get("render_input"):
+    if (not run.get("character_progression") and run.get("kind") != "costume-dressing") or candidate.get("render_input"):
         return candidate
     guard_view(run, candidate["view"])
     saved = workflow.slots.prepare_input(run, candidate["view"],
@@ -180,6 +195,15 @@ def project(run):
         if busy or (run.get("status") in {"RUNNING", "PREFLIGHT", "REEVALUATING", "STOPPING"}
                     and not run.get("interrupted")) or (run.get("status") == "QUEUED" and run.get("target_views")):
             reason = "Wait for queued batch work to finish."
+    if run.get("kind") == "costume-dressing":
+        ready = execution_views(run)
+        missing = {c["view"] for c in candidates.values() if not c.get("slot_managed") and not Path(str(c.get("image_path") or "")).is_file()}
+        next_views = [v for v in requested if v in ready and v in missing]
+        current = [v for v in requested if v in ready]
+        reason = ("Analyze and accept the governing prompts first." if prompt_review_required(run)
+                  else "Resume the stopped batch first." if run.get("stop_requested")
+                  else "Wait for queued batch work to finish." if busy
+                  else "Choose available mode inputs for the remaining views." if missing and not next_views else "")
     run["progression"] = {"stage": stage, "current_views": current,
         "next_views": next_views,
         "can_continue": not reason and bool(next_views), "reason": reason,
@@ -219,6 +243,12 @@ def advance(workflow, run_id, costume="", expected_stage=None, back_reference=No
         if not run["progression"]["can_continue"]:
             raise ValueError(run["progression"]["reason"] or "All requested stages are already open.")
         targets = run["progression"]["next_views"]
+        if workflow.pipeline == "costume-dressing":
+            def queue_ready(state):
+                state["character_progression"]["stage"] = 0
+                state.update(target_views=targets, target_candidate_ids=[], status="QUEUED")
+            mutate_local_run_state(root, queue_ready)
+            return {**workflow.action("detail", run_id=run_id, costume=costume), "target_views": targets}
         next_stage = ((0 if targets == ["FRONT"] else len(STAGES) - 1) if workflow.pipeline == "character-assembly"
                       else next(i for i, group in enumerate(stages_for(run)) if targets[0] in group))
         back = "FRONT" if workflow.pipeline in {"body-reference", "head-image-edit"} else back_reference or flow.get("back_reference", "BACK_LEFT_3_4")

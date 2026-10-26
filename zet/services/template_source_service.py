@@ -82,7 +82,11 @@ def compile_with_revision(root: Path, compile_function, *args, **kwargs):
     with template_sources(revision.get("sources", [])):
         result = compile_function(*args, **kwargs)
         from zet.services.local_prompt_improvement_service import record_compiler_sources
-        record_compiler_sources(Path(result["final_prompt"]).parent)
+        output = Path(result["final_prompt"]).parent
+        # Image Generator staging compiles outside the batch in a temporary
+        # directory, which has no PipelineCandidates-owned source-cache record.
+        if output.resolve().is_relative_to(Path(root).resolve()):
+            record_compiler_sources(output)
     from zet.services.atomic_file_service import write_json_atomic
     write_json_atomic(Path(result["final_prompt"]).parent / "Template_Revision.json",
                       {"revision_id": revision.get("revision_id", "")})

@@ -1,12 +1,10 @@
 # LLM roles and Qwen Image 2.1 guidance
 
-## Prompt Generator Pilot role (2026-10-24)
+## Costume post-render roles (2026-10-26)
 
-The pilot registers three vision-capable roles: `prompt_generator_evaluation` scores visible criterion evidence without prompt guidance; `prompt_generator_direction` uses review guidance to propose evidence-backed directions; `prompt_generator` uses authoring guidance and the pipeline-specific adapter to write the final prompt. They inherit the configured Codex default or their existing role override; effective model assignments are frozen with the round. No pilot tier-escalation or quota-reserve gate remains.
+`post_render_costume_template` uses review guidance and the configured Codex default/role override to propose single-line costume edits against unfinished visual criteria. `post_render_costume_evaluation` is a vision-capable, skill-free advisory assessment of the four private images. It cannot change human criteria status. Effective guidance is frozen at the common AI_Proxy publication boundary; image profiles/seeds and source snapshots belong to the adjustment session.
 
-Packet preparation records authoring integration/module hashes and rejects a changed authoring package before drafting. The shared FileProxy boundary freezes effective instructions in each native request. Human corrections remain separate from model evaluation and authoritative for later directions and drafting. See [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24).
-
-This document owns role classification, model inheritance and repo-managed skill composition. [AI jobs](AI_JOBS.md) owns transport and collection; [Prompts](PROMPTS.md) owns compilation and ordered image bindings.
+The three `prompt_generator*` roles are retired metadata retained so existing configuration overrides remain readable. Their producer services, pages and pipeline-specific authoring adapters have been removed. Retired role cards do not enable a workflow. See [Local Characters](LOCAL_CHARACTERS.md#costume-dressing-modes-and-adjustments-2026-10-26).
 
 ## Ownership and inventory
 

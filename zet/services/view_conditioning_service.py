@@ -69,6 +69,7 @@ class ViewContext:
     body_view: str | None = None
     head_view: str | None = None
     unknown_view: bool = False
+    render_mode: str | None = None
 
     def requested(self, domain: str) -> str | None:
         return self.head_view if domain == "head" else self.body_view
@@ -243,9 +244,21 @@ def condition_section(text: str, section: str, source: dict, context: ViewContex
     retained: list[tuple[str, int]] = []
     any_tagged_out = False
     spatial_translations: list[dict] = list(source.get("spatial_translations") or [])
+    mode_conditioning: list[dict] = list(source.get("render_mode_conditioning") or [])
     spatial_out = False
     for offset, raw_line in enumerate(text.splitlines()):
         line_no = start_line + offset
+        from zet.services.costume_mode_conditioning_service import condition_mode_line
+        try:
+            raw_line, mode_allowed, mode_scope = condition_mode_line(raw_line, context.render_mode)
+        except ValueError as exc:
+            raise ViewConditioningError("INVALID_RENDER_MODES", f"{path}:{line_no} [{section}]: {exc}") from exc
+        if mode_scope:
+            mode_conditioning.append({"source_path": path, "source_line": line_no,
+                                         "render_modes": mode_scope, "omission_reason": "" if mode_allowed else "render mode"})
+        if not mode_allowed:
+            any_tagged_out = True
+            continue
         directive = _DIRECTIVE.match(raw_line)
         if directive:
             kind, value = directive.groups()
@@ -320,6 +333,7 @@ def condition_section(text: str, section: str, source: dict, context: ViewContex
         diagnostics.append(f"{section}: unresolved anatomical side wording remains in legacy prose")
     updated_source = dict(source, retained_lines=[line for _, line in retained],
                           view_conditioning_diagnostics=diagnostics,
+                          render_mode_conditioning=mode_conditioning,
                           spatial_translations=spatial_translations)
     return rendered, updated_source, (any_tagged_out or spatial_out) and not bool(rendered.strip())
 

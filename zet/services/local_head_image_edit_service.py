@@ -17,20 +17,6 @@ class LocalHeadImageEditService(LocalHeadImageService):
     edit_preset = "comfyui-qwen-head-image-edit-v1"
     text_preset = "comfyui-qwen-head-image-edit-front-v1"
 
-    @staticmethod
-    def prompt_packet_constraints(run, view):
-        phrases = {
-            "BACK_LEFT_3_4": "rear-left three-quarter view approximately 135 degrees from front",
-            "BACK_RIGHT_3_4": "rear-right three-quarter view approximately 135 degrees from front",
-            "BACK": "directly from behind, rotated 180 degrees from front",
-            "LEFT_PROFILE": "true anatomical-left profile",
-            "RIGHT_PROFILE": "true anatomical-right profile",
-            "FRONT_LEFT_3_4": "anatomical left side in front three-quarter view",
-            "FRONT_RIGHT_3_4": "anatomical right side in front three-quarter view",
-        }
-        phrase = phrases.get(str(view).upper())
-        return [phrase] if phrase else []
-
     def _locked_phase_source(self, payload):
         source_phase = str(payload.get("front_source_phase") or "").strip()
         source_path = str(payload.get("front_source_path") or "").strip()

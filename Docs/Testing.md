@@ -1,5 +1,13 @@
 # Local testing
 
+## Costume-Dressing modes and source adjustments (2026-10-26)
+
+`npm.cmd run test:e2e` passed all four approved scenarios after integration (37.8s and 39.6s). A final focused invocation of the approved character-to-costume scenario passed (13.0s) after the staging provenance and pre-normalization mode-filter fixes. Changed Python AST checks, three JavaScript syntax checks and `git diff --check` passed. No permanent test, scenario or dependency was added.
+
+Ignored disposable checks under `test-results/costume-adjustments/` verified all supported view/mode compiles and ordered inputs; independent readiness; explicit-source blocking; view/mode line partitioning and production compiler annotation filtering/source maps; shared criteria/revisions; two four-seed rounds with stable seeds; render and assessment failure/selective retry; exact diff approval; costume-only master save/replay; retained earlier trial images; unchanged gallery counts; existing Assembly Character.md analysis; costume rename; staging alternatives and failed-stage workspace preservation; frozen slot/runner retries; circular lineage rejection; cancelled sessions; and retired continuation dispatch fencing.
+
+Isolated Chromium exercised real mode saving/reload, the staging menu, criteria saving and the review/diff/four-image controls with prepared responses. Desktop and 390px screenshots were inspected; there were no uncaught page errors or page-width overflow. The fixture server used port 8767 and was stopped afterward. These checks establish software contracts, not live model quality, production deployment or physical-device acceptance. No live inference or normal-library writes occurred. See [the implementation plan](../plans/completed/costume-post-render-adjustments.md) and [ADR 0033](DECISIONS/0033-costume-post-render-adjustments.md).
+
 ## Prompt Generator rotation modes (2026-10-25)
 
 `npm.cmd run test:e2e` passed all four approved scenarios twice (39.1s, final

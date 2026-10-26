@@ -109,7 +109,7 @@ class PromptTemplateService:
             for name in payload.get("sections", {})
         }
 
-    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, body_view: str | None = None, head_view: str | None = None, prompt_variant: str = "generation", pipeline_mode: str = "traditional"):
+    def select_sections(self, bundle: dict, all_sections: dict[str, str], section_sources: dict[str, dict], view_token: str, *, body_view: str | None = None, head_view: str | None = None, prompt_variant: str = "generation", pipeline_mode: str = "traditional", render_mode: str | None = None):
         template_file = prompt_template_path(self.project_root, str(bundle.get("static_prompt_template", "")))
         if str(view_token).upper() in {"EXPRESSION", "ALL", ""} and body_view is None and head_view is None:
             context = ViewContext()
@@ -117,6 +117,7 @@ class PromptTemplateService:
             context = ViewContext(
                 body_view=normalize_view(body_view or view_token),
                 head_view=normalize_view(head_view or view_token),
+                render_mode=render_mode,
             )
         try:
             conditioned_sections, conditioned_sources, conditioned_out = condition_sections(
@@ -178,9 +179,13 @@ class PromptTemplateService:
             source_map["prompt_packet_declarations"] = packet_blocks
         if prompt_variant == "generation" and "ZET:SPATIAL" in prompt_text:
             raise TemplateCompileError("SPATIAL_ANNOTATION_LEAK", "A spatial template annotation reached the generation prompt.")
+        if "ZET:RENDER_MODES" in prompt_text:
+            raise TemplateCompileError("RENDER_MODE_ANNOTATION_LEAK", "A rendering-mode annotation reached the prompt.")
         final_prompt_path.write_text(prompt_text, encoding="utf-8")
         source_map_path.write_text(
             json.dumps({**source_map, **metadata,
+                        "render_mode_conditioning": [item for source in getattr(selection, "section_sources", {}).values()
+                                                     for item in source.get("render_mode_conditioning", [])],
                         "spatial_translations": [
                             translation
                             for source in getattr(selection, "section_sources", {}).values()

@@ -35,7 +35,8 @@ def submit_local_pipeline_task(function, *args: Any, **kwargs: Any):
 class CharacterStagePause(ValueError):
     def __init__(self, run):
         self.run = run
-        super().__init__("Open the character batch to review prompts, select/refine its images and Continue explicitly.")
+        super().__init__("Open the Costume-Dressing batch to accept governing prompts and choose mode inputs." if run.get("kind") == "costume-dressing"
+                         else "Open the character batch to review prompts, select/refine its images and Continue explicitly.")
 
 
 class LocalCharacterOverviewError(ValueError):
@@ -360,7 +361,7 @@ class LocalCharacterOverviewService:
         kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
         if selected:
             run = adapter.detail(selected["run_id"], **kwargs) if pipeline in {"character-assembly", "costume-dressing"} else adapter.detail(selected["run_id"])
-            if run.get("character_progression"):
+            if run.get("character_progression") and (pipeline != "costume-dressing" or not run["character_progression"].get("accepted_revision_id")):
                 raise CharacterStagePause(run)
             if not (run.get("selected_views") or {}).get("FRONT"):
                 if pipeline == "body-reference":
@@ -384,7 +385,7 @@ class LocalCharacterOverviewService:
         owns_run = run is None
         if run is None:
             run = self._create_batch(pipeline, character, phase, costume)
-        if run.get("character_progression"):
+        if run.get("character_progression") and (pipeline != "costume-dressing" or not run["character_progression"].get("accepted_revision_id")):
             raise CharacterStagePause(run)
         run_id = str(run["run_id"])
         self._update(self._job_path(character, phase, costume), job["job_id"], run_id=run_id, owns_run=owns_run)

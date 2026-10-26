@@ -1,5 +1,5 @@
 # Guided Prompt Generator Pilot
-Status: complete
+Status: complete (historical); executable workflow retired by [costume adjustments](costume-post-render-adjustments.md) on 2026-10-26
 Related specification: user-approved guided cycle; supersedes the workflow and spending policy in [original pilot plan](../active/prompt-generator-pilot.md).
 
 ## Goal and desired behavior

@@ -1,5 +1,5 @@
 # 0031 — Prompt Generator Pilot packets and budget boundaries
-Status: workflow and spending policy superseded by [0032](0032-guided-prompt-generator.md); packet and publication boundaries retained
+Status: superseded for executable workflow by [0033 - Costume adjustments](0033-costume-post-render-adjustments.md); historical decisions below are preserved.
 Date: 2026-10-24
 
 ## Context

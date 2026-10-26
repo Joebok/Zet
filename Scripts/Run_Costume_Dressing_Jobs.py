@@ -493,6 +493,7 @@ def compile_costume_dressing_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
     pipeline_mode: str = "traditional", universe_root: str | Path | None = None,
     rotation: bool = False,
+    render_mode: str | None = None,
 ) -> dict:
     job_id = require_job_field(job, "Job", "job_id", "Job ID")
     task = require_job_field(job, "Task", "task")
@@ -533,6 +534,10 @@ def compile_costume_dressing_job(
     expected_output = job_get(job, "Expected Output", "expected_output") or expected_output_for_job(job, body_view_data)
 
     references = reference_files_for_job(job)
+    render_mode = render_mode or ("rotate" if rotation else "doll-dressing-ref" if any(r.get("role") in {"batch_view_reference", "front_costume"} for r in references) or body_view_token == "FRONT" else "doll-dressing-no-ref")
+    from zet.services.costume_mode_conditioning_service import MODES
+    if render_mode not in MODES or rotation != (render_mode == "rotate"):
+        raise ValueError("Conflicting Costume-Dressing rendering mode.")
     character_assembly = reference_by_role(references, "character_assembly")
     validate_reference(character_assembly, "character_assembly")
     if rotation:
@@ -547,6 +552,11 @@ def compile_costume_dressing_job(
     has_front_costume_reference = any(item.get("role") == "front_costume" for item in references)
 
     all_sections, section_sources = load_costume_dressing_section_data(project_root, character_template_path, costume_path)
+    from zet.services.costume_mode_conditioning_service import condition_mode_sections
+    try:
+        all_sections, section_sources = condition_mode_sections(all_sections, section_sources, render_mode)
+    except ValueError as exc:
+        raise TemplateCompileError("INVALID_RENDER_MODES", str(exc)) from exc
     all_sections, section_sources, suppressed_sections = normalize_costume_dressing_sections(
         all_sections,
         section_sources,
@@ -556,6 +566,7 @@ def compile_costume_dressing_job(
         project_root, bundle, all_sections, section_sources, body_view_token,
         prompt_variant=prompt_variant, pipeline_mode=pipeline_mode,
         body_view=body_view_token, head_view=head_view_token,
+        render_mode=render_mode,
     )
     references = auxiliary_references_for_texts(
         project_root, ["\n".join(selection.sections.values())], references,
@@ -648,6 +659,8 @@ def compile_costume_dressing_job(
     if rotation:
         metadata_values["ROTATION_SOURCE_VIEW"] = normalize_view(project_root, source["view"])
         metadata_values["ROTATION_TARGET_VIEW"] = body_view_token
+        from zet.services.costume_rotation_service import rotation_instruction
+        metadata_values["ROTATION_INSTRUCTION"] = rotation_instruction(source["view"], body_view_token)
     metadata_sources = {
         **({"LOCAL_CANONICAL_ART_STYLE": universe_sources["CANONICAL_ART_STYLE"]}
            if universe_style else {}),

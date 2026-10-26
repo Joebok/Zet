@@ -97,7 +97,9 @@
       if (!control || control.disabled) throw new Error(control?.reason || "FRONT is not ready to start.");
       await control.start(); updateFrontButton();
     });
-    frontButton.classList.add("primary-action"); updateFrontButton();
+    frontButton.classList.add("primary-action");
+    if (context.pipeline === "costume-dressing") frontButton.hidden = true;
+    updateFrontButton();
   }
   function openEditor(source, revision) {
     let key = `${context.key}:${revision.revision_id}:${source.source_id}`;

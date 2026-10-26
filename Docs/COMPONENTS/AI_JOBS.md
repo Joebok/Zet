@@ -4,11 +4,11 @@ This document owns the unified creative AI request, collection, activity and mod
 selection interfaces introduced on 2026-10-16. [Queues](QUEUES.md) owns envelope
 transfer and retention; workflow components own interpretation of their outputs.
 
-## Prompt Generator Pilot
+## Costume post-render continuations
 
-`AIWorkflowService` registers `_render_job`, `_evaluation_job`, `_direction_job` and `_draft_job` for the pilot service. `PromptGeneratorCycle` persists stage-specific tasks and request identities; evaluations and direction/draft work use the shared native AI_Proxy JSON request path. Image rounds use the existing image service with frozen bindings, settings and four fixed seeds. Recovered continuations reuse identities; explicit retries preserve completed work and create fresh failed-step identities. Session/task checks fence late collection after archive.
+`AIWorkflowService` registers `post_render_costume` analysis, render and evaluation continuations owned by `LocalCostumePostRenderService`. Human analysis requests authorize source suggestions; accepting the reviewed diff authorizes four private target-view renders and advisory evaluation through the shared AI_Proxy services. Four fixed session seeds and frozen prompt/reference/profile bytes support matched iterations. Failed renders or assessments have selective retries; cancellation, round/trial identities and source/revision checks fence obsolete work. No workflow directly calls a local model or renderer.
 
-Starting the baseline or approving the next round authorizes its associated AI work. Direction approval gates drafting; exact draft approval gates rendering, followed by evaluations. No pilot budget ledger admission, call/render/case/round cap or Codex reserve check remains. Old ledger files are retained as historical data and are not consulted. Model assignments are captured with the authorized round. See [Local Characters](LOCAL_CHARACTERS.md#prompt-generator-pilot-2026-10-24) and [LLM roles](LLM_ROLES.md#prompt-generator-pilot-role-2026-10-24).
+Persisted `prompt_generator` continuations and Costume-Dressing's historical `post_render_prompt` Character.md continuations are marked terminal before handler dispatch. Their deleted services cannot resume new AI work. Session/image files and adopted-image provenance are preserved. Other pipelines retain the existing character post-render continuations. See [Local Characters](LOCAL_CHARACTERS.md#costume-dressing-modes-and-adjustments-2026-10-26).
 
 ## Ownership and entry points
 
