@@ -40,20 +40,23 @@ def condition_mode_sections(sections, sources, mode):
     return filtered, mapped
 
 
-def scoped_replacement(text, before, after, views, modes):
+def scoped_replacement(text, before, after, views, modes, *, source_line=None):
     """Partition the original line's effective view/mode cells into disjoint prose."""
     from zet.services.view_conditioning_service import VIEW_ORDER, VIEW_SHORT, _TAG, _expand, _inferred_domain, _DIRECTIVE
-    if not isinstance(before, str) or not before.strip() or "\n" in before or "\r" in before or text.splitlines().count(before) != 1:
+    source_lines = text.splitlines(keepends=True)
+    matches = [i for i, line in enumerate(source_lines) if line.rstrip("\r\n") == before]
+    if source_line is not None:
+        matches = [i for i in matches if i + 1 == source_line]
+    if not isinstance(before, str) or not before.strip() or "\n" in before or "\r" in before or len(matches) != 1:
         raise ValueError("A correction must identify exactly one complete source line.")
+    index = matches[0]
     if not isinstance(after, str) or not after.strip() or "\n" in after or "\r" in after or "<!-- ZET:BEGIN" in after or "<!-- ZET:END" in after:
         raise ValueError("Supply one replacement prose line, preserving compiler structure.")
     if not views or set(views) - set(VIEW_ORDER) or not modes or set(modes) - set(MODES):
         raise ValueError("Choose affected views and rendering modes.")
     # Determine the containing section and its active inherited view default.
     section, default, canon = "", set(VIEW_ORDER), False
-    for line in text.splitlines():
-        if line == before:
-            break
+    for line in text.splitlines()[:index]:
         marker = re.match(r"\s*<!--\s*ZET:(BEGIN|END)\s+(\w+)\s*-->", line)
         if marker:
             section = marker[2] if marker[1] == "BEGIN" else ""
@@ -69,7 +72,9 @@ def scoped_replacement(text, before, after, views, modes):
     tag = _TAG.match(clean)
     original_views = default
     if tag:
-        _, original_views = _expand(tag[2], path="costume", section=section, line=1)
+        domain, original_views = _expand(tag[2], path="costume", section=section, line=index + 1)
+        if domain == "head":
+            raise ValueError("Only body-domain costume prose can be scoped.")
         old_body = tag[3]
     else:
         old_body = re.sub(r"^\s*[-*+]\s+", "", clean)
@@ -93,7 +98,5 @@ def scoped_replacement(text, before, after, views, modes):
     lines = emit(old_body, original_views - selected_views, available_modes)
     lines += emit(old_body, selected_views & original_views, available_modes - selected_modes)
     lines += emit(new_body, selected_views, selected_modes)
-    source_lines = text.splitlines(keepends=True)
-    index = next(i for i, line in enumerate(source_lines) if line.rstrip("\r\n") == before)
     start = sum(len(line) for line in source_lines[:index])
     return text[:start] + "\n".join(lines) + text[start + len(before):]

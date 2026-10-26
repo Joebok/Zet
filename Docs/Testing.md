@@ -1,5 +1,25 @@
 # Local testing
 
+## Costume suggestion source binding (2026-10-26)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (41.9s). Disposable
+prepared-response checks under ignored `test-results/suggestion-binding/` passed
+section/line/digest addressing, repeated lines within/across sections, protected
+head/resource/scene content, stale IDs, prose-only and spatial validation,
+24 view/mode scope cells, asymmetric mirror defaults, one repair attempt,
+partial success/provider failure, empty findings, cancellation/supersession before
+repair, legacy findings and shared Character.md validation.
+
+The existing disposable costume lifecycle check was adapted to return catalog IDs
+and passed all-view mode preparation, two four-seed private rounds, render and
+assessment retry, diff/revision approval, costume-only save and replay. An isolated
+Chromium check passed source section/line labels, scope controls, desktop/narrow
+containment and existing trial/checklist/mode/staging controls without page errors.
+Changed Python AST, JavaScript syntax and `git diff --check` passed. No permanent
+tests, dependencies, live inference or production-library writes were added.
+These checks establish software contracts, not live model/image quality or
+production deployment. See [ADR 0035](DECISIONS/0035-costume-suggestion-source-binding.md).
+
 ## Costume-Dressing modes and source adjustments (2026-10-26)
 
 `npm.cmd run test:e2e` passed all four approved scenarios after integration (37.8s and 39.6s). A final focused invocation of the approved character-to-costume scenario passed (13.0s) after the staging provenance and pre-normalization mode-filter fixes. Changed Python AST checks, three JavaScript syntax checks and `git diff --check` passed. No permanent test, scenario or dependency was added.

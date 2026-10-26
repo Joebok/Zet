@@ -117,8 +117,9 @@
         check.addEventListener("change", () => void saveDecisions());
         label.append(check);
         const content = el("div"); content.className = "template-correction-content";
-        content.append(el("p", `${item.rationale} · ${item.views.join(", ")}`),
-          el("p", "Before"), el("pre", item.before), el("p", "After"), el("pre", item.after));
+        content.append(el("p", `${item.rationale} · ${item.views.join(", ")}`));
+        if (isCostume && item.section) content.append(el("p", `Source: ${item.section.replaceAll("_", " ")} · line ${item.source_line}`));
+        content.append(el("p", "Before"), el("pre", item.before), el("p", "After"), el("pre", item.after));
         if (isCostume) {
           content.append(el("p", `Criteria: ${(item.criteria_ids || []).join(", ")}. ${item.scope_note || ""}`));
           for (const [key, title, values, selected] of [

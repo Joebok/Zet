@@ -318,15 +318,31 @@ class LocalPostRenderPromptService:
             workflow=pipeline, owner=self._owner(record))
         return answer, runtime
 
+    def _validate_finding(self, record, finding, run, index):
+        from zet.services.view_conditioning_service import VIEW_ORDER
+        before, views = finding["before"], finding["views"]
+        if not before or record["current_text"].count(before) != 1:
+            raise ValueError(f"Suggestion {index}: original text must match exactly one source location.")
+        if not isinstance(views, list) or not views or set(views) - set(VIEW_ORDER):
+            raise ValueError(f"Suggestion {index}: choose canonical affected view names.")
+        source = self._character_source(record["sources"])
+        after = record["current_text"].replace(before, finding["after"], 1)
+        self.revisions._validate_owned(record["pipeline"], source, record["current_text"], after)
+        self.revisions._validate_text(record["current_text"], after)
+        return {**self._prepare_finding(record, finding, run), "id": str(index)}
+
+    def _analyze_suggestions(self, record, workflow, run, evidence):
+        answer, runtime = self._suggestions(record, workflow, run, evidence)
+        findings = [self._validate_finding(record, finding, run, index)
+                    for index, finding in enumerate(answer["findings"], 1)]
+        return answer, runtime, findings
+
     def _analysis_job(self, pipeline, run_id, costume, session_id, round_number):
         workflow, run = self._context(pipeline, run_id, costume)
         record = self._read(run, session_id)
         if record["status"] != "ANALYZING" or record["round"] != round_number:
             return
         try:
-            from zet.services.llm_role_service import resolve_role_model
-            character = self._character_source(record["sources"])
-            observations = record["analysis"]["observations"]
             evidence = record["representatives"]
             if record["trial"].get("attempts") and all(a["status"] == "READY" for a in record["trial"]["attempts"]):
                 evidence = [{"view": a["view"], "candidate_id": a["id"], "path": a["image_path"], "sha256": a.get("sha256"),
@@ -334,19 +350,7 @@ class LocalPostRenderPromptService:
             for item in evidence:
                 if not Path(item["path"]).is_file() or (item.get("sha256") and _hash(Path(item["path"]).read_bytes()) != item["sha256"]):
                     raise ValueError("Frozen review evidence changed; start a new session.")
-            answer, runtime = self._suggestions(record, workflow, run, evidence)
-            findings = []
-            from zet.services.view_conditioning_service import VIEW_ORDER
-            available = set(VIEW_ORDER)
-            for index, finding in enumerate(answer["findings"], 1):
-                before = finding["before"]
-                views = finding["views"]
-                if not before or record["current_text"].count(before) != 1 or not isinstance(views, list) or not views or set(views) - available:
-                    raise ValueError("A suggestion did not bind to one source location and rendered view; analyze again.")
-                after = record["current_text"].replace(before, finding["after"], 1)
-                self.revisions._validate_owned(pipeline, character, record["current_text"], after)
-                self.revisions._validate_text(record["current_text"], after)
-                findings.append({**self._prepare_finding(record, finding, run), "id": str(index)})
+            answer, runtime, findings = self._analyze_suggestions(record, workflow, run, evidence)
             path = self._path(run, session_id)
             with file_lock(path.with_suffix(".lock")):
                 current = self._read(run, session_id)
