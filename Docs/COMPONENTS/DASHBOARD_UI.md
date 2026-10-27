@@ -1,5 +1,10 @@
 # Dashboard presentation and image input
 
+The [UI style guide](../UI_STYLE_GUIDE.md) owns the target visual and interaction
+standards, including button/glyph roles, card anatomy, review dialogs, immediate
+action acknowledgement, and feedback beside its initiating action. Adoption is
+partial; this component document records implemented behavior and verification limits.
+
 The dashboard uses the existing palette in [zet.css](../../zet/web/static/zet.css).
 Primary teal identifies the main action and selected images. Selection also has a
 text label and stable inset border; it does not mean that an image is locked.
