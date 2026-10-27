@@ -17,8 +17,7 @@ from zet.services.quick_character_wizard_service import QuickCharacterWizardErro
 class MinorCharacterWorkflow:
     @staticmethod
     def _views(session):
-        side = session["side"].upper()
-        return ["STYLE", "FRONT", f"FRONT_{side}_3_4", f"{side}_PROFILE"]
+        return ["STYLE", "FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE"]
 
     def _initialize_workflow(self, session):
         session.update(workflow_version=1, boards={view: self._empty_board(session, view) for view in self._views(session)})

@@ -3,7 +3,7 @@
   const bridge = window.zetQuickCharacterWizard;
   const $ = id => document.getElementById(id);
   if (!bridge || !$("minor-characters-page")) return;
-  const fields = {name:"mc-name", style_mode:"mc-style", framing:"mc-framing", side:"mc-side",
+  const fields = {name:"mc-name", style_mode:"mc-style", framing:"mc-framing",
     preserve:"mc-preserve", changes:"mc-changes", notes:"mc-notes", model:"mc-model",
     description:"mc-description", identity:"mc-identity", proposals:"mc-proposals",
     primary_reference_id:"mc-primary", comparison_reference_id:"mc-comparison-reference"};
@@ -18,9 +18,8 @@
   const button = (text, action, run = act) => { const b = element("button", text); b.type = "button"; b.addEventListener("click", () => run(action)); return b; };
   const url = value => value + (value.includes("?") ? "&" : "?") + "universe_id=" + encodeURIComponent(universe);
   const message = (text, error = false) => { $("mc-message").textContent = text; $("mc-message").classList.toggle("error", error); };
-  const label = value => value === "STYLE" ? "Style alignment" : value === "FRONT" ? "Front" : value.includes("3_4") ? "Three-quarter" : "Profile";
-  const restartLabel = value => value === "STYLE" ? "Style alignment" : value === "FRONT" ? "Front"
-    : `${value.startsWith("RIGHT") ? "Right" : "Left"} ${value.includes("3_4") ? "three-quarter" : "profile"}`;
+  const label = value => ({STYLE:"Style alignment", FRONT:"Front", FRONT_LEFT_3_4:"Front left 3/4",
+    FRONT_RIGHT_3_4:"Front right 3/4", LEFT_PROFILE:"Left profile", RIGHT_PROFILE:"Right profile"})[value] || value;
   async function api(path = "", method = "GET", body) {
     if (universe !== bridge.universe()) throw new Error("The active universe changed. Reopen Minor Characters.");
     return bridge.fetchJson("/api/minor-characters" + path, {method, bindToPage:false,
@@ -285,7 +284,7 @@
       tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(view===target));$("mc-tabs").append(tab);
     }
     $("mc-stage-status").textContent=label(view)+(view==="STYLE" ? " · Select a style image to enable views" : current?.mode==="true_up" ? " · True-ups" : " · View alignment: select an image, then continue");
-    $("mc-restart").textContent=`Restart ${restartLabel(view)}`;
+    $("mc-restart").textContent=`Restart ${label(view)}`;
     $("mc-slots").replaceChildren();$("mc-add-renders").replaceChildren();
     for(let slot=0;slot<4;slot++) {
       const candidate=character.candidates.find(c=>c.candidate_id===current?.slots[slot]);
