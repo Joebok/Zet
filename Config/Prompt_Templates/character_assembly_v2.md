@@ -31,10 +31,11 @@ Judge the candidate image against the visible requirements below and the supplie
 <!-- ZET:END LOCAL_PIPELINE_ONLY -->
 
 Put the head in Image 2 on the body in Image 1.
-- Keep the supplied face, hair, ears, apparent age, expression, and gaze unchanged.
-- Keep the body's proportions, pose, stance, clothing, framing, background, and orientation unchanged.
+- Keep the supplied face, ears, apparent age, expression, and gaze unchanged. Preserve the hairstyle's color, texture, parting, volume and asymmetry.
+- Keep the body's proportions, pose, stance, clothing design, framing, background, and orientation unchanged.
 - Preserve the head's identity and natural scale relative to the body.
-- Make only the changes needed to join the head and neck naturally, with local blending at the junction.
+- Join the head and neck naturally, with local blending at the junction. If Subject Details explicitly specifies a hair endpoint at a body landmark, complete cropped or prematurely terminated lower hair below the neckline to that landmark on the assembled body. That authored endpoint controls lower-hair length; the head reference's crop or accidental short hem does not.
+- Continue the established hairstyle naturally across the necessary shoulders, back and clothing, with correct overlap and perspective. Hair may cover those surfaces without changing underlying body geometry or clothing design. Without an explicitly authored endpoint, preserve the supplied hair length rather than inventing an extension. Keep short hairstyles short.
 - Preserve the supplied rendering style and detail; do not broadly repaint or reinterpret either source.
 
 # Subject Details
@@ -47,6 +48,6 @@ Put the head in Image 2 on the body in Image 1.
 
 # Constraints
 
-Do not redirect the gaze, change head scale, alter body geometry, mirror the requested view, or redesign the neck, shoulders, hair, or body beyond a natural join.
+Do not redirect the gaze, change head scale, alter body geometry, mirror the requested view, or redesign the neck, shoulders, hairstyle or body. Limit reconstruction to the natural join and lower-hair completion explicitly authorized in Subject Details; do not expose features naturally hidden by hair.
 
 Produce one character, one view, and one finished image—not a scene, collage, or multi-view sheet.

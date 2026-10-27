@@ -126,6 +126,19 @@ class LocalTemplateRevisionService:
                            "text": text, "master_text": text, "master_sha256": _digest(text)})
         return result
 
+    def _editable_source_ids(self, workflow, run, sources):
+        """Authorize canonical universe sources, independently of saved revision choices."""
+        if workflow.pipeline == "character-assembly":
+            return []
+        paths = {(Path(self.app.config.base_character_path) / run["character"] / run["phase"] / "Character.md").resolve()}
+        if workflow.pipeline == "costume-dressing":
+            paths.add(workflow.adapter._costume_path(run["character"], run["phase"], run["costume"]).resolve())
+        return [source["source_id"] for source in sources if Path(source["source_path"]).resolve() in paths]
+
+    def _editable_findings(self, workflow, run, record):
+        allowed = self._editable_source_ids(workflow, run, self._sources(workflow, run))
+        return {finding["id"] for finding in record.get("findings", []) if finding["source_id"] in allowed}
+
     @staticmethod
     def representatives(run, choices=None):
         choices = choices or {}
@@ -185,7 +198,8 @@ class LocalTemplateRevisionService:
                 "accepted_revision_id": (run.get("character_progression") or {}).get("accepted_revision_id", ""),
                 "active_revision": {"review_skipped": active.get("review_skipped", False),
                     "differs_from_master": any(s["text"] != current_text.get(s["source_id"]) for s in active.get("sources", []))},
-                "sources": live_sources, "representatives": reps, "omitted_views": omitted,
+                "sources": live_sources, "editable_source_ids": self._editable_source_ids(workflow, run, live_sources),
+                "representatives": reps, "omitted_views": omitted,
                 "history": [{k: item.get(k) for k in ("revision_id", "parent_revision_id", "created_at", "status", "summary", "error", "promoted_at")} for item in records],
                 "revision": revision}
 
@@ -213,14 +227,11 @@ class LocalTemplateRevisionService:
                 master = current[source["source_id"]]
                 source.update(master_text=master["text"], master_sha256=master["master_sha256"],
                               source_path=master["source_path"], before_text=source["text"])
-                if not skip_analysis and pipeline == "body-reference" and source["source_id"] == "project/Config/Prompt_Templates/body_reference_v2.md":
-                    # New proposals adopt the runtime input contract without rewriting their parent.
-                    source["text"] = source["text"].replace(
-                        "This is text-to-image generation with no source image.", "{{BODY_REFERENCE_INPUT_GUIDANCE}}")
                 for key in ("diff", "master_diff", "master_diff_rows"):
                     source.pop(key, None)
-            editable = payload.get("source_ids", [s["source_id"] for s in sources])
-            if not isinstance(editable, list) or not editable or set(editable) - set(current):
+            allowed = self._editable_source_ids(workflow, run, live)
+            editable = payload.get("source_ids", allowed)
+            if not isinstance(editable, list) or not editable or set(editable) - set(allowed):
                 raise ValueError("Choose existing governing templates to edit.")
             direction = payload.get("direction", "")
             if not isinstance(direction, str) or len(direction) > 20000:
@@ -244,7 +255,7 @@ class LocalTemplateRevisionService:
                 "universe_id": self.app.universe_id, "pipeline": pipeline, "run_id": run_id, "created_at": _now(),
                 "status": "PROPOSING", "model": model, "direction": direction, "source_ids": editable,
                 "sources": sources, "representatives": [], "observations": {}, "findings": [], "selected_ids": [],
-                "compiler_guidance": ("Head-Image Edit: FRONT then all other views independently from selected FRONT. Scoped guides follow the canvas. Selected BACK guides a separate optional rear-quarter hair finishing attempt. Edit only HEAD_EDIT_* character sections and this pipeline task template. Preserve intentional eye/hair occlusion; never mirror. Use existing view tags and marker contracts." if pipeline == "head-image-edit" else compiler_guidance()), "manual": manual is not None,
+                "compiler_guidance": ("Head-Image Edit: FRONT then all other views independently from selected FRONT. Scoped guides follow the canvas. Selected BACK guides a separate optional rear-quarter hair finishing attempt. Edit only HEAD_EDIT_* character sections. Preserve intentional eye/hair occlusion; never mirror. Use existing view tags and marker contracts." if pipeline == "head-image-edit" else compiler_guidance()), "manual": manual is not None,
                 "from_master": from_master, "review_skipped": skip_analysis, "summary": "", "error": "",
                 "owner": {owner_key: run_id, "pipeline": pipeline, "run_id": run_id, "revision_id": rid,
                     "character": run["character"], "phase": run["phase"], "costume": costume}}
@@ -287,6 +298,8 @@ class LocalTemplateRevisionService:
         if record["status"] in {"REVIEW_READY", "READY", "FAILED"}:
             return
         try:
+            allowed = self._editable_source_ids(workflow, run, self._sources(workflow, run))
+            record["source_ids"] = [sid for sid in record["source_ids"] if sid in allowed]
             from zet.services.local_prompt_preview_service import LocalPromptPreviewService
             if "compiled_views" not in record:
                 with file_lock(Path(run["root"]) / "state.lock"):
@@ -353,11 +366,11 @@ class LocalTemplateRevisionService:
     def decisions(self, pipeline, run_id, revision_id, payload, costume=""):
         if pipeline == "character-assembly":
             raise ValueError("Governing-template improvement is unavailable for Character Assembly.")
-        _, _, directory = self._load(pipeline, run_id, costume)
+        workflow, run, directory = self._load(pipeline, run_id, costume)
         with file_lock(directory / "revisions.lock"):
             record = self._record(directory, revision_id)
             ids = payload.get("selected_ids", [])
-            allowed = {f["id"] for f in record.get("findings", [])}
+            allowed = self._editable_findings(workflow, run, record)
             if record["status"] != "REVIEW_READY" or not isinstance(ids, list) or set(ids) - allowed:
                 raise ValueError("Choose corrections from the completed prompt review.")
             record["selected_ids"] = list(dict.fromkeys(ids))
@@ -371,6 +384,8 @@ class LocalTemplateRevisionService:
         with file_lock(directory / "revisions.lock"):
             record = self._record(directory, revision_id)
             ids = payload.get("selected_ids", record.get("selected_ids", []))
+            if not isinstance(ids, list) or set(ids) - self._editable_findings(workflow, run, record):
+                raise ValueError("Choose corrections for this pipeline's governing templates only.")
             if record.get("accepted_revision_id"):
                 if ids != record.get("selected_ids", []):
                     raise ValueError("This review was accepted with different choices. Create a child review.")
@@ -393,13 +408,15 @@ class LocalTemplateRevisionService:
                     raise ValueError("Selected corrections overlap; choose one or request a revised analysis.")
                 for start, end, after in reversed(edits):
                     source["text"] = source["text"][:start] + after + source["text"][end:]
-                self._validate_owned(pipeline, source, original, source["text"])
+                if source["text"] != original:
+                    self._validate_owned(pipeline, source, original, source["text"])
                 self._validate_text(original, source["text"])
             child_id = uuid4().hex
             from zet.services.local_prompt_preview_service import LocalPromptPreviewService
             compiled = LocalPromptPreviewService(workflow).compile(run, sources, directory / "compiled" / child_id)
             child = {**deepcopy(record), "revision_id": child_id, "parent_revision_id": revision_id,
                 "status": "READY", "sources": sources, "compiled_views": compiled, "created_at": _now(),
+                "source_ids": [sid for sid in record["source_ids"] if sid in self._editable_source_ids(workflow, run, list(live.values()))],
                 "selected_ids": ids, "accepted_at": _now(), "findings": []}
             child["owner"] = {**record["owner"], "revision_id": child_id}
             self._write(directory / "revisions" / f"{child_id}.json", child)
@@ -471,6 +488,8 @@ class LocalTemplateRevisionService:
         if record["status"] in {"READY", "FAILED"}:
             return
         try:
+            allowed = self._editable_source_ids(workflow, run, self._sources(workflow, run))
+            record["source_ids"] = [sid for sid in record["source_ids"] if sid in allowed]
             if "answer" not in record:
                 if record["replacements"] is not None:
                     answer = {"summary": record["direction"] or "Manual template revision", "recommendations": "",
@@ -563,8 +582,10 @@ class LocalTemplateRevisionService:
             record = self._record(directory, revision_id)
             if record["status"] != "READY":
                 raise ValueError("Only a successfully compiled revision can update master templates.")
-            allowed = {s["source_id"]: s for s in self._sources(workflow, run)}
-            changed = [s for s in record["sources"] if s["text"] != s["master_text"]]
+            live_sources = self._sources(workflow, run)
+            editable = self._editable_source_ids(workflow, run, live_sources)
+            allowed = {s["source_id"]: s for s in live_sources if s["source_id"] in editable}
+            changed = [s for s in record["sources"] if s["source_id"] in allowed and s["text"] != s["master_text"]]
             if not changed:
                 raise ValueError("This revision has no master-template changes.")
             for source in changed:

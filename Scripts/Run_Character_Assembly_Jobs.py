@@ -126,12 +126,14 @@ Reviewed At:
 - [ ] The Reference Body's overall body, proportions, pose, stance, shoulder placement, framing, fitment clothing, exposed skin, background, and requested view are preserved.
 - [ ] The Character Head's identity, face, age phase, species, expression, gaze, hairstyle design, ears, and orientation are preserved.
 - [ ] Local strand placement and overlap let the defining hairstyle rest naturally around the assembled neck and shoulders.
+- [ ] Hair reaches any explicitly authored endpoint relative to the assembled body's landmarks, including perspective in rear-quarter views; a source crop or accidental short hem does not shorten it.
+- [ ] Lower-hair completion is limited to the explicitly authored endpoint and natural overlap; without one, the supplied length is preserved and short hairstyles stay short.
 - [ ] Ear shape and visibility match the Character Head source; no occluded ear was invented or exposed.
 - [ ] Head and body skin transition naturally without broad recoloring or character-phase mismatch.
 - [ ] The head, neck, hair, shoulders, and exposed skin form one anatomically natural and visually continuous assembly without seams, mannequin residue, attachment artifacts, mismatched shading, a floating head, or a distorted neck.
 - [ ] Reference Body, Character Head, and final render preserve the same requested view.
 - [ ] Rendering changes comply with the selected assembly style mode.
-- [ ] No costume, prop, accessory, scene, or lighting changes were introduced.
+- [ ] No costume design, prop, accessory, scene, or lighting changes were introduced; hair may naturally cover clothing while preserving its underlying design.
 
 ## Notes
 """,

@@ -71,6 +71,13 @@ Used by head-image. Add tagged bullets for visible facial planes, ear visibility
 
 Used by head-image and expression work. Record color, texture, density, hairline, part, length, arrangement, and stable silhouette.
 
+Describe length using body landmarks, such as mid-back below the shoulder blades,
+and distinguish the actual hem from a crop edge. Head references show the complete
+hairstyle where practical, including enough shoulder/back or torso context to
+establish its endpoint while retaining usable head detail. Exceptionally long hair
+may continue beyond the crop without a false shorter hem. Do not force hidden
+lower hair into view or change head/neck proportions to expose it.
+
 ### `HAIR_DESCRIPTION_VIEW_OVERRIDES` — required for all eight views
 
 Used by head-image. Add tagged bullets for visible layers, overlaps, concealed areas, and view-specific silhouette. Do not add body guidance.
@@ -125,7 +132,7 @@ Used by head-image. List likely character-specific head or hair failure modes as
 
 ### `CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS` — optional
 
-Used by character-assembly. Include only character-specific join or preservation exceptions. Do not author view names or orientation rules; assembly orientation comes exclusively from Zet's view configuration.
+Used by character-assembly. Include only character-specific join or preservation exceptions. For lower-hair completion, explicitly name the endpoint on the assembled body (for example, mid-back below the shoulder blades), arrangement and silhouette. Assembly may extend cropped or prematurely terminated source hair to that endpoint with natural overlap over shoulders, back and clothing; it preserves underlying body geometry and clothing design. Without an explicitly authored endpoint, it preserves the supplied length, including short hairstyles. Do not author view names or orientation rules; assembly orientation comes exclusively from Zet's view configuration.
 
 ### `NEGATIVE_GUIDANCE_EXPRESSION` — required
 

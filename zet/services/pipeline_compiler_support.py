@@ -522,12 +522,16 @@ def character_assembly_style_instruction(mode: str) -> str:
     if mode == "HARMONIZE_STYLE":
         return (
             "Harmonize the Character Head's line quality, shading, and surface finish only as needed to match the "
-            "locked Reference Body. Do not repaint the Reference Body or change head identity, geometry, pose, "
-            "orientation, clothing, or background."
+            "locked Reference Body. Do not broadly repaint the Reference Body or change head identity, geometry, pose, "
+            "orientation, clothing design, or background. Allow natural hair overlap and lower-hair completion "
+            "only to an endpoint explicitly authored in Subject Details; preserve underlying body geometry."
         )
     return (
         "The supplied sources are already rendered in the same intended style. Preserve that style throughout "
-        "the image. Allow localized blending, antialiasing, shading adjustment, skin-transition harmonization, edge cleanup, and limited reconstruction only at the neck and immediate hair/neck/shoulder junction. "
+        "the image. Allow localized blending, antialiasing, shading adjustment, skin-transition harmonization, "
+        "edge cleanup and reconstruction at the natural head/neck join. Also allow lower-hair completion "
+        "only to an endpoint explicitly authored in Subject Details, with natural overlap over shoulders, back "
+        "and clothing while preserving underlying body geometry and clothing design. "
         "Do not broadly repaint or reinterpret the character."
     )
 

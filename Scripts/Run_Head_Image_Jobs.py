@@ -336,7 +336,7 @@ Reviewed At:
 - [ ] Explicit target-phase changes are clearly visible rather than being suppressed by the source appearance.
 - [ ] If the target phase changes apparent age, the face itself communicates that age change without relying only on hair color.
 - [ ] Head and hair appearance match the Character.md factual and view-specific rules.
-- [ ] The complete head and hairstyle silhouette are present and usable.
+- [ ] The complete head has usable identity detail and natural head/neck proportions. The authored hairstyle is fully framed where practical, with enough body context to establish its visible endpoint; exceptionally long hair may continue beyond the crop without an invented shorter hem.
 - [ ] Framing is natural and does not distort the character merely to satisfy technical fitment geometry.
 - [ ] The background is transparent and no narrative environment or unrelated character was added.
 

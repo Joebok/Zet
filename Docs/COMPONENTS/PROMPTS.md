@@ -40,8 +40,9 @@ The compiler chooses one FRONT instruction mode: FRONT_DESCRIPTION for generatio
 PRESERVE for a same-phase source edit, or the single nonempty PHASE_CHANGES section
 for an enabled phase change. The phase-change operation names no specific source
 phase. Other views omit phase rules and edit the target batch's selected FRONT.
-Governing-template revisions may edit only the new character sections and the two
-new task templates, preserving legacy sections and global sources.
+Governing-template revisions may edit only `HEAD_EDIT_*` sections in the current
+`Character.md`. Both task templates remain read-only compilation context, together
+with legacy sections and global sources.
 
 `ZET:PROMPT_PACKET` declarations in operation substitutions are analysis metadata.
 The static renderer removes them before final marker validation and source-map
@@ -263,10 +264,35 @@ The local Body compiler accepts one explicitly supplied batch design reference, 
 
 ## Simple local Assembly prompt (2026-10-20)
 
-`compile_character_assembly_job` limits local generation and previews to ordered `body_reference`/`head_image` inputs. The required head retains its existing internal `subject_reference` schema role. Additional anchor/subject references and embedded supplemental-image tags are omitted. The task template follows the older natural-join wording: preserve supplied body, head, orientation, gaze and style; blend only the immediate junction. No canonical-style restyling directive is added. Local Assembly no longer compiles through accepted governing-template overlays. Its ranking-only FRONT attachment is owned by the ranking service and is absent from render prompts/manifests. Traditional pipeline retirement remains unchanged.
+`compile_character_assembly_job` limits local generation and previews to ordered `body_reference`/`head_image` inputs. The required head retains its existing internal `subject_reference` schema role. Additional anchor/subject references and embedded supplemental-image tags are omitted. The task template preserves supplied body, head, orientation, gaze and style, with a natural join and explicitly authored lower-hair completion as described below. No canonical-style restyling directive is added. Local Assembly no longer compiles through accepted governing-template overlays. Its ranking-only FRONT attachment is owned by the ranking service and is absent from render prompts/manifests. Traditional pipeline retirement remains unchanged.
 
 ## Prompt skill boundary (2026-10-22)
 
 Qwen guidance is applied only to appropriate existing LLM authoring, fragment and review calls. Analysis-only reconstruction images do not make a prompt an edit. Existing schemas, source markers, canvas settings, ordered reference bindings and deterministic character/alignment/correction compilation remain authoritative. [LLM roles](LLM_ROLES.md) owns the integration and package update procedure.
 
 Minor Character deterministic render prompts identify ordered multi-image style references with Qwen `<imageN>` tags while retaining their original bytes and order. One-image alignment and true-up prompts refer to the image naturally. Alignment changes viewpoint by visible anatomical side and keeps character design fixed; true-ups identify the input as the canvas and scope edits to selected corrections and operator feedback. The image service does not append its generic reference-label block to these prompts. Candidate payloads freeze the instruction for regeneration and retry.
+
+
+## Long hair across Head and Assembly (2026-10-27)
+
+The local Head task template and independent Head-Image Edit compiler/template
+show the complete authored hairstyle where practical. Framing may expand through
+shoulders, back or torso to establish a visible anatomical endpoint while keeping
+usable head detail and natural head/neck proportions. Mid-back hair needs context
+below the shoulder blades. Exceptionally long hair may continue beyond the crop
+without an invented short hem; hidden hair is not pulled into view.
+
+Assembly's existing `CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS` is the source for
+an explicit lower-hair endpoint on the assembled body. The task and both style
+modes permit completing cropped or prematurely terminated hair to that landmark,
+with natural overlap over shoulders/back/clothing and unchanged underlying body
+geometry and clothing design. No authored endpoint means preserve supplied length,
+including short styles. Identity, parting, texture, volume, asymmetry, camera and
+natural occlusion remain source-controlled. No head-family sections are merged.
+The compiler review checklist checks length against the assembled body.
+
+`render_slot_service.ASSEMBLY_INPUT_VERSION` is 2. Fresh preparation upgrades older
+cached prompts/manifests through the existing stamp check; current version-2 prompt
+edits remain usable without explicit Recompile. Submitted requests and Retry keep
+their frozen inputs. See [ADR 0036](../DECISIONS/0036-long-hair-head-and-assembly.md)
+and the [workflow handoff](LOCAL_CHARACTERS.md#long-hair-framing-and-assembly-handoff-2026-10-27).

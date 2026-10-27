@@ -15,7 +15,7 @@ from uuid import uuid4
 from zet.services.library_reference_service import pipeline_library_root_for_path, write_library_json
 
 SLOT_COUNT = 8
-ASSEMBLY_INPUT_VERSION = 1
+ASSEMBLY_INPUT_VERSION = 2
 _SLOT_WORKERS: set[str] = set()
 _SLOT_WORKERS_LOCK = threading.Lock()
 

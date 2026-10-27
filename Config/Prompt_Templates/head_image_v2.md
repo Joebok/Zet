@@ -38,7 +38,7 @@ Create one clean head reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}.
 
 {{LOCAL_VISIBLE_CHARACTER_FACTS}}
 
-Show the complete head, hairstyle, neck, shoulders, and enough upper-back context to show the hair ending at shoulder level behind the shoulders, against a plain transparent background. Render in {{LOCAL_STYLE_INSTRUCTION}}.
+Show the complete head and authored hairstyle against a plain transparent background. Expand the framing to include the neck, shoulders and enough upper back or torso context to establish the visible hair endpoint at its authored body landmark, while keeping usable head detail and natural head/neck proportions. For mid-back hair, include the back below the shoulder blades; do not shorten the hair to fit a head-and-shoulders crop. If exceptionally long hair cannot fit while retaining usable head detail, let it continue naturally beyond the lower frame without inventing a shorter hem. Body and clothing are framing context only. Preserve natural occlusion in the requested view. Render in {{LOCAL_STYLE_INSTRUCTION}}.
 
 Build dimensional facial planes around the cheeks, nose, mouth and eyes using gradual light and shadow. Render naturally seated eyes with defined eyelids and restrained corneal highlights, subtle skin-color variation, and hair grouped into strands with natural highlights. Preserve authored age and distinctive features without oversized anime eyes, flat cel shading, heavy outlines or plastic skin. Apply these details only to surfaces visible in the requested view; do not turn the head to reveal hidden features.
 <!-- ZET:END LOCAL_PIPELINE_ONLY -->

@@ -354,6 +354,8 @@ New Body, Head and Dressing batches start with text-only governing-template revi
 
 [LocalTemplateRevisionService](../../zet/services/local_template_revision_service.py) saves version-2 reviews with individual source corrections, affected views and rationale. Suggestions start unchecked. Checkbox decisions persist; acceptance applies only selected, nonoverlapping exact source edits after checking master baselines and recompiles a READY child version. No-change acceptance is valid. Operator feedback and manual child edits support iteration. Accepted sources are batch-local overlays; master promotion retains its separate confirmation, baseline checks and partial-write journal. Legacy version-1 records and pending continuations remain readable.
 
+**Improve governing templates** offers only the current phase's `Character.md` for Body Reference, Head Image and Head-Image Edit; Costume Dressing also offers the selected costume template. Head-Image Edit retains its `HEAD_EDIT_*` section restriction. The revision API exposes `editable_source_ids` independently of complete frozen compilation sources. Global sections and pipeline instruction templates are read-only context: requests, model corrections, decisions and acceptance cannot introduce edits to them, and promotion writes only changed governing templates. Historical project-source diffs remain readable, and continuing an old revision retains its frozen context.
+
 The governing-template UI offers **Skip improvement — use current masters** to
 freeze, compile and accept current sources without AI analysis. **Restart from
 current masters** recompiles and starts a fresh analysis without inheriting the
@@ -368,9 +370,9 @@ parent-version diff is omitted. **Edit master template**, below each source diff
 opens a separate proposal editor. **Save proposed** compiles a READY child without
 an AI job, changing masters or selecting that child for new renders. **Use for new
 renders** explicitly accepts/selects it for the batch; **Update master templates**
-retains the separate confirmed promotion. Project-template edits can subsequently
-be published through Restart's **Create template PR** recovery action; promotion
-itself does not publish anything. See
+retains the separate confirmed promotion. Historical project-template edits already
+on disk can still be preserved through Restart's **Create template PR** recovery
+action; this improvement panel no longer offers project-template updates. See
 [update recovery](../GitHub_Task_Workflow.md#accepted-template-edits-and-update-recovery).
 The status block before compiled prompts
 reports pending corrections, unsaved editor text, selected batch sources, master
@@ -479,3 +481,34 @@ AI Observations no longer start after ranking or Re-evaluate. Each view's Observ
 The selected edits compile all eight text previews and two private renders of the chosen view with current ordered inputs, even if a suggestion cites another affected view. Trial images do not enter slots, selections, rankings, or Inventory. Another observation round can build on the trial. Cancel discards the private trial and leaves only explicitly saved observations. Keep requires completed trials and unchanged source/batch baselines, then writes `Character.md`, activates a batch version, and recompiles available renderable prompts. Unopened views compile from that version when generated. Assembly gains this post-render version path without changing its initial Run front gate. Frozen asks, Retry and locks remain unchanged.
 
 The persistent review and promotion boundary is recorded in [ADR 0030](../DECISIONS/0030-private-post-render-character-prompt-trials.md).
+
+
+## Long-hair framing and Assembly handoff (2026-10-27)
+
+Head references show complete hair where practical, with body context for the
+visible endpoint. Assembly may complete lower hair only to a body landmark
+explicitly authored in `CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS`. This includes
+correcting a prematurely shortened source hem, while retaining hairstyle identity,
+natural occlusion and underlying body/clothing design. See
+[Prompts](PROMPTS.md#long-hair-across-head-and-assembly-2026-10-27) and
+[ADR 0036](../DECISIONS/0036-long-hair-head-and-assembly.md).
+
+For an existing Head batch with an accepted source version, a master edit alone
+does not replace that version: make and accept a manual child Character.md revision
+containing the revised hair wording in that head family's allowed sections
+(`HEAD_EDIT_*` for Head-Image Edit), then Recompile before Generate/Regenerate.
+Use the existing post-render Character.md revision workflow for Assembly batches
+with an accepted post-render version; do not bypass acceptance or rewrite it on
+disk. Batches without an accepted version compile from the current master.
+Fresh Assembly requests refresh version-1 prompt caches automatically, but an old
+accepted Character.md can still contain contradictory neck-only wording.
+
+Assembly snapshots its chosen body/head inputs. Selecting or regenerating an
+improved Head image does not refresh an existing Assembly batch: create a new
+Assembly batch from the desired selected head family/batch to use those new bytes.
+Retry replays its original frozen request. Existing selections, publications and
+locked images are unchanged by master/template edits.
+
+Disposable isolated compilation/preparation and the approved fast E2E suite check
+software behavior. No live images were generated for this change; the back-left
+hair endpoint still requires human visual acceptance after future rendering.

@@ -346,7 +346,7 @@ Rendering priorities:
 
 * Render one clear image of the character's head in the requested view.
 * Use the Canonical Art Style.
-* Use natural head-and-shoulders or limited-bust framing with the complete head, hair silhouette, jaw, chin, neck, and enough upper-shoulder context for assembly.
+* Frame the complete head, visible jaw/chin, neck and authored hairstyle with usable head detail. Include enough shoulder, back or torso context to establish the hair endpoint at its authored body landmark; mid-back hair needs context below the shoulder blades. Exceptionally long hair may continue beyond the lower crop without an invented short hem.
 * Render on a transparent background with clear readable lighting; do not add a backdrop or environment.
 * The visible shoulders, upper torso, and clothing are contextual only and do not define the final assembled body.
 * Do not add a narrative scene, prominent props, or unrelated characters.
@@ -368,7 +368,7 @@ Rendering priorities:
 
 * Preserve the exact requested head orientation and view-specific facial visibility.
 * Keep the output a reusable head reference rather than a narrative portrait or scene.
-* Use only the natural neck and limited shoulder context needed to preserve the complete head and hairstyle silhouette.
+* Preserve natural head/neck proportions. Expand shoulder/back context for authored hair length rather than shortening hair or stretching the neck to fit a tight crop.
 * Do not add extra weapons, props, jewelry, decorative accessories, labels, registration text, or visible guide marks.
 
 <!-- ZET:END NEGATIVE_GUIDANCE_HEAD_IMAGE -->
@@ -381,7 +381,10 @@ Rendering priorities:
 
 <!-- ZET:BEGIN CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 
-
+<!-- Optional: for hair that needs completion below the neckline, explicitly name
+its endpoint on the assembled body (for example, mid-back below the shoulder
+blades), arrangement and silhouette. Without an authored endpoint, Assembly
+preserves the supplied length. Do not add view/orientation instructions here. -->
 
 <!-- ZET:END CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 

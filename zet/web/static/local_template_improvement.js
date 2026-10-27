@@ -36,6 +36,7 @@
   }
   function field(parent, title, control) { const label = el("label", title); label.append(control); parent.append(label); return control; }
   const chosenSources = () => [...sourceChoices.querySelectorAll("input:checked")].map(input => input.value);
+  const editableSource = sourceId => (data?.editable_source_ids || []).includes(sourceId);
   async function analyze(fromMaster = false) {
     const initial = serial, source_ids = chosenSources();
     if (!source_ids.length) throw new Error("Choose at least one source template to edit.");
@@ -57,12 +58,13 @@
     } else notes.push("New renders use current master templates once the review gate is complete.");
     if (revision) {
       const sources = new Map(data.sources.map(source => [source.source_id, source.text]));
-      const pending = revision.sources.filter(source => source.text !== sources.get(source.source_id));
-      const drift = revision.sources.some(source => source.master_text !== sources.get(source.source_id) && source.text !== sources.get(source.source_id));
+      const pending = revision.sources.filter(source => editableSource(source.source_id) && source.text !== sources.get(source.source_id));
+      const drift = revision.sources.some(source => editableSource(source.source_id) && source.master_text !== sources.get(source.source_id) && source.text !== sources.get(source.source_id));
       if (revision.status === "REVIEW_READY") {
-        const count = (decisionDrafts.get(revision.revision_id) || revision.selected_ids || []).length;
+        const available = revision.findings.filter(finding => editableSource(finding.source_id));
+        const count = available.filter(finding => (decisionDrafts.get(revision.revision_id) || revision.selected_ids || []).includes(finding.id)).length;
         notes.push(revision.accepted_revision_id ? `This review was accepted as version ${revision.accepted_revision_id.slice(0, 8)}.`
-          : `${count} of ${revision.findings.length} proposed corrections selected; none are applied until you accept.`);
+          : `${count} of ${available.length} proposed corrections selected; none are applied until you accept.`);
       } else if (revision.status === "READY") {
         notes.push(revision.review_skipped ? "This version compiled current masters without AI analysis." : revision.manual
           ? "Manual proposal saved and compiled." : `${revision.selected_ids?.length || 0} corrections accepted and compiled.`);
@@ -102,6 +104,7 @@
     updateFrontButton();
   }
   function openEditor(source, revision) {
+    if (!editableSource(source.source_id)) throw new Error("This source is read-only compilation context.");
     let key = `${context.key}:${revision.revision_id}:${source.source_id}`;
     const existing = editors.get(key);
     if (existing && !existing.window.closed) { existing.window.focus(); return; }
@@ -214,7 +217,7 @@
     active.textContent = data.active_revision_id ? `Batch version: ${data.active_revision_id.slice(0, 8)}. New renders use its frozen templates.` : "No batch template version selected.";
     if (!sourceChoices.childElementCount) {
       sourceChoices.append(el("h3", "Templates the proposal may change"));
-      data.sources.forEach((source, index) => {
+      data.sources.filter(source => editableSource(source.source_id)).forEach(source => {
         const check = el("input"); check.type = "checkbox"; check.value = source.source_id; check.checked = true;
         const label = el("label"); label.append(check, document.createTextNode(source.source_id)); sourceChoices.append(label);
       });
@@ -223,7 +226,7 @@
     for (const item of data.history) history.add(new Option(`${item.revision_id.slice(0, 8)} · ${item.status}${item.promoted_at ? " · promoted" : ""}`, item.revision_id));
     history.value = selectedRevision;
     const revision = data.revision;
-    const nextSignature = JSON.stringify([revision, data.active_revision_id, data.active_revision, data.accepted_revision_id, data.sources]);
+    const nextSignature = JSON.stringify([revision, data.active_revision_id, data.active_revision, data.accepted_revision_id, data.sources, data.editable_source_ids]);
     if (signature === nextSignature) { updateWorkflowStatus(); updateFrontButton(); return; }
     signature = nextSignature; result.replaceChildren(); result.dataset.revision = revision?.revision_id || "";
     if (!revision) { appendStatusAndFront(null); return; }
@@ -237,13 +240,15 @@
     if (revision.version === 2 && revision.status === "REVIEW_READY") {
       const findings = el("fieldset"); findings.append(el("legend", "Proposed corrections — check Yes to apply; unchecked means No"));
       let saving = Promise.resolve();
-      const chosen = () => [...findings.querySelectorAll("input:checked")].map(input => input.value);
+      const chosen = () => [...findings.querySelectorAll("input:checked:not(:disabled)")].map(input => input.value);
       for (const finding of revision.findings || []) {
         const row = el("section", "", "template-correction");
         const label = el("label", "", "template-correction-choice"); const check = el("input"); check.type = "checkbox"; check.value = finding.id;
         check.setAttribute("aria-label", `Apply correction: ${finding.rationale}`);
-        check.checked = (decisionDrafts.get(revision.revision_id) || revision.selected_ids || []).includes(finding.id);
-        label.append(check);
+        check.disabled = !editableSource(finding.source_id);
+        check.checked = !check.disabled && (decisionDrafts.get(revision.revision_id) || revision.selected_ids || []).includes(finding.id);
+        if (check.disabled) label.append(el("span", "Read-only historical correction"));
+        else label.append(check);
         const content = el("div", "", "template-correction-content");
         content.append(el("p", finding.rationale), el("p", `${finding.source_id} · ${finding.views.join(", ")}`, "muted"),
           el("p", "Before"), el("pre", finding.before), el("p", "After"), el("pre", finding.after));
@@ -290,7 +295,7 @@
     const tryButton = button(toolbar, "Use for new renders", () => switchVersion(revision.revision_id));
     tryButton.disabled = revision.status !== "READY" || (revision.revision_id === data.active_revision_id && !context.run.progression?.prompt_review_required);
 
-    const changed = revision.sources.filter(source => source.text !== source.master_text);
+    const changed = revision.sources.filter(source => editableSource(source.source_id) && source.text !== source.master_text);
     const promote = button(toolbar, "Update master templates…", async () => {
       if (!window.confirm(`Update these master templates with version ${revision.revision_id.slice(0, 8)}?\n\n${changed.map(source => source.source_id).join("\n")}\n\nThis affects future compilations in other batches. Original text remains in the saved version.`)) return;
       const initial = serial;
@@ -298,14 +303,16 @@
       if (initial !== serial) return;
       data = value; signature = ""; renderData(); await context.reload(); status("Master templates updated. Existing images and queued renders retain their saved inputs.");
     });
-    promote.disabled = revision.status !== "READY" || !changed.length || revision.sources.every(source => data.sources.some(master => master.source_id === source.source_id && master.text === source.text));
+    promote.disabled = revision.status !== "READY" || !changed.length || changed.every(source => data.sources.some(master => master.source_id === source.source_id && master.text === source.text));
     for (const source of revision.sources) {
       if (!revision.source_ids.includes(source.source_id) && !source.master_diff) continue;
       const details = el("details"); details.open = Boolean(source.master_diff); details.append(el("summary", source.source_id));
       if (source.rationale) details.append(el("p", source.rationale));
       details.append(sourceDiff(source));
-      const edit = button(details, "Edit master template", () => openEditor(source, revision));
-      edit.disabled = !["READY", "REVIEW_READY", "FAILED"].includes(revision.status);
+      if (editableSource(source.source_id)) {
+        const edit = button(details, "Edit master template", () => openEditor(source, revision));
+        edit.disabled = !["READY", "REVIEW_READY", "FAILED"].includes(revision.status);
+      } else details.append(el("p", "Read-only compilation context.", "muted"));
       result.append(details);
     }
     result.append(toolbar);

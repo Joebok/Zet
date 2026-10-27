@@ -99,3 +99,7 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 
 [0030 - Private post-render Character.md trials](0030-private-post-render-character-prompt-trials.md) records isolated review sessions, trial renders and recoverable promotion (accepted locally 2026-10-23).
 \n[0031 - Prompt Generator Pilot packets and budget boundaries](0031-prompt-generator-pilot.md) records immutable prompt packets, four-seed private trials, explicit live authorization, aggregate budget reservations and catalog provenance (accepted locally 2026-10-24; live artistic evaluation pending).\n
+
+[0036 - Long hair across Head and Assembly](0036-long-hair-head-and-assembly.md)
+records complete-hair framing where practical and Assembly completion to an
+explicitly authored body landmark, with frozen requests preserved.
