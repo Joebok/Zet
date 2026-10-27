@@ -52,6 +52,11 @@ locked FRONT image (or an empty-image placeholder), and Edit/Delete buttons.
 Clicking the image or Edit opens the existing editor; Delete retains its confirmation
 and preserves published Inventory images.
 
+Direct Minor Characters links skip the shell's legacy `/api/assets` startup load;
+these universe-local workspaces do not require a selected phase's `Assets.json`.
+The controller's script cache key includes the five-view revision so cached code
+cannot retain bindings to the removed side selector.
+
 Post-render trial thumbnails open a viewing-only dialog with Previous/Next buttons,
 left/right arrow keys, and Close/Escape. Navigation includes ready images in the
 current round and preserves the displayed trial while polling. Each trial card and

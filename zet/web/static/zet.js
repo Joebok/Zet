@@ -12859,7 +12859,7 @@ async function main() {
       updatePhaseSelect();
       saveStoredContext();
     }
-    if (!isLocalBatchRoute) {
+    if (!isLocalBatchRoute && initialRouteParams.get("page") !== "minor-characters") {
       try {
         await loadAssets();
       } catch (error) {

@@ -1,5 +1,16 @@
 # Local testing
 
+## Minor Characters console errors (2026-10-27)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (37.4s). A disposable
+Chromium check under ignored `test-results/minor-character-console/` reproduced
+the reported line-428 null listener with the previous controller's removed
+`mc-side` binding. The current controller passed list/create/rename/reload and
+six-tab checks against the private fixture without `Assets.json`, legacy asset
+requests or page errors. Both controller syntax checks and `git diff --check`
+passed. No maintained tests, live AI calls, production-library writes or deployment
+were added.
+
 ## Character and costume template editor (2026-10-26)
 
 `npm.cmd run test:e2e` passed all four approved scenarios (38.6s). Python AST checks for the changed compiler/service/routes and `node --check` for `zet.js` and `template_editor.js` passed. Disposable checks under ignored `test-results/template-editor/` used private copies of the approved fixture and no live AI calls.
