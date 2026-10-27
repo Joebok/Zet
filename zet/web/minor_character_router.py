@@ -91,6 +91,10 @@ def create_minor_character_router(provider):
     def lock(sid: str, data: dict = Body(...)):
         return {"character": call(lambda s: s.lock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"]))}
 
+    @router.post("/{sid}/unlock")
+    def unlock(sid: str, data: dict = Body(...)):
+        return {"character": call(lambda s: s.unlock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"]))}
+
     @router.get("/{sid}/references/{reference_id}")
     def reference(sid: str, reference_id: str):
         return FileResponse(call(lambda s: s.reference_image_path(sid, reference_id)))

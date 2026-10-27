@@ -373,17 +373,31 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 and c["view"] == view and c.get("filename")), None)
             if not candidate:
                 raise QuickCharacterWizardError("Select an image for this view first.")
+            if not (self._directory(sid) / candidate["filename"]).is_file():
+                raise QuickCharacterWizardError("This candidate image is unavailable.")
             board = self._board(session, view, expected)
-            if view == "STYLE" or candidate.get("kind") != "true_up":
-                raise QuickCharacterWizardError("Only generated view true-up images can be locked.")
             board["selected_id"] = candidate["candidate_id"]
             board["revision"] += 1
             session["selected"][view] = candidate["candidate_id"]
-            frozen = {**session, **candidate.get("inputs", {})}
-            published = publish_quick_character(self.app, frozen, self._directory(sid), views=[view])
-            session["minor_set_id"] = published["set_id"]
-            session["locked"][view] = {"asset_id": published["asset_ids"][view], "candidate_id": candidate["candidate_id"],
-                "set_id": published["set_id"], "source_session_id": sid, "locked_at": self._now()}
+            locked = {"candidate_id": candidate["candidate_id"], "source_session_id": sid, "locked_at": self._now()}
+            if view != "STYLE":
+                frozen = {**session, **candidate.get("inputs", {})}
+                published = publish_quick_character(self.app, frozen, self._directory(sid), views=[view])
+                session["minor_set_id"] = published["set_id"]
+                locked.update(asset_id=published["asset_ids"][view], set_id=published["set_id"])
+            session["locked"][view] = locked
+            self._write(session)
+            return self._public(session)
+
+    def unlock_view(self, sid, view, candidate_id, expected=None):
+        sid = self._canonical(sid)["session_id"]
+        with self._lock(sid):
+            session = self._read(sid)
+            board = self._board(session, view, expected)
+            if session["locked"].get(view, {}).get("candidate_id") != candidate_id:
+                raise QuickCharacterWizardConflict("This view's locked image changed. Reload it before trying again.")
+            session["locked"].pop(view)
+            board["revision"] += 1
             self._write(session)
             return self._public(session)
 
@@ -396,7 +410,7 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
 
     def owner(self, asset_id):
         for record in self._records():
-            if any(v["asset_id"] == asset_id for v in record["locked"].values()):
+            if any(v.get("asset_id") == asset_id for v in record["locked"].values()):
                 return self._canonical(record["session_id"])["session_id"]
             for candidate in record["candidates"]:
                 if uuid5(NAMESPACE_URL, f"zet:minor-character:{record['session_id']}:{candidate['candidate_id']}:{candidate['view']}").hex == asset_id.replace("-", ""):
@@ -404,7 +418,11 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         return None
 
     def locked_image_path(self, sid, view):
-        session = self.get_character(sid)
+        session = self._canonical(sid)
+        if view == "STYLE" and session["locked"].get(view):
+            candidate = next(c for c in session["candidates"]
+                             if c["candidate_id"] == session["locked"][view]["candidate_id"])
+            return self._directory(sid) / candidate["filename"]
         asset_id = session["locked"].get(view, {}).get("asset_id")
         if not asset_id:
             raise QuickCharacterWizardError("This view has no locked image.")

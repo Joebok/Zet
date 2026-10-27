@@ -56,8 +56,8 @@ def publish_quick_character(app, session: dict, directory: Path, *, views=None) 
         if not candidate.get("filename") or (not session.get("minor_character") and
                 (candidate["revision_id"] != revision or candidate["stale"] or candidate["status"] not in {"READY", "REVIEW_FAILED"})):
             raise QuickCharacterWizardConflict("Choose a current rendered image for each view.")
-        if session.get("workflow_version") and (view == "STYLE" or candidate.get("kind") != "true_up"):
-            raise QuickCharacterWizardConflict("Only generated view true-up images can be published.")
+        if session.get("workflow_version") and view == "STYLE":
+            raise QuickCharacterWizardConflict("Style alignment images cannot be published.")
         asset_id = stable_id(view)
         outputs[view] = asset_id
         assets.append({"asset_id": asset_id, "label": session["name"] + " · " + view.replace("_3_4", " 3/4").replace("_", " ").title(),
@@ -140,7 +140,7 @@ def publish_quick_character(app, session: dict, directory: Path, *, views=None) 
                 connection.execute("INSERT OR IGNORE INTO reference_set_assets VALUES(?,?,?,?)", (set_id, asset_id, view.lower(), order))
             if session.get("minor_character"):
                 for view, locked in session.get("locked", {}).items():
-                    if view not in outputs:
+                    if view not in outputs and locked.get("asset_id"):
                         connection.execute("DELETE FROM reference_set_assets WHERE set_id=? AND role=?", (set_id, view.lower()))
                         connection.execute("INSERT OR IGNORE INTO reference_set_assets VALUES(?,?,?,?)",
                             (set_id, locked["asset_id"], view.lower(), 1 if view == "FRONT" else 2 if "3_4" in view else 3))

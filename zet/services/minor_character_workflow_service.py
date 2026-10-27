@@ -56,7 +56,7 @@ class MinorCharacterWorkflow:
             board["findings"] = board.get("restored_findings") or {k: deepcopy(source[k]) for k in ("comparison", "review", "error") if k in source}
             board["can_continue"] = bool(board["selected_id"] and board["mode"] == "alignment" and view != "STYLE")
         for candidate in value["candidates"]:
-            candidate["can_lock"] = bool(candidate.get("image_url")) and candidate.get("kind") == "true_up" and candidate["view"] != "STYLE"
+            candidate["can_lock"] = bool(candidate.get("image_url"))
         value.pop("analysis_inputs", None)
         return value
 

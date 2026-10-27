@@ -193,8 +193,17 @@
   }
   async function lockCandidate(candidate) {
     await flush();
-    show((await api(`/${character.character_id}/lock`,"POST",{view:candidate.view,candidate_id:candidate.candidate_id,revision:board().revision})).character);
-    message("Locked image saved to Inventory.");
+    const locked=character.locked[candidate.view]?.candidate_id===candidate.candidate_id;
+    show((await api(`/${character.character_id}/${locked ? "unlock" : "lock"}`,"POST",{view:candidate.view,candidate_id:candidate.candidate_id,revision:board().revision})).character);
+    message(locked ? "View unlocked. Saved Inventory images are retained." : candidate.view==="STYLE" ? "Style alignment locked." : "Locked image saved to Inventory.");
+  }
+  function lockControl(candidate) {
+    const locked=character.locked[candidate.view]?.candidate_id===candidate.candidate_id;
+    const title=`${locked ? "Unlock" : "Lock"} ${label(candidate.view).toLowerCase()}`;
+    const control=button(locked ? "🔒 Unlock" : "🔓 Lock",()=>lockCandidate(candidate));
+    control.title=title;control.setAttribute("aria-label",title);control.setAttribute("aria-pressed",String(locked));
+    control.disabled=pending || slotPending.size>0;
+    return control;
   }
   function comparisons() {
     const result = [], seen = new Set();
@@ -244,8 +253,7 @@
       select.disabled=pending || character.selected[view]===preview;
       const actions=element("div","","button-row mc-review-actions");actions.append(previous,select);
       if (candidate.can_lock) {
-        const lock=button(character.locked[view]?.candidate_id===preview ? "Locked" : "Lock",()=>lockCandidate(candidate));
-        lock.disabled=pending || character.locked[view]?.candidate_id===preview; actions.append(lock);
+        actions.append(lockControl(candidate));
       }
       actions.append(next);figure.append(actions);$("mc-review-pair").append(figure);
     }
@@ -316,10 +324,7 @@
       if (regen.disabled) card.append(element("p", pending || submitting ? "An operation is in progress." : "Select an alignment image to enable rendering.", "slot-action-reason muted"));
       controls.append(select);
       if(candidate?.can_lock) {
-        const lock=button(character.locked[view]?.candidate_id===candidate.candidate_id ? "Locked" : "Lock",async()=>{
-          previewCandidate(candidate.candidate_id);await lockCandidate(candidate);
-        });
-        lock.disabled=pending || character.locked[view]?.candidate_id===candidate.candidate_id;controls.append(lock);
+        controls.append(lockControl(candidate));
       }
       controls.append(regen,clear);
       card.append(controls);$("mc-slots").append(card);
