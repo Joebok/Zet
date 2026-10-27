@@ -170,6 +170,22 @@ def _raise_unresolved_single_brace_token(rendered: str) -> None:
         )
 
 
+def _raise_zet_markers(rendered: str, fragments: list[dict] | None = None) -> None:
+    markers = list(re.finditer(r"<!--\s*ZET\b(?:(?!-->)[^\r\n])*(?:-->)?", rendered, re.I))
+    if not markers:
+        return
+    details = []
+    for marker in markers:
+        line = rendered.count("\n", 0, marker.start()) + 1
+        source = next((item for item in fragments or []
+                       if item["prompt_start_line"] <= line <= item["prompt_end_line"]), {})
+        location = str(source.get("source_path") or source.get("source_label") or "")
+        if source.get("section_name"):
+            location += f" [{source['section_name']}]"
+        details.append(f"{marker.group(0)!r} at prompt line {line}" + (f" from {location}" if location else ""))
+    raise TemplateCompileError("ZET_MARKER_IN_FINAL_PROMPT", "Final prompt contains ZET markers: " + "; ".join(details))
+
+
 def _project_root_for_template(template_path: Path) -> Path:
     """Find the project root for a prompt template path."""
     resolved = template_path.resolve()
@@ -268,6 +284,7 @@ def render_static_prompt(
         return _replace_single_brace_tokens(text, single_brace_values)
 
     rendered = RAW_SECTION_PLACEHOLDER_RE.sub(replace_raw_section, rendered)
+    rendered, _ = extract_prompt_packet_metadata(rendered)
     rendered = re.sub(r"\n{3,}", "\n\n", rendered).strip() + "\n"
 
     _raise_unresolved_single_brace_token(rendered)
@@ -277,8 +294,7 @@ def render_static_prompt(
             "UNRESOLVED_PLACEHOLDER",
             f"Final prompt contains unresolved placeholder: {match.group(0)}",
         )
-    if "<!-- ZET:" in rendered:
-        raise TemplateCompileError("ZET_MARKER_IN_FINAL_PROMPT", "Final prompt contains ZET markers.")
+    _raise_zet_markers(rendered)
     return rendered
 
 
@@ -411,6 +427,11 @@ def render_static_prompt_with_source_map(
     if cursor < len(rendered_template):
         pieces.append(_source_fragment(rendered_template[cursor:], template_source))
 
+    # Operations and selected sections can supply declarations through substitutions.
+    # Strip them before building line ranges so the map describes emitted prose.
+    for piece in pieces:
+        piece["text"], declarations = extract_prompt_packet_metadata(piece["text"], strip=False)
+        packet_declarations.extend(declarations)
     rendered, fragments = _render_lines_with_sources(pieces)
     _raise_unresolved_single_brace_token(rendered)
     match = ANY_PLACEHOLDER_RE.search(rendered)
@@ -419,8 +440,7 @@ def render_static_prompt_with_source_map(
             "UNRESOLVED_PLACEHOLDER",
             f"Final prompt contains unresolved placeholder: {match.group(0)}",
         )
-    if "<!-- ZET:" in rendered:
-        raise TemplateCompileError("ZET_MARKER_IN_FINAL_PROMPT", "Final prompt contains ZET markers.")
+    _raise_zet_markers(rendered, fragments)
 
     return rendered, {
         "schema_version": 1,

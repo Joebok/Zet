@@ -43,6 +43,14 @@ phase. Other views omit phase rules and edit the target batch's selected FRONT.
 Governing-template revisions may edit only the new character sections and the two
 new task templates, preserving legacy sections and global sources.
 
+`ZET:PROMPT_PACKET` declarations in operation substitutions are analysis metadata.
+The static renderer removes them before final marker validation and source-map
+line construction, retaining declarations in `prompt_packet_declarations` alongside
+those from the task template. Residual ZET marker errors identify the actual
+marker text, final-prompt line, and mapped source file/section when available.
+This also applies to declarations supplied by selected sections; it does not
+relax the character/costume editor's authored-source validation rules.
+
 Dedicated versioned presets use the trial checkpoint and 1024-square output,
 empty negative text and disabled prompt globals. Staging disables reference-label
 appending. Saved inputs retain ordered private bytes/hashes, recipe/template

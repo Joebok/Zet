@@ -9,8 +9,8 @@ _START = re.compile(r"<!--\s*ZET:PROMPT_PACKET\s*")
 _COMMENT = re.compile(r"<!--\s*ZET:PROMPT_PACKET\b.*?-->", re.S)
 
 
-def extract_prompt_packet_metadata(text: str) -> tuple[str, list[dict]]:
-    """Return prose without metadata comments and their decoded JSON objects."""
+def extract_prompt_packet_metadata(text: str, *, strip: bool = True) -> tuple[str, list[dict]]:
+    """Return prose and decoded declarations; optionally preserve fragment whitespace."""
     declarations = []
     decoder = json.JSONDecoder()
     for match in _START.finditer(text):
@@ -24,4 +24,5 @@ def extract_prompt_packet_metadata(text: str) -> tuple[str, list[dict]]:
         if closing is None:
             raise ValueError("ZET:PROMPT_PACKET JSON must end at the comment boundary.")
         declarations.append(value)
-    return _COMMENT.sub("", text).strip(), declarations
+    prose = _COMMENT.sub("", text)
+    return (prose.strip() if strip else prose), declarations
