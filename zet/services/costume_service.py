@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import tempfile
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -13,11 +12,11 @@ from zet.models.costume import Costume
 from zet.repositories.asset_repository import AssetRepository
 from zet.services.path_service import PathService
 from zet.services.turnaround_views import TURNAROUND_VIEW_ORDER
-from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections
+from Scripts.Compile_Character_Template import TemplateCompileError, load_template_sections, parse_template_sections_with_sources
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import file_lock
 from zet.services.local_asset_source_service import LocalAssetSourceService
-from zet.services.view_conditioning_service import ViewConditioningError, validate_view_controls
+from zet.services.view_conditioning_service import ViewConditioningError
 
 
 @dataclass(frozen=True)
@@ -378,12 +377,10 @@ class CostumeService:
         try:
             shared_sections = load_template_sections(template_path)
             expected = set(shared_sections)
-            with tempfile.TemporaryDirectory() as temp_dir:
-                upload_path = Path(temp_dir) / "Costume.md"
-                upload_path.write_text(markdown, encoding="utf-8")
-                uploaded_sections = load_template_sections(upload_path)
-                actual = set(uploaded_sections)
-                validate_view_controls(str(upload_path))
+            uploaded_sections, sources = parse_template_sections_with_sources(markdown, "Costume.md")
+            actual = set(uploaded_sections)
+            from zet.services.view_conditioning_service import condition_sections, ViewContext
+            condition_sections(uploaded_sections, sources, ViewContext())
         except TemplateCompileError as exc:
             raise CostumeServiceError(str(exc)) from exc
         except ViewConditioningError as exc:
@@ -417,6 +414,10 @@ class CostumeService:
         if not template_path.is_file():
             raise CostumeServiceError(f"Costume template not found: {template_path}")
         self._validate_costume_markdown(template_path.read_text(encoding="utf-8"))
+
+    def validate_template_text(self, text: str) -> None:
+        """Validate unsaved costume source without writing a temporary master."""
+        self._validate_costume_markdown(text)
 
     def _default_costume_markdown(self) -> str:
         """Return the shared costume template contents."""

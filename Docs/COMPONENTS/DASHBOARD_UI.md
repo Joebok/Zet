@@ -7,6 +7,12 @@ Published images retain a separate Locked label. Success, warning, and danger
 tokens describe completion, attention, and errors. Clear slot uses an outlined
 danger action. Backend services still own every protection and state transition.
 
+## Character and costume template editor (2026-10-26)
+
+The character setup's **Edit character template** action and the Costumes table's **Open** action use the existing Template Editor destination. [template_editor.js](../../zet/web/static/template_editor.js) keeps one native textarea draft with an inert, escaped decoration layer. **View: Off** shows raw text normally; the eight orientation choices dim inapplicable prose without disabling editing. One selector sets matching head/body orientations. Applicability follows compiler view rules, independently of pipeline section selection; costume mode annotations retain their union without another selector.
+
+Literal case-insensitive Search highlights all occurrences, including dimmed text. **Full file** is editable; **Diff** is a read-only contextual master-on-disk/current-edits comparison with line numbers. Its search count covers displayed diff rows. Switching controls preserves the draft, selection and undo history. Refresh diff checks the latest disk master; Reload master uses existing unsaved-change protection. Save rejects validation errors or changed masters, retaining edits. New typing while a save is pending remains dirty after the submitted version succeeds. Invalid syntax temporarily leaves affected sections neutral until analysis succeeds. Config's existing plain-source editor remains available without template-specific controls. See [prompt contracts](PROMPTS.md#character-and-costume-source-editing-2026-10-26) for backend validation and batch-overlay limits.
+
 ## Responsive shell and viewing
 
 [index.html](../../zet/web/templates/index.html) owns the shared shell.

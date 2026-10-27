@@ -1,5 +1,9 @@
 # Local character assets
 
+## Editing character and costume masters (2026-10-26)
+
+Character setup exposes **Edit character template**; Costumes retains its **Open** action. Both open the complete canonical file in Template Editor, with view/search highlighting, a current-master diff and validation before saving. Every dimmed line remains editable. Saving a master does not replace existing batches' accepted template versions or frozen inputs. Batch proposals and post-render adjustments retain their existing trial/acceptance/promotion boundaries. [Dashboard UI](DASHBOARD_UI.md#character-and-costume-template-editor-2026-10-26) owns the controls; [Prompts](PROMPTS.md#character-and-costume-source-editing-2026-10-26) owns validation.
+
 ## Costume-Dressing modes and adjustments (2026-10-26)
 
 `CostumeRenderModeService` owns per-view settings, availability and ordered input preparation for slots, previews and Image Generator staging. FRONT retains its Assembly-based Doll-dressing behavior. Other views choose Doll-dressing (w/ Ref), Doll-dressing (no Ref), or Rotate. The first edits the matching Assembly with a selected same-batch costume view as design guidance; no Ref omits prior dressed views but retains authored resource images; Rotate edits the selected dressed view with Assembly second for target orientation, stance and framing. Sources are explicit: an unavailable chosen source blocks new work without nearest-view fallback. Rotation wording includes source, target, angular distance and direction.

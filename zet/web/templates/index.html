@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261026-minor-character-cards">
+  <link rel="stylesheet" href="/static/zet.css?v=20261026-template-editor">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
   <link rel="stylesheet" href="/static/narrative.css?v=20261019-responsive">
 </head>
@@ -202,6 +202,7 @@
           <div class="button-row compact">
             <button id="onboarding-save-draft" class="primary-action" type="button">Save Draft</button>
             <a id="onboarding-download-template" class="button-link" href="#" download hidden>Download Template</a>
+            <button id="onboarding-edit-template" type="button" hidden>Edit character template</button>
             <button id="onboarding-copy-gpt-prompt" type="button" disabled>Copy ChatGPT Prompt</button>
             <button class="open-template-manual" data-manual="character" type="button">Character Template Instructions</button>
           </div>
@@ -1968,7 +1969,7 @@
 
     <section id="template-editor-page" class="page">
       <div class="page-title-row">
-        <h1>Source Editor</h1>
+        <h1>Template Editor</h1>
         <div id="source-editor-status" class="status-text"></div>
       </div>
       <div id="source-editor-message" class="action-message" hidden></div>
@@ -1976,13 +1977,23 @@
       <div class="source-editor-layout">
         <section class="review-main">
           <div class="review-header">
-            <h2 id="source-editor-title">Select a source from Prompt Inspection</h2>
+            <h2 id="source-editor-title">Open a character or costume template to edit</h2>
           </div>
           <div class="source-editor-toolbar editor-sticky-header">
             <button id="source-editor-save" class="primary-action" disabled>Save Source</button>
             <span id="source-editor-save-state" class="save-state" aria-live="polite"></span>
+            <div id="template-editor-controls" hidden>
+              <label>Display <select id="template-editor-display" aria-label="Display"><option value="full">Full file</option><option value="diff">Diff</option></select></label>
+              <label>View <select id="template-editor-view" aria-label="View"><option value="">Off</option></select></label>
+              <label>Search <input id="template-editor-search" type="search" autocomplete="off" placeholder="Find text (case insensitive)"></label>
+              <span id="template-editor-match-count" role="status"></span>
+              <button id="template-editor-refresh" type="button" hidden>Refresh diff</button>
+              <button id="template-editor-reload" type="button">Reload master</button>
+            </div>
           </div>
-          <section class="source-editor-help">
+          <p id="template-editor-help" hidden>View highlighting only changes emphasis; every line remains editable. Diff compares the whole draft with the master on disk. Save validates structure and view tags. Existing accepted batch versions keep their own templates.</p>
+          <div id="template-editor-diagnostics" aria-live="polite"></div>
+          <section class="source-editor-help" id="source-editor-legacy-help">
             <h3>Prompt Inserts</h3>
             <p>Insert out-of-bounds prompt language with this block; it will render where you place it relative to nearby compiler section markers.</p>
             <pre>{{PROMPT_INSERT}}
@@ -1990,7 +2001,15 @@ Add prompt language here.
 {{/PROMPT_INSERT}}</pre>
           </section>
           <dl id="source-editor-meta" class="editor-meta"></dl>
-          <textarea id="source-editor-text" spellcheck="false"></textarea>
+          <div id="template-editor-full">
+            <pre id="template-editor-decoration" aria-hidden="true" hidden></pre>
+            <textarea id="source-editor-text" aria-label="Template source text" spellcheck="false"></textarea>
+          </div>
+          <section id="template-editor-diff" aria-label="Master on disk versus current edits" hidden>
+            <p id="template-editor-diff-status" role="status"></p>
+            <p>Return to Full file to edit. Red / − removes text; green / + adds text.</p>
+            <div class="template-editor-diff-scroll"><table><colgroup><col style="width:45px"><col><col style="width:45px"><col></colgroup><thead><tr><th colspan="2">Master on disk</th><th colspan="2">Current edits</th></tr></thead><tbody id="template-editor-diff-rows"></tbody></table></div>
+          </section>
         </section>
       </div>
     </section>
@@ -2119,7 +2138,8 @@ Add prompt language here.
   <script src="/static/ai_model_picker.js?v=20261016"></script>
   <script src="/static/storage_status.js?v=20261017"></script>
   <script src="/static/ai_queue.js?v=20261017"></script>
-  <script src="/static/zet.js?v=20261020-template-publication"></script>
+  <script src="/static/template_editor.js?v=20261026"></script>
+  <script src="/static/zet.js?v=20261026-template-editor"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>

@@ -1,5 +1,13 @@
 # Local testing
 
+## Character and costume template editor (2026-10-26)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (38.6s). Python AST checks for the changed compiler/service/routes and `node --check` for `zet.js` and `template_editor.js` passed. Disposable checks under ignored `test-results/template-editor/` used private copies of the approved fixture and no live AI calls.
+
+Service checks passed canonical full-file loading, repeated-line view addressing, inherited defaults, canonical-only/exclusion/head-domain/spatial rules, rendering-mode union and validation, valid/malformed image-reference syntax, located diagnostics, invalid-save byte preservation, stale-master rejection, current-disk/final-newline diff, CRLF preservation, foreign-template rejection and plain-source compatibility. Chromium checks passed the actual character/costume entry points, dimmed-line edits, case-insensitive search, literal HTML-like content, native caret/undo across controls, read-only diff/full-file switching, invalid/conflicting saves, reload protection, edits made while Save is pending, stale analysis response fencing, and desktop/narrow textarea/decoration width/height/wrapping/scroll alignment without page errors. Screenshots were inspected; an inherited global `pre` height cap was found and corrected before the final browser pass.
+
+These checks establish editor/software behavior. They do not validate live render quality, referenced-image availability, every pipeline-specific input or production deployment. No maintained tests/scenarios, dependencies, seed files or production-library data were changed.
+
 ## Costume suggestion source binding (2026-10-26)
 
 `npm.cmd run test:e2e` passed all four approved scenarios (41.9s). Disposable

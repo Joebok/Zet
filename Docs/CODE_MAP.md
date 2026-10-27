@@ -1,5 +1,7 @@
 # Capability code map
 
+Character/costume template editing (2026-10-26): `SourceEditorService` owns canonical selected-universe load/analyze/diff, disk revision checks and fenced atomic saves through `/api/edit-source/*`. `TemplateValidationService` reuses canonical upload checks, the shared unsaved section parser and concrete-view source maps for validation/applicability. `template_editor.js` owns native editing, view/search decoration and read-only current-master diff; `zet.js` connects character setup, costume Open and dirty/save navigation. The Config plain-source compatibility path and separate batch-proposal editor remain. S1/S2 are regression coverage; disposable service/browser checks cover the new editor. See [UI](COMPONENTS/DASHBOARD_UI.md#character-and-costume-template-editor-2026-10-26) and [prompts](COMPONENTS/PROMPTS.md#character-and-costume-source-editing-2026-10-26).
+
 AI Queue deletion (2026-10-26): `AIJobCleanupService.delete` commits the local
 deletion fence without collection locks; `cleanup_pending` runs from coordinator
 sweeps under existing locks and retries disk cleanup automatically. Query snapshots

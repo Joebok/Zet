@@ -2776,6 +2776,17 @@ def _create_available_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/edit-source/analyze")
+    @app.post("/api/edit-source/diff")
+    def edit_source_inspect(request: Request, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        try:
+            zet_app = _app(app.state.config_path)
+            return SourceEditorService(zet_app, PROJECT_ROOT).inspect(payload, diff=request.url.path.endswith("/diff"))
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/edit-source/save")
     def edit_source_save(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:

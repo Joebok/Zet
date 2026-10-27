@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from contextlib import nullcontext
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,41 @@ class SourceEditorService:
         from Scripts.Template_Section_Editor import save_template_sections
 
         return MARKER_RE, save_template_sections
+
+    def template_kind(self, path: Path) -> str | None:
+        """Recognize canonical phase templates by ownership, never client editor type."""
+        name = path.name.casefold()
+        kind = "character" if name == "character.md" else "costume" if name.startswith("costume_") and path.suffix.casefold() == ".md" else None
+        if kind:
+            root = Path(self.zet_app.config.base_character_path).resolve()
+            if not path.is_relative_to(root) or len(path.relative_to(root).parts) != 3:
+                raise ValueError("Template must belong to a character phase in the selected universe.")
+            # Reapply the common browser confinement rule, including nested universes.
+            self.zet_app.path_service.resolve_served_path(str(path))
+        return kind
+
+    @staticmethod
+    def _master(path: Path) -> tuple[bytes, str, str]:
+        raw = path.read_bytes()
+        return raw, raw.decode("utf-8").replace("\r\n", "\n"), hashlib.sha256(raw).hexdigest()
+
+    def inspect(self, payload: dict[str, Any], *, diff: bool = False) -> dict[str, Any]:
+        path = self.resolve_path(str(payload.get("path") or ""))
+        kind = self.template_kind(path)
+        if not kind:
+            raise ValueError("Analysis is available for character and costume templates only.")
+        text = str(payload.get("text") or "").replace("\r\n", "\n")
+        from zet.services.template_validation_service import TemplateValidationService
+        result = {"path": str(path), "draft_revision": payload.get("draft_revision"),
+                  **TemplateValidationService(self.zet_app).analyze(path, text, kind)}
+        if diff:
+            from zet.services.local_template_revision_service import template_diff_rows
+            _, master, revision = self._master(path)
+            result.update(master_revision=revision, rows=template_diff_rows(master, text),
+                          conflict=revision != payload.get("master_revision"),
+                          final_newline_change=("added" if text.endswith("\n") else "removed")
+                          if master.endswith("\n") != text.endswith("\n") else None)
+        return result
 
     def resolve_path(self, path: str) -> Path:
         requested = self.zet_app.path_service.resolve_path(path)
@@ -84,8 +121,22 @@ class SourceEditorService:
         path = self.resolve_path(str(source.get("source_path") or ""))
         section = str(source.get("section_name") or "")
         pointer = str(source.get("json_pointer") or "")
+        template_kind = self.template_kind(path)
+        template_detail = {}
+        if template_kind:
+            _, text, revision = self._master(path)
+            from zet.services.template_validation_service import TemplateValidationService
+            template_detail = {"template_kind": template_kind, "master_revision": revision,
+                               **TemplateValidationService(self.zet_app).analyze(path, text, template_kind)}
+            start_line = next((i for i, line in enumerate(text.splitlines(), 1)
+                               if section and f"ZET:BEGIN {section}" in line), None)
+            end_line = None
+            section = pointer = ""
+            editor_type = "markdown_file"
         warning = "Shared template edits can affect multiple characters and phases." if kind == "shared_template_section" else ""
-        if section:
+        if template_kind:
+            pass
+        elif section:
             text, start_line, end_line = self._extract_section(path, section)
             editor_type = "markdown_section"
         elif pointer:
@@ -109,13 +160,46 @@ class SourceEditorService:
             "start_line": start_line,
             "end_line": end_line,
             "warning": warning,
+            **template_detail,
         }
 
     def save(self, payload: dict[str, Any]) -> dict[str, Any]:
         from zet.services.image_usage_service import usage_mutation
         path = self.resolve_path(str(payload.get("path") or ""))
+        if self.template_kind(path):
+            return self._save_template(path, payload)
         with usage_mutation(self.zet_app.path_service, path):
             return self._save(payload)
+
+    def _save_template(self, path: Path, payload: dict[str, Any]) -> dict[str, Any]:
+        from zet.services.atomic_file_service import write_bytes_atomic
+        from zet.services.image_usage_service import usage_mutation
+        from zet.services.template_publication_core import change_lock
+        from zet.services.workflow_storage import file_lock
+        from zet.services.template_validation_service import TemplateValidationService
+
+        runtime = self.zet_app.config.runtime_root
+        fence = change_lock(Path(runtime) / "state") if runtime else nullcontext()
+        text = str(payload.get("text") or "").replace("\r\n", "\n")
+        with fence, file_lock(Path(self.zet_app.config.base_ai_queue_path) / "template_promotion.lock"):
+            kind = self.template_kind(self.resolve_path(str(path)))
+            raw, master, revision = self._master(path)
+            if payload.get("master_revision") != revision:
+                return {"status": "CONFLICT", "message": "Master changed on disk. Your edits are retained. Review the diff or reload the master before saving."}
+            analysis = TemplateValidationService(self.zet_app).analyze(path, text, kind)
+            if analysis["diagnostics"]:
+                return {"status": "INVALID", **analysis}
+            # Validate before usage bookkeeping; failed validation must not mutate sources.
+            with usage_mutation(self.zet_app.path_service, path):
+                if self._master(path)[2] != revision:
+                    return {"status": "CONFLICT", "message": "Master changed while validating. Your edits are retained."}
+                if text != master:
+                    newline = "\r\n" if b"\r\n" in raw and b"\n" not in raw.replace(b"\r\n", b"") else "\n"
+                    write_bytes_atomic(path, text.replace("\n", newline).encode("utf-8"))
+                result = {"status": "SAVED", "path": str(path), "editor_type": "markdown_file",
+                          "master_revision": self._master(path)[2], "text": text}
+            self._record(payload, result)
+            return result
 
     def _save(self, payload: dict[str, Any]) -> dict[str, Any]:
         path = self.resolve_path(str(payload.get("path") or ""))

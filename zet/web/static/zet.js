@@ -3509,6 +3509,7 @@ function renderOnboarding() {
     onboardingArtStyle.value = status?.canonical_art_style || onboardingArtStyle.value || "";
   }
   onboardingDownloadTemplate.hidden = !status?.template_path;
+  document.querySelector("#onboarding-edit-template").hidden = isDraft || !status?.template_path;
   onboardingAddHeadImages.disabled = !status?.assets_exists || !status?.pipelines_exists;
   if (status?.template_path) {
     onboardingDownloadTemplate.href = downloadFileUrl(status.template_path);
@@ -9481,14 +9482,19 @@ function addEditorMeta(label, value) {
 function renderSourceEditor(detail) {
   state.sourceEditor = detail;
   sourceEditorTitle.textContent = detail.source?.source_label || detail.path || "Source";
-  sourceEditorStatus.textContent = detail.editor_type || "";
+  const templateLabel = detail.template_kind ? `${detail.template_kind === "character" ? "Character" : "Costume"} template` : "";
+  sourceEditorStatus.textContent = templateLabel || detail.editor_type || "";
   sourceEditorMeta.replaceChildren();
   addEditorMeta("Path", detail.path);
-  addEditorMeta("Type", detail.editor_type);
+  addEditorMeta("Type", templateLabel || detail.editor_type);
   addEditorMeta("Section", detail.section_name);
   addEditorMeta("JSON", detail.json_pointer);
   addEditorMeta("Source lines", detail.start_line ? `${detail.start_line}-${detail.end_line || detail.start_line}` : "");
   sourceEditorText.value = detail.text || "";
+  window.ZetTemplateEditor.load(detail, (url, payload) => fetchJson(url, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  }));
+  sourceEditorSave.textContent = detail.template_kind ? "Save template" : "Save Source";
   sourceEditorSave.disabled = false;
   sourceEditorWarning.textContent = detail.warning || "";
   sourceEditorWarning.hidden = !detail.warning;
@@ -9515,6 +9521,9 @@ async function openSourceEditorForSource(source, errorHandler = showSourceEditor
   if (!source) {
     return;
   }
+  if (!(await guardCurrentEditor())) return;
+  const selection = beginSelection("sourceEditor");
+  const before = sourceEditorSnapshot();
   showSourceEditorMessage("Loading source...");
   try {
     const detail = await fetchJson("/api/edit-source/load", {
@@ -9522,17 +9531,22 @@ async function openSourceEditorForSource(source, errorHandler = showSourceEditor
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(source),
     });
+    if (!selectionIsCurrent(selection)) return;
+    if (sourceEditorSnapshot() !== before && !(await guardCurrentEditor())) return;
+    if (!selectionIsCurrent(selection)) return;
+    await activatePage("template-editor", {skipAutosave: true});
     renderSourceEditor(detail);
-    activatePage("template-editor");
   } catch (error) {
     errorHandler(error.message, "error");
   }
 }
 
 async function saveSourceEditor() {
-  if (!state.sourceEditor) {
+  if (!state.sourceEditor || sourceEditorSave.disabled) {
     return;
   }
+  const target = state.sourceEditor;
+  const submitted = sourceEditorText.value;
   sourceEditorSave.disabled = true;
   showSourceEditorMessage("Saving...");
   try {
@@ -9541,16 +9555,26 @@ async function saveSourceEditor() {
       path: state.sourceEditor.path,
       section_name: state.sourceEditor.section_name,
       json_pointer: state.sourceEditor.json_pointer,
-      text: sourceEditorText.value,
+      text: submitted,
+      master_revision: target.master_revision,
     };
     const result = await fetchJson("/api/edit-source/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (target !== state.sourceEditor) return false;
+    if (result.status !== "SAVED") {
+      if (submitted === sourceEditorText.value) window.ZetTemplateEditor.invalid(result);
+      showSourceEditorMessage(result.message || "Fix the validation issues before saving. Your edits are retained.", "error");
+      setSaveState(sourceEditorSaveState, "Error", "error");
+      return false;
+    }
     showSourceEditorMessage(`Saved ${result.path}.`);
-    state.savedBaselines.sourceEditor = sourceEditorSnapshot();
+    state.savedBaselines.sourceEditor = JSON.stringify({path: target.path, text: result.text ?? submitted});
+    window.ZetTemplateEditor.saved(result);
     setSaveState(sourceEditorSaveState, "Saved", "saved");
+    updateDirtyIndicators();
     return true;
   } catch (error) {
     showSourceEditorMessage(error.message, "error");
@@ -12548,6 +12572,13 @@ analyzePromptButton.addEventListener("click", analyzePromptReview);
 viewPromptAnalysisButton.addEventListener("click", viewPromptReviewAnalysis);
 sourceOpenEditor.addEventListener("click", openSelectedSourceEditor);
 sourceEditorSave.addEventListener("click", saveSourceEditor);
+document.querySelector("#onboarding-edit-template").addEventListener("click", () => {
+  const path = selectedOnboardingStatus()?.template_path;
+  if (path) openSourceEditorForSource({source_path: path, source_label: `${state.character} / ${state.phase} — Character.md`, editable: true});
+});
+document.querySelector("#template-editor-reload").addEventListener("click", () => {
+  if (state.sourceEditor) openSourceEditorForSource(state.sourceEditor.source);
+});
 
 
 promptReviewRefresh.addEventListener("click", () => loadPromptReviewTasks());
@@ -12792,7 +12823,7 @@ async function main() {
     childList: true,
     subtree: true,
   });
-  sourceEditorText.placeholder = "Open an editable source from Prompt Inspection.";
+  sourceEditorText.placeholder = "Open a character or costume template to edit.";
   setupTabs();
   await loadUniverses();
   const startupLoad = beginPageLoad(null);

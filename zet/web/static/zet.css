@@ -2971,6 +2971,46 @@ summary:focus-visible {
   min-height: calc(100vh - 330px);
 }
 
+/* Native textarea owns input/selection; the inert layer supplies text decorations. */
+#template-editor-full { position: relative; min-width: 0; }
+#template-editor-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; flex: 1 1 100%; }
+#template-editor-controls label { display: grid; gap: 4px; min-width: 0; }
+#template-editor-search { min-width: 160px; max-width: 100%; }
+#template-editor-full.template-editor-decorated { background: var(--surface); }
+#template-editor-full.template-editor-decorated #source-editor-text,
+#template-editor-decoration {
+  box-sizing: border-box; width: 100%; margin: 0; padding: 12px; border: 1px solid transparent;
+  font: 14px/1.6 Consolas, "Courier New", monospace; letter-spacing: normal;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4; text-align: left;
+}
+#template-editor-decoration {
+  position: absolute; top: 0; left: 0; pointer-events: none; overflow: hidden;
+  color: var(--text); border-radius: 6px; background: var(--surface); max-height: none;
+}
+#template-editor-full.template-editor-decorated #source-editor-text {
+  display: block; position: relative; color: transparent; caret-color: var(--text);
+  background: transparent; border-color: var(--line); resize: vertical;
+  height: 65vh; min-height: 300px;
+}
+#template-editor-full.template-editor-decorated #source-editor-text::selection { background: #b8d9f088; }
+.template-editor-inactive { color: #737d89; }
+#template-editor-decoration mark, #template-editor-diff mark { color: #17212b; background: #ffe38a; border-radius: 2px; }
+#template-editor-diagnostics { overflow-wrap: anywhere; }
+#template-editor-diagnostics ul { max-height: 180px; overflow: auto; padding-left: 24px; }
+#template-editor-diagnostics li button { text-align: left; white-space: normal; }
+.template-editor-diff-scroll { overflow-x: auto; max-width: 100%; }
+#template-editor-diff table { table-layout: fixed; width: 100%; min-width: 600px; }
+#template-editor-diff td { vertical-align: top; }
+#template-editor-diff pre { margin: 0; padding: 0; max-height: none; color: inherit; background: transparent; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 Consolas, monospace; }
+#template-editor-diff .template-editor-line-number { width: 45px; color: var(--muted); font: 12px/1.6 monospace; }
+#template-editor-diff th:nth-child(1), #template-editor-diff th:nth-child(2) { width: 50%; }
+.template-editor-diff-delete td:nth-child(-n+2), .template-editor-diff-replace td:nth-child(-n+2) { background: #fef3f2; }
+.template-editor-diff-insert td:nth-child(n+3), .template-editor-diff-replace td:nth-child(n+3) { background: #ecfdf3; }
+@media (forced-colors: active) {
+  #template-editor-full.template-editor-decorated #source-editor-text { color: CanvasText; background: Canvas; }
+  #template-editor-decoration { display: none; }
+}
+
 .review-actions {
   display: grid;
   gap: 10px;

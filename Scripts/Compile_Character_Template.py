@@ -8,9 +8,11 @@ import re
 
 
 class TemplateCompileError(Exception):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, line: int | None = None, section: str | None = None):
         super().__init__(message)
         self.code = code
+        self.line = line
+        self.section = section
 
 
 @dataclass
@@ -59,6 +61,15 @@ def load_template_sections_with_sources(
         raise TemplateCompileError("MISSING_TEMPLATE", f"Template file not found: {path}")
     from zet.services.template_source_service import read_template_text
     text = read_template_text(path)
+    return parse_template_sections_with_sources(text, path, source_kind=source_kind, source_label=source_label)
+
+
+def parse_template_sections_with_sources(
+    text: str, template_path: str | Path, *,
+    source_kind: str = "character_template_section", source_label: str = "",
+) -> tuple[dict[str, str], dict[str, dict]]:
+    """Parse unsaved source with the same section contract as file compilation."""
+    path = Path(template_path)
     markers = list(MARKER_RE.finditer(text))
     sections: dict[str, str] = {}
     sources: dict[str, dict] = {}
@@ -69,16 +80,16 @@ def load_template_sections_with_sources(
         kind, name = marker.group(1), marker.group(2)
         if kind == "BEGIN":
             if open_name is not None:
-                raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"Nested ZET marker before closing {open_name}.")
+                raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"Nested ZET marker before closing {open_name}.", line=_line_number_at(text, marker.start()), section=open_name)
             if name in sections:
-                raise TemplateCompileError("DUPLICATE_SECTION", f"Duplicate ZET section: {name}")
+                raise TemplateCompileError("DUPLICATE_SECTION", f"Duplicate ZET section: {name}", line=_line_number_at(text, marker.start()), section=name)
             open_name = name
             content_start = marker.end()
             continue
         if open_name is None:
-            raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"ZET end marker without begin: {name}")
+            raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"ZET end marker without begin: {name}", line=_line_number_at(text, marker.start()), section=name)
         if name != open_name:
-            raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"ZET marker mismatch: began {open_name}, ended {name}")
+            raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"ZET marker mismatch: began {open_name}, ended {name}", line=_line_number_at(text, marker.start()), section=open_name)
         raw_section = text[content_start:marker.start()]
         leading_newlines = len(raw_section) - len(raw_section.lstrip("\n"))
         sections[name] = _trim_section_text(raw_section)
@@ -94,7 +105,7 @@ def load_template_sections_with_sources(
         open_name = None
 
     if open_name is not None:
-        raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"ZET section missing end marker: {open_name}")
+        raise TemplateCompileError("MALFORMED_TEMPLATE_MARKERS", f"ZET section missing end marker: {open_name}", line=_line_number_at(text, content_start), section=open_name)
     return sections, sources
 
 

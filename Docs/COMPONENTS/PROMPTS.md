@@ -1,5 +1,11 @@
 # Prompt compilation and reference contracts
 
+## Character and costume source editing (2026-10-26)
+
+[TemplateValidationService](../../zet/services/template_validation_service.py) validates unsaved canonical phase templates. The shared section parser, existing character/costume schema and required-content checks, and concrete eight-view conditioning provide diagnostics and original-line applicability. It rejects malformed reserved controls, controls outside marked sections, invalid resource syntax and unresolved task-template placeholders in emitted prose. Optional legacy character sections remain optional. Validation is deterministic and does not require a batch, prerequisite images or AI services; resource existence and pipeline-specific runtime inputs remain compilation concerns.
+
+[SourceEditorService](../../zet/services/source_editor_service.py) recognizes `Character.md` and `Costume_*.md` only under the selected universe's canonical character phases. Section links open complete files. Analyze/diff are read-only; Save repeats validation and checks the loaded disk digest under existing template change/promotion locks before an atomic replacement, retaining the original newline convention. Diff compares the draft with current disk text, including final-newline changes. Refreshing Diff never updates the save baseline. Master edits leave accepted batch overlays, frozen asks/retries and image publications unchanged. The separate batch-proposal editor retains its own acceptance/promotion workflow.
+
 ## Costume render-mode conditioning (2026-10-26)
 
 `Run_Costume_Dressing_Jobs.compile_costume_dressing_job` takes a rendering mode independently of local/traditional pipeline mode. `CostumeRenderModeService` supplies the same ordered references to slots, staging and text previews. Rotate uses `costume_rotation_v1` with an explicit source/target turn instruction; dressing modes retain Assembly as the edit base. Mode settings and image profiles are captured with each prepared request.
