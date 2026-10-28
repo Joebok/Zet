@@ -5,6 +5,22 @@ standards, including button/glyph roles, card anatomy, review dialogs, immediate
 action acknowledgement, and feedback beside its initiating action. Adoption is
 partial; this component document records implemented behavior and verification limits.
 
+## Optional legacy context (2026-10-28)
+
+`zet.js:loadAssets` uses onboarding's `assets_exists` flag to skip an absent
+legacy Assets.json and clear stale selection. Local character readiness does not
+require that file; explicit asset API reads still report missing/invalid storage.
+`PipelineControlService.snapshot` exposes global settings when Pipelines.json is
+absent, with empty legacy stage rows and an unavailable message. Invalid pipeline
+configuration still raises an error. `PhaseComparisonService` orders local rows
+by stable source key when legacy asset IDs are absent, retaining numeric legacy
+ordering and canonical view ordering.
+
+The approved S1 authoring scenario reopens setup after successful template upload
+before restoring its fixture. All four fast scenarios passed (41.6s); disposable
+service/browser checks covered missing/invalid files, null IDs and direct loads.
+These checks used isolated storage and no live AI calls.
+
 ## Dashboard Overview (2026-10-27)
 
 The Character Development **Overview** button mounts the character/phase/costume

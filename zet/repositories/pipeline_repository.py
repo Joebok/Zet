@@ -9,6 +9,10 @@ class PipelineRepositoryError(Exception):
     pass
 
 
+class MissingPipelinesError(PipelineRepositoryError):
+    """The optional legacy pipeline configuration has not been created."""
+
+
 class PipelineRepository:
     def __init__(self, path_service: PathService):
         self.path_service = path_service
@@ -19,7 +23,7 @@ class PipelineRepository:
     def _load_payload(self, character: str, phase: str) -> dict:
         path = self._pipelines_json_path(character, phase)
         if not path.exists():
-            raise PipelineRepositoryError(f"Pipelines.json not found at {path}")
+            raise MissingPipelinesError(f"Pipelines.json not found at {path}")
         try:
             with path.open("r", encoding="utf-8") as handle:
                 payload = json.load(handle)

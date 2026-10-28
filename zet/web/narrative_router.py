@@ -79,8 +79,8 @@ def create_narrative_router(app_provider):
         return call(author().stories)
 
     @router.get("/legacy-location")
-    def legacy_location(story_slug: str, scene_slug: str = ""):
-        return call(author().legacy_location, story_slug, scene_slug)
+    def legacy_location(story_slug: str, scene_slug: str = "", optional: bool = False):
+        return call(author().legacy_location, story_slug, scene_slug, not optional)
 
     @router.post("/stories")
     def create_story(data: dict = Body(...)):

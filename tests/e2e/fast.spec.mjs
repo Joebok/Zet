@@ -43,6 +43,10 @@ test("library and narrative authoring save and reload through the dashboard", as
   await page.getByRole("button", { name: "Upload Template" }).click();
   await expect.poll(async () => readFile(path.join(context.library, "Test", "Characters", "Traveler", "Adult", "Character.md"), "utf8"))
     .toContain("Warm watercolor illustration");
+  // A successful upload can leave setup; reopen it before restoring the template.
+  await page.goto("/?page=onboarding&workspace=character");
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
+  await page.locator("#character-setup-details > summary").click();
   await page.locator("#onboarding-template-file").setInputFiles({ name: "Character.md", mimeType: "text/markdown", buffer: Buffer.from(originalCharacter) });
   await page.getByRole("button", { name: "Upload Template" }).click();
   await expect.poll(async () => readFile(characterPath, "utf8")).toContain("Simple graphic illustration");

@@ -385,7 +385,7 @@ class NarrativeSceneService:
                 parent["scene_ids"].remove(scene)
                 self.persist(parent, story)
 
-    def legacy_location(self, story_slug: str, scene_slug: str = "") -> dict:
+    def legacy_location(self, story_slug: str, scene_slug: str = "", required: bool = True) -> dict | None:
         for story in self.repository.stories():
             if story.get("source_provenance", {}).get("story_slug") != story_slug:
                 continue
@@ -395,7 +395,9 @@ class NarrativeSceneService:
                 scene = self.repository.read(story["id"], scene_id)
                 if scene.get("migration", {}).get("scene_slug") == scene_slug:
                     return {"story_id": story["id"], "scene_id": scene_id}
-        raise KeyError("This legacy story or scene has not been migrated.")
+        if required:
+            raise KeyError("This legacy story or scene has not been migrated.")
+        return None
 
     def legacy_image(self, story: str, scene: str) -> dict:
         binding = self.repository.read(story, scene).get("legacy_image") or {}

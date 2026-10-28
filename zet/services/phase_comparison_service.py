@@ -235,9 +235,15 @@ class PhaseComparisonService:
     def _assets_by_slot(self, pipeline: str, assets: list[Asset]) -> dict[str, Asset]:
         """Index assets by normalized comparison slot."""
         indexed: dict[str, Asset] = {}
-        for asset in sorted(assets, key=lambda item: item.asset_id):
+        for asset in sorted(assets, key=self._asset_order_key):
             indexed.setdefault(self._slot_key(pipeline, asset), asset)
         return indexed
+
+    @staticmethod
+    def _asset_order_key(asset: Asset) -> tuple:
+        """Keep legacy ID order; order local publications by their stable source key."""
+        return (asset.asset_id is None, asset.asset_id if asset.asset_id is not None else 0,
+                str(getattr(asset, "source_local_key", "") or ""))
 
     def _slot_key(self, pipeline: str, asset: Asset) -> str:
         """Return the normalized matching key for an asset."""
@@ -327,7 +333,7 @@ class PhaseComparisonService:
             str(asset.costume or "") if asset else "",
             str(asset.expression or "") if asset else "",
             str(asset.scene_appearance_id or "") if asset else "",
-            asset.asset_id if asset else 0,
+            self._asset_order_key(asset) if asset else (True, 0, ""),
             slot_key,
         )
 

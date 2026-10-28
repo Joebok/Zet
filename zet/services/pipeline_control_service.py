@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 from zet.repositories.asset_repository import AssetRepository, AssetRepositoryError
-from zet.repositories.pipeline_repository import PipelineRepository
+from zet.repositories.pipeline_repository import PipelineRepository, MissingPipelinesError
 from zet.services.local_render_policy import SCENE_PROFILE, require_qwen_profile
 from zet.services.config_service import Config, ConfigService
 
@@ -78,6 +78,7 @@ class PipelineControlSnapshot:
     project_config_rows: list[dict]
     render_profiles: dict[str, list[str]]
     managed_llm_roles: list[dict]
+    pipelines_message: str = ""
 
 
 class PipelineControlService:
@@ -97,7 +98,12 @@ class PipelineControlService:
         self.pipeline_repository = pipeline_repository
 
     def snapshot(self, character: str, phase: str) -> PipelineControlSnapshot:
-        pipelines = self.pipeline_repository.list_pipelines(character, phase)
+        pipelines_message = ""
+        try:
+            pipelines = self.pipeline_repository.list_pipelines(character, phase)
+        except MissingPipelinesError as exc:
+            pipelines = []
+            pipelines_message = f"Legacy pipeline controls unavailable: {exc}. Global settings remain available."
         try:
             assets = self.asset_repository.list_assets(character, phase)
         except AssetRepositoryError:
@@ -129,6 +135,7 @@ class PipelineControlService:
             project_config_rows=self.project_config_rows(),
             render_profiles=self.render_profiles(),
             managed_llm_roles=self.managed_llm_roles(),
+            pipelines_message=pipelines_message,
         )
 
     def managed_llm_roles(self) -> list[dict]:

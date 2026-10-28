@@ -3789,6 +3789,14 @@ async function loadAssets(preferredAssetId = null) {
     return;
   }
   assetStatus.textContent = "Loading assets...";
+  if (selectedOnboardingStatus()?.assets_exists === false) {
+    state.assets = [];
+    state.selectedAssetId = null;
+    renderAssetTable();
+    clearDetail();
+    assetStatus.textContent = "No legacy Assets.json for this phase. Use the local character workflows.";
+    return;
+  }
   const payload = await fetchJson(`/api/assets?${currentQuery().toString()}`);
   state.assets = payload.assets || [];
   const assetIds = new Set(state.assets.map((asset) => asset.asset_id));
@@ -4518,9 +4526,17 @@ async function activatePage(page, options = {}) {
     const params = new URLSearchParams(location.search);
     if (!params.get('story') && params.get('story_slug')) {
       try {
-        const mapped = await fetchJson(`/api/narrative/legacy-location?story_slug=${encodeURIComponent(params.get('story_slug'))}&scene_slug=${encodeURIComponent(params.get('scene_slug') || '')}`);
-        params.set('story',mapped.story_id);
-        if (mapped.scene_id) params.set('scene',mapped.scene_id);
+        const story = params.get('story_slug');
+        const scene = params.get('scene_slug') || '';
+        const mapped = state.stories.some(item => item.slug === story)
+          ? {story_id: story, scene_id: scene}
+          : await fetchJson(`/api/narrative/legacy-location?story_slug=${encodeURIComponent(story)}&scene_slug=${encodeURIComponent(scene)}&optional=true`);
+        if (mapped) {
+          params.set('story',mapped.story_id);
+          if (mapped.scene_id) params.set('scene',mapped.scene_id);
+        } else {
+          window.ZetTaskCapture.notice('This legacy story or scene has not been migrated. Choose a Narrative story to continue.');
+        }
         params.delete('story_slug'); params.delete('scene_slug');
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
@@ -10706,7 +10722,7 @@ function renderPipelineControls(payload) {
   }
   state.savedBaselines.settings = settingsSnapshot();
   setSaveState(settingsSaveState, "Saved", "saved");
-  pipelineControlsStatus.textContent = "Ready";
+  pipelineControlsStatus.textContent = payload.pipelines_message || "Ready";
 }
 
 function setLocalRenderCheckpointValue(value) {

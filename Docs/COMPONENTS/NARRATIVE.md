@@ -16,6 +16,19 @@ Narrative provides prose-oriented authoring and generation independent of Scene 
 | [NarrativeAssemblyService](../../zet/services/narrative_assembly_service.py) | Source/layer binding, editable extraction/cutouts, deterministic composition and frozen assembly snapshots |
 | [narrative_router.py](../../zet/web/narrative_router.py), [narrative.html](../../zet/web/templates/narrative.html), [narrative.js](../../zet/web/static/narrative.js) | HTTP/browser presentation and calls into Narrative services; context capture integrates with shared [task_capture.js](../../zet/web/static/task_capture.js) |
 
+## Shell route compatibility (2026-10-28)
+
+The shared shell's story list projects native Narrative IDs as `slug`. When opening
+Narrative from a `story_slug` route, `zet.js` recognizes those IDs directly and
+translates them to `story`/`scene`. Only actual legacy locations need migration
+lookup. `/api/narrative/legacy-location?optional=true` returns null for an absent
+mapping; the shell displays a migration notice and opens Narrative without the
+stale legacy parameters. Default/required lookups still return 404. Other storage
+and migration errors propagate. No persisted format changes.
+
+Disposable isolated browser/API checks passed native links, missing optional
+mappings and strict lookup failures; the four approved fast scenarios passed.
+
 ## Data and job lifecycle
 
 Responsive cards and image review follow [Dashboard UI](DASHBOARD_UI.md). Existing

@@ -884,6 +884,7 @@ def _pipeline_controls_payload(zet_app: ZetApp, character: str, phase: str) -> d
     return {
         "config_path": str(snapshot.config_path),
         "pipelines_path": str(snapshot.pipelines_path),
+        "pipelines_message": snapshot.pipelines_message,
         "automation": _jsonable(snapshot.automation),
         "render_profiles": snapshot.render_profiles,
         "managed_llm_roles": snapshot.managed_llm_roles,
