@@ -58,6 +58,7 @@
   async function refreshList() {
     characters = (await api()).characters;
     $("mc-list").replaceChildren(); $("mc-continue-choice").replaceChildren();
+    $("mc-character-picker").replaceChildren(...characters.map(item => new Option(item.name, item.character_id)));
     for (const item of characters) {
       const card = element("article", "", "mc-list-card");
       card.append(element("strong", item.name, "mc-list-name"));
@@ -85,7 +86,7 @@
   }
   async function list() {
     await flush(); generation++; clearTimeout(pollTimer); character = null; patch = {}; feedbackDirty = false; route("");
-    $("mc-editor").hidden = true; $("mc-review").close(); $("mc-list-panel").hidden = false;
+    $("mc-editor").hidden = true; $("mc-character-picker-label").hidden = true; $("mc-review").close(); $("mc-list-panel").hidden = false;
     $("mc-inventory-entry").hidden = !entryAsset; await refreshList(); message("");
   }
   async function open(id) {
@@ -95,7 +96,8 @@
     references = character.references; referenceSignature = "";
     view = character.views.includes(character.active_view) ? character.active_view : "STYLE";
     preview = character.preview_candidate_id || ""; route(character.character_id);
-    $("mc-list-panel").hidden = true; $("mc-editor").hidden = false;
+    $("mc-list-panel").hidden = true; $("mc-editor").hidden = false; $("mc-character-picker-label").hidden = false;
+    $("mc-character-picker").value = character.character_id;
     show(character); message("");
   }
   async function deleteCharacter(id, name) {
@@ -152,6 +154,8 @@
     $("mc-style-text").textContent = character.target_brief?.style?.text || "";
     $("mc-questions").replaceChildren();
     for (const question of character.questions) $("mc-questions").append(element("p", question));
+    if (character.questions.length) $("mc-questions").append(element("p",
+      "To answer these questions, enter your choices in Additional direction above and correct any conflicting instructions. Then click Analyze references below. Once analysis finishes, click Generate style alignment on the Style alignment tab to create an image using the updated description.", "muted"));
     if (!patch.board_edit) {
       const edit = board()?.edit;
       if (!feedbackDirty) feedback = edit?.instructions || "";
@@ -444,6 +448,7 @@
   $("mc-restart").addEventListener("click",()=>act(restartCurrentOperation));
   $("mc-delete").addEventListener("click",()=>act(()=>deleteCharacter(character.character_id,character.name)));
   $("mc-continue").addEventListener("click",()=>act(async()=>{entryAsset=null;await open($("mc-continue-choice").value);}));
+  $("mc-character-picker").addEventListener("change",event=>act(()=>open(event.target.value)));
   $("mc-generate").addEventListener("click",()=>act(()=>generateImage(false)));
   $("mc-refine").addEventListener("click",()=>act(()=>generateImage(true)));
   $("mc-review-close").addEventListener("click",()=>$("mc-review").close());
