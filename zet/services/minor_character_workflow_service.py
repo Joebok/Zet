@@ -282,11 +282,17 @@ class MinorCharacterWorkflow:
             if action == "edit":
                 self._edit_board(board, data)
             elif action == "continue":
-                if view == "STYLE" or board["mode"] != "alignment" or not board["selected_id"]:
+                candidate_id = data.get("candidate_id") or board["selected_id"]
+                candidate = next((c for c in session["candidates"] if c["candidate_id"] == candidate_id
+                                  and c["view"] == view and c.get("filename")), None)
+                if (view == "STYLE" or board["mode"] != "alignment" or not candidate
+                        or candidate_id not in board["slots"]):
                     raise QuickCharacterWizardError("Select a view-aligned image before continuing to true-ups.")
-                board.update(mode="true_up", prior_selection_id=board["selected_id"])
-                board["slots"] = [cid if cid == board["selected_id"] else None for cid in board["slots"]]
-                board["edit"] = {"candidate_id": board["selected_id"], "item_ids": [], "instructions": ""}
+                board.update(mode="true_up", selected_id=candidate_id, prior_selection_id=candidate_id)
+                session["selected"][view] = candidate_id
+                board["slots"] = [cid if cid == candidate_id else None for cid in board["slots"]]
+                if board["edit"]["candidate_id"] != candidate_id:
+                    board["edit"] = {"candidate_id": candidate_id, "item_ids": [], "instructions": ""}
             elif action == "undo":
                 if not board["undo"]:
                     raise QuickCharacterWizardError("There is no previous true-up prompt.")

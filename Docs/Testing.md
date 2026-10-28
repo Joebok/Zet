@@ -1,5 +1,23 @@
 # Local testing
 
+## Minor Character view true-ups (2026-10-27)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (44.1s). Disposable
+checks under ignored `test-results/minor-true-ups/` used a private fixture with
+prepared render completion. Service checks passed all five view transitions,
+explicit preview versus existing selection, revision/current-slot/view/rendered
+eligibility, preserved feedback and suggestions, custom-only failed-review
+refinement, selected fallback, immutable input bytes and retained Inventory locks.
+
+Chromium reproduced the former disabled controls on an unselected Front image,
+then exercised the real service/router with the updated controller for all five
+views: Continue enabled from the preview, retained edits, Try these changes,
+single-canvas render payloads, carried selection, reload and unchanged direct
+Style refinement. No page errors occurred. The 390px guidance screenshot was
+inspected; this focused fixture does not establish full shell/device acceptance.
+Python AST, JavaScript syntax and `git diff --check` passed. No maintained tests,
+dependencies, live AI calls, production-library writes or deployment were added.
+
 ## Character pipeline template edit routing (2026-10-27)
 
 `npm.cmd run test:e2e` passed all four approved scenarios (44.5s). A disposable

@@ -1,5 +1,12 @@
 # Development and verification
 
+## Minor Character view true-ups (2026-10-27)
+
+The four approved fast scenarios passed (44.1s), with focused isolated
+service/browser checks of preview-to-true-up transitions for all five views.
+See [Testing](Testing.md#minor-character-view-true-ups-2026-10-27) for observed
+behavior and limits. No production state or live AI service was changed.
+
 ## Responsive UI verification (2026-10-19)
 
 Implemented compact navigation, viewport-anchored image review, shared card/action

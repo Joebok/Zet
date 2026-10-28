@@ -318,7 +318,7 @@
       tab.title=tab.disabled ? "Select a style-alignment image first" : "";
       tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(view===target));$("mc-tabs").append(tab);
     }
-    $("mc-stage-status").textContent=label(view)+(view==="STYLE" ? " · Select a style image to enable views" : current?.mode==="true_up" ? " · True-ups" : " · View alignment: select an image, then continue");
+    $("mc-stage-status").textContent=label(view)+(view==="STYLE" ? " · Select a style image to enable views" : current?.mode==="true_up" ? " · True-ups" : " · View alignment: preview an image, then continue to true-ups");
     $("mc-restart").textContent=`Restart ${label(view)}`;
     $("mc-slots").replaceChildren();$("mc-add-renders").replaceChildren();
     for(let slot=0;slot<4;slot++) {
@@ -388,13 +388,19 @@
   function updateButtons() {
     const busy = pending || slotPending.size>0 || character?.busy;
     const current=board();
+    const candidate=choice(), aligning=view!=="STYLE" && current?.mode!=="true_up";
     $("mc-generate").textContent=view==="STYLE" ? "Generate style alignment" : "Generate view alignment";
     $("mc-generate-help").textContent=view==="STYLE" ? "Establish style and character details without requiring an official view. Select an image before generating views." : "Uses only the selected style image and a short orientation prompt. A new alignment replaces this view's working board.";
     $("mc-generate").disabled=!character || busy || (view==="STYLE" ? !references.length : !character.selected.STYLE);
     $("mc-refine").disabled=!character || busy || (!choice()?.image_url && !current?.edit.candidate_id) || (view!=="STYLE" && current?.mode!=="true_up");
-    $("mc-refine").title=view!=="STYLE" && current?.mode!=="true_up" ? "Select an aligned image and continue to true-ups first" : "";
+    $("mc-refine").title=aligning ? "Continue to true-ups above to enable these changes" : "";
     $("mc-continue-true-ups").hidden=view==="STYLE" || current?.mode==="true_up";
-    $("mc-continue-true-ups").disabled=busy || !current?.can_continue;
+    $("mc-continue-true-ups").disabled=busy || (!candidate?.image_url && !current?.can_continue);
+    $("mc-refine-help").textContent=busy ? "Wait for the current image task to finish." : aligning
+      ? candidate?.image_url
+        ? `Continue to true-ups will select Slot ${current.slots.indexOf(candidate.candidate_id)+1} and keep it as the starting image. Your checked suggestions and additional changes will be kept; then use Try these changes.`
+        : "Generate a view image, then preview it and continue to true-ups to enable changes."
+      : "Use checked suggestions, your additional changes, or both. Suggested changes do not need to finish before you can refine an image.";
     $("mc-undo").disabled=busy || !current?.can_undo;
     $("mc-restart").disabled=busy || !character || (view==="STYLE" ? !references.length : !character.selected.STYLE);
     $("mc-analyze").disabled = !character || busy || !references.length;
@@ -423,7 +429,8 @@
   }
   async function boardAction(action) {
     await flush();
-    const result=await api(`/${character.character_id}/boards/${view}/${action}`,"POST",{revision:board().revision});
+    const result=await api(`/${character.character_id}/boards/${view}/${action}`,"POST",{revision:board().revision,
+      ...(action==="continue" ? {candidate_id:choice()?.candidate_id || board().selected_id} : {})});
     preview="";show(result.character);
   }
   function viewWorkStarted() {

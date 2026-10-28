@@ -801,13 +801,14 @@
           <section class="mc-images">
             <div id="mc-tabs" class="button-row" role="tablist" aria-label="Character views"></div>
             <h3 id="mc-stage-status">Style alignment</h3>
-            <div class="button-row"><button id="mc-continue-true-ups" type="button" hidden>Continue to true-ups</button><button id="mc-restart" type="button">Restart Style alignment</button><button id="mc-undo" type="button" disabled>Undo true-up</button></div>
+            <div class="button-row"><button id="mc-continue-true-ups" type="button" aria-describedby="mc-refine-help" hidden>Continue to true-ups</button><button id="mc-restart" type="button">Restart Style alignment</button><button id="mc-undo" type="button" disabled>Undo true-up</button></div>
             <div id="mc-add-renders"></div>
             <div id="mc-slots" class="mc-slots" aria-label="Current stage render slots"></div>
             <section id="mc-suggestions" aria-labelledby="mc-suggestions-title">
               <h3 id="mc-suggestions-title">Suggested changes</h3><div id="mc-findings"></div>
               <label class="mc-feedback-label">What else would you like to change?<textarea id="mc-feedback" rows="3" placeholder="Add any changes beyond the checked suggestions."></textarea></label>
-              <button id="mc-refine" type="button">Try these changes</button>
+              <button id="mc-refine" type="button" aria-describedby="mc-refine-help">Try these changes</button>
+              <p id="mc-refine-help" class="muted"></p>
               <div id="mc-current-prompt-panel" class="mc-current-prompt-panel" hidden><strong>Current image prompt</strong><pre id="mc-current-prompt"></pre></div>
             </section>
           </section>
@@ -2145,7 +2146,7 @@ Add prompt language here.
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>
     <div id="mc-review-pair" class="qc-comparison-pair"></div>
   </dialog>
-  <script src="/static/minor_characters.js?v=20261027-poll-recovery"></script>
+  <script src="/static/minor_characters.js?v=20261027-view-true-ups"></script>
   <script src="/static/local_template_improvement.js?v=20261027-template-routing"></script>
   <script src="/static/local_asset_pipeline.js?v=20261026-costume-adjustments"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
