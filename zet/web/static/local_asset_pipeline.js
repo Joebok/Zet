@@ -230,6 +230,11 @@
   function frontRenderControl() {
     const run = state.run;
     if (isCostume()) return null;
+    if (state.pipeline === "body-reference" && run && !run.progression) {
+      const ready = run.status === "QUEUED" && !busy(run);
+      return { disabled: !ready, reason: ready ? "Start the queued Body batch." : "Queue a Body batch before starting renders.",
+        start: async () => { if (state.run?.status !== "QUEUED" || busy(state.run)) throw new Error("Body batch is not ready to start."); await perform("start"); } };
+    }
     return { disabled: continuationDisabled(run) || run?.progression?.stage !== -1,
       reason: run?.progression?.stage >= 0 ? "FRONT has already started. Use the view controls to generate more images." : run?.progression?.reason || "Generate FRONT from the accepted template version.",
       start: async () => {
@@ -1619,12 +1624,12 @@
       more.scrollTop = detailsScroll;
       quality.scrollTop = qualityScroll;
     }
-    $("review-prev").disabled = state.reviewIndex <= 0;
-    $("review-next").disabled = state.reviewIndex >= state.reviewCandidates.length - 1;
+    $("review-prev").disabled = state.reviewActionPending || state.reviewIndex <= 0;
+    $("review-next").disabled = state.reviewActionPending || state.reviewIndex >= state.reviewCandidates.length - 1;
     const availableViews = orderedViews(run).filter((view) => state.reviewCandidates.some((item) => item.view === view));
     const currentViewIndex = availableViews.indexOf(candidate.view);
-    $("review-prev-view").disabled = currentViewIndex <= 0;
-    $("review-next-view").disabled = currentViewIndex < 0 || currentViewIndex >= availableViews.length - 1;
+    $("review-prev-view").disabled = state.reviewActionPending || currentViewIndex <= 0;
+    $("review-next-view").disabled = state.reviewActionPending || currentViewIndex < 0 || currentViewIndex >= availableViews.length - 1;
   }
 
   let reviewOrigin = null;

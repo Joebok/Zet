@@ -91,7 +91,7 @@
       result.append(compiled);
     }
     const actions = el("div", "", "button-row"); result.append(actions);
-    frontButton = button(actions, "Start Front Renders", async () => {
+    frontButton = button(actions, context.pipeline === "body-reference" && !context.run?.progression ? "Start batch" : "Start Front Renders", async () => {
       const control = context.frontControl?.();
       if (!control || control.disabled) throw new Error(control?.reason || "FRONT is not ready to start.");
       await control.start(); updateFrontButton();
@@ -190,6 +190,7 @@
     signature = nextSignature; result.replaceChildren(); result.dataset.revision = revision?.revision_id || "";
     if (!revision) { appendStatusAndFront(null); return; }
     if (["PROPOSING", "VALIDATING"].includes(revision.status)) status("Analyzing text; no images are sent.");
+    else if (message.textContent === "Analyzing text; no images are sent.") message.textContent = "";
     result.append(el("h3", `Version ${revision.revision_id.slice(0, 8)} · ${revision.status}`), el("p", revision.summary || "Preparing proposal…"));
     if (revision.parent_revision_id) result.append(el("p", `Based on ${revision.parent_revision_id.slice(0, 8)}`, "muted"));
     if (revision.error) result.append(el("p", revision.error, "error"));

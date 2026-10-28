@@ -97,20 +97,25 @@ class QuickCharacterWizardService:
         return ["FRONT", f"FRONT_{side}_3_4", f"{side}_PROFILE"]
 
     def _public(self, session: dict) -> dict:
-        value = json.loads(json.dumps(session))
-        value.pop("analysis_inputs", None)
+        # Candidate render payloads and frozen inputs can be large private blobs.
+        # Project only public data before copying so an ordinary status read does
+        # not serialize and duplicate those blobs merely to remove them below.
+        value = {key: item for key, item in session.items() if key != "analysis_inputs"}
+        value["candidates"] = [
+            {key: item for key, item in candidate.items()
+             if key not in {"render_payload", "inputs", "filename"}}
+            for candidate in session["candidates"]
+        ]
+        value = json.loads(json.dumps(value))
         if session.get("reconstruction_id"):
             value["target_brief"] = self._reconstruction().status(session["reconstruction_id"])["target"]
         for item in value["references"]:
             item.pop("filename", None)
             item["url"] = f"/api/quick-character-wizard/{session['session_id']}/references/{item['index']}"
-        for candidate in value["candidates"]:
-            candidate["can_retry_render"] = candidate["status"] == "FAILED" and bool(candidate.get("render_payload"))
-            candidate.pop("render_payload", None)
-            candidate.pop("inputs", None)
+        for candidate, source in zip(value["candidates"], session["candidates"]):
             candidate["image_url"] = (f"/api/quick-character-wizard/{session['session_id']}/images/{candidate['candidate_id']}"
-                                      if candidate.get("filename") else "")
-            candidate.pop("filename", None)
+                                      if source.get("filename") else "")
+            candidate["can_retry_render"] = candidate["status"] == "FAILED" and bool(source.get("render_payload"))
         value["views"] = self._views(session)
         value["busy"] = self._busy(session)
         return value
@@ -660,7 +665,9 @@ class QuickCharacterWizardService:
             if session["status"] in {"ACCEPTED", "ABANDONED"}:
                 return self._public(session)
             with _LOCK:
-                active = self._key(sid) in _ACTIVE or self._pending_workflow(sid)
+                active = self._key(sid) in _ACTIVE
+                pending = self._pending_workflow(sid) if not active and session["job"]["status"] == "RUNNING" else False
+                active = active or pending
             if session["job"]["status"] == "RUNNING" and not active:
                 reviewing = next((c for c in session["candidates"] if c["status"] == "REVIEWING"), None)
                 if reviewing is not None:

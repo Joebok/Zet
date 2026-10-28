@@ -246,6 +246,8 @@ class MinorCharacterWorkflow:
             context += "\nThe selected style image establishes intentional completed design; do not restore earlier source details that differ from it."
         if candidate.get("accepted_direction"):
             context += "\nAccepted operator direction, oldest to newest; latest takes precedence:\n" + "\n".join(candidate["accepted_direction"])
+        context += (f"\nCurrent board target view: {candidate['view']}. Evaluate composition and anatomical orientation "
+                    "against this exact requested view; earlier orientation directions are superseded for this review.")
         if candidate.get("reconstruction_id"):
             comparison = self._reconstruction().compare(candidate["reconstruction_id"], self._candidate_bytes(sid, candidate),
                 {"session_id": sid, "candidate_id": candidate_id}, context,

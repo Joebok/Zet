@@ -94,8 +94,11 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             grouped[self.name_key(record["name"])] = record
         result = []
         for record in grouped.values():
-            result.append({"character_id": record["session_id"], "name": record["name"],
-                           "locked": self._public(record)["locked"]})
+            locked = {
+                view: {**item, "image_url": f"/api/minor-characters/{record['session_id']}/locked/{view}"}
+                for view, item in (record.get("locked") or {}).items()
+            }
+            result.append({"character_id": record["session_id"], "name": record["name"], "locked": locked})
         return sorted(result, key=lambda s: self.name_key(s["name"]))
 
     def list_sessions(self):
@@ -107,10 +110,14 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         with self._lock(canonical["session_id"]):
             record = self._read(canonical["session_id"])
             interrupted = False
+            reviewing_ids = [candidate["candidate_id"] for candidate in record["candidates"]
+                             if candidate["status"] == "REVIEWING"]
+            with _LOCK:
+                active_ids = {candidate_id for candidate_id in reviewing_ids
+                              if (self._key(canonical["session_id"]), candidate_id) in _REVIEW_ACTIVE}
+                pending = bool(reviewing_ids) and self._pending_workflow(canonical["session_id"])
             for candidate in record["candidates"]:
-                key = (self._key(canonical["session_id"]), candidate["candidate_id"])
-                with _LOCK:
-                    reviewing = key in _REVIEW_ACTIVE or self._pending_workflow(canonical["session_id"])
+                reviewing = candidate["candidate_id"] in active_ids or pending
                 if candidate["status"] == "REVIEWING" and not reviewing:
                     candidate.update(status="REVIEW_FAILED", error="Suggestions were interrupted. You can continue with this image.")
                     interrupted = True
@@ -212,9 +219,12 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
 
     def update_character(self, sid, payload):
         sid = self._canonical(sid)["session_id"]
+        rename_requested = "name" in payload
         with file_lock(self.root / "names.lock"):
             records = self._records()
-            return self._update_character(sid, payload, records)
+            if rename_requested:
+                return self._update_character(sid, payload, records)
+        return self._update_character(sid, payload, [])
 
     def _update_character(self, sid, payload, workspace_records):
         with self._lock(sid):

@@ -208,8 +208,12 @@
   function occupied() { return (board()?.slots || []).map(id=>character.candidates.find(c=>c.candidate_id===id)).filter(c=>c?.image_url); }
   function persistEdit() {
     const source = choice()?.candidate_id || board()?.edit.candidate_id || "";
+    const current = board()?.edit;
+    const itemIds = [...(suggestions.get(source) || [])];
+    if (current && current.candidate_id === source && current.view === view
+        && current.instructions === feedback && JSON.stringify(current.item_ids || []) === JSON.stringify(itemIds)) return;
     changed("board_edit", {view, revision:board().revision, candidate_id:source,
-      item_ids:[...(suggestions.get(source) || [])], instructions:feedback});
+      item_ids:itemIds, instructions:feedback});
   }
   async function selectCandidate(id = preview) {
     await flush(); show((await api(`/${character.character_id}/select`,"POST",{candidate_id:id,revision:board().revision})).character);
@@ -311,6 +315,8 @@
     $("mc-tabs").replaceChildren();
     for (const target of character.views) {
       const tab=button(label(target),async()=>{
+        if (target === view) return;
+        if (Object.keys(patch).length) await flush();
         await flush();view=target;preview="";comparisonId="";feedback=character.boards[target]?.edit.instructions || "";feedbackDirty=false;
         changed("active_view",view);show(character);
       });

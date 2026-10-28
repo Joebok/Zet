@@ -85,7 +85,32 @@ WP1–WP4 implemented locally. Original WP5 was unresolved at the first checkpoi
 
 ## Live-survey follow-up (2026-10-28 results; repairs pending)
 
-The [live workflow survey](../completed/live-workflow-survey.md) concluded with explicit coverage exceptions. Its findings are evidence for future fixes, not authorization to implement/deploy them. Artifacts are ignored under `test-results/live-workflow-survey/20261028/`.
+### Implementation phase — live findings and affected-page alignment
+
+Implementation authorized by Joe on 2026-10-28. Preserve the completed WP1–WP4 repairs and survey evidence. The implementation also completes full-page UI Style Guide alignment for the affected Minor Characters, five character-pipeline, Batches, Config, and Refinement surfaces; shared shell changes are bounded to the summary component.
+
+Use the following serial Luna-sized sequence; detailed evidence and acceptance for L1–L14 remain in the issue packets below. Update this checkpoint as work proceeds. No permanent test/scenario additions, live data changes, deployment, or service restarts.
+
+| Implementation packet | Dependency | Owner and completion check | Status |
+|---|---|---|---|
+| P0 — checkpoint and fixture safety | none | This plan, isolated fixture roots, baseline response contracts, affected-page matrix | in progress |
+| P1a/b — Minor detail latency | P0 | Minor/Quick Character services; equivalent projection, bounded recovery lookups, lower serial private timing | implemented locally; contract/performance checks pending |
+| P2 — Minor save/navigation | P1 | `minor_characters.js`, `MinorCharacterService`; no PATCH for unchanged feedback, edits/renames retain save guarantees | partial; no-op board feedback and rename scoping implemented; navigation UX checks pending |
+| P3a/b — derived index contention | P0/P3a | `LibraryIndexRepository`/bootstrap; diagnose private contention then separate initialization writes from ordinary reads | read-only initialized fast path implemented; private contention validation pending |
+| P4 — summary degraded state | P0 | Shared shell; scoped stale state, local retry, context-safe recovery | pending |
+| P5/P6 — FRONT readiness and prompt lifecycle | P0/P5 | shared pipeline and template-review controllers; Body path agrees with backend and terminal analysis replaces pending copy | partial; Body batch entry and terminal-message clearing implemented; browser checks pending |
+| P7a/b/P8 — batch status | P0/P7a | batch service/adapters and page; lower projection work, accurate loading/current-view/readiness | pending |
+| P9/P10/P11 — review intent and prompt context | P0 | Minor review, Head Edit compiler/template, Refinement analysis; target intent and relevant visible evidence preserved | partial; current-view instruction and short-hair crop language updated; validation and Refinement context pending |
+| P12 — review action lifecycle | P6/P8 | shared review controller/dialog; pending navigation visible and safe, image identity retained | partial; navigation is disabled on render during pending state; immediate pending feedback and browser checks pending |
+| P13 — process counts | P0 | process service and Config; effective instance counts preserve raw diagnostics | pending |
+| P14 — storage attribution | P0 | retained read-only browser evidence; attributable source or bounded unresolved result | pending |
+| P15a/b/c — acceptance and publication timings | P0/P15a/b | private profiling, then truthful local pending/result feedback; no lock changes without evidence | pending |
+| U1–U7 — affected pages | their related functional packets | full-page style guide pass for Minor, shared review, each of five pipelines, Batches, Config, Refinement, and shell summary | pending |
+| Integration/documentation | all code packets | existing S1–S4, affected component docs and UI compliance register, protected-state review | pending |
+
+Use ignored private evidence under `test-results/live-remediation/`; no artifact is written to the normal library/queue. Reuse approved S1–S4 without adding permanent scenarios. If private profiling does not establish a safe lock or query repair, leave that finding open and document the evidence rather than broadening lock behavior.
+
+The [live workflow survey](../completed/live-workflow-survey.md) concluded with explicit coverage exceptions. Artifacts are ignored under `test-results/live-workflow-survey/20261028/`. The implementation authorization and boundaries for these findings are recorded above.
 
 ### L1 — Freydis detail latency (priority P1; cause not yet established)
 - Observed timed live GET `/api/minor-characters/7a4144b55c474dba9a1e36bb0c995c1c?universe_id=Moonsea`: **11,920 ms**, HTTP 200 at 13:36:28Z, while Body/Narrative work was active. Adjacent production summary was 252 ms and health 64 ms. An earlier uninstrumented request also exceeded the shell's ten-second yield. No matching SQLite/file-lock exception in the captured production window.

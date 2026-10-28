@@ -230,11 +230,23 @@ class LibraryIndexRepository:
             raise LibraryIndexError("The machine-local index belongs to a different authored library.")
         connection.commit()
 
+    def _initialized_for_reads(self, connection: sqlite3.Connection) -> bool:
+        """Recognize the current index without taking a write lock on each read."""
+        tables = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'metadata'"
+        ).fetchone()
+        if not tables:
+            return False
+        schema_version = self._metadata(connection, "schema_version")
+        library_key = self._metadata(connection, "library_key")
+        return schema_version == str(self.SCHEMA_VERSION) and library_key == self.library_key
+
     def _run(self, operation: Callable[[sqlite3.Connection], object]):
         connection: sqlite3.Connection | None = None
         try:
             connection = self._connect()
-            self._initialize(connection)
+            if not self._initialized_for_reads(connection):
+                self._initialize(connection)
             return operation(connection)
         except sqlite3.DatabaseError as exc:
             from zet.services.storage_health_service import guard_path
