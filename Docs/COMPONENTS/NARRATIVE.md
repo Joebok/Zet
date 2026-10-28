@@ -31,6 +31,8 @@ Narrative JSON persistence uses the shared portable library-path codec for expli
 
 Inputs include scene intent/visual settings, named elements/library asset IDs, target narrative/staging/physical context/framing, model selection, candidate slot controls, and assembly layers. Targets include backdrop/subscene/assembly behavior. Outputs are authored prose, generated prompts with provenance, durable job/candidate records, image files, selections and locked images. Storage is under universe `NarrativeStories/`; [DATA_MODEL](../DATA_MODEL.md) owns identifiers/formats.
 
+The element library-image picker seeds its editable search from the current Name field, including unsaved edits. `NarrativeSceneService.library_options` queries at most ten approved catalog images before hydration and omits unavailable files; searches may return fewer than ten images.
+
 1. Author creates a story, scenes, elements, and targets with stable IDs. Target visual settings combine scene defaults and target overrides.
 2. `start` chooses interview/synthesis/generate/render or a supported replay action. All text/image work uses File Proxy; its trusted registration selects Codex, Ollama or ComfyUI execution. Jobs persist model/provider provenance and a baseline for result application.
 3. Submission snapshots ordered reference bytes. Assembly submission binds server-owned source layers and freezes an assembly snapshot; replay uses saved job inputs. Backdrop crop/unchanged operations use local actions instead of requesting generation.

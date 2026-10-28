@@ -9541,6 +9541,8 @@ async function openSourceEditorForSource(source, errorHandler = showSourceEditor
   }
 }
 
+window.ZetSourceEditor = { open: openSourceEditorForSource };
+
 async function saveSourceEditor() {
   if (!state.sourceEditor || sourceEditorSave.disabled) {
     return;

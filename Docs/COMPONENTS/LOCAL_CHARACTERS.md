@@ -367,15 +367,17 @@ version. Restarting analysis before FRONT requires acceptance or skip again.
 Correction checkboxes sit beside their text, with acceptance actions below the
 findings. Master/proposed diffs precede batch-use and master-update actions; the
 parent-version diff is omitted. **Edit master template**, below each source diff,
-opens a separate proposal editor. **Save proposed** compiles a READY child without
-an AI job, changing masters or selecting that child for new renders. **Use for new
-renders** explicitly accepts/selects it for the batch; **Update master templates**
+opens the current canonical master in **Template Editor**, with shared validation,
+view highlighting, diff and unsaved-change protection. **Save template** updates
+that master; existing batch versions retain their frozen sources. **Restart from
+current masters** incorporates saved master edits into a new review. **Use for new
+renders** selects a saved READY version for the batch; **Update master templates**
 retains the separate confirmed promotion. Historical project-template edits already
 on disk can still be preserved through Restart's **Create template PR** recovery
 action; this improvement panel no longer offers project-template updates. See
 [update recovery](../GitHub_Task_Workflow.md#accepted-template-edits-and-update-recovery).
 The status block before compiled prompts
-reports pending corrections, unsaved editor text, selected batch sources, master
+reports pending corrections, selected batch sources, master
 updates and drift from the captured baseline. **Start Front Renders** at the end
 uses the same FRONT continuation and readiness checks as the top Continue control;
 after FRONT opens, further generation uses the existing view controls.

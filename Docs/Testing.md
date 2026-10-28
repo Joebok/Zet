@@ -1,5 +1,15 @@
 # Local testing
 
+## Character pipeline template edit routing (2026-10-27)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (44.5s). A disposable
+Chromium check with prepared responses passed five master-edit actions across
+Body Reference, Head Image, Head Image Edit and Costume Dressing: each called the
+shared Template Editor entry with the current canonical source path rather than
+the saved proposal path, without popups or page errors. JavaScript syntax checks
+for both changed controllers and `git diff --check` passed. No permanent tests,
+dependencies, live AI calls or production-library writes were added.
+
 ## Minor Characters status recovery (2026-10-27)
 
 `npm.cmd run test:e2e` passed all four approved scenarios after the final controller

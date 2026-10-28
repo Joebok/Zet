@@ -344,14 +344,14 @@ class NarrativeSceneService:
 
     def library_options(self, query: str = "") -> list[dict]:
         library = self.app.entity_library_service
-        assets = library.search_picker(q=query)
+        assets = library.list_asset_page(status="approved", q=query, limit=10)["assets"]
         keys = {}
         for reference in library.list_logical_references():
             if reference["status"] == "active" and "costume-dressing" in reference["reference_key"]:
                 keys.setdefault(reference["asset_id"], []).append(reference["reference_key"])
         return [{"asset_id": item["asset_id"], "label": item.get("label") or item["file_name"],
                  "reference_key": keys[item["asset_id"]][0] if len(keys.get(item["asset_id"], [])) == 1 else "",
-                 "entities": item.get("entities", [])} for item in assets[:100]]
+                 "entities": item.get("entities", [])} for item in assets if item["image_available"]]
 
     def protected_images(self, story: str, scene: str = "", target: str = "") -> list[dict]:
         if not scene:

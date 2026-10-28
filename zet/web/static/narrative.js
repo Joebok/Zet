@@ -942,6 +942,7 @@ listen(host,'click',event=>{
   if (button.id === 'choose-reference') {
     const dialog = host.querySelector('#library-dialog');
     dialog.innerHTML = `<h2>Choose a reference image</h2><form id="library-search" class="narrative-inline"><input id="library-query" aria-label="Search library" placeholder="Character, costume, prop or place"><button>Search</button><button type="button" data-close="library-dialog">Close</button></form><div id="library-results" class="narrative-library-grid"></div>`;
+    dialog.querySelector('#library-query').value = host.querySelector('#element-form').elements.name.value.trim();
     dialog.showModal(); librarySearch().catch(error=>status(error.message,true)); return;
   }
   if (button.id === 'remove-reference') {

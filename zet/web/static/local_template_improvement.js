@@ -2,7 +2,6 @@
 (() => {
   const host = document.getElementById("local-template-improvement");
   const decisionDrafts = new Map();
-  const editors = new Map();
   let context = null, data = null, loading = false, lastFetch = 0, serial = 0, selectedRevision = "", signature = "", mutation = 0;
   let direction, model, sourceChoices, history, result, message, active, workflowStatus, frontButton;
   const el = (tag, text = "", cls = "") => {
@@ -75,8 +74,6 @@
           : "Current masters match this proposal; no master update is pending.");
       if (drift) notes.push("Masters changed since this baseline. Restart from current masters to incorporate those edits before accepting or promoting.");
     }
-    const unsaved = [...editors.values()].filter(editor => editor.contextKey === context.key && !editor.window.closed && editor.dirty).length;
-    if (unsaved) notes.push(`${unsaved} editor window(s) have unsaved changes. Save proposed to compile them and update the diff.`);
     for (const note of notes) workflowStatus.append(el("p", note));
   }
   function updateFrontButton() {
@@ -103,51 +100,13 @@
     if (context.pipeline === "costume-dressing") frontButton.hidden = true;
     updateFrontButton();
   }
-  function openEditor(source, revision) {
+  async function openEditor(source) {
     if (!editableSource(source.source_id)) throw new Error("This source is read-only compilation context.");
-    let key = `${context.key}:${revision.revision_id}:${source.source_id}`;
-    const existing = editors.get(key);
-    if (existing && !existing.window.closed) { existing.window.focus(); return; }
-    const popup = window.open("", "_blank", "popup,width=1100,height=850,resizable=yes,scrollbars=yes");
-    if (!popup) throw new Error("Allow pop-up windows for Zet, then open the template editor again.");
-    const initial = serial, doc = popup.document;
-    doc.title = `Edit master template proposal · ${source.label || source.source_id}`;
-    doc.documentElement.lang = "en";
-    const style = doc.createElement("link"); style.rel = "stylesheet";
-    style.href = document.querySelector('link[href*="/static/zet.css"]')?.href || new URL("/static/zet.css", location.origin).href; doc.head.append(style);
-    doc.body.className = "template-proposal-window";
-    const title = el("h1", "Edit master template"), identity = el("p", source.source_id, "muted");
-    const note = el("p", "Edit the proposed template below. Save proposed compiles a new version and updates the dashboard diff. Updating master templates is a separate action on the dashboard.");
-    const text = el("textarea"); text.value = source.text; text.spellcheck = false; text.setAttribute("aria-label", "Proposed template");
-    const editor = { window: popup, dirty: false, contextKey: context.key }; editors.set(key, editor);
-    const feedback = el("p", "No unsaved changes.", "action-message"); feedback.setAttribute("role", "status");
-    const actions = el("div", "", "button-row");
-    button(actions, "Save proposed", async () => {
-      save.disabled = true;
-      try {
-        if (initial !== serial || data?.revision?.revision_id !== revision.revision_id) throw new Error("The batch or viewed version changed. Keep your text here and reopen the current proposal to save against it.");
-        if (text.value === source.text) throw new Error("Edit the template before saving a proposal.");
-        const proposed = text.value;
-        feedback.textContent = "Compiling proposed template…";
-        const value = await request(endpoint(), { method: "POST", body: JSON.stringify({ parent_revision_id: revision.revision_id,
-          direction: direction.value || "Manual template revision", replacements: { [source.source_id]: proposed }, source_ids: [source.source_id] }) });
-        if (initial !== serial) throw new Error("Proposal saved to the original batch. Return to that batch to review it.");
-        data = value; selectedRevision = value.revision.revision_id; signature = "";
-        revision = value.revision; source = revision.sources.find(item => item.source_id === source.source_id);
-        editor.dirty = text.value !== source.text;
-        editors.delete(key); key = `${context.key}:${revision.revision_id}:${source.source_id}`; editors.set(key, editor);
-        renderData(); await context.reload();
-        feedback.textContent = `Proposed version saved and compiled. The dashboard diff is updated; master templates have not been changed.${editor.dirty ? " Further edits in this window are still unsaved." : ""}`;
-        status(feedback.textContent);
-      } catch (error) { feedback.textContent = error.message; }
-      finally { save.disabled = false; updateWorkflowStatus(); }
-    });
-    const save = actions.lastElementChild;
-    button(actions, "Close", () => { popup.close(); });
-    text.addEventListener("input", () => { editor.dirty = text.value !== source.text; feedback.textContent = editor.dirty ? "Unsaved changes — Save proposed to update the diff." : "No unsaved changes."; updateWorkflowStatus(); });
-    popup.addEventListener("beforeunload", event => { if (editor.dirty) { event.preventDefault(); event.returnValue = ""; } });
-    popup.addEventListener("pagehide", () => { editors.delete(key); updateWorkflowStatus(); });
-    doc.body.replaceChildren(title, identity, note, text, actions, feedback); popup.focus();
+    const master = data.sources.find(item => item.source_id === source.source_id);
+    if (!master?.source_path) throw new Error("The current master template is unavailable. Reload saved results and try again.");
+    await window.ZetSourceEditor.open({
+      source_path: master.source_path, source_label: master.label || master.source_id, editable: true,
+    }, text => status(text, true));
   }
   function sourceDiff(source) {
     const section = el("section", "", "template-master-diff");
@@ -310,8 +269,9 @@
       if (source.rationale) details.append(el("p", source.rationale));
       details.append(sourceDiff(source));
       if (editableSource(source.source_id)) {
-        const edit = button(details, "Edit master template", () => openEditor(source, revision));
+        const edit = button(details, "Edit master template", () => openEditor(source));
         edit.disabled = !["READY", "REVIEW_READY", "FAILED"].includes(revision.status);
+        edit.title = "Open the current master in Template Editor. Saved batch versions keep their frozen templates.";
       } else details.append(el("p", "Read-only compilation context.", "muted"));
       result.append(details);
     }
