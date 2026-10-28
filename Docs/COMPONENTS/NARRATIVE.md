@@ -81,6 +81,11 @@ render-quality check. See [ADR 0009](../DECISIONS/0009-narrative-interview-revie
 
 ## Assembly and reference boundaries
 
+**Use current selection** saves pending assembly edits, fetches the source target's
+selected candidate, then updates the current layer object so an intervening poll
+or save cannot discard the selection. It clears extraction corrections while
+retaining placement; the saved layer remains pinned until explicitly changed.
+
 Layer controls/identifiers come from the client, but filenames, metadata, and source-byte binding are server owned. Assembly modes influence prompt provenance; a prompt generated for one mode cannot silently render another. New final assemblies and older records without a saved mode default to `harmonize_composite` (Harmonize placed composite); other target kinds default to `finish_composite`. Extraction uses OpenCV/NumPy/Pillow and its own lock. Imported subscenes/backdrops retain independent snapshots; they are not live links to another target's changing candidate.
 
 `harmonize_composite` (Harmonize placed composite) freezes the same placed image,

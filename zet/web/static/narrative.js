@@ -957,9 +957,12 @@ listen(host,'click',event=>{
     } else if (button.dataset.maskLayer) await editMask(button.dataset.maskLayer);
     else if (button.dataset.removeLayer) {detail.layers=detail.layers.filter(item=>item.id!==button.dataset.removeLayer);layersChanged();await save();renderLayers();}
     else if (button.dataset.currentSelection) {
-      const layer=detail.layers.find(item=>item.id===button.dataset.currentSelection);
-      const scene=await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${layer.target_id}`);
+      await save();
+      const layerId=button.dataset.currentSelection;
+      const sourceId=detail.layers.find(item=>item.id===layerId).target_id;
+      const scene=await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${sourceId}`);
       if(!scene.selected_id) throw new Error('Select a source image first.');
+      const layer=detail.layers.find(item=>item.id===layerId);
       layer.candidate_id=scene.selected_id;layer.strokes=[];layersChanged();await save();renderLayers();
     } else if (button.dataset.editElement) await editElement(button.dataset.editElement);
     else if (button.dataset.removeElement) {
