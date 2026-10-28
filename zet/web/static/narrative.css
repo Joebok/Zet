@@ -12,13 +12,13 @@
 .narrative-app h2 { font-size:1.2rem; margin-top:0; }
 .narrative-app h3 { font-size:1rem; margin:.25rem 0; }
 .narrative-app label { font-weight:500; }
-.narrative-app input, .narrative-app textarea, .narrative-app select { font:inherit; border:1px solid var(--border); border-radius:5px; padding:.55rem; background:white; color:var(--text); }
+.narrative-app input, .narrative-app textarea, .narrative-app select { font:inherit; border:1px solid var(--border); border-radius:8px; padding:.55rem; background:white; color:var(--text); }
 .narrative-app textarea { width:100%; min-height:95px; resize:vertical; line-height:1.5; }
 .narrative-app .task-capture-dialog textarea { min-height:0; }
-.narrative-app button { cursor:pointer; padding:.55rem .8rem; border:1px solid var(--border); border-radius:5px; background:var(--surface); color:var(--text); font:inherit; }
+.narrative-app button { cursor:pointer; padding:.55rem .8rem; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); font:inherit; }
 .narrative-app button.primary { background:var(--primary); color:white; border-color:var(--primary); }
 .narrative-app button.danger { color:var(--danger); }
-.narrative-app button:disabled { opacity:.5; cursor:wait; }
+.narrative-app button:disabled { opacity:.5; cursor:not-allowed; }
 .narrative-app button:focus-visible, .narrative-app a:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
 .narrative-card { padding:1.2rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:1rem; }
 .narrative-target-preview { display:block; width:100%; height:220px; object-fit:contain; background:var(--surface-subtle); border-radius:5px; }

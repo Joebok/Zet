@@ -6,6 +6,13 @@ action acknowledgement, and feedback beside its initiating action. Adoption is
 partial; this component document records implemented behavior and verification limits.
 
 The dashboard uses the existing palette in [zet.css](../../zet/web/static/zet.css).
+The [2026-10-27 compliance register](../UI_COMPLIANCE_REVIEW.md) records current
+page reachability, bounded alignment changes and unverified states. Local Character
+Overview now uses the shared light tokens and per-slot action outcomes, fences
+duplicate slot submissions, and avoids rebuilding unchanged snapshots during polling.
+Refinement shows request acknowledgement and errors beside each action group.
+Shared preview wells use subtle-surface tokens. These changes do not establish
+complete style-guide or physical-device compliance.
 Primary teal identifies the main action and selected images. Selection also has a
 text label and stable inset border; it does not mean that an image is locked.
 Published images retain a separate Locked label. Success, warning, and danger

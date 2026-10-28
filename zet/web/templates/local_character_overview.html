@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Local Character Overview · Zet</title>
+  <link rel="stylesheet" href="/static/zet.css?v=20261027-compliance">
   <style>
-    :root{font:16px/1.45 system-ui,sans-serif;color:#e8edf3;background:#111820}body{margin:0;padding:1.25rem 2rem}header{display:flex;justify-content:space-between;align-items:start;gap:1rem;border-bottom:1px solid #344250;padding-bottom:1rem}h1,h2,h3,p{margin:.25rem 0 .65rem}a{color:#91c9ff}.muted{color:#a8b5c2}.row{margin:1.25rem 0;padding:1rem;border:1px solid #344250;border-radius:.6rem}.row h2{font-size:1.2rem}.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1rem;margin-top:.8rem}.slot{background:#1a2530;border:1px solid #344250;border-radius:.5rem;padding:.7rem;min-width:0}.slot img,.placeholder{display:block;width:100%;aspect-ratio:3/4;object-fit:contain;background:#0d1319;border-radius:.3rem}.placeholder{display:grid;place-items:center;color:#91a0ad;text-align:center}.state{min-height:2.8em;color:#c3d0dd;font-size:.92rem}button{border:1px solid #6d8294;border-radius:.35rem;background:#273747;color:#fff;padding:.45rem .75rem;cursor:pointer}button.primary{background:#1768a5;border-color:#4598d4}button:disabled{opacity:.5;cursor:wait}.actions{display:flex;gap:.5rem;align-items:center}.error{color:#ffaaa2}.empty{padding:1.2rem;color:#a8b5c2}@media(max-width:650px){body{padding:1rem}header{display:block}}
+    body{padding:16px 24px;line-height:1.45}header{display:flex;justify-content:space-between;align-items:start;gap:16px;border-bottom:1px solid var(--border);padding-bottom:16px}header nav{line-height:2;max-width:60%}h1,h2,h3,p{margin:4px 0 12px}a{color:var(--primary)}.muted,.empty{color:var(--text-muted)}.row{margin:24px 0;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}.row h2{font-size:1.2rem}.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(190px,100%),1fr));gap:16px;margin-top:12px}.slot{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;min-width:0;overflow-wrap:anywhere}.slot img,.placeholder{display:block;width:100%;aspect-ratio:3/4;object-fit:contain;background:var(--surface-subtle);border-radius:4px}.placeholder{display:grid;place-items:center;color:var(--text-muted);text-align:center}.state{min-height:2.8em;color:var(--text-muted);font-size:14px}.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.error{color:var(--danger)}.empty{padding:16px}.slot .action-message{min-height:1.45em}@media(max-width:650px){body{padding:16px}header{display:block}header nav{max-width:100%}}
   </style>
 <link rel="stylesheet" href="/static/task_capture.css?v=20261019-responsive"></head>
 <body class="auxiliary-task-page">
@@ -22,7 +23,8 @@
     const escPath=value=>encodeURIComponent(value);
     const slotPath=(slot,action='autogenerate')=>`/api/local/character-overview/${escPath(slot.character)}/${escPath(slot.phase)}/${escPath(slot.name)}/${action}`;
     const task=window.ZetAuxiliaryTasks;
-    let loading=false, overviewData=null, selectedSlot=null, initial=true, failed=false;
+    let loading=false, overviewData=null, selectedSlot=null, initial=true, failed=false, lastSnapshot='';
+    const outcomes=new Map(), pendingSlots=new Set();
     task.install('local-character-overview','Local Character Overview',()=>{
       const slot=selectedSlot;
       const found=overviewData?.rows?.find(row=>row.character===slot?.character&&row.phase===slot?.phase)?.costumes?.find(item=>item.name===slot?.name);
@@ -40,6 +42,7 @@
     function markSlot(){host.querySelectorAll('[data-task-slot]').forEach(card=>card.classList.toggle('task-context-selected',card.dataset.taskSlot===JSON.stringify(selectedSlot)))}
     function make(tag,cls,text){const item=document.createElement(tag);if(cls)item.className=cls;if(text!==undefined)item.textContent=text;return item}
     function render(data){
+      const focused=document.activeElement,focusKey=focused?.closest('[data-task-slot]')?.dataset.taskSlot,focusAction=focused?.dataset.action;
       const rows=[];
       for(const row of data.rows||[]){
         const section=make('section','row'),title=make('h2','',`${row.character} · ${row.phase}`),slots=make('div','slots');section.append(title,slots);
@@ -48,18 +51,34 @@
           else card.append(make('div','placeholder','No locked FRONT image'));
           const status=make('p','state'+(slot.state==='ERROR'?' error':''),slot.message||({IDLE:'Ready to generate.',QUEUED:'Queued.',RUNNING:`Working on ${slot.pipeline||'local pipeline'}…`,CANCELLED:'Stopped. Start again to retry.'}[slot.state]||slot.state));card.append(status);
           const actions=make('div','actions');if(slot.state==='RUNNING'||slot.state==='QUEUED'){const stop=make('button','', 'Stop');stop.dataset.action='stop';stop.dataset.path=slotPath(slot,'stop');actions.append(stop)}
-          else if(!slot.image_url){const start=make('button','primary',slot.state==='ERROR'||slot.state==='CANCELLED'?'Try again':'Autogenerate');start.dataset.action='start';start.dataset.path=slotPath(slot);actions.append(start)}
+          else if(!slot.image_url){const start=make('button','primary-action',slot.state==='ERROR'||slot.state==='CANCELLED'?'Try again':'Autogenerate');start.dataset.action='start';start.dataset.path=slotPath(slot);actions.append(start)}
           if(slot.run_id&&slot.pipeline){const review=make('a','','Review batch');const params=new URLSearchParams({page:'local-'+slot.pipeline,local_batch:slot.run_id,character:row.character,phase:row.phase});if(slot.pipeline==='costume-dressing')params.set('local_costume',slot.name);review.href='/?'+params;actions.append(review)}
           const report=make('button','','Create task');report.type='button';report.dataset.reportSlot=card.dataset.taskSlot;actions.append(report);
-          card.append(actions);slots.append(card)
+          const outcome=make('p','action-message',outcomes.get(card.dataset.taskSlot)||'');outcome.setAttribute('role','status');outcome.classList.toggle('error',(outcomes.get(card.dataset.taskSlot)||'').startsWith('Could not'));card.append(actions,outcome);slots.append(card)
         }
         if(!(row.costumes||[]).length)section.append(make('p','empty','No costumes for this phase.'));
         rows.push(section)
       }
-      if(!rows.length)host.replaceChildren(make('p','empty','No characters or phases were found.'));else host.replaceChildren(...rows);markSlot()
+      if(!rows.length)host.replaceChildren(make('p','empty','No characters or phases were found.'));else host.replaceChildren(...rows);markSlot();
+      if(focusKey){const card=[...host.querySelectorAll('[data-task-slot]')].find(item=>item.dataset.taskSlot===focusKey);const target=focusAction?card?.querySelector(`[data-action="${focusAction}"]`):card?.querySelector('[data-report-slot]');target?.focus({preventScroll:true})}
     }
-    async function refresh(){if(loading)return;loading=true;try{const response=await task.fetch('/api/local/character-overview');const data=await response.json();if(!response.ok)throw new Error(data.detail||response.statusText);overviewData=data;failed=false;render(data);if(initial&&selectedSlot&&!data.rows?.some(row=>row.character===selectedSlot.character&&row.phase===selectedSlot.phase&&row.costumes?.some(slot=>slot.name===selectedSlot.name)))window.ZetTaskCapture.notice('The recorded character, phase, or costume is unavailable. The overview is open.');initial=false;pageStatus.textContent='Overview refreshes automatically while this page is open.'}catch(error){failed=true;pageStatus.textContent=error.message;pageStatus.className='error'}finally{loading=false}}
-    host.addEventListener('click',async event=>{const report=event.target.closest('[data-report-slot]');if(report){selectedSlot=JSON.parse(report.dataset.reportSlot);markSlot();void window.ZetTaskCapture.open();return}const button=event.target.closest('button[data-action]');if(!button)return;button.disabled=true;try{const response=await task.fetch(button.dataset.path,{method:'POST'});const data=await response.json();if(!response.ok)throw new Error(data.detail||response.statusText);await refresh()}catch(error){pageStatus.textContent=error.message;pageStatus.className='error';button.disabled=false}});
+    async function refresh(){if(loading||pendingSlots.size)return;loading=true;try{const response=await task.fetch('/api/local/character-overview');const data=await response.json();if(!response.ok)throw new Error(data.detail||response.statusText);if(pendingSlots.size)return;overviewData=data;failed=false;const snapshot=JSON.stringify(data);if(snapshot!==lastSnapshot){render(data);lastSnapshot=snapshot;}pageStatus.className='muted';if(initial&&selectedSlot&&!data.rows?.some(row=>row.character===selectedSlot.character&&row.phase===selectedSlot.phase&&row.costumes?.some(slot=>slot.name===selectedSlot.name)))window.ZetTaskCapture.notice('The recorded character, phase, or costume is unavailable. The overview is open.');initial=false;pageStatus.textContent='Overview refreshes automatically while this page is open.'}catch(error){failed=true;pageStatus.textContent=error.message;pageStatus.className='error'}finally{loading=false}}
+    host.addEventListener('click',async event=>{
+      const report=event.target.closest('[data-report-slot]');
+      if(report){selectedSlot=JSON.parse(report.dataset.reportSlot);markSlot();void window.ZetTaskCapture.open();return}
+      const button=event.target.closest('button[data-action]');
+      if(!button)return;
+      const card=button.closest('[data-task-slot]'),key=card.dataset.taskSlot,local=card.querySelector('.action-message');
+      if(pendingSlots.has(key))return;
+      pendingSlots.add(key);button.disabled=true;
+      local.classList.remove('error');local.textContent=button.dataset.action==='stop'?'Requesting stop…':'Queuing generation…';
+      try{
+        const response=await task.fetch(button.dataset.path,{method:'POST'}),data=await response.json();
+        if(!response.ok)throw new Error(data.detail||response.statusText);
+        outcomes.set(key,button.dataset.action==='stop'?'Stop requested.':'Generation request accepted.');
+      }catch(error){outcomes.set(key,'Could not confirm the action. '+error.message);}
+      finally{local.textContent=outcomes.get(key);button.disabled=false;pendingSlots.delete(key);await refresh()}
+    });
     refresh();setInterval(refresh,2500);
   })();
   </script>

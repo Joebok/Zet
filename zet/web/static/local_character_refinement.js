@@ -102,14 +102,19 @@
   async function action(operation, payload) {
     if (acting) return;
     acting = true; serial++;
+    const status = $(operation === "analyze" ? "analysis-message" : operation === "edit" ? "edit-message" : "image-message");
+    status.classList.remove("error");
+    status.textContent = operation === "analyze" ? "Requesting analysis…" : operation === "adopt" ? "Updating selected image…" : "Requesting refinement…";
+    status.setAttribute("aria-busy", "true");
     for (const id of ["use", "edit", "analyze", "retry"]) $(id).disabled = true;
     try {
       saveDraft(); data = await request(endpoint(`/${operation}`), payload);
+      status.textContent = operation === "analyze" ? "Analysis request accepted." : operation === "adopt" ? "Selected image updated." : "Refinement request accepted. The attempt status shows progress.";
       if (operation === "edit" || operation === "retry") current = data.attempts.at(-1).id;
       if (operation === "adopt") message("Selected image updated. Return to the batch to Continue or publish it.");
       render(); saveDraft();
-    } catch (error) { message(error.message, true); }
-    finally { acting = false; render(); }
+    } catch (error) { status.textContent = error.message; status.classList.add("error"); }
+    finally { status.removeAttribute("aria-busy"); acting = false; render(); }
   }
   $("operation").value = draft.operation || "correction";
   $("guide-scope").value = draft.guideScope || "";

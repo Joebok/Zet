@@ -20,11 +20,13 @@
         <img id="refine-image" alt="Selected character image to refine" hidden>
         <p id="refine-attempt-status"></p>
         <div class="button-row"><button id="refine-use" type="button">Use this image</button><button id="refine-retry" type="button" hidden>Retry render</button></div>
+        <p id="refine-image-message" class="action-message" role="status"></p>
       </section>
       <section aria-label="Refinement controls">
         <fieldset id="refine-comparisons"><legend>Selected views to include in analysis</legend></fieldset>
         <label>Analysis model <input id="refine-model" type="text" placeholder="Default analysis model"></label>
         <button id="refine-analyze" type="button">Analyze image and continuity</button>
+        <p id="refine-analysis-message" class="action-message" role="status"></p>
         <section id="refine-analysis" aria-label="Suggested image corrections"></section>
         <fieldset id="refine-guide-controls" hidden>
           <legend>Render operation and guide</legend>
@@ -35,6 +37,7 @@
         </fieldset>
         <label>Targeted changes / feedback <textarea id="refine-feedback" rows="5" maxlength="24000"></textarea></label>
         <button id="refine-edit" type="button">Generate refinement</button>
+        <p id="refine-edit-message" class="action-message" role="status"></p>
       </section>
     </div>
   </main>

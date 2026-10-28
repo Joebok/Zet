@@ -1,5 +1,16 @@
 # Local testing
 
+## UI compliance pass (2026-10-27)
+
+`npm.cmd run test:e2e` passed four approved scenarios (43.2s). Disposable
+Overview checks passed local pending/error retention, duplicate submission fencing,
+unchanged-poll focus and four viewport bounds; prepared Refinement checks passed
+analysis pending/error retention through polling. Syntax and final diff checks
+passed. No permanent tests or dependencies were added. The 26-destination capture
+reported no overflow at five sizes, but Pipeline Controls failed activation because
+the isolated fixture lacks Pipelines.json. See [review register](UI_COMPLIANCE_REVIEW.md)
+for page-specific evidence, legacy references and remaining acceptance gaps.
+
 ## Minor Character view true-ups (2026-10-27)
 
 `npm.cmd run test:e2e` passed all four approved scenarios (44.1s). Disposable

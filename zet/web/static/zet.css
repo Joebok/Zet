@@ -1854,9 +1854,9 @@ tbody tr.selected {
 
 .asset-locked-image-viewer {
   align-items: center;
-  background: #101828;
+  background: var(--surface-subtle);
   border-radius: 8px;
-  color: #e4e7ec;
+  color: var(--text-muted);
   display: flex;
   justify-content: center;
   min-height: 520px;
@@ -3479,9 +3479,9 @@ tr.auxiliary-row td:last-child {
 
 .render-image-viewer {
   align-items: flex-start;
-  background: #101828;
+  background: var(--surface-subtle);
   border-radius: 8px;
-  color: #e4e7ec;
+  color: var(--text-muted);
   display: flex;
   justify-content: center;
   height: clamp(360px, 55vh, 560px);
@@ -5916,3 +5916,9 @@ body .image-icon-action:not(.review-close):not(.fullscreen-image-close):not(.ful
 .post-finding pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 15rem; overflow: auto; }
 .post-template-diff { max-height: 28rem; overflow: auto; }
 .post-template-diff .template-diff-table { min-width: 640px; }
+
+/* Style-guide activation acknowledgement; no transforms that move controls. */
+button:enabled:active, .button-link:active { filter: brightness(.92); }
+@media (forced-colors: active) {
+  button:enabled:active, .button-link:active { outline: 2px solid Highlight; }
+}
