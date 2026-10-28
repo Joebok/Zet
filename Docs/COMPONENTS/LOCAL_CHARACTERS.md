@@ -431,6 +431,8 @@ Paired review has independent navigation. Right arrows/keyboard keys move among 
 
 Main Minor Characters navigation saves edits and opens the complete list, including from an editor. Direct character links/history and Inventory handoffs remain. The All Minor Characters button and iteration history are removed. Board actions use `/api/minor-characters/{sid}/boards/{view}/{action}` and `/boards/{view}/slots/action`; mutations carry expected board revisions and services enforce eligibility. See [data model](../DATA_MODEL.md) and [prompts](PROMPTS.md). Disposable checks cover this workflow; S1-S3 are regression coverage, not artistic acceptance.
 
+Minor Characters status polling retries failed reads with a capped delay while work remains active. Mutations invalidate older in-flight polls; rejected mutations refresh the workspace while retaining the original error and never automatically repeat the write. Restart and generation controls also wait for pending slot actions. These browser recovery behaviors do not bypass server revision or active-work checks.
+
 ## Unified AI jobs (2026-10-16)
 Ranking, prompt observations and Minor Character analysis/review/render requests
 use the common AI job boundary. Generic execution moved to AI_Proxy;

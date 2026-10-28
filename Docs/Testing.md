@@ -1,5 +1,20 @@
 # Local testing
 
+## Minor Characters status recovery (2026-10-27)
+
+`npm.cmd run test:e2e` passed all four approved scenarios after the final controller
+changes (43.0s). A disposable Chromium check under ignored `test-results/` passed
+failed-poll retry/error clearing, rejected-mutation refresh without repeating the
+write, and delayed-poll fencing against newer mutations. The controller also
+passed these checks with local/session storage and IndexedDB access denied; no
+uncaught page errors occurred. JavaScript syntax and `git diff --check` passed.
+
+Production inspection found a workspace-lock timeout during autosave and an
+interrupted submission. The reported browser storage error was not reproduced
+or attributed. Prepared-response checks establish browser recovery behavior,
+not resolution of the underlying lock contention or live rendering. No permanent
+tests, dependencies, live AI requests or deployment were added.
+
 ## Minor Characters console errors (2026-10-27)
 
 `npm.cmd run test:e2e` passed all four approved scenarios (37.4s). A disposable

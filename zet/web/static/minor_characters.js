@@ -14,6 +14,7 @@
   const suggestions = new Map();
   let comparisonId = "";
   const slotPending = new Set();
+  let pollFailures = 0, pollError = "", pollVersion = 0;
   const element = (tag, text = "", cls = "") => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
   const button = (text, action, run = act) => { const b = element("button", text); b.type = "button"; b.addEventListener("click", () => run(action)); return b; };
   const url = value => value + (value.includes("?") ? "&" : "?") + "universe_id=" + encodeURIComponent(universe);
@@ -22,8 +23,20 @@
     FRONT_RIGHT_3_4:"Front right 3/4", LEFT_PROFILE:"Left profile", RIGHT_PROFILE:"Right profile"})[value] || value;
   async function api(path = "", method = "GET", body) {
     if (universe !== bridge.universe()) throw new Error("The active universe changed. Reopen Minor Characters.");
-    return bridge.fetchJson("/api/minor-characters" + path, {method, bindToPage:false,
-      ...(body === undefined ? {} : {headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})});
+    if (method !== "GET") { pollVersion++; clearTimeout(pollTimer); }
+    const id = character?.character_id, current = generation;
+    try {
+      return await bridge.fetchJson("/api/minor-characters" + path, {method, bindToPage:false,
+        ...(body === undefined ? {} : {headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})});
+    } catch (error) {
+      if (method !== "GET" && id && character?.character_id === id && current === generation) {
+        try {
+          const result = await api(`/${id}`);
+          if (character?.character_id === id && current === generation) show(result.character);
+        } catch { if (character?.character_id === id && current === generation) schedulePoll(); }
+      }
+      throw error;
+    }
   }
   async function act(operation) {
     if (pending) return;
@@ -91,7 +104,7 @@
   }
   async function open(id) {
     $("mc-review").close(); comparisonId = "";
-    await flush(); generation++; clearTimeout(pollTimer); patch = {}; feedback = ""; feedbackDirty = false; suggestions.clear();
+    await flush(); generation++; clearTimeout(pollTimer); pollFailures = 0; pollError = ""; patch = {}; feedback = ""; feedbackDirty = false; suggestions.clear();
     const result = await api(`/${id}`); character = result.character;
     references = character.references; referenceSignature = "";
     view = character.views.includes(character.active_view) ? character.active_view : "STYLE";
@@ -163,13 +176,31 @@
     }
     renderImages(); updateButtons();
     if (character.job.error) message(character.job.error, true);
+    schedulePoll();
+  }
+  function schedulePoll() {
     clearTimeout(pollTimer);
     if (awaitingResponse() && $("minor-characters-page").classList.contains("active")) {
-      const id = character.character_id, current = generation;
+      const id = character.character_id, current = generation, version = pollVersion;
       pollTimer = setTimeout(async () => {
-        try { const result = await api(`/${id}`); if (current === generation && character?.character_id === id) show(result.character); }
-        catch (error) { message(error.message, true); }
-      }, 1800);
+        const isCurrent = () => current === generation && version === pollVersion && character?.character_id === id
+          && universe === bridge.universe() && $("minor-characters-page").classList.contains("active");
+        if (!isCurrent()) return;
+        try {
+          const result = await api(`/${id}`);
+          if (!isCurrent()) return;
+          pollFailures = 0;
+          if (pollError && $("mc-message").textContent === pollError) message("");
+          pollError = "";
+          show(result.character);
+        } catch (error) {
+          if (!isCurrent()) return;
+          pollFailures++;
+          pollError = `Unable to refresh image status: ${error.message}. Retrying automatically…`;
+          message(pollError, true);
+          schedulePoll();
+        }
+      }, Math.min(1800 * 2 ** Math.min(pollFailures, 4), 15000));
     }
   }
   function choice() { return character?.candidates.find(c=>c.candidate_id===preview && c.view===view); }
@@ -186,7 +217,7 @@
   async function slotAction(action, slot, count = 1) {
     const id=character.character_id, target=view, current=generation, key=`${id}:${target}:${slot ?? "add"}`;
     if (slotPending.has(key)) return;
-    slotPending.add(key); renderImages();
+    slotPending.add(key); renderImages(); updateButtons();
     try {
       await flush();
       const result=await api(`/${id}/boards/${target}/slots/action`,"POST",{action,slot,count,revision:board().revision});
@@ -355,7 +386,7 @@
     renderReview();
   }
   function updateButtons() {
-    const busy = pending || character?.busy;
+    const busy = pending || slotPending.size>0 || character?.busy;
     const current=board();
     $("mc-generate").textContent=view==="STYLE" ? "Generate style alignment" : "Generate view alignment";
     $("mc-generate-help").textContent=view==="STYLE" ? "Establish style and character details without requiring an official view. Select an image before generating views." : "Uses only the selected style image and a short orientation prompt. A new alignment replaces this view's working board.";
