@@ -1,5 +1,22 @@
 # Local testing
 
+## Character pipeline bulk locks (2026-10-27)
+
+`npm.cmd run test:e2e` passed all four approved scenarios (40.1s). Disposable
+checks under ignored `test-results/bulk-locks/` exercised all five real adapters
+against temporary catalogs: selected-only publication, already-locked no-op,
+other-batch/out-of-view unlock, phase/pipeline/costume isolation, retained
+Inventory files, changed-selection rejection and partial-failure reporting.
+
+Two disposable Chromium journeys passed (23.7s), using prepared Assembly/Dressing
+responses and imported Body/Head/Head-Image Edit overrides. All five pages passed
+single-dialog lock/unlock/relock, cancellation without writes, disabled completed
+actions and retained publication checks; the three reference pipelines exercised
+two selected views per action. No page errors occurred. Initial disposable runs
+needed fixture/import/assertion corrections; the final focused run passed.
+Python/JavaScript syntax and `git diff --check` passed. No maintained tests,
+dependencies, live AI calls or production-library writes were added.
+
 ## UI compliance pass (2026-10-27)
 
 `npm.cmd run test:e2e` passed four approved scenarios (43.2s). Disposable

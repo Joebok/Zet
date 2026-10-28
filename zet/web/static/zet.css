@@ -673,6 +673,10 @@ main {
   display: none;
 }
 
+.local-pipeline-bulk-controls {
+  grid-column: 1 / -1;
+}
+
 .local-pipeline-lock-notice {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -5922,3 +5926,18 @@ button:enabled:active, .button-link:active { filter: brightness(.92); }
 @media (forced-colors: active) {
   button:enabled:active, .button-link:active { outline: 2px solid Highlight; }
 }
+
+/* Dashboard character overview */
+#local-overview-page .overview-group { margin: 24px 0; }
+#local-overview-page .overview-group h2 { font-size: 1.2rem; margin-bottom: 12px; }
+#local-overview-page .overview-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 16px; }
+#local-overview-page .overview-slot { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow-wrap: anywhere; }
+#local-overview-page .overview-slot h3 { margin: 0 0 12px; }
+#local-overview-page .overview-image,
+#local-overview-page .overview-placeholder { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: var(--surface-subtle); border-radius: 4px; }
+#local-overview-page .overview-placeholder { display: grid; place-items: center; text-align: center; color: var(--text-muted); }
+#local-overview-page .overview-state { min-height: 2.9em; color: var(--text-muted); font-size: 14px; }
+#local-overview-page .overview-outcome { min-height: 1.45em; margin: 8px 0 0; font-size: 14px; }
+#local-overview-page .error { color: var(--danger); }
+#local-overview-page .navigation-action { display: inline-flex; align-items: center; }
+#local-overview-page .button-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

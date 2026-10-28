@@ -28,7 +28,7 @@
   const state = { pipeline: "", generation: 0, run: null, runs: [], reviewCandidates: [], reviewIndex: -1,
     frontSourcePath: "", poll: null, previewGeneration: 0, sourcePreviewGeneration: 0, contextKey: "", compareOpposite: false,
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
-    runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false };
+    runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false, bulkActionPending: false };
   const restoreParams = new URLSearchParams(window.location.search);
 
   function contextKey() {
@@ -114,6 +114,9 @@
       case "review": return `${baseUrl()}/runs/${id}/candidates/${candidate}/review${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "retry": return `${baseUrl()}/runs/${id}/candidates/${candidate}/retry${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "lock": return `${baseUrl()}/runs/${id}/views/${encodedView}/lock${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "lock-all-preview":
+      case "lock-all":
+      case "unlock-all": return `${baseUrl()}/runs/${id}/${action}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "lock-preview": return `${baseUrl()}/runs/${id}/views/${encodedView}/lock-preview${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "unlock": return `${baseUrl()}/runs/${id}/views/${encodedView}/unlock${query()}`;
       case "proceed": return `${baseUrl()}/runs/${id}/views/FRONT/proceed${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -373,6 +376,18 @@
     const selected = run.selected_views || {};
     const qualifier = isCostume() ? String(run.costume || "").trim().toLowerCase()
       .replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") : "";
+    const assetKey = (view) => `${state.pipeline}${qualifier ? `:${qualifier}` : ""}:${view}`;
+    const controls = document.createElement("div");
+    controls.className = "button-row local-pipeline-bulk-controls";
+    const hasUnlockedSelection = Object.entries(selected).some(([view, id]) => {
+      const asset = run.local_assets?.[assetKey(view)];
+      return id && !(asset?.locked && asset.batch_id === run.run_id && asset.candidate_id === id);
+    });
+    const hasLocks = Object.entries(run.local_assets || {}).some(([key, asset]) =>
+      asset.locked && key === assetKey(asset.view));
+    addButton(controls, "Lock all", "lock-all", { disabled: state.bulkActionPending || !hasUnlockedSelection });
+    addButton(controls, "Unlock all", "unlock-all", { disabled: state.bulkActionPending || !hasLocks });
+    host.append(controls);
     const lockNotice = document.createElement("p");
     lockNotice.className = "local-pipeline-lock-notice";
     lockNotice.setAttribute("role", "status");
@@ -1627,6 +1642,38 @@
   async function handleAction(button) {
     const action = button.dataset.localAction;
     const view = button.dataset.view;
+    if (state.bulkActionPending) return;
+    if (action === "lock-all" || action === "unlock-all") {
+      const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation;
+      const current = () => state.run?.run_id === runId && state.pipeline === pipeline
+        && contextKey() === context && state.generation === generation;
+      state.bulkActionPending = true;
+      renderSelectedViews(state.run);
+      try {
+        let body;
+        let summary = `Unlock all locked images in this pipeline for ${state.run.character} / ${state.run.phase}${isCostume() ? ` / ${state.run.costume}` : ""}, including other batches? Published Inventory images will be retained.`;
+        if (action === "lock-all") {
+          const plan = await request(route("lock-all-preview", runId));
+          if (!current()) return;
+          if (!plan.views.length) { setStatus("All selected images are already locked."); return; }
+          body = { selected_views: plan.selected_views };
+          summary = `Lock all ${plan.views.length} selected images in this batch?\n\n${plan.views.join(", ")}`;
+          if (plan.changes?.length) summary += `\n\nPublish or replace these images, including required lineage:\n${plan.changes.map(item => `${item.pipeline} ${item.view} · ${item.batch_name || "selected batch"}${item.replacing_batch ? ` (currently ${item.replacing_batch})` : ""}`).join("\n")}`;
+        }
+        if (!window.confirm(summary) || !current()) return;
+        setStatus(action === "lock-all" ? "Locking selected images…" : "Unlocking pipeline images…");
+        const result = await request(route(action, runId), { method: "POST", body: body ? JSON.stringify(body) : undefined });
+        if (!current()) return;
+        await loadRun(runId);
+        if (!current()) return;
+        const failures = Object.entries(result.errors || {});
+        setStatus(`${result.completed_views.length} image(s) ${action === "lock-all" ? "locked" : "unlocked"}.${failures.length ? ` Failed: ${failures.map(([view, error]) => `${view}: ${error}`).join(" · ")}` : ""}`, failures.length > 0);
+      } finally {
+        state.bulkActionPending = false;
+        if (state.run) renderSelectedViews(state.run);
+      }
+      return;
+    }
     if (action?.startsWith("stage-")) button.closest(".local-stage-menu")?.removeAttribute("open");
     const candidateId = button.dataset.candidate || button.closest?.("[data-candidate]")?.dataset.candidate || "";
     if (action === "review") { openReview(candidateId); return; }

@@ -289,6 +289,8 @@ class LocalImagePipelineWorkflowService:
             return self.adapter.proceed(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.proceed(run_id)
         if name == "lock_view":
             return self.adapter.lock_selected_view(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.lock_selected_view(run_id, view)
+        if name in {"lock_all_preview", "lock_all", "unlock_all"}:
+            return self._bulk_asset_action(name, run_id, costume, payload)
         if name == "lock_preview":
             return self.adapter.lock_preview(run_id, view, costume)
         if name == "unlock_view":
@@ -301,6 +303,52 @@ class LocalImagePipelineWorkflowService:
             self.prompt_improvement.reset_after_rerender(run_id, {str(candidate.get("view") or "")}, costume)
             return self.prompt_improvement.detail(run_id, costume)
         raise LocalImageWorkflowError(f"Unsupported local image workflow action: {name}")
+
+    def _bulk_asset_action(self, name: str, run_id: str, costume: str,
+                           payload: dict[str, Any]) -> dict[str, Any]:
+        """Reuse per-view guards and report partial completion without extra prompts."""
+        from zet.services.workflow_storage import file_lock
+
+        run = self.prompt_improvement.detail(run_id, costume)
+        with file_lock(Path(run["root"]) / "state.lock"):
+            run = self.prompt_improvement.detail(run_id, costume)
+            store = self.adapter.asset_store
+            qualifier = self.adapter._qualifier(costume) if self.pipeline == "costume-dressing" else ""
+            assets = run.get("local_assets") or {}
+            selections = run.get("selected_views") or {}
+            if name == "lock_all" and payload.get("selected_views") != selections:
+                raise LocalImageWorkflowError("Selections changed. Review Lock all again.")
+            if name == "unlock_all":
+                views = [item["view"] for key, item in assets.items()
+                         if item.get("locked") and item.get("view")
+                         and key == store.key(self.pipeline, item["view"], qualifier)]
+            else:
+                views = []
+                for view in run.get("views") or []:
+                    candidate_id = selections.get(view)
+                    current = assets.get(store.key(self.pipeline, view, qualifier)) or {}
+                    if candidate_id and not (current.get("locked")
+                                             and current.get("batch_id") == run_id
+                                             and current.get("candidate_id") == candidate_id):
+                        views.append(view)
+            if name == "lock_all_preview":
+                changes = {}
+                if self.pipeline in {"character-assembly", "costume-dressing"}:
+                    for view in views:
+                        plan = self.action("lock_preview", run_id=run_id, view=view, costume=costume)
+                        for change in plan.get("changes") or []:
+                            changes[change["key"]] = change
+                return {"views": views, "selected_views": selections, "changes": list(changes.values())}
+            completed, errors = [], {}
+            for view in views:
+                try:
+                    self.action("unlock_view" if name == "unlock_all" else "lock_view",
+                                run_id=run_id, view=view, costume=costume,
+                                character=run["character"], phase=run["phase"])
+                    completed.append(view)
+                except (ValueError, OSError) as exc:
+                    errors[view] = str(exc)
+            return {"completed_views": completed, "errors": errors}
 
     def _present_run(self, run: dict[str, Any]) -> dict[str, Any]:
         """Return loaded workflow state in the same shape for detail and mutation routes."""

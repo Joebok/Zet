@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261026-template-editor">
+  <link rel="stylesheet" href="/static/zet.css?v=20261027-dashboard-overview">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
   <link rel="stylesheet" href="/static/narrative.css?v=20261019-responsive">
 </head>
@@ -71,10 +71,11 @@
   <nav class="tabs" aria-label="Dashboard sections">
     <select id="responsive-section-menu" class="responsive-section-menu" aria-label="Current workspace section"></select>
     <div id="character-navigation" class="workspace-navigation">
-      <button class="tab onboarding-tab" data-page="onboarding">Overview</button>
+      <button class="tab onboarding-tab" data-page="local-overview">Overview</button>
       <div class="toolbar-menu local-assets-menu">
         <button id="local-assets-button" class="tab workflow-tab" type="button" aria-expanded="false" aria-controls="local-assets-menu">Assets ▾</button>
         <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
+          <button class="tab workflow-tab" data-page="onboarding">Character Overview</button>
           <button class="tab workflow-tab" data-page="local-body-reference">Body-Reference</button>
           <button class="tab workflow-tab" data-page="local-head-image">Head-Image</button>
           <button class="tab workflow-tab" data-page="local-head-image-edit">Head-Image Edit</button>
@@ -117,7 +118,6 @@
           <button class="tab workflow-tab" data-page="ai-controls">AI Queue</button>
           <button class="tab workflow-tab" data-page="local-image-config">Config</button>
           <button class="tab workflow-tab" data-page="universes">Universes</button>
-          <button id="toolbar-local-character-overview" type="button">Local Character Overview</button>
           <button class="tab workflow-tab" data-page="pipeline-inspection">Pipeline Inspection</button>
           <button class="tab workflow-tab" data-page="pipeline-controls">Pipeline Controls</button>
           <button id="toolbar-harvest-ai" type="button">AI Harvest</button>
@@ -155,6 +155,12 @@
         <label>Canonical Art Style<textarea id="universe-settings-art-style" name="canonical_art_style" rows="5"></textarea></label>
         <div class="button-row compact"><button class="primary-action" type="submit">Save Settings</button><button id="universe-settings-select" type="button">Select Universe</button></div>
       </form>
+    </section>
+    <section id="local-overview-page" class="page">
+      <div class="page-header"><h1>Overview</h1></div>
+      <p class="muted">Locked Costume-Dressing front images by character, phase, and costume.</p>
+      <p id="local-overview-status" class="status-text" role="status" aria-live="polite">Loading…</p>
+      <div id="local-overview-groups"></div>
     </section>
     <section id="onboarding-page" class="page">
       <div class="page-title-row">
@@ -2140,7 +2146,8 @@ Add prompt language here.
   <script src="/static/storage_status.js?v=20261017"></script>
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
-  <script src="/static/zet.js?v=20261027-template-routing"></script>
+  <script src="/static/local_character_overview.js?v=20261027"></script>
+  <script src="/static/zet.js?v=20261027-dashboard-overview"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>
@@ -2148,7 +2155,7 @@ Add prompt language here.
   </dialog>
   <script src="/static/minor_characters.js?v=20261027-view-true-ups"></script>
   <script src="/static/local_template_improvement.js?v=20261027-template-routing"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261026-costume-adjustments"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261027-pipeline-bulk-locks"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
 
 </body>

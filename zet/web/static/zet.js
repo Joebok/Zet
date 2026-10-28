@@ -287,7 +287,6 @@ const headerFitmentPreview = document.querySelector("#header-fitment-preview");
 const toolbarRestartZet = document.querySelector("#toolbar-restart-zet");
 const toolbarSettingsButton = document.querySelector("#toolbar-settings-button");
 const toolbarSettingsMenu = document.querySelector("#toolbar-settings-menu");
-const toolbarLocalCharacterOverview = document.querySelector("#toolbar-local-character-overview");
 const toolbarHarvestAi = document.querySelector("#toolbar-harvest-ai");
 const helpMenuButton = document.querySelector("#help-menu-button");
 const helpMenu = document.querySelector("#help-menu");
@@ -3053,7 +3052,7 @@ function pageWorkspace(page) {
 
 function canonicalDashboardPage(page) {
   return ({
-    "local-overview": "onboarding", assets: "local-batch-status", manifest: "local-batch-status",
+    "local-character-overview": "local-overview", assets: "local-batch-status", manifest: "local-batch-status",
     "scene-appearances": "local-batch-status", expressions: "local-batch-status",
     "local-identity-keys": "identity-keys", "local-turnarounds": "turnarounds",
     "local-costumes": "costumes", "local-comparison": "phase-comparison",
@@ -3076,7 +3075,7 @@ function renderHeaderStoryContext() {
 }
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["onboarding", "Overview"], ["local-body-reference", "Body-Reference"],
+    ["local-overview", "Overview"], ["onboarding", "Character Overview"], ["local-body-reference", "Body-Reference"],
     ["local-head-image", "Head-Image"], ["local-head-image-edit", "Head-Image Edit"], ["local-character-assembly", "Character-Assembly"],
     ["local-costume-dressing", "Costume-Dressing"], ["identity-keys", "Identity Keys"],
     ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
@@ -4406,7 +4405,8 @@ async function activatePage(page, options = {}) {
   storyProductionMenu?.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "story");
   if (characterProductionMenu) characterProductionMenu.value = "";
   if (storyProductionMenu) storyProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "story" ? page : "";
-  document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding" || page === "local-overview");
+  document.querySelector("#local-overview-page").classList.toggle("active", page === "local-overview");
+  document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding");
   document.querySelector("#universes-page").classList.toggle("active", page === "universes");
   document.querySelector("#universe-create-page").classList.toggle("active", page === "universe-create");
   document.querySelector("#universe-settings-page").classList.toggle("active", page === "universe-settings");
@@ -4437,7 +4437,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#local-pipeline-page").classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
   document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview" && page !== "local-batch-status");
   document.querySelector("#local-batch-status-page").classList.toggle("active", page === "local-batch-status");
-  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
+  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page) || page === "onboarding");
   if (LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
       "local-body-reference": "Body-Reference",
@@ -4465,6 +4465,8 @@ async function activatePage(page, options = {}) {
   );
   if (LOCAL_ASSET_PAGES.has(page)) window.ZetLocalAssetPipeline?.activate(page);
   else window.ZetLocalAssetPipeline?.deactivate();
+  if (page === "local-overview") window.ZetLocalCharacterOverview?.activate({fetchJson, universeId: state.universeId});
+  else window.ZetLocalCharacterOverview?.deactivate();
   if (page === "local-batch-status") window.ZetLocalBatchStatus?.activate();
   else window.ZetLocalBatchStatus?.deactivate();
   renderResponsiveSectionMenu(page);
@@ -4618,7 +4620,7 @@ function setupTabs() {
           skipAutosave: true,
           universeId: button.dataset.universeId || "",
         }));
-        if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || button.dataset.page === "local-batch-status")) {
+        if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || ["onboarding", "local-batch-status"].includes(button.dataset.page))) {
           localAssetsMenu.hidden = true;
           localAssetsButton.setAttribute("aria-expanded", "false");
         }
@@ -12174,10 +12176,6 @@ characterRecommendedAction.addEventListener("click", () => runGuardedTransition(
   if (destination === "onboarding") characterSetupDetails.open = true;
 }));
 toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
-toolbarLocalCharacterOverview.addEventListener("click", () => {
-  window.location.assign("/local-character-overview");
-  closeToolbarSettingsMenu();
-});
 
 toolbarSettingsButton.addEventListener("click", (event) => {
   event.stopPropagation();

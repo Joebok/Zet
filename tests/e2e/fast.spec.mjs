@@ -27,7 +27,10 @@ test("library and narrative authoring save and reload through the dashboard", as
   await expect(page.locator("#workspace-character")).toHaveAttribute("aria-pressed", "true");
   const sections = page.locator("#responsive-section-menu");
   if (await sections.isVisible()) await sections.selectOption("onboarding");
-  else await page.getByRole("button", { name: "Overview" }).click();
+  else {
+    await page.locator("#local-assets-button").click();
+    await page.getByRole("button", { name: "Character Overview", exact: true }).click();
+  }
   await page.locator("#character-setup-details > summary").click();
   const character = page.locator("#onboarding-character");
   const phase = page.locator("#onboarding-phase");

@@ -1,5 +1,19 @@
 # Capability code map
 
+Dashboard Overview (2026-10-27): `local_character_overview.js` mounts the
+character/phase/costume grid through `zet.js` and `index.html`; the former standalone
+route redirects into the shell. Assets → Character Overview retains onboarding.
+`LocalCharacterOverviewService` owns edited-head FRONT sequencing, explicit Assembly
+source selection, compatible downstream batch reuse and legacy-job recovery.
+See [Dashboard UI](COMPONENTS/DASHBOARD_UI.md#dashboard-overview-2026-10-27) and
+[Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#overview-autogenerate-with-edited-heads-2026-10-27).
+
+Character pipeline bulk locks (2026-10-27): `LocalImagePipelineWorkflowService._bulk_asset_action`
+owns selected-view lock targeting, aggregate lineage previews, selection fencing,
+scoped unlock and per-view outcomes. The local router exposes run `lock-all-preview`,
+`lock-all` and `unlock-all`; `local_asset_pipeline.js` shares one-confirmation
+controls across all five pages. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#bulk-pipeline-locks-2026-10-27).
+
 Character/costume template editing (2026-10-26): `SourceEditorService` owns canonical selected-universe load/analyze/diff, disk revision checks and fenced atomic saves through `/api/edit-source/*`. `TemplateValidationService` reuses canonical upload checks, the shared unsaved section parser and concrete-view source maps for validation/applicability. `template_editor.js` owns native editing, view/search decoration and read-only current-master diff; `zet.js` connects character setup, costume Open and dirty/save navigation. Pipeline master edit actions use `window.ZetSourceEditor.open`, sharing canonical loading and dirty/save navigation. Config plain-source compatibility and batch proposal acceptance/promotion remain. S1/S2 are regression coverage; disposable service/browser checks cover the new editor. See [UI](COMPONENTS/DASHBOARD_UI.md#character-and-costume-template-editor-2026-10-26) and [prompts](COMPONENTS/PROMPTS.md#character-and-costume-source-editing-2026-10-26).
 
 AI Queue deletion (2026-10-26): `AIJobCleanupService.delete` commits the local

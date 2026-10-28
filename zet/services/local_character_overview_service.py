@@ -20,7 +20,7 @@ from zet.services.workflow_storage import file_lock
 from zet.services.atomic_file_service import write_json_atomic
 
 
-PIPELINE_ORDER = ("body-reference", "head-image", "character-assembly", "costume-dressing")
+PIPELINE_ORDER = ("body-reference", "head-image-edit", "character-assembly", "costume-dressing")
 ACTIVE_STATUSES = {"QUEUED", "RUNNING"}
 _JOBS = ThreadPoolExecutor(max_workers=16, thread_name_prefix="zet-local-autogenerate")
 _SUBMITTED: set[str] = set()
@@ -146,6 +146,7 @@ class LocalCharacterOverviewService:
             else:
                 result = {
                     "schema_version": 1,
+                    "head_pipeline": "head-image-edit",
                     "job_id": uuid4().hex,
                     "character": character,
                     "phase": phase,
@@ -180,7 +181,7 @@ class LocalCharacterOverviewService:
             try:
                 adapter = self._pipeline_service(job["pipeline"]).adapter
                 kwargs = ({"costume": job["costume"]}
-                          if job["pipeline"] in {"character-assembly", "costume-dressing"} else {})
+                          if job["pipeline"] == "costume-dressing" else {})
                 if adapter.detail(job["run_id"], **kwargs).get("status") in ACTIVE_RUN_STATUSES:
                     adapter.request_stop(job["run_id"], **kwargs)
             except Exception:
@@ -230,6 +231,18 @@ class LocalCharacterOverviewService:
     def _pipeline_service(self, pipeline: str) -> LocalImagePipelineWorkflowService:
         return LocalImagePipelineWorkflowService(self.app, self.project_root, pipeline)
 
+    def _compatible_head_source(self, pipeline: str, run: dict[str, Any]) -> bool:
+        if pipeline == "character-assembly":
+            return run.get("head_pipeline", "head-image") == "head-image-edit"
+        if pipeline == "costume-dressing":
+            source = (run.get("sources", {}).get("FRONT") or {}).get("character_assembly") or {}
+            batch_id = str(source.get("batch_id") or "")
+            if not batch_id:
+                return False
+            assembly = self._pipeline_service("character-assembly").adapter.detail(batch_id)
+            return assembly.get("head_pipeline", "head-image") == "head-image-edit"
+        return True
+
     def _front_selection(self, pipeline: str, character: str, phase: str, costume: str) -> dict[str, Any] | None:
         adapter = self._pipeline_service(pipeline).adapter
         kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
@@ -242,6 +255,8 @@ class LocalCharacterOverviewService:
             try:
                 run = adapter.detail(run_id, **kwargs) if pipeline in {"character-assembly", "costume-dressing"} else adapter.detail(run_id)
             except Exception:
+                continue
+            if not self._compatible_head_source(pipeline, run):
                 continue
             candidate_id = (run.get("selected_views") or {}).get("FRONT")
             candidate = next((item for item in run.get("candidates", []) if item.get("candidate_id") == candidate_id), None)
@@ -275,19 +290,26 @@ class LocalCharacterOverviewService:
 
     def _existing_batch(self, pipeline: str, character: str, phase: str, costume: str) -> dict[str, Any] | None:
         adapter = self._pipeline_service(pipeline).adapter
-        runs = adapter.list_runs(character, phase, costume) if pipeline in {"character-assembly", "costume-dressing"} else adapter.list_runs(character, phase)
+        runs = adapter.list_runs(character, phase, costume) if pipeline == "costume-dressing" else adapter.list_runs(character, phase)
         if not runs:
             return None
-        runs.sort(key=lambda item: (self._date_order(item.get("created_at") or ""), str(item.get("run_id") or "")))
-        run_id = str(runs[-1].get("run_id") or "")
-        kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
-        return adapter.detail(run_id, **kwargs) if pipeline in {"character-assembly", "costume-dressing"} else adapter.detail(run_id)
+        runs.sort(key=lambda item: (self._date_order(item.get("created_at") or ""), str(item.get("run_id") or "")), reverse=True)
+        kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
+        for summary in runs:
+            run = adapter.detail(str(summary["run_id"]), **kwargs)
+            if self._compatible_head_source(pipeline, run):
+                return run
+        return None
 
     def _create_batch(self, pipeline: str, character: str, phase: str, costume: str) -> dict[str, Any]:
         service = self._pipeline_service(pipeline)
         payload: dict[str, Any] = {"character": character, "phase": phase}
         if pipeline in {"character-assembly", "costume-dressing"}:
-            payload.update(costume=costume, front_only=True)
+            payload["front_only"] = True
+        if pipeline == "costume-dressing":
+            payload["costume"] = costume
+        if pipeline == "character-assembly":
+            payload["head_pipeline"] = "head-image-edit"
         run = service.adapter.create_run(payload)
         spec_path = Path(run["root"]) / "spec.json"
         if spec_path.is_file():
@@ -295,7 +317,7 @@ class LocalCharacterOverviewService:
             spec["created_by_autogenerate"] = True
             write_json_atomic(spec_path, spec)
         return service.adapter.detail(run["run_id"], **({"costume": costume}
-            if pipeline in {"character-assembly", "costume-dressing"} else {}))
+            if pipeline == "costume-dressing" else {}))
 
     def _rerank_front(self, adapter: Any, pipeline: str, run: dict[str, Any], costume: str) -> dict[str, Any]:
         run_id = str(run["run_id"])
@@ -307,13 +329,13 @@ class LocalCharacterOverviewService:
             adapter._save_state(run_id, state)
             return adapter.rank_view(run_id, "FRONT")
         adapter._write(state_path, state)
-        return adapter.rank_view(run_id, "FRONT", costume) if pipeline in {"character-assembly", "costume-dressing"} else adapter.rank_view(run_id, "FRONT")
+        return adapter.rank_view(run_id, "FRONT", costume) if pipeline == "costume-dressing" else adapter.rank_view(run_id, "FRONT")
 
     def _execute_front(self, pipeline: str, run_id: str, costume: str) -> None:
         service = self._pipeline_service(pipeline)
         adapter = service.adapter
         if pipeline in {"character-assembly", "costume-dressing"}:
-            adapter.execute_run(run_id, views={"FRONT"}, costume=costume)
+            adapter.execute_run(run_id, views={"FRONT"}, costume=costume if pipeline == "costume-dressing" else "")
         elif pipeline in {"head-image", "head-image-edit"}:
             adapter.execute_run(run_id, views={"FRONT"})
         else:
@@ -321,7 +343,7 @@ class LocalCharacterOverviewService:
 
     def _wait_for_front(self, pipeline: str, run_id: str, costume: str, path: Path, job_id: str) -> dict[str, Any]:
         adapter = self._pipeline_service(pipeline).adapter
-        kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
+        kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
         deadline = time.monotonic() + 1860
         active = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "WAITING_FOR_ANALYSIS"}
         while True:
@@ -355,10 +377,18 @@ class LocalCharacterOverviewService:
         locked = self.store.locked_assets(character, phase, pipeline=pipeline, qualifier=qualifier)
         existing_lock = next((item for item in locked if item.get("view") == "FRONT"), None)
         if existing_lock:
+            if pipeline == "character-assembly" and not any(
+                dependency.get("key") == self.store.key("Head-Image-Edit", "FRONT")
+                for dependency in existing_lock.get("dependencies", [])
+            ):
+                raise LocalCharacterOverviewError(
+                    "The locked Assembly FRONT uses a legacy head source. Unlock it in Character-Assembly "
+                    "before autogenerating with Head-Image Edit."
+                )
             return existing_lock
         selected = self._front_selection(pipeline, character, phase, costume)
         adapter = self._pipeline_service(pipeline).adapter
-        kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
+        kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
         if selected:
             run = adapter.detail(selected["run_id"], **kwargs) if pipeline in {"character-assembly", "costume-dressing"} else adapter.detail(selected["run_id"])
             if run.get("character_progression") and (pipeline != "costume-dressing" or not run["character_progression"].get("accepted_revision_id")):
@@ -369,8 +399,8 @@ class LocalCharacterOverviewService:
                 elif pipeline in {"head-image", "head-image-edit"}:
                     adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], autogenerate=True)
                 else:
-                    adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], costume, autogenerate=True)
-            lock_kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
+                    adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], costume if pipeline == "costume-dressing" else "", autogenerate=True)
+            lock_kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
             try:
                 return adapter.lock_selected_view(selected["run_id"], "FRONT", **lock_kwargs)
             except Exception:
@@ -428,8 +458,8 @@ class LocalCharacterOverviewService:
         elif pipeline in {"head-image", "head-image-edit"}:
             adapter.select_view(run_id, "FRONT", candidate_id, autogenerate=True)
         else:
-            adapter.select_view(run_id, "FRONT", candidate_id, costume, autogenerate=True)
-        lock_kwargs = {"costume": costume} if pipeline in {"character-assembly", "costume-dressing"} else {}
+            adapter.select_view(run_id, "FRONT", candidate_id, costume if pipeline == "costume-dressing" else "", autogenerate=True)
+        lock_kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
         return adapter.lock_selected_view(run_id, "FRONT", **lock_kwargs)
 
     def _run_job(self, path: Path, job_id: str) -> None:
@@ -441,6 +471,11 @@ class LocalCharacterOverviewService:
                 if self._locked_dressing(job["character"], job["phase"], job["costume"]):
                     self._update(path, job_id, status="COMPLETE", pipeline="costume-dressing", message="Locked Costume-Dressing FRONT image is ready.", error="")
                     return
+                if job.get("head_pipeline") != "head-image-edit" or job.get("pipeline") == "head-image":
+                    # Recheck existing locks in order; never resume a legacy Assembly by accident.
+                    self._cancel_run_if_owned(job)
+                    job = self._update(path, job_id, head_pipeline="head-image-edit",
+                                       pipeline="body-reference", run_id="", owns_run=False)
                 pipeline = str(job.get("pipeline") or "body-reference")
                 self._update(path, job_id, status="RUNNING", message=f"Checking {pipeline} FRONT image…")
                 try:

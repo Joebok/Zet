@@ -1,5 +1,40 @@
 # Local character assets
 
+## Overview autogenerate with edited heads (2026-10-27)
+
+Dashboard Overview uses `LocalCharacterOverviewService` to sequence FRONT through
+Body-Reference, Head-Image Edit, Character-Assembly and Costume-Dressing. New jobs
+record `head_pipeline=head-image-edit`; recovered legacy jobs recheck the sequence
+with that source. Owned legacy work uses the existing cancellation fences before
+switching. Assembly creation explicitly freezes the edited head pipeline, and
+batch reuse excludes Assembly/Dressing runs with legacy head ancestry. Only
+Dressing is queried with a costume; Assembly is phase-scoped.
+
+Existing locked Dressing images remain visible and complete. A legacy Assembly
+FRONT lock is preserved and generation reports that it must be unlocked in
+Character-Assembly before using edited heads. Head-Image Edit authoring validation
+and human prompt/selection pauses remain in force; Autogenerate does not approve
+these steps automatically. Disposable prepared checks verify actual batch creation,
+edited Assembly source snapshots, compatible Dressing reuse, legacy lock protection
+and new/recovered sequencing. They do not establish live model or render quality.
+
+## Bulk pipeline locks (2026-10-27)
+
+The Selected views area on Body-Reference, Head-Image, Head-Image Edit,
+Character-Assembly and Costume-Dressing offers **Lock all** and **Unlock all**.
+Lock all publishes the open batch's selected views, skipping selections already
+locked by that batch. Its single confirmation includes required lineage changes
+for Assembly/Dressing. Unlock all clears every recorded lock for the current
+character/phase/pipeline (and current costume for Dressing), including other
+batches and views outside the open batch. Published Inventory images are retained.
+
+`LocalImagePipelineWorkflowService` owns bulk targeting, aggregate lock previews,
+selection-change fencing and per-view outcomes through the existing adapter
+guards. The action retains completed operations if another view fails, and the
+dashboard reports the failed views and reasons. The shared controller prevents
+duplicate bulk submissions and refreshes selections after completion. No data
+format changes are required.
+
 ## Editing character and costume masters (2026-10-26)
 
 Character setup exposes **Edit character template**; Costumes retains its **Open** action. Both open the complete canonical file in Template Editor, with view/search highlighting, a current-master diff and validation before saving. Every dimmed line remains editable. Saving a master does not replace existing batches' accepted template versions or frozen inputs. Batch proposals and post-render adjustments retain their existing trial/acceptance/promotion boundaries. [Dashboard UI](DASHBOARD_UI.md#character-and-costume-template-editor-2026-10-26) owns the controls; [Prompts](PROMPTS.md#character-and-costume-source-editing-2026-10-26) owns validation.

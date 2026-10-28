@@ -1282,9 +1282,12 @@ def _create_available_app(
     def local_costume_dressing_page() -> RedirectResponse:
         return RedirectResponse("/?page=local-costume-dressing", status_code=307)
 
-    @app.get("/local-character-overview", response_class=HTMLResponse)
-    def local_character_overview_page() -> str:
-        return render_task_capture_page(PACKAGE_ROOT / "templates" / "local_character_overview.html")
+    @app.get("/local-character-overview")
+    def local_character_overview_page(request: Request) -> RedirectResponse:
+        params = dict(request.query_params)
+        params["page"] = "local-overview"
+        from urllib.parse import urlencode
+        return RedirectResponse("/?" + urlencode(params), status_code=307)
 
     @app.get("/api/local/character-overview")
     def local_character_overview() -> dict[str, Any]:

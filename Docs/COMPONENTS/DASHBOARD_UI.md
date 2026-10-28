@@ -5,6 +5,23 @@ standards, including button/glyph roles, card anatomy, review dialogs, immediate
 action acknowledgement, and feedback beside its initiating action. Adoption is
 partial; this component document records implemented behavior and verification limits.
 
+## Dashboard Overview (2026-10-27)
+
+The Character Development **Overview** button mounts the character/phase/costume
+grid in the shared dashboard shell. **Assets → Character Overview**, above
+Body-Reference, retains the existing character setup page (`page=onboarding`).
+The compact section selector exposes both destinations. The former standalone
+`/local-character-overview` URL redirects to `/?page=local-overview`, retaining
+query context. Its template and header links are retired.
+
+`local_character_overview.js` owns scoped card rendering, universe-bound requests
+and image URLs, per-card generation/stop feedback, duplicate submission fencing,
+and polling only while mounted. Unchanged snapshots retain focus; late responses
+cannot update another activation. Cards have no Create task button; the dashboard
+task control remains available. `zet.css` owns the responsive grid and image wells.
+Disposable Chromium checks cover desktop/390px navigation, action feedback,
+request universe and the redirect; no physical-device or live-render check was run.
+
 The dashboard uses the existing palette in [zet.css](../../zet/web/static/zet.css).
 The [2026-10-27 compliance register](../UI_COMPLIANCE_REVIEW.md) records current
 page reachability, bounded alignment changes and unverified states. Local Character

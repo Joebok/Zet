@@ -345,6 +345,18 @@ def create_local_character_asset_pipeline_router(
             instance = service(_pipeline)
             return call(lambda: instance.action("reevaluate", run_id=run_id, view=view.strip(), costume=costume if _pipeline == "costume-dressing" else ""))
 
+        @router.get(f"{prefix}/runs/{{run_id}}/lock-all-preview")
+        def lock_all_preview(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "lock_all_preview", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/lock-all")
+        def lock_all(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "lock_all", run_id=run_id, payload=payload, costume=costume if _pipeline == "costume-dressing" else ""))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/unlock-all")
+        def unlock_all(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "unlock_all", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""))
+
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/lock")
         def lock(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "lock_view", run_id=run_id, view=view, costume=costume if _pipeline == "costume-dressing" else ""))
