@@ -914,7 +914,7 @@ listen(host,'click',event=>{
     return;
   }
   if (button.id === 'new-story-button') {
-    host.querySelector('#new-story').reset();
+    host.querySelector('#new-narrative-story').reset();
     host.querySelector('#story-dialog').showModal(); return;
   }
   if (button.matches('[data-navigate]') || button.id === 'narrative-home') {
