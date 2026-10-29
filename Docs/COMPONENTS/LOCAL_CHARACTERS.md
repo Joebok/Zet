@@ -231,6 +231,26 @@ responses carry the same presented run fields as detail, allowing the page to me
 them directly without another detail request. Candidate images use the focused
 resolver above; reference previews keep URLs stable for their saved content identity.
 
+### Costume-Dressing per-view readiness feedback (2026-10-28)
+
+The batch view controls display Dressing's saved mode-specific `mode_reasons`,
+prerequisite `stage_reason`, and availability of the selected reference beside
+the affected view. A changed local mode/reference is preserved across polling and
+marked as needing save before its readiness is presented. Saving refreshes that
+view projection; submitted retries retain their frozen inputs. This is browser
+presentation of the existing `CostumeRenderModeService` contract and does not
+change render eligibility.
+
+### Head Edit Refine prompt context (2026-10-28)
+
+New Head-Image Edit refinement sessions retain the selected candidate's compiled
+prompt, SHA-256, view/candidate identity and template revision as `review_context`.
+An analysis copies that snapshot into its request record and includes the frozen
+prompt in the advisory task. Older sessions without a retained prompt state that
+authored criteria are unavailable instead of reading a potentially newer master.
+This is prompt provenance, not proof that an advisory or resulting image is
+artistically correct. See the [active remediation plan](../../plans/active/console-error-remediation.md).
+
 Detail presentation uses the loaded run's progression and reference recipes;
 Body detail carries `character_progression` from `state.json` into that shared
 projection when the field exists; legacy unstaged Body batches retain their

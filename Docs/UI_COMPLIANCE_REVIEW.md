@@ -7,6 +7,12 @@ Implementation plan: [UI alignment](../plans/active/ui-style-guide-compliance.md
 
 This is a bounded alignment pass, not certification of every interaction. The isolated fast fixture captured 26 destinations at 1920×911, 1133×610, 1133×560, 1024×640 and 390×844. All captures reported zero horizontal overflow; Pipeline Controls activation failed at every size. A disposable DOM audit at four requested sizes found no visible unnamed buttons in the active dashboard sections. This check is not a complete accessible-name, contrast or keyboard audit.
 
+The 2026-10-28 console-remediation follow-up has begun. Costume-Dressing now
+renders per-view saved mode/prerequisite/reference readiness and preserves
+unsaved settings through polling. This is source-level implementation evidence;
+the populated mode/readiness journey, full-page captures and interaction checklist
+remain pending in the [active plan](../plans/active/console-error-remediation.md).
+
 Evidence is under ignored `test-results/ui-compliance-before/` (baseline capture metadata/screenshots) and `test-results/ui-compliance/` (disposable DOM audit and auxiliary captures). Captures are revision/dirty-state stamped. Baseline captures may overlap early local edits; they are not a pristine before/after comparison. The desktop contact sheet was inspected. Empty/prerequisite pages do not establish populated-state acceptance. Earlier responsive-plan evidence remains historical.
 
 Guide references below: §2 foundations; §3 controls; §4 local feedback; §5 cards; §6 dialogs; §7 forms/navigation. **Verified with exceptions** means the stated checks passed, with the listed limits; it does not mean the whole page complies. A blank finding is not permission for speculative cleanup.

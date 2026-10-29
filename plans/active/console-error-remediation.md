@@ -67,6 +67,51 @@ The deployed catalog may intentionally omit legacy files; making those errors si
 ## Status
 WP1–WP4 implemented locally. Original WP5 was unresolved at the first checkpoint. The live follow-up below captured normal-profile storage denial and five derived-index SQLite lock failures; precise duplicate-storage and competing-writer attribution remain open.
 
+## Remaining remediation execution plan (2026-10-28)
+
+Implementation requested by Joe on 2026-10-28 from the decision-complete plan in the task conversation. Work serially; do not delegate. Preserve the 2026-10-28 captures and completed repairs. Keep disposable artifacts under ignored `test-results/live-remediation/remaining/`, with all fixture roots outside the normal library, queue, and index.
+
+No permanent tests, dependencies, deployment, service restart, production configuration change, or normal-library mutation. Reuse the approved S1–S4 baseline only. The bounded confirmation budget is two model analyses and one render, without quality retries; existing Zet→AI_Proxy entry points only. Physical iPad/Safari acceptance remains outside this plan.
+
+| Packet | Dependencies | Owner and acceptance | Status |
+|---|---|---|---|
+| R0 evidence/harness reconciliation | none | remediation plan and ignored disposable harness; current statuses/evidence/root safety recorded | in progress — current code/documentation inspected; no new disposable harness created |
+| R1 Dressing readiness | R0 | `local_asset_pipeline.js`, Dressing mode/slot projection; per-view saved readiness is actionable and unsaved settings are not misrepresented | implemented locally; disposable populated journey pending |
+| R2 frozen Head Edit Refine context | R0 | refinement service and template provenance; analysis freezes the selected candidate’s actual prompt/revision identity and exposes missing historical context | implemented locally; captured-request and historical-session checks pending |
+| R3 deterministic intent/framing | R0 | Minor review and Head Edit compiler; representative frozen-input checks cover superseded orientation, short head crop and long hair | pending |
+| R4 private index lifecycle | R0 | `LibraryIndexRepository`; replacement, wrong-library, supported initialization and unsupported-schema behavior verified on private databases | pending |
+| R5 shared review lifecycle | R0 | shared review controller/dialog; delayed action, correct image identity, focus/drafts and partial publication outcomes verified | pending |
+| U1 Minor Characters populated-page alignment | R3 | full Style Guide checklist and populated journeys; explicit findings/exceptions per viewport | pending |
+| U2a Body Reference populated-page alignment | R5 | same, including prompt acceptance/skip and both FRONT entry points | pending |
+| U2b Head Image populated-page alignment | R5 | same, including comparison/review and selector freshness | pending |
+| U2c Head Edit populated-page alignment | R2, R5 | same, including frozen prompt provenance and contextual Refine | pending |
+| U2d Assembly populated-page alignment | R5 | same, retaining FRONT prerequisite and distinct review behavior | pending |
+| U2e Dressing populated-page alignment | R1, R5 | same, with mixed readiness and each render mode | pending |
+| U3 Batches populated-page alignment | R0 | `local_batch_status.js`; populated refresh, failure, retry, selection and context change | pending |
+| U4 Config populated-page alignment | R0 | Config/`ProcessService`; settings feedback and launcher-child versus independent-instance display | pending |
+| U5 Refinement populated-page alignment | R2 | contextual private session; analysis/render failure recovery, drafts, retry and adoption feedback | pending |
+| D1 storage attribution | R0 | one normal-profile reload and clean-browser comparison; attribute entries or record a specific diagnostic limit | pending |
+| D2 remaining GET latency | R0 | at most three serial reads per endpoint across idle/naturally active windows; report server/host context | pending |
+| D3 index lock attribution | R4 | historical correlation and one bounded ordinary-use window; identify writer or propose narrowly scoped instrumentation | pending |
+| D4 acceptance/publication latency | R5 | recover prior evidence, then at most one naturally occurring action; stage attribution or retain unresolved | pending |
+| M1 Minor profile analysis | R3, U1 | one advisory; no correction | pending |
+| M2 Head Edit Refine analysis | R2, U2c, U5 | one advisory using frozen context; no render/adoption | pending |
+| M3 Head Edit framing render | R3, U2c | one new private short-bob/head-only candidate; no selection/publication/retry | pending |
+| Integration/documentation | all local packets | approved S1–S4, syntax/AST/whitespace checks, UI register and affected component docs, final diff and protected-state review | in progress — approved four-scenario E2E passed (38.2s); JS syntax and Python AST passed; component doc updated; final review pending |
+
+UI packets use full-page and scrolled viewport inspection at 1920×911, 1133×610, 1133×560, 1024×640 and 390×844; review dialogs also at 642×445. Check keyboard/focus, accessible names, coarse-pointer targets, measured contrast, zoom/reflow, reduced motion and visible pending/failed/recovered states. Capture screenshots as evidence; screenshots alone do not close interaction checks.
+
+Live investigation caps: D1 ten minutes; D2 fifteen minutes total; D3 fifteen minutes; D4 one naturally occurring action. M1–M3 allow exactly two analysis jobs and one render total, twenty minutes per job; no automatic follow-up AI jobs. Do not create activity to reproduce latency or locks. Do not change retries, SQLite settings, locking, caching or asynchronous behavior without demonstrated ownership and a separate evidence-backed repair packet.
+
+### Implementation checkpoint — 2026-10-28
+
+- R1 adds a per-view Dressing message from the saved mode reason, reference selection and existing prerequisites. Unsaved mode/reference changes persist through polling, disable Save when unchanged, and require Save before readiness is shown as current. Saved render-settings changes now participate in the shared run signature. No eligibility or API behavior changed.
+- R2 snapshots the selected Head Edit candidate's compiled prompt and its hash, candidate/view identity and template revision at refinement-session creation. Analysis copies this context into the persisted request and uses it; older sessions without the snapshot explicitly report unavailable authored criteria. No template/master lookup or migration was added.
+- Updated [Local Characters](../../Docs/COMPONENTS/LOCAL_CHARACTERS.md) and the [UI compliance register](../../Docs/UI_COMPLIANCE_REVIEW.md). `node --check zet/web/static/local_asset_pipeline.js`, Python 3.14.6 AST parse for the refinement service and `git diff --check` passed. The final `npm.cmd run test:e2e` passed all four approved scenarios (40.9s); the fixture emitted one nonfatal Windows file-sharing warning during Usage maintenance and exited 0. No live/model call or normal-library write was made.
+- Remaining packets have not been executed or accepted: focused R1/R2 browser/service checks, R3/R4/R5, all nine populated-page UI packets, D1–D4, M1–M3, UI compliance register update and final diff/protected-state review. No full-page or populated-state alignment claim is made.
+
+Update this checkpoint as packets complete. Record revision, disposable roots and evidence paths. Distinguish implementation, private verification, live observation, model/artistic assessment and unresolved evidence. Keep the plan active until requirements close or Joe accepts a documented exception.
+
 ## Implementation findings and impact
 - WP1: onboarding already reports `assets_exists` separately from readiness. `zet.js:loadAssets` skips known-absent legacy storage, clears stale selection and explains the local workflow alternative. `/api/assets` remains strict for actual callers; malformed/unreadable files still fail visibly.
 - WP2: local comparison rows deliberately have `asset_id=None`; `_assets_by_slot` sorted those IDs. `PhaseComparisonService` now preserves numeric legacy ordering and uses stable local source keys for missing IDs, including slot-order tie breaks.

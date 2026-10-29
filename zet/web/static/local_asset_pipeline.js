@@ -28,7 +28,8 @@
   const state = { pipeline: "", generation: 0, run: null, runs: [], reviewCandidates: [], reviewIndex: -1,
     frontSourcePath: "", poll: null, previewGeneration: 0, sourcePreviewGeneration: 0, contextKey: "", compareOpposite: false,
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
-    runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false, bulkActionPending: false };
+    runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false, bulkActionPending: false,
+    costumeSettingsDrafts: {} };
   const restoreParams = new URLSearchParams(window.location.search);
 
   function contextKey() {
@@ -549,9 +550,22 @@
     const currentId = state.reviewCandidates[state.reviewIndex]?.candidate_id;
     const decision = $("review-panel").querySelector("input[name='local-human-decision']:checked")?.value;
     const oldRun = state.run;
+    if (isCostume() && oldRun) for (const controls of $("views").querySelectorAll(".costume-render-settings")) {
+      const view = controls.querySelector("[data-render-mode]")?.dataset.renderMode;
+      if (!view) continue;
+      const oldSaved = oldRun.render_settings?.[view] || {};
+      const mode = controls.querySelector("[data-render-mode]").value;
+      const reference = controls.querySelector("[data-costume-reference]").value;
+      const changed = mode !== oldSaved.mode || (view !== "FRONT" && reference !== (oldSaved.costume_reference_view || ""));
+      const latestSaved = latest.render_settings?.[view] || {};
+      const savedNow = mode === latestSaved.mode
+        && (view === "FRONT" || reference === (latestSaved.costume_reference_view || ""));
+      if (changed && !savedNow) state.costumeSettingsDrafts[view] = {mode, costume_reference_view: reference, revision: latestSaved.revision};
+      else delete state.costumeSettingsDrafts[view];
+    }
     state.run = latest;
     window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id), frontRenderControl);
-    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_view, run?.slot_controls, run?.rankings, run?.evaluations, run?.selected_views, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
+    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_view, run?.slot_controls, run?.render_settings, run?.rankings, run?.evaluations, run?.selected_views, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
     const replacement = document.createElement("div");
     if (changed) renderViews(latest, replacement);
@@ -731,7 +745,8 @@
   }
 
   function costumeRenderControls(run, view) {
-    const settings = run.render_settings?.[view] || {}, section = document.createElement("div");
+    const saved = run.render_settings?.[view] || {}, settings = state.costumeSettingsDrafts[view] || saved;
+    const section = document.createElement("div");
     section.className = "costume-render-settings";
     const modeLabel = document.createElement("label"); modeLabel.textContent = "Render mode";
     const mode = document.createElement("select"); mode.dataset.renderMode = view;
@@ -746,16 +761,50 @@
       reference.add(new Option(`${sourceView}${run.selected_views?.[sourceView] ? " · selected" : " · image not selected"}`, sourceView));
     }
     reference.value = settings.costume_reference_view || "";
-    const sync = () => { reference.disabled = view === "FRONT" || mode.value === "doll-dressing-no-ref"; };
-    mode.addEventListener("change", sync); sync(); referenceLabel.append(reference);
+    const sync = () => {
+      reference.disabled = view === "FRONT" || mode.value === "doll-dressing-no-ref";
+      state.costumeSettingsDrafts[view] = {mode: mode.value, costume_reference_view: reference.value, revision: saved.revision};
+      const changed = mode.value !== saved.mode || (view !== "FRONT" && reference.value !== (saved.costume_reference_view || ""));
+      readiness.textContent = changed ? "Save these settings to check readiness for this view." : readinessText();
+      save.disabled = !changed;
+    };
+    const save = addButton(section, "Save render settings", "save-costume-render-settings", {view});
+    const readiness = document.createElement("p"); readiness.className = "action-message info";
+    const readinessText = () => {
+      const control = run.slot_controls?.[view] || {};
+      const reason = control.mode_reasons?.[settings.mode] || control.stage_reason || control.reason || "";
+      if (reason) return `${view}: ${reason}`;
+      const selectedReference = settings.costume_reference_view;
+      if (view !== "FRONT" && settings.mode !== "doll-dressing-no-ref" && selectedReference
+          && !run.selected_views?.[selectedReference]) {
+        return `${view}: Select an available, non-rejected ${selectedReference} image in this batch first.`;
+      }
+      if (view !== "FRONT" && settings.mode !== "doll-dressing-no-ref" && !selectedReference) {
+        return `${view}: Choose a different available view as the costume reference, then save settings.`;
+      }
+      return `${view}: Ready for this saved mode. Retry keeps its submitted prompt and images.`;
+    };
+    readiness.setAttribute("role", "status"); readiness.setAttribute("aria-live", "polite");
+    readiness.textContent = readinessText();
+    save.disabled = settings.mode === saved.mode
+      && (view === "FRONT" || settings.costume_reference_view === (saved.costume_reference_view || ""));
+    mode.addEventListener("change", sync); reference.addEventListener("change", sync);
+    referenceLabel.append(reference);
     section.append(modeLabel, referenceLabel);
-    addButton(section, "Save render settings", "save-costume-render-settings", {view});
-    const help = document.createElement("p"); help.className = "muted";
-    help.textContent = run.slot_controls?.[view]?.stage_reason || "Ready. Views run independently with their chosen mode inputs. Retry retains the submitted prompt and images.";
-    section.append(help); return section;
+    section.append(readiness); return section;
   }
 
   function renderViews(run, host = $("views")) {
+    if (isCostume()) for (const controls of host.querySelectorAll(".costume-render-settings")) {
+      const view = controls.querySelector("[data-render-mode]")?.dataset.renderMode;
+      if (!view) continue;
+      const saved = run.render_settings?.[view] || {};
+      const mode = controls.querySelector("[data-render-mode]").value;
+      const reference = controls.querySelector("[data-costume-reference]").value;
+      if (mode !== saved.mode || (view !== "FRONT" && reference !== (saved.costume_reference_view || ""))) {
+        state.costumeSettingsDrafts[view] = {mode, costume_reference_view: reference, revision: saved.revision};
+      }
+    }
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
     const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
     host.replaceChildren();
@@ -1071,12 +1120,12 @@
   async function loadRun(runId, generation = state.generation) {
     const requestId = ++state.runRequest;
     state.runState = runId ? "loading" : "absent";
-    if (!runId) { state.run = null; render(); return; }
+    if (!runId) { state.run = null; state.costumeSettingsDrafts = {}; render(); return; }
     try {
       const loaded = await request(route("detail", runId));
       if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
       const sameRun = state.run?.run_id === loaded.run_id;
-      if (sameRun) mergeLiveRun(loaded); else state.run = loaded;
+      if (sameRun) mergeLiveRun(loaded); else { state.run = loaded; state.costumeSettingsDrafts = {}; }
       syncRunOption(loaded);
       state.runState = "selected";
       state.polledRun = null;
@@ -1771,7 +1820,7 @@
         await request(`${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/views/${encodeURIComponent(view)}/render-settings?${params}`,
           {method: "PUT", body: JSON.stringify({mode: controls.querySelector("[data-render-mode]").value,
             costume_reference_view: controls.querySelector("[data-costume-reference]").value, expected_revision: settings.revision})});
-        await loadRun(state.run.run_id); setStatus("Rendering settings saved for future renders. Retry keeps its frozen inputs.");
+        await loadRun(state.run.run_id); delete state.costumeSettingsDrafts[view]; setStatus("Rendering settings saved for future renders. Retry keeps its frozen inputs.");
       } finally { button.disabled = false; }
       return;
     }

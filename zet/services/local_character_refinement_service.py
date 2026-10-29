@@ -107,10 +107,22 @@ class LocalCharacterRefinementService:
             source = Path(candidate["image_path"])
             target = directory / ("original" + source.suffix.lower())
             shutil.copy2(source, target)
+            render_input = candidate.get("render_input") or {}
+            frozen_prompt = str(render_input.get("prompt") or candidate.get("prompt") or "")
+            review_context = None
+            if pipeline == "head-image-edit" and frozen_prompt:
+                review_context = {
+                    "candidate_id": cid,
+                    "view": view,
+                    "prompt": frozen_prompt,
+                    "prompt_sha256": hashlib.sha256(frozen_prompt.encode("utf-8")).hexdigest(),
+                    "template_revision_id": str(render_input.get("template_revision_id") or ""),
+                }
             record = {"version": 1, "universe_id": self.app.universe_id, "pipeline": pipeline,
                 "run_id": run_id, "costume": costume, "session_id": sid, "view": view,
                 "base_candidate_id": cid, "adopted_candidate_id": "", "revision": 0,
                 "reference_inputs": deepcopy((candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs") or []),
+                "review_context": review_context,
                 "analysis": {}, "attempts": [{"id": "original", "status": "READY", "image_path": str(target),
                     "accepted_direction": [], "base_attempt_id": "", "image_sha256": hashlib.sha256(target.read_bytes()).hexdigest()}]}
             self._write(run, record)
@@ -157,7 +169,8 @@ class LocalCharacterRefinementService:
                 shutil.copy2(source, target)
                 inputs.append({"view": view, "candidate_id": cid, "image_path": str(target)})
             record["analysis"] = {"id": aid, "attempt_id": attempt_id, "model": model,
-                "comparison_views": views, "inputs": inputs, "image_path": str(image), "status": "RUNNING", "error": ""}
+                "comparison_views": views, "inputs": inputs, "image_path": str(image), "status": "RUNNING", "error": "",
+                "review_context": deepcopy(record.get("review_context")) if pipeline == "head-image-edit" else None}
             record["revision"] += 1
             self._write(run, record)
         self._submit(self._analysis_job, pipeline, run_id, costume, session_id, aid)
@@ -179,6 +192,12 @@ class LocalCharacterRefinementService:
                 task = (f"Review this {record['view']} head-only edit. Assess visible identity, requested view, head/ear framing, "
                         "authored hair shape and crop. Do not assess skirt, garment length, or body details outside the supplied image. "
                         "Report only evidence visible in the candidate and labeled comparison views.")
+                frozen = analysis.get("review_context")
+                if frozen and frozen.get("candidate_id") == record.get("base_candidate_id") and frozen.get("view") == record.get("view"):
+                    task += ("\nFrozen prompt used for the selected image (authored criteria and source identity):\n"
+                             + str(frozen.get("prompt") or ""))
+                else:
+                    task += "\nThe selected image has no retained frozen authored prompt; do not infer unavailable template criteria."
             elif pipeline == "character-assembly":
                 task = (f"Review this {record['view']} assembled character for visible head/body identity and proportion continuity "
                         "against the selected FRONT and labeled source views. Do not propose template changes.")
