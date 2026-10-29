@@ -624,3 +624,9 @@ variant descriptor projections; pre-commit catalog rollback; committed and
 uncommitted publication recovery; and duplicate continuation enqueue suppression.
 These checks used temporary directories/catalogs and prepared data. They did not
 exercise live model/render services or add permanent scenarios.
+
+## Narrative scene text (2026-10-29)
+
+The four approved fast scenarios passed (43.8s) after correcting an initially invalid browser event handler. Disposable Python checks under ignored `test-results/scene-text/` passed persistence/reload, stale save/confirmation rejection, formatting/shapes/overflow and original-byte preservation. A disposable Chromium journey passed manual candidate dragging, saved placement, keyboard resize, fullscreen entry/exit, tablet/narrow image bounds, confirmation, finished-image retrieval, lock and universe-style preview/save (9.5s including startup). Screenshot inspection covered the candidate editor and formatted bubble. No maintained tests, dependencies, live models or normal-library writes were added. Physical touch/pen input, fullscreen denial and exhaustive failure injection remain unverified.
+
+Final scene-text integration rerun: all four approved scenarios passed (42.2s); final disposable Chromium journey passed (7.8s including startup). Changed Python/JavaScript syntax and diff checks passed. See plans/completed/narrative-scene-text.md for earlier corrected failures and verification limits.

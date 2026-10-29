@@ -13,6 +13,7 @@ class NarrativeStory:
     id: str = field(default_factory=new_id)
     brief: str = ""
     scene_ids: list[str] = field(default_factory=list)
+    scene_text_style_override: dict = field(default_factory=dict)
     source_provenance: dict = field(default_factory=dict)
 
 
@@ -70,6 +71,8 @@ class NarrativeTarget:
     interview_model: str = ""
     prompt_model: str = ""
     prompt_provenance: dict = field(default_factory=dict)
+    scene_text: list[dict] = field(default_factory=list)
+    scene_text_revision: int = 0
     layers: list[dict] = field(default_factory=list)
     assembly_mode: str = "finish_composite"
     source_snapshot: dict = field(default_factory=dict)

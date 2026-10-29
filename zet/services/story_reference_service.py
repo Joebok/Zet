@@ -244,7 +244,8 @@ class StoryReferenceService:
             candidate = record.get("candidates", {}).get(candidate_id)
             if not candidate or not candidate.get("image"):
                 raise self.error_type("Narrative reference image is unavailable.")
-            path = (repository.folder(story, scene, target) / candidate["image"]).resolve()
+            from zet.services.narrative_scene_text_service import finished_path
+            path = finished_path(repository, story, scene, target, candidate_id).resolve()
             if not path.is_relative_to(repository.folder(story, scene, target)) or not path.is_file():
                 raise self.error_type("Narrative reference image is unavailable.")
             seen.add(match.group(0))

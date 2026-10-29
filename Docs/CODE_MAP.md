@@ -298,3 +298,7 @@ Assembly front-first workflow: `local_character_progression_service` owns the se
 ## LLM role and guidance ownership (2026-10-22)
 
 [llm_role_service.py](../zet/services/llm_role_service.py) owns the explicit role inventory, model resolution and instruction-module selection; [llm_skill_service.py](../zet/services/llm_skill_service.py) composes frozen guidance at FileProxyClient publication for both request formats/providers. PipelineControlService and Config render the registry. Domain producers supply purpose and downstream render intent. See [LLM roles](COMPONENTS/LLM_ROLES.md) for the inventory, affected interfaces and disposable verification; S1–S4 retain their existing purposes.
+
+## Narrative scene text (2026-10-29)
+
+`narrative_scene_text_service.py` owns drafts, confirmation and shared `finished_path`; `scene_text_style_service.py` owns inherited appearance/font validation; `scene_text_render_service.py` owns restricted markup and Pillow lettering. `scene_text.js`/`scene_text.css` own style dialogs and manual full-viewport placement. Narrative router delegates these actions; generation enforces confirmation for selection/locking; assembly snapshots freeze raw placement seeds. Narrative finished sources and StoryReferenceService resolve confirmed output for discovery/zines/references. S1/S3 remain baseline regressions; new contracts use disposable checks.

@@ -59,6 +59,9 @@ class NarrativeSceneService:
     def update_story(self, story: str, data: dict) -> dict:
         with self.repository.lock():
             record = self.repository.read(story)
+            if "scene_text_style_override" in data:
+                from zet.services.scene_text_style_service import validate_style
+                record["scene_text_style_override"] = validate_style(data["scene_text_style_override"], partial=True)
             self._patch(record, data, ("title", "brief"))
             return self.persist(record, story)
 
@@ -106,6 +109,7 @@ class NarrativeSceneService:
         return [{key: item[key] for key in ("id", "title", "kind", "selected_id")} for item in targets]
 
     def update_scene(self, story: str, scene: str, data: dict) -> dict:
+        if "scene_text_style" in data or "scene_text_style_override" in data: raise ValueError("Scene text appearance belongs to the universe or story.")
         with self.repository.lock():
             record = self.repository.read(story, scene)
             self._patch(record, data, SCENE_FIELDS)
@@ -178,6 +182,7 @@ class NarrativeSceneService:
             return record
 
     def update_target(self, story: str, scene: str, target: str, data: dict) -> dict:
+        if "scene_text_style" in data or "scene_text_style_override" in data: raise ValueError("Scene text appearance belongs to the universe or story.")
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
             previous_layers = record["layers"]
@@ -257,6 +262,10 @@ class NarrativeSceneService:
                       key: resolve_role_model(self.app.config, "narrative_interview" if key == "interview_model" else "narrative_prompt", record[key])
                       for key in ("interview_model", "prompt_model")}}
         if record["kind"] == "assembly":
+            for candidate_id, candidate in detail["candidates"].items():
+                if candidate.get("image") and (record.get("scene_text") or candidate.get("scene_text_final")):
+                    state = self.app.narrative_scene_text_service.state(story, scene, target, candidate_id)
+                    candidate["scene_text_pending"] = candidate.get("scene_text_final", {}).get("token") != state["token"]
             detail["assembly_sources"] = self.app.narrative_assembly_service.sources(story, scene)
             detail["source_groups"] = [{"title": layer["label"], "narrative": layer.get("narrative", ""),
                                         "role": layer["role"]} for layer in record["layers"] if layer["visible"]]
@@ -417,7 +426,8 @@ class NarrativeSceneService:
                     candidate = target.get("candidates", {}).get(target.get("selected_id"))
                     if target["kind"] != "assembly" or not candidate or not candidate.get("image"):
                         continue
-                    path = self.repository.folder(parent["id"], scene_id, target_id) / candidate["image"]
+                    from zet.services.narrative_scene_text_service import finished_path
+                    path = finished_path(self.repository, parent["id"], scene_id, target_id, candidate["id"])
                     if path.is_file():
                         result.append({"story_id": parent["id"], "scene_id": scene_id, "target_id": target_id,
                             "candidate_id": candidate["id"], "title": scene["title"], "image_path": str(path),

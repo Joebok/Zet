@@ -103,3 +103,5 @@ Link new ADRs here and from the owning component. A proposed decision or plan do
 [0036 - Long hair across Head and Assembly](0036-long-hair-head-and-assembly.md)
 records complete-hair framing where practical and Assembly completion to an
 explicitly authored body landmark, with frozen requests preserved.
+
+[0037 - Manual scene text](0037-manual-scene-text.md) records post-render lettering, inherited style and candidate confirmation.

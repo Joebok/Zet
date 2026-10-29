@@ -89,3 +89,7 @@ The shared request, continuation, model catalog and all-universe activity interf
 
 ## Unavailable storage
 Storage-dependent construction is deferred when configured resources are unavailable. The waiting dashboard and standalone harvester keep probing; normal services initialize after recovery. A backend recovery service owns startup and recurring reconciliation, with local OS coordination independent of the removable volume. See [storage recovery](COMPONENTS/STORAGE_RECOVERY.md).
+
+## Narrative lettering boundary (2026-10-29)
+
+Scene text is a local post-render stage owned by focused services, independent of AI job execution. The browser edits normalized placements and displays server-produced raster previews. Confirmation publishes a distinct immutable PNG and frozen snapshot; finished-image consumers share one resolver. See [Narrative](COMPONENTS/NARRATIVE.md#manual-scene-text-2026-10-29) and [ADR 0037](DECISIONS/0037-manual-scene-text.md).

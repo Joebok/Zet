@@ -1164,10 +1164,10 @@ def _create_available_app(
     @app.patch("/api/universes/{universe_id}")
     def update_universe(universe_id: str, data: dict = Body(...)) -> dict[str, Any]:
         try:
-            if "canonical_art_style" not in data:
+            if "canonical_art_style" not in data and "scene_text_style" not in data:
                 raise ValueError("canonical_art_style is required.")
             updated = app.state.zet_app.universe_service.update_settings(
-                universe_id, canonical_art_style=str(data.get("canonical_art_style") or "")
+                universe_id, canonical_art_style=data.get("canonical_art_style"), scene_text_style=data.get("scene_text_style")
             )
             return {"universe": public_universe(updated)}
         except Exception as exc:

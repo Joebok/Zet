@@ -225,6 +225,8 @@ class ZetApp:
         self.narrative_reference_service = NarrativeReferenceService(self.narrative_scene_service)
         from zet.services.narrative_assembly_service import NarrativeAssemblyService
         self.narrative_assembly_service = NarrativeAssemblyService(self.narrative_scene_service)
+        from zet.services.narrative_scene_text_service import NarrativeSceneTextService
+        self.narrative_scene_text_service = NarrativeSceneTextService(self.narrative_scene_service)
         self.narrative_generation_service = NarrativeGenerationService(self.narrative_scene_service)
         self.workspace_summary_service = WorkspaceSummaryService(
             character_onboarding_service,
@@ -1383,10 +1385,11 @@ class ZetApp:
         self,
         character: str,
         phase: str,
-        source_asset_id: int,
+        source_asset_id: int | None,
         label: str,
         crop_percent: float,
         identity_key_id: str | None = None,
+        source_local_key: str | None = None,
     ) -> IdentityKeyPreview:
         """Generate an identity key preview crop."""
         return self.identity_key_service.preview_identity_key(
@@ -1396,16 +1399,18 @@ class ZetApp:
             label,
             crop_percent,
             identity_key_id,
+            source_local_key,
         )
 
     def save_identity_key(
         self,
         character: str,
         phase: str,
-        source_asset_id: int,
+        source_asset_id: int | None,
         label: str,
         crop_percent: float,
         identity_key_id: str | None = None,
+        source_local_key: str | None = None,
     ):
         """Save or update an identity key crop."""
         return self.identity_key_service.save_identity_key(
@@ -1415,6 +1420,7 @@ class ZetApp:
             label,
             crop_percent,
             identity_key_id,
+            source_local_key,
         )
 
     def delete_identity_key(self, character: str, phase: str, identity_key_id: str):

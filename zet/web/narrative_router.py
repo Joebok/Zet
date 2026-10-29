@@ -65,6 +65,25 @@ def create_narrative_router(app_provider):
         return {"model": app.config.ai_narrative_scene_model, "slot_count": 8, "renderer": "Qwen Image 2.1",
                 "codex_models": [item["id"] for item in AIModelCatalogService(app.config.base_ai_queue_path, config=app.config).models(providers=["codex"])]}
 
+    @router.get("/scene-text-style")
+    def text_style(story: str = ""):
+        from zet.services.scene_text_style_service import effective_style, DEFAULTS, available_fonts
+        app = app_provider()
+        parent = author().repository.read(story) if story else {}
+        return {"fonts": available_fonts(), "effective": effective_style(app.config.base_library_path, parent), "defaults": DEFAULTS,
+                "overrides": parent.get("scene_text_style_override", {})}
+
+    @router.post("/scene-text-style/preview")
+    def text_style_preview(data: dict = Body(...)):
+        from zet.services.scene_text_style_service import validate_style
+        from zet.services.scene_text_render_service import render
+        from io import BytesIO
+        from base64 import b64encode
+        style = call(validate_style, data)
+        image, errors = call(render, (1216, 420), [{"id":"sample", "text":"Scene text with <b>bold</b> and <i>italic</i>.", "tail":"straight"}], {"sample":{"box":[.1,.1,.8,.65],"tip":[.7,.95]}}, style)
+        output=BytesIO();image.save(output,format="PNG")
+        return {"overlay":"data:image/png;base64,"+b64encode(output.getvalue()).decode(), "errors":errors}
+
     @router.get("/library")
     def library(q: str = Query("")):
         return call(author().library_options, q)
@@ -206,5 +225,22 @@ def create_narrative_router(app_provider):
     def candidate_image(story: str, scene: str, target: str, candidate: str, download: bool = Query(False)):
         path = call(generation().image, story, scene, target, candidate)
         return FileResponse(path, filename=path.name if download else None)
+
+    @router.get(target_path + "/scene-text")
+    def text_state(story: str, scene: str, target: str, candidate: str = ""):
+        return call(app_provider().narrative_scene_text_service.state, story, scene, target, candidate or None)
+
+    @router.post(target_path + "/scene-text/{operation}")
+    def text_action(story: str, scene: str, target: str, operation: str, data: dict = Body(...), candidate: str = ""):
+        service = app_provider().narrative_scene_text_service
+        if operation == "save": return call(service.save, story, scene, target, data, candidate or None)
+        if operation == "preview": return call(service.preview, story, scene, target, data, candidate or None)
+        if operation == "confirm" and candidate: return call(service.confirm, story, scene, target, candidate, data)
+        raise HTTPException(400, detail="Unknown scene text action.")
+
+    @router.get(target_path + "/candidates/{candidate}/finished-image")
+    def finished_image(story: str, scene: str, target: str, candidate: str):
+        from zet.services.narrative_scene_text_service import finished_path
+        return FileResponse(call(finished_path, author().repository, story, scene, target, candidate))
 
     return router

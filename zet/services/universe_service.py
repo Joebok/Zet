@@ -47,6 +47,7 @@ class UniverseService:
                     raise UniverseServiceError(f"Universe name is empty in {marker}")
                 return {"universe_id": universe_id, "name": name,
                         "canonical_art_style": str(data.get("canonical_art_style") or "").strip(),
+                        "scene_text_style": data.get("scene_text_style", {}),
                         "layout_version": int(data.get("layout_version", 1)), "root": path, "legacy": False}
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise UniverseServiceError(f"Cannot read universe descriptor {marker}: {exc}") from exc
@@ -160,7 +161,7 @@ class UniverseService:
         self.invalidate_cache()
         return self.get_universe(universe_id, refresh=True)
 
-    def update_settings(self, universe_id: str, *, canonical_art_style: str) -> dict[str, Any]:
+    def update_settings(self, universe_id: str, *, canonical_art_style: str = None, scene_text_style: dict = None) -> dict[str, Any]:
         universe = self.get_universe(universe_id)
         marker = Path(universe["root"]) / "universe.json"
         if not marker.is_file():
@@ -169,7 +170,11 @@ class UniverseService:
             data = json.loads(marker.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise UniverseServiceError(f"Cannot read universe descriptor {marker}: {exc}") from exc
-        data["canonical_art_style"] = str(canonical_art_style or "").strip()
+        if canonical_art_style is not None:
+            data["canonical_art_style"] = str(canonical_art_style or "").strip()
+        if scene_text_style is not None:
+            from zet.services.scene_text_style_service import validate_style
+            data["scene_text_style"] = validate_style(scene_text_style)
         write_json_atomic(marker, data)
         self.invalidate_cache()
         return self.get_universe(universe_id, refresh=True)

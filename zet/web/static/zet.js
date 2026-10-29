@@ -4586,7 +4586,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261020-image-cards');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261029-scene-text');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;
@@ -13061,6 +13061,10 @@ async function loadUniverseSettings(universeId) {
   const universe = payload.universe;
   state.universeSettingsId = universe.universe_id;
   state.savedUniverseArtStyle = universe.canonical_art_style || "";
+  let textStyleButton = document.querySelector('#universe-scene-text-style');
+  if (!textStyleButton) { textStyleButton=document.createElement('button');textStyleButton.id='universe-scene-text-style';textStyleButton.type='button';textStyleButton.textContent='Scene text style';document.querySelector('#universe-settings-form').append(textStyleButton); }
+  textStyleButton.onclick=()=>window.ZetSceneText.style({universe:universe.universe_id});
+
   universeSettingsArtStyle.value = state.savedUniverseArtStyle;
   document.querySelector("#universe-settings-title").textContent = `${universe.name} Settings`;
   document.querySelector("#universe-settings-select").hidden = universe.universe_id === state.universeId;

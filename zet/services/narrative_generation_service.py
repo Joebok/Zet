@@ -303,6 +303,10 @@ class NarrativeGenerationService:
             action = data.get("action")
             if action in {"select", "lock"} and not candidate["image"]:
                 raise ValueError("Wait for an image before selecting or locking it.")
+            if action in {"select", "lock"} and (record.get("scene_text") or candidate.get("scene_text_final")):
+                state = self.author.app.narrative_scene_text_service.state(story, scene, target, candidate_id)
+                if candidate.get("scene_text_final", {}).get("token") != state["token"]:
+                    raise ValueError("Confirm scene text on this image before selecting or locking.")
             if action == "select":
                 record["selected_id"] = candidate_id
             elif action == "lock":
@@ -329,6 +333,13 @@ class NarrativeGenerationService:
 
     def _remove_candidate(self, story, scene, target, record, candidate_id):
         candidate = record["candidates"].pop(candidate_id)
+        import shutil
+        lettering_root = (self.repository.folder(story, scene, target) / "lettering").resolve()
+        lettering = (lettering_root / candidate_id).resolve()
+        if lettering.parent != lettering_root:
+            raise ValueError("Invalid lettering artifact identity.")
+        if lettering.is_dir():
+            shutil.rmtree(lettering)
         if candidate["image"]:
             (self.repository.folder(story, scene, target) / candidate["image"]).unlink(missing_ok=True)
         record["slots"][candidate["slot"] - 1] = None

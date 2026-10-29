@@ -52,6 +52,7 @@ class NarrativeRepository:
                 element.setdefault("reference_key", "")
         else:
             record.setdefault("source_provenance", {})
+            record.setdefault("scene_text_style_override", {})
         return record
 
     def write(self, record, story: str, scene: str = "", target: str = "") -> dict:

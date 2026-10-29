@@ -217,3 +217,15 @@ may leave authored references unresolved; it does not silently remove them.
 ## Prompt-writing role (2026-10-22)
 
 Interview and prompt writing are separate model roles, preserving explicit per-target choices. Synthesis receives repo-managed Qwen guidance selected from planned downstream generation/edit/composite intent while keeping the existing scene/rendering response fields and deterministic reference binding. [LLM roles](LLM_ROLES.md) owns model inheritance, skill adapters and frozen request provenance.
+
+## Manual scene text (2026-10-29)
+
+Final assemblies have Scene text authoring and a full-viewport placement editor. Add/reorder entries, use restricted bold/italic markup, choose no tail or a straight tail, draw boxes and move/resize them. Tail tips stay in image space while the attachment can move around the bubble. Text uses a fixed effective size; overflow prevents confirmation. Full screen is optional; the viewport editor remains available without browser fullscreen.
+
+`NarrativeSceneTextService` owns revision-fenced drafts, candidate placements, preview and confirmation. `scene_text_render_service` uses Pillow for both previews and final PNGs. `scene_text_style_service` resolves universe settings and field-level story overrides; scenes/targets cannot override appearance. Installed approved font families must have all four faces. Universe Settings and the story editor expose style controls and previews.
+
+Raw placement seeds freeze with assembly snapshots but never enter AI image inputs. Candidate placement changes are independent. Confirm and select validates current text/style/source identity and saves a new finished PNG before atomically changing the target's pointer/selection. Original artwork remains unchanged. Locked candidates require unlock to replace lettering; direct select/lock cannot bypass confirmation. Draft edits retain the preceding finished output and show pending changes.
+
+The target `/scene-text` GET and `/scene-text/{save,preview,confirm}` POST actions take an optional candidate ID. `/candidates/{candidate}/image` retains artwork; `/finished-image` resolves the latest confirmed PNG, falling back to artwork for records with no confirmed revision. Story thumbnails, discovery, NARRATIVE references and zines use finished images. A missing confirmed PNG is an explicit error. Candidate deletion removes its owned lettering directory under the existing protection check.
+
+Disposable checks cover persistence, stale confirmation, formatting/shapes/overflow, original-byte preservation, a Chromium placement/confirmation/lock journey, keyboard resizing, viewport fitting and fullscreen exit. Physical touch/pen devices and browser-fullscreen denial remain unverified. See ADR 0037.

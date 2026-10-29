@@ -240,7 +240,7 @@ class NarrativeAssemblyService:
         if mode == "assemble_references":
             frozen = {layer["id"]: layer for layer in layers}
             references = [{**item, "path": str(folder / frozen[item["layer_id"]]["source_file"])} for item in manifest]
-        return {"folder": relative, "layers": layers, "assembly_mode": mode,
+        return {"scene_text_seed": {e["id"]: e.get("placement", {}) for e in detail.get("scene_text", [])}, "folder": relative, "layers": layers, "assembly_mode": mode,
                 "width": detail["width"], "height": detail["height"], "references": references,
                 "has_composite": has_composite}, references
 

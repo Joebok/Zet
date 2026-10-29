@@ -66,7 +66,7 @@ function base() {
   return value;
 }
 function imageUrl(id, target = route.target) {
-  return `/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${target}/candidates/${id}/image?universe_id=${encodeURIComponent(universe)}`;
+  return `/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${target}/candidates/${id}/finished-image?universe_id=${encodeURIComponent(universe)}`;
 }
 function assetUrl(id) { return `/api/narrative/library/${encodeURIComponent(id)}/image?universe_id=${encodeURIComponent(universe)}`; }
 function artifactUrl(suffix) { return `${base()}/${suffix}?universe_id=${encodeURIComponent(universe)}`; }
@@ -209,7 +209,7 @@ async function loadPageContent() {
         <div class="narrative-story-scenes">${story.scenes.map(scene => {
           const assembly = scene.final_assembly;
           const destination = {story:story.id,scene:scene.id,...(assembly ? {target:assembly.target_id} : {})};
-          const image = assembly ? `/api/narrative/stories/${story.id}/scenes/${scene.id}/targets/${assembly.target_id}/candidates/${assembly.candidate_id}/image?universe_id=${encodeURIComponent(universe)}` : '';
+          const image = assembly ? `/api/narrative/stories/${story.id}/scenes/${scene.id}/targets/${assembly.target_id}/candidates/${assembly.candidate_id}/finished-image?universe_id=${encodeURIComponent(universe)}` : '';
           return `<a class="narrative-story-scene" href="${esc(href(destination))}" data-navigate>
             ${assembly ? `<img class="narrative-story-thumbnail" src="${esc(image)}" alt="Selected final assembly for ${esc(scene.title)}" loading="lazy">` : `<span class="narrative-story-thumbnail narrative-story-placeholder" role="img" aria-label="No selected final assembly for ${esc(scene.title)}"></span>`}
             <span>${esc(scene.title)}</span></a>`;
@@ -218,10 +218,11 @@ async function loadPageContent() {
   } else if (!route.scene) {
     detail = await api(base());
     contextLabels.story = detail.title;
-    root.innerHTML = `<h1>${esc(detail.title)}</h1><section class="narrative-card">${label('title',detail.title,false)}${label('brief',detail.brief)}
+    root.innerHTML = `<h1>${esc(detail.title)}</h1><section class="narrative-card">${label('title',detail.title,false)}${label('brief',detail.brief)}<button type="button" id="scene-text-story-style">Scene text style</button>
       <div class="narrative-actions"><button data-action="save">Save story</button><button class="danger" data-action="delete">Delete story</button></div></section>
       <section class="narrative-card"><h2>New scene</h2><form id="new-narrative-scene" class="narrative-inline"><input aria-label="Scene title" name="title" required placeholder="Scene title"><button class="primary">Create scene</button></form></section>
       <div class="narrative-grid">${detail.scenes.map(scene => `<article class="narrative-card"><h2>${link(scene.title,{story:route.story,scene:scene.id})}</h2><p>${esc(scene.intent)}</p></article>`).join('')}</div>`;
+    host.querySelector('#scene-text-story-style')?.addEventListener('click',()=>window.ZetSceneText.style({universe,story:route.story}));
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{});
   } else if (!route.target) {
     const [loaded, story] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}`)]);
@@ -482,7 +483,7 @@ function renderTarget(targets) {
       ${label('framing',detail.framing,false)}<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
     ${sourcePanelHtml()}
-    ${assembly ? assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
+    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text">Edit text and raw placement</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
     <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input · Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
       <p class="narrative-muted">Style source: ${esc(detail.style_source || 'saved scene')}</p>
@@ -650,7 +651,7 @@ function updateLive() {
     const candidate = id ? detail.candidates[id] : null;
     return `<article class="narrative-slot ${id && id === detail.selected_id ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === detail.selected_id ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3>Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
       ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${candidate ? '' : 'Empty'}</div>`}
-      ${candidate ? `<p class="narrative-muted image-card-state">${esc(candidate.status.toLowerCase())}${id === detail.selected_id ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
+      ${candidate ? `<p class="narrative-muted image-card-state">${esc(candidate.status.toLowerCase())}${id === detail.selected_id ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
       ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
       <div class="narrative-actions narrative-review-actions"><button data-review="${id}" aria-label="Review slot ${index+1}">Review</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== detail.selected_id ? 'primary' : ''}" ${id === detail.selected_id ? 'disabled' : ''}>${id === detail.selected_id ? 'Selected' : 'Select'}</button>` : ''}
       ${!candidate.locked && id !== detail.selected_id ? `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regenerate'}</button>` : ''}
@@ -696,9 +697,9 @@ function renderImageReview() {
   const detailsScroll = sameCandidate ? panel.scrollTop : 0;
   panel.dataset.candidate = reviewCandidate;
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
-    <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}</p>
+    <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
-      <button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected || !candidate.image ? 'disabled' : ''}>Select</button>
+      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}">Edit scene text placement</button>` : ''}<button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected || !candidate.image ? 'disabled' : ''}>Select</button>
       <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>Regenerate</button>
       <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
       <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy || !candidate.image ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
@@ -948,6 +949,7 @@ listen(host,'click',event=>{
   if (button.id === 'remove-reference') {
     elementDraft.asset_id = ''; elementDraft.reference_key = ''; host.querySelector('#element-reference-label').textContent = 'Text only — no reference image'; return;
   }
+  if(button.dataset.sceneTextCandidate){void window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.sceneTextCandidate,done:async result=>{detail=result;updateLive();}}).catch(error=>status(error.message,true));return;}
   if (!['editElement','removeElement','deleteElement','candidate','renderSlot','retryJob','action','currentSelection','maskLayer','removeLayer'].some(key=>button.dataset[key])&&!['mask-apply','mask-reset'].includes(button.id)) return;
   action(async()=>{
     if (button.id==='mask-apply'||button.id==='mask-reset') {
@@ -970,7 +972,9 @@ listen(host,'click',event=>{
     } else if (button.dataset.deleteElement) {
       await api(`${base()}/elements/${button.dataset.deleteElement}`,'DELETE'); await loadPage();
     } else if (button.dataset.candidate) {
-      await save(); const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction});
+      await save();
+      if(detail.kind==='assembly' && (detail.scene_text?.length || detail.candidates[button.dataset.candidate]?.scene_text_final) && !(detail.candidates[button.dataset.candidate]?.locked && !detail.candidates[button.dataset.candidate]?.scene_text_pending) && button.dataset.candidateAction==='select'){await window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.candidate,done:async result=>{detail=result;updateLive();}});return;}
+      const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction});
       if (result) { detail=result; updateLive(); status('Updated'); }
     } else if (button.dataset.renderSlot) await start('render',1,Number(button.dataset.renderSlot));
     else if (button.dataset.retryJob) {
@@ -985,6 +989,7 @@ listen(host,'click',event=>{
           await api(base()+'/backdrop-source','POST',request);await loadPage();break;
         }
         case 'preview-crop': {await save();const image=host.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
+        case 'scene-text': await save(); await window.ZetSceneText.open({base:base(),universe,done:async()=>loadPage()});break;
         case 'create-assembly': {await save();const target=await api(base()+'/targets','POST',{title:'Final assembly',kind:'assembly'});await navigate({...route,target:target.id});break;}
         case 'add-layer': {
           await save();const source=detail.assembly_sources.find(item=>item.id===host.querySelector('#assembly-source').value);
