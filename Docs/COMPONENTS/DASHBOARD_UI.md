@@ -101,9 +101,12 @@ These source changes still require populated-state browser inspection at the
 captured compact viewport.
 
 The Batches summary uses candidate view/status data already available in adapter
-summaries to show running views; it does not load each full run detail. A failed
-refresh retains prior rows and labels them as the last known results. Three-second
-polling and its in-flight guard are unchanged.
+summaries to show running views; it does not load each full run detail. Refresh
+shows pending feedback while retaining populated rows. A failed refresh keeps rows
+from the same universe and labels them as the last successful results; a universe
+change clears old rows before loading. Three-second polling and its in-flight guard
+are unchanged. An isolated prepared browser check covered populated refresh and
+failure retention; populated keyboard and long-label behavior remain unverified.
 
 The Minor Characters list uses a responsive card grid with each character's name,
 locked FRONT image (or an empty-image placeholder), and Edit/Delete buttons.

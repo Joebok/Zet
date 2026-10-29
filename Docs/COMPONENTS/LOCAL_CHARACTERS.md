@@ -232,9 +232,11 @@ them directly without another detail request. Candidate images use the focused
 resolver above; reference previews keep URLs stable for their saved content identity.
 
 Detail presentation uses the loaded run's progression and reference recipes;
-slot prerequisites are computed once per view per response. Compiler reference
-resolution still reads persisted recipes. Path conversion reuses identical values
-within each document walk (see [data model](../DATA_MODEL.md)). A read-only profile
+Body detail carries `character_progression` from `state.json` into that shared
+projection when the field exists; legacy unstaged Body batches retain their
+existing Start path. Slot prerequisites are computed once per view per response.
+Compiler reference resolution still reads persisted recipes. Path conversion
+reuses identical values within each document walk (see [data model](../DATA_MODEL.md)). A read-only profile
 of the reported 64-candidate Assembly batch improved from 2.668s to 0.928s with an
 identical presented response; this measures service work, not browser click latency.
 The dashboard's startup asset filter preference also tolerates denied browser

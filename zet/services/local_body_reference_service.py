@@ -530,6 +530,8 @@ class LocalBodyReferenceService:
         value["front_anchor"] = state.get("front_anchor") or value.get("front_anchor")
         value["lineups"] = state.get("lineups") or value.get("lineups") or {}
         value["selected_views"] = state.get("selected_views") or value.get("selected_views") or {}
+        if state.get("character_progression"):
+            value["character_progression"] = state["character_progression"]
         value["rankings"] = state.get("rankings") or value.get("rankings") or {}
         value["view_reviews"] = state.get("view_reviews") or {}
         value["evaluations"] = state.get("evaluations") or value.get("evaluations") or {}

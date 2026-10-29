@@ -7,6 +7,7 @@
   let inFlight = false;
   let batches = [];
   let loadState = "loading";
+  let displayedUniverse = "";
   let selectedRun = new URLSearchParams(window.location.search).get("task_batch") || "";
 
   const pipelinePages = {
@@ -116,25 +117,54 @@
     }
   }
 
+  function discardOtherUniverseRows() {
+    const currentUniverse = document.querySelector("#universe-select").value;
+    if (!displayedUniverse || displayedUniverse === currentUniverse) return;
+    groupsHost.replaceChildren();
+    batches = [];
+    displayedUniverse = "";
+    loadState = "loading";
+  }
+
   async function refresh() {
     if (inFlight || !page.classList.contains("active") || document.hidden) return;
+    discardOtherUniverseRows();
+    const requestedUniverse = document.querySelector("#universe-select").value;
     inFlight = true;
-    loadState = "loading";
     refreshButton.disabled = true;
-    message.textContent = "Loading batch status…";
+    refreshButton.textContent = batches.length ? "Refreshing…" : "Loading…";
+    refreshButton.setAttribute("aria-busy", "true");
+    message.textContent = batches.length ? "Refreshing batch status. Current rows remain available…" : "Loading batch status…";
     try {
       const response = await fetch("/api/local/batch-status", { headers: { Accept: "application/json",
-        "X-Zet-Universe": document.querySelector("#universe-select").value } });
+        "X-Zet-Universe": requestedUniverse } });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || response.statusText || "Request failed");
-      if (page.classList.contains("active")) { loadState = "selected"; render(payload); }
+      if (page.classList.contains("active") && requestedUniverse === document.querySelector("#universe-select").value) {
+        loadState = "selected";
+        displayedUniverse = requestedUniverse;
+        render(payload);
+      }
     } catch (error) {
-      groupsHost.replaceChildren();
-      loadState = "unavailable";
-      message.textContent = `Could not load batch status: ${error.message}`;
+      if (requestedUniverse === document.querySelector("#universe-select").value) {
+        if (displayedUniverse === requestedUniverse && batches.length) {
+          loadState = "stale";
+          message.textContent = `Could not refresh batch status: ${error.message} Showing the last successful results. Refresh to try again.`;
+        } else {
+          groupsHost.replaceChildren();
+          batches = [];
+          displayedUniverse = "";
+          loadState = "unavailable";
+          message.textContent = `Could not load batch status: ${error.message}`;
+        }
+      }
     } finally {
       inFlight = false;
       refreshButton.disabled = false;
+      refreshButton.textContent = "Refresh";
+      refreshButton.removeAttribute("aria-busy");
+      if (page.classList.contains("active") && !document.hidden
+        && requestedUniverse !== document.querySelector("#universe-select").value) void refresh();
     }
   }
 
@@ -146,6 +176,7 @@
   function startPolling() {
     stopPolling();
     if (!page.classList.contains("active") || document.hidden) return;
+    discardOtherUniverseRows();
     void refresh();
     timer = window.setInterval(() => void refresh(), 3000);
   }
@@ -159,7 +190,7 @@
     taskContext() {
       if (!selectedRun) return { selections: {}, parameters: {} };
       const batch = batches.find((item) => item.run_id === selectedRun);
-      const selection = { state: loadState === "selected" ? batch ? "selected" : "unavailable" : loadState,
+      const selection = { state: loadState === "selected" || loadState === "stale" ? batch ? "selected" : "unavailable" : loadState,
         id: selectedRun, label: batch?.batch_name || selectedRun };
       const selections = { batch: { ...selection }, run: { ...selection } };
       const parameters = { task_batch: selectedRun };
