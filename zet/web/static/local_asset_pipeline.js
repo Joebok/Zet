@@ -273,11 +273,11 @@
         ? (run.progression.next_views.includes("FRONT") ? "Run front"
           : run.progression.next_views.length ? "Run remaining" : "All views rendered")
         : isCostume() ? (run.progression.next_views.length ? "Run ready views" : "No unrendered views ready") : run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
-      $("proceed").title = run.progression.reason || (run.progression.complete
+      $("proceed").title = run.progression.complete
         ? (isCostume()
           ? "All requested views are selected. Review each view’s saved mode and references before publication."
           : "All requested views are selected. Refinement and publication remain available.")
-        : state.pipeline === "character-assembly"
+        : run.progression.reason || (state.pipeline === "character-assembly"
           ? "Render FRONT first, select it, then run remaining views. Luna compares proportions and identity with the selected FRONT."
           : "Generate the next stage from your selected images");
       $("anchor-option").hidden = true;
