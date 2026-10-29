@@ -229,7 +229,7 @@ Inputs include character/phase, normalized requested views, costume qualifier wh
 2. Creation snapshots source material and records the run. Rendering queues work through the shared File Proxy; answer harvesting and view-specific evaluation progress persisted state.
 3. Rendered candidates are available for Luna ranking and human review immediately. Front-anchor/order requirements differ by pipeline; use the owning service rather than a universal view loop.
 4. Current ranking, human decisions, image validity, and selection determine eligibility. Selection and locking are separate operations; promotion may collect a source chain.
-5. Lock publication preserves approved image bytes/checksum and a stable logical reference. Available published locks feed identity keys, turnarounds, costumes, phase comparison and scene references.
+5. Lock publication preserves approved image bytes/checksum and a stable logical reference. Available published locks feed identity keys, turnarounds, costumes, phase comparison and scene references. Phase Comparison lists Head-Image-Edit when a locked edit exists in either selected phase and matches its views across those phases.
 
 The shared review page skips unchanged human decisions. Review, selection, and rank
 responses carry the same presented run fields as detail, allowing the page to merge
