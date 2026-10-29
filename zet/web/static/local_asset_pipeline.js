@@ -268,11 +268,13 @@
     if (run?.progression) {
       $("start").hidden = !resumable;
       $("proceed").hidden = false;
-      $("proceed").disabled = continuationDisabled(run);
+      $("proceed").disabled = continuationDisabled(run) || run.progression.complete;
       $("proceed").textContent = state.pipeline === "character-assembly"
-        ? (run.progression.next_views.includes("FRONT") ? "Run front"
+        ? (run.progression.complete ? "All views rendered" : run.progression.next_views.includes("FRONT") ? "Run front"
           : run.progression.next_views.length ? "Run remaining" : "All views rendered")
-        : isCostume() ? (run.progression.next_views.length ? "Run ready views" : "No unrendered views ready") : run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
+        : run.progression.complete ? "All views selected"
+          : isCostume() ? (run.progression.next_views.length ? "Run ready views" : "No unrendered views ready")
+            : run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
       $("proceed").title = run.progression.complete
         ? (isCostume()
           ? "All requested views are selected. Review each view’s saved mode and references before publication."

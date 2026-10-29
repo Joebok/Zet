@@ -5886,6 +5886,9 @@ body .image-icon-action:not(.review-close):not(.fullscreen-image-close):not(.ful
 @media (max-width: 760px) and (pointer: coarse) {
   .local-pipeline-review-layout { grid-template-rows: minmax(120px, .65fr) minmax(440px, 1fr); }
 }
+@media (max-height: 500px) and (max-width: 760px) {
+  .local-pipeline-review-layout { overflow-x: hidden; overflow-y: auto; }
+}
 .post-render-prompt { max-width: 1500px; margin: 0 auto; padding: 1.25rem; }
 .post-render-prompt > .control-panel, .post-render-prompt #post-views > .control-panel { margin: 1rem 0; }
 .post-render-prompt #post-views { display: grid; gap: 1rem; }

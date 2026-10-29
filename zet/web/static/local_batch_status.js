@@ -130,6 +130,7 @@
     if (inFlight || !page.classList.contains("active") || document.hidden) return;
     discardOtherUniverseRows();
     const requestedUniverse = document.querySelector("#universe-select").value;
+    const restoreRefreshFocus = document.activeElement === refreshButton;
     inFlight = true;
     refreshButton.disabled = true;
     refreshButton.textContent = batches.length ? "Refreshing…" : "Loading…";
@@ -163,6 +164,9 @@
       refreshButton.disabled = false;
       refreshButton.textContent = "Refresh";
       refreshButton.removeAttribute("aria-busy");
+      if (restoreRefreshFocus && page.classList.contains("active") && document.activeElement === document.body) {
+        refreshButton.focus({ preventScroll: true });
+      }
       if (page.classList.contains("active") && !document.hidden
         && requestedUniverse !== document.querySelector("#universe-select").value) void refresh();
     }
