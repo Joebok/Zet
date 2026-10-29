@@ -273,9 +273,13 @@
         ? (run.progression.next_views.includes("FRONT") ? "Run front"
           : run.progression.next_views.length ? "Run remaining" : "All views rendered")
         : isCostume() ? (run.progression.next_views.length ? "Run ready views" : "No unrendered views ready") : run.progression.next_views.length ? `Continue → ${run.progression.next_views.join(" + ")}` : "All stages open";
-      $("proceed").title = run.progression.reason || (state.pipeline === "character-assembly"
-        ? "Render FRONT first, select it, then run remaining views. Luna compares proportions and identity with the selected FRONT."
-        : "Generate the next stage from your selected images");
+      $("proceed").title = run.progression.reason || (run.progression.complete
+        ? (isCostume()
+          ? "All requested views are selected. Review each view’s saved mode and references before publication."
+          : "All requested views are selected. Refinement and publication remain available.")
+        : state.pipeline === "character-assembly"
+          ? "Render FRONT first, select it, then run remaining views. Luna compares proportions and identity with the selected FRONT."
+          : "Generate the next stage from your selected images");
       $("anchor-option").hidden = true;
     }
     const progression = $("progression");
@@ -296,7 +300,11 @@
       }
       if (isCostume()) label.textContent = run.progression.prompt_review_required
         ? "Analyze and accept governing prompts, then choose each view’s rendering mode and reference."
-        : run.progression.reason || "Run any view with available mode inputs, or use Run ready views for the remaining candidates.";
+        : run.progression.reason || (run.progression.complete
+          ? "All requested views are selected. Open a view to review its saved mode and references."
+          : run.progression.next_views.length
+            ? `Ready to run: ${run.progression.next_views.join(" + ")}. Review each view’s saved mode and references before running.`
+            : "No views are ready with the saved mode inputs. Open a view to see its prerequisite and next action.");
       progression.append(label);
       for (const warning of run.reference_warnings || []) {
         const note = document.createElement("p"); note.className = "muted";
