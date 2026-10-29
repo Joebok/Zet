@@ -218,8 +218,9 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         return json.loads(json.dumps({key: session[key] for key in self.INPUTS if key in session}))
 
     def update_character(self, sid, payload):
-        sid = self._canonical(sid)["session_id"]
-        rename_requested = "name" in payload
+        current = self._canonical(sid)
+        sid = current["session_id"]
+        rename_requested = "name" in payload and self.name_key(payload["name"]) != self.name_key(current["name"])
         with file_lock(self.root / "names.lock"):
             records = self._records()
             if rename_requested:

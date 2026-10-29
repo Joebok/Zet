@@ -1076,6 +1076,7 @@
       if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
       const sameRun = state.run?.run_id === loaded.run_id;
       if (sameRun) mergeLiveRun(loaded); else state.run = loaded;
+      syncRunOption(loaded);
       state.runState = "selected";
       state.polledRun = null;
       if (!sameRun) {
@@ -1091,6 +1092,18 @@
       state.runState = "unavailable";
       throw error;
     }
+  }
+
+  function syncRunOption(run) {
+    const option = [...$("runs").options].find(item => item.value === run.run_id);
+    if (!option) return;
+    const summary = state.runs.find(item => item.run_id === run.run_id) || {};
+    const label = statusLabels[run.status] || run.status;
+    const phaseChangeLabel = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules" : "";
+    const progressionLabel = !["character-assembly", "costume-dressing"].includes(state.pipeline) && run.character_progression
+      ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : "";
+    const countLabel = run.status === "COMPLETE" ? " · Complete" : run.status === "AWAITING_HUMAN_SELECTION" ? " · Awaiting selection" : "";
+    option.textContent = `${summary.batch_name || run.batch_name || run.run_id} · ${label}${phaseChangeLabel}${progressionLabel}${countLabel} · ${run.run_id}`;
   }
 
   async function pollForImages(runId, generation = state.generation) {

@@ -49,6 +49,9 @@ class LocalBatchStatusService:
 
     @staticmethod
     def _current_view(run: dict[str, Any]) -> str:
+        summary_views = run.get("current_views") or []
+        if summary_views:
+            return ", ".join(str(view) for view in summary_views)
         active_views = sorted({
             str(candidate.get("view") or "")
             for candidate in run.get("candidates") or []
@@ -78,14 +81,9 @@ class LocalBatchStatusService:
                     continue
 
                 costume = str(summary.get("costume") or "") if costume_pipeline else ""
-                current_view = ""
-                if group_status in {"RUNNING", "REEVALUATING", "STOPPING", "PREFLIGHT"}:
-                    try:
-                        run = adapter.detail(str(summary.get("run_id") or ""), **({"costume": costume} if costume_pipeline else {}))
-                        current_view = self._current_view(run)
-                    except Exception:
-                        # Keep the status row visible even if its live detail is unavailable.
-                        current_view = ""
+                current_view = self._current_view(summary) if group_status in {
+                    "RUNNING", "REEVALUATING", "STOPPING", "PREFLIGHT"
+                } else ""
 
                 groups[group_status].append({
                     "pipeline": pipeline,

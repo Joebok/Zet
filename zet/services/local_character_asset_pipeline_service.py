@@ -523,12 +523,15 @@ class LocalCharacterAssetPipelineService:
                     "candidates": list(merge_candidates(spec, state).values()),
                 }):
                     status = "COMPLETE"
+                candidates = merge_candidates(spec, state)
+                current_views = sorted({str(item.get("view") or "") for item in candidates.values()
+                                        if item.get("status") == "RUNNING" and item.get("view")})
                 result.append({
                     "character_progression": state.get("character_progression"),
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
                     "costume": spec.get("costume", ""), "created_at": spec.get("created_at", ""),
-                    "status": status, "candidate_count": len(merge_candidates(spec, state)),
+                    "status": status, "candidate_count": len(candidates), "current_views": current_views,
                     "selected_views": state.get("selected_views") or {},
                 })
             except (OSError, LocalCharacterAssetPipelineError, ValueError):

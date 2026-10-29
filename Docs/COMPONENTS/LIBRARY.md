@@ -13,6 +13,12 @@ This component owns library service interactions. [DATA_MODEL](../DATA_MODEL.md)
 - [ImageCatalogService](../../zet/services/image_catalog_service.py) and [ImageCatalogRepository](../../zet/repositories/image_catalog_repository.py): a separate record-oriented catalog combining managed metadata and existing pipeline/story images. It remains wired into app/story reference services; entity SQLite has not replaced every catalog consumer.
 - [LibraryIndexService](../../zet/services/library_index_service.py)/`LibraryIndexReconciler` and [LibraryIndexRepository](../../zet/repositories/library_index_repository.py): derived local generations for dashboard paging, source payload reuse, errors, work/history, and compilation dependency fingerprints. `ZetApp._indexed_list_rows` supplies additional list rows; record catalog writes request a coalesced background refresh.
 
+`LibraryIndexRepository._run` validates the current schema/library metadata with
+read-only queries before ordinary access. It runs schema creation/upgrades only
+when metadata is absent or outdated; the index path remains a per-library derived
+cache. This reduces avoidable writes during summary reads without changing
+reconciliation transactions or the authoritative entity catalog.
+
 ## Inputs, outputs, and flow
 
 Configuration selects a library container; a universe descriptor binds the creative root. Imports/publications validate image bytes and store image metadata/relationships. Logical references provide durable consumer bindings. Story reference resolution combines entity and record/pipeline sources into [ImageReferenceRow](../../zet/models/story.py) data, including availability/reason and source identity. Local approved character images are published through [LocalAssetStoreService](../../zet/services/local_asset_store_service.py).

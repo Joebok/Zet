@@ -401,6 +401,8 @@ class LocalHeadImageService:
                         if self._active_key(run_id) not in self._active and not runner_lock_active(path.parent):
                             status = "INTERRUPTED"
                 candidates = merge_candidates(spec, state)
+                current_views = sorted({str(item.get("view") or "") for item in candidates.values()
+                                        if item.get("status") == "RUNNING" and item.get("view")})
                 if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self.asset_store.all_selected_views_locked({
                     **spec, **state, "run_id": run_id, "candidates": list(candidates.values()),
                     "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
@@ -414,6 +416,7 @@ class LocalHeadImageService:
                     "created_at": spec.get("created_at", ""), "status": status,
                     "candidate_count": len(candidates),
                     "complete_count": sum(bool(item.get("image_path")) for item in candidates.values()),
+                    "current_views": current_views,
                     "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
                     "selected_views": state.get("selected_views") or {},
                 })

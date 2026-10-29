@@ -655,6 +655,8 @@ class LocalBodyReferenceService:
                 if status in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"} and not self._runner_is_active(run_id):
                     status = "INTERRUPTED"
                 candidates = merge_candidates(spec, state)
+                current_views = sorted({str(item.get("view") or "") for item in candidates.values()
+                                        if item.get("status") == "RUNNING" and item.get("view")})
                 selected = state.get("selected_views") or spec.get("selected_views") or {}
                 if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self._all_selected_views_locked({
                     **spec, "run_id": run_id, "selected_views": selected,
@@ -677,6 +679,7 @@ class LocalBodyReferenceService:
                     "created_at": spec.get("created_at", ""), "status": status,
                     "candidate_count": len(candidates),
                     "complete_count": len(selected) if review_version >= 2 else counts.get("COMPLETE", 0),
+                    "current_views": current_views,
                     "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
                     "source_run_id": spec.get("source_run_id", ""),
                     "selected_views": selected,

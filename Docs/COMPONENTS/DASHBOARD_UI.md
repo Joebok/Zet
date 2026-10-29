@@ -87,6 +87,17 @@ interaction; [narrative.js](../../zet/web/static/narrative.js) adapts shared sty
 to Narrative's independent records. Minor Characters retains its own comparison
 controller and selected-versus-preview distinction.
 
+Shared candidate review disables candidate/view navigation while saving a review
+decision and gives the pending action local status. Short-height, narrow review
+dialogs reserve a minimum image area while keeping decision controls reachable.
+These source changes still require populated-state browser inspection at the
+captured compact viewport.
+
+The Batches summary uses candidate view/status data already available in adapter
+summaries to show running views; it does not load each full run detail. A failed
+refresh retains prior rows and labels them as the last known results. Three-second
+polling and its in-flight guard are unchanged.
+
 The Minor Characters list uses a responsive card grid with each character's name,
 locked FRONT image (or an empty-image placeholder), and Edit/Delete buttons.
 Clicking the image or Edit opens the existing editor; Delete retains its confirmation
