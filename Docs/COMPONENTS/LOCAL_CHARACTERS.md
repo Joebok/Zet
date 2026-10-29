@@ -74,6 +74,11 @@ only FRONT. Other pipelines retain their predecessor chains. Source changes reta
 existing selections/images and locks, with advisory stale-source flags. New
 publication/adoption validates captured source/guide identity and bytes.
 
+FRONT renders, including image-to-image edits, compile the authored
+`HEAD_EDIT_FRONT_DESCRIPTION` so explicit crop rules such as excluding shoulders
+and clavicles reach the render request. Derived views omit that direct-FRONT
+description and use their view-specific override with the selected FRONT source.
+
 For a new Head-Image Edit batch, Apply Phase Change can use an uploaded/pasted
 FRONT or the same character's available locked Head-Image Edit FRONT from a
 different phase. The dashboard previews the chosen lock and directs the user to

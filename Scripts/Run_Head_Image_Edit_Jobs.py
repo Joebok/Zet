@@ -61,7 +61,7 @@ def compile_head_image_edit_job(job, project_root=PROJECT_ROOT, *, prompt_varian
         raise TemplateCompileError("MISSING_REFERENCE", "Phase change requires a FRONT source image.")
     if apply_phase and not re.sub(r"<!--.*?-->", "", sections.get("HEAD_EDIT_PHASE_CHANGES", ""), flags=re.S).strip():
         raise TemplateCompileError("MISSING_PHASE_CHANGES", "Author one Head-Image Edit phase-change section before applying it.")
-    if view != "FRONT" or bases:
+    if view != "FRONT":
         sections["HEAD_EDIT_FRONT_DESCRIPTION"] = ""
     if view == "FRONT" and (not bases or apply_phase):
         sections["HEAD_EDIT_PRESERVE"] = ""
