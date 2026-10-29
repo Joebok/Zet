@@ -1,7 +1,38 @@
 # Console Error Remediation Plan
 
-Status: active
+Status: completed with explicit deferrals (2026-10-29)
 Related survey: [console-error-survey](console-error-survey.md)
+
+## Final disposition (2026-10-29)
+
+This bounded console-remediation plan is complete. The four original fixes (WP1–WP4) remain implemented. Completion means the reported browser defects were repaired or received an explicit evidence-based disposition; it does not certify every populated UI workflow or resolve unobserved production latency.
+
+| Work | Final disposition |
+| --- | --- |
+| WP1–WP4 | Implemented; prior isolated service/browser checks and approved E2E results are recorded below. Missing optional legacy files remain distinguishable from malformed/unreadable files; null-ID ordering is stable; missing pipeline configuration is represented as unavailable; native Narrative IDs bypass optional legacy lookup. |
+| WP5 / D1 | Two historical page-associated storage errors remain unattributed: original stacks/HAR are unavailable and matched reloads did not reproduce them. The Read on reMarkable denial remains separately attributed. Reopen only with fresh source evidence. |
+| R0–R5 | Reconciliation, readiness, frozen context, prompt framing, private index lifecycle, and shared review fixes have recorded local/private evidence. Remaining broad/live checks below are deferred; M3's generated output did not meet the head-only criterion and is not accepted as artistic success. |
+| U1–U5 | Focused regressions are covered by existing disposable checks where recorded; comprehensive populated-page checklists remain open in the [UI compliance plan](../active/ui-style-guide-compliance.md). Body/Head prompt-panel journeys, mixed-ready Dressing failure recovery, contextual Refinement draft/adoption, and deployed compact Assembly-dialog acceptance were not all exercised in this closeout. No full UI acceptance claim is made. |
+| D2–D4 | Deferred to one future bounded performance investigation in [Development](../../Docs/DEVELOPMENT.md#known-knowledge-gaps-and-future-investigation). Total request timings and private contention do not establish production stage time, index writer, or publication delay cause. No policy change is justified. |
+| M1–M3 | M1/M2 observations and M3 output are historical evidence only. M3 did not meet the framing criterion; live artistic acceptance is deferred. Compiled source-backed FRONT framing was verified privately. |
+
+### Closeout checks
+
+- `npm.cmd exec -- playwright test --config test-results/live-remediation/private-profiles/disposable.config.mjs`: all 3 disposable checks passed (latest run; prepared fixture only). They cover the recorded private Body/review, delayed image identity, and Batches context-switch journeys. This does not cover every prompt acceptance/skip entry point.
+- `py -3 -B test-results/live-remediation/remaining/dressing_readiness_profile.py`: passed (private service profile; FRONT restriction and derived-mode/readiness cases).
+- `py -3 -B test-results/live-remediation/remaining/refine_context_immutability.py`: passed (private frozen prompt/references remain unchanged after later revision).
+- `py -3 -B test-results/live-remediation/private-profiles/request_contracts.py`: passed (prepared intent/framing; source-backed FRONT prompt retains authored crop and shoulder/clavicle exclusions for short/long hair).
+- `npm.cmd run test:e2e`: 4 approved scenarios passed (43.9s).
+- No live calls, production writes, deployment, permanent tests, or configuration changes were made for closeout.
+
+### Lessons and reopening triggers
+
+- Treat absent optional legacy data as an explicit unavailable state; preserve visible errors for invalid or inaccessible data.
+- During polling and delayed requests, retain user drafts, focus, selected image identity, and current universe/context.
+- Freeze prompt and candidate provenance for review. A passing compiler/profile check proves input construction, not visual quality.
+- Request totals and synthetic contention are not production stage attribution. Capture trustworthy workload timestamps and transaction/lock ownership before changing performance policy.
+- Exclude deliberately blocked non-GET requests from product findings. Screenshots and zero horizontal overflow do not establish interaction acceptance.
+- Reopen storage attribution only after a new occurrence exposes its source stack; reopen performance work when stage-correlated evidence is available; keep comprehensive UI and physical-device acceptance with their existing plans.
 
 ## Goal
 Address reproducible production browser errors found during the 2026-10-28 survey. Implementation authorized on 2026-10-28; WP1–WP4 implemented and validated locally. The original repair packets are historical; this plan remains active for the live-survey repair packets below.

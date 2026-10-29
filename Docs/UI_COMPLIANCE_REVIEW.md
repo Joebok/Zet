@@ -7,7 +7,8 @@ Implementation plan: [UI alignment](../plans/active/ui-style-guide-compliance.md
 
 This is a bounded alignment pass, not certification of every interaction. The isolated fast fixture captured 26 destinations at 1920×911, 1133×610, 1133×560, 1024×640 and 390×844. All captures reported zero horizontal overflow; Pipeline Controls activation failed at every size. A disposable DOM audit at four requested sizes found no visible unnamed buttons in the active dashboard sections. This check is not a complete accessible-name, contrast or keyboard audit.
 
-The 2026-10-28 console-remediation follow-up is active. On 2026-10-29, the live
+The 2026-10-28 console-remediation follow-up is complete with explicit deferred
+coverage. On 2026-10-29, the live
 dashboard reported release `2292669b6a69e35c1b528d39a411975b14f26ff1`, matching
 the checkout. A current populated pass confirms terminal guidance on Body
 Reference, Head Image and Assembly, plus saved-mode readiness on Dressing. The
@@ -18,7 +19,7 @@ pending then bulk completion feedback, with all images restored to locked.
 Batches displayed its 13 current rows during a pending refresh; after page
 reactivation it settled with the same rows. These observations cover selected
 actions only; saved screenshots, other pages' viewport checks and the complete
-page checklists remain open.
+page checklists remain open in the [active UI alignment plan](../plans/active/ui-style-guide-compliance.md).
 
 On 2026-10-29, populated Body Reference and Head Image pages were also measured
 at 1920×911, 1133×610, 1133×560, 1024×640 and 390×844. At each size,
@@ -36,7 +37,7 @@ current release `2292669b`; earlier populated states were inspected on release
 its compact review dialog has a private scroll and action-reachability check,
 but live 642×445 acceptance remains open.
 Full page interaction checklists remain open in the
-[active plan](../plans/active/console-error-remediation.md).
+[completed console remediation](../plans/completed/console-error-remediation.md).
 
 Evidence is under ignored `test-results/ui-compliance-before/` (baseline capture metadata/screenshots) and `test-results/ui-compliance/` (disposable DOM audit and auxiliary captures). Captures are revision/dirty-state stamped. Baseline captures may overlap early local edits; they are not a pristine before/after comparison. The desktop contact sheet was inspected. Empty/prerequisite pages do not establish populated-state acceptance. Earlier responsive-plan evidence remains historical.
 

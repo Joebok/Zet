@@ -1,6 +1,6 @@
 # Head Image Edit live survey follow-up
 Status: complete — 2026-10-28
-Related: [survey report](live-workflow-survey.md), [repair packets](../active/console-error-remediation.md).
+Related: [survey report](live-workflow-survey.md), [completed console repair packets](console-error-remediation.md).
 
 ## Scope
 Joe supplied Valindia's missing HEAD_EDIT sections and authorized resuming the live survey. Run one smallest supported Head Image Edit batch through real AI_Proxy preparation/render/review/publication, using normal Joe Chrome and one working tab. Exercise off-page navigation, previews, reload and background/foreground while rendering. Preserve all pre-existing publications, selections and the newly authored template; only newly generated Valindia candidates may be selected/published. No downstream re-generation, product fixes, deployment, service/configuration changes or permanent tests.

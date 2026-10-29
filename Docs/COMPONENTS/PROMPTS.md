@@ -33,9 +33,10 @@ HEAD_EDIT_* sections are optional for existing onboarding; the new compiler
 requires authored FRONT_DESCRIPTION, PRESERVE, VIEW_OVERRIDES and REVIEW_CRITERIA.
 Reference, expression and opt-in FRONT phase guidance remain optional.
 Existing head-domain tags, supplemental-image resolution and schema-2 contracts
-apply. Source-backed edits omit FRONT_DESCRIPTION and attach one primary canvas
-first, then scoped guides. Same-phase edits retain concise preservation and
-matching view notes.
+apply. Source-backed FRONT edits retain `FRONT_DESCRIPTION` so authored crop and
+exclusion criteria survive the source-edit path; derived views omit that section.
+Source-backed edits attach one primary canvas first, then scoped guides. Same-phase
+edits retain concise preservation and matching view notes.
 The compiler chooses one FRONT instruction mode: FRONT_DESCRIPTION for generation,
 PRESERVE for a same-phase source edit, or the single nonempty PHASE_CHANGES section
 for an enabled phase change. The phase-change operation names no specific source

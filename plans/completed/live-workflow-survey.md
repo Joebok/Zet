@@ -1,6 +1,6 @@
 # Live workflow and responsiveness survey
 Status: survey execution concluded 2026-10-28 — required journeys completed or explicitly accounted for below; repairs remain separate
-Related: [original survey](../active/console-error-survey.md), [remediation](../active/console-error-remediation.md).
+Related: [original survey](console-error-survey.md), [console remediation](console-error-remediation.md).
 
 ## Goal and boundaries
 Survey https://zet.schonbok.net against the live Moonsea library with real AI_Proxy jobs, normal Chrome profile, one agent and one working tab. Diagnose errors and responsiveness; product fixes and deployment are separate. Preserve existing selections, locks, publication and authored content except authorized subscene Write prompt. New Valindia candidates may be selected/published to advance. Other generation requires an unselected/unlocked slot at action time. No resets, service restarts, configuration changes, index rebuilds, deletes, failure injection or permanent tests.
@@ -153,7 +153,7 @@ Evidence root: [20261028](../../test-results/live-workflow-survey/20261028/). Ar
 - Resources/logs: `resources.jsonl`, proxy/vendor GPU samples, `resource-summary.json`, `resource-timeseries.csv`, `production-final-window.log`, final idle interval evidence. Five-second target cadence was approximately six seconds including collection work. Exclude ~07:03–10:26 PDT interaction gap and distinguish initial idle from post-work idle. Another client's reads and other desktop/browser activity are confounders.
 - Disposable collector synthetic console/exception/503 checks passed; clean comparison produced no browser/HTTP errors. Node syntax, Python AST/integrity checks and final whitespace/diff review are recorded at closure. No product code changed, so the maintained E2E baseline and separate live Narrative test were not invoked. No service, profile or SQLite settings changed; temporary DevTools Keep log was restored and DevTools closed.
 
-Repairs remain in the [remediation plan](../active/console-error-remediation.md), split into bounded packets with owners, dependencies and focused validation. Highest-priority next work is L1/L5 and L10; implementation/deployment require the separate repair phase.
+Console-specific repairs are recorded in the [completed remediation](console-error-remediation.md). Remaining L1/L5/L10 work is separately dispositioned there.
 
 ### Closure validation and observation boundary
 

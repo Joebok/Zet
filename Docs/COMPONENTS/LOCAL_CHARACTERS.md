@@ -254,7 +254,7 @@ An analysis copies that snapshot into its request record and includes the frozen
 prompt in the advisory task. Older sessions without a retained prompt state that
 authored criteria are unavailable instead of reading a potentially newer master.
 This is prompt provenance, not proof that an advisory or resulting image is
-artistically correct. See the [active remediation plan](../../plans/active/console-error-remediation.md).
+artistically correct. See the [completed console remediation](../../plans/completed/console-error-remediation.md).
 
 Detail presentation uses the loaded run's progression and reference recipes;
 Body detail carries `character_progression` from `state.json` into that shared

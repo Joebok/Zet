@@ -1,5 +1,5 @@
 # JavaScript Console Error Survey
-Status: active
+Status: completed with coverage exceptions (2026-10-29)
 
 ## Goal
 Survey the deployed dashboard and an isolated fixture for recurring browser errors, identify shared causes, and produce a prioritized remediation plan. This plan does not authorize application fixes, deployment, production writes, live Narrative checks, or permanent test expansion.
@@ -48,7 +48,7 @@ Use existing Playwright, one agent, one machine. Never send writes to the deploy
 
 ### WP5 — Prioritized repair plan and archive
 - Dependencies: WP4.
-- Files: `plans/active/console-error-remediation.md`; this plan moves to `plans/completed/` only after results are complete.
+- Files: `plans/completed/console-error-remediation.md`; the remediation plan is archived with explicit evidence limits.
 - Work: rank by impact/frequency/breadth; write Luna-sized repair packets with owner, dependencies, acceptance and focused validation. Name affected documentation and any proposed permanent test requiring separate approval. Link evidence and remediation plan.
 - Acceptance: reviewable findings and an ordered repair plan, with uncertainty stated.
 - Validation: `git diff --check`, final artifact/diff review.
@@ -63,7 +63,7 @@ The deployed URL is `https://zet.schonbok.net`. Its interactions are read-only, 
 - Local browser storage failure was not reproduced in the referenced previous disposable Minor Characters check; its reported cause remains unresolved.
 
 ## Results
-Pending survey execution.
+Survey execution and bounded follow-up are complete. Coverage exceptions and deferred attribution remain below; this report does not claim full destination or workflow acceptance.
 ## Survey results (2026-10-28)
 
 The disposable Playwright collector was syntax-checked and the survey run completed against `https://zet.schonbok.net` in headless Chromium. It visited 26 destinations and recorded 63 raw events: 11 console errors, four HTTP errors (three 400 and one 404), eight failed requests, and seven non-GET requests deliberately blocked by the read-only guard. The blocked preview/workspace-import requests produced expected `ERR_BLOCKED_BY_CLIENT` console entries; exclude these from application findings. Raw events, per-destination coverage, user-agent/revision context, and a screenshot are under ignored `test-results/console-survey/deployed/`.
@@ -73,3 +73,7 @@ Observed server errors: `/api/assets` 400 for missing `Moonsea/Characters/Tsaeyt
 Coverage limits: 19 requested destinations reached their active page. Five local pipeline routes redirected into existing batch-context routes, and Image Generation/Pipeline Controls did not activate. The run exercised route startup/read paths rather than direct/reload plus normal navigation for every route; compact priority journeys and the normal browser profile were not inspected. Narrative remained foregrounded for two minutes; the production-summary lock did not reproduce. Storage-denial errors were absent in this clean browser, which does not establish whether the normal browser extension or profile caused the original report. The deployed sweep blocked non-GET requests; it did not test their user-facing workflows. The four approved isolated E2E scenarios passed (42.3 seconds); this does not verify deployed data behavior.
 
 `node --check test-results/console-survey/survey.mjs` and `git diff --check` passed. No product code, permanent tests, production content, or deployment changed. Survey artifacts are ignored under `test-results/`.
+
+## Final disposition (2026-10-29)
+
+The original survey identified four actionable errors and handed them to the [completed remediation](../completed/console-error-remediation.md). Its deployed sweep remains bounded: 19 of 26 requested destinations activated, non-GET actions were blocked by the read-only guard, and historical storage/lock reports could not all be attributed. Blocked requests and their resulting client errors are survey interference, not product failures. The missing destination activations, compact journeys, imported workflows, and full interaction acceptance remain owned by the [active UI compliance plan](ui-style-guide-compliance.md) and responsive plan. Production latency/index-writer attribution is recorded as a future investigation in [Development](../../Docs/DEVELOPMENT.md#known-knowledge-gaps-and-future-investigation). Do not infer extension cause from an extension stack fragment, infer application failure from a deliberately blocked request, or infer accessibility/workflow acceptance from screenshots and layout measurements alone.
