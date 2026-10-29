@@ -2,7 +2,7 @@
 (() => {
   const host = document.getElementById("local-template-improvement");
   const decisionDrafts = new Map();
-  let context = null, data = null, loading = false, lastFetch = 0, serial = 0, selectedRevision = "", signature = "", mutation = 0;
+  let context = null, data = null, loading = false, lastFetch = 0, serial = 0, selectedRevision = "", signature = "", mutation = 0, accepting = false;
   let direction, model, sourceChoices, history, result, message, active, workflowStatus, frontButton;
   const el = (tag, text = "", cls = "") => {
     const item = document.createElement(tag); item.textContent = text;
@@ -226,14 +226,21 @@
       if (!revision.findings.length) findings.append(el("p", "No corrections proposed. You can accept this version."));
       result.append(findings);
       const accept = async () => {
-        await saving;
-        const initial = serial;
-        const value = await request(endpoint(`/${revision.revision_id}/accept`),
-          { method: "POST", body: JSON.stringify({ selected_ids: chosen() }) });
-        if (serial !== initial) return;
-        data = value; selectedRevision = value.revision.revision_id; signature = "";
-        renderData(); await context.reload(); status("Prompt version accepted. Use Continue when ready to generate.");
-        return value;
+        if (accepting) throw new Error("Prompt acceptance is already in progress.");
+        accepting = true;
+        status("Compiling accepted prompts…");
+        try {
+          await saving;
+          const initial = serial;
+          const value = await request(endpoint(`/${revision.revision_id}/accept`),
+            { method: "POST", body: JSON.stringify({ selected_ids: chosen() }) });
+          if (serial !== initial) return;
+          data = value; selectedRevision = value.revision.revision_id; signature = "";
+          renderData(); await context.reload(); status("Prompt version accepted. Use Continue when ready to generate.");
+          return value;
+        } finally {
+          accepting = false;
+        }
       };
       button(reviewActions, "Accept selected corrections", accept);
       button(reviewActions, "Apply selected and analyze again", async () => {
@@ -257,7 +264,9 @@
 
     const changed = revision.sources.filter(source => editableSource(source.source_id) && source.text !== source.master_text);
     const promote = button(toolbar, "Update master templates…", async () => {
-      if (!window.confirm(`Update these master templates with version ${revision.revision_id.slice(0, 8)}?\n\n${changed.map(source => source.source_id).join("\n")}\n\nThis affects future compilations in other batches. Original text remains in the saved version.`)) return;
+      if (!(await confirmAction("Update master templates?",
+        `Apply version ${revision.revision_id.slice(0, 8)} to these templates?\n\n${changed.map(source => source.source_id).join("\n")}\n\nThis affects future compilations in other batches. Original text remains in the saved version.`,
+        "Update masters"))) return;
       const initial = serial;
       const value = await request(endpoint(`/${revision.revision_id}/promote`), { method: "POST", body: JSON.stringify({ confirm: true }) });
       if (initial !== serial) return;

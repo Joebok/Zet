@@ -432,11 +432,12 @@
         const overrideNeedsUnlock = Boolean(candidate.override && asset?.locked && !locked);
         if (overrideNeedsUnlock) {
           lockState.textContent = "Override selected. Unlock the published image before locking this override.";
-          addButton(controls, "Unlock published image", "unlock", { view });
+          addButton(controls, "Unlock published image", "unlock", { view, disabled: state.bulkActionPending });
         }
         addButton(controls, locked ? "Unlock" : "Lock", locked ? "unlock" : "lock",
-          { view, disabled: overrideNeedsUnlock });
-        if (!locked) addButton(controls, "Unselect", "unselect", { view, candidate: candidate.candidate_id });
+          { view, disabled: state.bulkActionPending || overrideNeedsUnlock });
+        if (!locked) addButton(controls, "Unselect", "unselect", { view, candidate: candidate.candidate_id,
+          disabled: state.bulkActionPending });
         const refine = document.createElement("a");
         refine.textContent = "Refine";
         refine.href = refinementUrl(view);
@@ -1692,6 +1693,7 @@
       const current = () => state.run?.run_id === runId && state.pipeline === pipeline
         && contextKey() === context && state.generation === generation;
       state.bulkActionPending = true;
+      if (action === "lock-all") setStatus("Checking selected views for publication…");
       renderSelectedViews(state.run);
       try {
         let body;
@@ -1704,8 +1706,13 @@
           summary = `Lock all ${plan.views.length} selected images in this batch?\n\n${plan.views.join(", ")}`;
           if (plan.changes?.length) summary += `\n\nPublish or replace these images, including required lineage:\n${plan.changes.map(item => `${item.pipeline} ${item.view} · ${item.batch_name || "selected batch"}${item.replacing_batch ? ` (currently ${item.replacing_batch})` : ""}`).join("\n")}`;
         }
-        if (!window.confirm(summary) || !current()) return;
-        setStatus(action === "lock-all" ? "Locking selected images…" : "Unlocking pipeline images…");
+        const confirmed = await confirmAction(action === "lock-all" ? "Lock selected images" : "Unlock pipeline images",
+          summary, action === "lock-all" ? "Lock all" : "Unlock all");
+        if (!confirmed || !current()) {
+          if (!confirmed && current()) setStatus("No changes made.");
+          return;
+        }
+        setStatus(action === "lock-all" ? "Publishing selected views…" : "Unlocking selected views…");
         const result = await request(route(action, runId), { method: "POST", body: body ? JSON.stringify(body) : undefined });
         if (!current()) return;
         await loadRun(runId);
@@ -1796,7 +1803,7 @@
         const summary = changes.length
           ? `Lock ${view} and replace these lineage images?\n\n${changes.map((item) => `${item.pipeline} ${item.view} · ${item.batch_name || "selected batch"}${item.replacing_batch ? ` (currently ${item.replacing_batch})` : ""}`).join("\n")}`
           : `Lock the selected ${view} image? Its required lineage is already locked to these images.`;
-        if (!window.confirm(summary)) return;
+        if (!(await confirmAction(`Lock ${view} image?`, summary, "Lock image"))) return;
       }
       await perform("lock", view, candidateId);
       return;
@@ -1808,7 +1815,9 @@
         : Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
       const label = recompile || refreshSources ? "refresh references from the chosen source batches" : "retain the original reference snapshots";
       const compileLabel = recompile ? " Recompile prompts from current templates and coding." : "";
-      if (!window.confirm(action === "rerun" ? `Re-run this batch and ${label}?${compileLabel} This replaces generated images and reviews.` : `Replace all ${view} candidates and ${label}?${compileLabel}`)) return;
+      if (!(await confirmAction(action === "rerun" ? "Replace this batch?" : `Replace ${view} candidates?`,
+        action === "rerun" ? `Re-run this batch and ${label}?${compileLabel} This replaces generated images and reviews.` : `Replace all ${view} candidates and ${label}?${compileLabel}`,
+        "Re-run"))) return;
       await perform(action, view, candidateId, { refresh_sources: refreshSources, recompile });
       return;
     }
@@ -1818,7 +1827,9 @@
         "rerun-view": `Replace all ${view} candidates?`, "rerun-failed": `Re-run failed ${view} candidates?`,
         unselect: `Unselect ${view}?`, unlock: `Unlock the local ${view} asset?`,
       };
-      if (!window.confirm(prompts[action])) return;
+      const titles = { delete: "Delete batch?", unselect: `Unselect ${view}?`, unlock: `Unlock ${view}?` };
+      const labels = { delete: "Delete batch", unselect: "Unselect", unlock: "Unlock" };
+      if (!(await confirmAction(titles[action] || "Confirm action", prompts[action], labels[action] || "Confirm"))) return;
     }
     if (action === "rank-up" || action === "rank-down") {
       const ordered = state.run.rankings?.[view]?.ordered_candidate_ids || [];

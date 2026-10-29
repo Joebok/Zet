@@ -27,6 +27,9 @@ locked by that batch. Its single confirmation includes required lineage changes
 for Assembly/Dressing. Unlock all clears every recorded lock for the current
 character/phase/pipeline (and current costume for Dressing), including other
 batches and views outside the open batch. Published Inventory images are retained.
+These affected workflows use the shared application confirmation dialog. Bulk
+publication shows its readiness check and publishing state, and disables per-view
+selection/publication controls until the aggregate action settles.
 
 `LocalImagePipelineWorkflowService` owns bulk targeting, aggregate lock previews,
 selection-change fencing and per-view outcomes through the existing adapter
@@ -473,6 +476,10 @@ review is pending and shares that result across candidates. Public response
 projection excludes private render payloads before copying while preserving
 retry state, image URLs, and board ordering. The list projects names and locked
 view metadata without serializing full candidate records.
+Polling a queued/running render persists only a changed status or error; an
+unchanged provider status does not rewrite the complete private session record.
+View navigation reports its target while dirty edits save; failed saves remain
+in the draft and keep their local error feedback.
 
 Minor Characters status polling retries failed reads with a capped delay while work remains active. Mutations invalidate older in-flight polls; rejected mutations refresh the workspace while retaining the original error and never automatically repeat the write. Restart and generation controls also wait for pending slot actions. These browser recovery behaviors do not bypass server revision or active-work checks.
 

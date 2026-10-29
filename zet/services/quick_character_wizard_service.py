@@ -692,9 +692,11 @@ class QuickCharacterWizardService:
                     continue
                 if c["status"] not in {"QUEUED", "RUNNING"}:
                     continue
+                changed = False
                 try:
                     result = self._generation().status(c["request_id"])
                     if result["status"] in {"QUEUED", "RUNNING"}:
+                        changed = c["status"] != result["status"]
                         c["status"] = result["status"]
                     elif result["status"] == "COMPLETE" and result["images"]:
                         contents, mime, generation = self._generation().library_result(c["request_id"], result["images"][0]["index"])
@@ -713,14 +715,19 @@ class QuickCharacterWizardService:
                     else:
                         c.update(status="FAILED", error=result.get("error") or "The render did not produce an image.")
                         session["status"] = "FAILED"
+                        changed = True
                 except OSError as exc:
-                    c["error"] = f"Image collection is temporarily unavailable: {exc}"
+                    error = f"Image collection is temporarily unavailable: {exc}"
+                    changed = c.get("error") != error
+                    c["error"] = error
                 except Exception as exc:
                     from zet.services.storage_health_service import pause_on_storage_error
                     pause_on_storage_error(self.app.config, exc)
                     c.update(status="FAILED", error=str(exc))
                     session["status"] = "FAILED"
-                self._write(session)
+                    changed = True
+                if changed:
+                    self._write(session)
             return self._public(session)
 
     def retry_review(self, sid: str, revision_id: str, candidate_id: str) -> dict:

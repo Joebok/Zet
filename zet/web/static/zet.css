@@ -4630,6 +4630,9 @@ dialog {
   width: min(760px, calc(100vw - 32px));
 }
 
+#confirmation-message {
+  white-space: pre-line;
+}
 
 .wide-dialog {
   max-width: 1180px;

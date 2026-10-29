@@ -16,6 +16,13 @@ configuration still raises an error. `PhaseComparisonService` orders local rows
 by stable source key when legacy asset IDs are absent, retaining numeric legacy
 ordering and canonical view ordering.
 
+The shared shell's production summary clears counts and timestamps when its
+workspace query changes. A same-context refresh failure retains the last
+successful counts with a local timestamp and retry action; retry activation is
+shown in that notice, and an older request failure cannot replace the new
+context's status. A disposable browser check covered success, failure, pending
+retry feedback, recovery and a context change during an older in-flight failure.
+
 The approved S1 authoring scenario reopens setup after successful template upload
 before restoring its fixture. All four fast scenarios passed (41.6s); disposable
 service/browser checks covered missing/invalid files, null IDs and direct loads.

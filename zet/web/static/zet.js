@@ -7,6 +7,7 @@ const state = {
   workspace: "character",
   activePageId: "",
   productionWorkSummary: { current: {}, project: {} },
+  productionWorkSummaryPending: false,
   productionWorkRequest: 0,
   productionWorkTimer: null,
   productionWorkPromise: null,
@@ -2871,7 +2872,7 @@ function productionSummaryQuery() {
 
 function renderProductionWorkSummary() {
   let notice = document.getElementById("production-work-summary-notice");
-  if (state.productionWorkSummaryError) {
+  if (state.productionWorkSummaryError || (state.productionWorkSummaryPending && !state.productionWorkSummaryLastSuccess)) {
     if (!notice) {
       notice = document.createElement("div");
       notice.id = "production-work-summary-notice";
@@ -2882,11 +2883,14 @@ function renderProductionWorkSummary() {
     notice.replaceChildren();
     const message = document.createElement("span");
     const lastSuccess = state.productionWorkSummaryLastSuccess;
-    message.textContent = `Production summary could not refresh. ${lastSuccess ? `Showing the last successful summary from ${new Date(lastSuccess).toLocaleTimeString()}.` : "No successful summary is available yet."} ${state.productionWorkSummaryError}`;
+    message.textContent = state.productionWorkSummaryError
+      ? `Production summary could not refresh. ${lastSuccess ? `Showing the last successful summary from ${new Date(lastSuccess).toLocaleTimeString()}.` : "No successful summary is available yet."} ${state.productionWorkSummaryPending ? "Retrying now. " : ""}${state.productionWorkSummaryError}`
+      : "Refreshing production summary…";
     const retry = document.createElement("button");
     retry.type = "button";
     retry.className = "neutral-action";
-    retry.textContent = "Refresh summary";
+    retry.textContent = state.productionWorkSummaryPending ? "Refreshing…" : "Refresh summary";
+    retry.disabled = state.productionWorkSummaryPending;
     retry.addEventListener("click", () => void refreshProductionWorkSummary());
     notice.append(message, retry);
   } else notice?.remove();
@@ -2925,17 +2929,20 @@ async function refreshProductionWorkSummary() {
     state.productionWorkTimer = null;
     return null;
   }
+  const query = productionSummaryQuery().toString();
+  if (state.productionWorkSummaryQuery && state.productionWorkSummaryQuery !== query) {
+    state.productionWorkSummary = { current: {}, project: {} };
+    state.productionWorkSummaryLastSuccess = null;
+    state.productionWorkSummaryError = "";
+    renderProductionWorkSummary();
+  }
   if (state.productionWorkPromise) {
     state.productionWorkRefreshPending = true;
     return state.productionWorkPromise;
   }
   const request = ++state.productionWorkRequest;
-  const query = productionSummaryQuery().toString();
-  if (state.productionWorkSummaryQuery && state.productionWorkSummaryQuery !== query) {
-    state.productionWorkSummary = { current: {}, project: {} };
-    state.productionWorkSummaryLastSuccess = null;
-    renderProductionWorkSummary();
-  }
+  state.productionWorkSummaryPending = true;
+  renderProductionWorkSummary();
   state.productionWorkPromise = (async () => {
     try {
       const payload = await fetchJson(`/api/production-work-summary?${query}`, { bindToPage: false });
@@ -2951,14 +2958,19 @@ async function refreshProductionWorkSummary() {
       return payload;
     } catch (error) {
       if (!isRequestCancellation(error)) {
+        if (request !== state.productionWorkRequest || query !== productionSummaryQuery().toString()) {
+          state.productionWorkRefreshPending = true;
+          return null;
+        }
         const detail = String(error?.message || error);
         if (state.productionWorkSummaryError !== detail) console.error("Unable to refresh production work summary.", error);
         state.productionWorkSummaryError = detail;
-        renderProductionWorkSummary();
       }
       return null;
     } finally {
       state.productionWorkPromise = null;
+      state.productionWorkSummaryPending = false;
+      renderProductionWorkSummary();
       const refreshAgain = state.productionWorkRefreshPending;
       state.productionWorkRefreshPending = false;
       if (refreshAgain && !document.hidden) {

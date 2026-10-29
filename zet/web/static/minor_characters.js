@@ -114,7 +114,7 @@
     show(character); message("");
   }
   async function deleteCharacter(id, name) {
-    if (!window.confirm(`Delete Minor Character “${name}”? Published Inventory images will be kept.`)) return;
+    if (!(await confirmAction("Delete Minor Character?", `Delete “${name}”? Published Inventory images will be kept.`, "Delete"))) return;
     await flush();generation++;clearTimeout(pollTimer);
     await api(`/${id}`,"DELETE");
     $("mc-review").close();character=null;patch={};entryAsset=null;
@@ -316,8 +316,11 @@
     for (const target of character.views) {
       const tab=button(label(target),async()=>{
         if (target === view) return;
-        if (Object.keys(patch).length) await flush();
-        await flush();view=target;preview="";comparisonId="";feedback=character.boards[target]?.edit.instructions || "";feedbackDirty=false;
+        if (Object.keys(patch).length) {
+          message(`Saving changes before switching to ${label(target)}…`);
+          await flush();
+        }
+        view=target;preview="";comparisonId="";feedback=character.boards[target]?.edit.instructions || "";feedbackDirty=false;
         changed("active_view",view);show(character);
       });
       tab.disabled=target!=="STYLE" && !character.selected.STYLE && !character.boards[target]?.slots.some(Boolean);
@@ -449,7 +452,8 @@
   }
   async function restartCurrentOperation() {
     const target=view, confirmViews=target==="STYLE" && viewWorkStarted();
-    if (confirmViews && !window.confirm("Restarting Style alignment will discard all view images and revisions. Continue?")) return;
+    if (confirmViews && !(await confirmAction("Restart Style alignment?",
+      "Restarting Style alignment will discard all view images and revisions.", "Restart"))) return;
     await flush();
     const result=await api(`/${character.character_id}/boards/${target}/restart`,"POST",{
       revision:board().revision, confirm_views_discarded:confirmViews});
