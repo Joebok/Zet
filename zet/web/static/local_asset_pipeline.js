@@ -1358,18 +1358,39 @@
     return state.reviewCandidates[state.reviewIndex] || candidate;
   }
 
+  function reviewPending(message = "") {
+    const host = $("review-panel");
+    if (host) host.setAttribute("aria-busy", String(Boolean(message)));
+    for (const id of ["review-prev", "review-next", "review-prev-view", "review-next-view"]) {
+      const button = $(id);
+      if (button) button.disabled = Boolean(message) || button.dataset.reviewBoundary === "true";
+    }
+    let status = document.getElementById("review-action-status");
+    if (message) {
+      if (!status) {
+        status = document.createElement("p");
+        status.id = "review-action-status";
+        status.className = "action-message info";
+        status.setAttribute("role", "status");
+        host?.prepend(status);
+      }
+      status.textContent = message;
+    } else status?.remove();
+  }
+
   async function navigateReview(direction) {
     if (state.reviewActionPending) return;
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
     state.reviewActionPending = true;
+    reviewPending("Saving this review before moving to another candidate…");
     try {
       await saveReviewDecision(candidate);
       state.reviewCandidates = orderedReviewCandidates();
       state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidate.candidate_id) + direction;
       renderReview();
     } catch (error) { setStatus(error.message, true); }
-    finally { state.reviewActionPending = false; }
+    finally { state.reviewActionPending = false; reviewPending(); }
   }
 
   async function navigateReviewView(direction) {
@@ -1377,6 +1398,7 @@
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
     state.reviewActionPending = true;
+    reviewPending("Saving this review before changing views…");
     try {
       await saveReviewDecision(candidate);
       state.reviewCandidates = orderedReviewCandidates();
@@ -1387,7 +1409,7 @@
       state.reviewIndex = state.reviewCandidates.findIndex((item) => item.view === targetView);
       renderReview();
     } catch (error) { setStatus(error.message, true); }
-    finally { state.reviewActionPending = false; }
+    finally { state.reviewActionPending = false; reviewPending(); }
   }
 
   function renderReview() {
@@ -1624,12 +1646,16 @@
       more.scrollTop = detailsScroll;
       quality.scrollTop = qualityScroll;
     }
+    $("review-prev").dataset.reviewBoundary = String(state.reviewIndex <= 0);
+    $("review-next").dataset.reviewBoundary = String(state.reviewIndex >= state.reviewCandidates.length - 1);
     $("review-prev").disabled = state.reviewActionPending || state.reviewIndex <= 0;
     $("review-next").disabled = state.reviewActionPending || state.reviewIndex >= state.reviewCandidates.length - 1;
     const availableViews = orderedViews(run).filter((view) => state.reviewCandidates.some((item) => item.view === view));
     const currentViewIndex = availableViews.indexOf(candidate.view);
     $("review-prev-view").disabled = state.reviewActionPending || currentViewIndex <= 0;
     $("review-next-view").disabled = state.reviewActionPending || currentViewIndex < 0 || currentViewIndex >= availableViews.length - 1;
+    $("review-prev-view").dataset.reviewBoundary = String(currentViewIndex <= 0);
+    $("review-next-view").dataset.reviewBoundary = String(currentViewIndex < 0 || currentViewIndex >= availableViews.length - 1);
   }
 
   let reviewOrigin = null;

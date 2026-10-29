@@ -2870,6 +2870,26 @@ function productionSummaryQuery() {
 }
 
 function renderProductionWorkSummary() {
+  let notice = document.getElementById("production-work-summary-notice");
+  if (state.productionWorkSummaryError) {
+    if (!notice) {
+      notice = document.createElement("div");
+      notice.id = "production-work-summary-notice";
+      notice.className = "action-message warning";
+      notice.setAttribute("role", "status");
+      document.querySelector("main")?.prepend(notice);
+    }
+    notice.replaceChildren();
+    const message = document.createElement("span");
+    const lastSuccess = state.productionWorkSummaryLastSuccess;
+    message.textContent = `Production summary could not refresh. ${lastSuccess ? `Showing the last successful summary from ${new Date(lastSuccess).toLocaleTimeString()}.` : "No successful summary is available yet."} ${state.productionWorkSummaryError}`;
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "neutral-action";
+    retry.textContent = "Refresh summary";
+    retry.addEventListener("click", () => void refreshProductionWorkSummary());
+    notice.append(message, retry);
+  } else notice?.remove();
   const project = state.productionWorkSummary.project || {};
   for (const badge of document.querySelectorAll("[data-production-count]")) {
     const count = Number(project[badge.dataset.productionCount] || 0);
@@ -2911,6 +2931,11 @@ async function refreshProductionWorkSummary() {
   }
   const request = ++state.productionWorkRequest;
   const query = productionSummaryQuery().toString();
+  if (state.productionWorkSummaryQuery && state.productionWorkSummaryQuery !== query) {
+    state.productionWorkSummary = { current: {}, project: {} };
+    state.productionWorkSummaryLastSuccess = null;
+    renderProductionWorkSummary();
+  }
   state.productionWorkPromise = (async () => {
     try {
       const payload = await fetchJson(`/api/production-work-summary?${query}`, { bindToPage: false });
@@ -2919,10 +2944,18 @@ async function refreshProductionWorkSummary() {
         return null;
       }
       state.productionWorkSummary = payload;
+      state.productionWorkSummaryQuery = query;
+      state.productionWorkSummaryLastSuccess = Date.now();
+      state.productionWorkSummaryError = "";
       renderProductionWorkSummary();
       return payload;
     } catch (error) {
-      if (!isRequestCancellation(error)) console.error("Unable to refresh production work summary.", error);
+      if (!isRequestCancellation(error)) {
+        const detail = String(error?.message || error);
+        if (state.productionWorkSummaryError !== detail) console.error("Unable to refresh production work summary.", error);
+        state.productionWorkSummaryError = detail;
+        renderProductionWorkSummary();
+      }
       return null;
     } finally {
       state.productionWorkPromise = null;

@@ -97,18 +97,25 @@ Use the following serial Luna-sized sequence; detailed evidence and acceptance f
 | P1a/b — Minor detail latency | P0 | Minor/Quick Character services; equivalent projection, bounded recovery lookups, lower serial private timing | implemented locally; contract/performance checks pending |
 | P2 — Minor save/navigation | P1 | `minor_characters.js`, `MinorCharacterService`; no PATCH for unchanged feedback, edits/renames retain save guarantees | partial; no-op board feedback and rename scoping implemented; navigation UX checks pending |
 | P3a/b — derived index contention | P0/P3a | `LibraryIndexRepository`/bootstrap; diagnose private contention then separate initialization writes from ordinary reads | read-only initialized fast path implemented; private contention validation pending |
-| P4 — summary degraded state | P0 | Shared shell; scoped stale state, local retry, context-safe recovery | pending |
+| P4 — summary degraded state | P0 | Shared shell; scoped stale state, local retry, context-safe recovery | implemented locally; browser checks pending |
 | P5/P6 — FRONT readiness and prompt lifecycle | P0/P5 | shared pipeline and template-review controllers; Body path agrees with backend and terminal analysis replaces pending copy | partial; Body batch entry and terminal-message clearing implemented; browser checks pending |
-| P7a/b/P8 — batch status | P0/P7a | batch service/adapters and page; lower projection work, accurate loading/current-view/readiness | pending |
+| P7a/b/P8 — batch status | P0/P7a | batch service/adapters and page; lower projection work, accurate loading/current-view/readiness | partial; refresh retains stale rows; adapter projection profiling and selected-option/readiness alignment pending |
 | P9/P10/P11 — review intent and prompt context | P0 | Minor review, Head Edit compiler/template, Refinement analysis; target intent and relevant visible evidence preserved | partial; current-view instruction and short-hair crop language updated; validation and Refinement context pending |
-| P12 — review action lifecycle | P6/P8 | shared review controller/dialog; pending navigation visible and safe, image identity retained | partial; navigation is disabled on render during pending state; immediate pending feedback and browser checks pending |
-| P13 — process counts | P0 | process service and Config; effective instance counts preserve raw diagnostics | pending |
+| P12 — review action lifecycle | P6/P8 | shared review controller/dialog; pending navigation visible and safe, image identity retained | partial; pending navigation feedback and disabled boundaries implemented; full save/select lifecycle check pending |
+| P13 — process counts | P0 | process service and Config; effective instance counts preserve raw diagnostics | effective duplicate counts use ancestry locally; disposable process-tree checks pending |
 | P14 — storage attribution | P0 | retained read-only browser evidence; attributable source or bounded unresolved result | pending |
 | P15a/b/c — acceptance and publication timings | P0/P15a/b | private profiling, then truthful local pending/result feedback; no lock changes without evidence | pending |
-| U1–U7 — affected pages | their related functional packets | full-page style guide pass for Minor, shared review, each of five pipelines, Batches, Config, Refinement, and shell summary | pending |
+| U1–U7 — affected pages | their related functional packets | full-page style guide pass for Minor, shared review, each of five pipelines, Batches, Config, Refinement, and shell summary | active; short-height shared review sizing updated; full page-by-page populated-state pass remains |
 | Integration/documentation | all code packets | existing S1–S4, affected component docs and UI compliance register, protected-state review | pending |
 
 Use ignored private evidence under `test-results/live-remediation/`; no artifact is written to the normal library/queue. Reuse approved S1–S4 without adding permanent scenarios. If private profiling does not establish a safe lock or query repair, leave that finding open and document the evidence rather than broadening lock behavior.
+
+#### Implementation checkpoint — 2026-10-28
+
+- Applied local changes for P1a/b, portions of P2/P3/P5/P6/P8/P9/P10/P11/P12/P13, P4, and L9. The index fast path avoids schema/migration writes when the existing metadata identifies the current library and schema; first initialization and upgrade behavior still needs isolated contention and replacement testing.
+- The shared pipeline review navigation and compact short-height layout now have immediate busy/disabled treatment. Batch refresh retains prior rows on error. Shell summary errors now retain same-context data, offer refresh, and clear stale counts after a context change.
+- `node --check` passed for changed dashboard scripts; Python 3.14.6 AST parsing passed for changed service/compiler modules; `git diff --check` passed. The approved four-scenario E2E suite passed once before the latest batch/shell/review changes and is running again against the integrated edits.
+- Remaining: private performance/SQLite checks, L4 storage attribution, L8 adapter projection, complete L6/L11/L13 request checks, L14 timing/progress work, and full-page UI inspection/alignment for every named page. No live library, queue, proxy or service was used.
 
 The [live workflow survey](../completed/live-workflow-survey.md) concluded with explicit coverage exceptions. Artifacts are ignored under `test-results/live-workflow-survey/20261028/`. The implementation authorization and boundaries for these findings are recorded above.
 

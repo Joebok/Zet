@@ -130,11 +130,12 @@ class ProcessService:
         )
         processes: list[ProcessInfo] = []
         for line in result.stdout.splitlines():
-            parts = line.strip().split(None, 2)
-            if len(parts) < 3:
+            parts = line.strip().split(None, 3)
+            if len(parts) < 4:
                 continue
             try:
-                processes.append(ProcessInfo(pid=int(parts[0]), name=parts[1], command_line=parts[2]))
+                processes.append(ProcessInfo(pid=int(parts[0]), parent_pid=int(parts[1]),
+                                             name=parts[2], command_line=parts[3]))
             except Exception:
                 continue
         return processes
@@ -187,12 +188,14 @@ class ProcessService:
             statuses: list[ManagedProcessStatus] = []
             for spec in self.specs():
                 matches = [process for process in processes if self._matches(process, spec)]
+                matched_pids = {process.pid for process in matches}
+                effective = [process for process in matches if process.parent_pid not in matched_pids]
                 statuses.append(
                     ManagedProcessStatus(
                         process_id=spec.process_id,
                         label=spec.label,
                         running=bool(matches),
-                        duplicate_count=max(0, len(matches) - 1),
+                        duplicate_count=max(0, len(effective) - 1),
                         manageable=spec.manageable,
                         pids=[process.pid for process in matches],
                         command_lines=[process.command_line for process in matches],

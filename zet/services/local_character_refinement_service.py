@@ -175,14 +175,29 @@ class LocalCharacterRefinementService:
             target = {"description": "Improve this selected image while preserving its identity, costume, art style and orientation.",
                 "change_text": "\n".join(attempt["accepted_direction"]), "identity": "", "style": {}, "sources": [],
                 "preserve": "Preserve unaffected visible details; selected comparison views establish continuity.", "proposals": [], "notes": ""}
+            if pipeline == "head-image-edit":
+                task = (f"Review this {record['view']} head-only edit. Assess visible identity, requested view, head/ear framing, "
+                        "authored hair shape and crop. Do not assess skirt, garment length, or body details outside the supplied image. "
+                        "Report only evidence visible in the candidate and labeled comparison views.")
+            elif pipeline == "character-assembly":
+                task = (f"Review this {record['view']} assembled character for visible head/body identity and proportion continuity "
+                        "against the selected FRONT and labeled source views. Do not propose template changes.")
+            elif pipeline == "costume-dressing":
+                task = (f"Review this {record['view']} dressed character for visible garment construction, coverage, length, "
+                        "and continuity against the supplied selected views. Do not infer details hidden from the images.")
+            elif pipeline == "body-reference":
+                task = (f"Review this {record['view']} body reference for visible anatomy, silhouette, proportion, and view continuity. "
+                        "Do not assess clothing or infer hidden details.")
+            else:
+                task = (f"Review this {record['view']} head reference for visible identity, hairstyle, head framing, "
+                        "and orientation continuity. Do not infer details hidden from the images.")
             def ask(model, prompt, schema, images):
                 return self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(model, "", prompt, schema, images,
                     task_type="character_image_refinement", role="character_refinement", render_context={"operation": "edit"}, workflow=pipeline)[0]
             report = ImageTrueUpService(ask).compare(analysis["model"], target,
                 [analysis["image_path"], *[i["image_path"] for i in analysis["inputs"]]],
                 {"view": record["view"], "roles": ["Selected image to improve", *["Selected " + i["view"] for i in analysis["inputs"]]],
-                    "task": "Image improvement only. Never propose template edits. Check skirt/garment length, hair, proportions, "
-                    "visible construction and continuity across labeled views. Respect intentional asymmetry and occlusion. "
+                    "task": task + " Image improvement only; never propose template edits. Respect intentional asymmetry and occlusion. "
                     "Treat earlier accepted direction as intentional; latest feedback wins."})
             result = {"status": "COMPLETE", "report": report, "error": ""}
         except Exception as exc:

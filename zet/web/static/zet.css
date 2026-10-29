@@ -5802,6 +5802,13 @@ dd {
   .asset-table-panel, .queue-panel { overflow-x: auto; }
 }
 
+@media (max-height: 500px) and (max-width: 700px) {
+  .local-pipeline-review-dialog { height: 96dvh; max-height: 96dvh; }
+  .local-pipeline-review-layout { grid-template-rows: minmax(125px, .55fr) minmax(190px, .8fr); }
+  .local-pipeline-review-comparison { min-height: 0; }
+  .local-pipeline-review-comparison img { max-height: 100%; }
+}
+
 @media (pointer: coarse), (max-width: 1360px) {
   :is(button, select, .button-link, summary) { min-height: 44px; }
   button, .button-link { min-width: 44px; }
