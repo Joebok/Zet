@@ -38,11 +38,24 @@ class NarrativeAssemblyService:
                                if item["status"] == "COMPLETE" and item["image"]]})
         return result
 
+    def element_sources(self, story, scene):
+        result = []
+        for element in self.repository.read(story, scene)["elements"]:
+            try:
+                asset = self.author.element_asset(element)
+                reason = "" if asset else "No reference image"
+            except (KeyError, ValueError, FileNotFoundError) as exc:
+                reason = str(exc)
+            result.append({"id": element["id"], "name": element["name"],
+                           "available": not bool(reason), "reason": reason})
+        return result
+
     def bind_layers(self, story, scene, record, previous):
         """Accept identifiers and controls only; source filenames/metadata are server owned."""
         folder = self.repository.folder(story, scene, record["id"])
         old = {item["id"]: item for item in previous}
-        available = set(self.repository.read(story, scene)["target_ids"])
+        parent = self.repository.read(story, scene)
+        available = set(parent["target_ids"])
         layers, identifiers = [], set()
         for index, supplied in enumerate(record["layers"]):
             if not isinstance(supplied, dict):
@@ -54,10 +67,28 @@ class NarrativeAssemblyService:
             identifiers.add(identifier)
             existing = old.get(identifier, {})
             source_id, candidate_id = supplied.get("target_id"), supplied.get("candidate_id")
-            if not isinstance(source_id, str) or not isinstance(candidate_id, str):
+            element_id = supplied.get("element_id")
+            if element_id is not None:
+                if not isinstance(element_id, str) or source_id is not None or candidate_id is not None:
+                    raise ValueError("Choose one scene element source.")
+                unchanged = existing.get("element_id") == element_id
+                if unchanged and (folder / existing["source_file"]).is_file():
+                    metadata = {key: existing[key] for key in ("source_file", "label", "narrative", "source_kind", "asset_id")}
+                else:
+                    element = next((item for item in parent["elements"] if item["id"] == element_id), None)
+                    if element is None:
+                        raise ValueError("Choose an element from this scene.")
+                    asset = self.author.element_asset(element)
+                    if not asset:
+                        raise ValueError("The element has no reference image.")
+                    filename = f"sources/element-{identifier}.png"
+                    with Image.open(asset["image_path"]) as image:
+                        write_bytes_atomic(folder / filename, png_bytes(image.convert("RGBA")))
+                    metadata = {"source_file": filename, "label": element["name"], "narrative": element.get("appearance", ""),
+                                "source_kind": "element", "asset_id": asset["asset_id"]}
+            elif not isinstance(source_id, str) or not isinstance(candidate_id, str):
                 raise ValueError("Choose a completed source image for each layer.")
-            unchanged = existing.get("target_id") == source_id and existing.get("candidate_id") == candidate_id
-            if unchanged and (folder / existing["source_file"]).is_file():
+            elif existing.get("target_id") == source_id and existing.get("candidate_id") == candidate_id and (folder / existing["source_file"]).is_file():
                 metadata = {key: existing[key] for key in ("source_file", "label", "narrative", "source_kind")}
             else:
                 if source_id not in available:
@@ -99,7 +130,8 @@ class NarrativeAssemblyService:
                     value = stroke.get(key)
                     if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not lower <= value <= upper:
                         raise ValueError("Mask corrections must use source coordinates.")
-            layers.append({"id": identifier, "target_id": source_id, "candidate_id": candidate_id, **metadata,
+            identity = {"element_id": element_id} if element_id is not None else {"target_id": source_id, "candidate_id": candidate_id}
+            layers.append({"id": identifier, **identity, **metadata,
                            "role": role, "fit": fit, "cutout": cutout, "visible": visible, "strokes": strokes, **numbers})
         if sum(layer["role"] == "base" for layer in layers) > 1:
             raise ValueError("Choose one base backdrop.")

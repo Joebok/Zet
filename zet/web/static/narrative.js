@@ -398,7 +398,7 @@ async function loadPageContent() {
         ${detail.targets.some(target=>target.kind==='assembly') ? '' : '<button data-action="create-assembly">Create final assembly</button>'}
         <div class="narrative-actions"><button data-action="reference-backdrop">Reference backdrop from another scene</button><button data-action="import-subscene">Import subscene from another scene</button></div>
         ${targetsWithAssemblyLast(detail.targets).map(target=>`<article class="narrative-card narrative-target-card" data-target-id="${target.id}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${target.selected_id ? ' · Image selected' : ''}</p>
-          ${target.selected_id ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(target.selected_id,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}</article>`).join('')}</section>
+          ${target.selected_id ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(target.selected_id,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}${target.kind==='subscene' ? `<button class="danger" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`).join('')}</section>
       <section class="narrative-card"><h2>Scene elements</h2><button data-action="new-element">Add element</button><div id="narrative-elements">${elementsHtml(detail.elements,false)}</div></section></div></div>`;
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
   } else {
@@ -423,7 +423,7 @@ function elementsHtml(elements, target) {
 
 function assemblyHtml() {
   return `<section class="narrative-card"><h2>Sources and placement</h2><label class="narrative-field">Add source<select id="assembly-source">${detail.assembly_sources.map(source=>`<option value="${source.id}">${esc(source.title)} · ${source.kind}</option>`).join('')}</select></label>
-    <button data-action="add-layer">Add selected image</button><p class="narrative-muted">Choose a completed image below if the source has no selection. Drag groups on the preview; use the corner handle to resize.</p>
+    <button data-action="add-layer">Add selected image</button><label class="narrative-field">Scene element<select id="assembly-element"><option value="">Choose an element</option>${detail.assembly_element_sources.map(item=>`<option value="${esc(item.id)}" ${item.available?'':'disabled'}>${esc(item.name)}${item.reason ? ` · ${esc(item.reason)}` : ''}</option>`).join('')}</select></label><button data-action="add-element-layer">Add element</button><p class="narrative-muted">Choose a completed image below if the source has no selection. Drag groups on the preview; use the corner handle to resize.</p>
     <div id="assembly-layers"></div><div id="assembly-canvas" style="aspect-ratio:${detail.width}/${detail.height}"></div>
     <div class="narrative-actions"><button data-action="preview-composite">Refresh raw composite</button><button id="assembly-download" data-action="download-composite">Download raw composite</button></div>
     <img id="assembly-raw" alt="Raw composite preview" hidden></section>`;
@@ -440,8 +440,8 @@ function renderLayers() {
     const source = detail.assembly_sources.find(item=>item.id===layer.target_id);
     const options = source?.candidates || [];
     return `<article class="narrative-layer"><h3>${esc(layer.label)}</h3><img class="narrative-layer-thumb" src="${esc(layerUrl(layer))}" alt="${esc(layer.label)} cutout">
-      <label>Candidate<select data-layer="${layer.id}" data-layer-field="candidate_id">${options.some(candidate=>candidate.id===layer.candidate_id) ? '' : `<option value="${layer.candidate_id}">Pinned image</option>`}${options.map(candidate=>`<option value="${candidate.id}" ${candidate.id===layer.candidate_id ? 'selected' : ''}>Slot ${candidate.slot}</option>`).join('')}</select></label>
-      <button data-current-selection="${layer.id}">Use current selection</button>
+      ${layer.source_kind==='element' ? '' : `<label>Candidate<select data-layer="${layer.id}" data-layer-field="candidate_id">${options.some(candidate=>candidate.id===layer.candidate_id) ? '' : `<option value="${layer.candidate_id}">Pinned image</option>`}${options.map(candidate=>`<option value="${candidate.id}" ${candidate.id===layer.candidate_id ? 'selected' : ''}>Slot ${candidate.slot}</option>`).join('')}</select></label>
+      <button data-current-selection="${layer.id}">Use current selection</button>`}
       <div class="narrative-layer-controls"><label>Role<select data-layer="${layer.id}" data-layer-field="role"><option value="group" ${layer.role==='group'?'selected':''}>Group</option>${layer.source_kind==='backdrop'?`<option value="base" ${layer.role==='base'?'selected':''}>Base backdrop</option>`:''}</select></label>
       <label><input type="checkbox" data-layer="${layer.id}" data-layer-field="visible" ${layer.visible?'checked':''}> Visible</label>
       ${layer.role==='base' ? `<label>Backdrop fit<select data-layer="${layer.id}" data-layer-field="fit">${['cover','contain'].map(value=>`<option ${value===layer.fit?'selected':''}>${value}</option>`).join('')}</select></label>` : `
@@ -1187,7 +1187,7 @@ listen(host,'click',event=>{
     elementDraft.asset_id = ''; elementDraft.reference_key = ''; host.querySelector('#element-reference-label').textContent = 'Text only — no reference image'; return;
   }
   if(button.dataset.sceneTextCandidate){void window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.sceneTextCandidate,done:async result=>{detail=result;updateLive();}}).catch(error=>status(error.message,true));return;}
-  if (!['editElement','removeElement','deleteElement','candidate','renderSlot','retryJob','action','currentSelection','maskLayer','removeLayer'].some(key=>button.dataset[key])&&!['mask-apply','mask-reset'].includes(button.id)) return;
+  if (!['editElement','removeElement','deleteElement','deleteSubscene','candidate','renderSlot','retryJob','action','currentSelection','maskLayer','removeLayer'].some(key=>button.dataset[key])&&!['mask-apply','mask-reset'].includes(button.id)) return;
   action(async()=>{
     if (button.id==='mask-apply'||button.id==='mask-reset') {
       const id=host.querySelector('#mask-canvas').dataset.maskSource;
@@ -1203,6 +1203,11 @@ listen(host,'click',event=>{
       if(!scene.selected_id) throw new Error('Select a source image first.');
       const layer=detail.layers.find(item=>item.id===layerId);
       layer.candidate_id=scene.selected_id;layer.strokes=[];layersChanged();await save();renderLayers();
+    } else if (button.dataset.deleteSubscene) {
+      const target=detail.targets.find(item=>item.id===button.dataset.deleteSubscene);
+      if (!target || !confirm(`Delete subscene “${target.title}”?`)) return;
+      await save(); const result=await api(`${base()}/targets/${target.id}`,'DELETE',{});
+      if (result) await loadPage();
     } else if (button.dataset.editElement) await editElement(button.dataset.editElement);
     else if (button.dataset.removeElement) {
       await save(); await api(base(),'PATCH',{element_ids:detail.element_ids.filter(id=>id!==button.dataset.removeElement)}); await loadPage();
@@ -1233,6 +1238,12 @@ listen(host,'click',event=>{
         case 'scene-text': if(!detail.selected_id)throw Error('Select an image first.'); await save(); await window.ZetSceneText.open({base:base(),universe,candidate:detail.selected_id,done:async result=>{detail=result;updateLive();reviewCandidate=detail.selected_id;if(!host.querySelector('#image-dialog').open)host.querySelector('#image-dialog').showModal();renderImageReview();}});break;
         case 'scene-text-raw': await save(); await window.ZetSceneText.open({base:base(),universe,done:async()=>loadPage()});break;
         case 'create-assembly': {await save();const target=await api(base()+'/targets','POST',{title:'Final assembly',kind:'assembly'});await navigate({...route,target:target.id});break;}
+        case 'add-element-layer': {
+          const elementId=host.querySelector('#assembly-element').value;
+          if(!elementId) throw new Error('Choose a scene element with a reference image.');
+          await save();detail.layers.push({element_id:elementId,role:'group',x:.1,y:.2,scale:.4,z:detail.layers.length});
+          layersChanged();await save();renderLayers();break;
+        }
         case 'add-layer': {
           await save();const source=detail.assembly_sources.find(item=>item.id===host.querySelector('#assembly-source').value);
           if(!source?.candidates.length) throw new Error('Generate a completed source image first.');

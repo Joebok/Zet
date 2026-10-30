@@ -169,6 +169,12 @@ retains history; Re-run last interview replays the latest uncleared interview.
 
 ## Assembly and reference boundaries
 
+Final assembly can add an established scene element's available reference image as
+a group layer. The image and element metadata are pinned when added; replacing a
+reference requires removing and adding the layer again. Scene properties offers
+subscene deletion with selected/locked image confirmation. Existing assembly
+copies survive deletion of their source subscene or element.
+
 **Use current selection** saves pending assembly edits, fetches the source target's
 selected candidate, then updates the current layer object so an intervening poll
 or save cannot discard the selection. It clears extraction corrections while

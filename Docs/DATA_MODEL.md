@@ -180,6 +180,11 @@ only subscenes use it). Repository defaults cover missing fields on current targ
 without changing historical nested job snapshots. New job detail and copied source
 inputs retain explicit true/false. Background policy participates in text-result
 application fencing; a historical snapshot without the field is distinguishable.
+Assembly layers may identify a scene element with `element_id` and retain its
+resolved `asset_id` and an assembly-owned source copy. Existing target/candidate
+layer identities remain supported. Element layers keep their pinned copy after
+the scene element or reference changes.
+
 `assembly_mode` additionally accepts `harmonize_composite`, without changing the
 default `finish_composite`. Harmonization snapshots set `has_composite=true`, freeze
 one composition reference and source bytes, and omit edit-mask/protected artifacts.

@@ -324,6 +324,7 @@ class NarrativeSceneService:
                     state = self.app.narrative_scene_text_service.state(story, scene, target, candidate_id)
                     candidate["scene_text_pending"] = candidate.get("scene_text_final", {}).get("token") != state["token"]
             detail["assembly_sources"] = self.app.narrative_assembly_service.sources(story, scene)
+            detail["assembly_element_sources"] = self.app.narrative_assembly_service.element_sources(story, scene)
             detail["source_groups"] = [{"title": layer["label"], "narrative": layer.get("narrative", ""),
                                         "role": layer["role"]} for layer in record["layers"] if layer["visible"]]
         return detail
