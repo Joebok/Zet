@@ -59,7 +59,11 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
     backdrop_source = backdrop_reference(detail)
     if backdrop_source:
         source = detail["source_snapshot"]
-        context["source_backdrop"] = {key: source.get(key) for key in ("title", "prompt", "generation_inputs", "current_inputs")}
+        cropped = detail.get("backdrop_adaptation", {}).get("crop_enabled", False)
+        # Full-source prose describes objects that may be outside this crop. Text-only
+        # prompt writers cannot determine which of those objects remain visible.
+        context["source_backdrop"] = ({"title": source.get("title")} if cropped else
+                                     {key: source.get(key) for key in ("title", "prompt", "generation_inputs", "current_inputs")})
         context["backdrop_link_mode"] = "reference"
         context["adaptation"] = detail.get("backdrop_adaptation", {})
         context["source_region"] = "Only the selected crop is supplied" if context["adaptation"].get("crop_enabled") else "Full source image"
@@ -165,6 +169,15 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
                          "Source text is historical context; current destination direction takes precedence. "
                          "Do not preserve source framing when a viewpoint or expansion change is requested. "
                          "Describe an image edit rather than creating an unrelated environment. Do not add people unless deliberately assigned.")
+    if backdrop_source and detail.get("backdrop_adaptation", {}).get("crop_enabled"):
+        instructions += (
+            " The selected crop alone is authoritative for visible source content and composition. "
+            "You receive text metadata, not the image: do not invent a description of what is visible in the crop. "
+            "The source title and general scene setting do not establish which objects remain visible. "
+            "Describe the requested changes to the supplied cropped image without restating the full source scene. "
+            "Preserve the crop's existing content and framing unless the destination direction explicitly requests a change. "
+            "Do not reconstruct excluded objects or surroundings. Expand may add surroundings only as requested."
+        )
     if kind == "interview":
         instructions += (
             " Propose whole-field replacements only for moment fields (narrative, staging, physical_context, framing), "
@@ -268,7 +281,10 @@ def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
     for index, reference in enumerate(references, 1):
         role = reference["role"]
         if role == "backdrop source":
-            bindings.append(f"<image{index}> is the original backdrop. Preserve its recognizable setting and architecture; apply the requested changes.")
+            if detail.get("backdrop_adaptation", {}).get("crop_enabled"):
+                bindings.append(f"<image{index}> is only the selected cropped backdrop region. Its visible content and composition are authoritative; apply the requested changes without reconstructing excluded source objects or surroundings, except for explicitly requested additions or expansion.")
+            else:
+                bindings.append(f"<image{index}> is the original backdrop. Preserve its recognizable setting and architecture; apply the requested changes.")
             continue
         if role == "appearance":
             purpose = ("Preserve recognizable identity and clothing; source pose, gaze and camera are not authoritative."

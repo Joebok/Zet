@@ -39,13 +39,15 @@ class NarrativeSceneService:
                 story["scenes"] = []
                 for scene_id in story["scene_ids"]:
                     scene = self.repository.read(story["id"], scene_id)
-                    assembly = next((target for target in self.list_targets(story["id"], scene_id)
-                                     if target["kind"] == "assembly"), None)
-                    story["scenes"].append({"id": scene_id, "title": scene["title"],
-                                            "final_assembly": {"target_id": assembly["id"],
-                                                               "candidate_id": assembly["selected_id"]}
-                                            if assembly and assembly["selected_id"] else None})
+                    story["scenes"].append(self._scene_summary(story["id"], scene_id, scene))
             return stories
+
+    def _scene_summary(self, story: str, scene_id: str, scene: dict) -> dict:
+        assembly = next((target for target in self.list_targets(story, scene_id)
+                         if target["kind"] == "assembly"), None)
+        return {"id": scene_id, "title": scene["title"],
+                "final_assembly": {"target_id": assembly["id"], "candidate_id": assembly["selected_id"]}
+                if assembly and assembly["selected_id"] else None}
 
     def create_story(self, data: dict) -> dict:
         with self.repository.lock():
@@ -54,7 +56,11 @@ class NarrativeSceneService:
 
     def story(self, story: str) -> dict:
         record = self.repository.read(story)
-        return {**record, "scenes": [self.repository.read(story, item) for item in record["scene_ids"]]}
+        scenes = []
+        for scene_id in record["scene_ids"]:
+            scene = self.repository.read(story, scene_id)
+            scenes.append({**scene, **self._scene_summary(story, scene_id, scene)})
+        return {**record, "scenes": scenes}
 
     def update_story(self, story: str, data: dict) -> dict:
         with self.repository.lock():
@@ -62,6 +68,13 @@ class NarrativeSceneService:
             if "scene_text_style_override" in data:
                 from zet.services.scene_text_style_service import validate_style
                 record["scene_text_style_override"] = validate_style(data["scene_text_style_override"], partial=True)
+            if "scene_ids" in data:
+                scene_ids = data["scene_ids"]
+                current = record["scene_ids"]
+                if (not isinstance(scene_ids, list) or any(not isinstance(item, str) for item in scene_ids)
+                        or len(scene_ids) != len(current) or set(scene_ids) != set(current)):
+                    raise ValueError("Scene order must contain each current scene ID exactly once.")
+                record["scene_ids"] = scene_ids
             self._patch(record, data, ("title", "brief"))
             return self.persist(record, story)
 
