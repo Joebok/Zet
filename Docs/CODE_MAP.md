@@ -306,3 +306,8 @@ Assembly front-first workflow: `local_character_progression_service` owns the se
 Scene-text finish/settings follow-up: `scene_text.js` shares inline and dialog appearance controls; candidate editing saves shared entries and independent placements through `NarrativeSceneTextService`. `narrative.js` routes selected-image editing and clean review with finished-revision URLs. `zet.js` owns combined universe settings; the universe API exposes read-only `storage_path`.
 
 Backdrop linking/cropping (2026-10-29): `narrative_backdrop_policy.backdrop_reference` owns effective image-use policy; `NarrativeReferenceService` owns pinned sources, legacy normalization and exact crops. Scene reference binding prepares cropped inputs; generation freezes them and fences mode changes. `narrative.js` owns conditional modes and crop interaction. Approved S1–S4 remain regressions; new behavior uses disposable checks.
+
+
+## Environmental universe style (2026-10-30)
+
+universe_style_service owns variant defaults and batch snapshots; pipeline_compiler_support reads frozen styles for the four active character compilers. NarrativeSceneService owns canonical compatibility and explicit inheritance.

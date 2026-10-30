@@ -270,3 +270,8 @@ Reference crops use integer source-pixel x/y/width/height after EXIF orientation
 Jobs freeze prepared crop bytes in the existing ordered reference snapshots. Retries retain those bytes. Mode/crop changes fence current prompt/interview application; historical candidates remain unchanged.
 
 Cropped prompt/interview requests omit the original source prompt and source authoring/generation prose: those describe the full image and can reintroduce excluded objects. Text writers receive crop metadata and change instructions, with explicit direction to avoid inventing visible crop content. Render bindings identify the supplied image as the selected crop. Uncropped references retain historical source context. This improves instruction consistency; it does not enforce generated pixels.
+
+
+## Environmental universe style (2026-10-30)
+
+Scene and target style controls select canonical/environmental; targets can inherit shared direction. New backdrops explicitly select environmental. Missing scene variants resolve to canonical, including legacy records with empty values. Changing style affects newly authored prompts; saved render prompts retain their text.

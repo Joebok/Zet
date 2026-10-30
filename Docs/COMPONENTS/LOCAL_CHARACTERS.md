@@ -593,3 +593,8 @@ locked images are unchanged by master/template edits.
 Disposable isolated compilation/preparation and the approved fast E2E suite check
 software behavior. No live images were generated for this change; the back-left
 hair endpoint still requires human visual acceptance after future rendering.
+
+
+## Environmental universe style (2026-10-30)
+
+Body Reference, Head Image, Head Image Edit and Costume Dressing choose universe style when creating a batch. The batch snapshot persists across subsequent view compilation. Overview automatic creation defaults canonical and rejects reuse of batches with a different variant or frozen style hash. Minor Characters stores universe_style_variant independently of source-style preservation, and includes it in analysis invalidation.

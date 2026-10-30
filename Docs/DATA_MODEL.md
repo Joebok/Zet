@@ -309,3 +309,8 @@ Scene-text fonts additionally support installed Comic Sans MS, Calibri, Cambria,
 ## Narrative backdrop linking (2026-10-29)
 
 Narrative targets add `backdrop_link_mode` (`reference`, `unmodified`, `regenerate`). `backdrop_adaptation` includes boolean `crop_enabled` and integer source-pixel `crop` x/y/width/height. Repository reads normalize legacy center/zoom rectangles using the saved target aspect ratio and source dimensions. Legacy unchanged maps to unmodified; legacy crop enables cropping; other legacy operations default uncropped. Historical frozen jobs/candidates are not rewritten.
+
+
+## Environmental universe style (2026-10-30)
+
+Universe descriptors additionally support `environmental_art_style`. Missing/empty universe-style variants resolve to canonical. New character batches freeze variant/text/hash/source in `Universe_Style.json` and expose the snapshot in their specification. Existing saved requests are retained.

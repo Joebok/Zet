@@ -62,7 +62,7 @@ class NarrativeTarget:
     height: int = 832
     element_ids: list[str] = field(default_factory=list)
     visual_overrides: dict = field(default_factory=dict)
-    universe_style_variant: str = ""
+    universe_style_variant: str = "inherit"
     prompt: str = ""
     interview: list[dict] = field(default_factory=list)
     jobs: dict = field(default_factory=dict)

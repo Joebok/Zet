@@ -8,6 +8,7 @@ from pathlib import Path
 
 def universe_style(root: str | Path | None, variant: str = "canonical") -> dict:
     """Read one universe style and return a content-addressed prompt snapshot."""
+    variant = variant or "canonical"
     if variant not in {"canonical", "environmental"}:
         raise ValueError("Universe style variant must be canonical or environmental.")
     marker = Path(root) / "universe.json" if root is not None else None
@@ -28,3 +29,13 @@ def compose_style(content: str, style: str, notes: str = "") -> str:
         f"Art style:\n{style.strip()}" if style.strip() else "",
         content.strip(), f"Additional artistic direction:\n{notes.strip()}" if notes.strip() else "",
     ) if part)
+
+
+def freeze_batch_style(root, universe_root, payload):
+    """Freeze the selected universe style before any batch prompt is compiled."""
+    from zet.services.atomic_file_service import write_json_atomic
+    style = universe_style(universe_root, payload.get("universe_style_variant") or "canonical")
+    if not style["text"] and payload.get("universe_style_variant"):
+        raise ValueError(f"Set the universe's {style['variant']} style before creating a batch.")
+    write_json_atomic(Path(root) / "Universe_Style.json", style)
+    return style

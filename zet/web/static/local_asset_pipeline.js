@@ -141,6 +141,7 @@
       character: document.querySelector("#character-select").value,
       phase: document.querySelector("#phase-select").value,
       costume: isCostume() ? selectedCostume() : "",
+      universe_style_variant: $("style-variant").value,
       front_count: Number($("front-count").value),
       other_count: Number($("other-count").value),
       use_front_anchor: state.pipeline === "character-assembly" ? false : hasSharedAssetRouter() ? $("use-anchor").checked : state.pipeline === "body-reference" || ["head-image", "head-image-edit"].includes(state.pipeline),
@@ -313,6 +314,8 @@
         note.textContent = `${warning.view}: ${warning.message}`; progression.append(note);
       }
     }
+    $("style-choice").hidden = state.pipeline === "character-assembly";
+    $("saved-style").hidden = state.pipeline === "character-assembly";
     if (state.pipeline === "character-assembly") $("anchor-option").hidden = true;
     $("back-reference-label").hidden = ["body-reference", "head-image-edit", "character-assembly", "costume-dressing"].includes(state.pipeline) || !run?.progression?.next_views.includes("BACK");
     if (run && $("back-reference").dataset.runId !== run.run_id) {
@@ -574,6 +577,7 @@
       else delete state.costumeSettingsDrafts[view];
     }
     state.run = latest;
+    $("saved-style").textContent = latest.universe_style_variant ? `Batch style: ${latest.universe_style_variant}` : "Batch style: canonical";
     window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id), frontRenderControl);
     const signature = run => JSON.stringify([run?.candidates, run?.slots_by_view, run?.slot_controls, run?.render_settings, run?.rankings, run?.evaluations, run?.selected_views, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
@@ -1936,6 +1940,7 @@
       void loadRun($("runs").value).catch((error) => setStatus(error.message, true));
     });
     $("costume").addEventListener("change", () => { syncPipelineRoute(); void refreshContext(); });
+    $("style-variant").addEventListener("change", () => void readiness());
     $("front-count").addEventListener("change", () => void readiness());
     $("other-count").addEventListener("change", () => void readiness());
     $("use-anchor").addEventListener("change", () => void readiness());

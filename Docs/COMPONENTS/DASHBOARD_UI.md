@@ -229,3 +229,8 @@ The header Universe Settings action is available in both workspaces. One form sa
 ## Backdrop source controls (2026-10-29)
 
 Narrative places source linking before authoring. Linking mode selectively exposes local unchanged reuse, Reference crop/adaptation, or Regenerate seeding. Crop supports exact numeric coordinates, pointer movement and lower-right resizing, independent of output size. Existing image cards remain accessible in all modes.
+
+
+## Environmental universe style (2026-10-30)
+
+Universe settings and creation expose Environmental style. Image Generation persists a canonical/environmental choice with its form; Add Universe art style uses that choice. Minor Characters and character batch creation expose independent universe-style selectors.

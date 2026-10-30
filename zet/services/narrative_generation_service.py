@@ -53,6 +53,8 @@ class NarrativeGenerationService:
             if kind not in {"interview", "synthesize", "generate", "render"}:
                 raise ValueError("Unknown narrative generation action.")
             detail = self.author.target(story, scene, target)
+            if not replay and kind != "render" and detail.get("universe_style") and detail.get("style_source") != "target override" and not detail["universe_style"]["text"]:
+                raise ValueError("Set the selected universe style before generating a prompt.")
             baseline = detail_without_jobs(detail)
             if replay:
                 detail = deepcopy(replay["detail"])

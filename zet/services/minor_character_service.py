@@ -22,10 +22,10 @@ class MinorCharacterNotFound(QuickCharacterWizardError):
 
 
 class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService):
-    INPUTS = ("references", "primary_reference_id", "style_mode", "preserve", "changes", "model",
+    INPUTS = ("references", "primary_reference_id", "universe_style_variant", "style_mode", "preserve", "changes", "model",
               "notes", "framing", "side", "description", "identity", "proposals", "answers",
               "reconstruction_id", "target_hash")
-    ANALYSIS_INPUTS = ("references", "primary_reference_id", "style_mode", "preserve", "changes", "model", "notes")
+    ANALYSIS_INPUTS = ("references", "primary_reference_id", "universe_style_variant", "style_mode", "preserve", "changes", "model", "notes")
 
     @staticmethod
     def name_key(name):
@@ -244,7 +244,8 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 if key in payload:
                     session[key] = text(payload[key], key)
             for key, allowed in (("framing", {"full_body", "portrait"}), ("side", {"left", "right"}),
-                                 ("style_mode", {"universe", "preserve_source"})):
+                                 ("style_mode", {"universe", "preserve_source"}),
+                                 ("universe_style_variant", {"canonical", "environmental"})):
                 if key in payload:
                     if payload[key] not in allowed:
                         raise QuickCharacterWizardError("Choose a valid " + key + ".")

@@ -231,6 +231,7 @@ const imageGenerationReferenceSlotsElement = document.querySelector("#image-gene
 const imageGenerationReferenceList = document.querySelector("#image-generation-reference-list");
 const imageGenerationPrompt = document.querySelector("#image-generation-prompt");
 const imageGenerationAddUniverseArtStyle = document.querySelector("#image-generation-add-universe-art-style");
+let imageGenerationUniverseStyle = null;
 const imageGenerationStyleVariant = document.querySelector("#image-generation-style-variant");
 const imageGenerationNegative = document.querySelector("#image-generation-negative");
 const imageGenerationWidth = document.querySelector("#image-generation-width");
@@ -1348,6 +1349,7 @@ function saveImageGenerationState() {
     window.localStorage.setItem(`${IMAGE_GENERATION_STORAGE_KEY}:${state.universeId}`, JSON.stringify({
       mode: imageGenerationMode,
       universeStyleVariant: imageGenerationStyleVariant.value,
+      universeStyleSnapshot: imageGenerationUniverseStyle,
       prompt: imageGenerationPrompt.value,
       negativePrompt: imageGenerationNegative.value,
       width: imageGenerationWidth.value,
@@ -1415,6 +1417,7 @@ async function restoreImageGenerationInputs() {
     imageGenerationPrompt.value = saved.prompt || "";
     imageGenerationPrompt.dataset.managedStyle = saved.managedStyle || "";
     imageGenerationStyleVariant.value = saved.universeStyleVariant || "canonical";
+    imageGenerationUniverseStyle = saved.universeStyleSnapshot || null;
     imageGenerationReconstruction = saved.reconstruction || null;
     imageGenerationNegative.value = saved.negativePrompt || "";
     if (saved.width) imageGenerationWidth.value = saved.width;
@@ -2159,6 +2162,8 @@ async function submitImageGenerationForSlots(slotIndexes) {
 function currentImageGenerationInputs() {
   const references = imageGenerationMode === "img2img" ? imageGenerationReferenceSlots.filter(reference => reference.data) : [];
   return {
+    universe_style_variant: imageGenerationStyleVariant.value,
+    ...(imageGenerationUniverseStyle ? {universe_style: imageGenerationUniverseStyle} : {}),
     mode: imageGenerationMode, prompt: imageGenerationPrompt.value, negative_prompt: imageGenerationNegative.value,
     width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value),
     reference_images: references.map(({label, data, metadata}) => ({label: label.trim(), image: data, ...(metadata ? {metadata} : {})})),
@@ -2222,6 +2227,8 @@ window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent,
       window.localStorage.removeItem(`zet:reconstruction-job:${universe}`);
       window.localStorage.removeItem(`zet:true-up:${universe}`);
       const inputs = staged.inputs;
+      imageGenerationStyleVariant.value = inputs.universe_style_variant || "canonical";
+      imageGenerationUniverseStyle = inputs.universe_style || null;
       imageGenerationPrompt.value = inputs.prompt;
       imageGenerationNegative.value = inputs.negative_prompt;
       imageGenerationWidth.value = inputs.width;
@@ -12798,6 +12805,7 @@ imageGenerationAddUniverseArtStyle.addEventListener("click", () => {
   imageGenerationPrompt.focus();
 });
 imageGenerationStyleVariant.addEventListener("change", () => {
+  imageGenerationUniverseStyle = null;
   const previous = imageGenerationPrompt.dataset.managedStyle || "";
   if (previous && imageGenerationPrompt.value.startsWith(previous)) {
     imageGenerationPrompt.value = imageGenerationPrompt.value.slice(previous.length);

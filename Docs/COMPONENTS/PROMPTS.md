@@ -297,3 +297,8 @@ cached prompts/manifests through the existing stamp check; current version-2 pro
 edits remain usable without explicit Recompile. Submitted requests and Retry keep
 their frozen inputs. See [ADR 0036](../DECISIONS/0036-long-hair-head-and-assembly.md)
 and the [workflow handoff](LOCAL_CHARACTERS.md#long-hair-framing-and-assembly-handoff-2026-10-27).
+
+
+## Environmental universe style (2026-10-30)
+
+The shared universe style reader accepts canonical/environmental variants. Character compilers read the batch-owned `Universe_Style.json` using the declared output directory; subsequent view compilation retains that batch snapshot. Source attribution points to the selected descriptor field.

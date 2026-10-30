@@ -216,6 +216,9 @@ class LocalHeadImageService:
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         root = self._workspace(plan["character"], plan["phase"]) / run_id
         root.mkdir(parents=True, exist_ok=False)
+        from zet.services.universe_style_service import freeze_batch_style
+        batch_style = freeze_batch_style(root, self.app.config.base_library_path, payload)
+
         source_snapshot = ""
         if source_path:
             source = Path(source_path).resolve()
@@ -263,6 +266,8 @@ class LocalHeadImageService:
         if source_origin:
             spec["front_source_origin"] = {**source_origin, "snapshot_sha256": spec["front_source_sha256"]}
         spec["slots_by_view"] = slot_maps(spec)
+        spec["universe_style_variant"] = batch_style["variant"]
+        spec["universe_style"] = batch_style
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": "QUEUED", "updated_at": self._now(),
                                             "stop_requested": False, "candidates": {}, "selected_views": {}, "rankings": {}})

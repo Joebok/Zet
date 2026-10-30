@@ -279,7 +279,7 @@
           <details id="local-pipeline-options" class="local-pipeline-options" data-viewer-settings open>
             <summary>New batch settings</summary>
             <div class="local-pipeline-options-body">
-            <label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" max="8" value="8"></label>
+            <label id="local-pipeline-style-choice">Batch universe style<select id="local-pipeline-style-variant"><option value="canonical">Canonical</option><option value="environmental">Environmental</option></select></label><p id="local-pipeline-saved-style"></p><label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" max="8" value="8"></label>
             <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" max="8" value="4"></label>
             <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
             <label id="local-pipeline-head-pipeline-label" hidden>Head pipeline
@@ -801,7 +801,7 @@
             <div id="mc-paste" class="paste-zone" tabindex="0">Click here and paste a reference image</div>
             <label>Primary identity reference<select id="mc-primary"></select></label>
             <label>Comparison reference<select id="mc-comparison-reference"></select></label>
-            <label>Style<select id="mc-style"><option value="universe">Reconstruct in universe style</option><option value="preserve_source">Keep source style</option></select></label>
+            <label>Universe style<select id="mc-style-variant"><option value="canonical">Canonical</option><option value="environmental">Environmental</option></select></label><label>Style<select id="mc-style"><option value="universe">Reconstruct in universe style</option><option value="preserve_source">Keep source style</option></select></label>
             <label>Framing<select id="mc-framing"><option value="full_body">Full body</option><option value="portrait">Portrait</option></select></label>
             <label>Preserve<textarea id="mc-preserve" rows="2"></textarea></label>
             <label>Required changes<textarea id="mc-changes" rows="2"></textarea></label>

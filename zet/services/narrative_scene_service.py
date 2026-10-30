@@ -92,7 +92,7 @@ class NarrativeSceneService:
         record = self.repository.read(story, scene)
         record["elements"] = [self.element_detail(element) for element in record["elements"]]
         return {**record, "targets": self.list_targets(story, scene), "field_purposes": FIELD_PURPOSES,
-                "universe_style": universe_style(self.app.config.base_library_path)}
+                "universe_style": universe_style(self.app.config.base_library_path, record.get("universe_style_variant") or "canonical")}
 
     def element_asset(self, element: dict) -> dict | None:
         if element.get("reference_key"):
@@ -228,7 +228,7 @@ class NarrativeSceneService:
         NarrativeReferenceService.validate_adaptation(record)
         if not isinstance(record["use_transparent_background"], bool):
             raise ValueError("Use transparent background must be a boolean.")
-        if record.get("universe_style_variant", "") not in {"", "canonical", "environmental"}:
+        if record.get("universe_style_variant", "") not in {"", "inherit", "canonical", "environmental"}:
             raise ValueError("Choose inherited, canonical or environmental universe style.")
         if record["assembly_mode"] not in ("finish_composite", "assemble_references", "harmonize_composite"):
             raise ValueError("Choose finish_composite, assemble_references or harmonize_composite.")
@@ -265,8 +265,9 @@ class NarrativeSceneService:
             element = self.element_detail(by_id[element_id])
             elements.append(element)
         inherited = {key: parent[key] for key in VISUAL_FIELDS}
-        target_variant = record.get("universe_style_variant") or ""
-        variant = target_variant or parent.get("universe_style_variant", "canonical")
+        stored_variant = record.get("universe_style_variant") or "canonical"
+        target_variant = "" if stored_variant == "inherit" else stored_variant
+        variant = target_variant or (parent.get("universe_style_variant") or "canonical")
         if variant not in {"canonical", "environmental"}:
             raise ValueError("Choose canonical or environmental universe style.")
         style = universe_style(self.app.config.base_library_path, variant) if target_variant or parent.get("use_universe_style") else None
@@ -277,7 +278,7 @@ class NarrativeSceneService:
                   "style_source": ("target override" if record["visual_overrides"].get("style") else
                                    "target universe" if target_variant else
                                    "universe" if style is not None else "saved scene"),
-                  "universe_style": style, "universe_style_variant": variant,
+                  "universe_style": style, "universe_style_variant": stored_variant,
                   "field_purposes": FIELD_PURPOSES,
                   "scene_title": parent["title"], "effective_models": {
                       key: resolve_role_model(self.app.config, "narrative_interview" if key == "interview_model" else "narrative_prompt", record[key])

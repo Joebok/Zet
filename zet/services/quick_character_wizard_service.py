@@ -300,6 +300,7 @@ class QuickCharacterWizardService:
             core = self._reconstruction()
             prepared = core.prepare({"model": session["model"], "model_explicit": session.get("model_explicit", True), "preserve": session["preserve"],
                 "changes": session["changes"], "notes": session["notes"],
+                "universe_style_variant": session.get("universe_style_variant") or "canonical",
                 "context": "Create neutral character reference views. Exclude source pose, camera, gaze and background from appearance. "
                     "The content_prompt must contain stable appearance only, without output count, a view list, "
                     "camera/facing/framing instructions, pose or background. "

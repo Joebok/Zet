@@ -239,7 +239,7 @@ def compile_body_reference_job(
         "phase": phase,
         "view_token": view_token,
     }
-    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
+    universe_style, universe_sources = universe_art_style(universe_root, job=job) if pipeline_mode == "local" else ("", {})
     metadata_values = {
         "BODY_REFERENCE_INPUT_GUIDANCE": (
             "Use Image 1 only as an identity and proportion reference; create the requested target view rather than copying its camera angle, pose or framing. Additional template images govern only their stated reference details."

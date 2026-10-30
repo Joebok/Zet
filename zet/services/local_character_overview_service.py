@@ -297,6 +297,12 @@ class LocalCharacterOverviewService:
         kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
         for summary in runs:
             run = adapter.detail(str(summary["run_id"]), **kwargs)
+            if (run.get("universe_style_variant") or "canonical") != "canonical":
+                continue
+            if run.get("universe_style"):
+                from zet.services.universe_style_service import universe_style
+                if run["universe_style"].get("sha256") != universe_style(self.app.config.base_library_path)["sha256"]:
+                    continue
             if self._compatible_head_source(pipeline, run):
                 return run
         return None

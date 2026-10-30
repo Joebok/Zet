@@ -621,7 +621,7 @@ def compile_costume_dressing_job(
             or label.startswith("right side")
             or label.startswith("left side")
         ) else "# Jewelry"
-    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
+    universe_style, universe_sources = universe_art_style(universe_root, job=job) if pipeline_mode == "local" else ("", {})
     metadata_values = {
         "CHARACTER_NAME": character,
         "CHARACTER_PHASE": phase,

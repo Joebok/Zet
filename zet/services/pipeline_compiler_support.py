@@ -14,21 +14,30 @@ from zet.services.view_service import UnknownViewError, ViewService
 from zet.services.universe_style_service import universe_style
 
 
-def universe_art_style(universe_root: str | Path | None) -> tuple[str, dict[str, dict]]:
+def universe_art_style(universe_root: str | Path | None, *, job: dict | None = None) -> tuple[str, dict[str, dict]]:
     """Load the current universe style and its prompt-source metadata."""
     if universe_root is None:
         return "", {}
     marker = Path(universe_root).expanduser().resolve() / "universe.json"
     try:
-        style = universe_style(universe_root)
+        style = None
+        if job:
+            output = job.get("Output Directory") or job.get("output_directory") or job.get("Folder") or job.get("folder")
+            if output:
+                for parent in list(Path(output).resolve().parents)[:8]:
+                    snapshot = parent / "Universe_Style.json"
+                    if snapshot.is_file():
+                        style = json.loads(snapshot.read_text(encoding="utf-8"))
+                        break
+        style = style or universe_style(universe_root)
     except (OSError, json.JSONDecodeError) as exc:
         raise TemplateCompileError("INVALID_CONFIG", f"Cannot read universe descriptor {marker}: {exc}") from exc
     sources = {
         "CANONICAL_ART_STYLE": {
             "source_kind": "universe_setting",
             "source_path": str(marker),
-            "source_label": "Universe Canonical Art Style",
-            "json_pointer": "/canonical_art_style",
+            "source_label": "Universe " + style.get("variant", "canonical").title() + " Art Style",
+            "json_pointer": "/" + style.get("source_field", "canonical_art_style"),
             "editable": True,
         }
     }

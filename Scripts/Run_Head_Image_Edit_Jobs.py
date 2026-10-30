@@ -73,7 +73,7 @@ def compile_head_image_edit_job(job, project_root=PROJECT_ROOT, *, prompt_varian
     refs = auxiliary_references_for_texts(project_root, list(selection.sections.values()), refs, universe_root=universe_root)
     mode = "edit" if bases else "generate"
     refs, inputs, contract, manifest = prepare_chatgpt_prompt_contract(refs, render_mode=mode)
-    style, style_sources = universe_art_style(universe_root)
+    style, style_sources = universe_art_style(universe_root, job=job)
     operation_path = project_root / "Config/Prompt_Templates/head_image_edit_operations.md"
     operations, operation_sources = load_template_sections_with_sources(operation_path, source_kind="task_template_section")
     operation_name = "HEAD_EDIT_OPERATION_" + (

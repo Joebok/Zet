@@ -179,7 +179,7 @@ def compile_head_image_job(
         references, render_mode=render_mode
     )
     contract_values["LOCAL_RENDER_MODE"] = render_mode
-    universe_style, universe_sources = universe_art_style(universe_root) if pipeline_mode == "local" else ("", {})
+    universe_style, universe_sources = universe_art_style(universe_root, job=job) if pipeline_mode == "local" else ("", {})
     local_style = str(universe_style or template_metadata(template_path).get("CANONICAL_ART_STYLE") or "").rstrip(". ")
     if not universe_style and view_token in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"}:
         local_style = re.sub(

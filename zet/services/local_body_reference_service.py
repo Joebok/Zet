@@ -442,6 +442,9 @@ class LocalBodyReferenceService:
         run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         root = self.runs_root / self._safe(plan["character"]) / self._safe(plan["phase"]) / run_id
         root.mkdir(parents=True, exist_ok=False)
+        from zet.services.universe_style_service import freeze_batch_style
+        batch_style = freeze_batch_style(root, self.app.config.base_library_path, payload)
+
         prompts = [self._compile_view(root, plan["character"], plan["phase"], view, index)
                    for index, view in enumerate(plan["views"], start=1)]
         seeds = payload.get("seeds")
@@ -487,6 +490,8 @@ class LocalBodyReferenceService:
             "front_anchor": None, "lineups": {}, "selected_views": {}, "rankings": {}, "created_by": "zet",
         }
         spec["slots_by_view"] = slot_maps(spec)
+        spec["universe_style_variant"] = batch_style["variant"]
+        spec["universe_style"] = batch_style
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": spec["status"], "updated_at": self._now(),
                                             "stop_requested": False, "candidates": {}, "rankings": {},

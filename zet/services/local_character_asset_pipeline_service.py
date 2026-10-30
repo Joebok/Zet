@@ -363,6 +363,9 @@ class LocalCharacterAssetPipelineService:
         run_id = uuid4().hex
         root = self._workspace(plan["character"], plan["phase"], plan["costume"]) / run_id
         root.mkdir(parents=True, exist_ok=False)
+        from zet.services.universe_style_service import freeze_batch_style
+        batch_style = freeze_batch_style(root, self.app.config.base_library_path, payload)
+
         sources, costume_path = self._snapshot_inputs(root, plan)
         count = plan["candidate_count"]
         seeds = payload.get("seeds")
@@ -393,6 +396,8 @@ class LocalCharacterAssetPipelineService:
                 "costume_path": costume_path, "costume_sha256": self._hash(Path(costume_path)) if costume_path else "",
                 "candidates": candidates, "front_anchor": None, "selected_views": {}, "rankings": {}}
         spec["slots_by_view"] = slot_maps(spec)
+        spec["universe_style_variant"] = batch_style["variant"]
+        spec["universe_style"] = batch_style
         self._write(root / "spec.json", spec)
         self._write(root / "state.json", {"run_id": run_id, "status": "QUEUED", "updated_at": self._now(),
                                            "stop_requested": False, "front_anchor": None, "views_started": False,

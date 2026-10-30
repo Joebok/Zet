@@ -40,6 +40,7 @@ class NarrativeRepository:
             from zet.models.narrative import NarrativeTarget
             from zet.services.narrative_reference_service import normalize_backdrop
             normalize_backdrop(record)
+            record["universe_style_variant"] = record.get("universe_style_variant") or "canonical"
             for key, value in asdict(NarrativeTarget(record["title"], record["kind"])).items():
                 if key == "assembly_mode" and record["kind"] == "assembly":
                     value = "harmonize_composite"
@@ -48,7 +49,7 @@ class NarrativeRepository:
             from zet.models.narrative import NarrativeScene
             # Existing scenes keep their authored style until explicitly switched.
             record.setdefault("use_universe_style", False)
-            record.setdefault("universe_style_variant", "")
+            record["universe_style_variant"] = record.get("universe_style_variant") or "canonical"
             for key, value in asdict(NarrativeScene(record["title"])).items():
                 record.setdefault(key, value)
             for element in record["elements"]:

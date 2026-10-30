@@ -3,7 +3,7 @@
   const bridge = window.zetQuickCharacterWizard;
   const $ = id => document.getElementById(id);
   if (!bridge || !$("minor-characters-page")) return;
-  const fields = {name:"mc-name", style_mode:"mc-style", framing:"mc-framing",
+  const fields = {name:"mc-name", universe_style_variant:"mc-style-variant", style_mode:"mc-style", framing:"mc-framing",
     preserve:"mc-preserve", changes:"mc-changes", notes:"mc-notes", model:"mc-model",
     description:"mc-description", identity:"mc-identity", proposals:"mc-proposals",
     primary_reference_id:"mc-primary", comparison_reference_id:"mc-comparison-reference"};
@@ -147,6 +147,7 @@
     if (previous && incoming && previous.template_candidate_id===incoming.template_candidate_id
         && incoming.revision>=edit.revision) edit.revision=incoming.revision;
     character = next;
+    character.universe_style_variant ||= "canonical";
     if (!patch.references) references = character.references;
     for (const [key, id] of Object.entries(fields)) {
       if (["primary_reference_id","comparison_reference_id"].includes(key)) continue;

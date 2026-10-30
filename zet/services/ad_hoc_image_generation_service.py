@@ -220,6 +220,11 @@ class AdHocImageGenerationService:
                 with Image.open(BytesIO(contents)) as image:
                     extension = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}[image.format]
                 reference_images[0].update(bytes=contents, extension=extension)
+        if "universe_style_variant" in payload and "universe_style" not in payload:
+            from zet.services.universe_style_service import universe_style
+            payload = {**payload, "universe_style": universe_style(self.zet_app.config.base_library_path, payload.get("universe_style_variant") or "canonical")}
+            if not payload["universe_style"]["text"]:
+                raise ValueError("Set the selected universe style before generating an image.")
         render_config = self.render_configuration(payload, mode)
         preset_name = render_config["preset"]
         if payload.get("model_family") and payload["model_family"] != "qwen-image-2.1":
@@ -361,7 +366,7 @@ class AdHocImageGenerationService:
     @staticmethod
     def _request_details(payload, width, height, prompt):
         return {
-            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "reference_images", "reference_image", "source_asset_id", "source_checksum", "reconstruction", "render_config") if key in payload},
+            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "reference_images", "reference_image", "source_asset_id", "source_checksum", "reconstruction", "render_config", "universe_style_variant", "universe_style") if key in payload},
             "reconstruction": payload.get("reconstruction", {}),
             "prompt": prompt,
             "negative_prompt": str(payload.get("negative_prompt") or "").strip(),

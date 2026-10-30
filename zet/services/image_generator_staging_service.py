@@ -69,6 +69,8 @@ class ImageGeneratorStagingService:
                 profile = saved.get("render_profile") or profile
             width, height = _render_size(None, profile)
             inputs = {
+                "universe_style_variant": run.get("universe_style_variant") or "canonical",
+                **({"universe_style": run["universe_style"]} if run.get("universe_style") else {}),
                 "mode": "img2img" if saved["references"] else "txt2img",
                 "prompt": saved["prompt"], "negative_prompt": "",
                 "width": self.generator._dimension(width, "Width"),
