@@ -172,6 +172,39 @@ body {
   white-space: nowrap;
 }
 
+.universe-caption {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+#current-universe-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 1.2em;
+  height: 1.2em;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+}
+
+#current-universe-settings svg {
+  width: 1em;
+  height: 1em;
+}
+
+#current-universe-settings:not(:disabled):hover {
+  background: rgb(255 255 255 / 16%);
+}
+
 .workspace-context {
   align-items: center;
   display: flex;
