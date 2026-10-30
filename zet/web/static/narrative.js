@@ -26,6 +26,7 @@ let knownModels = [];
 let historySignature = '';
 let interviewReplies = 0;
 let interviewReviewId = null;
+let interviewImage = '';
 const interviewChoices = new Map();
 let llmSubmitting = false;
 let layerDrag = null;
@@ -215,6 +216,7 @@ async function loadPage() {
 }
 
 async function loadPageContent() {
+  interviewImage = '';
   host.querySelector('#image-dialog').close();
   host.querySelector('#narrative-interview-review').close();
   interviewReviewId = null;
@@ -675,7 +677,8 @@ function renderTarget(targets) {
       <details><summary id="narrative-overrides-summary">Local overrides</summary>${visualFields.map(key=>label(`override_${key}`,detail.visual_overrides[key] || '',true,`${title(key)} override (blank inherits)`)).join('')}<button data-action="save">Save inputs</button></details></section>
     <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
       <label class="narrative-field">Answer or direct a revision<textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea></label>
-      <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready.</p></section></div>
+      ${detail.kind === 'subscene' ? `<label class="narrative-field">Image for this interview<select id="narrative-interview-image"><option value="">None</option></select><small>Used for this turn only. Requires a vision-capable interview model.</small></label><div id="narrative-interview-image-preview"></div><p class="narrative-muted" id="narrative-interview-replay-image"></p>` : ''}
+      <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
     </details><div class="narrative-output"><details class="narrative-card narrative-generation-settings" ${viewingImages ? '' : 'open'}><summary>Prompt and generation</summary>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option><option value="harmonize_composite" ${detail.assembly_mode==='harmonize_composite'?'selected':''}>Harmonize placed composite</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
       <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
@@ -767,6 +770,19 @@ function updateLive() {
   const history = host.querySelector('#narrative-interview');
   if (!history) return;
   const jobs = Object.values(detail.jobs);
+  const imagePicker = host.querySelector('#narrative-interview-image');
+  if (imagePicker) {
+    const candidates = Object.entries(detail.candidates).filter(([,candidate])=>candidate.status === 'COMPLETE' && candidate.image);
+    if (interviewImage && !candidates.some(([id])=>id === interviewImage)) interviewImage = '';
+    const options = '<option value="">None</option>' + candidates.map(([id,candidate])=>`<option value="${esc(id)}">Slot ${candidate.slot}</option>`).join('');
+    if (imagePicker.innerHTML !== options) imagePicker.innerHTML = options;
+    imagePicker.value = interviewImage;
+    const preview = host.querySelector('#narrative-interview-image-preview');
+    const previewHtml = interviewImage ? `<img class="narrative-source-preview" alt="Selected interview image" src="${esc(artifactUrl(`candidates/${interviewImage}/image`))}">` : '';
+    if (preview.innerHTML !== previewHtml) preview.innerHTML = previewHtml;
+    const lastInterview = jobs.filter(job=>job.kind==='interview' && !job.interview_history_cleared).at(-1);
+    host.querySelector('#narrative-interview-replay-image').textContent = lastInterview?.interview_evidence ? `Re-run last interview resends its original image from slot ${lastInterview.interview_evidence.slot}.` : '';
+  }
   refreshVisualContext();
   const pending = pendingInterviews();
   host.querySelector('#narrative-pending-reviews').innerHTML = pending.map(job=>`<button data-interview-review="${job.id}">Review interview proposals · ${job.review.proposals.length} changes</button>`).join('');
@@ -777,7 +793,7 @@ function updateLive() {
     const newReply = Boolean(historySignature) && replies > interviewReplies;
     interviewReplies = replies;
     historySignature = signatureHistory;
-    history.innerHTML = detail.interview.map(item=>`<article class="narrative-history-entry"><p><strong>${item.role === 'user' ? 'You' : `Illustrator · ${esc(modelName(item.provenance))}`}</strong><br>${esc(item.text || (item.draft ? 'Draft updated.' : item.role === 'assistant' ? 'Interview proposals received.' : 'Continue the interview.'))}</p>${(item.conflicts || []).map(text=>`<p>${esc(text)}</p>`).join('')}${item.draft ? `<details><summary>Generated draft</summary><dl>${Object.entries(item.draft).map(([key,value])=>`<dt>${title(key)}</dt><dd>${esc(value)}</dd>`).join('')}</dl></details>` : ''}</article>`).join('');
+    history.innerHTML = detail.interview.map(item=>`<article class="narrative-history-entry"><p><strong>${item.role === 'user' ? 'You' : `Illustrator · ${esc(modelName(item.provenance))}`}</strong><br>${esc(item.text || (item.draft ? 'Draft updated.' : item.role === 'assistant' ? 'Interview proposals received.' : 'Continue the interview.'))}</p>${item.visual_findings ? `<p><strong>Visual findings · slot ${esc(item.image_slot)} at the time</strong><br>${esc(item.visual_findings)}</p>` : ''}${(item.conflicts || []).map(text=>`<p>${esc(text)}</p>`).join('')}${item.draft ? `<details><summary>Generated draft</summary><dl>${Object.entries(item.draft).map(([key,value])=>`<dt>${title(key)}</dt><dd>${esc(value)}</dd>`).join('')}</dl></details>` : ''}</article>`).join('');
     if (newReply) {
       const latest = history.lastElementChild;
       latest.classList.add('narrative-new-reply');
@@ -811,7 +827,7 @@ function updateLive() {
   if (llmWorking && document.activeElement === prompt) prompt.blur();
   prompt.disabled = llmWorking;
   prompt.setAttribute('aria-busy', String(llmWorking));
-  const promptActions = ['interview','rerun_interview','synthesize','render'];
+  const promptActions = ['interview','rerun_interview','restart_interview','synthesize','render'];
   for (const button of root.querySelectorAll('[data-action]')) {
     if (promptActions.includes(button.dataset.action)) button.disabled = busy || llmWorking || (button.dataset.action === 'render' && detail.kind==='backdrop' && detail.source_snapshot?.image_file && ['crop','unchanged'].includes(detail.backdrop_adaptation?.operation)) || (button.dataset.action === 'render' && Boolean(host.querySelector('#narrative-assembly-prompt-warning')?.textContent));
   }
@@ -987,16 +1003,17 @@ async function start(actionName, count = 1, slot, retryJobId) {
   await save();
   status(actionName === 'render' ? 'Queueing images…' : 'Queueing illustrator…');
   const direction = host.querySelector('#narrative-direction');
-  const replay = actionName.startsWith('rerun_') ? Object.values(detail.jobs).filter(job=>actionName==='rerun_interview' ? job.kind==='interview' : ['synthesize','generate'].includes(job.kind)).at(-1) : null;
+  const replay = actionName.startsWith('rerun_') ? Object.values(detail.jobs).filter(job=>actionName==='rerun_interview' ? job.kind==='interview' && !job.interview_history_cleared : ['synthesize','generate'].includes(job.kind)).at(-1) : null;
   if (actionName.startsWith('rerun_') && !replay) throw new Error('Run an interview or write a prompt first.');
   llmSubmitting = actionName !== 'render';
   updateLive();
   let result;
   try {
-    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),message:direction?.value || ''});
+    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
   } finally { llmSubmitting = false; updateLive(); }
+  if (['interview','restart_interview'].includes(actionName)) interviewImage = '';
   mergeTarget(result);
-  if (actionName === 'interview' && direction) direction.value = '';
+  if (['interview','restart_interview'].includes(actionName) && direction) direction.value = '';
   const lastJob = Object.values(result.jobs).at(-1);
   status(lastJob?.status === 'FAILED' ? lastJob.error : 'Queued. You can keep editing.', lastJob?.status === 'FAILED');
 }
@@ -1049,6 +1066,7 @@ listen(host,'input',event=>{
 });
 
 listen(host,'change',event=>{
+  if (event.target.id==='narrative-interview-image') {interviewImage=event.target.value;updateLive();return;}
   if (event.target.id==='backdrop-link-mode') {const mode=event.target.value;action(async()=>{await save();await api(base(),'PATCH',{backdrop_link_mode:mode});await loadPage();});return;}
   if (event.target.id==='source-story') {populateSourceTargets().catch(error=>status(error.message,true));return;}
   if (event.target.id==='source-target') {populateSourceCandidates().catch(error=>status(error.message,true));return;}
@@ -1239,7 +1257,7 @@ listen(host,'click',event=>{
         }
         case 'new-element': await editElement(); break;
         case 'assign-elements': await assignElements(); break;
-        case 'interview': case 'synthesize': case 'generate': case 'render': case 'rerun_interview': case 'rerun_prompt': await start(button.dataset.action,Number(button.dataset.count || 1)); break;
+        case 'interview': case 'restart_interview': case 'synthesize': case 'generate': case 'render': case 'rerun_interview': case 'rerun_prompt': await start(button.dataset.action,Number(button.dataset.count || 1)); break;
         case 'refresh': await save(); mergeTarget(await api(base())); status('Updated'); break;
       }
     }

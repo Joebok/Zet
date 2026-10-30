@@ -35,7 +35,7 @@ def transparent_subscene(detail: dict) -> bool:
     return detail["kind"] == "subscene" and detail.get("use_transparent_background", False)
 
 
-def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
+def llm_request(detail: dict, kind: str, message: str = "", *, interview_evidence: dict | None = None) -> tuple[str, dict]:
     # Whole-scene intent can describe actors and events outside this target.
     # Supply only this target's direction and the inherited visual context.
     context = {key: detail[key] for key in ("title", "kind", "narrative", "staging", "physical_context", "framing", "context")}
@@ -91,7 +91,7 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "Return proposals, conflicts and questions as JSON."
         )
         context["history"] = detail["interview"]
-        schema = INTERVIEW_SCHEMA
+        schema = object_schema({**INTERVIEW_SCHEMA["properties"], "visual_findings": TEXT}) if interview_evidence else INTERVIEW_SCHEMA
     else:
         instructions = (
             "Write a Qwen Image 2.1 illustration prompt as JSON with scene and rendering fields. "
@@ -191,8 +191,10 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
             "replace shared values, so that difference alone is not a conflict. Resolve clear conflicts using the latest "
             "explicit user direction; preserve unresolved facts and ask at most two material questions when intent is "
             "unclear. Preserve weapon exclusions and exact relative-height comparisons. Current saved inputs are "
-            "authoritative: history may contain rejected or unapplied proposals. Reference metadata is text only; you "
-            "cannot inspect image anatomy, height or pose. Do not change names, references, membership, dimensions, models, "
+            "authoritative: history may contain rejected or unapplied proposals. Historical visual findings describe earlier renders and may no longer apply. "
+            "Reference metadata is text only. "
+            + ("One rendered artwork is attached for this turn. Inspect it as evidence, distinguish it from intended inputs, and provide concise visual_findings. " if interview_evidence else "No image is attached for inspection in this turn. ") +
+            "Do not change names, references, membership, dimensions, models, "
             "assembly placement or source snapshots. Return proposals, conflicts and questions as JSON."
         )
     return instructions + "\n\nCurrent inputs:\n" + json.dumps(context, ensure_ascii=False) + "\n\nLatest direction:\n" + message, schema

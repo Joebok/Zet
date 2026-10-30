@@ -3,6 +3,7 @@ from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
 from copy import deepcopy
 import json
+import hashlib
 from pathlib import Path
 import random
 
@@ -34,9 +35,16 @@ class NarrativeGenerationService:
             record = self.repository.read(story, scene, target)
             self._refresh(story, scene, target, record)
             kind = data.get("action", "generate")
+            restart_interview = kind == "restart_interview"
+            if restart_interview:
+                if data.get("retry_job_id"):
+                    raise ValueError("Restart an interview from current inputs, without a retry job.")
+                kind = "interview"
             replay = None
             if data.get("retry_job_id"):
                 previous = record["jobs"].get(data["retry_job_id"], {})
+                if previous.get("interview_history_cleared"):
+                    raise ValueError("This interview was cleared. Continue the current interview instead.")
                 if (previous.get("status") != "FAILED" or previous.get("kind") not in {"interview", "synthesize", "generate"}
                         or not (previous.get("detail", {}).get("kind") == "assembly"
                                 or previous.get("detail", {}).get("source_snapshot", {}).get("image_file"))):
@@ -45,6 +53,8 @@ class NarrativeGenerationService:
                 kind = previous["kind"]
             if kind in {"rerun_interview", "rerun_prompt"}:
                 previous = record["jobs"].get(data.get("job_id"), {})
+                if previous.get("interview_history_cleared"):
+                    raise ValueError("This interview was cleared. Continue the current interview instead.")
                 expected = {"interview"} if kind == "rerun_interview" else {"synthesize", "generate"}
                 if previous.get("kind") not in expected:
                     raise ValueError("Choose a previous interview or prompt job.")
@@ -53,8 +63,44 @@ class NarrativeGenerationService:
             if kind not in {"interview", "synthesize", "generate", "render"}:
                 raise ValueError("Unknown narrative generation action.")
             detail = self.author.target(story, scene, target)
+            candidate_id = data.get("interview_candidate_id")
+            if candidate_id and (data.get("action") not in {"interview", "restart_interview"} or detail["kind"] != "subscene"):
+                raise ValueError("Images can only be attached to a new subscene interview.")
+            model_field = "interview_model" if kind == "interview" else "prompt_model"
+            model = resolve_role_model(self.author.app.config, "narrative_interview" if kind == "interview" else "narrative_prompt", record[model_field])
+            evidence = deepcopy(replay.get("interview_evidence")) if replay else None
+            payload = None
+            if candidate_id:
+                candidate = record["candidates"].get(candidate_id)
+                if not candidate or candidate.get("status") != "COMPLETE" or not candidate.get("image"):
+                    raise ValueError("The chosen rendered image is no longer available. Choose another image.")
+                folder = self.repository.folder(story, scene, target).resolve()
+                source = (folder / candidate["image"]).resolve()
+                if not source.is_relative_to(folder) or not source.is_file():
+                    raise ValueError("The chosen rendered image is unavailable.")
+                payload = source.read_bytes()
+                evidence = {"candidate_id": candidate_id, "slot": candidate["slot"], "sha256": hashlib.sha256(payload).hexdigest(), "suffix": source.suffix}
+            elif evidence:
+                folder = self.repository.folder(story, scene, target).resolve()
+                source = (folder / evidence["file"]).resolve()
+                if not source.is_relative_to(folder) or not source.is_file():
+                    raise ValueError("The saved interview image is unavailable.")
+                payload = source.read_bytes()
+                if hashlib.sha256(payload).hexdigest() != evidence["sha256"]:
+                    raise ValueError("The saved interview image has changed.")
+            if evidence:
+                from zet.services.ai_model_catalog_service import AIModelCatalogService
+                AIModelCatalogService(self.author.app.config.base_ai_queue_path, config=self.author.app.config).validate(model, required=["vision"])
             if not replay and kind != "render" and detail.get("universe_style") and detail.get("style_source") != "target override" and not detail["universe_style"]["text"]:
                 raise ValueError("Set the selected universe style before generating a prompt.")
+            if restart_interview:
+                record["interview"] = []
+                detail["interview"] = []
+                for previous in record["jobs"].values():
+                    if previous["kind"] == "interview":
+                        previous["interview_history_cleared"] = True
+                        if previous.get("review", {}).get("status") == "pending":
+                            previous["review"]["status"] = "superseded"
             baseline = detail_without_jobs(detail)
             if replay:
                 detail = deepcopy(replay["detail"])
@@ -64,12 +110,14 @@ class NarrativeGenerationService:
             if kind == "render" and detail["kind"] == "assembly" and record["prompt_provenance"].get("assembly_mode", "finish_composite") != detail.get("assembly_mode", "finish_composite"):
                 raise ValueError("The prompt belongs to another assembly mode. Write or edit the prompt before rendering.")
             refs = [] if detail["kind"] == "assembly" else (deepcopy(replay["references"]) if replay else self.author.references(detail))
-            model_field = "interview_model" if kind == "interview" else "prompt_model"
-            model = resolve_role_model(self.author.app.config, "narrative_interview" if kind == "interview" else "narrative_prompt", record[model_field])
             job = {"id": new_id(), "kind": kind, "status": "SUBMITTING", "error": "", "detail": detail_without_jobs(detail),
                    "references": refs, "candidate_ids": [], "result": None, "baseline": baseline,
                    "model": model, "provider": "codex" if model.startswith("codex:") else "ollama",
                    "provenance": {"model": model, "provider": "codex" if model.startswith("codex:") else "ollama"}}
+            if evidence:
+                evidence["file"] = f"snapshots/{job['id']}/interview-image{evidence.get('suffix', '.png')}"
+                write_bytes_atomic(self.repository.folder(story, scene, target) / evidence["file"], payload)
+                job["interview_evidence"] = evidence
             job["provenance"]["visual_style"] = {"source": detail.get("style_source", "saved scene"),
                                                   "text": detail["context"].get("style", ""),
                                                   "universe": detail.get("universe_style")}
@@ -145,7 +193,7 @@ class NarrativeGenerationService:
                     job["message"] = message
                     if kind == "interview":
                         record["interview"].append({"role": "user", "text": message})
-                    request, schema = llm_request(detail, kind, message)
+                    request, schema = llm_request(detail, kind, message, interview_evidence=evidence)
                     job["request"], job["schema"] = request, schema
                     # Exact replay also retains original request wording and interview history.
                     if replay and replay.get("request"):
@@ -281,13 +329,20 @@ class NarrativeGenerationService:
     @staticmethod
     def _store_interview_review(record, job, result):
         review = interview_review(result, job["detail"], job["id"])
+        findings = result.get("visual_findings", "")
+        if job.get("interview_evidence") and not isinstance(findings, str):
+            raise ValueError("The interview returned invalid visual findings.")
         if (record["active_llm_job"] != job["id"]
+                or job.get("interview_history_cleared")
                 or not NarrativeGenerationService._same_mode(record, job["detail"])):
             review["status"] = "superseded"
         job["review"] = review
+        if job.get("interview_history_cleared"):
+            return
         record["interview"].append({"role": "assistant", "text": "\n".join(review["questions"]),
                                     "job_id": job["id"], "provenance": job.get("provenance", {}),
-                                    "conflicts": review["conflicts"]})
+                                    "conflicts": review["conflicts"],
+                                    **({"visual_findings": findings, "image_slot": job["interview_evidence"]["slot"]} if job.get("interview_evidence") else {})})
 
     @staticmethod
     def _fail(record, job, error):

@@ -62,6 +62,14 @@ class NarrativeProxyService:
                             seed=seed, reference_files=references or [],
                             render_overrides={"width": width, "height": height, "disable_prompt_globals": True})
         try:
+            if schema and job.get("interview_evidence"):
+                folder = self.app.narrative_scene_service.repository.folder(story, scene, target).resolve()
+                source = (folder / job["interview_evidence"]["file"]).resolve()
+                if not source.is_relative_to(folder):
+                    raise ValueError("Invalid interview image snapshot.")
+                name = "interview-image" + source.suffix
+                write_bytes_atomic(staging / name, source.read_bytes())
+                manifest["image_files"] = [name]
             write_bytes_atomic(staging / "prompt.md", prompt.encode("utf-8"))
             write_json_atomic(staging / "ask_manifest.json", manifest)
             self.client.publish(staging, job["id"], worker)

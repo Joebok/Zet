@@ -124,6 +124,14 @@ replacements, with conflict findings and up to two questions. A local override i
 replaces shared context; that difference alone is not a conflict. Text requests receive
 reference metadata, not images, and cannot verify visual anatomy, pose or height.
 
+Subscene interviews may explicitly attach one completed candidate's original artwork
+for a single turn. The service validates a vision-capable model, freezes candidate
+bytes in the job snapshot, and sends them through AI_Proxy independently of render
+references. Findings are recorded as historical text with the original slot label;
+later turns do not resend pixels. Explicit re-run resends its frozen evidence, while
+Restart clears the conversation and findings. Replacing a slot never changes a
+submitted image. Existing text-only interviews retain their original behavior.
+
 The Old/New review defaults moment/appearance rows to Accept and visual rows to Override.
 Buttons select actions; Apply commits complete field replacements. Bulk Accept All (override),
 Accept All (shared) and Reject All affect only rows without an explicit user choice. Shared
@@ -148,6 +156,16 @@ prompt differs from the current editor text, including unsaved edits. Only line 
 normalized. Reverting text removes the label. Missing prompts show Prompt not recorded;
 local crop/reuse is labeled separately. This is text comparison, not a reference, input or
 render-quality check. See [ADR 0009](../DECISIONS/0009-narrative-interview-review.md).
+
+## Restart interview
+
+Restart interview saves current dashboard edits, clears the target's interview
+conversation, supersedes pending interview proposals and starts a new interview
+using current inputs and any newly entered direction. Applied edits, saved prompt,
+references, candidates and image selections/locks remain intact. Historical job
+snapshots remain as execution records; cleared interview jobs cannot be replayed
+and their late responses cannot repopulate the conversation. Continue interview
+retains history; Re-run last interview replays the latest uncleared interview.
 
 ## Assembly and reference boundaries
 
