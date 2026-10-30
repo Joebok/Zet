@@ -181,6 +181,43 @@ def create_narrative_router(app_provider):
     def assembly():
         return app_provider().narrative_assembly_service
 
+    def animation():
+        return app_provider().story_animation_service
+
+    @router.get("/stories/{story}/animations")
+    def animations(story: str):
+        return call(animation().list, story)
+
+    @router.get("/stories/{story}/animation-sources")
+    def animation_sources(story: str):
+        return call(animation().sources, story)
+
+    @router.post("/stories/{story}/animations")
+    def create_animation(story: str, data: dict = Body(...)):
+        return call(animation().create, story, data)
+
+    @router.get("/stories/{story}/animations/{animation_id}")
+    def get_animation(story: str, animation_id: str):
+        return call(animation().read, story, animation_id)
+
+    @router.put("/stories/{story}/animations/{animation_id}")
+    def save_animation(story: str, animation_id: str, data: dict = Body(...)):
+        return call(animation().save, story, animation_id, data)
+
+    @router.post("/stories/{story}/animations/{animation_id}/sources")
+    def bind_animation_source(story: str, animation_id: str, data: dict = Body(...)):
+        return call(animation().bind, story, animation_id, data)
+
+    @router.get("/stories/{story}/animations/{animation_id}/html")
+    def animation_html(story: str, animation_id: str):
+        from zet.services.story_animation_service import resolve_animation
+        from zet.services.story_animation_html_compiler import compile_html
+        doc = call(animation().read, story, animation_id)
+        data = doc["assets"]
+        resolved = call(resolve_animation, doc["spec"], data)
+        return Response(compile_html(resolved), media_type="text/html; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="story-animation.html"'})
+
     @router.get(target_path + "/composite")
     def composite(story: str, scene: str, target: str, download: bool = Query(False)):
         return Response(call(assembly().preview, story, scene, target), media_type="image/png",

@@ -228,6 +228,8 @@ class ZetApp:
         from zet.services.narrative_scene_text_service import NarrativeSceneTextService
         self.narrative_scene_text_service = NarrativeSceneTextService(self.narrative_scene_service)
         self.narrative_generation_service = NarrativeGenerationService(self.narrative_scene_service)
+        from zet.services.story_animation_service import StoryAnimationService
+        self.story_animation_service = StoryAnimationService(self.narrative_scene_service)
         self.workspace_summary_service = WorkspaceSummaryService(
             character_onboarding_service,
             asset_repository,

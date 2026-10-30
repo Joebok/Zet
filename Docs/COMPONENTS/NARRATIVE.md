@@ -15,6 +15,25 @@ Narrative provides prose-oriented authoring and generation independent of Scene 
 | [NarrativeReferenceService](../../zet/services/narrative_reference_service.py) | Pinned backdrop inputs, local reuse/crop actions and independent imported subscenes |
 | [NarrativeAssemblyService](../../zet/services/narrative_assembly_service.py) | Source/layer binding, editable extraction/cutouts, deterministic composition and frozen assembly snapshots |
 | [narrative_router.py](../../zet/web/narrative_router.py), [narrative.html](../../zet/web/templates/narrative.html), [narrative.js](../../zet/web/static/narrative.js) | HTTP/browser presentation and calls into Narrative services; context capture integrates with shared [task_capture.js](../../zet/web/static/task_capture.js) |
+| [StoryAnimationService](../../zet/services/story_animation_service.py), [story_animation_html_compiler.py](../../zet/services/story_animation_html_compiler.py) | Versioned story animation instructions, locked source snapshots, timeline validation/resolution and standalone HTML compilation |
+
+## Story animation (initial implementation, 2026-10-30)
+
+Animations are persisted beneath a story in `animations/<id>/`; their versioned
+specification references pinned source IDs and contains ordered shots, durations,
+camera tracks, text opacity tracks and transitions. `StoryAnimationService`
+owns story-scoped storage, revision checks, locked final-assembly source discovery,
+source snapshots and timeline resolution. The compiler embeds image and text-layer
+assets in a standalone HTML player; the persisted instructions contain no output
+implementation. Confirmed scene text is separated only when rendering its frozen
+entry/placement/style snapshot over the original artwork reproduces the finished
+pixels. Flattened legacy text cannot be faded independently.
+
+The story page exposes an initial editor and `/api/narrative/stories/{story}/animations`
+routes support create/read/save/source bind and HTML download. At this stage the
+workspace has only basic one-key camera framing and fade-in controls. Full keyframe
+editing, animation management controls, subject marks, text fade-out and the optional
+LLM interview are not implemented. No maintained E2E scenario covers animation.
 
 ## Shell route compatibility (2026-10-28)
 
