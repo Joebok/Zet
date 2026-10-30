@@ -1,5 +1,17 @@
 # Local testing
 
+## Story animation lettered source binding (2026-10-30)
+
+A disposable temporary-library check reproduced the reported UTF-8 error when
+PNG bytes were passed to Pillow as a filename. After switching to the resolved
+finished-image path, plain and lettered bindings, persisted text layers, revision
+updates and original-byte preservation passed. The disposable Chromium journey
+under `test-results/animation-open/` passed real lettered-source addition,
+save/reopen and prepared bind-error display/retry without uncaught page errors
+(7.5s including startup). All four approved fast scenarios passed (`npm.cmd run
+test:e2e`, 38.4s). JavaScript syntax and diff checks passed. No permanent tests,
+dependencies, live AI calls, production-library writes or deployment were added.
+
 ## Story animation opening (2026-10-30)
 
 All four approved fast scenarios passed (`npm.cmd run test:e2e`, 38.4s).

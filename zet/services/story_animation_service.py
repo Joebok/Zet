@@ -182,14 +182,10 @@ class StoryAnimationService:
                 from io import BytesIO
                 output=BytesIO(); overlay.save(output,"PNG")
                 filename=asset_id+"-"+entry["id"]+".png"; write_bytes_atomic(folder/filename,output.getvalue()); layers[entry["id"]]=filename; base.alpha_composite(overlay)
-            with Image.open(final_path_bytes(self.repository,story,source)) as expected:
+            with Image.open(finished_path(self.repository,story,source["scene_id"],source["target_id"],source["candidate_id"])) as expected:
                 actual=base.convert("RGBA")
                 if expected.size!=actual.size or ImageChops.difference(expected.convert("RGBA"),actual).getbbox(): raise ValueError("Confirmed lettering layers do not reproduce the locked finished image; independent fades are unavailable.")
         asset={"id":asset_id,"source_id":source["id"],"title":source["title"],"artwork":art_name,"text_layers":layers,"text_entries":entries,"width":Image.open(original).width,"height":Image.open(original).height,"sha256":hashlib.sha256(original.read_bytes()).hexdigest(),"lettering_separable":bool(final)}
         with self.repository.lock():
             doc=json.loads((folder/"spec.json").read_text(encoding="utf-8")); doc["assets"][asset_id]=asset; doc["revision"]+=1; write_json_atomic(folder/"spec.json",doc)
         return self.read(story,animation)
-
-
-def final_path_bytes(repository,story,source):
-    target=repository.read(story,source["scene_id"],source["target_id"]); return finished_path(repository,story,source["scene_id"],source["target_id"],source["candidate_id"]).read_bytes()

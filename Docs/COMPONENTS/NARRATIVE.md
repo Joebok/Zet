@@ -33,7 +33,9 @@ The story page exposes an initial editor and `/api/narrative/stories/{story}/ani
 routes support create/read/save/source bind and HTML download. The
 list/create/read/save responses include the animation folder ID as `id`, which the
 workspace uses for subsequent requests. Opening failures use the dashboard status
-message and leave the Open button available for retry. At this stage the
+message and leave the Open button available for retry. Source-binding failures
+also use the status message and permit retry. Lettered source binding opens the
+resolved finished-image path for reconstruction checks. At this stage the
 workspace has only basic one-key camera framing and fade-in controls. Full keyframe
 editing, animation management controls, subject marks, text fade-out and the optional
 LLM interview are not implemented. No maintained E2E scenario covers animation.
