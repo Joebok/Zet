@@ -1,5 +1,12 @@
 # Local testing
 
+## Animation preview and timing (2026-10-30)
+
+The four approved fast scenarios passed (`npm.cmd run test:e2e`, 41.1s).
+A disposable Chromium check exercised percentage timing, short duration clamping,
+responsive preview sizing, camera transforms, export and revision conflicts.
+These checks do not establish physical-device behavior or live image quality.
+
 ## Animation editor enhancements (2026-10-30)
 
 The four approved fast scenarios passed (`npm.cmd run test:e2e`, 40.5s).

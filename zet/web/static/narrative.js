@@ -252,18 +252,17 @@ async function loadPageContent() {
       const [animations,sources]=await Promise.all([api(`${base()}/animations`),api(`/api/narrative/stories/${route.story}/animation-sources`)]);
       const animation=animations[0]||await api(`${base()}/animations`,'POST',{name:'New animation',aspect_ratio:'16:9'});
       let doc=await api(`${base()}/animations/${animation.id}`); let shots=doc.spec.shots;
-      const timing = keys => {
-        if (!keys?.length) return null;
-        const end=keys.at(-1), hold=keys.at(-2), rise=keys.findIndex(k=>k.opacity===1);
-        if (rise<1 || end.opacity!==0 || end.time_ms-hold.time_ms!==300 || hold.opacity!==1 || keys[rise].time_ms-keys[rise-1].time_ms!==300) return false;
-        const start=keys[rise-1].time_ms, duration=hold.time_ms-start;
-        if(duration<300) return false;
-        const expected=textKeys(start,duration);
-        return keys.length===expected.length && keys.every((key,i)=>key.time_ms===expected[i].time_ms && key.opacity===expected[i].opacity && (!key.easing || key.easing==='linear') && Object.keys(key).every(k=>['time_ms','opacity','easing'].includes(k))) ? {start,duration} : false;
+      const timing = (keys,duration) => {
+        if (!keys?.length) return {start:0,end:100*(duration-Math.min(300,Math.floor(duration/2)))/duration};
+        const rise=keys.findIndex((k,i)=>i && k.opacity>keys[i-1].opacity);
+        const fall=keys.findIndex((k,i)=>i && k.opacity<keys[i-1].opacity);
+        return {start:rise>0?100*keys[rise-1].time_ms/duration:0,end:fall>0?100*keys[fall-1].time_ms/duration:100};
       };
-      const textKeys=(start,duration)=>{
-        const keys=[[0,0],[start,0],[start+300,1],[start+duration,1],[start+duration+300,0]];
-        return keys.filter((k,i)=>!i||k[0]!==keys[i-1][0]).map(([time_ms,opacity])=>({time_ms,opacity}));
+      const textKeys=(start,end,duration)=>{
+        const a=Math.round(duration*start/100), b=Math.round(duration*end/100);
+        const fadeIn=Math.min(300,Math.max(0,b-a)), fadeOut=Math.min(300,duration-b);
+        const points=[[0,0],[a,0],[a+fadeIn,1],[b,1],[b+fadeOut,0]];
+        const result=[]; for(const [time_ms,opacity] of points){if(result.length && result.at(-1).time_ms===time_ms) result.at(-1).opacity=opacity;else result.push({time_ms,opacity});} return result;
       };
       const simpleCamera=shot=>{
         const keys=shot.camera||[];
@@ -276,8 +275,10 @@ async function loadPageContent() {
           const cameraIsSimple=simpleCamera(shot);
           const field=name=>panel.querySelector(`[data-${name}="${i}"]`);
           const duration=field('shot-duration');
-          if (!duration.value || !Number.isInteger(Number(duration.value)) || Number(duration.value)<1) throw Error('Scene duration must be a positive whole number.');
-          shot.duration_ms=Number(duration.value);
+          const oldDuration=shot.duration_ms;
+          const simpleText=new Set(Object.entries(shot.text).filter(([,keys])=>{const t=timing(keys,oldDuration);return JSON.stringify(keys)===JSON.stringify(textKeys(t.start,t.end,oldDuration));}).map(([id])=>id));
+          shot.duration_ms=Math.max(1,Math.min(Number.MAX_SAFE_INTEGER,Math.round(Number(duration.value)||1))); duration.value=shot.duration_ms;
+          if(oldDuration!==shot.duration_ms){const scale=shot.duration_ms/oldDuration; const retime=keys=>{const result=[];for(const key of keys||[]){const k={...key,time_ms:Math.min(shot.duration_ms,Math.round(key.time_ms*scale))};if(result.length && result.at(-1).time_ms===k.time_ms)result[result.length-1]=k;else result.push(k);}return result;};shot.camera=retime(shot.camera);for(const id of Object.keys(shot.text))shot.text[id]=retime(shot.text[id]);}
           const start=field('zoom-start'), end=field('zoom-end');
           if(start.dataset.dirty==='true' || end.dataset.dirty==='true' || (shot.camera_mode==='target' && cameraIsSimple)){
             const a=Number(start.value), b=Number(end.value);
@@ -288,17 +289,11 @@ async function loadPageContent() {
           const transition=panel.querySelector(`[data-transition="${i}"]`).value;
           if(transition !== (shot.transition?.type || 'cut')) shot.transition={type:transition,duration_ms:transition==='cut'?0:1000};
           panel.querySelectorAll(`[data-text-row="${i}"]`).forEach(row=>{
-            const mode=row.querySelector('select'), textId=row.dataset.textId;
-            if(mode.value==='custom') return;
-            if(mode.value==='whole'){ if(mode.dataset.dirty==='true') delete shot.text[textId]; return; }
-            const a=row.querySelector('[data-text-start]'), b=row.querySelector('[data-text-duration]');
-            const start=Number(a.value), duration=Number(b.value), error=row.querySelector('[role="status"]');
-            if(!a.value || !b.value || !Number.isInteger(start) || start<0 || !Number.isInteger(duration) || duration<300 || start+duration+300>shot.duration_ms){
-              error.textContent='Use whole milliseconds, a duration of at least 300 ms, and allow the fade-out to finish within the scene.'; throw Error('Correct the text timing shown in the scene card.');
-            }
-            error.textContent=''; shot.text[textId]=textKeys(start,duration);
+            const textId=row.dataset.textId, a=row.querySelector('[data-text-start]'), b=row.querySelector('[data-text-end]');
+            if(row.dataset.dirty==='true' || !shot.text[textId]?.length || (oldDuration!==shot.duration_ms && simpleText.has(textId))) shot.text[textId]=textKeys(Number(a.value),Number(b.value),shot.duration_ms);
           });
         });
+        shots.forEach((shot,i)=>{const tr=shot.transition;if(!tr || tr.type==='cut')return;const previous=i?shots[i-1].transition?.duration_ms||0:0;const limit=Math.min(shot.duration_ms-previous,shots[i+1]?.duration_ms??shot.duration_ms);if(limit<1)shot.transition={type:'cut',duration_ms:0};else tr.duration_ms=Math.max(1,Math.min(tr.duration_ms,limit));});
       };
       const save=async()=>{
         collect();
@@ -312,16 +307,21 @@ async function loadPageContent() {
         const customCamera=!simpleCamera(s);
         const layers=Object.values(asset.text_data_urls||{}).map(url=>`<img src="${esc(url)}" alt="">`).join('');
         const rows=(asset.text_entries||[]).map(e=>{
-          const t=timing(s.text?.[e.id]), mode=t===false?'custom':t?'timed':'whole';
-          return `<div class="animation-text-row" data-text-row="${i}" data-text-id="${esc(e.id)}"><span>${esc(e.text)}</span><label>Visibility <select data-text-mode><option value="whole" ${mode==='whole'?'selected':''}>Whole scene</option><option value="timed" ${mode==='timed'?'selected':''}>Timed</option>${mode==='custom'?'<option value="custom" selected>Custom timing—preserved</option>':''}</select></label><div class="animation-text-times" ${mode==='timed'?'':'hidden'}><label>Fade in at (ms) <input data-text-start type="number" min="0" step="1" value="${t?.start??0}"></label><label>Duration (ms) <input data-text-duration type="number" min="300" step="1" value="${t?.duration??Math.max(300,s.duration_ms-300)}"></label></div><small role="status" class="error"></small></div>`;
+          const t=timing(s.text?.[e.id],s.duration_ms), style=asset.text_style||{};
+          const markup=esc(e.text).replace(/&lt;(\/?(?:b|i|strong|em))&gt;/gi,'<$1>').replace(/&lt;br\s*\/?&gt;/gi,'<br>');
+          const color=v=>/^#[0-9a-f]{6}$/i.test(v||'')?v:null;
+          const background=color(style.background_color), opacity=Math.max(0,Math.min(1,Number(style.opacity??1)));
+          const rgba=background?`rgba(${parseInt(background.slice(1,3),16)},${parseInt(background.slice(3,5),16)},${parseInt(background.slice(5,7),16)},${opacity})`:'';
+          const appearance=[style.font_family?`font-family:${esc(style.font_family)}`:'',color(style.text_color)?`color:${color(style.text_color)}`:'',rgba?`background:${rgba}`:'',color(style.outline_color)?`border:${Math.max(0,Math.min(20,Number(style.outline_width)||0))}px solid ${color(style.outline_color)}`:'',style.shape==='ellipse'?'border-radius:50%':style.shape==='rectangle'?'border-radius:0':''].filter(Boolean).join(';');
+          return `<div class="animation-text-row" data-text-row="${i}" data-text-id="${esc(e.id)}"><span style="${appearance}">${markup}</span><div class="animation-text-times"><div class="animation-timeline-labels"><span>Fade in <output data-in-value>${Math.round(t.start)}%</output></span><span>Fade out <output data-out-value>${Math.round(t.end)}%</output></span></div><div class="animation-timeline"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline data-envelope points="0,28 ${t.start},28 ${Math.min(t.end,t.start+30000/s.duration_ms)},2 ${t.end},2 ${Math.min(100,t.end+30000/s.duration_ms)},28 100,28" /></svg><input aria-label="Fade in start" data-text-start type="range" min="0" max="100" step="0.1" value="${t.start}"><input aria-label="Fade out start" data-text-end type="range" min="0" max="100" step="0.1" value="${t.end}"></div><div class="animation-timeline-labels"><small>0%</small><small>100%</small></div></div></div>`;
+
         }).join('');
-        return `<li class="animation-shot"><div class="animation-thumb"><img src="${esc(asset.artwork_data_url||'')}" alt="Locked image for ${esc(asset.title||'scene')}">${layers}</div><div class="animation-shot-body"><h4>${esc(asset.title||s.source_id)}</h4><div class="animation-controls"><label>Scene duration (ms)<input data-shot-duration="${i}" type="number" min="1" step="1" value="${s.duration_ms}"></label><label>Start zoom (×)<input data-zoom-start="${i}" type="number" min="1" step=".1" value="${first.zoom}"></label><label>End zoom (×)<input data-zoom-end="${i}" type="number" min="1" step=".1" value="${last.zoom}"></label><button type="button" data-pick-target="${i}">Choose zoom target</button><label>Transition<select data-transition="${i}"><option value="cut">Cut</option><option value="dissolve" ${s.transition?.type==='dissolve'?'selected':''}>Dissolve</option><option value="fade-through-black" ${s.transition?.type==='fade-through-black'?'selected':''}>Fade through black</option></select></label></div>${customCamera?'<p>Custom camera motion is preserved until zoom or target is changed.</p>':''}${rows}<button type="button" data-remove-shot="${i}">Remove</button></div></li>`;
+        return `<li class="animation-shot"><div><div class="animation-thumb"><img src="${esc(asset.artwork_data_url||'')}" alt="Locked image for ${esc(asset.title||'scene')}">${layers}</div><button type="button" data-remove-shot="${i}">Remove scene</button></div><div class="animation-shot-body"><h4>${esc(asset.title||s.source_id)}</h4><div class="animation-controls"><label>Scene duration (ms)<input data-shot-duration="${i}" type="number" min="1" step="1" value="${s.duration_ms}"></label><label>Start zoom (×)<input data-zoom-start="${i}" type="number" min="1" step=".1" value="${first.zoom}"></label><label>End zoom (×)<input data-zoom-end="${i}" type="number" min="1" step=".1" value="${last.zoom}"></label><button type="button" data-pick-target="${i}">Choose zoom target</button><label>Transition<select data-transition="${i}"><option value="cut">Cut</option><option value="dissolve" ${s.transition?.type==='dissolve'?'selected':''}>Dissolve</option><option value="fade-through-black" ${s.transition?.type==='fade-through-black'?'selected':''}>Fade through black</option></select></label></div>${customCamera?'<p>Custom camera motion is preserved until zoom or target is changed.</p>':''}${rows}</div></li>`;
       };
-      const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text remains fixed while artwork moves.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)}${s.lettered?" (lettered)":""}</button>`).join(" ")}</div><ol class="animation-shots">${shots.map(card).join("")}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="${exportUrl}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:520px;border:0"></iframe>`;
+      window.addEventListener('message',event=>{const frame=panel.querySelector('iframe');if(frame && event.source===frame.contentWindow && event.data?.type==='zet-animation-preview-height' && Number.isFinite(event.data.height)) frame.style.height=Math.max(1,event.data.height)+'px';},{signal:events.signal});
+      const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text moves and scales with the artwork.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)}${s.lettered?" (lettered)":""}</button>`).join(" ")}</div><ol class="animation-shots">${shots.map(card).join("")}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="${exportUrl}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:600px;border:0" scrolling="no"></iframe>`;
         panel.querySelectorAll('[data-zoom-start],[data-zoom-end]').forEach(input=>input.addEventListener('input',()=>{input.dataset.dirty='true';}));
-        panel.querySelectorAll('[data-text-mode]').forEach(select=>select.addEventListener('change',()=>{
-          select.dataset.dirty='true'; select.closest('[data-text-row]').querySelector('.animation-text-times').hidden=select.value!=='timed';
-        }));
+        panel.querySelectorAll('[data-text-row] input[type=range]').forEach(input=>input.addEventListener('input',()=>{const row=input.closest('[data-text-row]'),a=row.querySelector('[data-text-start]'),b=row.querySelector('[data-text-end]');if(Number(a.value)>Number(b.value)){if(input===a)b.value=a.value;else a.value=b.value;}row.dataset.dirty='true';row.querySelector('[data-in-value]').textContent=Math.round(Number(a.value))+'%';row.querySelector('[data-out-value]').textContent=Math.round(Number(b.value))+'%';const duration=Math.max(1,Number(panel.querySelector(`[data-shot-duration="${row.dataset.textRow}"]`).value)||1),start=Number(a.value),end=Number(b.value),fade=30000/duration;row.querySelector('[data-envelope]').setAttribute('points',`0,28 ${start},28 ${Math.min(end,start+fade)},2 ${end},2 ${Math.min(100,end+fade)},28 100,28`);}));
         panel.querySelectorAll('[data-pick-target]').forEach(button=>button.onclick=()=>action(async()=>{
           collect();
           const index=Number(button.dataset.pickTarget), shot=shots[index], asset=doc.assets[shot.source_id];

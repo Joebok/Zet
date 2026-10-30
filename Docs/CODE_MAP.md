@@ -314,4 +314,4 @@ universe_style_service owns variant defaults and batch snapshots; pipeline_compi
 
 ## Story animation editor (2026-10-30)
 
-narrative.js and narrative.css own cards, target selection and text timing; story_animation_service.py validates camera modes and story_animation_html_compiler.py renders target zoom. See [Narrative](COMPONENTS/NARRATIVE.md#story-animation-initial-implementation-2026-10-30).
+narrative.js and narrative.css own cards, percentage text timing and target selection; story_animation_service.py clamps durations and preserves pinned text style, and story_animation_html_compiler.py renders artwork and lettering together under camera motion. See [Narrative](COMPONENTS/NARRATIVE.md#story-animation-initial-implementation-2026-10-30).

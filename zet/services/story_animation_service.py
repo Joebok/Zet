@@ -1,6 +1,7 @@
 """Narrative animation authoring, source snapshots and timeline resolution."""
 from __future__ import annotations
 import base64
+import copy
 import hashlib
 import json
 import math
@@ -13,11 +14,51 @@ from PIL import Image, ImageChops
 from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
 from zet.services.scene_text_render_service import render
 from zet.services.narrative_scene_text_service import finished_path
+from zet.services.scene_text_style_service import effective_style
 from zet.models.story_animation import ResolvedAnimation
 
 
 EASINGS = {"linear", "ease-in-out", "step"}
 TRANSITIONS = {"cut", "dissolve", "fade-through-black"}
+
+
+def normalize_durations(spec):
+    """Clamp numeric timing values without accepting malformed instruction shapes."""
+    result=copy.deepcopy(spec)
+    if not isinstance(result, dict) or not isinstance(result.get("shots"), list): return result
+    for shot in result["shots"]:
+        if not isinstance(shot, dict): continue
+        duration=shot.get("duration_ms")
+        if isinstance(duration, bool) or not isinstance(duration,(int,float)) or not math.isfinite(duration): continue
+        duration=max(1,min(9007199254740991,round(duration)))
+        shot["duration_ms"]=duration
+        tracks=[shot.get("camera")]
+        if isinstance(shot.get("text"),dict): tracks.extend(shot["text"].values())
+        for keys in tracks:
+            if not isinstance(keys,list): continue
+            normalized=[]
+            for key in keys:
+                if not isinstance(key,dict): normalized.append(key); continue
+                t=key.get("time_ms")
+                if isinstance(t,bool) or not isinstance(t,(int,float)) or not math.isfinite(t): normalized.append(key); continue
+                key["time_ms"]=max(0,min(duration,round(t)))
+                if normalized and isinstance(normalized[-1],dict) and normalized[-1].get("time_ms")==key["time_ms"]: normalized[-1]=key
+                else: normalized.append(key)
+            keys[:]=normalized
+    for i,shot in enumerate(result["shots"]):
+        if not isinstance(shot,dict): continue
+        tr=shot.get("transition")
+        if not isinstance(tr,dict) or tr.get("type","cut")=="cut": continue
+        overlap=tr.get("duration_ms",0); duration=shot.get("duration_ms")
+        if isinstance(overlap,bool) or not isinstance(overlap,(int,float)) or not math.isfinite(overlap) or not isinstance(duration,int): continue
+        previous=result["shots"][i-1].get("transition",{}).get("duration_ms",0) if i and isinstance(result["shots"][i-1],dict) and isinstance(result["shots"][i-1].get("transition",{}),dict) else 0
+        if not isinstance(previous,int) or isinstance(previous,bool): continue
+        next_duration=result["shots"][i+1].get("duration_ms",duration) if i+1<len(result["shots"]) and isinstance(result["shots"][i+1],dict) else duration
+        if not isinstance(next_duration,int) or isinstance(next_duration,bool): continue
+        limit=min(duration-previous,next_duration)
+        if limit<1: shot["transition"]={"type":"cut","duration_ms":0}
+        else: tr["duration_ms"]=max(1,min(limit,round(overlap)))
+    return result
 
 
 def _finite(value, name):
@@ -141,7 +182,22 @@ class StoryAnimationService:
     def read(self, story, animation, include_assets=True):
         folder=self.folder(story,animation); data=json.loads((folder/"spec.json").read_text(encoding="utf-8"))
         if include_assets:
-            data["assets"]={key:{**value,"artwork_data_url":self._url(folder/value["artwork"]),"text_data_urls":{k:self._url(folder/v) for k,v in value.get("text_layers",{}).items()}} for key,value in data["assets"].items()}
+            fallback=effective_style(self.repository.library_root,self.repository.read(story))
+            def presentation_style(value):
+                if value.get("text_style"): return value["text_style"]
+                try:
+                    scene, target, candidate = value["source_id"].split(":")
+                    final=self.repository.read(story,scene,target)["candidates"][candidate]["scene_text_final"]
+                    if final.get("entries") != value.get("text_entries"): return fallback
+                    style=final["style"]
+                    for entry in final["entries"]:
+                        layer, errors=render((value["width"],value["height"]),[entry],final["placements"],style)
+                        with Image.open(folder/value["text_layers"][entry["id"]]) as pinned:
+                            difference=ImageChops.difference(layer.convert("RGBA"),pinned.convert("RGBA"))
+                            if errors or any(channel.getbbox() for channel in difference.split()): return fallback
+                    return style
+                except (KeyError, ValueError, OSError): return fallback
+            data["assets"]={key:{**value,"text_style":presentation_style(value),"artwork_data_url":self._url(folder/value["artwork"]),"text_data_urls":{k:self._url(folder/v) for k,v in value.get("text_layers",{}).items()}} for key,value in data["assets"].items()}
         return {**data, "id": animation}
     @staticmethod
     def _url(path):
@@ -150,9 +206,9 @@ class StoryAnimationService:
         with self.repository.lock():
             folder=self.folder(story,animation); current=json.loads((folder/"spec.json").read_text(encoding="utf-8"))
             if data.get("revision")!=current["revision"]: raise ValueError("Animation changed; reload before saving.")
-            validate_spec(data.get("spec"))
-            if any(shot["source_id"] not in current["assets"] for shot in data["spec"]["shots"]): raise ValueError("A shot references a source not pinned to this animation.")
-            current.update(spec=data["spec"],revision=current["revision"]+1)
+            spec=normalize_durations(data.get("spec")); validate_spec(spec)
+            if any(shot["source_id"] not in current["assets"] for shot in spec["shots"]): raise ValueError("A shot references a source not pinned to this animation.")
+            current.update(spec=spec,revision=current["revision"]+1)
             write_json_atomic(folder/"spec.json",current); return self.read(story,animation)
     def sources(self, story):
         result=[]
@@ -187,7 +243,7 @@ class StoryAnimationService:
             with Image.open(finished_path(self.repository,story,source["scene_id"],source["target_id"],source["candidate_id"])) as expected:
                 actual=base.convert("RGBA")
                 if expected.size!=actual.size or ImageChops.difference(expected.convert("RGBA"),actual).getbbox(): raise ValueError("Confirmed lettering layers do not reproduce the locked finished image; independent fades are unavailable.")
-        asset={"id":asset_id,"source_id":source["id"],"title":source["title"],"artwork":art_name,"text_layers":layers,"text_entries":entries,"width":Image.open(original).width,"height":Image.open(original).height,"sha256":hashlib.sha256(original.read_bytes()).hexdigest(),"lettering_separable":bool(final)}
+        asset={"id":asset_id,"source_id":source["id"],"title":source["title"],"artwork":art_name,"text_layers":layers,"text_entries":entries,"text_style":final.get("style",{}),"width":Image.open(original).width,"height":Image.open(original).height,"sha256":hashlib.sha256(original.read_bytes()).hexdigest(),"lettering_separable":bool(final)}
         with self.repository.lock():
             doc=json.loads((folder/"spec.json").read_text(encoding="utf-8")); doc["assets"][asset_id]=asset; doc["revision"]+=1; write_json_atomic(folder/"spec.json",doc)
         return self.read(story,animation)

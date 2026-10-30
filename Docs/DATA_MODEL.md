@@ -3,7 +3,9 @@
 Story animation version-1 shots may contain `camera_mode: "target"`; missing
 mode retains legacy camera-center interpretation. Camera keyframes store normalized
 image target coordinates and zoom factors. Timed lettering remains opacity
-keyframes, with no separate persisted timing record. See
+keyframes, with no separate persisted timing record. Pinned assets also retain the
+confirmed lettering style for scene-card presentation; older assets recover matching
+confirmed styles where possible and otherwise use the current inherited style. See
 [Narrative](COMPONENTS/NARRATIVE.md#story-animation-initial-implementation-2026-10-30).
 
 ## Independent head edits (2026-10-22)

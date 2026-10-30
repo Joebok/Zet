@@ -42,9 +42,8 @@ LLM interview are not implemented. No maintained E2E scenario covers animation.
 
 Target camera mode stores normalized image coordinates with start/end zoom in
 version-1 keyframes. The player clamps framing to the fitted image and keeps
-lettering stationary. Older camera-center tracks retain their original behavior.
-Timed text uses 300 ms fades; duration runs from fade-in start to fade-out start.
-Whole-scene lettering and custom tracks remain unchanged until explicitly edited.
+lettering attached to the artwork using the same camera transform. Older camera-center tracks retain their camera interpretation.
+Text timing is edited using percentage fade-in and fade-out start controls; fades use up to 300 ms. Existing custom tracks remain unchanged until edited.
 The target picker saves the current animation through the revision-checked path.
 
 Scene addition resolves the pinned asset by its source identity, including when a

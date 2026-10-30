@@ -182,3 +182,18 @@
 #backdrop-crop-box { pointer-events: auto; touch-action: none; cursor: move; }
 #backdrop-crop-box span { position: absolute; right: 0; bottom: 0; width: 20px; height: 20px; background: var(--primary); cursor: nwse-resize; }
 #narrative-source-panel [hidden], .narrative-target-editor section[hidden], .narrative-generation-settings[hidden] { display: none; }
+
+.animation-text-row { display:block; }
+.animation-text-row>span { display:block; font-weight:600; background:var(--surface-subtle); padding:.4rem; border-radius:6px; }
+.animation-text-times { display:grid; grid-template-columns:1fr; width:100%; }
+.animation-text-times label { width:100%; }
+.animation-text-times input[type=range] { width:100%; padding:0; }
+
+.animation-timeline-labels { display:flex; justify-content:space-between; gap:.5rem; font-size:.8rem; }
+.animation-timeline { position:relative; height:42px; margin:0 9px; }
+.animation-timeline svg { position:absolute; inset:4px 0; width:100%; height:34px; overflow:visible; }
+.animation-timeline polyline { fill:var(--primary-soft); stroke:var(--primary); stroke-width:1; vector-effect:non-scaling-stroke; }
+.animation-timeline input[type=range] { position:absolute; inset:0 -9px; width:calc(100% + 18px); height:42px; margin:0; background:transparent; border:0; pointer-events:none; appearance:none; }
+.animation-timeline input[type=range]::-webkit-slider-thumb { appearance:none; width:16px; height:24px; border-radius:4px; border:2px solid white; background:var(--primary); pointer-events:auto; cursor:grab; }
+.animation-timeline input[data-text-end]::-webkit-slider-thumb { background:var(--info); }
+.animation-timeline input[type=range]:focus-visible { outline:2px solid var(--focus); }
