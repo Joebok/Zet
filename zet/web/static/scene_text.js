@@ -10,21 +10,22 @@ window.ZetSceneText = {
   q('[data-art]').onerror=()=>status('Raw composite unavailable: add a visible base backdrop, then reopen placement.');
   q('[data-art]').src=base+(candidate?'/candidates/'+candidate+'/image':'/composite')+'?universe_id='+encodeURIComponent(universe);
   const entry=()=>state.entries.find(e=>e.id===selected);
+  function addEntry(){const e={id:crypto.randomUUID(),text:'',tail:'none'};state.entries.push(e);selected=e.id;dirty=true;controls();handles();}
   function controls(){q('[data-list]').replaceChildren(...state.entries.map((e,i)=>{const b=document.createElement('button');b.textContent=(i+1)+'. '+e.text.replace(/<[^>]*>/g,'').slice(0,35);b.onclick=()=>{selected=e.id;controls();handles();};return b;}));q('textarea').value=entry()?.text||'';q('select').value=entry()?.tail||'none';q('textarea').disabled=!!candidate; q('select').disabled=!!candidate;}
   function handles(){const host=q('[data-handles]');host.replaceChildren();const p=state.placements[selected];if(!p?.box)return;const [x,y,w,h]=p.box;const box=document.createElement('div');box.className='scene-text-box';Object.assign(box.style,{left:x*100+'%',top:y*100+'%',width:w*100+'%',height:h*100+'%'});box.dataset.handle='move';box.tabIndex=0;box.setAttribute('aria-label','Move text box');host.append(box);
    for(const name of ['nw','n','ne','e','se','s','sw','w']){const b=document.createElement('button');b.dataset.handle=name;b.className='scene-text-handle '+name;b.setAttribute('aria-label','Resize '+name);box.append(b);}
    if(entry()?.tail==='straight'){if(!p.tip)p.tip=[Math.min(.98,x+w/2),Math.min(.98,y+h+.08)];for(const name of ['tip','attachment']){const b=document.createElement('button');b.dataset.handle=name;b.className='scene-text-point';b.textContent=name==='tip'?'T':'A';b.setAttribute('aria-label','Move tail '+name);const a=p.attachment??Math.atan2((p.tip[1]-y-h/2)/h,(p.tip[0]-x-w/2)/w);const point=name==='tip'?p.tip:[x+w/2+Math.cos(a)*w/2,y+h/2+Math.sin(a)*h/2];Object.assign(b.style,{left:point[0]*100+'%',top:point[1]*100+'%'});host.append(b);}}
   }
-  async function preview(){const seq=++sequence;try{const result=await request('/scene-text/preview',{placements:state.placements,entries:state.entries});if(seq!==sequence||!dialog.open)return;q('[data-overlay]').src=result.overlay;state.token=result.token;status(result.errors.map(e=>e.message).join(' · ')|| (dirty?'Unsaved changes':'Ready'));}catch(e){status(e.message);}}
+  async function preview(){const seq=++sequence;try{const result=await request('/scene-text/preview',{placements:state.placements,entries:state.entries});if(seq!==sequence||!dialog.open)return;q('[data-overlay]').src=result.overlay;state.token=result.token;status(result.errors.map(e=>e.message).join(' · ')|| (!entry()?(candidate?'Add scene text in the raw placement editor first.':'Type scene text, drag on the image, or click Add scene text to begin.'):(dirty?'Unsaved changes':'Ready')));}catch(e){status(e.message);}}
   function changed(){dirty=true;const focused=document.activeElement?.dataset.handle;handles();if(focused)q('[data-handle="'+focused+'"]')?.focus({preventScroll:true});clearTimeout(timer);timer=setTimeout(preview,180);}
   async function save(){clearTimeout(timer);sequence++;if(saving)throw Error('Wait for the current save.');saving=true;dialog.querySelectorAll('button,textarea,select').forEach(node=>node.disabled=true);try{if(!candidate)for(const e of state.entries)e.placement=state.placements[e.id]||{};state=await request('/scene-text/save',candidate?{revision:state.revision,placements:state.placements}:{revision:state.revision,entries:state.entries});dirty=false;await preview();status('Saved');}finally{saving=false;dialog.querySelectorAll('button,textarea,select').forEach(node=>node.disabled=false);q('textarea').disabled=!!candidate;q('select').disabled=!!candidate;}}
-  q('textarea').oninput=()=>{if(entry()){entry().text=q('textarea').value;changed();}};
-  q('select').onchange=()=>{if(entry()){entry().tail=q('select').value;changed();}};
+  q('textarea').oninput=()=>{const text=q('textarea').value;if(!entry()&&!candidate)addEntry();if(entry()){entry().text=text;q('textarea').value=text;changed();}};
+  q('select').onchange=()=>{const tail=q('select').value;if(!entry()&&!candidate)addEntry();if(entry()){entry().tail=tail;q('select').value=tail;changed();}};
   dialog.onclick=async event=>{const act=event.target.dataset.act;if(!act)return;try{
    if(act==='close'){if(dirty)await save();dialog.close();return;}
    if(act==='panel'){q('aside').hidden=!q('aside').hidden;return;}
    if(act==='fullscreen'){try{await dialog.requestFullscreen();}catch{}return;}
-   if(act==='add'){const e={id:crypto.randomUUID(),text:'',tail:'none'};state.entries.push(e);selected=e.id;dirty=true;controls();handles();return;}
+   if(act==='add'){addEntry();q('textarea').focus();return;}
    if(act==='bold'||act==='italic'){if(candidate||!entry())return;const t=q('textarea'),a=t.selectionStart,b=t.selectionEnd,tag=act==='bold'?'b':'i';const start=a===b?0:a,end=a===b?t.value.length:b;entry().text=t.value.slice(0,start)+'<'+tag+'>'+t.value.slice(start,end)+'</'+tag+'>'+t.value.slice(end);t.value=entry().text;dirty=true;return;}
    if(act==='delete'){state.entries=state.entries.filter(e=>e.id!==selected);delete state.placements[selected];selected=state.entries[0]?.id;dirty=true;controls();handles();return;}
    if(act==='up'||act==='down'){const i=state.entries.findIndex(e=>e.id===selected),j=i+(act==='up'?-1:1);if(j>=0&&j<state.entries.length){[state.entries[i],state.entries[j]]=[state.entries[j],state.entries[i]];dirty=true;controls();}return;}
@@ -33,7 +34,7 @@ window.ZetSceneText = {
   }catch(e){status(e.message);}};
   const stage=q('.scene-text-image'),clamp=v=>Math.max(0,Math.min(1,v));
   function point(e){const r=stage.getBoundingClientRect();return [clamp((e.clientX-r.left)/r.width),clamp((e.clientY-r.top)/r.height)];}
-  stage.onpointerdown=e=>{if(!entry()||state.locked||saving)return;e.preventDefault();const p=point(e);drag={start:p,before:structuredClone(state.placements[selected]||{}),mode:e.target.dataset.handle||'draw',id:e.pointerId};stage.setPointerCapture(e.pointerId);};
+  stage.onpointerdown=e=>{if(state.locked||saving)return;if(!entry()){if(candidate){status('Add scene text in the raw placement editor first.');return;}addEntry();}e.preventDefault();const p=point(e);drag={start:p,before:structuredClone(state.placements[selected]||{}),mode:e.target.dataset.handle||'draw',id:e.pointerId};stage.setPointerCapture(e.pointerId);};
   stage.onpointermove=e=>{if(!drag)return;const [px,py]=point(e),[sx,sy]=drag.start;const old=drag.before.box||[sx,sy,0,0],p=structuredClone(drag.before);let [x,y,w,h]=old;const dx=px-sx,dy=py-sy;
    if(drag.mode==='draw')p.box=[Math.min(sx,px),Math.min(sy,py),Math.abs(px-sx),Math.abs(py-sy)];
    else if(drag.mode==='move')p.box=[Math.max(0,Math.min(1-w,x+dx)),Math.max(0,Math.min(1-h,y+dy)),w,h];

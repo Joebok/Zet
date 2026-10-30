@@ -222,6 +222,8 @@ Interview and prompt writing are separate model roles, preserving explicit per-t
 
 Final assemblies have Scene text authoring and a full-viewport placement editor. Add/reorder entries, use restricted bold/italic markup, choose no tail or a straight tail, draw boxes and move/resize them. Tail tips stay in image space while the attachment can move around the bubble. Text uses a fixed effective size; overflow prevents confirmation. Full screen is optional; the viewport editor remains available without browser fullscreen.
 
+In an empty raw placement editor, typing text, choosing a tail or dragging on the image creates the first entry automatically. Add scene text creates subsequent entries. Text typed before placement is saved with the entry even if no box has been drawn yet.
+
 `NarrativeSceneTextService` owns revision-fenced drafts, candidate placements, preview and confirmation. `scene_text_render_service` uses Pillow for both previews and final PNGs. `scene_text_style_service` resolves universe settings and field-level story overrides; scenes/targets cannot override appearance. Installed approved font families must have all four faces. Universe Settings and the story editor expose style controls and previews.
 
 Raw placement seeds freeze with assembly snapshots but never enter AI image inputs. Candidate placement changes are independent. Confirm and select validates current text/style/source identity and saves a new finished PNG before atomically changing the target's pointer/selection. Original artwork remains unchanged. Locked candidates require unlock to replace lettering; direct select/lock cannot bypass confirmation. Draft edits retain the preceding finished output and show pending changes.
