@@ -1044,6 +1044,9 @@ listen(host,'click',event=>{
       await api(`${base()}/elements/${button.dataset.deleteElement}`,'DELETE'); await loadPage();
     } else if (button.dataset.candidate) {
       await save();
+      if (button.dataset.candidateAction === 'lock' && Object.entries(detail.candidates).some(([id, candidate]) => id !== button.dataset.candidate && candidate.locked)) {
+        if (!confirm('An image is already locked for this subscene. Lock this image and unlock all other images for this subscene?')) return;
+      }
       if(detail.kind==='assembly' && (detail.scene_text?.length || detail.candidates[button.dataset.candidate]?.scene_text_final) && !(detail.candidates[button.dataset.candidate]?.locked && !detail.candidates[button.dataset.candidate]?.scene_text_pending) && button.dataset.candidateAction==='select'){await window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.candidate,done:async result=>{detail=result;updateLive();}});return;}
       const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction});
       if (result) { detail=result; updateLive(); status('Updated'); }

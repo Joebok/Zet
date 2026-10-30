@@ -31,6 +31,8 @@ mappings and strict lookup failures; the four approved fast scenarios passed.
 
 ## Data and job lifecycle
 
+Locking a candidate replaces every other lock within that target, including final assemblies. The dashboard asks for confirmation when another candidate is already locked; cancelling preserves the existing locks. Selection remains independent.
+
 Responsive cards and image review follow [Dashboard UI](DASHBOARD_UI.md). Existing
 targets with images prioritize viewing on compact screens, with direction and
 generation inputs available in disclosures. These visual conventions preserve

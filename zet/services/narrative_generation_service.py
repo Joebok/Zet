@@ -311,7 +311,8 @@ class NarrativeGenerationService:
             if action == "select":
                 record["selected_id"] = candidate_id
             elif action == "lock":
-                candidate["locked"] = True
+                for other_id, other in record["candidates"].items():
+                    other["locked"] = other_id == candidate_id
             elif action == "unlock":
                 candidate["locked"] = False
             elif action == "retry":
