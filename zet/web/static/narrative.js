@@ -247,7 +247,7 @@ async function loadPageContent() {
       <div class="narrative-grid" id="narrative-story-scenes"></div>`;
     renderStoryScenes(detail.scenes);
     host.querySelector('#scene-text-story-style')?.addEventListener('click',()=>window.ZetSceneText.style({universe,story:route.story}));
-    host.querySelector('#open-story-animation')?.addEventListener('click', async () => {
+    host.querySelector('#open-story-animation')?.addEventListener('click', () => action(async () => {
       const panel=host.querySelector('#story-animation-workspace'); panel.hidden=false;
       const [animations,sources]=await Promise.all([api(`${base()}/animations`),api(`/api/narrative/stories/${route.story}/animation-sources`)]);
       const animation=animations[0]||await api(`${base()}/animations`,'POST',{name:'New animation',aspect_ratio:'16:9'});
@@ -258,7 +258,7 @@ async function loadPageContent() {
         panel.querySelector('#save-animation').onclick=async()=>{shots.forEach((s,i)=>{s.duration_ms=Number(panel.querySelector(`[data-shot-duration="${i}"]`).value);s.camera=[{time_ms:0,x:Number(panel.querySelector(`[data-camera-x="${i}"]`).value),y:Number(panel.querySelector(`[data-camera-y="${i}"]`).value),zoom:Number(panel.querySelector(`[data-camera-zoom="${i}"]`).value)}];s.transition={type:panel.querySelector(`[data-transition="${i}"]`).value,duration_ms:panel.querySelector(`[data-transition="${i}"]`).value==='cut'?0:1000};const fade=panel.querySelector(`[data-text-fade="${i}"]`);if(fade&&Number(fade.value)>0){const textId=fade.dataset.textId;s.text[textId]=[{time_ms:0,opacity:0},{time_ms:Number(fade.value),opacity:1}]}});doc=await api(`${base()}/animations/${animation.id}`,'PUT',{revision:doc.revision,spec:{...doc.spec,shots}});shots=doc.spec.shots;render()};
         panel.querySelector('#preview-animation').onclick=()=>{panel.querySelector('iframe').src=`/api/narrative/stories/${route.story}/animations/${animation.id}/html?universe_id=${encodeURIComponent(universe)}&preview=1`};
       };render();
-    });
+    }));
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{});
   } else if (!route.target) {
     const [loaded, story] = await Promise.all([api(base()), api(`/api/narrative/stories/${route.story}`)]);

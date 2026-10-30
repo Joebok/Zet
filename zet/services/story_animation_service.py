@@ -140,7 +140,7 @@ class StoryAnimationService:
         folder=self.folder(story,animation); data=json.loads((folder/"spec.json").read_text(encoding="utf-8"))
         if include_assets:
             data["assets"]={key:{**value,"artwork_data_url":self._url(folder/value["artwork"]),"text_data_urls":{k:self._url(folder/v) for k,v in value.get("text_layers",{}).items()}} for key,value in data["assets"].items()}
-        return data
+        return {**data, "id": animation}
     @staticmethod
     def _url(path):
         raw=Path(path).read_bytes(); return "data:image/png;base64,"+base64.b64encode(raw).decode()

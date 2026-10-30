@@ -1,5 +1,15 @@
 # Local testing
 
+## Story animation opening (2026-10-30)
+
+All four approved fast scenarios passed (`npm.cmd run test:e2e`, 38.4s).
+A disposable Chromium check under ignored `test-results/animation-open/` passed
+animation creation, ID-bearing list/read/save responses, reopening without a
+duplicate, export-link identity, and opening-error display/retry (6.7s including
+startup). No undefined-ID requests or uncaught page errors occurred. JavaScript
+syntax and `git diff --check` passed. No permanent tests, live AI calls or normal
+library writes were added; the hosted site was not deployed or exercised.
+
 ## Character pipeline bulk locks (2026-10-27)
 
 `npm.cmd run test:e2e` passed all four approved scenarios (40.1s). Disposable
