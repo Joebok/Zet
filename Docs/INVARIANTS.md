@@ -202,3 +202,5 @@ Criteria and human accomplishment status persist at costume/view level across mo
 ## Scene-text confirmation (2026-10-29)
 
 Lettering is deterministic post-render composition. It cannot alter original artwork or the frozen image inputs submitted to AI. Universe appearance plus story overrides are authoritative; scene/target appearance overrides are rejected. Confirmations bind current text, placements, effective style and candidate artwork identity. Stale confirmations and overflowing/unplaced entries cannot change selection. Locked revisions cannot be replaced. Existing confirmed PNGs remain authoritative until explicitly replaced, and missing confirmed files never silently resolve to artwork.
+
+Backdrop references use an optional exact source-pixel crop before freezing ordered job inputs. Regenerate excludes the linked source image. Output size does not alter the crop. Local crop reuse performs no resampling; generated results may reinterpret pixels. Mode and crop changes fence obsolete prompt/interview application.

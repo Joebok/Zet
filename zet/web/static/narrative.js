@@ -372,39 +372,65 @@ function sourceTextHtml(source) {
 function sourcePanelHtml() {
   if (detail.kind === 'assembly') return '';
   const source = detail.source_snapshot;
-  const backdrop = detail.kind === 'backdrop';
-  const settings = detail.backdrop_adaptation || {};
-  const crop = settings.crop || {};
-  if (!backdrop && !source?.target_id) return '';
-  return `<section class="narrative-card" id="narrative-source-panel"><h2>${backdrop ? 'Backdrop source and adaptation' : 'Imported subscene source'}</h2>
-    ${backdrop ? '<button data-action="attach-backdrop">Attach source backdrop</button>' : ''}
-    ${source?.target_id ? `<p>Pinned from ${esc(source.story_title)} / ${link(source.scene_title,{story:source.story_id,scene:source.scene_id,target:source.target_id})} Â· ${esc(source.title)}</p>
-      ${sourceTextHtml(source)}${backdrop ? `<div class="narrative-actions"><button data-action="refresh-backdrop">Use current source selection</button><button data-action="copy-source-current">Copy current source inputs</button>${source.generation_inputs ? '<button data-action="copy-source-generation">Copy generation inputs</button>' : ''}</div>
-      <p class="narrative-muted">Copies the recorded source inputs into this backdrop. Refresh replaces only the pinned source; existing images and destination edits remain.</p>
-      <label class="narrative-field">Backdrop operation<select id="backdrop-operation" data-adaptation="operation">${[['edit','Other edits'],['unchanged','Use unchanged'],['crop','Crop'],['expand','Expand'],['viewpoint','Change viewpoint']].map(([value,name])=>`<option value="${value}" ${(settings.operation||'edit')===value?'selected':''}>${name}</option>`).join('')}</select></label>
-      <label class="narrative-field">Adaptation direction<textarea id="backdrop-direction" data-adaptation="direction" placeholder="Describe the new view or what to add">${esc(settings.direction||'')}</textarea></label>
-      <label class="narrative-field">Expand toward<select data-adaptation="expand_side" id="backdrop-expand-side">${['left','right','top','bottom','all'].map(side=>`<option ${(settings.expand_side||'right')===side?'selected':''}>${side}</option>`).join('')}</select></label>
-      <p class="narrative-muted">Use Width and Height above for the output dimensions. Expansion and changed viewpoints use generation and can reinterpret detail.</p>
-      <div class="narrative-crop-stage" id="backdrop-crop-stage"><img id="backdrop-source-image" src="${esc(artifactUrl('source-image'))}&revision=${esc(source.snapshot_id)}" alt="Pinned source backdrop"><div id="backdrop-crop-box"></div></div>
-      <div class="narrative-grid">${[['center_x','Horizontal crop center',0,1,.01,.5],['center_y','Vertical crop center',0,1,.01,.5],['zoom','Crop zoom',1,20,.1,1]].map(([key,name,min,max,step,value])=>`<label class="narrative-field">${name}<input type="range" id="backdrop-crop-${key}" data-crop="${key}" min="${min}" max="${max}" step="${step}" value="${crop[key]??value}"></label>`).join('')}</div>
-      <div class="narrative-actions"><button data-action="reuse-backdrop">Use unchanged image</button><button data-action="crop-backdrop">Create cropped image</button><button data-action="preview-crop">Preview crop</button></div>
-      <img id="backdrop-crop-preview" class="narrative-source-preview" hidden alt="Crop output preview">
-      <p class="narrative-muted">Unchanged reuse and cropping create local candidates without generation. Use the interview and prompt controls below to generate an adaptation.</p>` : ''}` : '<p>No source attached.</p>'}</section>`;
+  if (detail.kind !== 'backdrop') return source?.target_id ? `<section class="narrative-card"><h2>Imported subscene source</h2><p>Pinned from ${esc(source.story_title)} / ${link(source.scene_title,{story:source.story_id,scene:source.scene_id,target:source.target_id})} · ${esc(source.title)}</p>${sourceTextHtml(source)}</section>` : '';
+  const settings = detail.backdrop_adaptation || {}, crop = settings.crop || {};
+  const mode = detail.backdrop_link_mode || 'reference';
+  return `<section class="narrative-card" id="narrative-source-panel"><h2>Backdrop source</h2>
+    <button data-action="attach-backdrop">${source?.target_id ? 'Change source backdrop' : 'Attach source backdrop'}</button>
+    ${source?.target_id ? `<p>Pinned from ${esc(source.story_title)} / ${link(source.scene_title,{story:source.story_id,scene:source.scene_id,target:source.target_id})} · ${esc(source.title)}</p>
+    ${sourceTextHtml(source)}
+    <label class="narrative-field">How to use the source<select id="backdrop-link-mode">${[['unmodified','Use unmodified'],['reference','Reference'],['regenerate','Regenerate']].map(([v,n])=>`<option value="${v}" ${mode===v?'selected':''}>${n}</option>`).join('')}</select></label>
+    <div data-source-mode="regenerate"><div class="narrative-actions"><button data-action="copy-source-current">Copy current source inputs</button>${source.generation_inputs ? '<button data-action="copy-source-generation">Copy generation inputs</button>' : ''}</div><p>Copying replaces destination inputs and creates local visual overrides. Then edit manually or use the interview. The source image is not supplied to generation.</p></div>
+    <div data-source-mode="unmodified"><button data-action="reuse-backdrop">Use Unmodified Image</button></div>
+    <div data-source-mode="reference"><button data-action="refresh-backdrop">Use current source selection</button>
+    <label class="narrative-field">Crop<select id="backdrop-crop-enabled" data-adaptation="crop_enabled"><option value="no">No</option><option value="yes" ${settings.crop_enabled?'selected':''}>Yes</option></select></label>
+    <div id="backdrop-crop-controls"><p>${esc(settings.crop_notice || 'Select an exact source region. Output dimensions do not change this crop.')}</p>
+    <div class="narrative-crop-stage" id="backdrop-crop-stage"><img id="backdrop-source-image" src="${esc(artifactUrl('source-image'))}&revision=${esc(source.snapshot_id)}" alt="Pinned source backdrop"><div id="backdrop-crop-box"><span data-crop-resize="true"></span></div></div>
+    <div class="narrative-grid">${['x','y','width','height'].map(key=>`<label class="narrative-field">Crop ${key}<input type="number" step="1" min="${['x','y'].includes(key)?0:1}" id="backdrop-crop-${key}" data-crop="${key}" value="${crop[key]??(['width','height'].includes(key)?source['image_'+key]:0)}"></label>`).join('')}</div>
+    <button data-action="preview-crop">Preview crop</button><img id="backdrop-crop-preview" class="narrative-source-preview" hidden alt="Crop output preview"></div>
+    <button id="backdrop-local-action" data-action="${settings.crop_enabled?'crop-backdrop':'reuse-backdrop'}">${settings.crop_enabled?'Use Unmodified Crop':'Use Unmodified Image'}</button>
+    <label class="narrative-field">Backdrop operation<select id="backdrop-operation" data-adaptation="operation">${[['edit','Other edits'],['expand','Expand'],['viewpoint','Change viewpoint']].map(([v,n])=>`<option value="${v}" ${(settings.operation||'edit')===v?'selected':''}>${n}</option>`).join('')}</select></label>
+    <label class="narrative-field">Adaptation direction<textarea id="backdrop-direction" data-adaptation="direction">${esc(settings.direction||'')}</textarea></label>
+    <label class="narrative-field" id="backdrop-expand-control">Expand toward<select data-adaptation="expand_side" id="backdrop-expand-side">${['left','right','top','bottom','all'].map(side=>`<option ${(settings.expand_side||'right')===side?'selected':''}>${side}</option>`).join('')}</select></label>
+    <button class="primary" data-action="apply-backdrop-operation">Apply operation</button><p>Writes a fresh prompt and generates one image from the ${settings.crop_enabled?'crop':'full source'}. Scene settings and applied interview edits supply the changes. Generated edits may reinterpret pixels.</p></div>
+    <p>After changing the mode, crop or operation, use Write Prompt to update existing prompt text. Render sends the entered prompt.</p>` : '<p>No source attached.</p>'}</section>`;
+}
+
+function sourceVisibility() {
+  const mode = detail.source_snapshot?.image_file ? detail.backdrop_link_mode : null;
+  host.querySelectorAll('[data-source-mode]').forEach(el=>{el.hidden=el.dataset.sourceMode!==mode;});
+  const crop = host.querySelector('#backdrop-crop-controls');
+  if (crop) crop.hidden = !detail.backdrop_adaptation?.crop_enabled;
+  const expand = host.querySelector('#backdrop-expand-control');
+  if (expand) expand.hidden = detail.backdrop_adaptation?.operation !== 'expand';
+  const local = host.querySelector('#backdrop-local-action');
+  if (local) {local.dataset.action=detail.backdrop_adaptation?.crop_enabled?'crop-backdrop':'reuse-backdrop';local.textContent=detail.backdrop_adaptation?.crop_enabled?'Use Unmodified Crop':'Use Unmodified Image';}
+  host.querySelectorAll('.narrative-direction-settings > div > section:not(#narrative-source-panel), .narrative-generation-settings').forEach(el=>{el.hidden=mode==='unmodified';});
 }
 
 function drawCropBox() {
-  const image = host.querySelector('#backdrop-source-image');
-  const box = host.querySelector('#backdrop-crop-box');
+  const image=host.querySelector('#backdrop-source-image'), box=host.querySelector('#backdrop-crop-box');
   if (!image?.naturalWidth || !box) return;
-  const ratio = Number(host.querySelector('#narrative-width').value) / Number(host.querySelector('#narrative-height').value);
-  const imageRatio = image.naturalWidth / image.naturalHeight;
-  const zoom = Number(host.querySelector('#backdrop-crop-zoom').value);
-  const width = Math.min(1,ratio/imageRatio)/zoom;
-  const height = width*imageRatio/ratio;
-  const x = Math.min(1-width/2,Math.max(width/2,Number(host.querySelector('#backdrop-crop-center_x').value)));
-  const y = Math.min(1-height/2,Math.max(height/2,Number(host.querySelector('#backdrop-crop-center_y').value)));
-  Object.assign(box.style,{left:`${(x-width/2)*100}%`,top:`${(y-height/2)*100}%`,width:`${width*100}%`,height:`${height*100}%`});
+  const c=detail.backdrop_adaptation.crop;
+  Object.assign(box.style,{left:`${c.x/image.naturalWidth*100}%`,top:`${c.y/image.naturalHeight*100}%`,width:`${c.width/image.naturalWidth*100}%`,height:`${c.height/image.naturalHeight*100}%`});
 }
+let cropDrag=null;
+listen(host,'pointerdown',event=>{
+  const box=event.target.closest('#backdrop-crop-box');
+  if(!box) return;
+  event.preventDefault();box.setPointerCapture(event.pointerId);
+  cropDrag={pointer:event.pointerId,x:event.clientX,y:event.clientY,crop:{...detail.backdrop_adaptation.crop},resize:!!event.target.dataset.cropResize};
+});
+listen(host,'pointermove',event=>{
+  if(!cropDrag || cropDrag.pointer!==event.pointerId) return;
+  const image=host.querySelector('#backdrop-source-image'), bounds=image.getBoundingClientRect(), sw=image.naturalWidth, sh=image.naturalHeight;
+  const dx=Math.round((event.clientX-cropDrag.x)*sw/bounds.width),dy=Math.round((event.clientY-cropDrag.y)*sh/bounds.height),c={...cropDrag.crop};
+  if(cropDrag.resize){c.width=Math.max(1,Math.min(sw-c.x,c.width+dx));c.height=Math.max(1,Math.min(sh-c.y,c.height+dy));}
+  else {c.x=Math.max(0,Math.min(sw-c.width,c.x+dx));c.y=Math.max(0,Math.min(sh-c.height,c.y+dy));}
+  for(const key of ['x','y','width','height'])host.querySelector('#backdrop-crop-'+key).value=c[key];
+  adaptationChanged();
+});
+listen(host,'pointerup',()=>{cropDrag=null;});listen(host,'pointercancel',()=>{cropDrag=null;});
 
 async function chooseNarrativeSource(kind, attach = false) {
   await save();
@@ -420,6 +446,7 @@ async function chooseNarrativeSource(kind, attach = false) {
     <div id="source-preview"></div><p class="error" id="source-picker-error" role="status"></p>
     ${attach ? '' : '<label class="narrative-field">New target title<input id="source-title" required></label><label><input id="source-copy-context" type="checkbox"> Copy source visual context as local overrides</label>'}
     <div class="narrative-actions"><button class="primary" id="source-apply">${attach?'Attach pinned source':kind==='backdrop'?'Create referenced backdrop':'Import subscene'}</button><button type="button" data-close="narrative-source-dialog">Cancel</button></div></form>`;
+  if (kind === 'backdrop') { const copyContext=host.querySelector('#source-copy-context'); if(copyContext)copyContext.parentElement.hidden=true; }
   dialog.showModal();
   await populateSourceTargets();
 }
@@ -463,12 +490,14 @@ async function previewNarrativeSource() {
 }
 
 function adaptationChanged() {
-  detail.backdrop_adaptation = {operation:host.querySelector('#backdrop-operation').value,
+  detail.backdrop_adaptation = {...detail.backdrop_adaptation,operation:host.querySelector('#backdrop-operation').value,
     direction:host.querySelector('#backdrop-direction').value,expand_side:host.querySelector('#backdrop-expand-side').value,
-    crop:Object.fromEntries(['center_x','center_y','zoom'].map(key=>[key,Number(host.querySelector(`#backdrop-crop-${key}`).value)]))};
+    crop_enabled:host.querySelector('#backdrop-crop-enabled').value==='yes',
+    crop:Object.fromEntries(['x','y','width','height'].map(key=>[key,Number(host.querySelector(`#backdrop-crop-${key}`).value)]))};
   dirty.add('backdrop_adaptation');
   clearTimeout(saveTimer);saveTimer=setTimeout(()=>save().catch(error=>status(error.message,true)),700);
-  drawCropBox();
+  const preview=host.querySelector('#backdrop-crop-preview');if(preview)preview.hidden=true;
+  sourceVisibility();drawCropBox();
 }
 
 function renderTarget(targets) {
@@ -476,13 +505,12 @@ function renderTarget(targets) {
   const assembly = detail.kind === 'assembly';
   const viewingImages = window.matchMedia("(max-width: 1360px)").matches && detail.slots.some(id => id && detail.candidates[id]?.image);
   root.innerHTML = `<h1 class="narrative-target-heading"><select id="narrative-target-select" aria-label="Scene page">${targetsWithAssemblyLast(targets).map(target=>`<option value="${target.id}" ${target.id === route.target ? 'selected' : ''}>${esc(target.title)} Â· ${title(target.kind)}</option>`).join('')}</select></h1>
-    <div class="narrative-editor narrative-target-editor ${viewingImages ? 'has-images' : ''}"><details class="narrative-direction-settings" ${viewingImages ? '' : 'open'}><summary>Scene direction and references</summary><div><section class="narrative-card"><h2>${backdrop ? 'Environment direction' : 'The moment'}</h2>
+    <div class="narrative-editor narrative-target-editor ${viewingImages ? 'has-images' : ''}"><details class="narrative-direction-settings" ${viewingImages ? '' : 'open'}><summary>Scene direction and references</summary><div>${sourcePanelHtml()}<section class="narrative-card"><h2>${backdrop ? 'Environment direction' : 'The moment'}</h2>
       ${label('title',detail.title,false)}${label('narrative',detail.narrative,true,backdrop ? 'Describe the environment' : 'Describe what is happening')}
       ${label('staging',detail.staging,true,backdrop ? 'Environment composition' : 'Interaction and staging')}${label('physical_context',detail.physical_context)}
       ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
       ${label('framing',detail.framing,false)}<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
-    ${sourcePanelHtml()}
     ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text" ${detail.selected_id?"":"disabled"}>Edit selected image text</button><button data-action="scene-text-raw">Edit raw composite text draft</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
     <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input Â· Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
@@ -501,6 +529,7 @@ function renderTarget(targets) {
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
     <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+  sourceVisibility();
   enableModelPickers();
   updateLive();
   loadModels();
@@ -720,7 +749,7 @@ function renderImageReview() {
 
 function mergeTarget(updated) {
   if (dirty.has('layers') || layerDrag || brush) updated.layers = detail.layers;
-  if (dirty.has('backdrop_adaptation')) updated.backdrop_adaptation = detail.backdrop_adaptation;
+  if (dirty.has('backdrop_adaptation') || cropDrag) updated.backdrop_adaptation = detail.backdrop_adaptation;
   for (const key of targetFields) {
     const field = root.querySelector(`[data-field="${key}"]`);
     if (field && !dirty.has(key) && (document.activeElement !== field || field.disabled)) {
@@ -842,6 +871,7 @@ async function assignElements() {
 }
 
 listen(host,'input',event=>{
+  if (event.target.id==='backdrop-link-mode') return;
   if (event.target.dataset.adaptation || event.target.dataset.crop) { adaptationChanged();updateLive();return; }
   if (event.target.dataset.layerField) {
     const key=event.target.dataset.layerField;
@@ -858,6 +888,7 @@ listen(host,'input',event=>{
 });
 
 listen(host,'change',event=>{
+  if (event.target.id==='backdrop-link-mode') {const mode=event.target.value;action(async()=>{await save();await api(base(),'PATCH',{backdrop_link_mode:mode});await loadPage();});return;}
   if (event.target.id==='source-story') {populateSourceTargets().catch(error=>status(error.message,true));return;}
   if (event.target.id==='source-target') {populateSourceCandidates().catch(error=>status(error.message,true));return;}
   if (event.target.id==='source-candidate') {previewNarrativeSource().catch(error=>status(error.message,true));return;}
@@ -989,6 +1020,7 @@ listen(host,'click',event=>{
           const request = {'refresh-backdrop':{action:'refresh'},'copy-source-current':{action:'copy_inputs',basis:'current'},'copy-source-generation':{action:'copy_inputs',basis:'generation'},'reuse-backdrop':{action:'reuse'},'crop-backdrop':{action:'crop'}}[button.dataset.action];
           await api(base()+'/backdrop-source','POST',request);await loadPage();break;
         }
+        case 'apply-backdrop-operation': await start('generate',1);break;
         case 'preview-crop': {await save();const image=host.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
         case 'scene-text': if(!detail.selected_id)throw Error('Select an image first.'); await save(); await window.ZetSceneText.open({base:base(),universe,candidate:detail.selected_id,done:async result=>{detail=result;updateLive();reviewCandidate=detail.selected_id;if(!host.querySelector('#image-dialog').open)host.querySelector('#image-dialog').showModal();renderImageReview();}});break;
         case 'scene-text-raw': await save(); await window.ZetSceneText.open({base:base(),universe,done:async()=>loadPage()});break;

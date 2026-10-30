@@ -18,6 +18,30 @@ from zet.services.workflow_storage import validate_image
 INPUT_FIELDS = ("narrative", "staging", "physical_context", "framing", "width", "height", "use_transparent_background")
 
 
+def normalize_backdrop(record):
+    if record.get("kind") != "backdrop":
+        return
+    settings = record.setdefault("backdrop_adaptation", {})
+    record.setdefault("backdrop_link_mode", "unmodified" if settings.get("operation") == "unchanged" else "reference")
+    source = record.get("source_snapshot", {})
+    sw, sh = source.get("image_width", 0), source.get("image_height", 0)
+    if not sw or not sh:
+        return
+    settings.setdefault("crop_enabled", settings.get("operation") == "crop")
+    crop = settings.get("crop", {})
+    if "x" not in crop:
+        aspect = record["width"] / record["height"]
+        width = min(sw, sh * aspect) / crop.get("zoom", 1)
+        height = width / aspect
+        cx = min(sw-width/2, max(width/2, crop.get("center_x", .5)*sw))
+        cy = min(sh-height/2, max(height/2, crop.get("center_y", .5)*sh))
+        box = (round(cx-width/2), round(cy-height/2), round(cx+width/2), round(cy+height/2))
+        settings["crop"] = ({"x": box[0], "y": box[1], "width": max(1,box[2]-box[0]), "height": max(1,box[3]-box[1])}
+                            if crop or settings["crop_enabled"] else {"x": 0, "y": 0, "width": sw, "height": sh})
+    if settings.get("operation") in {"crop", "unchanged"}:
+        settings["operation"] = "edit"
+
+
 class NarrativeReferenceService:
     def __init__(self, author):
         self.author = author
@@ -119,15 +143,17 @@ class NarrativeReferenceService:
             source = self.preview(data.get("source", {}))
             kind = source["kind"]
             record = asdict(NarrativeTarget(self.author._title({"title": data.get("title") or source["title"]}), kind))
-            for key in INPUT_FIELDS:
+            for key in (INPUT_FIELDS if kind != "backdrop" else ()):
                 record[key] = deepcopy(source["current_inputs"][key])
-            if data.get("copy_visual_context", False):
+            if kind != "backdrop" and data.get("copy_visual_context", False):
                 record["visual_overrides"] = deepcopy(source["current_inputs"]["context"])
             mappings = data.get("element_mappings", {})
             if not isinstance(mappings, dict):
                 raise ValueError("Element mappings must be an object.")
             available = {item["id"] for item in parent["elements"]}
-            source_elements = source["current_inputs"]["elements"]
+            source_elements = source["current_inputs"]["elements"] if kind != "backdrop" else []
+            if kind == "backdrop":
+                record.update(width=1344, height=768, framing="Wide environment")
             if any(key not in {item["id"] for item in source_elements} for key in mappings):
                 raise ValueError("Map only source elements.")
             for element in source_elements:
@@ -168,7 +194,13 @@ class NarrativeReferenceService:
                 if source is None and action == "refresh":
                     old = record["source_snapshot"]
                     source = {key: old.get(key, "") for key in ("story_id", "scene_id", "target_id")}
+                old = record.get("source_snapshot", {})
                 record["source_snapshot"] = self._pin(story, scene, target, source or {})
+                new = record["source_snapshot"]
+                if (old.get("image_width"), old.get("image_height")) != (new["image_width"], new["image_height"]):
+                    record["backdrop_adaptation"]["crop"] = {"x": 0, "y": 0, "width": new["image_width"], "height": new["image_height"]}
+                    record["backdrop_adaptation"]["crop_notice"] = "Source dimensions changed; crop reset to the full image."
+                normalize_backdrop(record)
             elif action == "copy_inputs":
                 basis = data.get("basis", "current")
                 if basis not in {"current", "generation"}:
@@ -192,6 +224,8 @@ class NarrativeReferenceService:
 
     @staticmethod
     def validate_adaptation(record):
+        if record.get("backdrop_link_mode", "reference") not in {"reference", "regenerate", "unmodified"}:
+            raise ValueError("Choose an available backdrop linking mode.")
         settings = record["backdrop_adaptation"]
         if not isinstance(settings, dict):
             raise ValueError("Backdrop adaptation must be an object.")
@@ -208,6 +242,15 @@ class NarrativeReferenceService:
         crop = settings.get("crop", {})
         if not isinstance(crop, dict):
             raise ValueError("Crop settings must be an object.")
+        if not isinstance(settings.get("crop_enabled", False), bool):
+            raise ValueError("Crop enabled must be boolean.")
+        if "x" in crop:
+            sw, sh = (record.get("source_snapshot", {}).get(key, 0) for key in ("image_width", "image_height"))
+            if any(type(crop.get(key)) is not int for key in ("x", "y", "width", "height")):
+                raise ValueError("Crop coordinates must be integers.")
+            if crop["x"] < 0 or crop["y"] < 0 or min(crop["width"], crop["height"]) < 1 or crop["x"]+crop["width"] > sw or crop["y"]+crop["height"] > sh:
+                raise ValueError("Crop must stay inside the source image.")
+            return
         for key, default, low, high in (("center_x", .5, 0, 1), ("center_y", .5, 0, 1), ("zoom", 1, 1, 20)):
             value = crop.get(key, default)
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
@@ -222,17 +265,12 @@ class NarrativeReferenceService:
 
     def crop(self, story, scene, target, record=None):
         record = record or self.repository.read(story, scene, target)
+        normalize_backdrop(record)
         self.validate_adaptation(record)
         settings = record["backdrop_adaptation"].get("crop", {})
         with Image.open(self._file(story, scene, target, record["source_snapshot"].get("image_file"))) as source:
             source = ImageOps.exif_transpose(source).convert("RGBA")
-            aspect = record["width"] / record["height"]
-            width = min(source.width, source.height * aspect) / settings.get("zoom", 1)
-            height = width / aspect
-            x = min(source.width - width / 2, max(width / 2, settings.get("center_x", .5) * source.width))
-            y = min(source.height - height / 2, max(height / 2, settings.get("center_y", .5) * source.height))
-            box = (x - width / 2, y - height / 2, x + width / 2, y + height / 2)
-            image = source.resize((record["width"], record["height"]), Image.Resampling.LANCZOS, box=box)
+            image = source.crop((settings["x"], settings["y"], settings["x"]+settings["width"], settings["y"]+settings["height"]))
             stream = BytesIO()
             image.save(stream, format="PNG")
             return stream.getvalue()

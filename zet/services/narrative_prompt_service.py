@@ -1,4 +1,5 @@
 """Short narrative instructions and deterministic reference bindings."""
+from zet.services.narrative_backdrop_policy import backdrop_reference
 import json
 import re
 
@@ -55,11 +56,13 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
                            for item in detail["elements"]]
     context["reference_images"] = [{"image_index": index, "name": item["name"], "role": item["reference_role"]}
                                    for index, item in enumerate((el for el in detail["elements"] if el.get("reference")), 1)]
-    backdrop_source = detail["kind"] == "backdrop" and detail.get("source_snapshot", {}).get("image_file")
+    backdrop_source = backdrop_reference(detail)
     if backdrop_source:
         source = detail["source_snapshot"]
         context["source_backdrop"] = {key: source.get(key) for key in ("title", "prompt", "generation_inputs", "current_inputs")}
+        context["backdrop_link_mode"] = "reference"
         context["adaptation"] = detail.get("backdrop_adaptation", {})
+        context["source_region"] = "Only the selected crop is supplied" if context["adaptation"].get("crop_enabled") else "Full source image"
         context["canvas"] = {"width": detail["width"], "height": detail["height"]}
         for ref in context["reference_images"]:
             ref["image_index"] += 1
@@ -157,7 +160,8 @@ def llm_request(detail: dict, kind: str, message: str = "") -> tuple[str, dict]:
         )
     if backdrop_source:
         instructions += (" Adapt the supplied backdrop, preserving its recognizable setting and architecture. "
-                         "Apply the adaptation direction, output dimensions and requested expansion side or changed viewpoint. "
+                         "When crop_enabled is true, the supplied image is already cropped; do not restore excluded surroundings except for requested expansion. "
+                         "Apply the adaptation direction and output dimensions. Expansion side applies only to the expand operation; change viewpoint only when requested. "
                          "Source text is historical context; current destination direction takes precedence. "
                          "Do not preserve source framing when a viewpoint or expansion change is requested. "
                          "Describe an image edit rather than creating an unrelated environment. Do not add people unless deliberately assigned.")
@@ -282,13 +286,13 @@ def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
         if transparent_subscene(detail):
             constraints.append(TRANSPARENT_BACKGROUND_RULE)
         constraints.append("Keep required silhouettes and gestures visible; do not crop required body parts.")
-    if detail["kind"] == "backdrop" and detail.get("source_snapshot", {}).get("image_file"):
+    if backdrop_reference(detail):
         adaptation = detail.get("backdrop_adaptation", {})
         constraints.append(f"Backdrop operation: {adaptation.get('operation', 'edit')}. {adaptation.get('direction', '')}")
         if adaptation.get("operation") == "expand":
             constraints.append(f"Expand the original environment toward {adaptation.get('expand_side', 'right')}; maintain visual continuity.")
     operation = "Create an environment-only illustration with no people or characters.\n" if detail["kind"] == "backdrop" and not subjects else ""
-    if operation and detail.get("source_snapshot", {}).get("image_file"):
+    if operation and backdrop_reference(detail):
         operation = "Adapt the supplied environment-only backdrop with no people or characters.\n"
     return (f"Scene\n{operation}{prose['scene'].strip()}\n\nReferences\n" + ("\n".join(bindings) or "No reference images.")
             + f"\n\nRendering\n{prose['rendering'].strip()}\n\nConstraints\n" + "\n".join(constraints))

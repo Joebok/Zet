@@ -234,3 +234,11 @@ Disposable checks cover persistence, stale confirmation, formatting/shapes/overf
 
 ### Finished scene-text editing
 The primary Scene text action edits the selected rendered candidate; raw-composite drafts remain separate. Candidate drafts accept optional shared entries plus candidate placements in one revision-fenced save. Save and close (including Escape) saves the draft and confirms a new finished PNG; validation failures keep the editor open and retain the preceding finished output. Save draft does not publish lettering. Unlock permits re-editing over the original artwork, never over a lettered PNG. Review has a clean-image toggle; finished revision URLs refresh thumbnails.
+
+## Backdrop linking and exact crops (2026-10-29)
+
+Backdrops pin source bytes separately from `backdrop_link_mode`: `unmodified` reuses bytes locally, `reference` supplies the pinned full image or crop, and `regenerate` excludes source images and adaptation instructions. Copy-current/generation actions explicitly replace inputs and install local visual overrides; subsequent authoring uses normal scene/interview behavior. New backdrop links do not automatically seed inputs. Imported subscenes retain their independent-copy behavior.
+
+Reference crops use integer source-pixel x/y/width/height after EXIF orientation. Preview, local reuse and generated attachments share the same lossless crop. Output dimensions never resize the rectangle. Changing source dimensions resets the crop to the full source; same-sized refreshes retain it. Apply operation writes a fresh prompt and generates one candidate. Generated edits can reinterpret pixels. Expand toward appears only for Expand.
+
+Jobs freeze prepared crop bytes in the existing ordered reference snapshots. Retries retain those bytes. Mode/crop changes fence current prompt/interview application; historical candidates remain unchanged.

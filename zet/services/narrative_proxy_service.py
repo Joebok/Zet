@@ -1,4 +1,5 @@
 """AI_Proxy transport owned only by narrative scenes."""
+from zet.services.narrative_backdrop_policy import backdrop_reference
 import json
 from pathlib import Path
 import shutil
@@ -42,13 +43,14 @@ class NarrativeProxyService:
             detail = job["detail"]
             role = "narrative_interview" if job["kind"] == "interview" else "narrative_prompt"
             operation = ("composite" if detail["kind"] == "assembly" and detail.get("assembly_mode") == "assemble_references"
-                         else "edit" if detail["kind"] == "assembly" or detail.get("source_snapshot", {}).get("image_file")
+                         else "edit" if detail["kind"] == "assembly" or backdrop_reference(detail)
                          else "composite" if job.get("references") else "generate")
             manifest.update(llm_role=role, llm_context={"operation": operation,
                 "render_references": [{key: ref.get(key) for key in ("label", "role", "image_index")} for ref in job.get("references", [])],
                 "bindings_owned_by_zet": True, "canvas": {"width": detail["width"], "height": detail["height"]},
                 "style": detail["context"].get("style", ""), "direction": job.get("message", ""),
-                "transparent_background": detail.get("use_transparent_background", False)})
+                "transparent_background": (detail.get("use_transparent_background", False)
+                                            if detail["kind"] == "subscene" else False)})
             manifest.update(ollama_model=job.get("model") or self.config.ai_narrative_scene_model, ollama_chat=True, json_output=True,
                             ollama_allow_unmanaged_model=True,
                             response_schema=schema, ollama_temperature=0.2, ollama_think=False,

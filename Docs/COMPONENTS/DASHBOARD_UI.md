@@ -225,3 +225,7 @@ Config now renders the shared role registry, with active and compatibility/retir
 
 ## Universe creative settings
 The header Universe Settings action is available in both workspaces. One form saves canonical art style and all lettering defaults, with a preview, unsaved-navigation protection and read-only identity/storage/layout details. Story lettering overrides take precedence; changes do not rewrite previously finished images.
+
+## Backdrop source controls (2026-10-29)
+
+Narrative places source linking before authoring. Linking mode selectively exposes local unchanged reuse, Reference crop/adaptation, or Regenerate seeding. Crop supports exact numeric coordinates, pointer movement and lower-right resizing, independent of output size. Existing image cards remain accessible in all modes.

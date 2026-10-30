@@ -57,8 +57,8 @@ class NarrativeGenerationService:
             if replay:
                 detail = deepcopy(replay["detail"])
             if detail["kind"] == "backdrop" and detail.get("source_snapshot", {}).get("image_file"):
-                if kind in {"generate", "render"} and detail.get("backdrop_adaptation", {}).get("operation") in {"crop", "unchanged"}:
-                    raise ValueError("Use the local reuse or crop action for this backdrop operation.")
+                if kind in {"generate", "render", "interview", "synthesize"} and detail.get("backdrop_link_mode") == "unmodified":
+                    raise ValueError("Use the local reuse action for this backdrop mode.")
             if kind == "render" and detail["kind"] == "assembly" and record["prompt_provenance"].get("assembly_mode", "finish_composite") != detail.get("assembly_mode", "finish_composite"):
                 raise ValueError("The prompt belongs to another assembly mode. Write or edit the prompt before rendering.")
             refs = [] if detail["kind"] == "assembly" else (deepcopy(replay["references"]) if replay else self.author.references(detail))
@@ -269,7 +269,8 @@ class NarrativeGenerationService:
 
     @staticmethod
     def _same_mode(record, frozen):
-        return (record.get("assembly_mode", "finish_composite") == frozen.get("assembly_mode", "finish_composite")
+        return (record.get("backdrop_link_mode", "reference") == frozen.get("backdrop_link_mode", "reference")
+                and record.get("assembly_mode", "finish_composite") == frozen.get("assembly_mode", "finish_composite")
                 and (record.get("kind") != "subscene"
                      or record.get("use_transparent_background", True) == frozen.get("use_transparent_background"))
                 and record.get("backdrop_adaptation", {}) == frozen.get("backdrop_adaptation", {})

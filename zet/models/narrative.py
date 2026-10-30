@@ -76,6 +76,7 @@ class NarrativeTarget:
     layers: list[dict] = field(default_factory=list)
     assembly_mode: str = "finish_composite"
     source_snapshot: dict = field(default_factory=dict)
+    backdrop_link_mode: str = "reference"
     backdrop_adaptation: dict = field(default_factory=dict)
 
 

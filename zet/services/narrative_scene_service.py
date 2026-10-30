@@ -13,7 +13,7 @@ from zet.services.universe_style_service import universe_style
 TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing", "width", "height",
                  "use_transparent_background",
                  "element_ids", "visual_overrides", "prompt", "interview_model", "prompt_model", "layers", "assembly_mode",
-                 "backdrop_adaptation")
+                 "backdrop_adaptation", "backdrop_link_mode")
 SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas", "use_universe_style")
 
 
@@ -283,6 +283,9 @@ class NarrativeSceneService:
                 return self.target(story, scene, target)
             if review.get("status") != "pending":
                 raise ValueError("This interview has no pending review.")
+            from zet.services.narrative_generation_service import NarrativeGenerationService
+            if not NarrativeGenerationService._same_mode(record, job["detail"]):
+                raise ValueError("Settings changed; run a new interview before applying proposals.")
             choices = data.get("choices")
             rows = review["proposals"]
             if not isinstance(choices, dict) or set(choices) != {row["id"] for row in rows}:
@@ -328,9 +331,16 @@ class NarrativeSceneService:
     def references(self, detail: dict) -> list[dict]:
         refs = []
         snapshot = detail.get("source_snapshot") or {}
-        if detail["kind"] == "backdrop" and snapshot.get("image_file"):
+        from zet.services.narrative_backdrop_policy import backdrop_reference
+        if backdrop_reference(detail):
             path = self.app.narrative_reference_service.image(snapshot["destination_story_id"],
                                                              snapshot["destination_scene_id"], detail["id"])
+            if detail.get("backdrop_adaptation", {}).get("crop_enabled"):
+                import hashlib
+                from zet.services.atomic_file_service import write_bytes_atomic
+                payload = self.app.narrative_reference_service.crop(snapshot["destination_story_id"], snapshot["destination_scene_id"], detail["id"], detail)
+                path = path.parent / ("crop-" + hashlib.sha256(payload).hexdigest() + ".png")
+                write_bytes_atomic(path, payload)
             refs.append({"path": str(path), "label": snapshot["title"], "role": "backdrop source", "image_index": 1})
         for element in detail["elements"]:
             asset = self.element_asset(element)

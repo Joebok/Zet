@@ -38,6 +38,8 @@ class NarrativeRepository:
             record = read_library_json(path, self.library_root)
         if target:
             from zet.models.narrative import NarrativeTarget
+            from zet.services.narrative_reference_service import normalize_backdrop
+            normalize_backdrop(record)
             for key, value in asdict(NarrativeTarget(record["title"], record["kind"])).items():
                 if key == "assembly_mode" and record["kind"] == "assembly":
                     value = "harmonize_composite"
