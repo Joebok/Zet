@@ -45,8 +45,10 @@ def validate_spec(spec: dict) -> dict:
     for shot in shots:
         if not isinstance(shot, dict) or not isinstance(shot.get("id"), str) or not shot["id"] or shot["id"] in ids:
             raise ValueError("Every shot needs a unique ID.")
-        if set(shot) - {"id", "source_id", "duration_ms", "camera", "text", "transition"}:
+        if set(shot) - {"id", "source_id", "duration_ms", "camera", "camera_mode", "text", "transition"}:
             raise ValueError("Shot contains unsupported instruction fields.")
+        if shot.get("camera_mode", "center") not in {"center", "target"}:
+            raise ValueError("Unsupported camera mode.")
         ids.add(shot["id"])
         if not isinstance(shot.get("source_id"), str) or not shot["source_id"]:
             raise ValueError("Every shot needs a pinned source ID.")
