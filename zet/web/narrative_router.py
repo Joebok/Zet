@@ -209,14 +209,14 @@ def create_narrative_router(app_provider):
         return call(animation().bind, story, animation_id, data)
 
     @router.get("/stories/{story}/animations/{animation_id}/html")
-    def animation_html(story: str, animation_id: str):
+    def animation_html(story: str, animation_id: str, preview: bool = Query(False)):
         from zet.services.story_animation_service import resolve_animation
         from zet.services.story_animation_html_compiler import compile_html
         doc = call(animation().read, story, animation_id)
         data = doc["assets"]
         resolved = call(resolve_animation, doc["spec"], data)
         return Response(compile_html(resolved), media_type="text/html; charset=utf-8",
-                        headers={"Content-Disposition": 'attachment; filename="story-animation.html"'})
+                        headers={} if preview else {"Content-Disposition": 'attachment; filename="story-animation.html"'})
 
     @router.get(target_path + "/composite")
     def composite(story: str, scene: str, target: str, download: bool = Query(False)):

@@ -1,5 +1,23 @@
 # Local testing
 
+## Story animation playback (2026-10-30)
+
+All four approved fast scenarios passed (`npm.cmd run test:e2e`, final 40.1s).
+Disposable Chromium checks under ignored `test-results/celestial-animation/`
+exercise three actual scene images in a private Narrative library: add/re-add by
+source identity, retained unsaved duration across addition/removal, save-before-
+preview/download, inline preview versus attachment responses, invalid-save status,
+and offline playback. The standalone Celestial Sphere artifact embeds its three
+frozen artwork images and four separable lettering layers; all seven images decoded
+offline. Play, restart, previous/next and exact shot-boundary pixels passed without
+page errors; screenshots of all three scenes were inspected. The boundary check
+exposed and verified the compiler's exclusive shot-end correction.
+
+Python AST, JavaScript syntax and `git diff --check` passed. No maintained tests,
+dependencies, live AI calls, production story writes or deployment were added.
+The production API was read only to obtain the already-pinned source snapshots;
+local verification does not establish hosted deployment.
+
 ## Story animation lettered source binding (2026-10-30)
 
 A disposable temporary-library check reproduced the reported UTF-8 error when

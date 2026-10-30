@@ -252,11 +252,55 @@ async function loadPageContent() {
       const [animations,sources]=await Promise.all([api(`${base()}/animations`),api(`/api/narrative/stories/${route.story}/animation-sources`)]);
       const animation=animations[0]||await api(`${base()}/animations`,'POST',{name:'New animation',aspect_ratio:'16:9'});
       let doc=await api(`${base()}/animations/${animation.id}`); let shots=doc.spec.shots;
-      const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text enters as fixed screen layers.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)}${s.lettered?' (lettered)':''}</button>`).join(' ')}</div><ol>${shots.map((s,i)=>`<li>${esc(doc.assets[s.source_id]?.title||s.source_id)} <label>Duration ms <input data-shot-duration="${i}" type="number" min="100" value="${s.duration_ms}"></label><label>Camera X <input data-camera-x="${i}" type="number" min="0" max="1" step=".01" value="${s.camera?.[0]?.x??.5}"></label><label>Camera Y <input data-camera-y="${i}" type="number" min="0" max="1" step=".01" value="${s.camera?.[0]?.y??.5}"></label><label>Zoom <input data-camera-zoom="${i}" type="number" min="1" step=".1" value="${s.camera?.[0]?.zoom??1}"></label><label>Transition <select data-transition="${i}"><option value="cut">Cut</option><option value="dissolve" ${s.transition?.type==='dissolve'?'selected':''}>Dissolve</option><option value="fade-through-black" ${s.transition?.type==='fade-through-black'?'selected':''}>Fade through black</option></select></label>${(doc.assets[s.source_id]?.text_entries||[]).map(e=>`<label>${esc(e.text)} fade (ms) <input data-text-fade="${i}" data-text-id="${esc(e.id)}" type="number" min="0" value="0"></label>`).join('')} <button data-remove-shot="${i}">Remove</button></li>`).join('')}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="/api/narrative/stories/${route.story}/animations/${animation.id}/html?universe_id=${encodeURIComponent(universe)}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:520px;border:0"></iframe>`;
-        panel.querySelectorAll('[data-bind-source]').forEach(b=>b.onclick=()=>action(async()=>{doc=await api(`${base()}/animations/${animation.id}/sources`,'POST',{source_id:b.dataset.bindSource});const id=Object.keys(doc.assets).at(-1);shots.push({id:crypto.randomUUID(),source_id:id,duration_ms:8000,camera:[{time_ms:0,x:.5,y:.5,zoom:1}],text:{},transition:{type:'cut',duration_ms:0}});render()}));
-        panel.querySelectorAll('[data-remove-shot]').forEach(b=>b.onclick=()=>{shots.splice(Number(b.dataset.removeShot),1);render()});
-        panel.querySelector('#save-animation').onclick=async()=>{shots.forEach((s,i)=>{s.duration_ms=Number(panel.querySelector(`[data-shot-duration="${i}"]`).value);s.camera=[{time_ms:0,x:Number(panel.querySelector(`[data-camera-x="${i}"]`).value),y:Number(panel.querySelector(`[data-camera-y="${i}"]`).value),zoom:Number(panel.querySelector(`[data-camera-zoom="${i}"]`).value)}];s.transition={type:panel.querySelector(`[data-transition="${i}"]`).value,duration_ms:panel.querySelector(`[data-transition="${i}"]`).value==='cut'?0:1000};const fade=panel.querySelector(`[data-text-fade="${i}"]`);if(fade&&Number(fade.value)>0){const textId=fade.dataset.textId;s.text[textId]=[{time_ms:0,opacity:0},{time_ms:Number(fade.value),opacity:1}]}});doc=await api(`${base()}/animations/${animation.id}`,'PUT',{revision:doc.revision,spec:{...doc.spec,shots}});shots=doc.spec.shots;render()};
-        panel.querySelector('#preview-animation').onclick=()=>{panel.querySelector('iframe').src=`/api/narrative/stories/${route.story}/animations/${animation.id}/html?universe_id=${encodeURIComponent(universe)}&preview=1`};
+      const collect=()=>{
+        shots.forEach((shot,i)=>{
+          const value=field=>Number(panel.querySelector(`[data-${field}="${i}"]`).value);
+          shot.duration_ms=value('shot-duration');
+          shot.camera=[{time_ms:0,x:value('camera-x'),y:value('camera-y'),zoom:value('camera-zoom')}];
+          const transition=panel.querySelector(`[data-transition="${i}"]`).value;
+          shot.transition={type:transition,duration_ms:transition==='cut'?0:1000};
+          panel.querySelectorAll(`[data-text-fade="${i}"]`).forEach(fade=>{
+            const textId=fade.dataset.textId;
+            if(Number(fade.value)>0)shot.text[textId]=[{time_ms:0,opacity:0},{time_ms:Number(fade.value),opacity:1}];
+            else delete shot.text[textId];
+          });
+        });
+      };
+      const save=async()=>{
+        collect();
+        doc=await api(`${base()}/animations/${animation.id}`,'PUT',{revision:doc.revision,spec:{...doc.spec,shots}});
+        shots=doc.spec.shots;
+        render();
+      };
+      const exportUrl=`/api/narrative/stories/${route.story}/animations/${animation.id}/html?universe_id=${encodeURIComponent(universe)}`;
+      const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text enters as fixed screen layers.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)}${s.lettered?' (lettered)':''}</button>`).join(' ')}</div><ol>${shots.map((s,i)=>`<li>${esc(doc.assets[s.source_id]?.title||s.source_id)} <label>Duration ms <input data-shot-duration="${i}" type="number" min="100" value="${s.duration_ms}"></label><label>Camera X <input data-camera-x="${i}" type="number" min="0" max="1" step=".01" value="${s.camera?.[0]?.x??.5}"></label><label>Camera Y <input data-camera-y="${i}" type="number" min="0" max="1" step=".01" value="${s.camera?.[0]?.y??.5}"></label><label>Zoom <input data-camera-zoom="${i}" type="number" min="1" step=".1" value="${s.camera?.[0]?.zoom??1}"></label><label>Transition <select data-transition="${i}"><option value="cut">Cut</option><option value="dissolve" ${s.transition?.type==='dissolve'?'selected':''}>Dissolve</option><option value="fade-through-black" ${s.transition?.type==='fade-through-black'?'selected':''}>Fade through black</option></select></label>${(doc.assets[s.source_id]?.text_entries||[]).map(e=>`<label>${esc(e.text)} fade (ms) <input data-text-fade="${i}" data-text-id="${esc(e.id)}" type="number" min="0" value="${s.text?.[e.id]?.at(-1)?.time_ms||0}"></label>`).join('')} <button data-remove-shot="${i}">Remove</button></li>`).join('')}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="/api/narrative/stories/${route.story}/animations/${animation.id}/html?universe_id=${encodeURIComponent(universe)}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:520px;border:0"></iframe>`;
+        panel.querySelectorAll('[data-bind-source]').forEach(b=>b.onclick=()=>action(async()=>{
+          collect();
+          const sourceId=b.dataset.bindSource;
+          doc=await api(`${base()}/animations/${animation.id}/sources`,'POST',{source_id:sourceId});
+          const asset=Object.values(doc.assets).find(asset=>asset.source_id===sourceId);
+          if(!asset)throw new Error('The selected scene was not pinned. Try adding it again.');
+          shots.push({id:crypto.randomUUID(),source_id:asset.id,duration_ms:8000,camera:[{time_ms:0,x:.5,y:.5,zoom:1}],text:{},transition:{type:'cut',duration_ms:0}});
+          render();
+        }));
+        panel.querySelectorAll('[data-remove-shot]').forEach(b=>b.onclick=()=>{collect();shots.splice(Number(b.dataset.removeShot),1);render()});
+        panel.querySelector('#save-animation').onclick=()=>action(save);
+        panel.querySelector('#preview-animation').onclick=()=>action(async()=>{
+          await save();
+          panel.querySelector('iframe').src=`${exportUrl}&preview=1`;
+        });
+        panel.querySelector('#export-animation').onclick=event=>{
+          event.preventDefault();
+          action(async()=>{
+            await save();
+            const response=await fetch(exportUrl,{signal:events.signal});
+            if(!response.ok){const error=await response.json();throw new Error(error.detail||'Animation download failed.');}
+            const url=URL.createObjectURL(await response.blob());
+            const link=document.createElement('a');link.href=url;link.download='story-animation.html';
+            document.body.append(link);link.click();link.remove();
+            setTimeout(()=>URL.revokeObjectURL(url),60000);
+          });
+        };
       };render();
     }));
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{});

@@ -40,6 +40,15 @@ workspace has only basic one-key camera framing and fade-in controls. Full keyfr
 editing, animation management controls, subject marks, text fade-out and the optional
 LLM interview are not implemented. No maintained E2E scenario covers animation.
 
+Scene addition resolves the pinned asset by its source identity, including when a
+previously pinned scene is added again. Editor controls are collected before
+adding/removing shots; Save, Preview and Download HTML use the same revision-checked
+save path. Preview saves the current timeline and requests `?preview=1` for an
+inline player; download saves it before fetching the HTML attachment. Both surface
+errors through the dashboard status message. The standalone player embeds artwork
+and text layers as data URLs. Shot intervals exclude their end time, so navigation
+to the next shot's start displays that shot immediately.
+
 ## Shell route compatibility (2026-10-28)
 
 The shared shell's story list projects native Narrative IDs as `slug`. When opening
