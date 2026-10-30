@@ -30,6 +30,8 @@
 .narrative-story-scene { display:flex; flex-direction:column; gap:.4rem; min-width:0; font-size:.85rem; }
 .narrative-story-thumbnail { display:block; width:100%; aspect-ratio:16/9; object-fit:contain; background:var(--surface-subtle); border:1px solid var(--border); border-radius:5px; }
 .narrative-story-placeholder { box-sizing:border-box; }
+.narrative-scene-card .narrative-story-thumbnail { margin:.5rem 0; }
+.narrative-scene-card .narrative-actions { margin-top:.5rem; }
 #story-dialog { max-width:560px; }
 .narrative-editor { display:grid; grid-template-columns:minmax(340px, .95fr) minmax(420px,1.25fr); gap:1.3rem; align-items:start; }
 .narrative-field { display:flex; flex-direction:column; gap:.35rem; margin-bottom:1rem; }

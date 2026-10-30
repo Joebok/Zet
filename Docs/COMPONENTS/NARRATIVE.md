@@ -164,6 +164,11 @@ Canonical URLs use `/?page=narrative&workspace=story` plus universe/story/scene/
 IDs. `/narrative` redirects for existing links and approved scenarios. Story navigation
 contains Stories, Candidates and Zines; migration provenance maps old story/scene links.
 
+The story detail page presents scenes in the persisted `scene_ids` order. Move earlier/later
+updates that exact membership through the story PATCH endpoint. Scene cards show the selected
+final assembly via the finished-image endpoint when one exists; the overview and detail page
+share the same selection rule.
+
 Scene defaults include service-owned `legacy_image`, `source_provenance`, and
 `migration`; elements optionally use `reference_key` instead of `asset_id`. Scene
 and target serializers resolve current logical references; stale/archived/missing

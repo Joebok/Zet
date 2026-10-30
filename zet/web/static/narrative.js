@@ -141,12 +141,34 @@ async function action(callback) {
   try { await callback(); } catch (error) { actionError = error.message; status(error.message, true); }
   finally {
     if (disposed) return;
-    busy = false; root.querySelectorAll('button, #narrative-target-select').forEach(control => { control.disabled = false; }); if (route.target && detail) updateLive(); renderImageReview();
+    busy = false; root.querySelectorAll('button, #narrative-target-select').forEach(control => { control.disabled = false; });
+    if (route.story && !route.scene) updateSceneOrderControls();
+    if (route.target && detail) updateLive(); renderImageReview();
     const reviewError = host.querySelector('#narrative-review-error');
     if (reviewError) reviewError.textContent = actionError;
     const interviewError = host.querySelector('#narrative-interview-review-error');
     if (interviewError) interviewError.textContent = actionError;
   }
+}
+
+function renderStoryScenes(scenes) {
+  const grid = root.querySelector('#narrative-story-scenes');
+  if (!grid) return;
+  grid.innerHTML = scenes.map((scene, index) => {
+    const assembly = scene.final_assembly;
+    const image = assembly ? `/api/narrative/stories/${route.story}/scenes/${scene.id}/targets/${assembly.target_id}/candidates/${assembly.candidate_id}/finished-image?universe_id=${encodeURIComponent(universe)}` : '';
+    return `<article class="narrative-card narrative-scene-card"><h2>${link(scene.title,{story:route.story,scene:scene.id})}</h2>
+      ${assembly ? `<a href="${esc(href({story:route.story,scene:scene.id,target:assembly.target_id}))}" data-navigate><img class="narrative-story-thumbnail" src="${esc(image)}" alt="Selected final assembly for ${esc(scene.title)}" loading="lazy"></a>` : `<span class="narrative-story-thumbnail narrative-story-placeholder" role="img" aria-label="No selected final assembly for ${esc(scene.title)}"></span>`}
+      <p>${esc(scene.intent)}</p><div class="narrative-actions"><button type="button" data-move-scene="${scene.id}" data-direction="-1" ${index===0?'disabled':''}>Move earlier</button><button type="button" data-move-scene="${scene.id}" data-direction="1" ${index===scenes.length-1?'disabled':''}>Move later</button></div></article>`;
+  }).join('');
+}
+
+function updateSceneOrderControls() {
+  root.querySelectorAll('[data-move-scene]').forEach(button => {
+    const index = detail.scenes.findIndex(scene => scene.id === button.dataset.moveScene);
+    const destination = index + Number(button.dataset.direction);
+    button.disabled = busy || index < 0 || destination < 0 || destination >= detail.scenes.length;
+  });
 }
 
 async function navigate(next, push = true) {
@@ -221,7 +243,8 @@ async function loadPageContent() {
     root.innerHTML = `<h1>${esc(detail.title)}</h1><section class="narrative-card">${label('title',detail.title,false)}${label('brief',detail.brief)}<button type="button" id="scene-text-story-style">Scene text style</button>
       <div class="narrative-actions"><button data-action="save">Save story</button><button class="danger" data-action="delete">Delete story</button></div></section>
       <section class="narrative-card"><h2>New scene</h2><form id="new-narrative-scene" class="narrative-inline"><input aria-label="Scene title" name="title" required placeholder="Scene title"><button class="primary">Create scene</button></form></section>
-      <div class="narrative-grid">${detail.scenes.map(scene => `<article class="narrative-card"><h2>${link(scene.title,{story:route.story,scene:scene.id})}</h2><p>${esc(scene.intent)}</p></article>`).join('')}</div>`;
+      <div class="narrative-grid" id="narrative-story-scenes"></div>`;
+    renderStoryScenes(detail.scenes);
     host.querySelector('#scene-text-story-style')?.addEventListener('click',()=>window.ZetSceneText.style({universe,story:route.story}));
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{});
   } else if (!route.target) {
@@ -372,12 +395,12 @@ function sourceTextHtml(source) {
 function sourcePanelHtml() {
   if (detail.kind === 'assembly') return '';
   const source = detail.source_snapshot;
-  if (detail.kind !== 'backdrop') return source?.target_id ? `<section class="narrative-card"><h2>Imported subscene source</h2><p>Pinned from ${esc(source.story_title)} / ${link(source.scene_title,{story:source.story_id,scene:source.scene_id,target:source.target_id})} · ${esc(source.title)}</p>${sourceTextHtml(source)}</section>` : '';
+  if (detail.kind !== 'backdrop') return source?.target_id ? `<section class="narrative-card"><h2>Imported subscene source</h2><p>Pinned from ${esc(source.story_title)} / ${link(source.scene_title,{story:source.story_id,scene:source.scene_id,target:source.target_id})} Â· ${esc(source.title)}</p>${sourceTextHtml(source)}</section>` : '';
   const settings = detail.backdrop_adaptation || {}, crop = settings.crop || {};
   const mode = detail.backdrop_link_mode || 'reference';
   return `<section class="narrative-card" id="narrative-source-panel"><h2>Backdrop source</h2>
     <button data-action="attach-backdrop">${source?.target_id ? 'Change source backdrop' : 'Attach source backdrop'}</button>
-    ${source?.target_id ? `<p>Pinned from ${esc(source.story_title)} / ${link(source.scene_title,{story:source.story_id,scene:source.scene_id,target:source.target_id})} · ${esc(source.title)}</p>
+    ${source?.target_id ? `<p>Pinned from ${esc(source.story_title)} / ${link(source.scene_title,{story:source.story_id,scene:source.scene_id,target:source.target_id})} Â· ${esc(source.title)}</p>
     ${sourceTextHtml(source)}
     <label class="narrative-field">How to use the source<select id="backdrop-link-mode">${[['unmodified','Use unmodified'],['reference','Reference'],['regenerate','Regenerate']].map(([v,n])=>`<option value="${v}" ${mode===v?'selected':''}>${n}</option>`).join('')}</select></label>
     <div data-source-mode="regenerate"><div class="narrative-actions"><button data-action="copy-source-current">Copy current source inputs</button>${source.generation_inputs ? '<button data-action="copy-source-generation">Copy generation inputs</button>' : ''}</div><p>Copying replaces destination inputs and creates local visual overrides. Then edit manually or use the interview. The source image is not supplied to generation.</p></div>
@@ -922,6 +945,22 @@ listen(host,'click',event=>{
     return;
   }
   if (button.dataset.close) { document.getElementById(button.dataset.close).close(); return; }
+  if (button.dataset.moveScene) {
+    const from = detail.scenes.findIndex(scene => scene.id === button.dataset.moveScene);
+    const to = from + Number(button.dataset.direction);
+    if (from < 0 || to < 0 || to >= detail.scenes.length) return;
+    action(async()=>{
+      await save();
+      const scenes = [...detail.scenes];
+      [scenes[from], scenes[to]] = [scenes[to], scenes[from]];
+      await api(base(),'PATCH',{scene_ids:scenes.map(scene=>scene.id)});
+      detail.scenes = scenes;
+      renderStoryScenes(scenes);
+      root.querySelector(`[data-move-scene="${scenes[to].id}"][data-direction="${button.dataset.direction}"]`)?.focus();
+      status('Scene order saved');
+    });
+    return;
+  }
   if (button.dataset.interviewReview) { openInterviewReview(button.dataset.interviewReview); return; }
   if (button.dataset.proposalChoice) {
     const choices = reviewChoices(detail.jobs[interviewReviewId]);
