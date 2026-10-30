@@ -47,11 +47,13 @@ class UniverseService:
                     raise UniverseServiceError(f"Universe name is empty in {marker}")
                 return {"universe_id": universe_id, "name": name,
                         "canonical_art_style": str(data.get("canonical_art_style") or "").strip(),
+                        "environmental_art_style": str(data.get("environmental_art_style") or "").strip(),
                         "scene_text_style": data.get("scene_text_style", {}),
                         "layout_version": int(data.get("layout_version", 1)), "root": path, "legacy": False}
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
                 raise UniverseServiceError(f"Cannot read universe descriptor {marker}: {exc}") from exc
         return {"universe_id": path.name, "name": path.name, "canonical_art_style": "",
+                "environmental_art_style": "",
                 "layout_version": 0, "root": path, "legacy": True}
 
     def invalidate_cache(self) -> None:
@@ -78,6 +80,7 @@ class UniverseService:
         moonsea_folder = self.container / "Moonsea" / "universe.json"
         if not any(item["universe_id"].casefold() == "moonsea" for item in result) and not moonsea_folder.is_file():
             result.append({"universe_id": "Moonsea", "name": "Moonsea", "canonical_art_style": "",
+                           "environmental_art_style": "",
                            "layout_version": 0, "root": self.container, "legacy": True})
         return result
 
@@ -137,7 +140,7 @@ class UniverseService:
                        universe_id=descriptor["universe_id"], universe_is_legacy=descriptor["legacy"],
                        library_container_path=str(self.container))
 
-    def initialize(self, name: str, canonical_art_style: str = "") -> dict[str, Any]:
+    def initialize(self, name: str, canonical_art_style: str = "", environmental_art_style: str = "") -> dict[str, Any]:
         cleaned = str(name or "").strip()
         if not cleaned:
             raise UniverseServiceError("Universe name is required.")
@@ -155,13 +158,15 @@ class UniverseService:
         write_json_atomic(root / "universe.json", {
             "universe_id": universe_id, "name": cleaned, "layout_version": 1,
             "canonical_art_style": str(canonical_art_style or "").strip(),
+            "environmental_art_style": str(environmental_art_style or "").strip(),
         })
         if selected_before:
             self.select(selected_before)
         self.invalidate_cache()
         return self.get_universe(universe_id, refresh=True)
 
-    def update_settings(self, universe_id: str, *, canonical_art_style: str = None, scene_text_style: dict = None) -> dict[str, Any]:
+    def update_settings(self, universe_id: str, *, canonical_art_style: str = None,
+                        environmental_art_style: str = None, scene_text_style: dict = None) -> dict[str, Any]:
         universe = self.get_universe(universe_id)
         marker = Path(universe["root"]) / "universe.json"
         if not marker.is_file():
@@ -172,6 +177,8 @@ class UniverseService:
             raise UniverseServiceError(f"Cannot read universe descriptor {marker}: {exc}") from exc
         if canonical_art_style is not None:
             data["canonical_art_style"] = str(canonical_art_style or "").strip()
+        if environmental_art_style is not None:
+            data["environmental_art_style"] = str(environmental_art_style or "").strip()
         if scene_text_style is not None:
             from zet.services.scene_text_style_service import validate_style
             data["scene_text_style"] = validate_style(scene_text_style)

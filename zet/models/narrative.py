@@ -39,6 +39,7 @@ class NarrativeScene:
     lighting: str = "Soft daylight from the upper left"
     style: str = ""
     use_universe_style: bool = True
+    universe_style_variant: str = "canonical"
     canvas: str = "16:9"
     elements: list[dict] = field(default_factory=list)
     target_ids: list[str] = field(default_factory=list)
@@ -61,6 +62,7 @@ class NarrativeTarget:
     height: int = 832
     element_ids: list[str] = field(default_factory=list)
     visual_overrides: dict = field(default_factory=dict)
+    universe_style_variant: str = ""
     prompt: str = ""
     interview: list[dict] = field(default_factory=list)
     jobs: dict = field(default_factory=dict)

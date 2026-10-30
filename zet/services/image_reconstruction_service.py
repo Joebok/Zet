@@ -118,9 +118,10 @@ class ImageReconstructionService:
         model = resolve_role_model(self.app.config, role, str(payload.get("model") or ""))
         if model not in self.options()["models"]:
             raise ValueError("Choose an available Codex or vision-capable Ollama analysis model.")
-        style = style or universe_style(self.app.config.base_library_path)
+        variant = str(payload.get("universe_style_variant") or "canonical")
+        style = style or universe_style(self.app.config.base_library_path, variant)
         if not style["text"]:
-            raise ValueError("Set the destination universe's Canonical Art Style before reconstructing.")
+            raise ValueError(f"Set the destination universe's {variant.title()} Art Style before reconstructing.")
         if references is None:
             references, payload = self._sources(payload)
         job_id = work_id("reconstruction")

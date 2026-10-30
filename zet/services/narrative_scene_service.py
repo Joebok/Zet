@@ -11,10 +11,10 @@ from zet.services.universe_style_service import universe_style
 
 
 TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing", "width", "height",
-                 "use_transparent_background",
+                 "use_transparent_background", "universe_style_variant",
                  "element_ids", "visual_overrides", "prompt", "interview_model", "prompt_model", "layers", "assembly_mode",
                  "backdrop_adaptation", "backdrop_link_mode")
-SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas", "use_universe_style")
+SCENE_FIELDS = ("title", "intent", *VISUAL_FIELDS, "canvas", "use_universe_style", "universe_style_variant")
 
 
 class ProtectedNarrativeImages(ValueError):
@@ -177,6 +177,7 @@ class NarrativeSceneService:
             record = NarrativeTarget(self._title(data), kind)
             if kind == "backdrop":
                 record.width, record.height, record.framing = 1344, 768, "Wide environment"
+                record.universe_style_variant = "environmental"
             elif kind == "assembly":
                 record.width, record.height, record.framing = 1344, 768, "Final scene"
                 record.narrative = parent["intent"]
@@ -227,6 +228,8 @@ class NarrativeSceneService:
         NarrativeReferenceService.validate_adaptation(record)
         if not isinstance(record["use_transparent_background"], bool):
             raise ValueError("Use transparent background must be a boolean.")
+        if record.get("universe_style_variant", "") not in {"", "canonical", "environmental"}:
+            raise ValueError("Choose inherited, canonical or environmental universe style.")
         if record["assembly_mode"] not in ("finish_composite", "assemble_references", "harmonize_composite"):
             raise ValueError("Choose finish_composite, assemble_references or harmonize_composite.")
         if record["kind"] != "assembly" and record["assembly_mode"] != "finish_composite":
@@ -262,14 +265,19 @@ class NarrativeSceneService:
             element = self.element_detail(by_id[element_id])
             elements.append(element)
         inherited = {key: parent[key] for key in VISUAL_FIELDS}
-        style = universe_style(self.app.config.base_library_path) if parent.get("use_universe_style") else None
+        target_variant = record.get("universe_style_variant") or ""
+        variant = target_variant or parent.get("universe_style_variant", "canonical")
+        if variant not in {"canonical", "environmental"}:
+            raise ValueError("Choose canonical or environmental universe style.")
+        style = universe_style(self.app.config.base_library_path, variant) if target_variant or parent.get("use_universe_style") else None
         if style is not None:
             inherited["style"] = style["text"]
         effective = {key: record["visual_overrides"].get(key) or value for key, value in inherited.items()}
         detail = {**record, "elements": elements, "inherited_context": inherited, "context": effective,
                   "style_source": ("target override" if record["visual_overrides"].get("style") else
+                                   "target universe" if target_variant else
                                    "universe" if style is not None else "saved scene"),
-                  "universe_style": style,
+                  "universe_style": style, "universe_style_variant": variant,
                   "field_purposes": FIELD_PURPOSES,
                   "scene_title": parent["title"], "effective_models": {
                       key: resolve_role_model(self.app.config, "narrative_interview" if key == "interview_model" else "narrative_prompt", record[key])

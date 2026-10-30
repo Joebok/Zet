@@ -153,6 +153,7 @@
       <form id="universe-create-form" class="control-panel">
         <label>Universe Name<input id="universe-create-name" name="name" required maxlength="80" autocomplete="off"></label>
         <label>Canonical Art Style<textarea id="universe-create-art-style" name="canonical_art_style" rows="4"></textarea></label>
+        <label>Environmental style (environments and other non-character images)<textarea id="universe-create-environment-style" name="environmental_art_style" rows="4"></textarea></label>
         <div id="universe-create-message" class="action-message" hidden></div>
         <div class="button-row compact"><button class="primary-action" type="submit">Create Universe</button><button class="tab" type="button" data-page="universes">Cancel</button></div>
       </form>
@@ -162,6 +163,7 @@
       <div id="universe-settings-message" class="action-message" hidden></div>
       <form id="universe-settings-form" class="control-panel"><p id="universe-settings-identity"></p><h2>Art style</h2>
         <label>Canonical Art Style<textarea id="universe-settings-art-style" name="canonical_art_style" rows="5"></textarea></label>
+        <label>Environmental style (environments and other non-character images)<textarea id="universe-settings-environment-style" name="environmental_art_style" rows="5"></textarea></label>
         <section id="universe-lettering-settings"></section><p>Story lettering overrides take precedence. Changes apply when finishing an image; existing finished images stay unchanged.</p><div class="button-row compact"><button class="primary-action" type="submit">Save Settings</button><button id="universe-settings-select" type="button">Select Universe</button></div>
       </form>
     </section>
@@ -1704,6 +1706,7 @@
             <textarea id="image-generation-prompt" rows="6" required placeholder="Describe the prop, creature, or image you want to generate."></textarea>
           </label>
           <button id="image-generation-add-universe-art-style" type="button">Add Universe art style</button>
+          <label>Universe style<select id="image-generation-style-variant"><option value="canonical">Canonical Art Style</option><option value="environmental">Environmental style</option></select></label>
           <label>
             Negative prompt <span class="status-text">Optional</span>
             <textarea id="image-generation-negative" rows="2" placeholder="Elements to avoid"></textarea>

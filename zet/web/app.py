@@ -1149,7 +1149,8 @@ def _create_available_app(
         try:
             service = app.state.zet_app.universe_service
             return {"universe": public_universe(service.initialize(
-                str(data.get("name") or ""), str(data.get("canonical_art_style") or "")
+                str(data.get("name") or ""), str(data.get("canonical_art_style") or ""),
+                str(data.get("environmental_art_style") or "")
             ))}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1164,10 +1165,11 @@ def _create_available_app(
     @app.patch("/api/universes/{universe_id}")
     def update_universe(universe_id: str, data: dict = Body(...)) -> dict[str, Any]:
         try:
-            if "canonical_art_style" not in data and "scene_text_style" not in data:
+            if not any(key in data for key in ("canonical_art_style", "environmental_art_style", "scene_text_style")):
                 raise ValueError("canonical_art_style is required.")
             updated = app.state.zet_app.universe_service.update_settings(
-                universe_id, canonical_art_style=data.get("canonical_art_style"), scene_text_style=data.get("scene_text_style")
+                universe_id, canonical_art_style=data.get("canonical_art_style"),
+                environmental_art_style=data.get("environmental_art_style"), scene_text_style=data.get("scene_text_style")
             )
             return {"universe": public_universe(updated)}
         except Exception as exc:
