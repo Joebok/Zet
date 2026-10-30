@@ -311,3 +311,7 @@ Backdrop linking/cropping (2026-10-29): `narrative_backdrop_policy.backdrop_refe
 ## Environmental universe style (2026-10-30)
 
 universe_style_service owns variant defaults and batch snapshots; pipeline_compiler_support reads frozen styles for the four active character compilers. NarrativeSceneService owns canonical compatibility and explicit inheritance.
+
+## Story animation editor (2026-10-30)
+
+narrative.js and narrative.css own cards, target selection and text timing; story_animation_service.py validates camera modes and story_animation_html_compiler.py renders target zoom. See [Narrative](COMPONENTS/NARRATIVE.md#story-animation-initial-implementation-2026-10-30).

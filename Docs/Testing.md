@@ -1,5 +1,15 @@
 # Local testing
 
+## Animation editor enhancements (2026-10-30)
+
+The four approved fast scenarios passed (`npm.cmd run test:e2e`, 40.5s).
+An isolated disposable Chromium check under `test-results/animation-editor/`
+exercised lettered source binding, target selection and cancellation, keyboard
+movement, revision conflict, timed text keyframes and interpolation, zoom
+keyframes, preview, offline export, reload, custom-track preservation and narrow
+card containment. It does not establish
+physical-device behavior or live image quality. No permanent scenarios were added.
+
 ## Story animation playback (2026-10-30)
 
 All four approved fast scenarios passed (`npm.cmd run test:e2e`, final 40.1s).

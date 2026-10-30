@@ -1,5 +1,11 @@
 # Data, configuration, and ownership
 
+Story animation version-1 shots may contain `camera_mode: "target"`; missing
+mode retains legacy camera-center interpretation. Camera keyframes store normalized
+image target coordinates and zoom factors. Timed lettering remains opacity
+keyframes, with no separate persisted timing record. See
+[Narrative](COMPONENTS/NARRATIVE.md#story-animation-initial-implementation-2026-10-30).
+
 ## Independent head edits (2026-10-22)
 
 `head-image-edit` stores `kind: local_head_image_edit` batches under each character/

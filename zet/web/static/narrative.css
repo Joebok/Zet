@@ -21,6 +21,24 @@
 .narrative-app button:disabled { opacity:.5; cursor:not-allowed; }
 .narrative-app button:focus-visible, .narrative-app a:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
 .narrative-card { padding:1.2rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:1rem; }
+.animation-shots { list-style:none; padding:0; display:grid; gap:.8rem; }
+.animation-shot { display:grid; grid-template-columns:minmax(130px,210px) minmax(0,1fr); gap:1rem; padding:.8rem; border:1px solid var(--border); border-radius:8px; }
+.animation-thumb { display:grid; align-self:start; background:var(--surface-subtle); }
+.animation-thumb img { grid-area:1/1; width:100%; height:auto; }
+.animation-shot-body { min-width:0; }
+.animation-shot-body h4 { margin:0 0 .6rem; }
+.animation-controls,.animation-text-times { display:flex; align-items:end; flex-wrap:wrap; gap:.6rem; }
+.animation-text-times[hidden] { display:none; }
+.animation-controls label,.animation-text-times label,.animation-text-row>label { display:flex; flex-direction:column; gap:.25rem; font-size:.85rem; }
+.animation-controls input,.animation-text-times input { width:7.5rem; }
+.animation-text-row { display:flex; align-items:end; flex-wrap:wrap; gap:.6rem; padding:.6rem 0; border-top:1px solid var(--border); }
+.animation-text-row>span { flex:1 1 12rem; overflow-wrap:anywhere; }
+.animation-text-row [role=status] { flex-basis:100%; color:var(--danger); }
+.animation-target-dialog { text-align:center; }
+.animation-target-image { display:inline-block; position:relative; line-height:0; max-width:100%; touch-action:none; }
+.animation-target-image img { display:block; max-width:100%; max-height:65vh; width:auto; height:auto; }
+.animation-target-marker { position:absolute; width:22px; height:22px; border:3px solid white; border-radius:50%; background:#0076c0; transform:translate(-50%,-50%); pointer-events:none; }
+@media(max-width:650px) { .animation-shot { grid-template-columns:minmax(0,1fr); } .animation-thumb { max-width:240px; } }
 .narrative-target-preview { display:block; width:100%; height:220px; object-fit:contain; background:var(--surface-subtle); border-radius:5px; }
 .narrative-target-heading select { max-width:100%; font-size:inherit; font-weight:inherit; }
 .narrative-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem; }

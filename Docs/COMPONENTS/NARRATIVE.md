@@ -36,9 +36,16 @@ workspace uses for subsequent requests. Opening failures use the dashboard statu
 message and leave the Open button available for retry. Source-binding failures
 also use the status message and permit retry. Lettered source binding opens the
 resolved finished-image path for reconstruction checks. At this stage the
-workspace has only basic one-key camera framing and fade-in controls. Full keyframe
-editing, animation management controls, subject marks, text fade-out and the optional
+workspace provides scene cards, a visual zoom target, start/end zoom, and timed
+text fades. Full keyframe editing, animation management controls and the optional
 LLM interview are not implemented. No maintained E2E scenario covers animation.
+
+Target camera mode stores normalized image coordinates with start/end zoom in
+version-1 keyframes. The player clamps framing to the fitted image and keeps
+lettering stationary. Older camera-center tracks retain their original behavior.
+Timed text uses 300 ms fades; duration runs from fade-in start to fade-out start.
+Whole-scene lettering and custom tracks remain unchanged until explicitly edited.
+The target picker saves the current animation through the revision-checked path.
 
 Scene addition resolves the pinned asset by its source identity, including when a
 previously pinned scene is added again. Editor controls are collected before

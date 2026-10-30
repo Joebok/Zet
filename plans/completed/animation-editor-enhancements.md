@@ -1,6 +1,6 @@
 # Animation editor enhancements
-Status: active
-Related plan: [Story Animation](story-animation.md)
+Status: complete
+Related plan: [Story Animation](../active/story-animation.md)
 
 ## Goal
 Compact scene cards, target-based zoom motion, and independent timed text fades.
@@ -26,4 +26,10 @@ permanent tests or dependencies, call live AI services, modify production data,
 or deploy.
 
 ## Progress
-Camera mode validation started. Remaining packets are pending.
+Implemented target-mode playback and compact cards with the picker and timed text.
+The four approved fast scenarios passed (40.5s). Disposable Chromium checks passed
+lettered source binding, target selection/cancellation, keyboard movement, timing,
+preview, offline export, reload, narrow containment, preservation of custom tracks,
+and revision conflict. JavaScript syntax and
+diff checks passed. No permanent tests, dependencies, live AI calls or production
+data changes were added. Physical-device behavior was not checked.
