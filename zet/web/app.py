@@ -1142,7 +1142,7 @@ def _create_available_app(
                 "selected_universe_id": current_universe.get() or service.selection()}
 
     def public_universe(universe: dict[str, Any]) -> dict[str, Any]:
-        return {key: value for key, value in universe.items() if key not in {"root", "legacy"}}
+        return {**{key: value for key, value in universe.items() if key not in {"root", "legacy"}}, "storage_path": str(universe["root"])}
 
     @app.post("/api/universes")
     def create_universe(data: dict = Body(...)) -> dict[str, Any]:

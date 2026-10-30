@@ -36,7 +36,7 @@ class NarrativeSceneTextService:
             if candidate and record['candidates'][candidate].get('locked'): raise ValueError('Unlock this image before editing scene text.')
             if candidate:
                 record['candidates'][candidate]['scene_text_placements']=data['placements']
-            else:
+            if not candidate or 'entries' in data:
                 entries=data['entries']
                 if not isinstance(entries,list) or len(entries)>64: raise ValueError('Choose up to 64 text entries.')
                 ids=set()

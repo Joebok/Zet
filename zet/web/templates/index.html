@@ -32,7 +32,7 @@
     <div class="context-controls">
       <label class="universe-context">
         Universe
-        <select id="universe-select" aria-label="Universe"></select>
+        <select id="universe-select" aria-label="Universe"></select><button id="current-universe-settings" type="button">Universe Settings</button>
       </label>
       <div id="character-context" class="workspace-context">
         <label>
@@ -152,9 +152,9 @@
     <section id="universe-settings-page" class="page">
       <div class="page-title-row"><h1 id="universe-settings-title">Universe Settings</h1><button class="tab" type="button" data-page="universes">Back to Universes</button></div>
       <div id="universe-settings-message" class="action-message" hidden></div>
-      <form id="universe-settings-form" class="control-panel">
+      <form id="universe-settings-form" class="control-panel"><p id="universe-settings-identity"></p><h2>Art style</h2>
         <label>Canonical Art Style<textarea id="universe-settings-art-style" name="canonical_art_style" rows="5"></textarea></label>
-        <div class="button-row compact"><button class="primary-action" type="submit">Save Settings</button><button id="universe-settings-select" type="button">Select Universe</button></div>
+        <section id="universe-lettering-settings"></section><p>Story lettering overrides take precedence. Changes apply when finishing an image; existing finished images stay unchanged.</p><div class="button-row compact"><button class="primary-action" type="submit">Save Settings</button><button id="universe-settings-select" type="button">Select Universe</button></div>
       </form>
     </section>
     <section id="local-overview-page" class="page">

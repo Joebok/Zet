@@ -184,6 +184,7 @@ let zineTaskRestorePending = taskStoryRoute.get("task_context") === "1" && taskS
 
 let startupRecoveryTimer = null;
 const universeSelect = document.querySelector("#universe-select");
+let universeLetteringSettings;
 const universeSettingsForm = document.querySelector("#universe-settings-form");
 const universeSettingsArtStyle = document.querySelector("#universe-settings-art-style");
 const universeCreateForm = document.querySelector("#universe-create-form");
@@ -4242,12 +4243,12 @@ function updateDirtyIndicators() {
 }
 
 function editorGuardForPage(page = activePageName()) {
-  if (page === "universe-settings" && universeSettingsArtStyle.value !== state.savedUniverseArtStyle) {
+  if (page === "universe-settings" && (universeSettingsArtStyle.value !== state.savedUniverseArtStyle || universeLetteringSettings?.dirty())) {
     return {
       name: "Universe settings",
       autosave: false,
       save: saveUniverseSettings,
-      discard: () => { universeSettingsArtStyle.value = state.savedUniverseArtStyle; },
+      discard: () => { universeSettingsArtStyle.value = state.savedUniverseArtStyle; universeLetteringSettings?.reset(); },
     };
   }
   if (page === "stories" && state.storyDetail && storySnapshot() !== state.savedBaselines.story) {
@@ -13061,9 +13062,8 @@ async function loadUniverseSettings(universeId) {
   const universe = payload.universe;
   state.universeSettingsId = universe.universe_id;
   state.savedUniverseArtStyle = universe.canonical_art_style || "";
-  let textStyleButton = document.querySelector('#universe-scene-text-style');
-  if (!textStyleButton) { textStyleButton=document.createElement('button');textStyleButton.id='universe-scene-text-style';textStyleButton.type='button';textStyleButton.textContent='Scene text style';document.querySelector('#universe-settings-form').append(textStyleButton); }
-  textStyleButton.onclick=()=>window.ZetSceneText.style({universe:universe.universe_id});
+  universeLetteringSettings = await window.ZetSceneText.style({universe:universe.universe_id,container:document.querySelector('#universe-lettering-settings')});
+  document.querySelector('#universe-settings-identity').textContent = `Universe: ${universe.universe_id} · Storage: ${universe.storage_path || 'Unavailable'} · Layout: ${universe.layout_version}`;
 
   universeSettingsArtStyle.value = state.savedUniverseArtStyle;
   document.querySelector("#universe-settings-title").textContent = `${universe.name} Settings`;
@@ -13075,13 +13075,14 @@ async function saveUniverseSettings() {
   const response = await fetch(`/api/universes/${encodeURIComponent(state.universeSettingsId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ canonical_art_style: universeSettingsArtStyle.value }),
+    body: JSON.stringify({ canonical_art_style: universeSettingsArtStyle.value, scene_text_style: universeLetteringSettings.values() }),
   });
   const payload = await response.json();
   if (!response.ok) {
     setUniverseMessage("universe-settings-message", payload.detail || "Unable to save universe settings.", "error");
     return false;
   }
+  universeLetteringSettings.markSaved();
   state.savedUniverseArtStyle = payload.universe.canonical_art_style || "";
   const universe = state.universes.find((item) => item.universe_id === payload.universe.universe_id);
   if (universe) universe.canonical_art_style = state.savedUniverseArtStyle;
@@ -13830,3 +13831,5 @@ main();
 
 
 // A narrow dashboard bridge keeps wizard presentation in its own module.
+
+document.querySelector('#current-universe-settings').addEventListener('click',()=>runGuardedTransition(()=>activatePage('universe-settings',{universeId:state.universeId})));

@@ -66,7 +66,7 @@ function base() {
   return value;
 }
 function imageUrl(id, target = route.target) {
-  return `/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${target}/candidates/${id}/finished-image?universe_id=${encodeURIComponent(universe)}`;
+  return `/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${target}/candidates/${id}/finished-image?universe_id=${encodeURIComponent(universe)}&revision=${encodeURIComponent(detail?.candidates?.[id]?.scene_text_final?.image || "original")}`;
 }
 function assetUrl(id) { return `/api/narrative/library/${encodeURIComponent(id)}/image?universe_id=${encodeURIComponent(universe)}`; }
 function artifactUrl(suffix) { return `${base()}/${suffix}?universe_id=${encodeURIComponent(universe)}`; }
@@ -483,7 +483,7 @@ function renderTarget(targets) {
       ${label('framing',detail.framing,false)}<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
     ${sourcePanelHtml()}
-    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text">Edit text and raw placement</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
+    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text" ${detail.selected_id?"":"disabled"}>Edit selected image text</button><button data-action="scene-text-raw">Edit raw composite text draft</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
     <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input · Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
       <p class="narrative-muted">Style source: ${esc(detail.style_source || 'saved scene')}</p>
@@ -689,6 +689,7 @@ function renderImageReview() {
   host.querySelector('#review-image').alt = `Slot ${candidate.slot} candidate`;
   host.querySelector('#narrative-review-prev').disabled = busy || index === 0;
   host.querySelector('#narrative-review-next').disabled = busy || index === images.length - 1;
+  if(!dialog.querySelector('[data-clean-view]')){const toggle=document.createElement('button');toggle.dataset.cleanView='';toggle.textContent='Hide review controls';toggle.onclick=()=>{const clean=dialog.classList.toggle('narrative-clean-view');toggle.textContent=clean?'Show review controls':'Hide review controls';};dialog.append(toggle);}
   const panel = host.querySelector('#narrative-review-panel');
   const sameCandidate = panel.dataset.candidate === reviewCandidate;
   const focusedAction = panel.contains(document.activeElement) ? document.activeElement.dataset.imageAction : "";
@@ -699,7 +700,7 @@ function renderImageReview() {
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
     <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
-      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}">Edit scene text placement</button>` : ''}<button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected || !candidate.image ? 'disabled' : ''}>Select</button>
+      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked?"disabled":""}>Edit text</button>` : ''}<button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected || !candidate.image ? 'disabled' : ''}>Select</button>
       <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>Regenerate</button>
       <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
       <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy || !candidate.image ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
@@ -989,7 +990,8 @@ listen(host,'click',event=>{
           await api(base()+'/backdrop-source','POST',request);await loadPage();break;
         }
         case 'preview-crop': {await save();const image=host.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
-        case 'scene-text': await save(); await window.ZetSceneText.open({base:base(),universe,done:async()=>loadPage()});break;
+        case 'scene-text': if(!detail.selected_id)throw Error('Select an image first.'); await save(); await window.ZetSceneText.open({base:base(),universe,candidate:detail.selected_id,done:async result=>{detail=result;updateLive();reviewCandidate=detail.selected_id;if(!host.querySelector('#image-dialog').open)host.querySelector('#image-dialog').showModal();renderImageReview();}});break;
+        case 'scene-text-raw': await save(); await window.ZetSceneText.open({base:base(),universe,done:async()=>loadPage()});break;
         case 'create-assembly': {await save();const target=await api(base()+'/targets','POST',{title:'Final assembly',kind:'assembly'});await navigate({...route,target:target.id});break;}
         case 'add-layer': {
           await save();const source=detail.assembly_sources.find(item=>item.id===host.querySelector('#assembly-source').value);
