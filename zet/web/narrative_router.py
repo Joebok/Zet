@@ -258,6 +258,10 @@ def create_narrative_router(app_provider):
     def candidate_action(story: str, scene: str, target: str, candidate: str, data: dict = Body(...)):
         return call(generation().candidate_action, story, scene, target, candidate, data)
 
+    @router.post(target_path + "/candidates/{candidate}/inventory")
+    def save_subscene_image(story: str, scene: str, target: str, candidate: str, data: dict = Body(...)):
+        return call(author().save_subscene_image_to_inventory, story, scene, target, candidate, data)
+
     @router.get(target_path + "/candidates/{candidate}/image")
     def candidate_image(story: str, scene: str, target: str, candidate: str, download: bool = Query(False)):
         path = call(generation().image, story, scene, target, candidate)

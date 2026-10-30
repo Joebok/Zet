@@ -31,6 +31,7 @@ let llmSubmitting = false;
 let layerDrag = null;
 let brush = null;
 let reviewCandidate = null;
+let inventorySaved = null;
 let sourcePicker = null;
 let contextState = 'loading';
 let contextLabels = {};
@@ -148,6 +149,7 @@ async function action(callback) {
     if (reviewError) reviewError.textContent = actionError;
     const interviewError = host.querySelector('#narrative-interview-review-error');
     if (interviewError) interviewError.textContent = actionError;
+    host.querySelector('#narrative-inventory-error').textContent = actionError;
   }
 }
 
@@ -851,6 +853,9 @@ function reviewImages() {
 
 function renderImageReview() {
   if (disposed) return;
+  const inventorySubmit = host.querySelector('#narrative-inventory-form button[type="submit"]');
+  inventorySubmit.disabled = busy;
+  inventorySubmit.textContent = busy ? 'Saving…' : 'Save image';
   const dialog = host.querySelector('#image-dialog');
   if (!dialog.open) return;
   const images = reviewImages();
@@ -887,7 +892,9 @@ function renderImageReview() {
       <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>Regenerate</button>
       <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
       <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy || !candidate.image ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
+      ${detail.kind === 'subscene' ? `<button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !(selected || candidate.locked) ? 'disabled' : ''} title="Select or lock this image before saving it to inventory">Save to inventory</button>` : ''}
     </div>
+    ${inventorySaved?.candidate === reviewCandidate ? `<p role="status">Saved “${esc(inventorySaved.label)}” to inventory.</p>` : ''}
     <p class="error" role="status" id="narrative-review-error"></p>
     ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
     <details ${detailsOpen ? 'open' : ''}><summary>Prompt and source ${copyPromptButton(reviewCandidate)}</summary><p class="narrative-muted">${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}${candidate.assembly_snapshot ? ' · '+assemblyModeName(candidate.assembly_mode) : ''}</p>
@@ -1076,6 +1083,16 @@ listen(host,'click',event=>{
     return;
   }
   if (button.dataset.close) { document.getElementById(button.dataset.close).close(); return; }
+  if (button.dataset.saveInventory) {
+    const form = host.querySelector('#narrative-inventory-form');
+    form.dataset.endpoint = base()+`/candidates/${button.dataset.saveInventory}/inventory`;
+    form.dataset.candidate = button.dataset.saveInventory;
+    form.elements.label.value = detail.title;
+    host.querySelector('#narrative-inventory-prompt').textContent = detail.candidates[button.dataset.saveInventory].prompt || 'Prompt not recorded';
+    host.querySelector('#narrative-inventory-error').textContent = '';
+    host.querySelector('#narrative-inventory-dialog').showModal();
+    return;
+  }
   if (button.dataset.moveScene) {
     const from = detail.scenes.findIndex(scene => scene.id === button.dataset.moveScene);
     const to = from + Number(button.dataset.direction);
@@ -1237,6 +1254,13 @@ listen(host,'submit',event=>{
   action(async()=>{
     const fields = Object.fromEntries(new FormData(form));
     switch (form.id) {
+      case 'narrative-inventory-form': {
+        const result = await api(form.dataset.endpoint,'POST',fields);
+        inventorySaved = {candidate:form.dataset.candidate,label:result.asset.label};
+        host.querySelector('#narrative-inventory-dialog').close();
+        status(`Saved “${result.asset.label}” to inventory.`);
+        break;
+      }
       case 'narrative-source-form': {
         await save();
         if (!sourcePicker.preview) throw new Error('Choose an available source first.');

@@ -17,6 +17,22 @@ Narrative provides prose-oriented authoring and generation independent of Scene 
 | [narrative_router.py](../../zet/web/narrative_router.py), [narrative.html](../../zet/web/templates/narrative.html), [narrative.js](../../zet/web/static/narrative.js) | HTTP/browser presentation and calls into Narrative services; context capture integrates with shared [task_capture.js](../../zet/web/static/task_capture.js) |
 | [StoryAnimationService](../../zet/services/story_animation_service.py), [story_animation_html_compiler.py](../../zet/services/story_animation_html_compiler.py) | Versioned story animation instructions, locked source snapshots, timeline validation/resolution and standalone HTML compilation |
 
+## Save a subscene image to Inventory (2026-10-30)
+
+Subscene image review offers **Save to inventory** for a selected or locked image.
+The naming dialog defaults to the subscene title and preserves the rendered
+candidate's prompt. `NarrativeSceneService.save_subscene_image_to_inventory`,
+exposed through the candidate `/inventory` POST route, checks eligibility under
+the Narrative workflow lock and copies bytes through `ZetApp.entity_library_import`.
+Notes retain the saved story, scene and subscene titles as plain text.
+
+Every explicit save creates a separate item, including identical images or names.
+There is no source relationship, deduplication query or usage scan. Saving does
+not write Narrative records or alter selection, locks, prompts or source images;
+later source deletion leaves the Inventory copy available. Existing catalog
+constraints and Image Generator import behavior are unchanged. Disposable private
+fixture checks cover these contracts; S1/S3 remain the maintained regressions.
+
 ## Story animation (initial implementation, 2026-10-30)
 
 Animations are persisted beneath a story in `animations/<id>/`; their versioned

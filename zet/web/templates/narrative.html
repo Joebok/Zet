@@ -16,6 +16,16 @@
   <dialog id="membership-dialog" aria-label="Assign scene elements"></dialog>
   <dialog id="narrative-interview-review" aria-labelledby="interview-review-title"></dialog>
   <dialog id="narrative-source-dialog" aria-label="Choose source from another scene"></dialog>
+  <dialog id="narrative-inventory-dialog" aria-labelledby="narrative-inventory-title">
+    <h2 id="narrative-inventory-title">Save to inventory</h2>
+    <form id="narrative-inventory-form">
+      <label class="narrative-field">Image name<input name="label" required></label>
+      <p>Saves a separate copy with its prompt and story, scene and subscene in the notes. Duplicate names and repeated saves are allowed.</p>
+      <details><summary>Rendered prompt</summary><pre id="narrative-inventory-prompt"></pre></details>
+      <div class="narrative-actions"><button class="primary" type="submit">Save image</button><button type="button" data-close="narrative-inventory-dialog">Cancel</button></div>
+      <p id="narrative-inventory-error" class="error" role="status"></p>
+    </form>
+  </dialog>
   <dialog id="image-dialog" class="local-pipeline-review-dialog" aria-label="Image review">
     <button class="review-close" type="button" data-close="image-dialog">Close</button>
     <div class="local-pipeline-review-layout">

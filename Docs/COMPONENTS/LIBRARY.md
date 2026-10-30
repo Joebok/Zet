@@ -25,6 +25,13 @@ Configuration selects a library container; a universe descriptor binds the creat
 
 Reconciliation scans authored/queue sources, fingerprints content, reuses cached parses, records malformed sources as errors, builds a generation, and publishes it for queries. Replacement snapshots become visible transactionally; successful publication retains the newly active generation and prunes obsolete parsed-source revisions and compilation dependencies. Completed summaries are deduplicated by job ID and limited to configured retention (seven days by default). Index file free pages are returned to the OS only by explicit offline compaction; ordinary publication bounds rows, while `manage_storage --compact-indexes` performs `integrity_check` and `VACUUM`. HTTP results retain cursor/generation/freshness behavior; rebuilding a cache is different from migrating the record catalog or backing up entity SQLite.
 
+Narrative subscene review can save selected or locked images as independent
+imports through `NarrativeSceneService.save_subscene_image_to_inventory`. The
+existing asset label, notes and prompt fields retain the editable name, source
+titles and frozen rendered prompt. Omitting `origin_key` allows repeated saves
+without deduplication or source relationships; asset names already permit
+duplicates. See [Narrative](NARRATIVE.md#save-a-subscene-image-to-inventory-2026-10-30).
+
 ## Failure modes and extension points
 
 Library-owned typed JSON path fields are stored in portable format version 1 relative to the owning universe and resolved by the shared [LibraryReferenceService](../../zet/services/library_reference_service.py). The offline [normalizer](../../zet/scripts/normalize_library_references.py) applies explicit old-root mappings and verifies records without constructing `ZetApp`; run it only after compatible readers are deployed and Zet/harvesters are stopped. See [DATA_MODEL](../DATA_MODEL.md) and [ADR 0011](../DECISIONS/0011-portable-library-references.md).

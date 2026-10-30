@@ -1,7 +1,10 @@
 """Authoring and image ownership for narrative scenes, independent of Scene Builder."""
 from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
+from io import BytesIO
 from pathlib import Path
+
+from PIL import Image
 
 from zet.models.narrative import NarrativeElement, NarrativeScene, NarrativeStory, NarrativeTarget
 from zet.repositories.narrative_repository import NarrativeRepository
@@ -31,6 +34,38 @@ class NarrativeSceneService:
 
     def persist(self, record, story: str, scene: str = "", target: str = "") -> dict:
         return self.repository.write(record, story, scene, target)
+
+    def save_subscene_image_to_inventory(self, story: str, scene: str, target: str,
+                                        candidate_id: str, data: dict) -> dict:
+        """Copy an approved working image without binding Inventory to its source."""
+        from zet.services.narrative_scene_text_service import finished_path
+
+        with self.repository.lock():
+            record = self.repository.read(story, scene, target)
+            if record["kind"] != "subscene":
+                raise ValueError("Choose a subscene image to save to inventory.")
+            candidate = record["candidates"].get(candidate_id)
+            if not candidate or not candidate.get("image"):
+                raise KeyError("Subscene image not found.")
+            if record["selected_id"] != candidate_id and not candidate.get("locked"):
+                raise ValueError("Select or lock this image before saving it to inventory.")
+            label = str(data.get("label", record["title"]) or "").strip()
+            if not label:
+                raise ValueError("Image name is required.")
+            notes = (f"Saved from Narrative story: {self.repository.read(story)['title']}\n"
+                     f"Scene: {self.repository.read(story, scene)['title']}\n"
+                     f"Subscene: {record['title']}")
+            contents = finished_path(self.repository, story, scene, target, candidate_id).read_bytes()
+            prompt = candidate.get("prompt") or ""
+
+        with Image.open(BytesIO(contents)) as image:
+            mime_type = Image.MIME.get(image.format, "")
+        try:
+            # No origin key: each explicit save creates its own independent item.
+            asset = self.app.entity_library_import(label, mime_type, contents, notes=notes, prompt=prompt)
+        except EntityLibraryServiceError as exc:
+            raise ValueError(str(exc)) from exc
+        return {"asset": asset}
 
     def stories(self) -> list[dict]:
         with self.repository.lock():

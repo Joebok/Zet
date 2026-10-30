@@ -315,3 +315,13 @@ universe_style_service owns variant defaults and batch snapshots; pipeline_compi
 ## Story animation editor (2026-10-30)
 
 narrative.js and narrative.css own cards, percentage text timing and target selection; story_animation_service.py clamps durations and preserves pinned text style, and story_animation_html_compiler.py renders artwork and lettering together under camera motion. See [Narrative](COMPONENTS/NARRATIVE.md#story-animation-initial-implementation-2026-10-30).
+
+## Subscene image Inventory saves (2026-10-30)
+
+`NarrativeSceneService.save_subscene_image_to_inventory` owns selected/locked
+eligibility, independent byte copies, frozen prompts and plain-text source notes.
+The Narrative candidate `/inventory` POST route and `narrative.js`/`narrative.html`
+expose the review action and naming dialog. Existing `ZetApp.entity_library_import`
+creates fresh items without an origin key or source relationship. Disposable
+private fixture checks cover saves, repeats and source preservation; S1/S3 remain
+maintained regressions. See [Narrative](COMPONENTS/NARRATIVE.md#save-a-subscene-image-to-inventory-2026-10-30).
