@@ -249,16 +249,21 @@ def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
                     placement = (f"Place its full source-image rectangle at top-left ({reference['x']}, {reference['y']}) pixels, "
                                  f"with size {reference['width']} × {reference['height']} pixels. "
                                  "Discard unrelated source backgrounds and floors; preserve the complete group within that rectangle.")
+                    opacity = reference.get("opacity", 1)
+                    if opacity == 0:
+                        placement = "This reference is for identification only; omit this entire group from the final image."
+                    elif opacity != 1:
+                        placement += f" Render this group at opacity {opacity:g}, translucent so the scene behind it shows through."
                 bindings.append(f"{tag} depicts {reference['label']}. {placement}")
-            groups = [f"<image{reference['image_index']}>" for reference in references if reference["role"] != "base"]
+            groups = [f"<image{reference['image_index']}>" for reference in references if reference["role"] != "base" and reference.get("opacity", 1) != 0]
             depth = ("Back-to-front group order: " + ", ".join(groups) + ". Each later group is in front of earlier groups where they overlap.") if groups else ""
             return (f"Scene\nAssemble one coherent final illustration from the supplied sources. {prose['scene'].strip()}\n\nReferences\n"
                     + ("\n".join(bindings) or "No reference images supplied yet.")
                     + f"\n\nPlacement\nCoordinates use the canvas top-left as origin, with X rightward and Y downward. {depth} "
                     "Clip source rectangles at the canvas boundary; do not shift groups to bring off-canvas content into view.\n\n"
                     f"Rendering\n{prose['rendering'].strip()}\n\nConstraints\n"
-                    "Preserve identities, clothing, poses, props and internal group arrangements. Do not add or duplicate participants. "
-                    "Integrate edges, lighting and contact shadows naturally. Produce a complete image, not a collage of source backgrounds. "
+                    + ("Preserve identities, clothing, poses, props and internal group arrangements for groups not explicitly omitted. Do not add or duplicate participants. " if any(ref.get("role") != "base" and ref.get("opacity", 1) == 0 for ref in references) else "Preserve identities, clothing, poses, props and internal group arrangements. Do not add or duplicate participants. ")
+                    + "Integrate edges, lighting and contact shadows naturally. Produce a complete image, not a collage of source backgrounds. "
                     f"Canvas: {detail['width']} × {detail['height']} pixels.")
         if detail.get("assembly_mode") == "harmonize_composite":
             return (f"Scene\nHarmonize the placed composite. {prose['scene'].strip()}\n\nReferences\n"

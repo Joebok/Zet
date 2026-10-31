@@ -12,6 +12,7 @@ from PIL import Image, ImageOps
 
 from zet.models.narrative import NarrativeCandidate, NarrativeTarget, new_id
 from zet.services.atomic_file_service import write_bytes_atomic
+from zet.services.narrative_canvas_service import canvas_dimensions
 from zet.services.narrative_scene_service import VISUAL_FIELDS
 from zet.services.workflow_storage import validate_image
 
@@ -153,7 +154,8 @@ class NarrativeReferenceService:
             available = {item["id"] for item in parent["elements"]}
             source_elements = source["current_inputs"]["elements"] if kind != "backdrop" else []
             if kind == "backdrop":
-                record.update(width=1344, height=768, framing="Wide environment")
+                width, height = canvas_dimensions(parent["canvas"])
+                record.update(width=width, height=height, framing="Wide environment")
             if any(key not in {item["id"] for item in source_elements} for key in mappings):
                 raise ValueError("Map only source elements.")
             for element in source_elements:

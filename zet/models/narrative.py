@@ -40,7 +40,7 @@ class NarrativeScene:
     style: str = ""
     use_universe_style: bool = True
     universe_style_variant: str = "canonical"
-    canvas: str = "16:9"
+    canvas: str = "4:3"
     elements: list[dict] = field(default_factory=list)
     target_ids: list[str] = field(default_factory=list)
     legacy_image: dict = field(default_factory=dict)

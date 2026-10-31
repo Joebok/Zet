@@ -9,6 +9,7 @@ from PIL import Image
 from zet.models.narrative import NarrativeElement, NarrativeScene, NarrativeStory, NarrativeTarget
 from zet.repositories.narrative_repository import NarrativeRepository
 from zet.services.entity_library_service import EntityLibraryServiceError
+from zet.services.narrative_canvas_service import canvas_dimensions
 from zet.services.narrative_interview_service import FIELD_PURPOSES, MOMENT_FIELDS, VISUAL_FIELDS
 from zet.services.universe_style_service import universe_style
 
@@ -118,6 +119,7 @@ class NarrativeSceneService:
             parent = self.repository.read(story)
             record = asdict(NarrativeScene(self._title(data)))
             self._patch(record, data, SCENE_FIELDS)
+            canvas_dimensions(record["canvas"])
             self.persist(record, story, record["id"])
             parent["scene_ids"].append(record["id"])
             self.persist(parent, story)
@@ -161,6 +163,8 @@ class NarrativeSceneService:
         with self.repository.lock():
             record = self.repository.read(story, scene)
             self._patch(record, data, SCENE_FIELDS)
+            if "canvas" in data:
+                canvas_dimensions(record["canvas"])
             return self.persist(record, story, scene)
 
     def save_element(self, story: str, scene: str, data: dict, element_id: str = "") -> dict:
@@ -210,11 +214,12 @@ class NarrativeSceneService:
                 if existing_id:
                     return self.repository.read(story, scene, existing_id)
             record = NarrativeTarget(self._title(data), kind)
+            record.width, record.height = canvas_dimensions(parent["canvas"])
             if kind == "backdrop":
-                record.width, record.height, record.framing = 1344, 768, "Wide environment"
+                record.framing = "Wide environment"
                 record.universe_style_variant = "environmental"
             elif kind == "assembly":
-                record.width, record.height, record.framing = 1344, 768, "Final scene"
+                record.framing = "Final scene"
                 record.narrative = parent["intent"]
             record = asdict(record)
             if kind == "assembly":

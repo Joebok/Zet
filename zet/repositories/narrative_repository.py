@@ -45,8 +45,13 @@ class NarrativeRepository:
                 if key == "assembly_mode" and record["kind"] == "assembly":
                     value = "harmonize_composite"
                 record.setdefault(key, value)
+            if record["kind"] == "assembly":
+                for layer in record["layers"]:
+                    layer.setdefault("opacity", 1)
         elif scene:
             from zet.models.narrative import NarrativeScene
+            # The new-scene default must not change older implicit canvases.
+            record.setdefault("canvas", "16:9")
             # Existing scenes keep their authored style until explicitly switched.
             record.setdefault("use_universe_style", False)
             record["universe_style_variant"] = record.get("universe_style_variant") or "canonical"

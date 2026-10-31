@@ -192,6 +192,13 @@ drift. `finish_composite` instead restores original subject pixels and retains
 generated changes only through its exterior edit mask. `assemble_references`
 supplies original sources with text placement; extraction corrections are not sent.
 
+Group layers have opacity from 0 (invisible) to 1 (fully opaque), defaulting to 1
+for new and older layers. The placement preview and raw composite apply opacity
+to the extracted alpha. Composite snapshots freeze the resulting image and layer
+values. Reference assembly keeps original sources and requests opacity in the
+written prompt; model compliance is approximate, and changes require Write Prompt
+again. Zero-opacity groups are requested to be omitted.
+
 ## Subscene transparency
 
 Subscenes show **Use transparent background**, checked by default, after Physical
@@ -339,3 +346,20 @@ Scene and target style controls select canonical/environmental; targets can inhe
 ## Final assembly output canvas (2026-10-30)
 
 The placement editor uses the saved final assembly dimensions. The active layer can be moved and resized; backdrop Cover and Contain presets can be changed to manual placement. Manual backdrop and group coordinates are normalized to the output canvas. Uncovered regions are black. Composite snapshots freeze placement, and reference-assembly prompts receive manual backdrop coordinates. Existing snapshots remain unchanged.
+
+### Initial canvas dimensions
+
+New scenes default to **4:3**. `narrative_canvas_service.canvas_dimensions` derives
+initial subscene, backdrop (including newly linked backdrops), and final assembly
+dimensions from the scene's `canvas` ratio. Standard ratios use
+[Qwen Image 2.1's recommended presets](https://github.com/QwenLM/Qwen-Image-2.1#supported-aspect-ratios):
+4:3 is 2400 × 1792, 1:1 is 2048 × 2048, and 16:9 is 2752 × 1536.
+Other ratios aim for 2048² pixels, round each side to the nearest multiple of 32,
+and reduce area when needed to fit the existing 256–4096 dimension limits.
+Ratios must be positive width:height values between 1:16 and 16:1.
+
+Saved target dimensions remain editable and do not follow later scene-canvas
+changes. Explicit target-creation dimensions override the initial size. Imported
+subscenes retain copied dimensions; linked backdrop local reuse retains source/crop
+bytes. Existing scenes retain their saved ratio; older records missing `canvas`
+continue to read as 16:9. Frozen job and assembly snapshots remain unchanged.

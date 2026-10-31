@@ -112,7 +112,7 @@ class NarrativeAssemblyService:
                 raise ValueError("Choose cover/contain and auto/alpha/opaque cutout.")
             numbers = {}
             for key, default, minimum, maximum in (("x", 0.1, -2, 2), ("y", 0.2, -2, 2), ("scale", 0.4, .01, 4),
-                                                   ("z", index, -100, 100), ("tolerance", 35, 0, 255)):
+                                                   ("z", index, -100, 100), ("tolerance", 35, 0, 255), ("opacity", 1, 0, 1)):
                 value = supplied.get(key, default)
                 if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not minimum <= value <= maximum:
                     raise ValueError(f"Invalid layer {key}.")
@@ -225,6 +225,9 @@ class NarrativeAssemblyService:
         contacts = Image.new("L", size, 0)
         contact_draw = ImageDraw.Draw(contacts)
         for layer in sorted((item for item in layers if item["role"] != "base"), key=lambda item: item["z"]):
+            opacity = layer.get("opacity", 1)
+            if opacity == 0:
+                continue
             with Image.open(folder / layer["source_file"]) as source:
                 cut = self.cutout(source, layer)
             width = max(1, round(size[0] * layer["scale"]))
@@ -237,6 +240,8 @@ class NarrativeAssemblyService:
             # Resize only the visible source region; extreme scales must not allocate huge images.
             box = (x0*cut.width/width, y0*cut.height/height, x1*cut.width/width, y1*cut.height/height)
             cut = cut.resize((x1-x0, y1-y0), Image.Resampling.LANCZOS, box=box)
+            if opacity != 1:
+                cut.putalpha(cut.getchannel("A").point(lambda value: round(value * opacity)))
             position = (position[0]+x0, position[1]+y0)
             canvas.alpha_composite(cut, position)
             coverage = Image.new("L", size, 0)
@@ -309,7 +314,7 @@ class NarrativeAssemblyService:
             result.append({"layer_id": layer["id"], "image_index": index, "label": layer["label"],
                            "role": layer["role"], "narrative": layer.get("narrative", ""), "fit": layer["fit"],
                            "source_width": source_width, "source_height": source_height,
-                           **placement, "z": layer["z"]})
+                           **placement, "z": layer["z"], "opacity": layer.get("opacity", 1) if layer["role"] != "base" else 1})
         return result
 
     def finish(self, story, scene, target, snapshot, proposal):

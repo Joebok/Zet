@@ -446,7 +446,7 @@ function renderLayers() {
       <div class="narrative-layer-controls"><label>Role<select data-layer="${layer.id}" data-layer-field="role"><option value="group" ${layer.role==='group'?'selected':''}>Group</option>${layer.source_kind==='backdrop'?`<option value="base" ${layer.role==='base'?'selected':''}>Base backdrop</option>`:''}</select></label>
       <label><input type="checkbox" data-layer="${layer.id}" data-layer-field="visible" ${layer.visible?'checked':''}> Visible</label>
       ${layer.role==='base' ? `<label>Backdrop fit<select data-layer="${layer.id}" data-layer-field="fit">${['cover','contain','manual'].map(value=>`<option ${value===layer.fit?'selected':''}>${value}</option>`).join('')}</select></label>${layerField(layer,'x','X')}${layerField(layer,'y','Y')}${layerField(layer,'scale','Width / canvas')}` : `
-      ${layerField(layer,'x','X')}${layerField(layer,'y','Y')}${layerField(layer,'scale','Width / canvas')}${layerField(layer,'z','Depth','1')}
+      ${layerField(layer,'x','X')}${layerField(layer,'y','Y')}${layerField(layer,'scale','Width / canvas')}${layerField(layer,'z','Depth','1')}<label>Opacity <input type="number" min="0" max="1" step="0.01" data-layer="${layer.id}" data-layer-field="opacity" value="${layer.opacity ?? 1}"><small>0 is invisible; 1 is fully opaque.</small></label>
       <label>Cutout<select data-layer="${layer.id}" data-layer-field="cutout">${['auto','alpha','opaque'].map(value=>`<option ${value===layer.cutout?'selected':''}>${value}</option>`).join('')}</select></label>${layerField(layer,'tolerance','Background tolerance','1')}`}</div>
       <div class="narrative-actions">${layer.role==='group' ? `<button data-mask-layer="${layer.id}">Keep / remove corrections</button>` : ''}<button data-remove-layer="${layer.id}">Remove layer</button></div></article>`;
   }).join('');
@@ -468,7 +468,7 @@ function renderPlacement() {
   canvas.style.aspectRatio=`${detail.width}/${detail.height}`; host.querySelector('#assembly-size').textContent=`Output: ${detail.width} x ${detail.height}`;
   canvas.innerHTML=layers.map(layer=>{ const selected=layer.id===activeLayer, preset=layer.role==='base' && layer.fit!=='manual';
     const style=preset?'left:0;top:0;width:100%;height:100%':`left:${layer.x*100}%;top:${layer.y*100}%;width:${layer.scale*100}%`;
-    return `<div class="assembly-placement ${selected?'selected':''}" ${selected?`data-drag-layer="${layer.id}"`:''} style="${style}"><img draggable="false" src="${esc(layerUrl(layer,layer.role==='base'?'source':'cutout'))}" style="${preset?`height:100%;object-fit:${layer.fit}`:''}" alt="${esc(layer.label)}">${selected?`<span class="assembly-resize" data-resize-layer="${layer.id}" aria-label="Resize ${esc(layer.label)}"></span>`:''}</div>`;
+    return `<div class="assembly-placement ${selected?'selected':''}" ${selected?`data-drag-layer="${layer.id}"`:''} style="${style}"><img draggable="false" src="${esc(layerUrl(layer,layer.role==='base'?'source':'cutout'))}" style="${preset?`height:100%;object-fit:${layer.fit};`:''}opacity:${layer.role==='base'?1:(layer.opacity ?? 1)}" alt="${esc(layer.label)}">${selected?`<span class="assembly-resize" data-resize-layer="${layer.id}" aria-label="Resize ${esc(layer.label)}"></span>`:''}</div>`;
   }).join('');
 }
 
@@ -825,7 +825,7 @@ function updateLive() {
     const mode = host.querySelector('#narrative-assembly_mode').value;
     const stale = !dirty.has('prompt') && (detail.prompt_provenance?.assembly_mode || 'finish_composite') !== mode;
     host.querySelector('#narrative-assembly-help').textContent = mode === 'assemble_references'
-      ? 'Qwen assembles original sources using placement and depth instructions. Cutout corrections affect the placement preview and composite modes. Exact placement may vary. Up to ten visible sources.'
+      ? 'Qwen assembles original sources using placement and depth instructions. Opacity is approximate; write the prompt again after changing it. Cutout corrections affect the placement preview and composite modes. Exact placement may vary. Up to ten visible sources.'
       : mode === 'harmonize_composite'
         ? 'Qwen harmonizes the placed composite, including cutout corrections, lighting, color, edges and ground contact. The full generated image is retained; subject appearance can change and placement may drift.'
         : 'Qwen finishes the placed composite; seam and shadow blending preserves subject pixels.';
@@ -1256,13 +1256,13 @@ listen(host,'click',event=>{
         case 'add-element-layer': {
           const elementId=host.querySelector('#assembly-element').value;
           if(!elementId) throw new Error('Choose a scene element with a reference image.');
-          await save();detail.layers.push({element_id:elementId,role:'group',x:.1,y:.2,scale:.4,z:detail.layers.length});
+          await save();detail.layers.push({element_id:elementId,role:'group',x:.1,y:.2,scale:.4,z:detail.layers.length,opacity:1});
           layersChanged();await save();renderLayers();break;
         }
         case 'add-layer': {
           await save();const source=detail.assembly_sources.find(item=>item.id===host.querySelector('#assembly-source').value);
           if(!source?.candidates.length) throw new Error('Generate a completed source image first.');
-          detail.layers.push({target_id:source.id,candidate_id:source.selected_id||source.candidates[0].id,role:source.kind==='backdrop'&&!detail.layers.some(layer=>layer.role==='base')?'base':'group',x:.1,y:.2,scale:.4,z:detail.layers.length});
+          detail.layers.push({target_id:source.id,candidate_id:source.selected_id||source.candidates[0].id,role:source.kind==='backdrop'&&!detail.layers.some(layer=>layer.role==='base')?'base':'group',x:.1,y:.2,scale:.4,z:detail.layers.length,opacity:1});
           layersChanged();await save();renderLayers();break;
         }
         case 'download-composite': case 'preview-composite': {

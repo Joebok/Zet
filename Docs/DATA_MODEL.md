@@ -166,6 +166,11 @@ reservations. These stores are universe-scoped. Historical source snapshots are 
 editable generation state. `NARRATIVE` tags bind story/scene/target/candidate IDs;
 legacy `SCENE`/`SCENE_RENDER` tags are read-only image compatibility.
 
+New Narrative scenes default `canvas` to `4:3`; legacy scenes missing it still
+read as `16:9`. Scene ratios seed dimensions only when creating targets, using
+the [Narrative canvas policy](COMPONENTS/NARRATIVE.md#initial-canvas-dimensions).
+Persisted target dimensions and historical snapshots are not migrated.
+
 Narrative interview jobs may include a `review` record built by
 [interview_review](../zet/services/narrative_interview_service.py): validated whole-field proposals
 with server-bound IDs/old values, conflicts/questions and pending/applied/superseded status.
@@ -184,6 +189,11 @@ Assembly layers may identify a scene element with `element_id` and retain its
 resolved `asset_id` and an assembly-owned source copy. Existing target/candidate
 layer identities remain supported. Element layers keep their pinned copy after
 the scene element or reference changes.
+
+Assembly layers accept numeric `opacity` from 0 to 1, defaulting to 1 when
+absent. It applies to group layers; the base backdrop remains opaque. Current
+layer reads supply the default without rewriting historical nested snapshots.
+New snapshots and reference manifests retain the effective value.
 
 `assembly_mode` additionally accepts `harmonize_composite`, without changing the
 default `finish_composite`. Harmonization snapshots set `has_composite=true`, freeze
