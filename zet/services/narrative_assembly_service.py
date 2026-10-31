@@ -108,7 +108,7 @@ class NarrativeAssemblyService:
                 raise ValueError("The base layer must be a backdrop.")
             fit = supplied.get("fit", "cover")
             cutout = supplied.get("cutout", "auto" if role == "group" else "opaque")
-            if fit not in {"cover", "contain"} or cutout not in {"auto", "alpha", "opaque"}:
+            if fit not in {"cover", "contain", "manual"} or cutout not in {"auto", "alpha", "opaque"}:
                 raise ValueError("Choose cover/contain and auto/alpha/opaque cutout.")
             numbers = {}
             for key, default, minimum, maximum in (("x", 0.1, -2, 2), ("y", 0.2, -2, 2), ("scale", 0.4, .01, 4),
@@ -204,11 +204,22 @@ class NarrativeAssemblyService:
         folder = self.repository.folder(story, scene, detail["id"])
         with Image.open(folder / bases[0]["source_file"]) as source:
             base = source.convert("RGB").convert("RGBA")
-            if bases[0]["fit"] == "cover":
+            if bases[0]["fit"] == "manual":
+                layer = bases[0]
+                width = max(1, round(size[0] * layer["scale"]))
+                height = max(1, round(width * base.height / base.width))
+                x, y = round(layer["x"] * size[0]), round(layer["y"] * size[1])
+                x0, y0 = max(0, -x), max(0, -y)
+                x1, y1 = min(width, size[0]-x), min(height, size[1]-y)
+                canvas = Image.new("RGBA", size, "black")
+                if x1 > x0 and y1 > y0:
+                    box = (x0*base.width/width, y0*base.height/height, x1*base.width/width, y1*base.height/height)
+                    canvas.alpha_composite(base.resize((x1-x0, y1-y0), Image.Resampling.LANCZOS, box=box), (x+x0, y+y0))
+            elif bases[0]["fit"] == "cover":
                 canvas = ImageOps.fit(base, size, method=Image.Resampling.LANCZOS)
             else:
                 fitted = ImageOps.contain(base, size, method=Image.Resampling.LANCZOS)
-                canvas = Image.new("RGBA", size, "white")
+                canvas = Image.new("RGBA", size, "black")
                 canvas.alpha_composite(fitted, ((size[0]-fitted.width)//2, (size[1]-fitted.height)//2))
         protected = Image.new("L", size, 0)
         contacts = Image.new("L", size, 0)
@@ -293,7 +304,7 @@ class NarrativeAssemblyService:
             width = max(1, round(detail["width"] * layer["scale"]))
             placement = {"x": round(layer["x"] * detail["width"]), "y": round(layer["y"] * detail["height"]),
                          "width": width, "height": max(1, round(width * source_height / source_width))}
-            if layer["role"] == "base":
+            if layer["role"] == "base" and layer["fit"] != "manual":
                 placement = {"x": 0, "y": 0, "width": detail["width"], "height": detail["height"]}
             result.append({"layer_id": layer["id"], "image_index": index, "label": layer["label"],
                            "role": layer["role"], "narrative": layer.get("narrative", ""), "fit": layer["fit"],

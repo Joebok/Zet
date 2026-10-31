@@ -241,10 +241,10 @@ def assemble_prompt(detail: dict, prose: dict, references: list[dict]) -> str:
             for reference in references:
                 tag = f"<image{reference['image_index']}>"
                 if reference["role"] == "base":
-                    placement = ("Use as the base background behind all groups. "
+                    placement = ((f"Place the backdrop at ({reference['x']}, {reference['y']}) with size {reference['width']} x {reference['height']} pixels; clip to the canvas and leave uncovered areas black." if reference["fit"] == "manual" else "Use as the base background behind all groups. "
                                  + ("Fill the canvas, preserving aspect ratio and cropping centrally as needed."
                                     if reference["fit"] == "cover" else
-                                    "Fit the complete background centrally, preserving aspect ratio; retain white margins where needed."))
+                                    "Fit the complete background centrally, preserving aspect ratio; retain black margins where needed.")))
                 else:
                     placement = (f"Place its full source-image rectangle at top-left ({reference['x']}, {reference['y']}) pixels, "
                                  f"with size {reference['width']} × {reference['height']} pixels. "

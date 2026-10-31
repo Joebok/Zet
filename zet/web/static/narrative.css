@@ -120,9 +120,10 @@
 .narrative-layer-controls label { display:flex; flex-direction:column; min-width:0; gap:.3rem; }
 .narrative-layer-controls input { width:100%; }
 .narrative-layer-controls input[type=checkbox] { width:auto; align-self:flex-start; }
-#assembly-canvas { position:relative; width:100%; background:white; overflow:hidden; border:1px solid var(--border); margin-top:1rem; }
+#assembly-canvas { position:relative; width:100%; background:black; overflow:hidden; border:1px solid var(--border); margin-top:1rem; }
 .assembly-base { position:absolute; width:100%; height:100%; inset:0; }
-.assembly-placement { position:absolute; cursor:move; touch-action:none; outline:1px dashed var(--primary); }
+.assembly-placement { position:absolute; pointer-events:none; }
+.assembly-placement.selected { cursor:move; touch-action:none; outline:1px dashed var(--primary); pointer-events:auto; }
 .assembly-placement img { display:block; width:100%; pointer-events:none; }
 .assembly-resize { position:absolute; right:0; bottom:0; width:14px; height:14px; background:var(--primary); cursor:nwse-resize; }
 #assembly-raw { width:100%; margin-top:1rem; }

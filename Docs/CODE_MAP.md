@@ -325,3 +325,7 @@ expose the review action and naming dialog. Existing `ZetApp.entity_library_impo
 creates fresh items without an origin key or source relationship. Disposable
 private fixture checks cover saves, repeats and source preservation; S1/S3 remain
 maintained regressions. See [Narrative](COMPONENTS/NARRATIVE.md#save-a-subscene-image-to-inventory-2026-10-30).
+
+## Final assembly output canvas (2026-10-30)
+
+NarrativeAssemblyService owns manual backdrop composition and reference geometry; narrative_prompt_service.py describes it for reference assembly. narrative.js and narrative.css own active-layer placement and output-size canvas presentation. See [Narrative](COMPONENTS/NARRATIVE.md#final-assembly-output-canvas-2026-10-30).

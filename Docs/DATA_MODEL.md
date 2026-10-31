@@ -327,3 +327,7 @@ Narrative targets add `backdrop_link_mode` (`reference`, `unmodified`, `regenera
 ## Environmental universe style (2026-10-30)
 
 Universe descriptors additionally support `environmental_art_style`. Missing/empty universe-style variants resolve to canonical. New character batches freeze variant/text/hash/source in `Universe_Style.json` and expose the snapshot in their specification. Existing saved requests are retained.
+
+## Final assembly backdrop placement
+
+Narrative assembly layers accept `fit: manual` for a backdrop. Its existing `x` and `y` are normalized canvas coordinates and `scale` is width divided by canvas width. Cover and contain retain centered preset behavior. Frozen assembly snapshots retain the layer values used at submission.

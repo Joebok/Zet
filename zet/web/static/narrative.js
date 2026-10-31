@@ -30,6 +30,7 @@ let interviewImage = '';
 const interviewChoices = new Map();
 let llmSubmitting = false;
 let layerDrag = null;
+let activeLayer = null;
 let brush = null;
 let reviewCandidate = null;
 let inventorySaved = null;
@@ -423,8 +424,8 @@ function elementsHtml(elements, target) {
 
 function assemblyHtml() {
   return `<section class="narrative-card"><h2>Sources and placement</h2><label class="narrative-field">Add source<select id="assembly-source">${detail.assembly_sources.map(source=>`<option value="${source.id}">${esc(source.title)} · ${source.kind}</option>`).join('')}</select></label>
-    <button data-action="add-layer">Add selected image</button><label class="narrative-field">Scene element<select id="assembly-element"><option value="">Choose an element</option>${detail.assembly_element_sources.map(item=>`<option value="${esc(item.id)}" ${item.available?'':'disabled'}>${esc(item.name)}${item.reason ? ` · ${esc(item.reason)}` : ''}</option>`).join('')}</select></label><button data-action="add-element-layer">Add element</button><p class="narrative-muted">Choose a completed image below if the source has no selection. Drag groups on the preview; use the corner handle to resize.</p>
-    <div id="assembly-layers"></div><div id="assembly-canvas" style="aspect-ratio:${detail.width}/${detail.height}"></div>
+    <button data-action="add-layer">Add selected image</button><label class="narrative-field">Scene element<select id="assembly-element"><option value="">Choose an element</option>${detail.assembly_element_sources.map(item=>`<option value="${esc(item.id)}" ${item.available?'':'disabled'}>${esc(item.name)}${item.reason ? ` · ${esc(item.reason)}` : ''}</option>`).join('')}</select></label><button data-action="add-element-layer">Add element</button><p class="narrative-muted">Choose a completed image below if the source has no selection. Select a layer, then drag it or use the corner handle to resize.</p>
+    <div id="assembly-layers"></div><label class="narrative-field">Active layer<select id="assembly-active-layer"></select></label><p id="assembly-size"></p><div id="assembly-canvas" style="aspect-ratio:${detail.width}/${detail.height}"></div>
     <div class="narrative-actions"><button data-action="preview-composite">Refresh raw composite</button><button id="assembly-download" data-action="download-composite">Download raw composite</button></div>
     <img id="assembly-raw" alt="Raw composite preview" hidden></section>`;
 }
@@ -444,7 +445,7 @@ function renderLayers() {
       <button data-current-selection="${layer.id}">Use current selection</button>`}
       <div class="narrative-layer-controls"><label>Role<select data-layer="${layer.id}" data-layer-field="role"><option value="group" ${layer.role==='group'?'selected':''}>Group</option>${layer.source_kind==='backdrop'?`<option value="base" ${layer.role==='base'?'selected':''}>Base backdrop</option>`:''}</select></label>
       <label><input type="checkbox" data-layer="${layer.id}" data-layer-field="visible" ${layer.visible?'checked':''}> Visible</label>
-      ${layer.role==='base' ? `<label>Backdrop fit<select data-layer="${layer.id}" data-layer-field="fit">${['cover','contain'].map(value=>`<option ${value===layer.fit?'selected':''}>${value}</option>`).join('')}</select></label>` : `
+      ${layer.role==='base' ? `<label>Backdrop fit<select data-layer="${layer.id}" data-layer-field="fit">${['cover','contain','manual'].map(value=>`<option ${value===layer.fit?'selected':''}>${value}</option>`).join('')}</select></label>${layerField(layer,'x','X')}${layerField(layer,'y','Y')}${layerField(layer,'scale','Width / canvas')}` : `
       ${layerField(layer,'x','X')}${layerField(layer,'y','Y')}${layerField(layer,'scale','Width / canvas')}${layerField(layer,'z','Depth','1')}
       <label>Cutout<select data-layer="${layer.id}" data-layer-field="cutout">${['auto','alpha','opaque'].map(value=>`<option ${value===layer.cutout?'selected':''}>${value}</option>`).join('')}</select></label>${layerField(layer,'tolerance','Background tolerance','1')}`}</div>
       <div class="narrative-actions">${layer.role==='group' ? `<button data-mask-layer="${layer.id}">Keep / remove corrections</button>` : ''}<button data-remove-layer="${layer.id}">Remove layer</button></div></article>`;
@@ -452,17 +453,27 @@ function renderLayers() {
   renderPlacement();
 }
 
+function hideRaw() { const raw=host.querySelector('#assembly-raw'); if(raw) raw.hidden=true; }
+function manualBackdrop(layer, image) {
+  if (!image?.naturalWidth || !image.naturalHeight) return false;
+  const cw=detail.width, ch=detail.height, iw=image.naturalWidth, ih=image.naturalHeight;
+  const factor=layer.fit==='cover' ? Math.max(cw/iw,ch/ih) : Math.min(cw/iw,ch/ih);
+  layer.x=(cw-iw*factor)/2/cw; layer.y=(ch-ih*factor)/2/ch; layer.scale=iw*factor/cw; layer.fit='manual'; return true;
+}
 function renderPlacement() {
-  const canvas = host.querySelector('#assembly-canvas');
-  if (!canvas) return;
-  canvas.style.aspectRatio = `${detail.width}/${detail.height}`;
-  canvas.innerHTML = detail.layers.filter(layer=>layer.visible).sort((a,b)=>a.role==='base'?-1:b.role==='base'?1:a.z-b.z).map(layer=>layer.role==='base'
-    ? `<img class="assembly-base" src="${esc(layerUrl(layer,'source'))}" style="object-fit:${layer.fit}" alt="${esc(layer.label)} backdrop">`
-    : `<div class="assembly-placement" data-drag-layer="${layer.id}" style="left:${layer.x*100}%;top:${layer.y*100}%;width:${layer.scale*100}%"><img draggable="false" src="${esc(layerUrl(layer))}" alt="${esc(layer.label)} placed group"><span class="assembly-resize" data-resize-layer="${layer.id}" aria-label="Resize ${esc(layer.label)}"></span></div>`).join('');
+  const canvas=host.querySelector('#assembly-canvas'); if(!canvas || layerDrag) return;
+  const layers=detail.layers.filter(layer=>layer.visible).sort((a,b)=>a.role==='base'?-1:b.role==='base'?1:a.z-b.z);
+  if(!layers.some(layer=>layer.id===activeLayer)) activeLayer=layers[0]?.id || null;
+  const picker=host.querySelector('#assembly-active-layer'); picker.innerHTML=layers.map(layer=>`<option value="${esc(layer.id)}">${esc(layer.label)}</option>`).join(''); picker.value=activeLayer || '';
+  canvas.style.aspectRatio=`${detail.width}/${detail.height}`; host.querySelector('#assembly-size').textContent=`Output: ${detail.width} x ${detail.height}`;
+  canvas.innerHTML=layers.map(layer=>{ const selected=layer.id===activeLayer, preset=layer.role==='base' && layer.fit!=='manual';
+    const style=preset?'left:0;top:0;width:100%;height:100%':`left:${layer.x*100}%;top:${layer.y*100}%;width:${layer.scale*100}%`;
+    return `<div class="assembly-placement ${selected?'selected':''}" ${selected?`data-drag-layer="${layer.id}"`:''} style="${style}"><img draggable="false" src="${esc(layerUrl(layer,layer.role==='base'?'source':'cutout'))}" style="${preset?`height:100%;object-fit:${layer.fit}`:''}" alt="${esc(layer.label)}">${selected?`<span class="assembly-resize" data-resize-layer="${layer.id}" aria-label="Resize ${esc(layer.label)}"></span>`:''}</div>`;
+  }).join('');
 }
 
 function layersChanged() {
-  dirty.add('layers'); status('Saving changes…'); clearTimeout(saveTimer);
+  hideRaw(); dirty.add('layers'); status('Saving changes…'); clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>save().catch(error=>status(error.message,true)),700);
 }
 
@@ -502,6 +513,7 @@ listen(host,'pointerdown',event=>{
   const node=event.target.closest('[data-drag-layer]');
   if (!node) return;
   const layer=detail.layers.find(item=>item.id===node.dataset.dragLayer);
+  if(layer.role==='base' && layer.fit!=='manual') { if(!manualBackdrop(layer,node.querySelector('img'))) return; node.style.left=`${layer.x*100}%`; node.style.top=`${layer.y*100}%`; node.style.width=`${layer.scale*100}%`; node.style.height='auto'; node.querySelector('img').style.cssText=''; const fit=host.querySelector(`[data-layer="${layer.id}"][data-layer-field="fit"]`); if(fit) fit.value='manual'; }
   layerDrag={node,layer,px:event.clientX,py:event.clientY,x:layer.x,y:layer.y,scale:layer.scale,resize:Boolean(event.target.dataset.resizeLayer),pointer:event.pointerId};
   node.setPointerCapture(event.pointerId);event.preventDefault();
 });
@@ -513,7 +525,7 @@ listen(host,'pointermove',event=>{
   else {drag.layer.x=Math.max(-2,Math.min(2,drag.x+(event.clientX-drag.px)/rect.width));drag.layer.y=Math.max(-2,Math.min(2,drag.y+(event.clientY-drag.py)/rect.height));}
   for (const key of ['x','y','scale']) drag.layer[key]=Math.round(drag.layer[key]*10000)/10000;
   drag.node.style.left=`${drag.layer.x*100}%`;drag.node.style.top=`${drag.layer.y*100}%`;drag.node.style.width=`${drag.layer.scale*100}%`;
-  for(const key of ['x','y','scale']) {const input=root.querySelector(`[data-layer="${drag.layer.id}"][data-layer-field="${key}"]`);input.value=drag.layer[key];}
+  for(const key of ['x','y','scale']) {const input=root.querySelector(`[data-layer="${drag.layer.id}"][data-layer-field="${key}"]`);if(input) input.value=drag.layer[key];}
   layersChanged();
 });
 listen(host,'pointerup',event=>{if (brush===event.pointerId) brush=null;if(layerDrag?.pointer===event.pointerId) layerDrag=null;});
@@ -669,7 +681,7 @@ function renderTarget(targets) {
       ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
       ${label('framing',detail.framing,false)}<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
-    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text" ${detail.selected_id?"":"disabled"}>Edit selected image text</button><button data-action="scene-text-raw">Edit raw composite text draft</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
+    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button><button data-action="scene-text" ${detail.selected_id?"":"disabled"}>Edit selected image text</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
     <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input · Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
       <p class="narrative-muted">Style source: ${esc(detail.style_source || 'saved scene')}</p>
@@ -943,6 +955,7 @@ function mergeTarget(updated) {
     if (list) list.innerHTML = elementsHtml(updated.elements,true);
   }
   detail = updated;
+  renderPlacement();
   updateLive();
 }
 
@@ -980,7 +993,7 @@ async function save() {
     const option = root.querySelector(`#narrative-target-select option[value="${updated.id}"]`);
     if (option) option.textContent = `${updated.title} · ${title(updated.kind)}`;
     status(dirty.size ? 'Saving changes…' : 'Saved');
-    if (route.target) updateLive();
+    if (route.target) { renderPlacement(); updateLive(); }
   });
   saveChain = operation;
   await operation;
@@ -1054,7 +1067,7 @@ listen(host,'input',event=>{
   if (event.target.dataset.layerField) {
     const key=event.target.dataset.layerField;
     if (['candidate_id','role','fit','cutout','visible'].includes(key)) return;
-    const layer=detail.layers.find(item=>item.id===event.target.dataset.layer);layer[key]=Number(event.target.value);
+    const layer=detail.layers.find(item=>item.id===event.target.dataset.layer); if(layer.role==='base' && layer.fit!=='manual') { const img=host.querySelector(`[data-drag-layer="${layer.id}"] img`); if(!manualBackdrop(layer,img)) return; } layer[key]=Number(event.target.value);
     layersChanged();renderPlacement();return;
   }
   if (!event.target.dataset.field) return;
@@ -1062,10 +1075,11 @@ listen(host,'input',event=>{
   status('Saving changes…'); clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>save().catch(error=>status(error.message,true)),700);
   if(route.target) updateLive();
-  if (['width','height'].includes(event.target.dataset.field)) drawCropBox();
+  if (['width','height'].includes(event.target.dataset.field)) { drawCropBox(); hideRaw(); const value=Number(event.target.value); if(route.target && detail.kind==='assembly' && value>=256 && value<=4096) { detail[event.target.dataset.field]=value; renderPlacement(); } }
 });
 
 listen(host,'change',event=>{
+  if (event.target.id==='assembly-active-layer') { activeLayer=event.target.value; renderPlacement(); return; }
   if (event.target.id==='narrative-interview-image') {interviewImage=event.target.value;updateLive();return;}
   if (event.target.id==='backdrop-link-mode') {const mode=event.target.value;action(async()=>{await save();await api(base(),'PATCH',{backdrop_link_mode:mode});await loadPage();});return;}
   if (event.target.id==='source-story') {populateSourceTargets().catch(error=>status(error.message,true));return;}
@@ -1074,6 +1088,7 @@ listen(host,'change',event=>{
   if (event.target.id==='narrative-prompt-history') {host.querySelector('#narrative-prompt-preview').textContent=detail.jobs[event.target.value]?.result||'';return;}
   if (event.target.dataset.layerField) {
     const layer=detail.layers.find(item=>item.id===event.target.dataset.layer),key=event.target.dataset.layerField;
+    if(key==='fit' && event.target.value==='manual' && layer.fit!=='manual') { const img=host.querySelector(`[data-drag-layer="${layer.id}"] img`); if(!manualBackdrop(layer,img)) { status('Select the backdrop and wait for its image to load.',true); event.target.value=layer.fit; return; } }
     layer[key]=key==='visible'?event.target.checked:['candidate_id','role','fit','cutout'].includes(key)?event.target.value:Number(event.target.value);
     if(key==='candidate_id') layer.strokes=[];
     if(key==='role') layer.cutout=layer.role==='base'?'opaque':'auto';

@@ -335,3 +335,7 @@ Cropped prompt/interview requests omit the original source prompt and source aut
 ## Environmental universe style (2026-10-30)
 
 Scene and target style controls select canonical/environmental; targets can inherit shared direction. New backdrops explicitly select environmental. Missing scene variants resolve to canonical, including legacy records with empty values. Changing style affects newly authored prompts; saved render prompts retain their text.
+
+## Final assembly output canvas (2026-10-30)
+
+The placement editor uses the saved final assembly dimensions. The active layer can be moved and resized; backdrop Cover and Contain presets can be changed to manual placement. Manual backdrop and group coordinates are normalized to the output canvas. Uncovered regions are black. Composite snapshots freeze placement, and reference-assembly prompts receive manual backdrop coordinates. Existing snapshots remain unchanged.
