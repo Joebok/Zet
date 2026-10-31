@@ -148,7 +148,7 @@ class LocalImagePipelineWorkflowService:
             elif operation != "detail":
                 params.append(payload)
             return getattr(refinement, operation)(*params)
-        if name in {"rerun_batch", "rerun_view", "rerun_failed", "reevaluate", "run_unstarted_views", "delete_batch"}:
+        if name in {"rerun_batch", "rerun_view", "rerun_failed", "run_unstarted_views", "delete_batch"}:
             current = self.prompt_improvement.detail(run_id, costume)
             if current.get("slot_work_pending") or current.get("slot_render_ids"):
                 raise RenderSlotConflict("Wait for submitted slot renders to start and finish.")

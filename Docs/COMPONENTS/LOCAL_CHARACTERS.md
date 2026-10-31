@@ -1,5 +1,7 @@
 # Local character assets
 
+Phase-change source separation is being implemented for Head Image and Head Image Edit: each render mode can use its own uploaded or matching-mode locked FRONT from either head pipeline. Legacy sources are Draft. The hosted runtime and existing-batch configuration remain unverified; see the [active plan](../../plans/active/phase-change-mode-sources.md).
+
 Shared slot recovery reattaches current candidates affected by the historical render-wait timeout to their original queued requests, or restores successful harvested images to review eligibility. It checks slot membership, request identity and receipts before changing state.
 
 ## Mode-aware batch rendering (2026-10-31)

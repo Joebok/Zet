@@ -252,14 +252,17 @@ def create_local_character_asset_pipeline_router(
                 return FileResponse(path)
         elif pipeline in {"head-image", "head-image-edit"}:
             @router.get(f"{prefix}/runs/{{run_id}}/source")
-            def front_source(run_id: str, _pipeline: str = pipeline):
-                path = call(lambda: service(_pipeline).adapter.front_source_path(run_id), missing=404)
+            def front_source(run_id: str, render_mode: str = Query("draft"), _pipeline: str = pipeline):
+                path = call(lambda: service(_pipeline).adapter.front_source_path(run_id, render_mode), missing=404)
                 return FileResponse(path)
 
             @router.put(f"{prefix}/runs/{{run_id}}/source")
             def update_front_source(run_id: str, payload: dict[str, Any] = Body(...), _pipeline: str = pipeline):
-                call(lambda: service(_pipeline).adapter.update_front_source(
-                    run_id, str(payload.get("source_path") or "")))
+                if "render_mode" in payload:
+                    call(lambda: service(_pipeline).adapter.set_mode_front_source(run_id, payload))
+                else:
+                    call(lambda: service(_pipeline).adapter.update_front_source(
+                        run_id, str(payload.get("source_path") or "")))
                 return call(lambda: service(_pipeline).prompt_improvement.detail(run_id))
 
         @router.get(f"{prefix}/runs/{{run_id}}/image-prompt/{{view}}", response_class=PlainTextResponse)

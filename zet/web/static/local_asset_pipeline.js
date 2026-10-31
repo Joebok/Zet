@@ -180,7 +180,7 @@
   }
 
   function payload() {
-    const lockedPhaseSource = state.pipeline === "head-image-edit" && $("apply-phase-change").checked && $("source-mode").value === "locked";
+    const lockedPhaseSource = ["head-image", "head-image-edit"].includes(state.pipeline) && $("apply-phase-change").checked && $("source-mode").value === "locked";
     return {
       character: document.querySelector("#character-select").value,
       phase: document.querySelector("#phase-select").value,
@@ -192,14 +192,15 @@
       head_pipeline: state.pipeline === "character-assembly" ? $("head-pipeline").value : "head-image",
       front_source_path: lockedPhaseSource ? "" : state.frontSourcePath,
       front_source_phase: lockedPhaseSource ? $("source-phase").value : "",
+      front_source_pipeline: $("source-pipeline").value,
       apply_phase_change: state.pipeline === "head-image-edit" ? $("apply-phase-change").checked
-        : state.pipeline === "head-image" && Boolean(state.frontSourcePath) && $("apply-phase-change").checked,
+        : state.pipeline === "head-image" && Boolean(state.frontSourcePath || lockedPhaseSource) && $("apply-phase-change").checked,
       source_batches: hasSharedAssetRouter() ? Object.fromEntries(Array.from($("source-batches").querySelectorAll("select[data-source-role]"), (select) => [select.dataset.sourceRole, select.value])) : {},
     };
   }
 
   function lockedPhaseSourceSelected() {
-    return state.pipeline === "head-image-edit" && $("apply-phase-change").checked && $("source-mode").value === "locked";
+    return ["head-image", "head-image-edit"].includes(state.pipeline) && $("apply-phase-change").checked && $("source-mode").value === "locked";
   }
 
   function populateSourcePhases() {
@@ -214,11 +215,11 @@
   }
 
   function updateSourceControls() {
-    const phaseChange = state.pipeline === "head-image-edit" && $("apply-phase-change").checked;
+    const phaseChange = ["head-image", "head-image-edit"].includes(state.pipeline) && $("apply-phase-change").checked;
     $("source-mode-option").hidden = !phaseChange;
     $("upload-source").hidden = lockedPhaseSourceSelected();
     $("locked-source").hidden = !lockedPhaseSourceSelected();
-    if (state.pipeline === "head-image-edit") $("apply-phase-change").disabled = false;
+    if (["head-image", "head-image-edit"].includes(state.pipeline)) $("apply-phase-change").disabled = false;
   }
 
   async function refreshLockedPhaseSource() {
@@ -233,8 +234,8 @@
     try {
       const result = await request(`/api/local/assets?${new URLSearchParams({ character, phase })}`);
       if (generation !== state.sourcePreviewGeneration || !lockedPhaseSourceSelected() || $("source-phase").value !== phase) return;
-      const asset = (result.assets || []).find(item => item.pipeline?.toLowerCase() === "head-image-edit"
-        && item.view === "FRONT" && !item.qualifier);
+      const asset = (result.assets || []).find(item => item.pipeline?.toLowerCase() === $("source-pipeline").value
+        && item.view === "FRONT" && !item.qualifier && (item.render_mode || "draft") === "draft");
       host.replaceChildren();
       if (asset) {
         const image = document.createElement("img");
@@ -959,7 +960,8 @@
       summary.append(viewActions);
       details.append(summary);
       details.append(viewOverrideInput(run, view));
-      if (hasSharedAssetRouter() || (["head-image", "head-image-edit"].includes(state.pipeline) && view === "FRONT" && run.front_source)) {
+      const activeHeadSource = run.front_sources_by_mode?.[state.renderMode] || (state.renderMode === "draft" || !run.apply_phase_change ? {path: run.front_source, sha256: run.front_source_sha256} : {});
+      if (hasSharedAssetRouter() || (["head-image", "head-image-edit"].includes(state.pipeline) && view === "FRONT" && activeHeadSource.path)) {
         const roles = ["head-image", "head-image-edit"].includes(state.pipeline)
           ? ["front_reference"]
           : state.pipeline === "character-assembly"
@@ -977,8 +979,8 @@
           image.loading = "lazy";
           image.alt = caption.textContent;
           const version = source.sha256 || source.image_sha256 || source.image_path ||
-            (role === "front_reference" ? run.front_source_sha256 || run.front_source : "");
-          image.src = versionedImageUrl(route("source", run.run_id, view, role), version);
+            (role === "front_reference" ? activeHeadSource.sha256 || activeHeadSource.path : "");
+          image.src = versionedImageUrl(role === "front_reference" ? `${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source?render_mode=${state.renderMode}` : route("source", run.run_id, view, role), version);
           figure.append(caption, image);
           sources.append(figure);
         }
@@ -997,7 +999,7 @@
           }
         }
       }
-      const renderedRoles = ["head-image", "head-image-edit"].includes(state.pipeline) && view === "FRONT" && run.front_source
+      const renderedRoles = ["head-image", "head-image-edit"].includes(state.pipeline) && view === "FRONT" && activeHeadSource.path
         ? new Set(["head_image_source"])
         : state.pipeline === "character-assembly"
         ? new Set(["body_reference", "head_image"])
@@ -1168,8 +1170,70 @@
     button.textContent = hasNewImages ? "Refresh · Updates available" : "Refresh";
   }
 
+  const phaseSourceDrafts = {};
+  let phaseSourcePreviewGeneration = 0;
+  async function previewModeSource() {
+    const generation = ++phaseSourcePreviewGeneration, run = state.run, mode = state.renderMode;
+    const host = $("mode-source-preview"), phase = $("mode-source-phase").value, pipeline = $("mode-source-pipeline").value;
+    host.replaceChildren();
+    if (!run || $("mode-source-kind").value !== "locked" || !phase) return;
+    host.textContent = "Checking locked FRONT image…";
+    try {
+      const args = new URLSearchParams({character: run.character, phase, render_mode: mode});
+      const result = await request(`/api/local/assets?${args}`);
+      if (generation !== phaseSourcePreviewGeneration || state.run?.run_id !== run.run_id || state.renderMode !== mode) return;
+      const asset = (result.assets || []).find(item => item.pipeline?.toLowerCase() === pipeline && item.view === "FRONT" && !item.qualifier);
+      host.replaceChildren();
+      if (asset) {
+        const image = document.createElement("img"); image.style.maxWidth = "160px";
+        image.alt = `${mode} ${pipeline} FRONT from ${phase}`;
+        args.set("v", asset.image_sha256 || "");
+        image.src = universeImageUrl(`/api/local/assets/${encodeURIComponent(asset.key)}/image?${args}`);
+        host.append(image);
+      } else {
+        const link = document.createElement("a");
+        link.href = `/?${new URLSearchParams({page: `local-${pipeline}`, character: run.character, phase, render_mode: mode})}`;
+        link.textContent = `Lock ${mode} FRONT in ${phase} first`;
+        host.append(link);
+      }
+    } catch (error) { if (generation === phaseSourcePreviewGeneration) host.textContent = error.message; }
+  }
+  function renderModeSource(run) {
+    const panel = $("mode-source");
+    panel.hidden = !run || !["head-image", "head-image-edit"].includes(state.pipeline) || !run.apply_phase_change;
+    if (panel.hidden) return;
+    const mode = state.renderMode;
+    $("mode-source-title").textContent = `${mode === "final" ? "Final" : "Draft"} phase-change FRONT source`;
+    const record = run.front_sources_by_mode?.[mode] || (mode === "draft" ? {path: run.front_source, sha256: run.front_source_sha256, origin: run.front_source_origin} : {});
+    const host = $("mode-source-current");
+    host.replaceChildren();
+    if (record?.path) {
+      const image = document.createElement("img");
+      image.src = versionedImageUrl(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source?render_mode=${mode}`, record.sha256);
+      image.alt = `${mode} phase-change source`;
+      image.style.maxWidth = "160px";
+      host.append(image, document.createTextNode(` ${record.origin?.phase || "Uploaded"} · ${record.origin?.pipeline || ""}`));
+    } else host.textContent = "No source selected for this mode.";
+    const selector = $("mode-source-phase");
+    const previous = selector.value;
+    const key = `${state.pipeline}:${run.run_id}:${mode}`;
+    if (selector.dataset.context !== key) {
+      selector.replaceChildren(new Option("Choose a source phase", ""));
+      for (const option of document.querySelector("#phase-select").options) {
+        if (option.value && option.value !== run.phase) selector.add(new Option(option.textContent, option.value));
+      }
+      selector.dataset.context = key;
+      selector.value = phaseSourceDrafts[key]?.phase || previous || "";
+      $("mode-source-pipeline").value = phaseSourceDrafts[key]?.pipeline || "head-image-edit";
+      $("mode-source-kind").value = phaseSourceDrafts[key]?.kind || "locked";
+      $("mode-source-status").textContent = "";
+      void previewModeSource();
+    }
+  }
+
   function render() {
     const run = state.run;
+    renderModeSource(run);
     window.ZetTemplateImprovement?.update(run, state.pipeline, () => loadRun(run?.run_id || ""), frontRenderControl);
     renderLineageWarnings(run);
     if (!run) {
@@ -2125,6 +2189,44 @@
     });
     $("source-phase").addEventListener("change", () => {
       void readiness();
+    });
+    $("source-pipeline").addEventListener("change", () => void readiness());
+    for (const field of ["mode-source-phase", "mode-source-pipeline", "mode-source-kind"]) $(field).addEventListener("change", () => {
+      if (!state.run) return;
+      const key = `${state.pipeline}:${state.run.run_id}:${state.renderMode}`;
+      phaseSourceDrafts[key] = {...phaseSourceDrafts[key], phase: $("mode-source-phase").value, pipeline: $("mode-source-pipeline").value, kind: $("mode-source-kind").value};
+      void previewModeSource();
+    });
+    async function stageModeSource(file) {
+      if (!file || !state.run) return;
+      const run = state.run, mode = state.renderMode, pipeline = state.pipeline;
+      const key = `${pipeline}:${run.run_id}:${mode}`;
+      const response = await fetch(`${baseUrl()}/sources?${new URLSearchParams({character: run.character, phase: run.phase, filename: file.name || "pasted-reference.png"})}`, {method: "POST", headers: {"Content-Type": file.type || "application/octet-stream", "X-Zet-Universe": document.querySelector("#universe-select").value}, body: file});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Could not upload source.");
+      phaseSourceDrafts[key] = {...phaseSourceDrafts[key], path: data.path, kind: "upload"};
+      if (state.run?.run_id === run.run_id && state.renderMode === mode && state.pipeline === pipeline) {
+        $("mode-source-kind").value = "upload";
+        $("mode-source-status").textContent = `Staged ${file.name}. Save source to apply.`;
+        void previewModeSource();
+      }
+    }
+    $("mode-source-file").addEventListener("change", () => void stageModeSource($("mode-source-file").files?.[0]).catch(error => setStatus(error.message, true)));
+    $("mode-source-paste").addEventListener("paste", event => {
+      const file = Array.from(event.clipboardData?.items || []).map(item => item.getAsFile()).find(Boolean);
+      if (file) { event.preventDefault(); void stageModeSource(file).catch(error => setStatus(error.message, true)); }
+    });
+    $("mode-source-save").addEventListener("click", async () => {
+      if (!state.run) return;
+      const run = state.run, mode = state.renderMode, pipeline = state.pipeline;
+      const key = `${pipeline}:${run.run_id}:${mode}`, draft = phaseSourceDrafts[key] || {};
+      const body = $("mode-source-kind").value === "locked"
+        ? {render_mode: mode, front_source_phase: $("mode-source-phase").value, front_source_pipeline: $("mode-source-pipeline").value}
+        : {render_mode: mode, source_path: draft.path || ""};
+      try {
+        await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source`, {method: "PUT", body: JSON.stringify(body)});
+        if (state.run?.run_id === run.run_id && state.pipeline === pipeline) { await loadRun(run.run_id); $("mode-source-status").textContent = "Source saved."; }
+      } catch (error) { $("mode-source-status").textContent = error.message; }
     });
     window.ZetImageInput.attach($("source-paste"), $("source-file"));
     $("source-paste").addEventListener("paste", (event) => {

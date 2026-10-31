@@ -2,6 +2,17 @@
 
 ## Completed-view re-evaluation (2026-10-31)
 
+Post-deployment follow-up exposed a second batch-wide guard in the outer action
+dispatcher. The initial disposable service check called `reevaluate` directly and
+missed that wrapper. The corrected disposable check passes through `action` and
+the FastAPI route: completed Final LEFT_PROFILE succeeds with unrelated slot work
+pending, while active RIGHT_PROFILE remains blocked. The live request was rejected
+before creating an evaluation; the running release needs the dispatcher correction.
+ConfigService also blocked a direct production recovery command in worker mode;
+that safeguard was preserved.
+The follow-up `npm.cmd run test:e2e` passed all four scenarios (45.5s); the
+disposable full-route check, Python syntax and `git diff --check` also passed.
+
 All four approved fast E2E scenarios passed (`npm.cmd run test:e2e`, 45.6s).
 Disposable service checks covered scoped eligibility, mode isolation, detail
 projection, action dispatch, existing protection calls and retained human review.

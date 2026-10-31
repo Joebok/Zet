@@ -299,6 +299,7 @@
               </div>
               <div id="local-pipeline-locked-source" hidden>
                 <label>Source phase<select id="local-pipeline-source-phase"></select></label>
+                <label>Source pipeline<select id="local-pipeline-source-pipeline"><option value="head-image">Head Image</option><option value="head-image-edit" selected>Head Image Edit</option></select></label>
                 <div id="local-pipeline-locked-preview" class="muted">Choose a source phase.</div>
               </div>
             </div>
@@ -315,6 +316,18 @@
           <label>Aspect ratio<input id="local-pipeline-aspect-ratio" value="2:3" required></label>
           <span id="local-pipeline-size-preview" role="status"></span>
         </div>
+        <section id="local-pipeline-mode-source" class="control-panel" hidden>
+          <h3 id="local-pipeline-mode-source-title">Phase-change FRONT source</h3>
+          <div id="local-pipeline-mode-source-current"></div>
+          <label>Source type<select id="local-pipeline-mode-source-kind"><option value="locked">Locked FRONT from another phase</option><option value="upload">Upload or paste FRONT</option></select></label>
+          <label>Source phase<select id="local-pipeline-mode-source-phase"></select></label>
+          <label>Source pipeline<select id="local-pipeline-mode-source-pipeline"><option value="head-image">Head Image</option><option value="head-image-edit">Head Image Edit</option></select></label>
+          <div id="local-pipeline-mode-source-preview" class="muted"></div>
+          <label>Upload FRONT<input id="local-pipeline-mode-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <div id="local-pipeline-mode-source-paste" contenteditable="true" role="textbox" aria-label="Paste FRONT source">Paste a FRONT image here</div>
+          <button id="local-pipeline-mode-source-save" type="button">Save source</button>
+          <p id="local-pipeline-mode-source-status" role="status"></p>
+        </section>
         <section id="local-pipeline-selected" class="local-pipeline-selected" aria-label="Selected views"></section>
         <section id="local-pipeline-views" class="local-pipeline-views"></section>
       </div>

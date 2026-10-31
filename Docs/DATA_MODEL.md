@@ -1,5 +1,7 @@
 # Data, configuration, and ownership
 
+In-progress head phase-change batches may store `front_sources_by_mode` entries with a snapshot path, checksum and origin. Existing `front_source` fields retain Draft compatibility. See the [active plan](../plans/active/phase-change-mode-sources.md) for validation status.
+
 Narrative targets retain legacy `slots` and `selected_id` as Draft and use
 `final_slots` and `final_selected_id` for Final. Candidate `render_mode` defaults
 to Draft when absent; new render jobs retain frozen `render_sizing`. See the

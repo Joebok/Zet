@@ -184,7 +184,43 @@ class LocalHeadImageService:
         return {"path": str(target), "name": target.name}
 
     def _front_source_for_create(self, payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        return str(payload.get("front_source_path") or "").strip(), {}
+        phase = str(payload.get("front_source_phase") or "").strip()
+        if not phase:
+            return str(payload.get("front_source_path") or "").strip(), {}
+        return self._locked_phase_source_for_mode(payload, "draft")
+
+    def _locked_phase_source_for_mode(self, payload: dict[str, Any], mode: str) -> tuple[str, dict[str, Any]]:
+        phase = str(payload.get("front_source_phase") or "").strip()
+        character = str(payload.get("character") or "").strip()
+        target = str(payload.get("phase") or "").strip()
+        pipeline = str(payload.get("front_source_pipeline") or self.pipeline_id).strip().lower()
+        if mode not in {"draft", "final"} or pipeline not in {"head-image", "head-image-edit"}:
+            raise LocalHeadImageError("Choose a valid source pipeline and render mode.")
+        base = Path(self.app.config.base_character_path).resolve()
+        character_root = (base / character).resolve()
+        source_dir = (character_root / phase).resolve()
+        if character_root.parent != base or not phase or phase == target or source_dir.parent != character_root or not (source_dir / "Character.md").is_file():
+            raise LocalHeadImageError("Choose a different available phase of this character as the source.")
+        records = self.asset_store.locked_assets(character, phase, pipeline=pipeline, render_mode=mode)
+        record = next((item for item in records if item.get("view") == FRONT and not item.get("qualifier")), None)
+        if not record:
+            raise LocalHeadImageError(f"Lock a {mode.title()} FRONT {pipeline} image in {phase} first.")
+        if record.get("image_sha256") and self._hash(Path(record["image_path"])) != record["image_sha256"]:
+            raise LocalHeadImageError("The locked source image no longer matches its recorded checksum.")
+        return record["image_path"], {"kind": "locked_phase", "phase": phase, "pipeline": pipeline,
+                                      "render_mode": mode, "source_key": record["key"],
+                                      "asset_id": record.get("entity_library_asset_id", ""),
+                                      "candidate_id": record.get("candidate_id", ""), "batch_id": record.get("batch_id", "")}
+
+    @staticmethod
+    def mode_front_source(run: dict[str, Any], mode: str) -> dict[str, Any]:
+        record = (run.get("front_sources_by_mode") or {}).get(mode)
+        if record is not None:
+            return record
+        if mode == "draft" or not LocalHeadImageService._apply_phase_change(run):
+            return {"path": run.get("front_source") or "", "sha256": run.get("front_source_sha256") or "",
+                    "origin": run.get("front_source_origin") or {}}
+        return {}
 
     def _compile(self, run_root: Path, character: str, phase: str, view: str, references: list[dict],
                  *, apply_phase_change: bool = False, output_dir: Path | None = None) -> dict[str, Any]:
@@ -384,13 +420,71 @@ class LocalHeadImageService:
         self._write(spec_path, spec)
         return self.detail(run_id)
 
-    def front_source_path(self, run_id: str) -> Path:
+    def front_source_path(self, run_id: str, render_mode: str = "draft") -> Path:
         root = self._run_root(run_id).resolve()
         spec = self._read_json((root / "spec.json"))
-        source = Path(str(spec.get("front_source") or "")).resolve()
+        source = Path(str(self.mode_front_source(spec, render_mode).get("path") or "")).resolve()
         if not source.is_file() or not source.is_relative_to(root):
             raise LocalHeadImageError(f"Front reference image not found for batch: {run_id}")
         return source
+
+    def set_mode_front_source(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        mode = str(payload.get("render_mode") or "draft")
+        if mode not in {"draft", "final"}:
+            raise LocalHeadImageError("Choose Draft or Final.")
+        root = self._run_root(run_id)
+        self.detail(run_id)  # Complete any legacy review migration before acquiring state.lock.
+        with file_lock(root / "state.lock"):
+            run = self.detail(run_id)
+            phase = str(payload.get("front_source_phase") or "").strip()
+            if phase:
+                source_path, origin = self._locked_phase_source_for_mode({**payload, "character": run["character"], "phase": run["phase"]}, mode)
+            else:
+                source_path = str(payload.get("source_path") or "").strip()
+                origin = {"kind": "upload"}
+                upload_root = (self._workspace(run["character"], run["phase"]) / "inputs").resolve()
+                if not source_path or not Path(source_path).resolve().is_relative_to(upload_root):
+                    raise LocalHeadImageError("Choose an uploaded FRONT image or a locked source phase.")
+            source = Path(source_path).resolve()
+            if not source.is_file() or source.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"} or source.stat().st_size > 32 * 1024 * 1024:
+                raise LocalHeadImageError("The source must be an available PNG, JPEG, or WebP under 32 MB.")
+            with Image.open(source) as image:
+                image.verify()
+            digest = self._hash(source)
+            spec_path = root / "spec.json"
+            spec = self._read_json(spec_path)
+            previous = self.mode_front_source(spec, mode)
+            previous_path = Path(str(previous.get("path") or ""))
+            if previous.get("sha256") != digest or not previous_path.is_file():
+                candidates = [item for item in run["candidates"] if item.get("render_mode", "draft") == mode]
+                if any(item.get("image_path") or item.get("ask_id") or item.get("render_status") in {"QUEUED", "RUNNING"} for item in candidates):
+                    raise LocalHeadImageError(f"Clear existing {mode.title()} work before changing its source.")
+                active_reviews = run.get("final_evaluations" if mode == "final" else "evaluations") or {}
+                if any(item.get("status") in {"RUNNING", "QUEUED", "STAGING"} for item in active_reviews.values()):
+                    raise LocalHeadImageError(f"Wait for {mode.title()} review to finish before changing its source.")
+                destination = root / "inputs" / f"{mode}_front_source_{digest}{source.suffix.lower()}"
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if not destination.exists():
+                    shutil.copy2(source, destination)
+                if self._hash(destination) != digest:
+                    raise LocalHeadImageError("The source changed while it was being saved. Try again.")
+                path = str(destination)
+            else:
+                path = previous.get("path") or ""
+            record = {"path": path, "sha256": digest, "origin": {**origin, "snapshot_sha256": digest}}
+            spec.setdefault("front_sources_by_mode", {})[mode] = record
+            if mode == "draft":
+                spec.update(front_source=path, front_source_sha256=digest, front_source_origin=record["origin"])
+            self._write(spec_path, spec)
+            if previous.get("sha256") != digest:
+                state_path = root / "state.json"
+                state = self._read_json(state_path)
+                fields = ("rankings", "evaluations") if mode == "draft" else ("final_rankings", "final_evaluations")
+                if any(state.get(field) for field in fields):
+                    for field in fields:
+                        state[field] = {}
+                    self._write(state_path, state)
+        return self.detail(run_id)
 
     def list_runs(self, character: str = "", phase: str = "") -> list[dict[str, Any]]:
         result = []
@@ -909,7 +1003,7 @@ class LocalHeadImageService:
                       + ", ".join(item["candidate_id"] for item in survivors))
             try:
                 from zet.services.local_view_reference_service import custom_references
-                source = run.get("front_source") if view == FRONT else str(anchor_path)
+                source = self.mode_front_source(run, render_mode).get("path") if view == FRONT else str(anchor_path)
                 reference_images, reference_guidance = supplied_ranking_references(
                     survivors, lambda: custom_references(reference_run, view, self.pipeline_id,
                         [{"role": "head_image_source", "view": "FRONT", "path": source}] if source else []),
@@ -1214,6 +1308,7 @@ class LocalHeadImageService:
         spec_path = root / "spec.json"
         spec = self._read_json(spec_path)
         old_source = Path(str(spec.get("front_source") or "")).resolve()
+        (spec.get("front_sources_by_mode") or {}).pop("draft", None)
         spec.update(front_source=str(destination) if destination else "",
                     front_source_sha256=self._hash(destination) if destination else "",
                     apply_phase_change=apply_phase_change,

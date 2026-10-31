@@ -2711,19 +2711,19 @@ def _create_available_app(
 
 
     @app.get("/api/local/assets")
-    def list_locked_local_assets(character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
+    def list_locked_local_assets(character: str = Query(...), phase: str = Query(...), render_mode: str = Query("draft")) -> dict[str, Any]:
         try:
             library_root = Path(_app(app.state.config_path).config.base_library_path)
             service = LocalAssetStoreService(library_root)
-            return {"character": character, "phase": phase, "assets": service.locked_assets(character, phase)}
+            return {"character": character, "phase": phase, "assets": service.locked_assets(character, phase, render_mode=render_mode)}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/local/assets/{asset_key}/image")
-    def locked_local_asset_image(asset_key: str, character: str = Query(...), phase: str = Query(...)) -> FileResponse:
+    def locked_local_asset_image(asset_key: str, character: str = Query(...), phase: str = Query(...), render_mode: str = Query("draft")) -> FileResponse:
         try:
             library_root = Path(_app(app.state.config_path).config.base_library_path)
-            records = LocalAssetStoreService(library_root).locked_assets(character, phase)
+            records = LocalAssetStoreService(library_root).locked_assets(character, phase, render_mode=render_mode)
             record = next(item for item in records if item["key"] == asset_key)
             return FileResponse(record["locked_image_path"])
         except Exception as exc:

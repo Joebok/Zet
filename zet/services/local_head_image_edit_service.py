@@ -25,17 +25,13 @@ class LocalHeadImageEditService(LocalHeadImageService):
             raise LocalHeadImageError("Choose either a locked source phase or an uploaded FRONT image with Apply Phase Change.")
         if not source_phase:
             return None
-        character = str(payload.get("character") or "").strip()
-        target_phase = str(payload.get("phase") or "").strip()
-        character_root = (Path(self.app.config.base_character_path) / character).resolve()
-        source_dir = (character_root / source_phase).resolve()
-        if (source_phase == target_phase or source_dir.parent != character_root
-                or not (source_dir / "Character.md").is_file()):
-            raise LocalHeadImageError("Choose a different available phase of this character as the source.")
-        records = self.asset_store.locked_assets(character, source_phase, pipeline=self.asset_pipeline, render_mode=None)
-        return next((record for mode in ("final", "draft") for record in records
-                     if record.get("view") == "FRONT" and not record.get("qualifier")
-                     and record.get("render_mode", "draft") == mode), None)
+        try:
+            path, origin = self._locked_phase_source_for_mode(payload, "draft")
+            return {"image_path": path, "key": origin["source_key"], "entity_library_asset_id": origin["asset_id"]}
+        except LocalHeadImageError as exc:
+            if str(exc).startswith("Lock a "):
+                return None
+            raise
 
     def _ranking_guidance(self, run, view):
         from Scripts.Compile_Character_Template import load_template_sections
@@ -77,12 +73,7 @@ class LocalHeadImageEditService(LocalHeadImageService):
         source_phase = str(payload.get("front_source_phase") or "").strip()
         if not source_phase:
             return super()._front_source_for_create(payload)
-        record = self._locked_phase_source(payload)
-        if record is None:
-            raise LocalHeadImageError(
-                f"Lock a FRONT Head-Image Edit image in {source_phase} before creating this batch.")
-        return record["image_path"], {"kind": "locked_phase", "phase": source_phase,
-                                      "source_key": record["key"], "asset_id": record.get("entity_library_asset_id", "")}
+        return super()._front_source_for_create(payload)
 
     def create_run(self, payload):
         preview = self.preview(payload)

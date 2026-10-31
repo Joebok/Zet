@@ -320,10 +320,14 @@ class CharacterRenderSlots:
             preset = "comfyui-qwen-body-reference-edit" if refs else "comfyui-qwen-body-reference-text"
         elif pipeline in {"head-image", "head-image-edit"}:
             anchor = next((c for c in run["candidates"] if c["candidate_id"] == run.get("front_anchor")), {})
-            source = run.get("front_source") if view == "FRONT" else anchor.get("image_path")
+            mode_source = self.adapter.mode_front_source(run, render_mode or "draft")
+            if view == "FRONT" and render_mode == "final" and run.get("apply_phase_change") and not mode_source.get("path"):
+                raise ValueError("Choose a Final phase-change FRONT source before rendering.")
+            source = mode_source.get("path") if view == "FRONT" else anchor.get("image_path")
             refs = [{"role": "head_image_source", "path": source,
                      **({"render_mode": anchor.get("render_mode", "draft")} if view != "FRONT" else {})}] if source else []
-            refs = custom_references(run, view, pipeline, refs)
+            if view != "FRONT" or not run.get("apply_phase_change"):
+                refs = custom_references(run, view, pipeline, refs)
             path = output / "Final_Image_Prompt.md"
             if recompile or not path.is_file():
                 compiled = self.adapter._compile(root, run["character"], run["phase"], view, refs,
@@ -389,6 +393,10 @@ class CharacterRenderSlots:
         return saved
 
     def _prerequisite(self, run: dict, view: str, render_mode: str | None = None) -> str:
+        if (self.workflow.pipeline in {"head-image", "head-image-edit"} and view == "FRONT"
+                and render_mode == "final" and run.get("apply_phase_change")
+                and not self.adapter.mode_front_source(run, "final").get("path")):
+            return "Choose a Final phase-change FRONT source before rendering."
         if render_mode is not None:
             from zet.services.local_view_reference_service import selected_run_for_mode
             run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final")

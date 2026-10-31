@@ -66,3 +66,22 @@ Production deployment and live ranking require separate authorization under
 AGENTS.md external-write rules. No live queue, candidate, image or selection was
 changed. The live missing historical handoff remains unproven; the completed
 view now has an explicit recovery action once the fix is deployed.
+
+## Follow-up after deployment (2026-10-31)
+The live Final LEFT_PROFILE request returned 409, "Wait for submitted slot renders
+to start and finish." The outer `action` dispatcher still included `reevaluate`
+in its batch-wide slot exclusion; the earlier disposable test called `reevaluate`
+directly and missed this wrapper. Removed that action from the outer exclusion;
+`reevaluate` retains the shared scope-aware validation. The disposable check now
+exercises both the full dispatcher and FastAPI route, allowing completed Final
+LEFT_PROFILE and rejecting active RIGHT_PROFILE with unrelated work still pending.
+
+The user authorized live re-evaluation after deploying. No new evaluation was
+created: the deployed API rejected the request, and a one-off shared-service call
+was blocked by ConfigService's issue-worker production-configuration guard. That
+guard was preserved. The additional one-line correction requires deployment
+before the live re-evaluation can proceed. `npm.cmd run test:e2e` passed all four
+approved scenarios (45.5s). The disposable full-dispatcher/FastAPI route check,
+Python syntax and `git diff --check` passed. Final review confirmed the sole code
+change removes the redundant dispatcher guard for Re-evaluate; no production
+release, queue or candidate data was changed.
