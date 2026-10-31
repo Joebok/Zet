@@ -1,6 +1,6 @@
 # Local character assets
 
-Phase-change source separation is being implemented for Head Image and Head Image Edit: each render mode can use its own uploaded or matching-mode locked FRONT from either head pipeline. Legacy sources are Draft. The hosted runtime and existing-batch configuration remain unverified; see the [active plan](../../plans/active/phase-change-mode-sources.md).
+Head Image and Head Image Edit phase changes use independent Draft and Final sources. Each mode can use an upload or a matching-mode locked FRONT from either head pipeline in another phase. Legacy sources are Draft. The hosted Tsaeytte Youth batch has been configured with the corresponding Adult locks; see the [active plan](../../plans/active/phase-change-mode-sources.md) for remaining validation.
 
 Shared slot recovery reattaches current candidates affected by the historical render-wait timeout to their original queued requests, or restores successful harvested images to review eligibility. It checks slot membership, request identity and receipts before changing state.
 
@@ -21,6 +21,13 @@ resumes unpaused slot work even when the shared Draft batch status is Complete.
 The collector releases the run-state lock between candidates and rechecks pause
 and current pending membership before each transaction. A lock timeout returns
 HTTP 409 with retry guidance rather than a misleading missing-batch 404.
+
+Mode progress treats an available nonempty image as completed render evidence,
+even when a retained candidate still has an old RUNNING or FAILED label. Explicit
+pending slot membership still counts as active work until the collector settles
+it. This matches detail's image-first projection and prevents historical render
+labels from keeping a fully selected Draft batch actionable after override imports.
+Draft and Final pending work remain independent.
 
 Draft and Final rankings are independent. Multi-candidate ranking compares an
 available locked Draft for the same pipeline and view, including the costume for
