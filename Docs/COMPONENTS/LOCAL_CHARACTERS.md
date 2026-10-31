@@ -410,7 +410,16 @@ inputs, reference previews and reference hashes so pending candidates do not sho
 references from discarded renders. Without Recompile, resetting leaves saved prompt text unchanged;
 render Retry continues to replay its frozen inputs and seed.
 
-Re-evaluate is the single dashboard evaluation action for all four pipelines. [LocalImagePipelineWorkflowService.reevaluate](../../zet/services/local_image_workflow_service.py) refreshes Luna ranking and AI prompt-improvement observations for existing harvested images, for one view or every rendered view in the batch. Unrendered views are skipped. It preserves human decisions, notes and selections and does not invoke the render runner or retired defect gates. Existing active ranking/observation work is reused; completed evaluation records receive a new identity and late updates remain fenced. The separate Rank images/Re-rank and Re-analyze buttons are removed; ranking and observations remain visible.
+Re-evaluate is the single dashboard ranking action for all five pipelines. [LocalImagePipelineWorkflowService.reevaluate](../../zet/services/local_image_workflow_service.py) refreshes Luna ranking for existing harvested images, for one view or every rendered view in the batch. AI Observations run separately through their explicit action. Unrendered views are skipped. It preserves human decisions, notes and selections and does not invoke the render runner or retired defect gates. Existing active ranking work is reused; completed evaluation records receive a new identity and late updates remain fenced. The separate Rank images/Re-rank and Re-analyze buttons are removed; ranking and observations remain visible.
+
+View-scoped Re-evaluate waits for renders in that view and render mode; independent
+slot renders in other views or modes do not block it. The batch action still waits
+for all pending slot renders. Stopped/paused batches and active legacy batch
+execution remain blocked. `reevaluation_reason` owns these checks for both action
+validation and the transient `reevaluation_reasons_by_mode` detail projection;
+the dashboard uses the reasons for disabled controls and tooltips, including after
+polling. A review with no saved ranking displays "Ranking not queued" with the
+view action as recovery guidance; queued/running advice displays its current state.
 
 Explicit Re-evaluate refreshes candidate file bookkeeping through
 [reconcile_candidate_harvest](../../zet/services/image_harvest_service.py). Under

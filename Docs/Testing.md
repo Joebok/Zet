@@ -1,5 +1,21 @@
 # Local testing
 
+## Completed-view re-evaluation (2026-10-31)
+
+All four approved fast E2E scenarios passed (`npm.cmd run test:e2e`, 45.6s).
+Disposable service checks covered scoped eligibility, mode isolation, detail
+projection, action dispatch, existing protection calls and retained human review.
+Prepared Chromium checks covered all five pipeline pages: completed-view enablement
+while another view renders, disabled batch/active-view actions, Final request scope,
+missing/queued/completed ranking messages, Draft/Final advice isolation and
+eligibility updates through polling. No page errors occurred. Python/JavaScript
+syntax and `git diff --check` passed. No permanent scenarios were added.
+
+Read-only inspection of the reported Head-Image Edit batch found eight available
+Final LEFT_PROFILE images and no Final evaluation/ranking, with other views still
+rendering. The original missing handoff remains unproven. These checks do not
+establish hosted deployment or live Luna execution; both require separate approval.
+
 ## Long-running render queues (2026-10-31)
 
 The approved fast Zet scenarios passed (four scenarios, 42.3 seconds) and the existing AI_Proxy file-job, dashboard and ComfyUI settlement scenarios passed (three scenarios). Disposable checks exercised queued and retained-answer reattachment, successful-image recovery, missing evidence, repeated recovery, stopped and detached candidates, deletion and replaced attempts. Isolated checks exercised ready, busy, unresolved, recovered and stale heartbeat status. Disposable Chromium checks exercised candidate status labels, unavailable proxy, 30-second polling, hidden-page suspension and refresh on return. These checks used prepared local fixtures; they did not deploy or run live models. The affected production batch requires reconciliation after a separately authorized update.

@@ -301,7 +301,9 @@
     $("stop").disabled = !isBusy;
     $("stop").textContent = run?.slot_render_ids?.length ? "Pause batch" : "Stop batch";
     $("rerun").disabled = !run || isBusy;
-    $("reevaluate").disabled = !run || isBusy || !(run.candidates || []).some((item) => item.image_path && (item.render_mode || "draft") === state.renderMode);
+    const reevaluateReason = run?.reevaluation_reasons_by_mode?.[state.renderMode]?.batch ?? "Re-evaluation availability is loading.";
+    $("reevaluate").disabled = Boolean(reevaluateReason);
+    $("reevaluate").title = reevaluateReason;
     $("prompt-improvement-package").hidden = !run;
     if (run) $("prompt-improvement-package").href = route("prompt-improvement-package", run.run_id);
     $("delete").disabled = !run || isBusy;
@@ -660,7 +662,7 @@
     state.run = latest;
     $("saved-style").textContent = latest.universe_style_variant ? `Batch style: ${latest.universe_style_variant}` : "Batch style: canonical";
     window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id), frontRenderControl);
-    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.final_rankings, run?.final_evaluations, run?.selected_views_by_mode, run?.local_assets, run?.locked_draft_comparisons, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
+    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.reevaluation_reasons_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.final_rankings, run?.final_evaluations, run?.selected_views_by_mode, run?.local_assets, run?.locked_draft_comparisons, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
     const replacement = document.createElement("div");
     if (changed) renderViews(modeRun(latest), replacement);
@@ -949,7 +951,8 @@
       }
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !candidates.some((item) => item.render_status === "FAILED"), view });
-      addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || (!isCostume() && !viewReady) || !candidates.some((item) => item.image_path), view });
+      const reevaluateReason = run.reevaluation_reasons_by_mode?.[state.renderMode]?.views?.[view] ?? "Re-evaluation availability is loading.";
+      addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: Boolean(reevaluateReason), view, title: reevaluateReason });
       addButton(viewActions, "Delete Draft images", "delete-drafts", { disabled: state.bulkActionPending, view });
       addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
       const ai = run.view_reviews?.[view]?.ai_observations || {};
@@ -1752,7 +1755,8 @@
     rankingInfo.textContent = ranking.status === "STALE"
       ? `Luna ranking stale · ${ranking.stale_reason || "Review inputs changed"}${rankingPosition >= 0 ? ` · Previous rank #${rankingPosition + 1}` : ""}`
       : ranking.status === "FAILED" ? `Luna ranking failed · ${ranking.error || "No details available"}`
-        : rankingPosition >= 0 ? `Luna rank #${rankingPosition + 1}${rankEntry?.reason ? ` · ${rankEntry.reason}` : ""}` : "";
+        : rankingPosition >= 0 ? `Luna rank #${rankingPosition + 1}${rankEntry?.reason ? ` · ${rankEntry.reason}` : ""}`
+          : `Luna ranking · ${evaluationLabels[run.evaluations?.[candidate.view]?.ranking_status] || evaluationLabels[ranking.status] || evaluationLabels[run.evaluations?.[candidate.view]?.status] || "Ranking not queued. Use Re-evaluate for this view."}`;
     const analysis = document.createElement("div");
     analysis.className = "local-pipeline-review-analyses";
     if (state.pipeline === "body-reference") {

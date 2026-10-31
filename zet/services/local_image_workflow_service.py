@@ -18,6 +18,28 @@ class LocalImageWorkflowError(ValueError):
     pass
 
 
+def reevaluation_reason(run: dict[str, Any], view: str = "", render_mode: str = "draft") -> str:
+    """Scope independent slot work to a view while retaining batch-runner exclusion."""
+    from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
+
+    if run.get("stop_requested") or run.get("slot_paused") or run.get("status") in {"CANCELLED", "STOPPED"}:
+        return "Resume the stopped batch before re-evaluating."
+    if run.get("status") in ACTIVE_RUN_STATUSES or run.get("slot_work_pending"):
+        return "Wait for current renders to finish before re-evaluating."
+    pending = set(run.get("slot_render_ids") or [])
+    candidates = [item for item in run.get("candidates", [])
+                  if (not view or item.get("view") == view)
+                  and item.get("render_mode", "draft") == render_mode]
+    if (not view and pending) or any(
+        item.get("candidate_id") in pending or item.get("render_status") in {"QUEUED", "RUNNING"}
+        for item in candidates
+    ):
+        return "Wait for current renders to finish before re-evaluating."
+    if not any(Path(str(item.get("image_path") or "")).is_file() for item in candidates):
+        return "No rendered images are available to re-evaluate."
+    return ""
+
+
 def read_proxy_health(control: Path) -> dict[str, str]:
     try:
         health = json.loads(control.read_text(encoding="utf-8"))
@@ -452,6 +474,11 @@ class LocalImagePipelineWorkflowService:
                 candidate["image_path"] = ""
         from zet.services.local_mode_progress_service import progress_by_mode
         presented["progress_by_mode"] = progress_by_mode(presented)
+        presented["reevaluation_reasons_by_mode"] = {
+            mode: {"batch": reevaluation_reason(presented, render_mode=mode),
+                   "views": {view: reevaluation_reason(presented, view, mode) for view in presented.get("views", [])}}
+            for mode in ("draft", "final")
+        }
         for mode, progress in presented["progress_by_mode"].items():
             pending = set(presented.get("slot_render_ids") or [])
             candidates = {c["candidate_id"]: c for c in presented.get("candidates") or []}
@@ -489,20 +516,18 @@ class LocalImagePipelineWorkflowService:
     def reevaluate(self, run_id: str, view: str = "", *, costume: str = "", render_mode: str = "draft") -> dict[str, Any]:
         """Refresh ranking using existing harvested images; observations are opt-in."""
         from zet.services.image_harvest_service import reconcile_candidate_harvest
-        from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
         from zet.services.local_image_evaluation_service import mode_field
         from zet.services.local_view_reference_service import selected_run_for_mode
 
         mode_field("rankings", render_mode)
 
         run = self.prompt_improvement.detail(run_id, costume)
-        if run.get("status") in ACTIVE_RUN_STATUSES or run.get("slot_work_pending") or run.get("slot_render_ids"):
-            raise LocalImageWorkflowError("Wait for current renders to finish before re-evaluating.")
-        if run.get("stop_requested") or run.get("status") in {"CANCELLED", "STOPPED"}:
-            raise LocalImageWorkflowError("Resume the stopped batch before re-evaluating.")
         view = str(view or "").strip().upper()
         if view and view not in run.get("views", []):
             raise LocalImageWorkflowError(f"Unknown local batch view: {view}")
+        reason = reevaluation_reason(run, view, render_mode)
+        if reason:
+            raise LocalImageWorkflowError(reason)
         images = [item for item in run.get("candidates", [])
                   if (not view or item["view"] == view)
                   and item.get("render_mode", "draft") == render_mode
