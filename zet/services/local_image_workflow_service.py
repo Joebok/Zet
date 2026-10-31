@@ -398,6 +398,13 @@ class LocalImagePipelineWorkflowService:
         """Return loaded workflow state in the same shape for detail and mutation routes."""
         presented = self.prompt_improvement.project(run)
         presented = self.slots.detail(presented)
+        pipeline = getattr(self.adapter, "asset_pipeline", None) or getattr(self.adapter, "definition", {}).get("asset_pipeline", self.pipeline)
+        qualifier = self.adapter._qualifier(str(presented.get("costume") or "")) if self.pipeline == "costume-dressing" else ""
+        records = self.adapter.asset_store.locked_assets(presented["character"], presented["phase"], pipeline, qualifier, render_mode="draft")
+        presented["locked_draft_comparisons"] = {
+            item["view"]: {"key": item["key"], "image_sha256": item.get("image_sha256", "")}
+            for item in records if str(item.get("qualifier") or "").casefold() == qualifier.casefold()
+        }
         for candidate in presented.get("candidates", []):
             image_path = str(candidate.get("image_path") or "")
             available = bool(image_path and Path(image_path).is_file())

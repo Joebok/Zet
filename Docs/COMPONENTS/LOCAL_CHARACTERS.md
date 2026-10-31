@@ -2,9 +2,11 @@
 
 Draft and Final rankings are independent. Multi-candidate ranking compares an
 available locked Draft for the same pipeline and view, including the costume for
-Dressing. Luna weighs fidelity alongside existing quality criteria. Changed
-comparison evidence makes saved advice stale; Re-evaluate refreshes the displayed
-mode. Single-candidate rankings remain deterministic.
+Dressing. For Body-Reference Final rankings, Luna compares body matching and
+ignores mannequin-head differences from the Draft. Luna weighs fidelity alongside
+existing quality criteria. Changed comparison evidence makes saved advice stale;
+Re-evaluate refreshes the displayed mode. Single-candidate rankings remain
+deterministic.
 
 ## Draft and Final rendering
 
@@ -673,3 +675,5 @@ Head Image Edit phase-source selection follows the same preference.
 Matching resumable Minor Character preparation and review continuations are
 cancelled with the Drafts; attributed queued AI requests are fenced too. Older
 in-flight requests without workflow attribution cannot be identified individually.
+
+Candidate review can display the current view’s locked Draft snapshot, including locks from another batch. This is display-only and does not change selections, rankings, or render inputs. Minor Character reviews similarly use their workspace’s matching Draft lock.

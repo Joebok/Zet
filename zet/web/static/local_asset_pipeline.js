@@ -26,7 +26,7 @@
   };
   const activeStatuses = new Set(["PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"]);
   const state = { pipeline: "", generation: 0, run: null, runs: [], reviewCandidates: [], reviewIndex: -1,
-    frontSourcePath: "", poll: null, previewGeneration: 0, sourcePreviewGeneration: 0, contextKey: "", compareOpposite: false,
+    frontSourcePath: "", poll: null, previewGeneration: 0, sourcePreviewGeneration: 0, contextKey: "", comparisonChoice: "front",
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
     runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false, bulkActionPending: false,
     costumeSettingsDrafts: {}, seedSources: {}, renderMode: "draft" };
@@ -624,7 +624,7 @@
     state.run = latest;
     $("saved-style").textContent = latest.universe_style_variant ? `Batch style: ${latest.universe_style_variant}` : "Batch style: canonical";
     window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id), frontRenderControl);
-    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.final_rankings, run?.final_evaluations, run?.selected_views_by_mode, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
+    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.final_rankings, run?.final_evaluations, run?.selected_views_by_mode, run?.local_assets, run?.locked_draft_comparisons, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
     const replacement = document.createElement("div");
     if (changed) renderViews(modeRun(latest), replacement);
@@ -1554,6 +1554,15 @@
     finally { state.reviewActionPending = false; reviewPending(); }
   }
 
+  const failedComparisons = new Set();
+  function refreshComparison() {
+    const decision = $("review-panel").querySelector('input[name="local-human-decision"]:checked')?.value;
+    renderReview();
+    if (decision) {
+      const radio = $("review-panel").querySelector(`input[name="local-human-decision"][value="${decision}"]`);
+      if (radio) radio.checked = true;
+    }
+  }
   function renderReview() {
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
@@ -1571,27 +1580,32 @@
     const oppositeId = oppositeView && selectedViews[oppositeView];
     const opposite = oppositeId && candidates.find((item) => item.candidate_id === oppositeId
       && item.view === oppositeView && item.image_path);
-    const toggleLabel = $("review-toggle-label");
+    const draft = state.run.locked_draft_comparisons?.[candidate.view];
+    const options = [];
+    if (front && front.candidate_id !== candidate.candidate_id) options.push({id: "front", label: "Selected FRONT", src: imageUrl(front)});
+    if (opposite) options.push({id: "opposite", label: `Selected ${oppositeView}`, src: imageUrl(opposite)});
+    if (draft) {
+      const params = new URLSearchParams({character: state.run.character, phase: state.run.phase, v: draft.image_sha256 || ""});
+      options.push({id: "draft", label: `Locked Draft · ${candidate.view}`, src: universeImageUrl(`/api/local/assets/${encodeURIComponent(draft.key)}/image?${params}`)});
+    }
     const toggle = $("review-toggle");
-    toggleLabel.hidden = !oppositeView;
-    toggle.disabled = !opposite;
-    toggle.checked = state.compareOpposite && Boolean(opposite);
-    const comparison = toggle.checked ? opposite : front;
-    $("review-compare-title").textContent = toggle.checked ? `Selected ${oppositeView}` : "Selected FRONT";
+    const available = options.filter(item => !failedComparisons.has(item.src));
+    const comparison = available.find(item => item.id === state.comparisonChoice) || available[0];
+    state.comparisonChoice = comparison?.id || "front";
+    toggle.replaceChildren(...available.map(item => new Option(item.label, item.id)));
+    toggle.value = state.comparisonChoice;
+    $("review-toggle-label").hidden = available.length < 2;
+    $("review-compare-title").textContent = comparison?.label || "Comparison";
     const compareImage = $("review-compare-image");
     if (comparison) {
-      compareImage.src = imageUrl(comparison);
-      compareImage.alt = `${toggle.checked ? `Selected ${oppositeView}` : "Selected FRONT"} ${comparison.candidate_id}`;
+      compareImage.onerror = () => { failedComparisons.add(comparison.src); refreshComparison(); };
+      compareImage.src = comparison.src;
+      compareImage.alt = comparison.label;
       compareImage.hidden = false;
-      $("review-compare-empty").hidden = true;
-    } else {
-      compareImage.removeAttribute("src");
-      compareImage.hidden = true;
-      $("review-compare-empty").hidden = false;
-      $("review-compare-empty").textContent = "No selected FRONT image is available for comparison.";
-    }
-    $("review-compare-image").closest("figure").hidden = !comparison;
-    $("review-compare-image").closest(".local-pipeline-review-comparison").classList.toggle("single-image", !comparison);
+    } else { compareImage.removeAttribute("src"); compareImage.hidden = true; }
+    $("review-compare-empty").hidden = true;
+    compareImage.closest("figure").hidden = !comparison;
+    compareImage.closest(".local-pipeline-review-comparison").classList.toggle("single-image", !comparison);
     const reviewImage = $("review-image");
     reviewImage.hidden = !candidate.image_path;
     if (candidate.image_path) reviewImage.src = imageUrl(candidate);
@@ -1806,7 +1820,7 @@
     state.reviewCandidates = orderedReviewCandidates();
     state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
     if (state.reviewIndex < 0) return;
-    state.compareOpposite = false;
+    state.comparisonChoice = "front";
     delete $("review-panel").dataset.candidate;
     reviewOrigin = { element: document.activeElement, candidateId, x: scrollX, y: scrollY };
     renderReview();
@@ -2084,7 +2098,7 @@
       }
     });
     $("review-task").addEventListener("click", () => void window.ZetTaskCapture.open());
-    $("review-toggle").addEventListener("change", () => { state.compareOpposite = $("review-toggle").checked; renderReview(); });
+    $("review-toggle").addEventListener("change", () => { state.comparisonChoice = $("review-toggle").value; refreshComparison(); });
     $("review-prev").addEventListener("click", () => { void navigateReview(-1); });
     $("review-next").addEventListener("click", () => { void navigateReview(1); });
     $("review-prev-view").addEventListener("click", () => { void navigateReviewView(-1); });

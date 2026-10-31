@@ -279,6 +279,8 @@
       addCandidate(styleSelection(),"Selected style alignment");
       for (const other of character.views.filter(v=>v!=="STYLE" && v!==view)) addCandidate(selections()[other],`Selected ${label(other).toLowerCase()}`);
     }
+    const draft = character.locked?.[view];
+    if (draft?.image_url) result.push({id: `locked-draft:${view}`, source: draft.image_url, caption: `Locked Draft · ${label(view)}`});
     return result;
   }
   function renderReview() {

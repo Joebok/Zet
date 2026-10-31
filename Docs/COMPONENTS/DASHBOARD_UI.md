@@ -234,3 +234,5 @@ Narrative places source linking before authoring. Linking mode selectively expos
 ## Environmental universe style (2026-10-30)
 
 Universe settings and creation expose Environmental style. Image Generation persists a canonical/environmental choice with its form; Add Universe art style uses that choice. Minor Characters and character batch creation expose independent universe-style selectors.
+
+Character pipeline candidate reviews offer available selected FRONT, opposite-side, and matching locked Draft comparisons. The comparison choice follows view navigation and polling. Minor Character review includes the matching private Draft lock in its comparison carousel.

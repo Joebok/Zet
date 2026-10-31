@@ -69,6 +69,14 @@ def supplied_ranking_references(
             images.append(path)
             indices[key] = len(images)
         if comparison.get("kind") == "locked_draft":
+            if comparison.get("body_only"):
+                labels.append(
+                    f"Ranking-only comparison: image {indices[key]} is the locked Draft for this view. "
+                    "Compare the candidates to its body only, including body proportions, anatomy and silhouette. "
+                    "Ignore differences in the mannequin head when matching to the Draft; do not reward or "
+                    "penalize head matching. Explain meaningful body matches, drift and quality tradeoffs. "
+                    "This comparison is not necessarily a render input.")
+                continue
             labels.append(
                 f"Ranking-only comparison: image {indices[key]} is the locked Draft for this view. "
                 "Consider fidelity to its visible identity, design, proportions and details an important "

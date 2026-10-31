@@ -1773,11 +1773,15 @@ class LocalBodyReferenceService:
                     survivors, lambda: custom_references(reference_run, view, "body-reference",
                         [{"role": "body_reference_front_anchor", "view": "FRONT", "path": str(anchor_image)}]
                         if view != FRONT_VIEW and anchor_image else []),
-                    comparisons=[draft_comparison] if draft_comparison else [])
+                    comparisons=[{**draft_comparison, "body_only": True} if render_mode == "final" else draft_comparison]
+                    if draft_comparison else [])
                 prompt = (
                     "Rank all rendered body-reference candidates from best to worst. Human review is an independent advice signal; assess every image on its visual merits. Compare them against one another; do not turn minor "
                     "imperfections into automatic failures. Favor the requested canonical view, complete readable "
-                    "silhouette, believable anatomy, proportions, mannequin head, and technical reference usefulness. "
+                    "silhouette, believable anatomy, proportions, "
+                    + ("and technical body-reference usefulness. Judge matching on the body only; ignore "
+                       "mannequin head differences between the Final candidates and the Draft. "
+                       if render_mode == "final" else "mannequin head, and technical reference usefulness. ")
                     + "Return every candidate exactly once with a concise comparative reason.\n\n"
                     + "Requested view: " + view + "\n"
                     + "View definition: " + CANONICAL_VIEW_DEFINITIONS.get(view, "") + "\n"

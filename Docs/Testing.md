@@ -1,5 +1,9 @@
 # Local testing
 
+## Locked draft review comparisons (2026-10-31)
+
+The four approved fast E2E scenarios passed (45.7s). A disposable scoped projection check and syntax checks passed. Disposable Chromium checks exercised the chooser across all five pipelines, view changes, unsaved decision retention, failed-image fallback, and the Minor Character review and STYLE comparison. A temporary-store check covered costume isolation, other-batch locks, unlocked records, and missing snapshots. Browser checks used prepared responses and instrumented controller access.
+
 ## Locked Draft comparison and mode-scoped rankings (2026-10-31)
 
 All four approved fast scenarios passed (`npm.cmd run test:e2e`, 43.8s).
