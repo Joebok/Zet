@@ -43,16 +43,17 @@ def reconcile_candidate_harvest(app, read_run, run, candidates):
                 raise ValueError("Harvested image is outside its candidate batch")
             evidence = require_candidate_harvest(app, current, saved)
             evidence["sha256"] = hashlib.sha256(image.read_bytes()).hexdigest()
-            if (saved.get("image_sha256") != evidence["sha256"]
-                    or saved.get("status") in {"PENDING", "QUEUED", "RUNNING", "FAILED"}):
-                recovered[saved["candidate_id"]] = evidence["sha256"]
+            # Detail projections can already hide an obsolete render failure.
+            # Explicit reconciliation also repairs its persisted bookkeeping.
+            recovered[saved["candidate_id"]] = evidence["sha256"]
         if recovered:
             def commit(state):
                 for candidate_id, digest in recovered.items():
                     saved = state.setdefault("candidates", {}).setdefault(candidate_id, {})
                     saved["image_sha256"] = digest
+                    saved["render_error"] = ""
                     if saved.get("status") in {"PENDING", "QUEUED", "RUNNING", "FAILED"}:
-                        saved.update(status="WAITING_FOR_HUMAN_REVIEW", render_error="")
+                        saved.update(status="WAITING_FOR_HUMAN_REVIEW")
             mutate_local_run_state(root, commit)
         return read_run()
 

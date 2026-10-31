@@ -170,6 +170,7 @@ def decorate_local_pipeline_detail(run: dict[str, Any], pipeline: str) -> dict[s
         image = Path(str(candidate.get("image_path") or ""))
         if image.is_file() and image.stat().st_size > 0:
             render_status = "COMPLETE"
+            candidate["render_error"] = ""
         elif candidate.get("render_error"):
             render_status = "FAILED"
         elif candidate.get("status") == "RUNNING":

@@ -695,3 +695,19 @@ cancelled with the Drafts; attributed queued AI requests are fenced too. Older
 in-flight requests without workflow attribution cannot be identified individually.
 
 Candidate review can display the current view’s locked Draft snapshot, including locks from another batch. This is display-only and does not change selections, rankings, or render inputs. Minor Character reviews similarly use their workspace’s matching Draft lock.
+
+## Render slot waiting and late images (2026-10-31)
+
+`CharacterRenderSlots.collect` allows one hour from submission before its fallback
+timeout, including queue time. Known unfinished requests remain pending through
+the shared AI job service even beyond that grace period; provider errors and
+missing asks still surface normally. This applies to both Draft and Final slots.
+The shared detail projection clears render errors when a nonempty image is
+available, including images harvested after an earlier timeout. Explicit harvest
+reconciliation also clears the persisted render error, even when the saved hash
+and status already match. Review errors remain independent.
+
+Disposable isolated checks covered the grace period, pending-job guard, timeout,
+provider failure, late completion, missing/empty images and persisted recovery.
+All four approved fast E2E scenarios passed (47.2s). No live renders or production
+state edits were performed; these results do not establish hosted deployment.

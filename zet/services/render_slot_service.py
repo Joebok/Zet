@@ -633,7 +633,10 @@ class CharacterRenderSlots:
                                     raise ValueError(answer.get("error_message") or "Render ask is missing. Use Retry to resubmit it.")
                                 else:
                                     queued_at = datetime.fromisoformat(candidate["queued_at"])
-                                    if (datetime.now(queued_at.tzinfo) - queued_at).total_seconds() > 1860:
+                                    # Queue time counts toward the one-hour grace period.
+                                    # Known unfinished asks remain owned by AI_Proxy.
+                                    if ((datetime.now(queued_at.tzinfo) - queued_at).total_seconds() > 3600
+                                            and not self.adapter.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(candidate["ask_id"])):
                                         raise ValueError("Timed out waiting for the render. Use Retry after checking AI_Proxy.")
                                     updates = {"status": "RUNNING" if status == "RUNNING" else "QUEUED"}
                                 self._update(run_id, cid, costume, updates)
