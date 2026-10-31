@@ -4,9 +4,24 @@ from __future__ import annotations
 from zet.services.llm_role_service import resolve_role_model
 
 from collections.abc import Callable
+import hashlib
 from pathlib import Path
 
 from zet.services.candidate_review_contract import validate_ranking
+
+
+def locked_draft_comparison(store, run: dict, pipeline: str, view: str, qualifier: str = "") -> dict | None:
+    """Resolve the exact available Draft lock used as ranking-only evidence."""
+    records = store.locked_assets(run["character"], run["phase"], pipeline, qualifier, render_mode="draft")
+    record = next((item for item in records if item.get("view") == view
+                   and str(item.get("qualifier") or "").casefold() == qualifier.casefold()), None)
+    if not record:
+        return None
+    path = Path(record["image_path"])
+    return {"kind": "locked_draft", "path": str(path),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "candidate_id": record.get("candidate_id", ""), "batch_id": record.get("batch_id", ""),
+            "view": view}
 
 
 def supplied_ranking_references(
@@ -53,6 +68,14 @@ def supplied_ranking_references(
         if key not in indices:
             images.append(path)
             indices[key] = len(images)
+        if comparison.get("kind") == "locked_draft":
+            labels.append(
+                f"Ranking-only comparison: image {indices[key]} is the locked Draft for this view. "
+                "Consider fidelity to its visible identity, design, proportions and details an important "
+                "factor alongside view accuracy, anatomy, source preservation and image quality. "
+                "Explain meaningful matches, drift and quality tradeoffs in the ranking reasons. "
+                "This comparison is not necessarily a render input.")
+            continue
         labels.append(
             f"Ranking-only comparison: image {indices[key]} is selected FRONT Assembly "
             f"{comparison['candidate_id']}. Prioritize matching its head-to-body proportions and identity "

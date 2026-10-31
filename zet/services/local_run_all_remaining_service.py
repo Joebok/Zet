@@ -87,7 +87,7 @@ class LocalRunAllRemainingService:
                         continue
                     state_path = Path(run["root"]) / "state.json"
                     state = self._read(state_path)
-                    if not run.get("stop_requested") and (state.get("slot_render_ids") or state.get("slot_review_views")):
+                    if not run.get("stop_requested") and (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):
                         LocalImagePipelineWorkflowService(self.app, self.project_root, pipeline).slots.start(run_id, kwargs.get("costume", ""))
                 except Exception:
                     continue
@@ -165,6 +165,7 @@ class LocalRunAllRemainingService:
                 kwargs = {"costume": summary.get("costume") or ""} if pipeline in {"character-assembly", "costume-dressing"} else {}
                 try:
                     adapter.reconcile_review_jobs(run_id, **kwargs)
+                    adapter.reconcile_review_jobs(run_id, render_mode="final", **kwargs)
                     run = adapter.detail(run_id, **kwargs)
                     if (run.get("slot_version") == 1 and run.get("target_candidate_ids")
                             and run.get("status") in {"QUEUED", "INTERRUPTED"}

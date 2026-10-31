@@ -451,13 +451,15 @@ class CharacterRenderSlots:
                 if len(slots) > SLOT_COUNT:
                     slots[:] = [cid for cid in slots if cid]  # Only legacy galleries compact.
                     slots.extend([None] * max(0, SLOT_COUNT - len(slots)))
+                from zet.services.local_image_evaluation_service import mode_field
+                supersede_evaluations(state, {view}, "Render slots changed.", render_mode=render_mode)
+                evaluation_field = mode_field("evaluations", render_mode)
+                if view in (state.get(evaluation_field) or {}):
+                    state[evaluation_field][view].update(evaluation_id=uuid4().hex, status="SUPERSEDED")
+                ranking = state.setdefault(mode_field("rankings", render_mode), {}).get(view)
+                if ranking:
+                    ranking.update(status="STALE", stale_reason="Render slots changed.")
                 if render_mode == "draft":
-                    supersede_evaluations(state, {view}, "Render slots changed.")
-                    if view in (state.get("evaluations") or {}):
-                        state["evaluations"][view].update(evaluation_id=uuid4().hex, status="SUPERSEDED")
-                    ranking = state.setdefault("rankings", {}).get(view)
-                    if ranking:
-                        ranking.update(status="STALE", stale_reason="Render slots changed.")
                     review = state.setdefault("view_reviews", {}).setdefault(view, {})
                     review["ai_observations"] = {"status": "PENDING", "text": "", "auto_started": False}
                 state.pop("slot_collection_error", None)
@@ -468,8 +470,8 @@ class CharacterRenderSlots:
                     pending.extend(created)
                 if old:
                     state["slot_render_ids"] = [cid for cid in state.get("slot_render_ids", []) if cid != old["candidate_id"]]
-                review_views = state.setdefault("slot_review_views", [])
-                if render_mode == "draft" and view not in review_views:
+                review_views = state.setdefault(mode_field("slot_review_views", render_mode), [])
+                if view not in review_views:
                     review_views.append(view)
                 write_library_json(root / "state.json", state, pipeline_library_root_for_path(root))
         except TimeoutError as exc:
@@ -494,7 +496,8 @@ class CharacterRenderSlots:
                             return
                         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
                         pending = list(state.get("slot_render_ids") or [])
-                        review_views = list(state.get("slot_review_views") or [])
+                        review_views = {(mode, view) for mode, field in (("draft", "slot_review_views"), ("final", "final_slot_review_views"))
+                                        for view in state.get(field) or []}
                         if not pending and not review_views:
                             return
                         changed = set()
@@ -520,8 +523,7 @@ class CharacterRenderSlots:
                                 status, answer = self.adapter._proxy_answer(candidate["ask_id"])
                                 if target.is_file():
                                     updates = {"status": "WAITING_FOR_HUMAN_REVIEW", "image_sha256": self.adapter._hash(target), "render_error": ""}
-                                    if candidate.get("render_mode", "draft") == "draft":
-                                        changed.add(candidate["view"])
+                                    changed.add((candidate.get("render_mode", "draft"), candidate["view"]))
                                     done.add(cid)
                                 elif answer.get("status") in {"ERROR", "RETRY_LATER"} or status == "UNKNOWN":
                                     raise ValueError(answer.get("error_message") or "Render ask is missing. Use Retry to resubmit it.")
@@ -534,24 +536,24 @@ class CharacterRenderSlots:
                             except Exception as exc:
                                 self._update(run_id, cid, costume, {"status": "FAILED", "render_error": str(exc)})
                                 done.add(cid)
-                                if candidate.get("render_mode", "draft") == "draft":
-                                    changed.add(candidate["view"])
+                                changed.add((candidate.get("render_mode", "draft"), candidate["view"]))
                         def finish(state):
                             state["slot_render_ids"] = [cid for cid in state.get("slot_render_ids", []) if cid not in done]
-                            views = state.setdefault("slot_review_views", [])
-                            for view in changed:
+                            for mode, view in changed:
+                                views = state.setdefault("slot_review_views" if mode == "draft" else "final_slot_review_views", [])
                                 if view not in views:
                                     views.append(view)
                         mutate_local_run_state(root, finish)
                         run = load()
-                        for view in set(review_views) | changed:
-                            draft_candidates = [c for c in run["candidates"] if c["view"] == view
-                                                and c.get("render_mode", "draft") == "draft"]
-                            if any(c.get("render_status") in {"QUEUED", "RUNNING"} for c in draft_candidates):
+                        for mode, view in review_views | changed:
+                            mode_candidates = [c for c in run["candidates"] if c["view"] == view
+                                               and c.get("render_mode", "draft") == mode]
+                            if any(c.get("render_status") in {"QUEUED", "RUNNING"} for c in mode_candidates):
                                 continue
-                            if any(Path(str(c.get("image_path") or "")).is_file() for c in draft_candidates):
-                                self.workflow.stage_view_evaluation(run_id, view, costume=costume)
-                            mutate_local_run_state(root, lambda state, view=view: state.update(slot_review_views=[v for v in state.get("slot_review_views", []) if v != view]))
+                            if any(Path(str(c.get("image_path") or "")).is_file() for c in mode_candidates):
+                                self.workflow.stage_view_evaluation(run_id, view, costume=costume, render_mode=mode)
+                            field = "slot_review_views" if mode == "draft" else "final_slot_review_views"
+                            mutate_local_run_state(root, lambda state, view=view, field=field: state.update({field: [v for v in state.get(field, []) if v != view]}))
                     time.sleep(max(.5, float(self.adapter.app.config.comfyui_poll_seconds)))
         except TimeoutError:
             return
@@ -727,7 +729,7 @@ class CharacterRenderSlots:
                     _SLOT_WORKERS.discard(key)
                 if finished and (root / "state.json").is_file():
                     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-                    if not state.get("stop_requested") and (state.get("slot_render_ids") or state.get("slot_review_views")):
+                    if not state.get("stop_requested") and (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):
                         self.start(run_id, costume)
         submit_local_pipeline_task(work)
 

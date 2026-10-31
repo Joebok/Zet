@@ -542,6 +542,9 @@ class LocalBodyReferenceService:
         value["rankings"] = state.get("rankings") or value.get("rankings") or {}
         value["view_reviews"] = state.get("view_reviews") or {}
         value["evaluations"] = state.get("evaluations") or value.get("evaluations") or {}
+        value["final_rankings"] = state.get("final_rankings") or {}
+        value["final_evaluations"] = state.get("final_evaluations") or {}
+        value["final_ranking_history"] = state.get("final_ranking_history") or {}
         value["slots_by_view"] = state.get("slots_by_view", value.get("slots_by_view", {}))
         value["final_slots_by_view"] = state.get("final_slots_by_view", value.get("final_slots_by_view", {}))
         value["final_selected_views"] = state.get("final_selected_views", value.get("final_selected_views", {}))
@@ -562,11 +565,33 @@ class LocalBodyReferenceService:
                 if candidate.get("luna_status") in {"QUEUED", "RUNNING"}:
                     candidate["luna_status"] = "INTERRUPTED"
         value["candidates"] = list(candidates.values())
+        from zet.services.local_view_reference_service import selected_run_for_mode
+        from zet.services.local_image_ranking_service import locked_draft_comparison
+        final_anchor = selected_run_for_mode(value, "final").get("front_anchor")
+        final_front = next((item for item in value["candidates"] if item.get("candidate_id") == final_anchor), {})
+        for view, ranking in value["final_rankings"].items():
+            if ranking.get("status") not in {"COMPLETE", "EMPTY"}:
+                continue
+            eligible = [item for item in value["candidates"] if item.get("view") == view
+                        and item.get("render_mode", "draft") == "final"
+                        and item.get("human_review", {}).get("decision") != "reject"
+                        and Path(str(item.get("image_path") or "")).is_file()]
+            hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in eligible}
+            anchor_hash = str(final_front.get("image_sha256") or "") if view != FRONT_VIEW else ""
+            comparison = locked_draft_comparison(self.asset_store, value, "Body-Reference", view) if len(eligible) > 1 else None
+            if (ranking.get("input_hashes") != hashes or ranking.get("anchor_hash", "") != anchor_hash
+                    or (len(eligible) > 1 and ranking.get("locked_draft_comparison") != comparison)):
+                ranking.update(status="STALE", stale_reason="Candidates, FRONT anchor or locked Draft changed. Re-evaluate this view.")
         stale_selections: list[str] = []
         by_id = {item["candidate_id"]: item for item in value["candidates"]}
         for view, ranking in (value.get("rankings") or {}).items():
             if view not in value.get("views", []):
                 continue
+            if ranking.get("status") == "COMPLETE" and len(ranking.get("ordered_candidate_ids") or []) > 1:
+                from zet.services.local_image_ranking_service import locked_draft_comparison
+                comparison = locked_draft_comparison(self.asset_store, value, "Body-Reference", view)
+                if ranking.get("locked_draft_comparison") != comparison:
+                    ranking.update(status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
             anchor = next((item for item in by_id.values() if item.get("candidate_id") == value.get("front_anchor")), None)
             anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
             anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT_VIEW else ""
@@ -1569,8 +1594,10 @@ class LocalBodyReferenceService:
 
 
 
-    def move_candidate_rank(self, run_id: str, view: str, candidate_id: str, direction: str) -> dict[str, Any]:
+    def move_candidate_rank(self, run_id: str, view: str, candidate_id: str, direction: str, *, render_mode: str = "draft") -> dict[str, Any]:
         """Move one reviewed candidate one place in the saved ranking."""
+        from zet.services.local_image_evaluation_service import mode_field
+        field = mode_field("rankings", render_mode)
         run = self.detail(run_id)
         view = str(view or "").upper()
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
@@ -1578,7 +1605,7 @@ class LocalBodyReferenceService:
             raise LocalBodyReferenceError(f"Unknown or unsupported Local Body-Reference view: {view}")
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
             raise LocalBodyReferenceError("Wait for the current operation to finish before changing rank.")
-        ranking = (run.get("rankings") or {}).get(view) or {}
+        ranking = (run.get(field) or {}).get(view) or {}
         try:
             adjusted = adjust_candidate_ranking(ranking, candidate_id, direction, timestamp=self._now())
         except ValueError as exc:
@@ -1586,7 +1613,7 @@ class LocalBodyReferenceService:
         if adjusted is ranking:
             return run
         state = self._read_json((self._root(run_id) / "state.json"))
-        state.setdefault("rankings", {})[view] = adjusted
+        state.setdefault(field, {})[view] = adjusted
         state["updated_at"] = self._now()
         self._save_state(run_id, state)
         return self.detail(run_id)
@@ -1603,44 +1630,46 @@ class LocalBodyReferenceService:
             time.sleep(1)
         self.execute_run(run_id)
 
-    def stage_view_evaluation(self, run_id: str, view: str, *, candidate_ids: set[str] | None = None) -> dict[str, Any]:
+    def stage_view_evaluation(self, run_id: str, view: str, *, candidate_ids: set[str] | None = None, render_mode: str = "draft") -> dict[str, Any]:
         from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service, update_view_evaluation
+        from zet.services.local_image_evaluation_service import mode_field
         view = str(view or "").upper()
         run = self.detail(run_id)
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
-                      and item.get("render_mode", "draft") == "draft"
+                      and item.get("render_mode", "draft") == render_mode
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
-        previous = (run.get("evaluations") or {}).get(view) or {}
+        previous = (run.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
         if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
-            self.reconcile_review_jobs(run_id)
+            self.reconcile_review_jobs(run_id, render_mode=render_mode)
             return previous
         evaluation_id = uuid4().hex
         def rank():
             if self.detail(run_id).get("stop_requested"):
                 return
-            self.rank_view(run_id, view, evaluation_id=evaluation_id)
-            current = dict((self.detail(run_id).get("evaluations") or {}).get(view) or {})
-            if current.get("evaluation_id") == evaluation_id:
+            self.rank_view(run_id, view, evaluation_id=evaluation_id, render_mode=render_mode)
+            current = dict((self.detail(run_id).get(mode_field("evaluations", render_mode)) or {}).get(view) or {})
+            if current.get("evaluation_id") == evaluation_id and current.get("status") in {"RUNNING", "STAGING"}:
                 current["status"] = "COMPLETE"
-                update_view_evaluation(self._root(run_id), view, current, evaluation_id=evaluation_id)
+                update_view_evaluation(self._root(run_id), view, current, evaluation_id=evaluation_id, render_mode=render_mode)
         return local_image_evaluation_service().stage_view_evaluation(
             run_id, view, evaluation_id, rank=rank,
-            finish=lambda: finish_evaluation(self._root(run_id), view, evaluation_id),
-            save_evaluation=lambda record: update_view_evaluation(self._root(run_id), view, record, evaluation_id=evaluation_id, replace=True),
-            input_hashes=hashes)
+            finish=lambda: finish_evaluation(self._root(run_id), view, evaluation_id, render_mode=render_mode),
+            save_evaluation=lambda record: update_view_evaluation(self._root(run_id), view, record, evaluation_id=evaluation_id, replace=True, render_mode=render_mode),
+            input_hashes=hashes, render_mode=render_mode)
 
-    def reconcile_review_jobs(self, run_id: str) -> dict[str, Any]:
+    def reconcile_review_jobs(self, run_id: str, *, render_mode: str = "draft") -> dict[str, Any]:
         from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service
+        from zet.services.local_image_evaluation_service import mode_field
         run = self.detail(run_id)
-        for view, evaluation in (run.get("evaluations") or {}).items():
+        for view, evaluation in (run.get(mode_field("evaluations", render_mode)) or {}).items():
             evaluation_id = str(evaluation.get("evaluation_id") or "")
             if evaluation.get("status") == "RUNNING" and evaluation_id:
                 local_image_evaluation_service().reconcile_review_jobs(
                     run_id, view, evaluation_id,
-                    finish=lambda view=view, evaluation_id=evaluation_id: finish_evaluation(self._root(run_id), view, evaluation_id),
-                    rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, evaluation_id=evaluation_id))
+                    finish=lambda view=view, evaluation_id=evaluation_id: finish_evaluation(self._root(run_id), view, evaluation_id, render_mode=render_mode),
+                    rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, evaluation_id=evaluation_id, render_mode=render_mode), render_mode=render_mode)
         return self.detail(run_id)
 
     def _review_view_candidates_v2(self, run_id: str, view: str, candidate_ids: set[str] | None = None) -> bool:
@@ -1686,37 +1715,43 @@ class LocalBodyReferenceService:
         self._save_state(run_id, state)
         return self.detail(run_id)
 
-    def rank_view(self, run_id: str, view: str, *, evaluation_id: str = "") -> dict[str, Any]:
+    def rank_view(self, run_id: str, view: str, *, evaluation_id: str = "", render_mode: str = "draft") -> dict[str, Any]:
         """Rank every completed version 2 image in one canonical view."""
+        from zet.services.local_image_evaluation_service import mode_field
+        from zet.services.local_view_reference_service import selected_run_for_mode
         run = self.detail(run_id)
+        reference_run = selected_run_for_mode(run, render_mode)
         view = str(view or "").upper()
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         if view not in run.get("views", []):
             raise LocalBodyReferenceError(f"Unknown Local Body-Reference view: {view}")
-        active_evaluation = (run.get("evaluations") or {}).get(view) or {}
+        active_evaluation = (run.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
         if evaluation_id and (active_evaluation.get("evaluation_id") != evaluation_id
                               or active_evaluation.get("status") not in {"RUNNING", "STAGING"}):
             return run
         if not evaluation_id and active_evaluation.get("status") in {"RUNNING", "STAGING"}:
             evaluation_id = str(active_evaluation.get("evaluation_id") or "")
-        anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), None)
+        anchor = next((item for item in run["candidates"] if item["candidate_id"] == reference_run.get("front_anchor")), None)
         anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
         if view != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):
             raise LocalBodyReferenceError("Select a completed front anchor before ranking other views.")
         survivors = [item for item in run["candidates"] if item.get("view") == view
-                     and item.get("render_mode", "draft") == "draft"
+                     and item.get("render_mode", "draft") == render_mode
                      and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
+        from zet.services.local_image_ranking_service import locked_draft_comparison
+        draft_comparison = locked_draft_comparison(self.asset_store, run, "Body-Reference", view) if len(survivors) > 1 else None
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
         for survivor in survivors:
             require_candidate_harvest(self.app, run, survivor)
         root = self._root(run_id)
         state = self._read_json((root / "state.json"))
-        previous = dict((state.get("rankings") or {}).get(view) or {})
+        previous = dict((state.get(mode_field("rankings", render_mode)) or {}).get(view) or {})
         if previous.get("status") == "COMPLETE" and not evaluation_id:
             current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in survivors}
             current_anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT_VIEW else ""
-            if previous.get("input_hashes") == current_hashes and previous.get("anchor_hash", "") == current_anchor_hash:
+            if (previous.get("input_hashes") == current_hashes and previous.get("anchor_hash", "") == current_anchor_hash
+                    and previous.get("locked_draft_comparison") == draft_comparison):
                 return run
         current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in survivors}
         current_anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT_VIEW else ""
@@ -1735,9 +1770,10 @@ class LocalBodyReferenceService:
             try:
                 from zet.services.local_view_reference_service import custom_references
                 reference_images, reference_guidance = supplied_ranking_references(
-                    survivors, lambda: custom_references(run, view, "body-reference",
+                    survivors, lambda: custom_references(reference_run, view, "body-reference",
                         [{"role": "body_reference_front_anchor", "view": "FRONT", "path": str(anchor_image)}]
-                        if view != FRONT_VIEW and anchor_image else []))
+                        if view != FRONT_VIEW and anchor_image else []),
+                    comparisons=[draft_comparison] if draft_comparison else [])
                 prompt = (
                     "Rank all rendered body-reference candidates from best to worst. Human review is an independent advice signal; assess every image on its visual merits. Compare them against one another; do not turn minor "
                     "imperfections into automatic failures. Favor the requested canonical view, complete readable "
@@ -1757,7 +1793,7 @@ class LocalBodyReferenceService:
                     image_paths=[item["image_path"] for item in survivors],
                     reference_image_paths=reference_images,
                     paths=self.app.ai_proxy_service.ai_proxy_path_service,
-                    admission=lambda: candidate_admission(self.app, lambda: self.detail(run_id), run, survivors),
+                    admission=lambda: candidate_admission(self.app, lambda: self.detail(run_id), run, survivors, render_mode=render_mode),
                     owner={"run_id": run_id, "view": view, "pipeline": 'Body-Reference', "evaluation_id": evaluation_id},
                 )
                 ranking = {"status": "COMPLETE", "evaluation_id": evaluation_id,
@@ -1766,31 +1802,42 @@ class LocalBodyReferenceService:
                            "entries": entries, "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
                            "model": str(getattr(self.app.config, "codex_default_model", "gpt-6-luna")),
                            "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "recorded_at": self._now()}
+                ranking["locked_draft_comparison"] = draft_comparison
             except Exception as exc:
                 from zet.services.storage_health_service import pause_on_storage_error
                 pause_on_storage_error(self.app.config, exc)
                 ranking = {"status": "FAILED", "ordered_candidate_ids": [], "entries": [],
                            "input_hashes": current_hashes, "anchor_hash": current_anchor_hash,
                            "error": str(exc), "recorded_at": self._now()}
-                self._save_ranking_result(run_id, view, evaluation_id, current_hashes, ranking)
+                self._save_ranking_result(run_id, view, evaluation_id, current_hashes, ranking, render_mode=render_mode)
                 raise LocalBodyReferenceError(f"Luna ranking failed for {view}: {exc}") from exc
         def save_ranking(current: dict[str, Any]) -> None:
-            active = (current.get("evaluations") or {}).get(view) or {}
+            active = (current.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
             if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
                 return
             latest = self.detail(run_id)
-            ranked_candidate_ids = set(current_hashes)
+            if len(current_hashes) > 1 and locked_draft_comparison(self.asset_store, latest, "Body-Reference", view) != draft_comparison:
+                from zet.services.local_image_evaluation_service import supersede_evaluations
+                supersede_evaluations(current, {view}, "The locked Draft comparison changed.", render_mode=render_mode)
+                current.setdefault(mode_field("rankings", render_mode), {}).setdefault(view, {}).update(
+                    status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
+                return
+            latest_anchor = selected_run_for_mode(latest, render_mode).get("front_anchor")
+            latest_front = next((item for item in latest["candidates"] if item.get("candidate_id") == latest_anchor), {})
+            if view != FRONT_VIEW and str(latest_front.get("image_sha256") or "") != current_anchor_hash:
+                return
             hashes_now = {item["candidate_id"]: str(item.get("image_sha256") or "")
                           for item in latest["candidates"] if item.get("view") == view
-                          and item["candidate_id"] in ranked_candidate_ids
+                          and item.get("render_mode", "draft") == render_mode
+                          and item.get("human_review", {}).get("decision") != "reject"
                           and Path(str(item.get("image_path") or "")).is_file()}
             if hashes_now != current_hashes:
                 return
             ranking["evaluation_id"] = evaluation_id
-            current_rankings = current.setdefault("rankings", {})
+            current_rankings = current.setdefault(mode_field("rankings", render_mode), {})
             previous = current_rankings.get(view)
             if previous and previous != ranking and previous.get("status") not in {"QUEUED", "RUNNING"}:
-                current.setdefault("ranking_history", {}).setdefault(view, []).append(
+                current.setdefault(mode_field("ranking_history", render_mode), {}).setdefault(view, []).append(
                     {"archived_at": self._now(), "ranking": previous}
                 )
             current_rankings[view] = ranking
@@ -1799,15 +1846,16 @@ class LocalBodyReferenceService:
                 active.update(ranking_status=ranking_status, ranking_updated_at=self._now())
                 if ranking_status in {"COMPLETE", "FAILED", "EMPTY", "SKIPPED"}:
                     active["status"] = "COMPLETE"
-                current.setdefault("evaluations", {})[view] = active
+                current.setdefault(mode_field("evaluations", render_mode), {})[view] = active
             current["updated_at"] = self._now()
         mutate_local_run_state(root, save_ranking)
         return self.detail(run_id)
 
     def _save_ranking_result(self, run_id: str, view: str, evaluation_id: str,
-                             input_hashes: dict[str, str], ranking: dict[str, Any]) -> None:
+                             input_hashes: dict[str, str], ranking: dict[str, Any], *, render_mode: str = "draft") -> None:
+        from zet.services.local_image_evaluation_service import mode_field
         def save(state: dict[str, Any]) -> None:
-            active = (state.get("evaluations") or {}).get(view) or {}
+            active = (state.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
             if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
                 return
             run = self.detail(run_id)
@@ -1819,13 +1867,13 @@ class LocalBodyReferenceService:
             if current != input_hashes:
                 return
             ranking["evaluation_id"] = evaluation_id
-            state.setdefault("rankings", {})[view] = ranking
+            state.setdefault(mode_field("rankings", render_mode), {})[view] = ranking
             if evaluation_id:
                 ranking_status = ranking.get("status")
                 active.update(ranking_status=ranking_status, ranking_updated_at=self._now())
                 if ranking_status in {"COMPLETE", "FAILED", "EMPTY", "SKIPPED"}:
                     active["status"] = "COMPLETE"
-                state.setdefault("evaluations", {})[view] = active
+                state.setdefault(mode_field("evaluations", render_mode), {})[view] = active
         mutate_local_run_state(self._root(run_id), save)
 
     def _invalidate_views_after_anchor_change(self, run_id: str, state: dict[str, Any]) -> None:

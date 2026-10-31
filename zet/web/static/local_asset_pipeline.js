@@ -45,7 +45,7 @@
       front_anchor: mode === "draft" ? run.front_anchor : run.final_front_anchor,
       slots_by_view: run.slots_by_mode?.[mode] || (mode === "draft" ? run.slots_by_view : run.final_slots_by_view) || {},
       slot_controls: run.slot_controls_by_mode?.[mode] || run.slot_controls || {},
-      rankings: mode === "draft" ? run.rankings : {}, evaluations: mode === "draft" ? run.evaluations : {}};
+      rankings: mode === "draft" ? run.rankings : run.final_rankings || {}, evaluations: mode === "draft" ? run.evaluations : run.final_evaluations || {}};
   }
   async function updateSizePreview() {
     const mode = state.renderMode, ratio = $("aspect-ratio").value;
@@ -126,7 +126,7 @@
       case "resume": return `${baseUrl()}/runs/${id}/resume${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "stop": return `${baseUrl()}/runs/${id}/stop${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun": return `${baseUrl()}/runs/${id}/rerun${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "reevaluate": return `${baseUrl()}/runs/${id}/reevaluate${query()}`;
+      case "reevaluate": return `${baseUrl()}/runs/${id}/reevaluate${query({ render_mode: state.renderMode })}`;
       case "delete": return `${baseUrl()}/runs/${id}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun-view": return `${baseUrl()}/runs/${id}/views/${encodedView}/rerun${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun-failed": return `${baseUrl()}/runs/${id}/rerun-failed${query({ view })}`;
@@ -281,7 +281,7 @@
     $("stop").hidden = !busy(run);
     $("stop").disabled = !busy(run);
     $("rerun").disabled = !run || isBusy;
-    $("reevaluate").disabled = !run || isBusy || !(run.candidates || []).some((item) => item.image_path);
+    $("reevaluate").disabled = !run || isBusy || !(run.candidates || []).some((item) => item.image_path && (item.render_mode || "draft") === state.renderMode);
     $("prompt-improvement-package").hidden = !run;
     if (run) $("prompt-improvement-package").href = route("prompt-improvement-package", run.run_id);
     $("delete").disabled = !run || isBusy;
@@ -624,7 +624,7 @@
     state.run = latest;
     $("saved-style").textContent = latest.universe_style_variant ? `Batch style: ${latest.universe_style_variant}` : "Batch style: canonical";
     window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id), frontRenderControl);
-    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.selected_views_by_mode, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
+    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.final_rankings, run?.final_evaluations, run?.selected_views_by_mode, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
     const replacement = document.createElement("div");
     if (changed) renderViews(modeRun(latest), replacement);
@@ -1417,7 +1417,7 @@
   }
 
   async function perform(action, view = "", candidateId = "", body = undefined) {
-    if (["select", "unselect", "lock", "unlock"].includes(action)) body = {...(body || {}), render_mode: state.renderMode};
+    if (["select", "unselect", "lock", "unlock", "move-rank"].includes(action)) body = {...(body || {}), render_mode: state.renderMode};
     if (action === "proceed" && state.run?.character_progression) body = {
       expected_stage: state.run.character_progression.stage, back_reference: $("back-reference").value };
     const runId = state.run?.run_id || "";
@@ -1428,7 +1428,7 @@
     const method = action === "rename"
       ? "PUT" : action === "delete" ? "DELETE" : "POST";
     let path;
-    if (action === "reevaluate-view") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/reevaluate${query({ view })}`;
+    if (action === "reevaluate-view") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/reevaluate${query({ view, render_mode: state.renderMode })}`;
     else path = route(action, state.run?.run_id, view, candidateId);
     const result = await request(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
     if (requestId !== state.runRequest || generation !== state.generation || pipeline !== state.pipeline ||
@@ -1964,7 +1964,7 @@
       if (!(await confirmAction(titles[action] || "Confirm action", prompts[action], labels[action] || "Confirm"))) return;
     }
     if (action === "rank-up" || action === "rank-down") {
-      const ordered = state.run.rankings?.[view]?.ordered_candidate_ids || [];
+      const ordered = modeRun(state.run).rankings?.[view]?.ordered_candidate_ids || [];
       const position = ordered.indexOf(candidateId);
       if (position < 0) return;
       await perform("move-rank", view, candidateId, { candidate_id: candidateId, direction: action === "rank-up" ? "up" : "down" });

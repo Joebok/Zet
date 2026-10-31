@@ -35,6 +35,7 @@ These are supported by implementation and repository instructions, with earlier 
 ## 6. Ranking and human review define candidate eligibility
 
 - **Rule/why:** rendered candidates enter human review and ranking without an intermediate defect verdict. Rankings must contain every submitted survivor exactly once, with unique IDs/reasons. Body-Reference ranking excludes human-rejected candidates; other pipelines retain their existing human-review behavior. Automatic FRONT selection requires the current original Luna #1, valid current image bytes, and no human rejection. Manual rank adjustments preserve Luna's original order.
+- **Mode and comparison:** Draft and Final ranking jobs, results and history are mode-scoped. Matching available locked Drafts are ranking-only comparisons; changed comparison evidence makes advice stale and fences late results. Selection and locked image bytes remain independent of advisory ranking.
 - **Implementation/impact:** [local_candidate_review_contract.py](../zet/services/local_candidate_review_contract.py), [local_image_evaluation_service.py](../zet/services/local_image_evaluation_service.py), [local_image_pipeline_policy.py](../zet/services/local_image_pipeline_policy.py), and the four local pipeline services.
 - **Verify:** S2 waits for a one-candidate ranking before selection/lock. It does not cover multi-candidate ordering, stale evaluation or human-rejection overrides; inspect the shared ranking and selection checks. Gate-free records use `review_version: 3`; library path-format versions remain independent.
 

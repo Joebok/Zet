@@ -1,5 +1,7 @@
 # Capability code map
 
+Character image ranking keeps Draft and Final evaluations separate. The shared ranking service resolves matching Draft locks as comparison-only evidence; character adapters fence results and the slot collector recovers each mode independently. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md).
+
 Draft/Final rendering: `image_sizing_service.py` owns target-pixel sizing; `LocalModeSelectionService` and `LocalAssetStoreService` own mode-scoped character selection and locks. The workflow and dashboard expose individual and bulk mode actions. See the [completed plan](../plans/completed/draft-final-rendering.md).
 
 Dashboard Overview (2026-10-27): `local_character_overview.js` mounts the

@@ -447,6 +447,34 @@ class LocalCharacterAssetPipelineService:
         result = {**spec, **state, "candidates": list(candidates.values()), "root": str(root),
                   "selected_views": state.get("selected_views") or {}, "rankings": state.get("rankings") or {},
                   "stop_requested": bool(state.get("stop_requested")), "interrupted": False}
+        result["final_rankings"] = state.get("final_rankings") or {}
+        result["final_evaluations"] = state.get("final_evaluations") or {}
+        result["final_ranking_history"] = state.get("final_ranking_history") or {}
+        from zet.services.local_image_ranking_service import locked_draft_comparison
+        from zet.services.local_view_reference_service import selected_run_for_mode
+        final_front = assembly_front(selected_run_for_mode(result, "final")) if self.pipeline == "character-assembly" else None
+        for view, ranking in result["final_rankings"].items():
+            if ranking.get("status") != "COMPLETE":
+                continue
+            eligible = [item for item in result["candidates"] if item.get("view") == view
+                        and item.get("render_mode", "draft") == "final"
+                        and Path(str(item.get("image_path") or "")).is_file()]
+            hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in eligible}
+            comparison = locked_draft_comparison(self.asset_store, result, self.definition["asset_pipeline"], view,
+                                                 self._qualifier(str(result.get("costume") or ""))) if len(eligible) > 1 else None
+            front_changed = (self.pipeline == "character-assembly" and view != "FRONT" and len(eligible) > 1
+                             and not any(ref.get("candidate_id") == (final_front or {}).get("candidate_id")
+                                         and final_front and ref.get("sha256") == self._hash(Path(final_front["image_path"]))
+                                         for ref in ranking.get("comparison_references") or []))
+            if (ranking.get("input_hashes") != hashes or front_changed
+                    or (len(eligible) > 1 and ranking.get("locked_draft_comparison") != comparison)):
+                ranking.update(status="STALE", stale_reason="Candidates, FRONT reference or locked Draft changed. Re-evaluate this view.")
+        for view, ranking in result["rankings"].items():
+            if ranking.get("status") == "COMPLETE" and len(ranking.get("ordered_candidate_ids") or []) > 1:
+                comparison = locked_draft_comparison(self.asset_store, result, self.definition["asset_pipeline"], view,
+                                                     self._qualifier(str(result.get("costume") or "")))
+                if ranking.get("locked_draft_comparison") != comparison:
+                    ranking.update(status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
         if self.pipeline == "character-assembly":
             result["use_front_anchor"] = False
             front = assembly_front(result)
@@ -890,48 +918,51 @@ class LocalCharacterAssetPipelineService:
 
 
 
-    def stage_view_evaluation(self, run_id: str, view: str, costume: str = "", *, candidate_ids: set[str] | None = None) -> dict[str, Any]:
+    def stage_view_evaluation(self, run_id: str, view: str, costume: str = "", *, candidate_ids: set[str] | None = None, render_mode: str = "draft") -> dict[str, Any]:
         from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service, update_view_evaluation
+        from zet.services.local_image_evaluation_service import mode_field
+        from zet.services.local_view_reference_service import selected_run_for_mode
         view = str(view or "").upper()
         run = self.detail(run_id, costume)
-        if self.pipeline == "character-assembly" and view != "FRONT" and not assembly_front(run):
+        if self.pipeline == "character-assembly" and view != "FRONT" and not assembly_front(selected_run_for_mode(run, render_mode)):
             raise LocalCharacterAssetPipelineError("Select an available FRONT image before ranking remaining views.")
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
-                      and item.get("render_mode", "draft") == "draft"
+                      and item.get("render_mode", "draft") == render_mode
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
-        previous = (run.get("evaluations") or {}).get(view) or {}
+        previous = (run.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
         if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
-            self.reconcile_review_jobs(run_id, costume)
+            self.reconcile_review_jobs(run_id, costume, render_mode=render_mode)
             return previous
         evaluation_id = uuid4().hex
         def rank():
             if self.detail(run_id, costume).get("stop_requested"):
                 return
-            self.rank_view(run_id, view, costume, evaluation_id=evaluation_id)
-            current = dict((self.detail(run_id, costume).get("evaluations") or {}).get(view) or {})
-            if current.get("evaluation_id") == evaluation_id:
+            self.rank_view(run_id, view, costume, evaluation_id=evaluation_id, render_mode=render_mode)
+            current = dict((self.detail(run_id, costume).get(mode_field("evaluations", render_mode)) or {}).get(view) or {})
+            if current.get("evaluation_id") == evaluation_id and current.get("status") in {"RUNNING", "STAGING"}:
                 current["status"] = "COMPLETE"
-                update_view_evaluation(self._run_root(run_id, costume), view, current, evaluation_id=evaluation_id)
+                update_view_evaluation(self._run_root(run_id, costume), view, current, evaluation_id=evaluation_id, render_mode=render_mode)
         return local_image_evaluation_service().stage_view_evaluation(
             run_id, view, evaluation_id, rank=rank,
-            finish=lambda: finish_evaluation(self._run_root(run_id, costume), view, evaluation_id),
-            save_evaluation=lambda record: update_view_evaluation(self._run_root(run_id, costume), view, record, evaluation_id=evaluation_id, replace=True),
-            input_hashes=hashes)
+            finish=lambda: finish_evaluation(self._run_root(run_id, costume), view, evaluation_id, render_mode=render_mode),
+            save_evaluation=lambda record: update_view_evaluation(self._run_root(run_id, costume), view, record, evaluation_id=evaluation_id, replace=True, render_mode=render_mode),
+            input_hashes=hashes, render_mode=render_mode)
 
-    def reconcile_review_jobs(self, run_id: str, costume: str = "") -> dict[str, Any]:
+    def reconcile_review_jobs(self, run_id: str, costume: str = "", *, render_mode: str = "draft") -> dict[str, Any]:
         from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service
+        from zet.services.local_image_evaluation_service import mode_field
         run = self.detail(run_id, costume)
-        for view, evaluation in (run.get("evaluations") or {}).items():
+        for view, evaluation in (run.get(mode_field("evaluations", render_mode)) or {}).items():
             if evaluation.get("status") != "RUNNING":
                 continue
             evaluation_id = str(evaluation.get("evaluation_id") or "")
             if evaluation_id:
                 local_image_evaluation_service().reconcile_review_jobs(
                     run_id, view, evaluation_id,
-                    finish=lambda view=view, evaluation_id=evaluation_id: finish_evaluation(self._run_root(run_id, costume), view, evaluation_id),
-                    rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, costume, evaluation_id=evaluation_id))
+                    finish=lambda view=view, evaluation_id=evaluation_id: finish_evaluation(self._run_root(run_id, costume), view, evaluation_id, render_mode=render_mode),
+                    rank=lambda view=view, evaluation_id=evaluation_id: self.rank_view(run_id, view, costume, evaluation_id=evaluation_id, render_mode=render_mode), render_mode=render_mode)
         return self.detail(run_id, costume)
 
 
@@ -1034,17 +1065,23 @@ class LocalCharacterAssetPipelineService:
             with self._active_lock:
                 self._active.discard(self._active_key(run_id))
 
-    def _rank(self, run: dict[str, Any], view: str) -> dict[str, Any]:
+    def _rank(self, run: dict[str, Any], view: str, *, render_mode: str = "draft") -> dict[str, Any]:
+        from zet.services.local_image_evaluation_service import mode_field
+        from zet.services.local_view_reference_service import selected_run_for_mode
+        reference_run = selected_run_for_mode(run, render_mode)
         survivors = [item for item in run["candidates"] if item["view"] == view
-                     and item.get("render_mode", "draft") == "draft"
+                     and item.get("render_mode", "draft") == render_mode
                      and Path(str(item.get("image_path") or "")).is_file()]
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
         for survivor in survivors:
             require_candidate_harvest(self.app, run, survivor)
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in survivors}
+        from zet.services.local_image_ranking_service import locked_draft_comparison
+        draft_comparison = locked_draft_comparison(self.asset_store, run, self.definition["asset_pipeline"], view,
+                                                   self._qualifier(str(run.get("costume") or ""))) if len(survivors) > 1 else None
         comparisons = []
         if self.pipeline == "character-assembly" and view != "FRONT":
-            front = assembly_front(run)
+            front = assembly_front(reference_run)
             if not front:
                 raise LocalCharacterAssetPipelineError("Select an available FRONT image before ranking remaining views.")
             image = Path(front["image_path"])
@@ -1066,7 +1103,8 @@ class LocalCharacterAssetPipelineService:
             image_paths = [str(item["image_path"]) for item in survivors]
             try:
                 reference_image_paths, reference_guidance = supplied_ranking_references(
-                    survivors, lambda: self._references(run, view, use_recipe=True), comparisons=comparisons,
+                    survivors, lambda: self._references(reference_run, view, use_recipe=True),
+                    comparisons=comparisons + ([draft_comparison] if draft_comparison else []),
                     source_roles=("body_reference", "head_image") if self.pipeline == "character-assembly" else None)
                 entries, model = rank_images_with_luna(
                     project_root=self.project_root,
@@ -1075,8 +1113,8 @@ class LocalCharacterAssetPipelineService:
                     candidate_ids=list(hashes),
                     image_paths=image_paths,
                     paths=self.app.ai_proxy_service.ai_proxy_path_service,
-                    admission=lambda: candidate_admission(self.app, lambda: self.detail(run["run_id"], str(run.get("costume") or "")), run, survivors),
-                    owner={"run_id": run["run_id"], "view": view, "pipeline": self.pipeline, "evaluation_id": str((run.get("evaluations") or {}).get(view, {}).get("evaluation_id") or "")},
+                    admission=lambda: candidate_admission(self.app, lambda: self.detail(run["run_id"], str(run.get("costume") or "")), run, survivors, render_mode=render_mode),
+                    owner={"run_id": run["run_id"], "view": view, "pipeline": self.pipeline, "evaluation_id": str((run.get(mode_field("evaluations", render_mode)) or {}).get(view, {}).get("evaluation_id") or "")},
                     reference_image_paths=reference_image_paths,
                 )
             except Exception as exc:
@@ -1087,38 +1125,47 @@ class LocalCharacterAssetPipelineService:
                        "luna_ordered_candidate_ids": [entry["candidate_id"] for entry in entries],
                            "entries": entries, "input_hashes": hashes,
                            "model": model, "recorded_at": self._now()}
+            ranking["locked_draft_comparison"] = draft_comparison
         if self.pipeline == "character-assembly":
             ranking["comparison_references"] = comparisons if len(survivors) > 1 else []
         return ranking
 
-    def rank_view(self, run_id: str, view: str, costume: str = "", *, evaluation_id: str = "") -> dict[str, Any]:
+    def rank_view(self, run_id: str, view: str, costume: str = "", *, evaluation_id: str = "", render_mode: str = "draft") -> dict[str, Any]:
+        from zet.services.local_image_evaluation_service import mode_field
+        from zet.services.local_view_reference_service import selected_run_for_mode
         run = self.detail(run_id, costume)
+        reference_run = selected_run_for_mode(run, render_mode)
         view = view.upper()
         if view not in VIEWS:
             raise LocalCharacterAssetPipelineError(f"Unknown view: {view}")
-        if self.pipeline == "character-assembly" and view != "FRONT" and not assembly_front(run):
+        if self.pipeline == "character-assembly" and view != "FRONT" and not assembly_front(reference_run):
             raise LocalCharacterAssetPipelineError("Select an available FRONT image before ranking remaining views.")
-        comparison_before = assembly_front(run) if self.pipeline == "character-assembly" and view != "FRONT" else None
+        comparison_before = assembly_front(reference_run) if self.pipeline == "character-assembly" and view != "FRONT" else None
         comparison_hash = self._hash(Path(comparison_before["image_path"])) if comparison_before else ""
-        if view != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
+        if view != "FRONT" and self._requires_front_anchor(run) and not reference_run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before ranking other views.")
         root, state = self._state(run_id, costume)
-        current_evaluation = (run.get("evaluations") or {}).get(view) or {}
+        current_evaluation = (run.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
         evaluation_id = evaluation_id or str(current_evaluation.get("evaluation_id") or "")
         if evaluation_id and (current_evaluation.get("evaluation_id") != evaluation_id
                               or current_evaluation.get("status") not in {"RUNNING", "STAGING"}):
             return run
         hashes_before = {item["candidate_id"]: str(item.get("image_sha256") or "")
                          for item in run["candidates"] if item.get("view") == view
+                         and item.get("render_mode", "draft") == render_mode
                          and Path(str(item.get("image_path") or "")).is_file()}
         can_start = []
         def mark_running(current: dict[str, Any]) -> None:
-            active = (current.get("evaluations") or {}).get(view) or {}
+            active = (current.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
             if evaluation_id and (active.get("evaluation_id") != evaluation_id
                                   or active.get("status") not in {"RUNNING", "STAGING"}):
                 can_start.append(False)
                 return
-            current.setdefault("rankings", {}).update({
+            previous = (current.get(mode_field("rankings", render_mode)) or {}).get(view)
+            if render_mode == "final" and previous and previous.get("status") not in {"RUNNING", "QUEUED"}:
+                current.setdefault("final_ranking_history", {}).setdefault(view, []).append(
+                    {"archived_at": self._now(), "ranking": previous})
+            current.setdefault(mode_field("rankings", render_mode), {}).update({
                 view: {"status": "RUNNING", "started_at": self._now(), "evaluation_id": evaluation_id,
                        "input_hashes": hashes_before}
             })
@@ -1127,41 +1174,53 @@ class LocalCharacterAssetPipelineService:
         if can_start and not can_start[-1]:
             return run
         try:
-            ranking = self._rank(run, view)
+            ranking = self._rank(run, view, render_mode=render_mode)
         except Exception as exc:
             from zet.services.storage_health_service import pause_on_storage_error
             pause_on_storage_error(self.app.config, exc)
             ranking = {"status": "FAILED", "error": str(exc), "recorded_at": self._now()}
         def save(current: dict[str, Any]) -> None:
-            active = (current.get("evaluations") or {}).get(view) or {}
+            active = (current.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
             if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
                 return
+            if ranking.get("status") == "COMPLETE" and len(ranking.get("ordered_candidate_ids") or []) > 1:
+                from zet.services.local_image_ranking_service import locked_draft_comparison
+                latest = self.detail(run_id, costume)
+                if ranking.get("locked_draft_comparison") != locked_draft_comparison(
+                        self.asset_store, latest, self.definition["asset_pipeline"], view, self._qualifier(costume)):
+                    from zet.services.local_image_evaluation_service import supersede_evaluations
+                    supersede_evaluations(current, {view}, "The locked Draft comparison changed.", render_mode=render_mode)
+                    current.setdefault(mode_field("rankings", render_mode), {}).setdefault(view, {}).update(
+                        status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
+                    return
             if comparison_before:
-                front_now = assembly_front(self.detail(run_id, costume))
+                front_now = assembly_front(selected_run_for_mode(self.detail(run_id, costume), render_mode))
                 if (not front_now or front_now["candidate_id"] != comparison_before["candidate_id"]
                         or self._hash(Path(front_now["image_path"])) != comparison_hash):
                     return
             hashes_now = {item["candidate_id"]: str(item.get("image_sha256") or "")
                           for item in self.detail(run_id, costume)["candidates"] if item.get("view") == view
+                          and item.get("render_mode", "draft") == render_mode
                           and Path(str(item.get("image_path") or "")).is_file()}
             if hashes_now != hashes_before:
                 return
             ranking["evaluation_id"] = evaluation_id
-            current.setdefault("rankings", {})[view] = ranking
+            current.setdefault(mode_field("rankings", render_mode), {})[view] = ranking
             if evaluation_id:
                 ranking_status = ranking.get("status")
                 active.update(ranking_status=ranking_status, ranking_updated_at=self._now())
                 if ranking_status in {"COMPLETE", "FAILED", "EMPTY", "SKIPPED"}:
                     active["status"] = "COMPLETE"
-                current.setdefault("evaluations", {})[view] = active
+                current.setdefault(mode_field("evaluations", render_mode), {})[view] = active
         mutate_local_run_state(root, save)
         return self.detail(run_id, costume)
 
-    def move_rank(self, run_id: str, view: str, candidate_id: str, direction: str, costume: str = "") -> dict[str, Any]:
+    def move_rank(self, run_id: str, view: str, candidate_id: str, direction: str, costume: str = "", *, render_mode: str = "draft") -> dict[str, Any]:
+        from zet.services.local_image_evaluation_service import mode_field
         run = self.detail(run_id, costume)
         root = Path(run["root"])
         view = view.upper()
-        ranking = dict((run.get("rankings") or {}).get(view) or {})
+        ranking = dict((run.get(mode_field("rankings", render_mode)) or {}).get(view) or {})
         try:
             adjusted = adjust_candidate_ranking(ranking, candidate_id, direction, timestamp=self._now())
         except ValueError as exc:
@@ -1169,10 +1228,10 @@ class LocalCharacterAssetPipelineService:
         if adjusted == ranking:
             return run
         def save_ranking(current: dict[str, Any]) -> None:
-            rankings = current.setdefault("rankings", {})
+            rankings = current.setdefault(mode_field("rankings", render_mode), {})
             previous = rankings.get(view)
             if previous and previous.get("status") not in {"RUNNING", "QUEUED"}:
-                current.setdefault("ranking_history", {}).setdefault(view, []).append(
+                current.setdefault(mode_field("ranking_history", render_mode), {}).setdefault(view, []).append(
                     {"archived_at": self._now(), "ranking": previous}
                 )
             rankings[view] = adjusted

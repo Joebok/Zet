@@ -60,7 +60,7 @@ class StorageRecoveryService:
                 try:
                     if summary.get("stop_requested") or summary.get("status") in {"CANCELLED", "STOPPED", "COMPLETE"}:
                         continue
-                    if summary.get("slot_render_ids") or summary.get("slot_review_views"):
+                    if summary.get("slot_render_ids") or summary.get("slot_review_views") or summary.get("final_slot_review_views"):
                         workflow.slots.start(run_id, kwargs.get("costume", ""))
                     if summary.get("status") not in {"INTERRUPTED", "PAUSED_STORAGE", "RECOVERING"}:
                         continue

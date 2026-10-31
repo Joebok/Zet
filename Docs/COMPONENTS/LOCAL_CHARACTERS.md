@@ -1,5 +1,11 @@
 # Local character assets
 
+Draft and Final rankings are independent. Multi-candidate ranking compares an
+available locked Draft for the same pipeline and view, including the costume for
+Dressing. Luna weighs fidelity alongside existing quality criteria. Changed
+comparison evidence makes saved advice stale; Re-evaluate refreshes the displayed
+mode. Single-candidate rankings remain deterministic.
+
 ## Draft and Final rendering
 
 `LocalAssetStoreService` has internal mode-specific selection records, private

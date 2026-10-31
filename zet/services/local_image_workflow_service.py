@@ -64,6 +64,7 @@ class LocalImagePipelineWorkflowService:
                     "stop_requested": bool(state.get("stop_requested")),
                     "slot_render_ids": list(state.get("slot_render_ids") or []),
                     "slot_review_views": list(state.get("slot_review_views") or []),
+                    "final_slot_review_views": list(state.get("final_slot_review_views") or []),
                     "target_candidate_ids": list(state.get("target_candidate_ids") or []),
                     "target_views": list(state.get("target_views") or []),
                 })
@@ -208,14 +209,14 @@ class LocalImagePipelineWorkflowService:
             self.prompt_improvement.reset_after_rerender(run_id, affected, costume)
             return self.prompt_improvement.detail(run_id, costume)
         if name == "reevaluate":
-            return self.reevaluate(run_id, view, costume=costume)
+            return self.reevaluate(run_id, view, costume=costume, render_mode=str(args.get("render_mode") or "draft"))
         if name == "rank":
             return self.adapter.stage_view_evaluation(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.stage_view_evaluation(run_id, view)
         if name == "move_rank":
             if self.pipeline in {"head-image", "head-image-edit", "body-reference"}:
-                result = self.adapter.move_candidate_rank(run_id, view, candidate_id, direction)
+                result = self.adapter.move_candidate_rank(run_id, view, candidate_id, direction, render_mode=str(payload.get("render_mode") or "draft"))
             else:
-                result = self.adapter.move_rank(run_id, view, candidate_id, direction, costume)
+                result = self.adapter.move_rank(run_id, view, candidate_id, direction, costume, render_mode=str(payload.get("render_mode") or "draft"))
             return self._present_run(result)
         if name == "review_candidate":
             method = self.adapter.update_candidate
@@ -414,10 +415,14 @@ class LocalImagePipelineWorkflowService:
             self.adapter.execute_run(run_id, views=views, candidate_ids=candidate_ids,
                                      render_only=render_only)
 
-    def reevaluate(self, run_id: str, view: str = "", *, costume: str = "") -> dict[str, Any]:
+    def reevaluate(self, run_id: str, view: str = "", *, costume: str = "", render_mode: str = "draft") -> dict[str, Any]:
         """Refresh ranking using existing harvested images; observations are opt-in."""
         from zet.services.image_harvest_service import reconcile_candidate_harvest
         from zet.services.local_image_pipeline_policy import ACTIVE_RUN_STATUSES
+        from zet.services.local_image_evaluation_service import mode_field
+        from zet.services.local_view_reference_service import selected_run_for_mode
+
+        mode_field("rankings", render_mode)
 
         run = self.prompt_improvement.detail(run_id, costume)
         if run.get("status") in ACTIVE_RUN_STATUSES or run.get("slot_work_pending") or run.get("slot_render_ids"):
@@ -429,17 +434,19 @@ class LocalImagePipelineWorkflowService:
             raise LocalImageWorkflowError(f"Unknown local batch view: {view}")
         images = [item for item in run.get("candidates", [])
                   if (not view or item["view"] == view)
+                  and item.get("render_mode", "draft") == render_mode
                   and Path(str(item.get("image_path") or "")).is_file()]
         targets = [target for target in run.get("views", []) if any(item["view"] == target for item in images)]
         if not targets:
             raise LocalImageWorkflowError("No rendered images are available to re-evaluate.")
+        reference_run = selected_run_for_mode(run, render_mode)
         if self.pipeline == "character-assembly" and any(target != "FRONT" for target in targets):
             from zet.services.local_character_progression_service import assembly_front
-            if not assembly_front(run):
+            if not assembly_front(reference_run):
                 raise LocalImageWorkflowError("Select an available FRONT image before ranking remaining views.")
         requires_anchor = self.pipeline in {"body-reference", "head-image", "head-image-edit"} or bool(run.get("use_front_anchor"))
         if requires_anchor and any(target != "FRONT" for target in targets):
-            anchor = next((item for item in run["candidates"] if item["candidate_id"] == run.get("front_anchor")), {})
+            anchor = next((item for item in run["candidates"] if item["candidate_id"] == reference_run.get("front_anchor")), {})
             if not Path(str(anchor.get("image_path") or "")).is_file():
                 raise LocalImageWorkflowError("Select a completed FRONT anchor before re-evaluating other views.")
         qualifier = self.adapter._qualifier(costume) if self.pipeline == "costume-dressing" else ""
@@ -449,18 +456,20 @@ class LocalImagePipelineWorkflowService:
         run = reconcile_candidate_harvest(
             self.app, lambda: self.prompt_improvement.detail(run_id, costume), run, images)
         for target in targets:
-            self.stage_view_evaluation(run_id, target, costume=costume)
+            self.stage_view_evaluation(run_id, target, costume=costume, render_mode=render_mode)
         return self.action("detail", run_id=run_id, costume=costume)
 
     def stage_view_evaluation(self, run_id: str, view: str, *, costume: str = "",
-                              candidate_ids: set[str] | None = None) -> dict[str, Any]:
+                              candidate_ids: set[str] | None = None, render_mode: str = "draft") -> dict[str, Any]:
         """Start advisory evaluation without taking the batch runner lock."""
         if self.pipeline in {"character-assembly", "costume-dressing"}:
-            return self.adapter.stage_view_evaluation(run_id, view, costume, candidate_ids=candidate_ids)
-        return self.adapter.stage_view_evaluation(run_id, view, candidate_ids=candidate_ids)
+            return self.adapter.stage_view_evaluation(run_id, view, costume, candidate_ids=candidate_ids, render_mode=render_mode)
+        return self.adapter.stage_view_evaluation(run_id, view, candidate_ids=candidate_ids, render_mode=render_mode)
 
     def reconcile_review_jobs(self, run_id: str, *, costume: str = "") -> dict[str, Any]:
         """Resume persisted advisory jobs after a server restart."""
         if self.pipeline in {"character-assembly", "costume-dressing"}:
-            return self.adapter.reconcile_review_jobs(run_id, costume)
-        return self.adapter.reconcile_review_jobs(run_id)
+            self.adapter.reconcile_review_jobs(run_id, costume, render_mode="draft")
+            return self.adapter.reconcile_review_jobs(run_id, costume, render_mode="final")
+        self.adapter.reconcile_review_jobs(run_id, render_mode="draft")
+        return self.adapter.reconcile_review_jobs(run_id, render_mode="final")

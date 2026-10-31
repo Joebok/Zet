@@ -9,14 +9,20 @@ from typing import Any, Callable
 
 
 _LOCK = threading.Lock()
-_ACTIVE: set[tuple[str, str, str]] = set()
+_ACTIVE: set[tuple[str, str, str, str]] = set()
 
 
-def supersede_evaluations(state: dict[str, Any], views: set[str], reason: str) -> None:
+def mode_field(name: str, render_mode: str = "draft") -> str:
+    if render_mode not in {"draft", "final"}:
+        raise ValueError("Render mode must be draft or final.")
+    return name if render_mode == "draft" else f"final_{name}"
+
+
+def supersede_evaluations(state: dict[str, Any], views: set[str], reason: str, *, render_mode: str = "draft") -> None:
     """Make outstanding advice in the selected views unable to commit results."""
     stamp = datetime.now().astimezone().isoformat(timespec="seconds")
     for view in views:
-        evaluation = (state.get("evaluations") or {}).get(view)
+        evaluation = (state.get(mode_field("evaluations", render_mode)) or {}).get(view)
         if not evaluation or evaluation.get("status") not in {"STAGING", "RUNNING"}:
             continue
         evaluation.update(status="SUPERSEDED", ranking_status="SUPERSEDED", superseded_at=stamp,
@@ -24,13 +30,14 @@ def supersede_evaluations(state: dict[str, Any], views: set[str], reason: str) -
 
 
 def update_view_evaluation(run_root: Path, view: str, changes: dict[str, Any], *,
-                           evaluation_id: str = "", replace: bool = False) -> dict[str, Any] | None:
+                           evaluation_id: str = "", replace: bool = False,
+                           render_mode: str = "draft") -> dict[str, Any] | None:
     """Stage a replacement evaluation or merge an update fenced by its identity."""
     from zet.services.local_image_pipeline_policy import mutate_local_run_state
 
     saved: list[dict[str, Any] | None] = []
     def apply(state: dict[str, Any]) -> None:
-        evaluations = state.setdefault("evaluations", {})
+        evaluations = state.setdefault(mode_field("evaluations", render_mode), {})
         current = dict(evaluations.get(view) or {})
         if not replace and evaluation_id and current.get("evaluation_id") not in {None, "", evaluation_id}:
             saved.append(None)
@@ -44,12 +51,12 @@ def update_view_evaluation(run_root: Path, view: str, changes: dict[str, Any], *
     return saved[-1] if saved else None
 
 
-def finish_evaluation(run_root: Path, view: str, evaluation_id: str) -> None:
+def finish_evaluation(run_root: Path, view: str, evaluation_id: str, *, render_mode: str = "draft") -> None:
     """Finish a recovered ranking only while its evaluation still owns the view."""
     from zet.services.local_image_pipeline_policy import mutate_local_run_state
 
     def finish(state):
-        evaluation = (state.get("evaluations") or {}).get(view) or {}
+        evaluation = (state.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
         if evaluation.get("evaluation_id") != evaluation_id or evaluation.get("status") not in {"STAGING", "RUNNING"}:
             return
         if evaluation.get("ranking_status") not in {"COMPLETE", "FAILED", "EMPTY", "SKIPPED"}:
@@ -74,8 +81,10 @@ class LocalImageEvaluationService:
         finish: Callable[[], Any],
         save_evaluation: Callable[[dict[str, Any]], Any],
         input_hashes: dict[str, str],
+        render_mode: str = "draft",
     ) -> dict[str, Any]:
-        key = (str(run_id), str(view), str(evaluation_id))
+        mode_field("evaluations", render_mode)
+        key = (str(run_id), str(view), render_mode, str(evaluation_id))
         with _LOCK:
             if key in _ACTIVE:
                 return {"evaluation_id": evaluation_id, "status": "RUNNING"}
@@ -99,9 +108,11 @@ class LocalImageEvaluationService:
         *,
         rank: Callable[[], Any],
         finish: Callable[[], Any],
+        render_mode: str = "draft",
     ) -> bool:
         """Reattach persisted work after restart without creating duplicate asks."""
-        key = (str(run_id), str(view), str(evaluation_id))
+        mode_field("evaluations", render_mode)
+        key = (str(run_id), str(view), render_mode, str(evaluation_id))
         with _LOCK:
             if key in _ACTIVE:
                 return False
@@ -110,7 +121,7 @@ class LocalImageEvaluationService:
         return True
 
     @staticmethod
-    def _run(key: tuple[str, str, str], operation: Callable[[], Any], finish: Callable[[], Any]) -> None:
+    def _run(key: tuple[str, str, str, str], operation: Callable[[], Any], finish: Callable[[], Any]) -> None:
         try:
             operation()
         finally:

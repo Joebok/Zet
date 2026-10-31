@@ -336,7 +336,7 @@ def create_local_character_asset_pipeline_router(
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/ranking/move")
         def move_rank(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "move_rank", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), direction=str(payload.get("direction") or ""), costume=costume if _pipeline == "costume-dressing" else ""))
+            return call(lambda: action(_pipeline, "move_rank", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), direction=str(payload.get("direction") or ""), payload=payload, costume=costume if _pipeline == "costume-dressing" else ""))
 
         @router.post(f"{prefix}/runs/{{run_id}}/rerun-failed")
         def rerun_failed(run_id: str, background_tasks: BackgroundTasks, view: str = Query(""), costume: str = Query(""), payload: dict[str, Any] = Body(default={}), _pipeline: str = pipeline):
@@ -351,9 +351,9 @@ def create_local_character_asset_pipeline_router(
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/reevaluate")
-        def reevaluate(run_id: str, view: str = Query(""), costume: str = Query(""), _pipeline: str = pipeline):
+        def reevaluate(run_id: str, view: str = Query(""), costume: str = Query(""), render_mode: str = Query("draft"), _pipeline: str = pipeline):
             instance = service(_pipeline)
-            return call(lambda: instance.action("reevaluate", run_id=run_id, view=view.strip(), costume=costume if _pipeline == "costume-dressing" else ""))
+            return call(lambda: instance.action("reevaluate", run_id=run_id, view=view.strip(), render_mode=render_mode, costume=costume if _pipeline == "costume-dressing" else ""))
 
         @router.get(f"{prefix}/runs/{{run_id}}/lock-all-preview")
         def lock_all_preview(run_id: str, costume: str = Query(""), render_mode: str | None = Query(None), _pipeline: str = pipeline):

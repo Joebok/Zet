@@ -1,5 +1,15 @@
 # Local testing
 
+## Locked Draft comparison and mode-scoped rankings (2026-10-31)
+
+All four approved fast scenarios passed (`npm.cmd run test:e2e`, 43.8s).
+Disposable prepared checks exercised Draft/Final candidate isolation, Body
+rejection, Head and Assembly comparison attachments, qualifier matching, image
+deduplication, Final recovery dispatch, and stale-result fencing. An isolated
+Chromium check displayed a Final rank, sent Re-evaluate with Final mode and hid
+that ranking after switching to Draft. These checks use prepared images and do not
+establish live model quality or full restart recovery.
+
 ## Animation transitions and refresh (2026-10-31)
 
 The four approved fast E2E scenarios passed (`npm.cmd run test:e2e`, 44.3s). Disposable Chromium checks exercised text endpoint visibility, transition controls and a white-fade midpoint, ordering, refresh, preview and download. A resolver probe checked overlapping and boundary timing. The converted Celestial Sphere document was read and compiled to standalone HTML. Physical-device behavior and live image quality were not checked. No permanent scenario or live model call was added.

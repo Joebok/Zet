@@ -58,17 +58,21 @@ def reconcile_candidate_harvest(app, read_run, run, candidates):
 
 
 @contextmanager
-def candidate_admission(app, read_run, run, candidates):
+def candidate_admission(app, read_run, run, candidates, *, render_mode="draft"):
     """Recheck under the run lock while the immutable analysis request is published."""
     with file_lock(Path(run["root"]) / "state.lock"):
         current = read_run()
-        if current.get("front_anchor") != run.get("front_anchor"):
+        from zet.services.local_image_evaluation_service import mode_field
+        from zet.services.local_view_reference_service import selected_run_for_mode
+        if (selected_run_for_mode(current, render_mode).get("front_anchor")
+                != selected_run_for_mode(run, render_mode).get("front_anchor")):
             raise ValueError("Image analysis anchor changed before publication")
         for candidate in candidates:
             require_candidate_harvest(app, current, candidate)
             view = candidate["view"]
-            previous = (run.get("evaluations") or {}).get(view, {})
-            active = (current.get("evaluations") or {}).get(view, {})
+            field = mode_field("evaluations", render_mode)
+            previous = (run.get(field) or {}).get(view, {})
+            active = (current.get(field) or {}).get(view, {})
             if previous.get("evaluation_id") != active.get("evaluation_id") or active.get("status") == "SUPERSEDED":
                 raise ValueError("Image evaluation changed before publication")
         yield
