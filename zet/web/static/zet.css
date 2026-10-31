@@ -1480,6 +1480,17 @@ main {
   gap: 6px;
 }
 
+.batch-status-mode.mode-draft {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+.batch-status-mode.mode-final {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 700;
+}
+
 .batch-status-field {
   background: var(--surface);
   border-radius: 999px;

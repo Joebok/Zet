@@ -168,6 +168,15 @@ def create_local_character_asset_pipeline_router(
             submit_local_pipeline_task(instance.execute, run_id, costume=costume if _pipeline == "costume-dressing" else "")
             return result
 
+        @router.post(f"{prefix}/runs/{{run_id}}/run-available")
+        def run_available(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            instance = service(_pipeline)
+            qualifier = costume if _pipeline == "costume-dressing" else ""
+            result = call(lambda: instance.slots.run_available(run_id, payload, qualifier))
+            if result.get("submitted_candidate_ids"):
+                instance.slots.start(run_id, qualifier)
+            return result
+
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/slots")
         def generate_slots(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
@@ -429,7 +438,9 @@ def create_local_character_asset_pipeline_router(
         def resume(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             result = call(lambda: instance.action("resume", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""))
-            if result.get("status") == "QUEUED":
+            if result.get("slot_resumed"):
+                instance.slots.start(run_id, costume if _pipeline == "costume-dressing" else "")
+            elif result.get("status") == "QUEUED":
                 submit_local_pipeline_task(instance.execute, run_id, costume=costume if _pipeline == "costume-dressing" else "")
             return result
 

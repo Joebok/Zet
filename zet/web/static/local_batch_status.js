@@ -25,6 +25,7 @@
       character: batch.character,
       phase: batch.phase,
       local_batch: batch.run_id,
+      render_mode: batch.render_mode || "draft",
     });
     if (batch.pipeline === "costume-dressing" && batch.costume) params.set("local_costume", batch.costume);
     const universe = document.querySelector("#universe-select").value;
@@ -63,6 +64,7 @@
     ];
     if (batch.status !== "RUNNING") pipelineClasses.push("is-muted");
     appendField(fields, "Pipeline", batch.pipeline_label, pipelineClasses.join(" "));
+    if (batch.render_mode) appendField(fields, "Mode", batch.render_mode === "final" ? "Final" : "Draft", `batch-status-mode mode-${batch.render_mode}`);
     appendField(fields, "Costume", batch.costume);
     appendField(fields, "Current view", batch.current_view);
     card.append(title, fields);

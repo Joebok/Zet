@@ -440,7 +440,9 @@ class LocalHeadImageService:
                     "front_anchor": state.get("front_anchor", spec.get("front_anchor")),
                 }, self.asset_pipeline):
                     status = "COMPLETE"
+                from zet.services.local_mode_progress_service import progress_by_mode
                 result.append({
+                    "progress_by_mode": progress_by_mode({**spec, **state, "candidates": list(candidates.values())}),
                     "character_progression": state.get("character_progression"),
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),

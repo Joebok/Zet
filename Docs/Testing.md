@@ -1,5 +1,16 @@
 # Local testing
 
+## Mode-aware local batches (2026-10-31)
+
+Disposable isolated checks exercised FRONT bulk submission in all five local
+character pipelines, Body Final predecessor gates, Head-Image Edit's seven
+remaining Final views, configured counts and duplicate submission, strict Final
+source gates, and a restarted server reattaching its existing ask when the shared
+Draft status was Complete. A Chromium journey exercised Run front, pause/resume,
+Final status, and both mode badges and the Final deep link on Batches. These checks use prepared fixtures;
+they do not establish live model execution or image quality. No maintained
+scenario was added.
+
 ## Locked draft review comparisons (2026-10-31)
 
 The four approved fast E2E scenarios passed (45.7s). A disposable scoped projection check and syntax checks passed. Disposable Chromium checks exercised the chooser across all five pipelines, view changes, unsaved decision retention, failed-image fallback, and the Minor Character review and STYLE comparison. A temporary-store check covered costume isolation, other-batch locks, unlocked records, and missing snapshots. Browser checks used prepared responses and instrumented controller access.

@@ -17,6 +17,17 @@ def reference_recipes(root: Path, pipeline: str = "", *, state: dict | None = No
             return {}  # Initial compilation precedes creation of the run records.
         state = read_library_json(root / "state.json", pipeline_library_root_for_path(root))
     recipes = dict(state.get("view_reference_recipes", {}))
+    flow = state.get("character_progression") or {}
+    if flow and pipeline in {"body-reference", "head-image", "head-image-edit"}:
+        from zet.services.local_prompt_preview_service import PREDECESSORS
+        for view in flow.get("requested_views") or []:
+            if view == "FRONT":
+                continue
+            source = ("FRONT" if pipeline == "head-image-edit" or (pipeline == "body-reference" and view == "BACK")
+                      else flow.get("back_reference", "BACK_LEFT_3_4") if view == "BACK"
+                      else PREDECESSORS.get(view))
+            if source:
+                recipes.setdefault(view, {"mode": "selected_view", "source_view": source})
     if pipeline == "body-reference" and state.get("character_progression"):
         # Apply to future renders in existing staged batches without rewriting
         # their saved render inputs or historical reference provenance.
@@ -34,7 +45,7 @@ def batch_view_reference(source_view: str, target_view: str, path: str, candidat
             "notes": f"Design reference from {source_view}; output must show {target_view}. Do not rotate the target toward this image or invent hidden front details."}
 
 
-def selected_run_for_mode(run: dict, render_mode: str) -> dict:
+def selected_run_for_mode(run: dict, render_mode: str, *, allow_fallback: bool = True) -> dict:
     """Project available same-batch selections with mode preference and fallback."""
     if render_mode not in ("draft", "final"):
         raise ValueError("Render mode must be draft or final.")
@@ -46,7 +57,8 @@ def selected_run_for_mode(run: dict, render_mode: str) -> dict:
     candidates = {item.get("candidate_id"): item for item in run.get("candidates") or []}
     chosen = {}
     for view in run.get("views") or []:
-        for mode in (render_mode, "draft" if render_mode == "final" else "final"):
+        modes = (render_mode, "draft" if render_mode == "final" else "final") if allow_fallback else (render_mode,)
+        for mode in modes:
             cid = selections[mode].get(view)
             candidate = candidates.get(cid) or {}
             image = Path(str(candidate.get("image_path") or ""))
@@ -95,7 +107,9 @@ def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
         valid = valid or view != "BACK" and source == ("FRONT" if run.get("kind") == "local_head_image_edit" else PREDECESSORS.get(view)) and bool(source)
         if recipe["mode"] != "selected_view" or not valid:
             raise ValueError("Staged batches use their selected predecessor; Body BACK uses FRONT, other BACK views use either rear quarter.")
-    selected_reference(run, view, recipe)
+    render_mode = payload.get("render_mode")
+    reference_run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final") if render_mode else run
+    selected_reference(reference_run, view, recipe)
     def update(state):
         state.setdefault("view_reference_recipes", {})[view] = recipe
         if view == "BACK" and state.get("character_progression"):

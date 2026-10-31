@@ -1,5 +1,20 @@
 # Local character assets
 
+## Mode-aware batch rendering (2026-10-31)
+
+The five local character pipelines expose Run front and Run available for the
+selected Draft or Final mode. Bulk requests fill the saved Front/Other candidate
+counts for currently eligible views; submitted and existing slots are preserved.
+The slot collector owns background submission and recovery. Eligibility follows
+the selected predecessor or configured Dressing inputs, independently of the
+legacy Draft stage. Final renders require Final selections and upstream locks;
+Draft rendering retains the existing reference preference and fallback. Existing
+frozen requests and retries retain their saved inputs. Batch details and the
+Batches page present mode-specific progress. Pause stops slot collection without
+withdrawing submitted proxy requests; those requests can finish and their results
+are collected after Resume. Restart recovery honors a paused collector and
+resumes unpaused slot work even when the shared Draft batch status is Complete.
+
 Draft and Final rankings are independent. Multi-candidate ranking compares an
 available locked Draft for the same pipeline and view, including the costume for
 Dressing. For Body-Reference Final rankings, Luna compares body matching and
@@ -15,8 +30,8 @@ Draft snapshots, and Final publication through the existing catalog transaction.
 Legacy lock records are read as Draft. Individual selection/lock APIs accept an
 explicit mode through `LocalModeSelectionService`; mode-scoped bulk lock APIs
 and completion checks are also available internally. Assembly/Dressing source
-resolution supports requested-mode lock preference and fallback, including within
-an explicitly selected source batch. Assembly input preparation freezes the
+resolution supports mode preference and fallback for Draft. New Final renders
+require Final locks, including for an explicitly selected source batch. Assembly input preparation freezes the
 requested mode's resolved references without replacing shared source snapshots;
 Body and Head input preparation also project same-batch anchors by requested mode
 and preserve saved reference order. Dressing input preparation resolves its

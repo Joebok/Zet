@@ -14,6 +14,7 @@
     REVIEW_REQUIRED: "Review required", COMPLETE: "Complete", CANCELLED: "Stopped",
     STOPPED: "Stopped", INTERRUPTED: "Interrupted", ERROR: "Error", PENDING: "Pending",
     FAILED: "Failed",
+    NOT_STARTED: "Not started",
   };
   const evaluationLabels = {
     STAGING: "Staging ranking", RUNNING: "Ranking running", COMPLETE: "Ranking complete",
@@ -101,7 +102,24 @@
     $("status").classList.toggle("success", !error && Boolean(message));
   }
 
-  function busy(run = state.run) { return Boolean(run && (activeStatuses.has(run.status) || run.slot_work_pending)); }
+  function busy(run = state.run) { return Boolean(run && (activeStatuses.has(run.status) || run.slot_work_pending || run.slot_render_ids?.length)); }
+
+  function bulkReadyViews(run) {
+    if (!run) return [];
+    if (run.progress_by_mode?.[state.renderMode]?.runnable_views) return run.progress_by_mode[state.renderMode].runnable_views;
+    const board = modeRun(run), controls = board.slot_controls || {}, pending = new Set(run.slot_render_ids || []);
+    const requested = run.character_progression?.requested_views || run.views || [];
+    return requested.filter(view => {
+      const slots = board.slots_by_view?.[view] || [], control = controls[view] || {};
+      if (control.reason || control.legacy) return false;
+      const target = Number(view === "FRONT" ? run.front_count || 8 : run.other_count || 4);
+      const placeholders = slots.filter(Boolean).slice(0, target).some(id => {
+        const c = board.candidates.find(item => item.candidate_id === id);
+        return c && c.render_status === "PENDING" && !c.image_path && !c.ask_id && !pending.has(id);
+      });
+      return slots.filter(Boolean).length < target || placeholders;
+    });
+  }
 
   function unstartedViews(run) {
     return (run?.views || []).filter((view) => (view !== "FRONT" || hasSharedAssetRouter()) && (() => {
@@ -123,6 +141,7 @@
       case "reference-image": return `${baseUrl()}/runs/${id}/reference-images/${encodedView}/${encodeURIComponent(candidate)}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rename": return `${baseUrl()}/runs/${id}/name${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "start": return `${baseUrl()}/runs/${id}/start${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "run-available": return `${baseUrl()}/runs/${id}/run-available${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "resume": return `${baseUrl()}/runs/${id}/resume${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "stop": return `${baseUrl()}/runs/${id}/stop${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun": return `${baseUrl()}/runs/${id}/rerun${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -272,14 +291,15 @@
 
   function setBusyControls() {
     const run = state.run;
-    const isBusy = busy(run) || Boolean(run?.slot_render_ids?.length);
+    const isBusy = !run?.slot_paused && (busy(run) || Boolean(run?.slot_render_ids?.length));
     const resumable = ["INTERRUPTED", "STOPPED"].includes(run?.status)
-      || (run?.status === "CANCELLED" && run?.created_by_autogenerate);
+      || (run?.status === "CANCELLED" && run?.created_by_autogenerate) || Boolean(run?.slot_paused);
     $("start").hidden = !run;
     $("start").disabled = isBusy || !(run?.status === "QUEUED" || resumable);
     $("start").textContent = resumable ? "Resume batch" : "Start batch";
-    $("stop").hidden = !busy(run);
-    $("stop").disabled = !busy(run);
+    $("stop").hidden = !isBusy;
+    $("stop").disabled = !isBusy;
+    $("stop").textContent = run?.slot_render_ids?.length ? "Pause batch" : "Stop batch";
     $("rerun").disabled = !run || isBusy;
     $("reevaluate").disabled = !run || isBusy || !(run.candidates || []).some((item) => item.image_path && (item.render_mode || "draft") === state.renderMode);
     $("prompt-improvement-package").hidden = !run;
@@ -309,6 +329,11 @@
           ? "Render FRONT first, select it, then run remaining views. Luna compares proportions and identity with the selected FRONT."
           : "Generate the next stage from your selected images");
       $("anchor-option").hidden = true;
+      const readyViews = bulkReadyViews(run);
+      const frontSelected = Boolean(modeRun(run)?.selected_views?.FRONT);
+      $("proceed").disabled = isBusy || !readyViews.length;
+      $("proceed").textContent = !frontSelected && readyViews.includes("FRONT") ? "Run front" : "Run available";
+      $("proceed").title = readyViews.length ? `Ready: ${readyViews.join(", ")}` : "No views are ready to run.";
     }
     const progression = $("progression");
     progression.hidden = !run?.progression;
@@ -334,20 +359,28 @@
             ? `Ready to run: ${run.progression.next_views.join(" + ")}. Review each view’s saved mode and references before running.`
             : "No views are ready with the saved mode inputs. Open a view to see its prerequisite and next action.");
       progression.append(label);
+      const modeProgress = run.progress_by_mode?.[state.renderMode];
+      if (modeProgress) label.textContent = `${state.renderMode === "final" ? "Final" : "Draft"}: ${modeProgress.selected_count}/${modeProgress.requested_count} views selected. ${bulkReadyViews(run).length ? `Ready: ${bulkReadyViews(run).join(", ")}.` : "Select required references or review current images."}`;
       for (const warning of run.reference_warnings || []) {
         const note = document.createElement("p"); note.className = "muted";
         note.textContent = `${warning.view}: ${warning.message}`; progression.append(note);
       }
     }
+    if (run) {
+      const readyViews = bulkReadyViews(run);
+      $("proceed").disabled = isBusy || !readyViews.length;
+      $("proceed").textContent = !modeRun(run)?.selected_views?.FRONT && readyViews.includes("FRONT") ? "Run front" : "Run available";
+      $("proceed").title = readyViews.length ? `Ready: ${readyViews.join(", ")}` : "No views are ready to run.";
+    }
     $("style-choice").hidden = state.pipeline === "character-assembly";
     $("saved-style").hidden = state.pipeline === "character-assembly";
     if (state.pipeline === "character-assembly") $("anchor-option").hidden = true;
-    $("back-reference-label").hidden = ["body-reference", "head-image-edit", "character-assembly", "costume-dressing"].includes(state.pipeline) || !run?.progression?.next_views.includes("BACK");
+    $("back-reference-label").hidden = state.pipeline !== "head-image" || !(run?.character_progression?.requested_views || []).includes("BACK");
     if (run && $("back-reference").dataset.runId !== run.run_id) {
       $("back-reference").value = run.character_progression?.back_reference || "BACK_LEFT_3_4";
       $("back-reference").dataset.runId = run.run_id;
     }
-    for (const option of $("back-reference").options) option.disabled = !run?.selected_views?.[option.value];
+    for (const option of $("back-reference").options) option.disabled = !modeRun(run)?.selected_views?.[option.value];
     syncViewContinueButtons();
   }
 
@@ -697,7 +730,8 @@
     }
     if (JSON.stringify(modeRun(oldRun)?.selected_views) !== JSON.stringify(modeRun(latest).selected_views) || JSON.stringify(oldRun?.local_assets) !== JSON.stringify(latest.local_assets)) renderSelectedViews(modeRun(latest));
     setBusyControls(); updateRefreshButton();
-    $("summary").textContent = `${latest.character} · ${latest.phase}${latest.costume ? ` · ${latest.costume}` : ""} · ${latest.render_progress?.COMPLETE || 0}/${latest.candidate_count} images · ${statusLabels[latest.status] || latest.status}`;
+    const modeProgress = latest.progress_by_mode?.[state.renderMode];
+    $("summary").textContent = `${latest.character} · ${latest.phase}${latest.costume ? ` · ${latest.costume}` : ""} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${modeProgress ? `${modeProgress.complete_count}/${modeProgress.candidate_count}` : `${latest.render_progress?.COMPLETE || 0}/${latest.candidate_count}`} images · ${statusLabels[modeProgress?.status || latest.status] || modeProgress?.status || latest.status}`;
     if ($("review-dialog").open && changed) {
       const oldAddCount = $("review-panel").querySelector(".render-slot-add input")?.value;
       state.reviewCandidates = orderedReviewCandidates();
@@ -1153,7 +1187,9 @@
     const progress = run.page_summary || {};
     const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
     const phaseChangeSummary = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules applied" : "";
-    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary}${state.pipeline === "character-assembly" ? ` · Heads: ${run.head_pipeline === "head-image-edit" ? "Head-Image Edit" : "Head-Image"}` : ""} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
+    const modeProgress = run.progress_by_mode?.[state.renderMode];
+    const modeAnchor = modeRun(run)?.front_anchor;
+    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary}${state.pipeline === "character-assembly" ? ` · Heads: ${run.head_pipeline === "head-image-edit" ? "Head-Image Edit" : "Head-Image"}` : ""} · ${run.run_id} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${modeProgress ? `${modeProgress.complete_count}/${modeProgress.candidate_count}` : `${completed}/${run.candidate_count || (run.candidates || []).length}`} images · ${statusLabels[modeProgress?.status || run.status] || modeProgress?.status || run.status}${modeAnchor ? ` · FRONT ${modeAnchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
     renderSelectedViews(modeRun(run));
@@ -1220,12 +1256,12 @@
     const option = [...$("runs").options].find(item => item.value === run.run_id);
     if (!option) return;
     const summary = state.runs.find(item => item.run_id === run.run_id) || {};
-    const label = statusLabels[run.status] || run.status;
+    const modeStatus = run.progress_by_mode?.[state.renderMode]?.status || run.status;
+    const label = statusLabels[modeStatus] || modeStatus;
     const phaseChangeLabel = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules" : "";
     const progressionLabel = !["character-assembly", "costume-dressing"].includes(state.pipeline) && run.character_progression
-      ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : "";
-    const countLabel = run.status === "COMPLETE" ? " · Complete" : run.status === "AWAITING_HUMAN_SELECTION" ? " · Awaiting selection" : "";
-    option.textContent = `${summary.batch_name || run.batch_name || run.run_id} · ${label}${phaseChangeLabel}${progressionLabel}${countLabel} · ${run.run_id}`;
+      && !run.character_progression.accepted_revision_id ? " · Prompt review" : "";
+    option.textContent = `${summary.batch_name || run.batch_name || run.run_id} · ${label}${phaseChangeLabel}${progressionLabel} · ${run.run_id}`;
   }
 
   async function pollForImages(runId, generation = state.generation) {
@@ -1256,7 +1292,8 @@
     select.replaceChildren();
     for (const run of state.runs) {
       const phaseChangeLabel = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules" : "";
-      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[run.status] || run.status}${phaseChangeLabel}${!["character-assembly", "costume-dressing"].includes(state.pipeline) && run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : ` · Stage ${Math.max(1, run.character_progression.stage + 1)}` : ""} · ${run.run_id}`, run.run_id));
+      const modeStatus = run.progress_by_mode?.[state.renderMode]?.status || run.status;
+      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[modeStatus] || modeStatus}${phaseChangeLabel}${!["character-assembly", "costume-dressing"].includes(state.pipeline) && run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : "" : ""} · ${run.run_id}`, run.run_id));
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
@@ -1417,9 +1454,14 @@
   }
 
   async function perform(action, view = "", candidateId = "", body = undefined) {
+    if (action === "proceed") {
+      const ready = bulkReadyViews(state.run);
+      const frontSelected = Boolean(modeRun(state.run)?.selected_views?.FRONT);
+      action = "run-available";
+      body = {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value,
+        scope: !frontSelected && ready.includes("FRONT") ? "front" : "available"};
+    }
     if (["select", "unselect", "lock", "unlock", "move-rank"].includes(action)) body = {...(body || {}), render_mode: state.renderMode};
-    if (action === "proceed" && state.run?.character_progression) body = {
-      expected_stage: state.run.character_progression.stage, back_reference: $("back-reference").value };
     const runId = state.run?.run_id || "";
     const generation = state.generation;
     const pipeline = state.pipeline;
@@ -1439,18 +1481,16 @@
       setStatus("Batch deleted.");
       return;
     }
-    if (action === "proceed") {
-      const queued = (result.target_views || []).length;
-      const blocked = Object.values(result.blocked_views || {});
-      setStatus(queued ? `Work queued for ${queued} view(s).${blocked.length ? ` ${blocked.length} view(s) still need locked inputs.` : ""}`
-        : blocked.length ? `No views are ready. ${blocked[0]}` : "No unstarted views remain.");
+    if (action === "run-available") {
+      const errors = Object.entries(result.errors || {}), blocked = Object.entries(result.blocked_views || {});
+      setStatus(`${(result.submitted_candidate_ids || []).length} render(s) queued.${blocked.length ? ` Waiting: ${blocked.map(([view, reason]) => `${view}: ${reason}`).join(" · ")}` : ""}${errors.length ? ` Failed: ${errors.map(([view, reason]) => `${view}: ${reason}`).join(" · ")}` : ""}`, errors.length > 0);
     } else if (action === "resume" && result.status !== "QUEUED") {
       setStatus("Batch ready to continue.");
     } else if (["rerun", "rerun-view", "rerun-failed"].includes(action) && result?.submitted_candidate_ids) {
       const failures = Object.entries(result.errors || {});
       setStatus(`${result.submitted_candidate_ids.length} render(s) queued.${failures.length ? ` Failed: ${failures.map(([id, error]) => `${id}: ${error}`).join(" · ")}` : ""}`, failures.length > 0);
     } else if (["start", "resume", "stop", "retry", "rerun", "rerun-view", "rerun-failed", "reevaluate", "reevaluate-view"].includes(action)) {
-      setStatus(action === "stop" ? "Stop requested." : "Work queued.");
+      setStatus(action === "stop" && result.slot_paused ? "Batch paused. Already submitted renders may continue; their results will be collected after resuming." : action === "stop" ? "Stop requested." : "Work queued.");
     } else if (action === "lock" || action === "unlock" || action === "select" || action === "unselect") {
       setStatus("Selection updated.");
     }
@@ -1930,7 +1970,7 @@
       const value = button.closest(".local-pipeline-reference-recipe").querySelector("select").value;
       const params = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
       await request(`${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/views/${encodeURIComponent(view)}/reference-recipe${params}`,
-        { method: "PUT", body: JSON.stringify({ mode: ["default", "none"].includes(value) ? value : "selected_view", source_view: value }) });
+        { method: "PUT", body: JSON.stringify({ mode: ["default", "none"].includes(value) ? value : "selected_view", source_view: value, render_mode: state.renderMode }) });
       if (view === "BACK" && state.run.character_progression) $("back-reference").value = value;
       await loadRun(state.run.run_id); setStatus("Reference saved for new individual renders."); return;
     }
@@ -1988,9 +2028,20 @@
   }
 
   function bind() {
+    $("back-reference").addEventListener("change", () => {
+      if (!state.run) return;
+      const runId = state.run.run_id, source = $("back-reference").value, mode = state.renderMode, generation = state.generation;
+      void request(`${baseUrl()}/runs/${encodeURIComponent(runId)}/views/BACK/reference-recipe`,
+        {method: "PUT", body: JSON.stringify({mode: "selected_view", source_view: source, render_mode: mode})})
+        .then(() => { if (generation === state.generation && mode === state.renderMode && state.run?.run_id === runId) return loadRun(runId, generation); })
+        .catch(error => setStatus(error.message, true));
+    });
     $("render-quality").addEventListener("change", () => {
+      state.runRequest++;
       state.renderMode = $("render-quality").value;
       state.renderedSelections = {};
+      for (const run of state.runs) syncRunOption(run);
+      if (state.run) syncRunOption(state.run);
       syncPipelineRoute();
       void updateSizePreview();
       render();
@@ -2038,7 +2089,7 @@
     $("source-batches").addEventListener("change", () => void readiness());
     $("head-pipeline").addEventListener("change", () => { $("source-batches").replaceChildren(); void readiness(); });
     $("start").addEventListener("click", () => void perform(["INTERRUPTED", "STOPPED"].includes(state.run?.status)
-      || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) ? "resume" : "start").catch((error) => setStatus(error.message, true)));
+      || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) || state.run?.slot_paused ? "resume" : "start").catch((error) => setStatus(error.message, true)));
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));
     $("rerun").addEventListener("click", () => void handleAction({ dataset: { localAction: "rerun" } }).catch((error) => setStatus(error.message, true)));
     $("reevaluate").addEventListener("click", () => void perform("reevaluate").catch((error) => setStatus(error.message, true)));

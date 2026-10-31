@@ -62,6 +62,7 @@ class LocalImagePipelineWorkflowService:
                     "run_id": run_id, "root": str(spec_path.parent),
                     "costume": str(spec.get("costume") or ""), "status": status,
                     "stop_requested": bool(state.get("stop_requested")),
+                    "slot_paused": bool(state.get("slot_paused")),
                     "slot_render_ids": list(state.get("slot_render_ids") or []),
                     "slot_review_views": list(state.get("slot_review_views") or []),
                     "final_slot_review_views": list(state.get("final_slot_review_views") or []),
@@ -151,8 +152,15 @@ class LocalImagePipelineWorkflowService:
                 raise LocalImageWorkflowError("Only a queued local image batch can be started.")
             return {"started": True, "run_id": run_id}
         if name == "stop":
+            current = self.action("detail", run_id=run_id, costume=costume)
+            from zet.services.workflow_storage import runner_lock_active
+            if current.get("slot_render_ids") and not runner_lock_active(Path(current["root"])):
+                return self.slots.pause(run_id, costume)
             return self.adapter.request_stop(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.request_stop(run_id)
         if name == "resume":
+            current = self.action("detail", run_id=run_id, costume=costume)
+            if current.get("slot_paused"):
+                return {**self.slots.pause(run_id, costume, paused=False), "slot_resumed": True}
             return self.adapter.resume(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.resume(run_id)
         if name == "rerun_batch":
             current = self.prompt_improvement.detail(run_id, costume)
@@ -411,6 +419,31 @@ class LocalImagePipelineWorkflowService:
             candidate["image_available"] = available
             if not available:
                 candidate["image_path"] = ""
+        from zet.services.local_mode_progress_service import progress_by_mode
+        presented["progress_by_mode"] = progress_by_mode(presented)
+        for mode, progress in presented["progress_by_mode"].items():
+            pending = set(presented.get("slot_render_ids") or [])
+            candidates = {c["candidate_id"]: c for c in presented.get("candidates") or []}
+            runnable, blocked = [], {}
+            views = (presented.get("character_progression") or {}).get("requested_views") or presented.get("views") or []
+            for view in views:
+                control = (presented.get("slot_controls_by_mode") or {}).get(mode, {}).get(view) or {}
+                slots = (presented.get("slots_by_mode") or {}).get(mode, {}).get(view) or []
+                target = int(presented.get("front_count" if view == "FRONT" else "other_count") or (8 if view == "FRONT" else 4))
+                placeholders = any((c := candidates.get(cid)) and c.get("render_status") == "PENDING"
+                                   and not c.get("image_path") and not c.get("ask_id") and cid not in pending
+                                   for cid in [cid for cid in slots if cid][:target])
+                if sum(bool(cid) for cid in slots) >= target and not placeholders:
+                    continue
+                reason = control.get("reason") or ("Clear surplus legacy candidates before adding renders." if control.get("legacy") else "")
+                if reason:
+                    blocked[view] = reason
+                else:
+                    runnable.append(view)
+            progress.update(runnable_views=runnable, blocked_views=blocked)
+            mode_records = records if mode == "draft" else self.adapter.asset_store.locked_assets(
+                presented["character"], presented["phase"], pipeline, qualifier, render_mode=mode)
+            progress["locked_count"] = sum(item.get("batch_id") == presented["run_id"] for item in mode_records)
         return presented
 
     def execute(self, run_id: str, *, views: set[str] | None = None, costume: str = "",

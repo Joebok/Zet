@@ -1,5 +1,10 @@
 # Dashboard presentation and image input
 
+Local character batches show Draft and Final progress separately. The shared
+pipeline page offers Run front and Run available, and the Batches page labels
+and links each actionable render mode. Pause batch pauses slot collection;
+already submitted renders can finish at the proxy and are collected after Resume.
+
 The [UI style guide](../UI_STYLE_GUIDE.md) owns the target visual and interaction
 standards, including button/glyph roles, card anatomy, review dialogs, immediate
 action acknowledgement, and feedback beside its initiating action. Adoption is

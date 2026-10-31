@@ -69,7 +69,20 @@ class LocalBatchStatusService:
         for pipeline in PIPELINES:
             adapter = self._adapter(pipeline)
             costume_pipeline = pipeline in {"character-assembly", "costume-dressing"}
-            for summary in adapter.list_run_summaries():
+            summaries = adapter.list_run_summaries()
+            mode_summaries = []
+            for summary in summaries:
+                modes = summary.get("progress_by_mode") or {}
+                if not modes:
+                    mode_summaries.append({**summary, "render_mode": "draft"})
+                    continue
+                for mode, progress in modes.items():
+                    status = progress.get("status") or "NOT_STARTED"
+                    if mode == "draft" and summary.get("status") in {"PAUSED_STORAGE", "RECOVERING", "INTERRUPTED", "STOPPED", "CANCELLED", "REVIEW_REQUIRED"}:
+                        status = summary["status"]
+                    mode_summaries.append({**summary, "render_mode": mode, "status": status,
+                                           "current_views": progress.get("current_views") or []})
+            for summary in mode_summaries:
                 status = str(summary.get("status") or "UNKNOWN").upper()
                 if status in {"ERROR", "FAILED"}:
                     group_status = "FAILED"
@@ -87,6 +100,7 @@ class LocalBatchStatusService:
 
                 groups[group_status].append({
                     "pipeline": pipeline,
+                    "render_mode": summary.get("render_mode", "draft"),
                     "pipeline_label": PIPELINE_LABELS[pipeline],
                     "run_id": str(summary.get("run_id") or ""),
                     "batch_name": str(summary.get("batch_name") or "").strip(),

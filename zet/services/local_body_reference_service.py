@@ -552,6 +552,7 @@ class LocalBodyReferenceService:
         value["slot_work_pending"] = bool(state.get("slot_work_pending"))
         value["slot_render_ids"] = state.get("slot_render_ids") or []
         value["slot_review_views"] = state.get("slot_review_views") or []
+        value["final_slot_review_views"] = state.get("final_slot_review_views") or []
         value["slot_collection_error"] = state.get("slot_collection_error", "")
         value["target_candidate_ids"] = state.get("target_candidate_ids") or []
         value["target_views"] = state.get("target_views") or []
@@ -709,7 +710,9 @@ class LocalBodyReferenceService:
                     review_version = int(spec.get("review_version") or 1)
                 except (TypeError, ValueError):
                     review_version = 1
+                from zet.services.local_mode_progress_service import progress_by_mode
                 runs.append({
+                    "progress_by_mode": progress_by_mode({**spec, **state, "candidates": list(candidates.values())}),
                     "character_progression": state.get("character_progression"),
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),

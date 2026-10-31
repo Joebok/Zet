@@ -567,7 +567,9 @@ class LocalCharacterAssetPipelineService:
                 candidates = merge_candidates(spec, state)
                 current_views = sorted({str(item.get("view") or "") for item in candidates.values()
                                         if item.get("status") == "RUNNING" and item.get("view")})
+                from zet.services.local_mode_progress_service import progress_by_mode
                 result.append({
+                    "progress_by_mode": progress_by_mode({**spec, **state, "candidates": list(candidates.values())}),
                     "character_progression": state.get("character_progression"),
                     "run_id": run_id, "batch_name": spec.get("batch_name", ""),
                     "character": spec.get("character", ""), "phase": spec.get("phase", ""),
@@ -759,7 +761,7 @@ class LocalCharacterAssetPipelineService:
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalCharacterAssetPipelineError(f"Unknown candidate: {candidate_id}")
-        if self.pipeline == "character-assembly":
+        if self.pipeline == "character-assembly" and not (candidate.get("slot_managed") and candidate.get("render_input")):
             if candidate.get("render_mode") is not None:
                 from zet.services.local_view_reference_service import selected_run_for_mode
                 guard_view(selected_run_for_mode(run, candidate["render_mode"]), candidate["view"])

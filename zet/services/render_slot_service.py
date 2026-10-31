@@ -110,8 +110,24 @@ class CharacterRenderSlots:
         self.workflow = workflow
         self.adapter = workflow.adapter
 
+    def _mode_sources(self, run, view, render_mode):
+        sources = self.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+        if render_mode == "final":
+            for role, source in sources.items():
+                if source.get("render_mode", "draft") != "final":
+                    raise ValueError(f"A locked Final {role.replace('_', ' ')} image is required for {view}.")
+                if source.get("source_mode") == "batch":
+                    record = self.adapter.asset_store.mode_record(run["character"], run["phase"],
+                        source["pipeline"], view, source.get("qualifier", ""), render_mode="final") or {}
+                    if not record.get("locked") or record.get("batch_id") != source.get("batch_id") or record.get("candidate_id") != source.get("candidate_id"):
+                        raise ValueError(f"Lock the selected Final {role.replace('_', ' ')} image for {view}.")
+        return sources
+
     def detail(self, run: dict) -> dict:
         run = dict(run)
+        state_path = Path(run["root"]) / "state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+        run["slot_paused"] = bool(state.get("slot_paused"))
         run["slots_by_view"] = maps = slot_maps(run)
         run["slots_by_mode"] = {"draft": maps, "final": slot_maps(run, "final")}
         run["selected_views_by_mode"] = {"draft": dict(run.get("selected_views") or {}),
@@ -156,9 +172,84 @@ class CharacterRenderSlots:
 
     @staticmethod
     def _busy_reason(run: dict) -> str:
-        if run.get("stop_requested") or run.get("status") == "STOPPING":
+        if run.get("slot_paused") or run.get("stop_requested") or run.get("status") == "STOPPING":
             return "Resume the stopped batch before submitting more renders."
         return ""
+
+    def pause(self, run_id: str, costume: str = "", *, paused: bool = True) -> dict:
+        from zet.services.local_image_pipeline_policy import mutate_local_run_state
+        run = self.workflow.prompt_improvement.detail(run_id, costume)
+        root = Path(run["root"])
+        def update(state):
+            if paused and not (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):
+                raise RenderSlotConflict("There is no slot work to pause.")
+            if not paused and not state.get("slot_paused"):
+                raise RenderSlotConflict("Slot work is not paused.")
+            state["slot_paused"] = paused
+        mutate_local_run_state(root, update)
+        return self.workflow.action("detail", run_id=run_id, costume=costume)
+
+    def run_available(self, run_id: str, payload: dict, costume: str = "") -> dict:
+        """Queue the configured number of candidates for each ready view."""
+        from zet.services.workflow_storage import file_lock, runner_lock_active
+        from zet.services.local_image_evaluation_service import mode_field
+        mode = payload.get("render_mode", "draft")
+        scope = payload.get("scope", "available")
+        if mode not in {"draft", "final"} or scope not in {"front", "available"}:
+            raise ValueError("Choose a valid render mode and scope.")
+        load = lambda: self.workflow.prompt_improvement.detail(run_id, costume)
+        run = load()
+        root = Path(run["root"])
+        submitted, blocked, errors = [], {}, {}
+        with file_lock(root / "state.lock"):
+            run = load()
+            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            if state.get("slot_paused"):
+                raise RenderSlotConflict("Resume the paused batch before submitting more renders.")
+            if self._busy_reason(run):
+                raise RenderSlotConflict(self._busy_reason(run))
+            if runner_lock_active(root):
+                raise RenderSlotConflict("Wait for the batch runner to finish.")
+            views = (run.get("character_progression") or {}).get("requested_views") or run.get("views") or []
+            views = [v for v in views if scope != "front" or v == "FRONT"]
+            for view in views:
+                run = load()
+                reason = self._prerequisite(run, view, mode)
+                if reason:
+                    blocked[view] = reason
+                    continue
+                try:
+                    slots = slot_maps(run, mode)[view]
+                    target = render_count(run.get("front_count" if view == "FRONT" else "other_count"), 8 if view == "FRONT" else 4)
+                    candidates = {c["candidate_id"]: c for c in run.get("candidates") or []}
+                    state_path = root / "state.json"
+                    state = json.loads(state_path.read_text(encoding="utf-8"))
+                    pending = state.setdefault("slot_render_ids", [])
+                    prepared = []
+                    for cid in [cid for cid in slots if cid][:target]:
+                        candidate = candidates.get(cid) or {}
+                        if (candidate.get("render_status") != "PENDING" or candidate.get("ask_id")
+                                or (candidate.get("image_path") and Path(candidate["image_path"]).is_file()) or cid in pending):
+                            continue
+                        frozen = self.prepare_input(run, view, root / "renders" / cid / "inputs",
+                            recompile=True, render_mode=mode, aspect_ratio=payload.get("aspect_ratio"))
+                        state.setdefault("candidates", {}).setdefault(cid, {}).update(render_input=frozen, slot_managed=True, render_mode=mode, status="PENDING")
+                        pending.append(cid)
+                        prepared.append(cid)
+                    if prepared:
+                        review = state.setdefault(mode_field("slot_review_views", mode), [])
+                        if view not in review:
+                            review.append(view)
+                        write_library_json(state_path, state, pipeline_library_root_for_path(root))
+                        submitted.extend(prepared)
+                    deficit = max(0, target - sum(bool(cid) for cid in slots))
+                    if deficit:
+                        result = self.change(run_id, view, "generate", {"count": deficit, "render_mode": mode,
+                            "aspect_ratio": payload.get("aspect_ratio")}, costume)
+                        submitted.extend(result.get("submitted_candidate_ids") or [])
+                except (ValueError, OSError, KeyError) as exc:
+                    errors[view] = str(exc)
+        return {"render_mode": mode, "submitted_candidate_ids": submitted, "blocked_views": blocked, "errors": errors}
 
     def prepare_input(self, run: dict, view: str, directory: Path, *, recompile: bool = False, output_dir: Path | None = None,
                       render_mode: str | None = None, aspect_ratio: str | None = None) -> dict:
@@ -169,11 +260,11 @@ class CharacterRenderSlots:
             from zet.services.local_view_reference_service import selected_run_for_mode
             default_ratio = "1:1" if self.workflow.pipeline in {"head-image", "head-image-edit"} else "2:3"
             sizing = resolve_image_sizing(self.workflow.app.config, render_mode, aspect_ratio or default_ratio)
-            run = selected_run_for_mode(run, render_mode)
+            run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final")
         if self.workflow.pipeline == "costume-dressing":
             from zet.services.costume_render_mode_service import CostumeRenderModeService
             if render_mode is not None:
-                resolved = self.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+                resolved = self._mode_sources(run, view, render_mode)
                 run = {**run, "sources": {**(run.get("sources") or {}), view: resolved}}
             saved = CostumeRenderModeService(self.workflow).prepare(run, view, directory,
                 output_dir=output_dir or Path(run["root"]) / "prompts" / view,
@@ -191,7 +282,7 @@ class CharacterRenderSlots:
         if pipeline == "character-assembly" and render_mode is not None:
             # Resolve into this request only; saved run-level sources are shared by
             # both modes and must not be replaced when another render is prepared.
-            resolved = self.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+            resolved = self._mode_sources(run, view, render_mode)
             request_run = {**run, "sources": {**(run.get("sources") or {}), view: resolved}}
         revision = active_revision(root)
         output = output_dir or root / "prompts" / view
@@ -295,24 +386,24 @@ class CharacterRenderSlots:
     def _prerequisite(self, run: dict, view: str, render_mode: str | None = None) -> str:
         if render_mode is not None:
             from zet.services.local_view_reference_service import selected_run_for_mode
-            run = selected_run_for_mode(run, render_mode)
+            run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final")
         if self.workflow.pipeline == "costume-dressing":
             from zet.services.costume_render_mode_service import CostumeRenderModeService
             if render_mode is not None:
                 try:
-                    sources = self.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+                    sources = self._mode_sources(run, view, render_mode)
                 except (ValueError, OSError) as exc:
                     return str(exc)
                 run = {**run, "sources": {**(run.get("sources") or {}), view: sources}}
             return CostumeRenderModeService(self.workflow).reason(run, view)
         from zet.services.local_character_progression_service import guard_view
         try:
-            guard_view(run, view)
+            guard_view(run, view, mode_aware=render_mode is not None)
         except ValueError as exc:
             return str(exc)
         if self.workflow.pipeline == "character-assembly" and render_mode is not None:
             try:
-                self.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+                self._mode_sources(run, view, render_mode)
             except (ValueError, OSError) as exc:
                 return str(exc)
         from zet.services.local_view_reference_service import recipe_requirement
@@ -356,6 +447,8 @@ class CharacterRenderSlots:
                 if reason:
                     raise RenderSlotConflict(reason)
                 state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+                if state.get("slot_paused") and action != "clear":
+                    raise RenderSlotConflict("Resume the paused batch before submitting more renders.")
                 spec = json.loads((root / "spec.json").read_text(encoding="utf-8"))
                 render_mode = payload.get("render_mode", "draft")
                 maps = slot_maps(run, render_mode)
@@ -495,6 +588,8 @@ class CharacterRenderSlots:
                         if run.get("stop_requested"):
                             return
                         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+                        if state.get("slot_paused"):
+                            return
                         pending = list(state.get("slot_render_ids") or [])
                         review_views = {(mode, view) for mode, field in (("draft", "slot_review_views"), ("final", "final_slot_review_views"))
                                         for view in state.get(field) or []}
@@ -729,7 +824,7 @@ class CharacterRenderSlots:
                     _SLOT_WORKERS.discard(key)
                 if finished and (root / "state.json").is_file():
                     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-                    if not state.get("stop_requested") and (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):
+                    if not state.get("stop_requested") and not state.get("slot_paused") and (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):
                         self.start(run_id, costume)
         submit_local_pipeline_task(work)
 

@@ -1,5 +1,9 @@
 # System contracts
 
+New local character Final render inputs require Final same-batch selections and
+Final upstream pipeline locks. Explicit external images and existing frozen
+requests remain valid. Draft mode retains its existing preference and fallback.
+
 These are supported by implementation and repository instructions, with earlier test evidence retained in Git history. [Testing](Testing.md) owns the current S1–S4 baseline and coverage approval. A scenario verifies only its named assertions; many contracts below require source inspection because dedicated tests were retired. Do not add coverage without explicit approval. See [DEVELOPMENT](DEVELOPMENT.md) for observed results.
 
 ## 1. Reusable behavior belongs behind the web layer

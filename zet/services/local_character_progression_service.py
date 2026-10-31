@@ -106,7 +106,7 @@ def opened_views(run):
             if view in flow["requested_views"]}
 
 
-def guard_view(run, view):
+def guard_view(run, view, *, mode_aware=False):
     if run.get("kind") == "costume-dressing":
         from zet.services.costume_render_mode_service import input_reason
         reason = input_reason(run, view)
@@ -115,6 +115,22 @@ def guard_view(run, view):
         return
     if run.get("kind") == "character-assembly" and view != "FRONT" and not assembly_front(run):
         raise ValueError("Select an available FRONT image before running or ranking remaining views.")
+    if mode_aware and run.get("character_progression"):
+        if prompt_review_required(run):
+            raise ValueError("Analyze and accept the governing prompts first.")
+        if view not in run["character_progression"]["requested_views"]:
+            raise ValueError("This view is not requested in this batch.")
+        if view != "FRONT" and run.get("kind") != "character-assembly":
+            from zet.services.local_view_reference_service import selected_reference
+            if is_head_edit(run) or (run.get("kind") == "local_body_reference" and view == "BACK"):
+                source = "FRONT"
+            elif view == "BACK":
+                source = run["character_progression"].get("back_reference", "BACK_LEFT_3_4")
+            else:
+                source = PREDECESSORS.get(view)
+            if source:
+                selected_reference(run, view, {"mode": "selected_view", "source_view": source})
+        return
     if run.get("character_progression") and view not in opened_views(run):
         raise ValueError("Use Run front, then select FRONT and Run remaining to open this view." if run.get("kind") == "character-assembly"
                          else "Accept prompt review and use Continue to open this generation stage first.")
@@ -142,6 +158,8 @@ def execution_views(run, views=None):
 
 
 def prepare_candidate(workflow, run, candidate):
+    if candidate.get("slot_managed") and candidate.get("render_input"):
+        return candidate
     if candidate.get("render_mode") is not None:
         from zet.services.local_view_reference_service import selected_run_for_mode
         run = selected_run_for_mode(run, candidate["render_mode"])
