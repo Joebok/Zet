@@ -96,9 +96,9 @@ class LocalCharacterOverviewService:
         if costume not in {item.name for item in self.app.list_costumes(character, phase)}:
             raise LocalCharacterOverviewError("Unknown costume for this character phase.")
 
-    def _locked_dressing(self, character: str, phase: str, costume: str) -> dict[str, Any] | None:
+    def _locked_dressing(self, character: str, phase: str, costume: str, render_mode: str = "draft") -> dict[str, Any] | None:
         qualifier = LocalCharacterAssetPipelineService._safe(costume)
-        matches = self.store.locked_assets(character, phase, pipeline="Costume-Dressing", qualifier=qualifier)
+        matches = self.store.locked_assets(character, phase, pipeline="Costume-Dressing", qualifier=qualifier, render_mode=render_mode)
         return next((item for item in matches if item.get("view") == "FRONT"), None)
 
     def overview(self) -> dict[str, Any]:
@@ -108,7 +108,9 @@ class LocalCharacterOverviewService:
             for phase in self._discovery.list_phases(character):
                 costumes = []
                 for costume in self.app.list_costumes(character, phase):
-                    record = self._locked_dressing(character, phase, costume.name)
+                    records = {mode: self._locked_dressing(character, phase, costume.name, mode) for mode in ("draft", "final")}
+                    record = records["final"] or records["draft"]
+                    render_mode = "final" if records["final"] else "draft"
                     job = self.slot_status(character, phase, costume.name)
                     costumes.append({
                         "name": costume.name,
@@ -118,14 +120,16 @@ class LocalCharacterOverviewService:
                         "message": str(job.get("message") or ""),
                         "job_id": str(job.get("job_id") or ""),
                         "run_id": str(job.get("run_id") or ""),
-                        "image_url": (f"/api/local/character-overview/image/{self._safe(character)}/{self._safe(phase)}/{self._safe(costume.name)}?v={record['image_sha256']}" if record else ""),
+                        "render_mode": render_mode if record else "",
+                        "locked_modes": [mode for mode, item in records.items() if item],
+                        "image_url": (f"/api/local/character-overview/image/{self._safe(character)}/{self._safe(phase)}/{self._safe(costume.name)}?render_mode={render_mode}&v={record['image_sha256']}" if record else ""),
                         "image_sha256": str((record or {}).get("image_sha256") or ""),
                     })
                 rows.append({"character": character, "phase": phase, "costumes": costumes})
         return {"rows": rows}
 
-    def image_path(self, character: str, phase: str, costume: str) -> Path:
-        record = self._locked_dressing(character, phase, costume)
+    def image_path(self, character: str, phase: str, costume: str, render_mode: str = "draft") -> Path:
+        record = self._locked_dressing(character, phase, costume, render_mode)
         if not record:
             raise LocalCharacterOverviewError("No verified locked Costume-Dressing FRONT image exists for this slot.")
         return Path(record["image_path"])
@@ -141,7 +145,8 @@ class LocalCharacterOverviewService:
             current = self._read(path)
             if current.get("status") in ACTIVE_STATUSES:
                 result = current
-            elif self._locked_dressing(character, phase, costume):
+            elif (self._locked_dressing(character, phase, costume, "final")
+                  or self._locked_dressing(character, phase, costume, "draft")):
                 result = {"status": "COMPLETE", "pipeline": "costume-dressing", "message": "Locked FRONT image is already available."}
             else:
                 result = {
@@ -258,10 +263,16 @@ class LocalCharacterOverviewService:
                 continue
             if not self._compatible_head_source(pipeline, run):
                 continue
-            candidate_id = (run.get("selected_views") or {}).get("FRONT")
-            candidate = next((item for item in run.get("candidates", []) if item.get("candidate_id") == candidate_id), None)
-            image = Path(str((candidate or {}).get("image_path") or ""))
-            if not candidate or not image.is_file() or candidate.get("human_review", {}).get("decision") == "reject":
+            candidate = None
+            for render_mode, field in (("final", "final_selected_views"), ("draft", "selected_views")):
+                candidate_id = (run.get(field) or {}).get("FRONT")
+                candidate = next((item for item in run.get("candidates", []) if item.get("candidate_id") == candidate_id
+                                  and item.get("render_mode", "draft") == render_mode), None)
+                image = Path(str((candidate or {}).get("image_path") or ""))
+                if candidate and image.is_file() and candidate.get("human_review", {}).get("decision") != "reject":
+                    break
+                candidate = None
+            if not candidate:
                 continue
             ranking = (run.get("rankings") or {}).get("FRONT") or {}
             digest = str(candidate.get("image_sha256") or "")
@@ -275,6 +286,7 @@ class LocalCharacterOverviewService:
             candidates.append({
                 "run_id": run_id,
                 "candidate_id": candidate_id,
+                "render_mode": render_mode,
                 "image_path": str(image),
                 "image_sha256": digest,
                 "created_at": str(run.get("created_at") or summary.get("created_at") or ""),
@@ -285,7 +297,7 @@ class LocalCharacterOverviewService:
             })
         if not candidates:
             return None
-        candidates.sort(key=lambda item: (item["finished"], item["rendered_sort"], item["created_sort"], item["run_id"], item["candidate_id"]))
+        candidates.sort(key=lambda item: (item["render_mode"] == "final", item["finished"], item["rendered_sort"], item["created_sort"], item["run_id"], item["candidate_id"]))
         return candidates[-1]
 
     def _existing_batch(self, pipeline: str, character: str, phase: str, costume: str) -> dict[str, Any] | None:
@@ -380,13 +392,18 @@ class LocalCharacterOverviewService:
     def _choose_and_lock_locked(self, job: dict[str, Any], pipeline: str) -> dict[str, Any]:
         character, phase, costume = job["character"], job["phase"], job["costume"]
         qualifier = LocalCharacterAssetPipelineService._safe(costume) if pipeline == "costume-dressing" else ""
-        locked = self.store.locked_assets(character, phase, pipeline=pipeline, qualifier=qualifier)
-        existing_lock = next((item for item in locked if item.get("view") == "FRONT"), None)
+        locked = self.store.locked_assets(character, phase, pipeline=pipeline, qualifier=qualifier, render_mode=None)
+        existing_lock = next((item for mode in ("final", "draft") for item in locked
+                              if item.get("view") == "FRONT" and item.get("render_mode", "draft") == mode), None)
         if existing_lock:
-            if pipeline == "character-assembly" and not any(
-                dependency.get("key") == self.store.key("Head-Image-Edit", "FRONT")
-                for dependency in existing_lock.get("dependencies", [])
-            ):
+            compatible = any(dependency.get("key", "").removeprefix("final:") == self.store.key("Head-Image-Edit", "FRONT")
+                             for dependency in existing_lock.get("dependencies", []))
+            if pipeline == "character-assembly" and not compatible and existing_lock.get("batch_id"):
+                try:
+                    compatible = self._pipeline_service(pipeline).adapter.detail(existing_lock["batch_id"]).get("head_pipeline") == "head-image-edit"
+                except (ValueError, KeyError, OSError):
+                    pass
+            if pipeline == "character-assembly" and not compatible:
                 raise LocalCharacterOverviewError(
                     "The locked Assembly FRONT uses a legacy head source. Unlock it in Character-Assembly "
                     "before autogenerating with Head-Image Edit."
@@ -394,28 +411,33 @@ class LocalCharacterOverviewService:
             return existing_lock
         selected = self._front_selection(pipeline, character, phase, costume)
         adapter = self._pipeline_service(pipeline).adapter
+        from zet.services.local_mode_selection_service import LocalModeSelectionService
+        mode_selection = LocalModeSelectionService(self._pipeline_service(pipeline))
         kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
         if selected:
             run = adapter.detail(selected["run_id"], **kwargs) if pipeline in {"character-assembly", "costume-dressing"} else adapter.detail(selected["run_id"])
             if run.get("character_progression") and (pipeline != "costume-dressing" or not run["character_progression"].get("accepted_revision_id")):
                 raise CharacterStagePause(run)
-            if not (run.get("selected_views") or {}).get("FRONT"):
+            selected_mode = selected.get("render_mode", "draft")
+            selected_field = "final_selected_views" if selected_mode == "final" else "selected_views"
+            if not (run.get(selected_field) or {}).get("FRONT"):
                 if pipeline == "body-reference":
                     adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], autogenerate=True)
                 elif pipeline in {"head-image", "head-image-edit"}:
                     adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], autogenerate=True)
                 else:
                     adapter.select_view(selected["run_id"], "FRONT", selected["candidate_id"], costume if pipeline == "costume-dressing" else "", autogenerate=True)
-            lock_kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
             try:
-                return adapter.lock_selected_view(selected["run_id"], "FRONT", **lock_kwargs)
+                return mode_selection.lock(selected["run_id"], "FRONT", selected_mode, costume if pipeline == "costume-dressing" else "")
             except Exception:
+                if selected_mode == "final":
+                    raise
                 self._execute_front(pipeline, selected["run_id"], costume)
                 refreshed = self._wait_for_front(pipeline, selected["run_id"], costume,
                                                  self._job_path(character, phase, costume), job["job_id"])
-                if (refreshed.get("selected_views") or {}).get("FRONT") != selected["candidate_id"]:
+                if (refreshed.get(selected_field) or {}).get("FRONT") != selected["candidate_id"]:
                     raise LocalCharacterOverviewError(f"Selected FRONT image could not be refreshed for {pipeline}.")
-                return adapter.lock_selected_view(selected["run_id"], "FRONT", **lock_kwargs)
+                return mode_selection.lock(selected["run_id"], "FRONT", selected_mode, costume if pipeline == "costume-dressing" else "")
 
         run = self._existing_batch(pipeline, character, phase, costume)
         owns_run = run is None
@@ -465,8 +487,7 @@ class LocalCharacterOverviewService:
             adapter.select_view(run_id, "FRONT", candidate_id, autogenerate=True)
         else:
             adapter.select_view(run_id, "FRONT", candidate_id, costume if pipeline == "costume-dressing" else "", autogenerate=True)
-        lock_kwargs = {"costume": costume} if pipeline == "costume-dressing" else {}
-        return adapter.lock_selected_view(run_id, "FRONT", **lock_kwargs)
+        return mode_selection.lock(run_id, "FRONT", "draft", costume if pipeline == "costume-dressing" else "")
 
     def _run_job(self, path: Path, job_id: str) -> None:
         try:
@@ -474,7 +495,8 @@ class LocalCharacterOverviewService:
                 job = self._read(path)
                 if job.get("job_id") != job_id or job.get("status") not in ACTIVE_STATUSES:
                     return
-                if self._locked_dressing(job["character"], job["phase"], job["costume"]):
+                if (self._locked_dressing(job["character"], job["phase"], job["costume"], "final")
+                        or self._locked_dressing(job["character"], job["phase"], job["costume"], "draft")):
                     self._update(path, job_id, status="COMPLETE", pipeline="costume-dressing", message="Locked Costume-Dressing FRONT image is ready.", error="")
                     return
                 if job.get("head_pipeline") != "head-image-edit" or job.get("pipeline") == "head-image":

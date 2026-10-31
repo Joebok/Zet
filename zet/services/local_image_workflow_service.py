@@ -79,6 +79,16 @@ class LocalImagePipelineWorkflowService:
         costume = str(args.get("costume") or "")
         payload = args.get("payload") or {}
         direction = str(args.get("direction") or "")
+        if (("render_mode" in payload and name in {"select_view", "unselect_view"})
+                or name in {"lock_view", "unlock_view"}):
+            from zet.services.local_mode_selection_service import LocalModeSelectionService
+            mode = payload.get("render_mode", "draft")
+            selections = LocalModeSelectionService(self)
+            if name in {"select_view", "unselect_view"}:
+                return selections.select(run_id, view, candidate_id if name == "select_view" else "", mode, costume)
+            if name == "lock_view":
+                return selections.lock(run_id, view, mode, costume)
+            return selections.unlock(run_id, view, mode, costume)
         if name == "import_override":
             from zet.services.local_character_override_service import LocalCharacterOverrideService
             return LocalCharacterOverrideService(self).import_image(
@@ -88,7 +98,7 @@ class LocalImagePipelineWorkflowService:
             from zet.services.local_character_refinement_service import LocalCharacterRefinementService
             refinement = LocalCharacterRefinementService(self.app, self.project_root)
             if name == "refinement_open":
-                return refinement.open(self.pipeline, run_id, costume, view)
+                return refinement.open(self.pipeline, run_id, costume, view, payload.get("render_mode", "draft"))
             operation = name.removeprefix("refinement_")
             if operation not in {"detail", "analyze", "edit", "retry", "adopt", "image_path"}:
                 raise LocalImageWorkflowError("Unknown refinement operation.")
@@ -287,15 +297,10 @@ class LocalImagePipelineWorkflowService:
                 from zet.services.local_character_progression_service import advance
                 return advance(self, run_id, costume, payload.get("expected_stage"), payload.get("back_reference"))
             return self.adapter.proceed(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.proceed(run_id)
-        if name == "lock_view":
-            return self.adapter.lock_selected_view(run_id, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.lock_selected_view(run_id, view)
         if name in {"lock_all_preview", "lock_all", "unlock_all"}:
-            return self._bulk_asset_action(name, run_id, costume, payload)
+            return self._mode_bulk_asset_action(name, run_id, costume, {"render_mode": "draft", **payload})
         if name == "lock_preview":
             return self.adapter.lock_preview(run_id, view, costume)
-        if name == "unlock_view":
-            character, phase = str(args.get("character") or ""), str(args.get("phase") or "")
-            return self.adapter.unlock_view(character, phase, view, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.unlock_view(character, phase, view)
         if name == "retry_candidate":
             result = self.adapter.retry_candidate(run_id, candidate_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.retry_candidate(run_id, candidate_id)
             candidate = next((item for item in result.get("candidates") or []
@@ -303,6 +308,44 @@ class LocalImagePipelineWorkflowService:
             self.prompt_improvement.reset_after_rerender(run_id, {str(candidate.get("view") or "")}, costume)
             return self.prompt_improvement.detail(run_id, costume)
         raise LocalImageWorkflowError(f"Unsupported local image workflow action: {name}")
+
+    def _mode_bulk_asset_action(self, name: str, run_id: str, costume: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Operate on one mode in the open batch, with a fenced preview."""
+        from zet.services.local_mode_selection_service import LocalModeSelectionService
+        from zet.services.workflow_storage import file_lock
+
+        mode = payload["render_mode"]
+        if mode not in ("draft", "final"):
+            raise LocalImageWorkflowError("Render mode must be draft or final.")
+        run = self.prompt_improvement.detail(run_id, costume)
+        helper = LocalModeSelectionService(self)
+        with file_lock(Path(run["root"]) / "state.lock"):
+            run = self.prompt_improvement.detail(run_id, costume)
+            selections = run.get("selected_views" if mode == "draft" else "final_selected_views") or {}
+            if name == "lock_all" and payload.get("selected_views") != selections:
+                raise LocalImageWorkflowError("Selections changed. Review Lock all again.")
+            qualifier = self.adapter._qualifier(costume) if self.pipeline == "costume-dressing" else ""
+            views = []
+            for view in run.get("views") or []:
+                record = helper.store.mode_record(run["character"], run["phase"], helper._pipeline(), view,
+                                                  qualifier, render_mode=mode) or {}
+                if name == "unlock_all":
+                    if record.get("locked") and record.get("batch_id") == run_id:
+                        views.append(view)
+                elif selections.get(view) and not (record.get("locked") and record.get("batch_id") == run_id
+                                                  and record.get("candidate_id") == selections[view]):
+                    views.append(view)
+            if name == "lock_all_preview":
+                return {"render_mode": mode, "views": views, "selected_views": selections,
+                        "changes": [{"pipeline": helper._pipeline(), "view": view, "render_mode": mode} for view in views]}
+            completed, errors = [], {}
+            for view in views:
+                try:
+                    (helper.unlock if name == "unlock_all" else helper.lock)(run_id, view, mode, costume)
+                    completed.append(view)
+                except (ValueError, OSError) as exc:
+                    errors[view] = str(exc)
+            return {"render_mode": mode, "completed_views": completed, "errors": errors}
 
     def _bulk_asset_action(self, name: str, run_id: str, costume: str,
                            payload: dict[str, Any]) -> dict[str, Any]:

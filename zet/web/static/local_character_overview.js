@@ -41,7 +41,7 @@
           image.loading = "lazy";
           card.append(image);
         } else card.append(make("div", "overview-placeholder", "No locked front image"));
-        const state = slot.image_url ? "Locked" : slot.message || ({
+        const state = slot.image_url ? `${slot.render_mode === "final" ? "Final" : "Draft"} · Locked${slot.locked_modes?.length > 1 ? " · Both modes" : ""}` : slot.message || ({
           IDLE: "Ready to generate.", QUEUED: "Queued.",
           RUNNING: `Working on ${slot.pipeline}…`, CANCELLED: "Stopped. Start again to retry.",
         }[slot.state] || slot.state);

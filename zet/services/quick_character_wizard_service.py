@@ -559,7 +559,16 @@ class QuickCharacterWizardService:
             self._write(current)
             payload = {**payload, "ai_owner": {"session_id": sid, "candidate_id": candidate["candidate_id"]},
                        "ai_workflow": "Minor Characters"}
-            result = self._generation().submit(payload, request_id=target["render_request_id"], seeds=seeds)
+            sizing = candidate.get("render_sizing")
+            if sizing:
+                payload.update(render_mode=sizing["render_mode"], aspect_ratio=sizing["aspect_ratio"])
+                target["render_sizing"] = dict(sizing)
+                target["render_payload"] = payload
+                self._write(current)
+            options = {"request_id": target["render_request_id"], "seeds": seeds}
+            if sizing:
+                options["frozen_sizing"] = sizing
+            result = self._generation().submit(payload, **options)
             target.update(request_id=result["request_id"], status="QUEUED")
             self._write(current)
 
@@ -702,7 +711,8 @@ class QuickCharacterWizardService:
                     elif result["status"] == "COMPLETE" and result["images"]:
                         contents, mime, generation = self._generation().library_result(c["request_id"], result["images"][0]["index"])
                         suffix = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[mime]
-                        c["filename"] = f"renders/{c['candidate_id']}.{suffix}"
+                        prefix = f"{c['render_mode']}_" if c.get("render_mode") in ("draft", "final") else ""
+                        c["filename"] = f"renders/{prefix}{c['candidate_id']}.{suffix}"
                         path = self._directory(sid) / c["filename"]
                         path.parent.mkdir(parents=True, exist_ok=True)
                         write_bytes_atomic(path, contents)

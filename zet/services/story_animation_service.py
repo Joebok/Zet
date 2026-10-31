@@ -221,7 +221,7 @@ class StoryAnimationService:
                     if not item.get("locked"): continue
                     try: image=finished_path(self.repository,story,scene_id,target_id,candidate_id)
                     except (FileNotFoundError,KeyError): continue
-                    result.append({"id":f"{scene_id}:{target_id}:{candidate_id}","scene_id":scene_id,"target_id":target_id,"candidate_id":candidate_id,"title":scene["title"],"image":str(image),"lettered":bool(item.get("scene_text_final")),"text_entries":item.get("scene_text_final",{}).get("entries",[])})
+                    result.append({"id":f"{scene_id}:{target_id}:{candidate_id}","scene_id":scene_id,"target_id":target_id,"candidate_id":candidate_id,"title":scene["title"],"image":str(image),"render_mode":item.get("render_mode","draft"),"lettered":bool(item.get("scene_text_final")),"text_entries":item.get("scene_text_final",{}).get("entries",[])})
         return result
     def bind(self, story, animation, data):
         source=next((x for x in self.sources(story) if x["id"]==data.get("source_id")),None)
@@ -243,7 +243,7 @@ class StoryAnimationService:
             with Image.open(finished_path(self.repository,story,source["scene_id"],source["target_id"],source["candidate_id"])) as expected:
                 actual=base.convert("RGBA")
                 if expected.size!=actual.size or ImageChops.difference(expected.convert("RGBA"),actual).getbbox(): raise ValueError("Confirmed lettering layers do not reproduce the locked finished image; independent fades are unavailable.")
-        asset={"id":asset_id,"source_id":source["id"],"title":source["title"],"artwork":art_name,"text_layers":layers,"text_entries":entries,"text_style":final.get("style",{}),"width":Image.open(original).width,"height":Image.open(original).height,"sha256":hashlib.sha256(original.read_bytes()).hexdigest(),"lettering_separable":bool(final)}
+        asset={"id":asset_id,"source_id":source["id"],"title":source["title"],"render_mode":source.get("render_mode","draft"),"artwork":art_name,"text_layers":layers,"text_entries":entries,"text_style":final.get("style",{}),"width":Image.open(original).width,"height":Image.open(original).height,"sha256":hashlib.sha256(original.read_bytes()).hexdigest(),"lettering_separable":bool(final)}
         with self.repository.lock():
             doc=json.loads((folder/"spec.json").read_text(encoding="utf-8")); doc["assets"][asset_id]=asset; doc["revision"]+=1; write_json_atomic(folder/"spec.json",doc)
         return self.read(story,animation)

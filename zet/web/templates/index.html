@@ -286,7 +286,6 @@
               <select id="local-pipeline-head-pipeline"><option value="head-image">Head-Image</option><option value="head-image-edit">Head-Image Edit</option></select>
             </label>
             <div id="local-pipeline-source-batches" class="local-pipeline-source-batches" hidden></div>
-            <label id="local-pipeline-rerun-refresh-option" hidden><span>Refresh references from chosen batches when rerunning</span><input id="local-pipeline-rerun-refresh-sources" type="checkbox" checked></label>
             <div id="local-pipeline-source-option" hidden>
               <label id="local-pipeline-apply-phase-change-option" class="local-pipeline-recompile-option"><span>Apply Phase Change</span><input id="local-pipeline-apply-phase-change" type="checkbox" disabled></label>
               <label id="local-pipeline-source-mode-option" hidden>Phase-change source
@@ -311,6 +310,11 @@
           <p id="local-pipeline-status" class="action-message" role="status"></p>
         </section>
         <details id="local-template-improvement" class="control-panel template-improvement" hidden></details>
+        <div class="button-row compact" id="local-pipeline-render-options">
+          <label>Render quality<select id="local-pipeline-render-quality"><option value="draft">Draft</option><option value="final">Final</option></select></label>
+          <label>Aspect ratio<input id="local-pipeline-aspect-ratio" value="2:3" required></label>
+          <span id="local-pipeline-size-preview" role="status"></span>
+        </div>
         <section id="local-pipeline-selected" class="local-pipeline-selected" aria-label="Selected views"></section>
         <section id="local-pipeline-views" class="local-pipeline-views"></section>
       </div>
@@ -816,9 +820,11 @@
             </details>
           </aside>
           <section class="mc-images">
+            <div class="button-row compact"><label>Render quality <select id="mc-render-mode"><option value="draft">Draft</option><option value="final">Final</option></select></label><label>Aspect ratio <input id="mc-render-ratio" value="2:3" required></label><span id="mc-size-preview" role="status"></span><label>Seed <select id="mc-seed-source"><option value="">New seed</option></select></label></div>
             <div id="mc-tabs" class="button-row" role="tablist" aria-label="Character views"></div>
             <h3 id="mc-stage-status">Style alignment</h3>
             <div class="button-row"><button id="mc-continue-true-ups" type="button" aria-describedby="mc-refine-help" hidden>Continue to true-ups</button><button id="mc-restart" type="button">Restart Style alignment</button><button id="mc-undo" type="button" disabled>Undo true-up</button></div>
+            <div class="button-row compact"><button id="mc-delete-draft-view" type="button" class="danger-text-action">Delete Draft images in this view</button><button id="mc-delete-draft-all" type="button" class="danger-text-action">Delete all Draft images</button></div>
             <div id="mc-add-renders"></div>
             <div id="mc-slots" class="mc-slots" aria-label="Current stage render slots"></div>
             <section id="mc-suggestions" aria-labelledby="mc-suggestions-title">
@@ -1717,14 +1723,17 @@
             <button id="image-generation-img2img" type="button" aria-pressed="false">img2img</button>
           </div>
           <div class="image-generation-dimensions">
-            <label>Width<input id="image-generation-width" type="number" min="256" max="4096" step="32" value="1024" required></label>
-            <label>Height<input id="image-generation-height" type="number" min="256" max="4096" step="32" value="1024" required></label>
+            <label>Render mode<select id="image-generation-render-mode"><option value="draft">Draft</option><option value="final">Final</option></select></label>
+            <label>Aspect ratio<input id="image-generation-aspect-ratio" value="1:1" required></label>
+            <input id="image-generation-width" type="hidden" value="1024"><input id="image-generation-height" type="hidden" value="1024">
+            <span id="image-generation-size" class="status-text" aria-live="polite"></span>
           </div>
-          <p class="status-text">Width and height must be from 256 to 4096 in steps of 32. AI_Proxy starts ComfyUI when needed.</p>
+          <p class="status-text">Enter a width:height ratio, such as 4:3. AI_Proxy starts ComfyUI when needed.</p>
           <div class="button-row compact">
             <label>Render count<input id="image-generation-count" type="number" min="1" max="8" value="4"></label><button id="image-generation-submit" class="primary-action" type="submit">Generate</button>
             <button id="image-generation-fill" type="button" disabled>Add renders</button>
             <button id="image-generation-clear" type="button" disabled>Clear all</button>
+            <button id="image-generation-delete-drafts" class="danger-text-action" type="button">Delete all Draft images</button>
             <span id="image-generation-progress" class="status-text" aria-live="polite"></span>
           </div>
           <fieldset id="image-generation-reference-slots" class="image-generation-reference-slots" hidden>
@@ -1789,6 +1798,9 @@
         <section class="control-panel ai-automation-panel local-image-config-panel">
           <h2>Project Automation</h2>
           <form id="automation-form" class="settings-form">
+            <label>Draft target pixels<input id="setting-draft-target-pixels" type="number" min="65536" max="16777216" step="1" required></label>
+            <label>Final target pixels<input id="setting-final-target-pixels" type="number" min="65536" max="16777216" step="1" required></label>
+            <p class="status-text">Image Generation uses these targets. Draft and Final sizing is being integrated into the other workflows.</p>
             <label><input id="setting-ai-harvest-auto" type="checkbox"> Standalone harvest host enabled</label>
             <label>Standalone harvest interval seconds<input id="setting-ai-harvest-interval" type="number" min="0" max="86400" step="1"></label>
             <label><input id="setting-ai-prompt-analysis-auto-queue-on-render" type="checkbox"> Auto-queue prompt analysis when rendering a scene</label>

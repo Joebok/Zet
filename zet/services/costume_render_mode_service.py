@@ -79,6 +79,7 @@ class CostumeRenderModeService:
                     else self.workflow.adapter._verify_snapshot_view(run, view)["character_assembly"])
         reference = {"role": "character_assembly", "prompt_role": "edit_base", "path": assembly["image_path"],
                      "view": view, "body_view": view, "head_view": view, "character": run["character"], "phase": run["phase"],
+                     "render_mode": assembly.get("render_mode", "draft"),
                      "label": f"Matching Character-Assembly image ({view})"}
         if view == "FRONT" or settings["mode"] == "doll-dressing-no-ref":
             return [reference]
@@ -97,17 +98,32 @@ class CostumeRenderModeService:
                          ignore=["fitment clothing", "bare feet", "rendering details"])
         return [source, reference]
 
-    def prepare(self, run, view, directory, *, settings=None, output_dir=None):
-        from zet.services.render_slot_service import frozen_input
+    def prepare(self, run, view, directory, *, settings=None, output_dir=None, reuse_saved_prompt=False):
+        from zet.services.render_slot_service import frozen_input, _rebind_mode_references
         from zet.services.template_source_service import active_revision
         settings = settings or render_settings(run, view)
         reason = self.reason(run, view, settings, include_review=False)
         if reason:
             raise ValueError(reason)
         references = self.references(run, view, settings)
-        compiled = self.workflow.adapter._compile(run, view, references, output_dir=output_dir or Path(directory) / "prompt", render_mode=settings["mode"])
-        prompt = Path(compiled["final_prompt"])
-        saved = frozen_input(Path(directory) / "inputs", prompt.read_text(encoding="utf-8"), compiled["reference_files"], self.workflow.adapter.definition["preset"])
+        output = Path(output_dir or Path(directory) / "prompt")
+        prompt = output / "Final_Image_Prompt.md"
+        manifest = output / "dependency_manifest.json"
+        if reuse_saved_prompt and prompt.is_file():
+            import json
+            if not manifest.is_file():
+                raise ValueError("Saved costume prompt has no reference bindings. Recompile the prompt.")
+            resources = json.loads(manifest.read_text(encoding="utf-8")).get("resources")
+            if not isinstance(resources, list):
+                raise ValueError("Saved costume prompt has invalid reference bindings. Recompile the prompt.")
+            refs = _rebind_mode_references(resources, references,
+                {"character_assembly", "batch_view_reference", "costume_rotation_source"})
+            compiled = {}
+        else:
+            compiled = self.workflow.adapter._compile(run, view, references, output_dir=output, render_mode=settings["mode"])
+            prompt = Path(compiled["final_prompt"])
+            refs = compiled["reference_files"]
+        saved = frozen_input(Path(directory) / "inputs", prompt.read_text(encoding="utf-8"), refs, self.workflow.adapter.definition["preset"])
         from zet.services.local_render_backend_service import LocalRenderBackendService
         saved["render_profile"] = LocalRenderBackendService(self.workflow.app.config.state_file(self.workflow.project_root, "Local_Render_Presets.json"),
             config=self.workflow.app.config).preset(saved["preset"])

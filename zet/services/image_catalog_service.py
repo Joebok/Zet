@@ -176,7 +176,7 @@ class ImageCatalogService:
     def _discover_character_images(self) -> list[dict]:
         rows = []
         for character, phase in self._character_phases() or []:
-            for asset in self.local_asset_store.locked_assets(character, phase):
+            for asset in self.local_asset_store.locked_assets(character, phase, render_mode=None):
                 image_path = Path(asset["image_path"])
                 pipeline = {"body-reference": "Body-Reference", "head-image": "Head-Image",
                             "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing"}.get(

@@ -3,9 +3,10 @@
   const params = new URLSearchParams(location.search);
   const pipeline = params.get("pipeline"), runId = params.get("run_id"), view = params.get("view");
   const universe = params.get("universe_id") || "", costume = params.get("costume") || "";
+  const renderMode = params.get("render_mode") || "draft";
   const $ = id => document.getElementById(`refine-${id}`);
   let data, current = "original", loading = false, acting = false, serial = 0, analysisSignature = "", comparisonsSignature = "";
-  const key = `character-refinement:${universe}:${pipeline}:${runId}:${view}`;
+  const key = `character-refinement:${universe}:${pipeline}:${runId}:${view}:${renderMode}`;
   let draft = {};
   try { draft = JSON.parse(localStorage.getItem(key) || "{}"); } catch (_) { /* Ignore unavailable saved drafts. */ }
   function saveDraft() {
@@ -132,13 +133,13 @@
   async function initialize() {
     if (!["body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"].includes(pipeline) || !runId || !view || !universe) throw new Error("Open refinement from a selected image in its batch.");
     const query = new URLSearchParams({ universe_id: universe, costume });
-    data = await request(`/api/local/${pipeline}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/refinement?${query}`, {});
+    data = await request(`/api/local/${pipeline}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/refinement?${query}`, {render_mode:renderMode});
     const batch = await request(`/api/local/${pipeline}/runs/${encodeURIComponent(runId)}?${query}`);
     const back = new URLSearchParams({ page: `local-${pipeline}`, local_batch: runId,
-      universe_id: universe, character: batch.character, phase: batch.phase });
+      universe_id: universe, character: batch.character, phase: batch.phase, render_mode: renderMode });
     if (costume) back.set("local_costume", costume);
     $("return").href = `/?${back}`;
-    $("title").textContent = `${batch.character} · ${view.replaceAll("_", " ")} refinement`;
+    $("title").textContent = `${batch.character} · ${view.replaceAll("_", " ")} · ${renderMode === "final" ? "Final" : "Draft"} refinement`;
     window.ZetModelPicker?.attach($("model"), { required: ["vision"], allowDefault: true });
     render();
     setInterval(async () => {

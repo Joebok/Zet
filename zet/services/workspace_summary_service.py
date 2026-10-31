@@ -51,10 +51,10 @@ class WorkspaceSummaryService:
 
     def character_summary(self, character: str, phase: str) -> CharacterWorkspaceSummary:
         status = self.onboarding_service.status(character, phase)
-        assets = self.local_asset_store.locked_assets(character, phase) if self.local_asset_store else []
-        reference_locked = sum(str(item.get("pipeline") or "").lower() == "body-reference" for item in assets)
-        head_image_locked = sum(str(item.get("pipeline") or "").lower() == "head-image" for item in assets)
-        assembly_locked = sum(str(item.get("pipeline") or "").lower() == "character-assembly" for item in assets)
+        assets = self.local_asset_store.locked_assets(character, phase, render_mode=None) if self.local_asset_store else []
+        reference_locked = len({item.get("view") for item in assets if str(item.get("pipeline") or "").lower() == "body-reference"})
+        head_image_locked = len({item.get("view") for item in assets if str(item.get("pipeline") or "").lower() == "head-image"})
+        assembly_locked = len({item.get("view") for item in assets if str(item.get("pipeline") or "").lower() == "character-assembly"})
         reference_total = head_image_total = assembly_total = 8
         identity_count = len(self.identity_key_service.list_identity_keys(character, phase))
         turnaround_count = sum(

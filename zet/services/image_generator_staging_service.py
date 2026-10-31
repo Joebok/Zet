@@ -12,7 +12,6 @@ from zet.services.ad_hoc_image_generation_service import (
     IMAGE_GENERATION_MAX_REFERENCE_BYTES,
     IMAGE_GENERATION_MAX_REFERENCES,
 )
-from zet.services.comfyui_render_service import _render_size
 from zet.services.local_render_policy import require_qwen_profile
 from zet.services.render_slot_service import RenderSlotConflict
 from zet.services.workflow_storage import file_lock, validate_image
@@ -24,12 +23,16 @@ class ImageGeneratorStagingService:
         self.generator = generator
 
     def stage(self, run_id: str, view: str, costume: str = "", *, recompile: bool = False,
-              rotation: bool = False, no_costume_ref: bool = False):
+              rotation: bool = False, no_costume_ref: bool = False, render_mode: str = "draft"):
         workflow = self.workflow
         if no_costume_ref and rotation:
             raise ValueError("Stage no Costume Ref cannot be combined with Stage Rotation.")
         if no_costume_ref and workflow.pipeline != "costume-dressing":
             raise ValueError("Stage no Costume Ref is available only for Costume Dressing.")
+        from zet.services.image_sizing_service import resolve_image_sizing
+        from zet.services.local_view_reference_service import selected_run_for_mode
+        ratio = "1:1" if workflow.pipeline in {"head-image", "head-image-edit"} else "2:3"
+        sizing = resolve_image_sizing(workflow.app.config, render_mode, ratio)
         run = workflow.prompt_improvement.detail(run_id, costume)
         with file_lock(Path(run["root"]) / "state.lock"), TemporaryDirectory(prefix="zet-stage-view-") as directory:
             run = workflow.prompt_improvement.detail(run_id, costume)
@@ -38,6 +41,9 @@ class ImageGeneratorStagingService:
                 raise ValueError("Unknown character view.")
             if workflow.pipeline == "costume-dressing":
                 from zet.services.costume_render_mode_service import CostumeRenderModeService, render_settings
+                run = selected_run_for_mode(run, render_mode)
+                resolved = workflow.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+                run = {**run, "sources": {**(run.get("sources") or {}), view: resolved}}
                 settings = render_settings(run, view)
                 if rotation or no_costume_ref:
                     settings = {**settings, "mode": "rotate" if rotation else "doll-dressing-no-ref"}
@@ -53,10 +59,11 @@ class ImageGeneratorStagingService:
                 from zet.services.costume_no_reference_service import CostumeNoReferenceService
                 saved = CostumeNoReferenceService().prepare(workflow, run, view, Path(directory))
             else:
-                reason = workflow.slots._prerequisite(run, view)
+                reason = workflow.slots._prerequisite(run, view, render_mode)
                 if reason:
                     raise RenderSlotConflict(reason)
-                saved = workflow.slots.prepare_input(run, view, Path(directory), recompile=recompile)
+                saved = workflow.slots.prepare_input(run, view, Path(directory), recompile=recompile,
+                                                     render_mode=render_mode, aspect_ratio=ratio)
             if not saved["prompt"].strip():
                 raise ValueError("This view has no image prompt to stage.")
             if len(saved["references"]) > IMAGE_GENERATION_MAX_REFERENCES:
@@ -67,14 +74,14 @@ class ImageGeneratorStagingService:
                 profile = saved.get("render_settings") or profile
             if workflow.pipeline == "costume-dressing":
                 profile = saved.get("render_profile") or profile
-            width, height = _render_size(None, profile)
             inputs = {
                 "universe_style_variant": run.get("universe_style_variant") or "canonical",
                 **({"universe_style": run["universe_style"]} if run.get("universe_style") else {}),
                 "mode": "img2img" if saved["references"] else "txt2img",
                 "prompt": saved["prompt"], "negative_prompt": "",
-                "width": self.generator._dimension(width, "Width"),
-                "height": self.generator._dimension(height, "Height"),
+                "width": self.generator._dimension(sizing["width"], "Width"),
+                "height": self.generator._dimension(sizing["height"], "Height"),
+                "render_mode": render_mode, "aspect_ratio": ratio,
                 "reference_images": [],
                 "render_config": {"preset": saved["preset"],
                                   "checkpoint": str(profile.get("diffusion_model") or ""),
@@ -98,7 +105,7 @@ class ImageGeneratorStagingService:
                     "label": str(reference.get("label") or reference.get("prompt_role") or reference.get("role") or f"Image {index}"),
                     "image": f"data:{mime};base64," + base64.b64encode(contents).decode("ascii"),
                     "metadata": {key: reference[key] for key in
-                                 ("role", "prompt_role", "image_index", "view", "source_view") if key in reference},
+                                 ("role", "prompt_role", "image_index", "view", "source_view", "render_mode") if key in reference},
                 })
         # Preparation must succeed before detaching any existing results.
-        return {"inputs": inputs, "workspace": self.generator.slot_workspace.reset_for_staging()}
+        return {"inputs": inputs, "workspace": self.generator.slot_workspace.reset_for_staging(render_mode)}

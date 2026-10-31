@@ -376,7 +376,8 @@ class ImageReconstructionService:
         if not isinstance(item_ids, list) or any(not isinstance(i, str) for i in item_ids):
             raise ValueError("Choose current correction item IDs.")
         correction_items(report, item_ids, instructions)
-        key = fingerprint([report_id, sorted(item_ids), instructions])
+        sizing = self.generator.sizing(payload["render_mode"], payload.get("aspect_ratio", "1:1")) if "render_mode" in payload else None
+        key = fingerprint([report_id, sorted(item_ids), instructions, *([sizing] if sizing else [])])
         directory = self._report_path(job_id, report_id).parent
         with file_lock(directory / "corrections.lock"):
             mapping_path = directory / "corrections.json"
@@ -393,12 +394,13 @@ class ImageReconstructionService:
                     "action": "modify", "subject": instructions, "result": instructions})
                 new["target_hash"] = fingerprint(new["target"])
                 new["prompt"] = self.compose(new)
-            new.update(status="RUNNING", count=1, selected_result=expected,
-                       width=self.generator._dimension(payload.get("width", 1024), "Width"),
-                       height=self.generator._dimension(payload.get("height", 1024), "Height"))
+            new.update(status="RUNNING", count=1, selected_result=expected, render_sizing=sizing,
+                       source_render_mode=source.get("render_mode"),
+                       width=self.generator._dimension(sizing["width"] if sizing else payload.get("width", 1024), "Width"),
+                       height=self.generator._dimension(sizing["height"] if sizing else payload.get("height", 1024), "Height"))
             self._save(new)
             try:
-                self.generator.slot_workspace.reserve_reconstruction(new["id"], 1)
+                self.generator.slot_workspace.reserve_reconstruction(new["id"], 1, sizing["render_mode"] if sizing else "draft")
             except Exception as exc:
                 from zet.services.storage_health_service import pause_on_storage_error
                 pause_on_storage_error(self.app.config, exc)
@@ -444,7 +446,9 @@ class ImageReconstructionService:
             new["render_payload"] = spec
             self._save(new)
             self.generator.slot_workspace.submit_reconstruction(new_id,
-                {**spec, "width": new["width"], "height": new["height"]}, expected)
+                {**spec, "width": new["width"], "height": new["height"]}, expected,
+                render_mode=(new.get("render_sizing") or {}).get("render_mode", "draft"), frozen_sizing=new.get("render_sizing"),
+                source_render_mode=new.get("source_render_mode"))
             new["status"] = "SUBMITTED"
         except Exception as exc:
             from zet.services.storage_health_service import pause_on_storage_error
@@ -481,16 +485,21 @@ class ImageReconstructionService:
 
     def start(self, payload):
         count = render_count(payload.get("count"), 4)
-        width = self.generator._dimension(payload.get("width", 1024), "Width")
-        height = self.generator._dimension(payload.get("height", 1024), "Height")
+        sizing = self.generator.sizing(payload["render_mode"], payload.get("aspect_ratio", "1:1")) if "render_mode" in payload else None
+        width = self.generator._dimension(sizing["width"] if sizing else payload.get("width", 1024), "Width")
+        height = self.generator._dimension(sizing["height"] if sizing else payload.get("height", 1024), "Height")
         job = self.prepare(payload)
-        job.update(status="RUNNING", count=count, width=width, height=height,
-                   selected_result=payload.get("selected_result"))
+        source_mode = None
+        if payload.get("selected_result") is not None:
+            _, source = self.generator.slot_workspace.selected_result(payload["selected_result"])
+            source_mode = source.get("render_mode")
+        job.update(status="RUNNING", count=count, width=width, height=height, render_sizing=sizing,
+                   selected_result=payload.get("selected_result"), source_render_mode=source_mode)
         self._save(job)
         with self._guard:
             self._active.add(job["id"])
         try:
-            self.generator.slot_workspace.reserve_reconstruction(job["id"], count)
+            self.generator.slot_workspace.reserve_reconstruction(job["id"], count, sizing["render_mode"] if sizing else "draft")
         except Exception as exc:
             from zet.services.storage_health_service import pause_on_storage_error
             pause_on_storage_error(self.app.config, exc)
@@ -511,12 +520,14 @@ class ImageReconstructionService:
                 if job["target"]["questions"]:
                     raise ValueError("Analysis needs clarification: " + "; ".join(job["target"]["questions"]))
                 if job.get("selected_result"):
-                    self.generator.slot_workspace.selected_result(job["selected_result"])
+                    self.generator.slot_workspace.selected_result(job["selected_result"], job.get("source_render_mode"))
                 spec = self.render_spec(job_id, "")
                 job.update(status="DISPATCHING", prompt=spec["prompt"])
                 self._save(job)
                 self.generator.slot_workspace.submit_reconstruction(job_id, {
-                    **spec, "count": job["count"], "width": job["width"], "height": job["height"]}, job.get("selected_result"))
+                    **spec, "count": job["count"], "width": job["width"], "height": job["height"]}, job.get("selected_result"),
+                    render_mode=(job.get("render_sizing") or {}).get("render_mode", "draft"), frozen_sizing=job.get("render_sizing"),
+                    source_render_mode=job.get("source_render_mode"))
                 job["status"] = "SUBMITTED"
                 return
             image = str(self._path(job_id).parent / job["source_file"])
@@ -541,7 +552,7 @@ class ImageReconstructionService:
                 "count": job["count"], "width": job["width"], "height": job["height"],
                 "reconstruction": {key: job[key] for key in ("id", "model", "source", "style",
                     "instruction_version", "content_prompt", "uncertainties", "notes", "prompt")},
-            })
+            }, render_mode=(job.get("render_sizing") or {}).get("render_mode", "draft"), frozen_sizing=job.get("render_sizing"))
             job["status"] = "SUBMITTED"
         except Exception as exc:
             from zet.services.storage_health_service import pause_on_storage_error

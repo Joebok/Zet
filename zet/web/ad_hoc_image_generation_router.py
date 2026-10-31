@@ -19,8 +19,11 @@ def create_ad_hoc_image_generation_router(
     router = APIRouter(prefix="/api/image-generation", tags=["image-generation"])
 
     @router.get("/workspace")
-    def workspace():
-        return service_provider().slot_workspace.detail()
+    def workspace(render_mode: str = Query("draft")):
+        try:
+            return service_provider().slot_workspace.detail(render_mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/workspace/import")
     def import_workspace(payload: dict[str, Any] = Body(...)):
@@ -29,6 +32,8 @@ def create_ad_hoc_image_generation_router(
     @router.post("/workspace/{operation}")
     def workspace_action(operation: str, payload: dict[str, Any] = Body(default={})):
         try:
+            if operation == "delete-draft-images":
+                return service_provider().slot_workspace.delete_draft_images()
             return service_provider().slot_workspace.action(operation, payload)
         except RenderSlotConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -38,6 +43,13 @@ def create_ad_hoc_image_generation_router(
     @router.get("/options")
     def options() -> dict[str, Any]:
         return service_provider().options()
+
+    @router.get("/sizing")
+    def sizing(render_mode: str = Query("draft"), aspect_ratio: str = Query("1:1")):
+        try:
+            return service_provider().sizing(render_mode, aspect_ratio)
+        except AdHocImageGenerationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.get("/reconstructions/options")
     def reconstruction_options():

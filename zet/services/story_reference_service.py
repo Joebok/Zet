@@ -249,7 +249,8 @@ class StoryReferenceService:
             if not path.is_relative_to(repository.folder(story, scene, target)) or not path.is_file():
                 raise self.error_type("Narrative reference image is unavailable.")
             seen.add(match.group(0))
-            references.append({"tag": match.group(0), "path": str(path), "label": record["title"], "kind": "narrative", "role": "story_reference"})
+            references.append({"tag": match.group(0), "path": str(path), "label": record["title"], "kind": "narrative", "role": "story_reference",
+                               "render_mode": candidate.get("render_mode", "draft")})
         pattern = (
             r"\{\{ASSET:([^:}]+):([^:}]+):(\d+)(?::[^}]*)?\}\}"
             r"|\{\{IDENTITY:([^:}]+):([^:}]+):([^:}]+)\}\}"

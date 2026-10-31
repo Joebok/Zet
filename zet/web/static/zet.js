@@ -236,6 +236,28 @@ const imageGenerationStyleVariant = document.querySelector("#image-generation-st
 const imageGenerationNegative = document.querySelector("#image-generation-negative");
 const imageGenerationWidth = document.querySelector("#image-generation-width");
 const imageGenerationHeight = document.querySelector("#image-generation-height");
+const imageGenerationRenderMode = document.querySelector("#image-generation-render-mode");
+const imageGenerationAspectRatio = document.querySelector("#image-generation-aspect-ratio");
+const imageGenerationSize = document.querySelector("#image-generation-size");
+let imageGenerationSizingRevision = 0;
+let imageGenerationActiveBoardMode = "draft";
+
+async function updateImageGenerationSizing() {
+  const revision = ++imageGenerationSizingRevision;
+  imageGenerationAspectRatio.setCustomValidity("Calculating output size.");
+  const params = new URLSearchParams({render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value});
+  try {
+    const sizing = await fetchJson(`/api/image-generation/sizing?${params}`);
+    if (revision !== imageGenerationSizingRevision) return;
+    imageGenerationWidth.value = sizing.width; imageGenerationHeight.value = sizing.height;
+    imageGenerationAspectRatio.setCustomValidity("");
+    imageGenerationSize.textContent = `Output: ${sizing.width} × ${sizing.height}`;
+  } catch (error) {
+    if (revision !== imageGenerationSizingRevision) return;
+    imageGenerationAspectRatio.setCustomValidity(error.message);
+    imageGenerationSize.textContent = error.message;
+  }
+}
 const imageGenerationSubmit = document.querySelector("#image-generation-submit");
 const imageGenerationFill = document.querySelector("#image-generation-fill");
 const imageGenerationClear = document.querySelector("#image-generation-clear");
@@ -455,6 +477,8 @@ const settingLocalBodyReferenceReviewModel = document.querySelector("#setting-lo
 const refreshOllamaModels = document.querySelector("#refresh-ollama-models");
 const settingAiPromptAnalysisFile = document.querySelector("#setting-ai-prompt-analysis-file");
 const settingRenderBackend = document.querySelector("#setting-render-backend");
+const settingDraftTargetPixels = document.querySelector("#setting-draft-target-pixels");
+const settingFinalTargetPixels = document.querySelector("#setting-final-target-pixels");
 const pipelineConfigPaths = document.querySelector("#pipeline-config-paths");
 const projectConfigTableBody = document.querySelector("#project-config-table tbody");
 const pipelineStageTableBody = document.querySelector("#pipeline-stage-table tbody");
@@ -1286,6 +1310,7 @@ function renderImageGenerationReferenceSlots() {
         if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
         imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
         imageGenerationReferenceSlots[index].data = data;
+        imageGenerationReferenceSlots[index].metadata = {};
         renderImageGenerationReferenceSlots();
         await saveImageGenerationReferences();
         saveImageGenerationState();
@@ -1305,6 +1330,7 @@ function renderImageGenerationReferenceSlots() {
       clear.textContent = "Remove";
       clear.addEventListener("click", async () => {
         imageGenerationReferenceSlots[index].data = "";
+        imageGenerationReferenceSlots[index].metadata = {};
         renderImageGenerationReferenceSlots();
         await saveImageGenerationReferences();
         saveImageGenerationState();
@@ -1329,6 +1355,7 @@ function renderImageGenerationReferenceSlots() {
           if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
           imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
           imageGenerationReferenceSlots[index].data = data;
+          imageGenerationReferenceSlots[index].metadata = {};
           renderImageGenerationReferenceSlots();
           await saveImageGenerationReferences();
           saveImageGenerationState();
@@ -1354,6 +1381,8 @@ function saveImageGenerationState() {
       negativePrompt: imageGenerationNegative.value,
       width: imageGenerationWidth.value,
       height: imageGenerationHeight.value,
+      renderMode: imageGenerationRenderMode.value,
+      aspectRatio: imageGenerationAspectRatio.value,
       referenceLabels: imageGenerationReferenceSlots.map((reference) => reference.label),
       referenceMetadata: imageGenerationReferenceSlots.map((reference) => reference.metadata || {}),
       renderConfig: imageGenerationRenderConfig,
@@ -1422,6 +1451,8 @@ async function restoreImageGenerationInputs() {
     imageGenerationNegative.value = saved.negativePrompt || "";
     if (saved.width) imageGenerationWidth.value = saved.width;
     if (saved.height) imageGenerationHeight.value = saved.height;
+    imageGenerationRenderMode.value = saved.renderMode === "final" ? "final" : "draft";
+    imageGenerationAspectRatio.value = saved.aspectRatio || (saved.width && saved.height ? `${saved.width}:${saved.height}` : "1:1");
     if (Array.isArray(saved.referenceLabels)) {
       imageGenerationReferenceSlots.forEach((reference, index) => {
         reference.label = saved.referenceLabels[index] || "";
@@ -1480,6 +1511,7 @@ let imageGenerationWorkspaceSignature = "";
 let imageGenerationWorkspaceBusy = false;
 
 function applyImageGenerationWorkspace(board) {
+  imageGenerationActiveBoardMode = board.render_mode || "draft";
   imageGenerationSlots = board.slots;
   imageGenerationSelectedSlot = board.selected_slot ?? -1;
   imageGenerationJobIds = [...new Set(board.slots.filter(Boolean).map(item => item.requestId))];
@@ -1501,7 +1533,7 @@ async function restoreImageGenerationJob() {
     try { legacy = JSON.parse(window.localStorage.getItem(IMAGE_GENERATION_STORAGE_KEY) || "null"); } catch { /* Ignore invalid historical browser state. */ }
     const board = await fetchJson("/api/image-generation/workspace/import", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({slots: legacy?.slots || imageGenerationSlots, selected_slot: legacy?.selectedSlot ?? -1})});
     if (universe !== state.universeId) return;
-    applyImageGenerationWorkspace(board);
+    applyImageGenerationWorkspace(imageGenerationRenderMode.value === "draft" ? board : await fetchJson(`/api/image-generation/workspace?render_mode=${imageGenerationRenderMode.value}`));
     imageGenerationWorkspaceUniverse = universe;
   } else await pollImageGenerationWorkspace();
   if (universe !== state.universeId) return;
@@ -1512,10 +1544,10 @@ async function restoreImageGenerationJob() {
 async function pollImageGenerationWorkspace() {
   if (imageGenerationWorkspacePolling || imageGenerationPending || !document.querySelector("#image-generation-page").classList.contains("active")) return;
   imageGenerationWorkspacePolling = true;
-  const contentVersion = imageGenerationContentVersion, universe = state.universeId;
+  const contentVersion = imageGenerationContentVersion, universe = state.universeId, mode = imageGenerationRenderMode.value;
   try {
-    const board = await fetchJson("/api/image-generation/workspace");
-    if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
+    const board = await fetchJson(`/api/image-generation/workspace?render_mode=${mode}`);
+    if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId || mode !== imageGenerationRenderMode.value) return;
     applyImageGenerationWorkspace(board); await pollImageReconstruction();
   }
   catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, `Unable to check renders: ${error.message}. Retrying automatically.`, "error"); }
@@ -1526,11 +1558,12 @@ async function pollImageGenerationWorkspace() {
 async function imageGenerationSlotAction(operation, slot, inputs) {
   if (imageGenerationPending) return;
   imageGenerationPending = true;
+  const mode = imageGenerationRenderMode.value;
   renderImageGenerationStatus();
   try {
     const count = Number(document.querySelector("#image-generation-count").value);
-    const board = await fetchJson(`/api/image-generation/workspace/${operation}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({...(slot === undefined ? {} : {slot: slot + 1, expected_assignment: imageGenerationSlots[slot]}), count, ...(inputs ? {inputs} : {})})});
-    applyImageGenerationWorkspace(board);
+    const board = await fetchJson(`/api/image-generation/workspace/${operation}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({render_mode: mode, ...(slot === undefined ? {} : {slot: slot + 1, expected_assignment: imageGenerationSlots[slot]}), count, ...(inputs ? {inputs} : {})})});
+    if (imageGenerationRenderMode.value === mode) applyImageGenerationWorkspace(board);
     showMessageElement(imageGenerationMessage, "", "info");
   } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
   finally { imageGenerationPending = false; renderImageGenerationStatus(); }
@@ -1639,7 +1672,7 @@ async function startImageReconstruction() {
     const job = await fetchJson("/api/image-generation/reconstructions", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify({...source, model,
         count: Number(document.querySelector("#image-generation-count").value),
-        width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value),
+        width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value), render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value,
         notes: reconstructionField("notes").value, preserve: reconstructionField("preserve").value,
         changes: reconstructionField("changes").value,
         universe_style_variant: imageGenerationStyleVariant.value})});
@@ -1655,7 +1688,7 @@ async function startImageReconstruction() {
     delete imageGenerationSource.dataset.checksum;
     saveImageGenerationState();
     reconstructionField("status").textContent = "Analyzing source; the batch will render automatically…";
-    applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace"));
+    applyImageGenerationWorkspace(await fetchJson(`/api/image-generation/workspace?render_mode=${imageGenerationRenderMode.value}`));
   } catch (error) {
     if (state.universeId === universe && imageReconstructionSource === source) reconstructionField("status").textContent = error.message;
   } finally { button.disabled = false; }
@@ -1755,6 +1788,8 @@ async function modifyEntityLibraryImageWithGenerator() {
       const sourceHeight = imageGenerationDimensionFromSource(asset.height);
       if (sourceWidth) imageGenerationWidth.value = sourceWidth;
       if (sourceHeight) imageGenerationHeight.value = sourceHeight;
+      if (sourceWidth && sourceHeight) imageGenerationAspectRatio.value = `${sourceWidth}:${sourceHeight}`;
+      await updateImageGenerationSizing();
       setImageGenerationMode("img2img");
       saveImageGenerationState();
       await saveImageGenerationReferences();
@@ -1776,6 +1811,12 @@ function imageGenerationReviewableSlots() {
   return imageGenerationSlots.map((_, index) => index).filter((index) => imageGenerationResult(index));
 }
 
+function imageGenerationSizeLabel(job) {
+  const mode = (job?.render_sizing?.render_mode || imageGenerationActiveBoardMode) === "final" ? "Final" : "Draft";
+  const width = job?.width, height = job?.height;
+  return width && height ? `${mode} · ${width} × ${height} requested` : mode;
+}
+
 function renderImageGenerationReview() {
   if (!imageGenerationReview.open) return;
   const slots = imageGenerationReviewableSlots();
@@ -1787,7 +1828,7 @@ function renderImageGenerationReview() {
   imageGenerationReview.dataset.slot = String(imageGenerationReviewIndex);
   imageGenerationReviewImage.src = image.url;
   imageGenerationReviewImage.alt = `Generated image in slot ${imageGenerationReviewIndex + 1}`;
-  imageGenerationReviewCount.textContent = `Slot ${imageGenerationReviewIndex + 1} · ${position + 1} of ${slots.length}`;
+  imageGenerationReviewCount.textContent = `Slot ${imageGenerationReviewIndex + 1} · ${position + 1} of ${slots.length} · ${imageGenerationSizeLabel(job)}`;
   imageGenerationReviewPrompt.textContent = job.prompt || "";
   imageGenerationReviewNegative.textContent = job.negative_prompt || "";
   imageGenerationReviewPrevious.disabled = position === 0;
@@ -2032,11 +2073,11 @@ document.querySelector("#image-true-up-apply").addEventListener("click", async (
     const job = await fetchJson("/api/image-generation/corrections", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({selected_result: imageGenerationSlots[imageGenerationSelectedSlot], task_id: imageTrueUpReport.task_id,
         report_id: imageTrueUpReport.id, item_ids: [...imageTrueUpItems], instructions: document.querySelector("#image-true-up-instructions").value,
-        width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value)})});
+        width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value), render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value})});
     if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
     imageReconstructionJob = {...job, fieldBaseline: reconstructionBaseline()};
     window.localStorage.setItem(`zet:reconstruction-job:${state.universeId}`, job.id);
-    applyImageGenerationWorkspace(await fetchJson("/api/image-generation/workspace"));
+    applyImageGenerationWorkspace(await fetchJson(`/api/image-generation/workspace?render_mode=${imageGenerationRenderMode.value}`));
     document.querySelector("#image-true-up-status").textContent = "Preparing a correction in a new slot. The selected input is retained.";
   } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
   finally { imageTrueUpBusy = false; renderImageGenerationStatus(); }
@@ -2044,6 +2085,7 @@ document.querySelector("#image-true-up-apply").addEventListener("click", async (
 
 function renderImageGenerationStatus() {
   const busy = imageGenerationPending;
+  imageGenerationRenderMode.disabled = busy;
   const emptyCount = imageGenerationSlots.filter(item => !item).length;
   imageGenerationSubmit.disabled = busy || !emptyCount;
   imageGenerationFill.disabled = busy || !emptyCount;
@@ -2068,7 +2110,7 @@ function renderImageGenerationStatus() {
     card.className = `image-generation-result${index === imageGenerationSelectedSlot ? " is-selected" : ""}`;
     card.dataset.state = index === imageGenerationSelectedSlot ? "selected" : "available";
     const title = document.createElement("figcaption");
-    title.textContent = `Slot ${index + 1}${index === imageGenerationSelectedSlot ? " · Selected" : ""}`;
+    title.textContent = `Slot ${index + 1}${index === imageGenerationSelectedSlot ? " · Selected" : ""}${job ? ` · ${imageGenerationSizeLabel(job)}` : ""}`;
     card.append(title);
     if (result) {
       const preview = document.createElement("button");
@@ -2142,6 +2184,7 @@ function renderImageGenerationStatus() {
 
 async function submitImageGenerationForSlots(slotIndexes) {
   if (imageGenerationPending) return;
+  if (!imageGenerationAspectRatio.reportValidity()) return;
   const references = imageGenerationMode === "img2img"
     ? imageGenerationReferenceSlots.map((reference, index) => ({...reference, index})).filter((reference) => reference.data)
     : [];
@@ -2165,7 +2208,7 @@ function currentImageGenerationInputs() {
     universe_style_variant: imageGenerationStyleVariant.value,
     ...(imageGenerationUniverseStyle ? {universe_style: imageGenerationUniverseStyle} : {}),
     mode: imageGenerationMode, prompt: imageGenerationPrompt.value, negative_prompt: imageGenerationNegative.value,
-    width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value),
+    width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value), render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value,
     reference_images: references.map(({label, data, metadata}) => ({label: label.trim(), image: data, ...(metadata ? {metadata} : {})})),
     source_asset_id: imageGenerationSource.dataset.assetId || "", source_checksum: imageGenerationSource.dataset.checksum || "",
     ...(imageGenerationReconstruction ? {reconstruction: imageGenerationReconstruction} : {}),
@@ -2182,7 +2225,7 @@ async function clearImageGenerationResults() {
   await imageGenerationSlotAction("clear_all");
 }
 
-window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent, rotation = false, noCostumeRef = false) => {
+window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent, rotation = false, noCostumeRef = false, renderMode = null) => {
   if (imageGenerationStagePending || imageGenerationPending) throw new Error("Wait for the current Image Generator action to finish.");
   imageGenerationStagePending = true;
   const universe = state.universeId, navigation = state.navigationRequest;
@@ -2196,7 +2239,7 @@ window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent,
         throw new Error("Unable to initialize Image Generator. Try again.");
       }
       const staged = await fetchJson(url, {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({recompile, rotation, no_costume_ref: noCostumeRef})});
+        body: JSON.stringify({recompile, rotation, no_costume_ref: noCostumeRef, render_mode: renderMode || imageGenerationRenderMode.value})});
       if (!current()) return false;
       ++imageGenerationContentVersion;
       imageGenerationReview.close();
@@ -2227,12 +2270,15 @@ window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent,
       window.localStorage.removeItem(`zet:reconstruction-job:${universe}`);
       window.localStorage.removeItem(`zet:true-up:${universe}`);
       const inputs = staged.inputs;
+      imageGenerationRenderMode.value = inputs.render_mode || "draft";
       imageGenerationStyleVariant.value = inputs.universe_style_variant || "canonical";
       imageGenerationUniverseStyle = inputs.universe_style || null;
       imageGenerationPrompt.value = inputs.prompt;
       imageGenerationNegative.value = inputs.negative_prompt;
       imageGenerationWidth.value = inputs.width;
       imageGenerationHeight.value = inputs.height;
+      imageGenerationAspectRatio.value = inputs.aspect_ratio || `${inputs.width}:${inputs.height}`;
+      await updateImageGenerationSizing();
       imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, (_, index) => {
         const reference = inputs.reference_images[index];
         return reference ? {label: reference.label, data: reference.image, metadata: reference.metadata} : {label: "", data: ""};
@@ -2264,6 +2310,7 @@ async function loadImageGenerationOptions() {
       imageGenerationHeight.value = payload.default_height || 1024;
       imageGenerationOptionsLoaded = true;
       await restoreImageGenerationInputs();
+      await updateImageGenerationSizing();
       if (universe !== state.universeId) return;
       await loadImageReconstructionOptions();
     } catch (error) {
@@ -10770,6 +10817,8 @@ function renderPipelineControls(payload) {
   settingAiPromptAnalysisFile.value = automation.ai_prompt_analysis_instructions_file || "";
   renderManagedLlmRoles(payload.managed_llm_roles || []);
   settingRenderBackend.value = automation.render_backend || "manual_chatgpt";
+  settingDraftTargetPixels.value = automation.draft_target_pixels ?? 1048576;
+  settingFinalTargetPixels.value = automation.final_target_pixels ?? 4194304;
   pipelineConfigPaths.textContent = `Config: ${payload.config_path || ""} | Pipelines: ${payload.pipelines_path || ""}`;
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
   renderRows(pipelineStageTableBody, payload.pipeline_rows || [], ["pipeline", "step", "stage", "actor", "worker", "asset_count"]);
@@ -11001,6 +11050,8 @@ function automationPayloadFromForm() {
     local_body_reference_review_model: settingLocalBodyReferenceReviewModel.value,
     ai_prompt_analysis_instructions_file: settingAiPromptAnalysisFile.value,
     render_backend: settingRenderBackend.value,
+    draft_target_pixels: Number(settingDraftTargetPixels.value),
+    final_target_pixels: Number(settingFinalTargetPixels.value),
   };
 }
 
@@ -12787,6 +12838,17 @@ imageGenerationImg2img.addEventListener("click", () => { setImageGenerationMode(
 imageGenerationForm.addEventListener("submit", submitImageGeneration);
 imageGenerationFill.addEventListener("click", () => void submitImageGenerationForSlots());
 imageGenerationClear.addEventListener("click", clearImageGenerationResults);
+document.querySelector("#image-generation-delete-drafts").addEventListener("click", async () => {
+  if (imageGenerationPending || !await confirmAction("Delete Draft images?", "Delete all Draft images in Image Generator, including the selected image? Matching renders will be cancelled. Final images and Inventory copies remain.", "Delete Draft images")) return;
+  imageGenerationPending = true;
+  const universe = state.universeId;
+  try {
+    const board = await fetchJson("/api/image-generation/workspace/delete-draft-images", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+    if (universe === state.universeId && imageGenerationRenderMode.value === "draft") applyImageGenerationWorkspace(board);
+    showMessageElement(imageGenerationMessage, "Draft images deleted.", "info");
+  } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
+  finally { imageGenerationPending = false; renderImageGenerationStatus(); }
+});
 imageGenerationAddUniverseArtStyle.addEventListener("click", () => {
   const universe = state.universes.find((item) => item.universe_id === state.universeId);
   const artStyle = universe?.[imageGenerationStyleVariant.value === "environmental" ? "environmental_art_style" : "canonical_art_style"]?.trim();
@@ -12815,6 +12877,25 @@ imageGenerationStyleVariant.addEventListener("change", () => {
   saveImageGenerationState();
 });
 renderImageGenerationReferenceSlots();
+imageGenerationAspectRatio.addEventListener("input", () => { void updateImageGenerationSizing(); saveImageGenerationState(); });
+imageGenerationRenderMode.addEventListener("change", async () => {
+  const mode = imageGenerationRenderMode.value;
+  ++imageGenerationContentVersion;
+  imageGenerationReview.close();
+  saveImageGenerationState();
+  imageGenerationPending = true;
+  renderImageGenerationStatus();
+  try {
+    await updateImageGenerationSizing();
+    const board = await fetchJson(`/api/image-generation/workspace?render_mode=${mode}`);
+    if (imageGenerationRenderMode.value === mode) applyImageGenerationWorkspace(board);
+  } catch (error) {
+    imageGenerationRenderMode.value = imageGenerationActiveBoardMode;
+    await updateImageGenerationSizing();
+    showMessageElement(imageGenerationMessage, error.message, "error");
+  }
+  finally { imageGenerationPending = false; renderImageGenerationStatus(); }
+});
 for (const input of [imageGenerationPrompt, imageGenerationNegative, imageGenerationWidth, imageGenerationHeight]) {
   input.addEventListener("input", saveImageGenerationState);
   input.addEventListener("change", saveImageGenerationState);

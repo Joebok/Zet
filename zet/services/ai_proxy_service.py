@@ -654,7 +654,11 @@ class AIProxyService:
                              image_generation or self.path_service.config.local_render_backend,
                              presets_path=self.path_service.config.state_file(self.path_service.project_root, "Local_Render_Presets.json"))
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        target_output_file = f"test_{stamp}.png"
+        sizing = None
+        if manifest.get("render_sizing"):
+            from zet.services.image_sizing_service import validate_frozen_image_sizing
+            sizing = validate_frozen_image_sizing(manifest["render_sizing"])
+        target_output_file = f"{sizing['render_mode']}_{uuid4().hex}.png" if sizing else f"test_{stamp}.png"
         ask_id = f"Ask_Render_Task_LOCAL_RENDER_{stamp}_{uuid4().hex}"
         ask_manifest = {
             "version": AI_PROXY_PROTOCOL_VERSION,
@@ -707,8 +711,15 @@ class AIProxyService:
             ask_manifest["workflow_kind"] = workflow_kind
         if seed is not None:
             ask_manifest["seed"] = int(seed)
-        if render_overrides:
-            ask_manifest["render_overrides"] = dict(render_overrides)
+        overrides = dict(render_overrides or {})
+        if sizing:
+            for key in ("width", "height"):
+                if key in overrides and overrides[key] != sizing[key]:
+                    raise ValueError("Render overrides conflict with frozen output dimensions.")
+                overrides[key] = sizing[key]
+            ask_manifest["render_sizing"] = sizing
+        if overrides:
+            ask_manifest["render_overrides"] = overrides
         if manifest.get("aspect_ratio"):
             ask_manifest["aspect_ratio"] = manifest.get("aspect_ratio")
         if render_layout:

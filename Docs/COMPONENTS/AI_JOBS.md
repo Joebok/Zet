@@ -251,3 +251,14 @@ universe app. Its durable `_state/ImagePromptJobs/<job-id>.json` record carries
 checksums/drafts on disk. State locks protect transitions, while model work happens
 outside the prompt-job lock. Historical drafts are retained without loading an
 unbounded in-memory history.
+
+## Draft cleanup and durable continuations
+
+`AIWorkflowService.cancel_matching` writes a local cancellation marker for each
+matching resumable workflow. New structured requests carry the workflow ID;
+matching queued or running requests are superseded, and cancelled continuations
+do not resume or submit more requests. Older in-flight requests without workflow
+attribution cannot be individually identified; their continuation is fenced.
+
+For file-queue work already executing, superseding fences late results but does
+not physically interrupt the provider; the file queue has no per-job stop.

@@ -142,13 +142,17 @@ def execution_views(run, views=None):
 
 
 def prepare_candidate(workflow, run, candidate):
+    if candidate.get("render_mode") is not None:
+        from zet.services.local_view_reference_service import selected_run_for_mode
+        run = selected_run_for_mode(run, candidate["render_mode"])
     if run.get("kind") == "character-assembly":
         guard_view(run, candidate["view"])
     if (not run.get("character_progression") and run.get("kind") != "costume-dressing") or candidate.get("render_input"):
         return candidate
     guard_view(run, candidate["view"])
     saved = workflow.slots.prepare_input(run, candidate["view"],
-        Path(run["root"]) / "renders" / candidate["candidate_id"] / "inputs", recompile=True)
+        Path(run["root"]) / "renders" / candidate["candidate_id"] / "inputs", recompile=True,
+        render_mode=candidate.get("render_mode"), aspect_ratio=candidate.get("aspect_ratio"))
     return {**candidate, "render_input": saved}
 
 
@@ -279,7 +283,8 @@ def select(workflow, run, view, candidate_id):
     if view not in run["views"]:
         raise ValueError("Unknown character view.")
     candidate = next((c for c in run["candidates"] if c["candidate_id"] == candidate_id and c["view"] == view), None)
-    if candidate_id and (not candidate or not Path(str(candidate.get("image_path") or "")).is_file()
+    if candidate_id and (not candidate or candidate.get("render_mode", "draft") != "draft"
+                         or not Path(str(candidate.get("image_path") or "")).is_file()
                          or (candidate.get("human_review") or {}).get("decision") == "reject"):
         raise ValueError("Choose an available, non-rejected candidate in this view.")
     adapter = workflow.adapter

@@ -471,6 +471,7 @@ class LocalBodyReferenceService:
                     candidates.append({
                         "candidate_id": candidate_id, "view": prompt["view"], "view_index": view_index + 1,
                         "method": method, "ordinal": ordinal + 1, "seed": str(seeds[seed_index]),
+                        "render_mode": "draft", "aspect_ratio": "2:3",
                         "prompt": candidate_prompt, "prompt_sha256": hashlib.sha256(candidate_prompt.encode()).hexdigest(),
                         "template_revision_id": prompt.get("template_revision_id", ""),
                         "status": "PENDING", "image_path": "", "render_error": "",
@@ -532,15 +533,18 @@ class LocalBodyReferenceService:
         value["review_only"] = bool(state.get("review_only", False))
         value["post_review_status"] = state.get("post_review_status") or ""
         value["error"] = state.get("error") or ("The Local Body-Reference runner stopped before this batch finished." if interrupted else "")
-        value["front_anchor"] = state.get("front_anchor") or value.get("front_anchor")
+        value["front_anchor"] = state.get("front_anchor", value.get("front_anchor"))
+        value["final_front_anchor"] = state.get("final_front_anchor", value.get("final_front_anchor"))
         value["lineups"] = state.get("lineups") or value.get("lineups") or {}
-        value["selected_views"] = state.get("selected_views") or value.get("selected_views") or {}
+        value["selected_views"] = state.get("selected_views", value.get("selected_views") or {})
         if state.get("character_progression"):
             value["character_progression"] = state["character_progression"]
         value["rankings"] = state.get("rankings") or value.get("rankings") or {}
         value["view_reviews"] = state.get("view_reviews") or {}
         value["evaluations"] = state.get("evaluations") or value.get("evaluations") or {}
         value["slots_by_view"] = state.get("slots_by_view", value.get("slots_by_view", {}))
+        value["final_slots_by_view"] = state.get("final_slots_by_view", value.get("final_slots_by_view", {}))
+        value["final_selected_views"] = state.get("final_selected_views", value.get("final_selected_views", {}))
         value["slot_version"] = state.get("slot_version", 0)
         value["slot_work_pending"] = bool(state.get("slot_work_pending"))
         value["slot_render_ids"] = state.get("slot_render_ids") or []
@@ -567,6 +571,7 @@ class LocalBodyReferenceService:
             anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
             anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT_VIEW else ""
             candidates_for_view = [item for item in by_id.values() if item.get("view") == view
+                                   and item.get("render_mode", "draft") == "draft"
                                    and item.get("human_review", {}).get("decision") != "reject"
                                    and Path(str(item.get("image_path") or "")).is_file()]
             current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates_for_view}
@@ -664,10 +669,10 @@ class LocalBodyReferenceService:
                 candidates = merge_candidates(spec, state)
                 current_views = sorted({str(item.get("view") or "") for item in candidates.values()
                                         if item.get("status") == "RUNNING" and item.get("view")})
-                selected = state.get("selected_views") or spec.get("selected_views") or {}
+                selected = state.get("selected_views", spec.get("selected_views") or {})
                 if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self._all_selected_views_locked({
                     **spec, "run_id": run_id, "selected_views": selected,
-                    "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
+                    "front_anchor": state.get("front_anchor", spec.get("front_anchor")),
                     "candidates": list(candidates.values()),
                 }):
                     status = "COMPLETE"
@@ -687,9 +692,10 @@ class LocalBodyReferenceService:
                     "candidate_count": len(candidates),
                     "complete_count": len(selected) if review_version >= 2 else counts.get("COMPLETE", 0),
                     "current_views": current_views,
-                    "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
+                    "front_anchor": state.get("front_anchor", spec.get("front_anchor")),
                     "source_run_id": spec.get("source_run_id", ""),
                     "selected_views": selected,
+                    "final_selected_views": state.get("final_selected_views") or {},
                 })
             except (OSError, ValueError, json.JSONDecodeError, LocalBodyReferenceError):
                 continue
@@ -786,12 +792,13 @@ class LocalBodyReferenceService:
         if recompile:
             self._refresh_compiled_prompts(run_id, views)
         root = self._root(run_id).resolve()
-        self._withdraw_queued_asks(run_id)
+        draft_candidates = [item for item in run.get("candidates", []) if item.get("render_mode", "draft") == "draft"]
+        self._withdraw_queued_asks(run_id, candidate_ids={item["candidate_id"] for item in draft_candidates})
         for view in views:
             self._clear_owned_selection(run, view)
         state_path = root / "state.json"
         state = self._read_json(state_path)
-        for candidate in run.get("candidates", []):
+        for candidate in draft_candidates:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
                 status="PENDING", render_input=None, seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
@@ -804,7 +811,8 @@ class LocalBodyReferenceService:
                 retry_count=int(candidate.get("retry_count") or 0) + 1,
             )
         state.update(
-            status="RUNNING", front_anchor=None, target_views=[], target_candidate_ids=[],
+            status="RUNNING", front_anchor=None, target_views=[],
+            target_candidate_ids=[item["candidate_id"] for item in draft_candidates] if len(draft_candidates) != len(run.get("candidates", [])) else [],
             review_only=False, stop_requested=False, error="", lineups={}, set_report={},
             selected_views={}, rankings={}, ranking_history={}, updated_at=self._now(),
         )
@@ -826,7 +834,7 @@ class LocalBodyReferenceService:
             raise LocalBodyReferenceError("Stop the active batch before re-running a view.")
         if self._runner_is_active(run_id):
             raise LocalBodyReferenceError("This Local Body-Reference batch is running; try again when it finishes.")
-        candidates = [item for item in run["candidates"] if item.get("view") == view]
+        candidates = [item for item in run["candidates"] if item.get("view") == view and item.get("render_mode", "draft") == "draft"]
         if not candidates:
             raise LocalBodyReferenceError(f"This batch has no candidates for view {view}.")
 
@@ -841,10 +849,11 @@ class LocalBodyReferenceService:
         stamp = self._now()
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, affected_views, "A view or its inputs are being re-run.")
-        self._withdraw_queued_asks(run_id, affected_views=affected_views)
+        affected_candidates = [item for item in run["candidates"] if item.get("view") in affected_views and item.get("render_mode", "draft") == "draft"]
+        self._withdraw_queued_asks(run_id, affected_views=affected_views,
+                                  candidate_ids={item["candidate_id"] for item in affected_candidates})
         for affected_view in affected_views:
             self._clear_owned_selection(run, affected_view)
-        affected_candidates = [item for item in run["candidates"] if item.get("view") in affected_views]
         for affected in affected_candidates:
             clear_candidate_artifacts(root, affected["candidate_id"], affected.get("image_path"))
             state.setdefault("candidates", {}).setdefault(affected["candidate_id"], {}).update(
@@ -891,7 +900,7 @@ class LocalBodyReferenceService:
             raise LocalBodyReferenceError("This Local Body-Reference batch is running; try again when it finishes.")
 
         def is_failed_candidate(candidate: dict[str, Any]) -> bool:
-            if candidate.get("view") != view:
+            if candidate.get("view") != view or candidate.get("render_mode", "draft") != "draft":
                 return False
             if int(run.get("review_version") or 1) >= 2:
                 return (candidate.get("status") in {"FAILED"}
@@ -1448,6 +1457,12 @@ class LocalBodyReferenceService:
         return self.app.ai_proxy_service.ai_proxy_path_service.jobs.execution_status(ask_id)
 
     def _harvest_local_body_reference_answer(self, run_id: str, candidate_id: str, ask_id: str, target: Path) -> None:
+        with file_lock(self._root(run_id) / "state.lock"):
+            if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id)["candidates"]):
+                return
+            return self._harvest_local_body_reference_answer_locked(run_id, candidate_id, ask_id, target)
+
+    def _harvest_local_body_reference_answer_locked(self, run_id: str, candidate_id: str, ask_id: str, target: Path) -> None:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
         answer_path = paths.answer_path(ask_id)
         if not answer_path.is_dir():
@@ -1593,6 +1608,7 @@ class LocalBodyReferenceService:
         view = str(view or "").upper()
         run = self.detail(run_id)
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
+                      and item.get("render_mode", "draft") == "draft"
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
@@ -1650,6 +1666,7 @@ class LocalBodyReferenceService:
         if run.get("status") in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING"}:
             raise LocalBodyReferenceError("Wait for the current Local Body-Reference operation to finish before ranking.")
         survivors = [item for item in run["candidates"] if item.get("view") == view
+                     and item.get("render_mode", "draft") == "draft"
                      and (item.get("status") in {"WAITING_FOR_HUMAN_REVIEW", "COMPLETE"}
                           or item.get("human_review", {}).get("decision") == "keep")
                      and item.get("human_review", {}).get("decision") != "reject"]
@@ -1687,6 +1704,7 @@ class LocalBodyReferenceService:
         if view != FRONT_VIEW and (anchor_image is None or not anchor_image.is_file()):
             raise LocalBodyReferenceError("Select a completed front anchor before ranking other views.")
         survivors = [item for item in run["candidates"] if item.get("view") == view
+                     and item.get("render_mode", "draft") == "draft"
                      and item.get("human_review", {}).get("decision") != "reject"
                      and Path(str(item.get("image_path") or "")).is_file()]
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
@@ -1818,7 +1836,11 @@ class LocalBodyReferenceService:
                 self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         root = self._root(run_id).resolve()
         downstream_views = {view for view in (run.get("views") or []) if view != FRONT_VIEW}
-        self._withdraw_queued_asks(run_id, affected_views=downstream_views)
+        downstream_candidates = [candidate for candidate in run.get("candidates") or []
+                                 if candidate.get("view") in downstream_views
+                                 and candidate.get("render_mode", "draft") == "draft"]
+        self._withdraw_queued_asks(run_id, affected_views=downstream_views,
+                                   candidate_ids={candidate["candidate_id"] for candidate in downstream_candidates})
         selected = state.setdefault("selected_views", {})
         rankings = state.setdefault("rankings", {})
         for view in (run.get("views") or []):
@@ -1827,9 +1849,7 @@ class LocalBodyReferenceService:
             selected.pop(view, None)
             rankings.pop(view, None)
             self._clear_owned_selection(run, view)
-        for candidate in run.get("candidates") or []:
-            if candidate.get("view") == FRONT_VIEW:
-                continue
+        for candidate in downstream_candidates:
             image_path = str(candidate.get("image_path") or "")
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
@@ -1903,7 +1923,7 @@ class LocalBodyReferenceService:
             self._save_state(run_id, state)
             return self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        if not candidate or candidate.get("view") != view:
+        if not candidate or candidate.get("view") != view or candidate.get("render_mode", "draft") != "draft":
             raise LocalBodyReferenceError(f"Candidate {candidate_id} does not belong to view {view}.")
         auto_approved = bool(autogenerate and view == FRONT_VIEW)
         if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
@@ -2253,6 +2273,10 @@ class LocalBodyReferenceService:
             with self._active_runs_lock:
                 self._active_runs.discard(self._active_key(run_id))
     def queue_render_candidate(self, run_id: str, candidate_id: str) -> dict[str, Any]:
+        with file_lock(self._root(run_id) / "state.lock"):
+            return self._queue_render_candidate_locked(run_id, candidate_id)
+
+    def _queue_render_candidate_locked(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
@@ -2313,7 +2337,8 @@ class LocalBodyReferenceService:
         profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset(preset_name)
         checkpoint = str(profile.get("diffusion_model") or "").strip()
         manifest = {"ask_id": f"LocalBodyReference_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}", "character": run["character"],
-                    "phase": run["phase"], "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_RENDER"}
+                    "phase": run["phase"], "pipeline": "Local-Body-Reference", "pipeline_stage": "BODY_REFERENCE_RENDER",
+                    "render_sizing": saved_input.get("render_sizing")}
         ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
             manifest, prompt_path, candidate_dir, allow_parallel=True, seed=int(candidate["seed"]),
             checkpoint=checkpoint, render_preset=preset_name, image_generation="comfyui",
@@ -2323,6 +2348,7 @@ class LocalBodyReferenceService:
         update = {"status": "QUEUED", "ask_id": ask["ask_id"], "queued_at": self._now(),
                   "reference_images": [{"role": str(item.get("role") or ""),
                                         "label": str(item.get("label") or ""),
+                                        **({"render_mode": item["render_mode"]} if item.get("render_mode") in {"draft", "final"} else {}),
                                         "path": str(item.get("path") or ""),
                                         "sha256": self._hash(Path(str(item.get("path") or "")))}
                                        for item in references],
@@ -2407,7 +2433,8 @@ class LocalBodyReferenceService:
                 raise LocalBodyReferenceError("Select a FRONT anchor with an available image before proceeding.")
             claimed = set(state.get("target_views") or [])
             target_views = [view for view in run.get("views", []) if view != FRONT_VIEW and view not in claimed and
-                            (candidates := [item for item in run["candidates"] if item.get("view") == view]) and
+                            (candidates := [item for item in run["candidates"] if item.get("view") == view
+                                            and item.get("render_mode", "draft") == "draft"]) and
                             all(item.get("status") == "PENDING" and not item.get("image_path") for item in candidates)]
         else:
             target_views = [view for view in run.get("views", []) if view != FRONT_VIEW]

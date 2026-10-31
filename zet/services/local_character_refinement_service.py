@@ -64,7 +64,10 @@ class LocalCharacterRefinementService:
         for attempt in public["attempts"]:
             attempt.pop("payload", None)
             attempt["image_available"] = Path(str(attempt.get("image_path") or "")).is_file()
-        selected = run.get("selected_views", {})
+        mode = record.get("render_mode", "draft")
+        selected = run.get("final_selected_views" if mode == "final" else "selected_views", {})
+        from zet.services.local_view_reference_service import selected_run_for_mode
+        comparisons = selected_run_for_mode(run, mode)["selected_views"]
         current = next((c for c in run["candidates"] if c["candidate_id"] == selected.get(record["view"])), {})
         owns_selection = (current.get("refinement") or {}).get("session_id") == session_id
         if owns_selection:
@@ -73,7 +76,7 @@ class LocalCharacterRefinementService:
                 if attempt["id"] == current["refinement"]["attempt_id"]:
                     attempt["adopted_candidate_id"] = current["candidate_id"]
         public["comparisons"] = [{"view": c["view"], "candidate_id": c["candidate_id"]}
-            for c in run["candidates"] if selected.get(c["view"]) == c["candidate_id"]
+            for c in run["candidates"] if comparisons.get(c["view"]) == c["candidate_id"]
             and c["view"] != record["view"] and Path(str(c.get("image_path") or "")).is_file()
             and (c.get("human_review") or {}).get("decision") != "reject"]
         public["can_adopt"] = owns_selection or selected.get(record["view"]) in {record["base_candidate_id"], record.get("adopted_candidate_id")}
@@ -85,17 +88,20 @@ class LocalCharacterRefinementService:
             self._submit(self._analysis_job, pipeline, run_id, costume, session_id, record["analysis"]["id"])
         return public
 
-    def open(self, pipeline, run_id, costume, view):
+    def open(self, pipeline, run_id, costume, view, render_mode="draft"):
+        if render_mode not in ("draft", "final"):
+            raise ValueError("Render mode must be draft or final.")
         workflow, run = self._context(pipeline, run_id, costume)
         root = Path(run["root"])
         with file_lock(root / "state.lock"):
             run = workflow.prompt_improvement.detail(run_id, costume)
-            cid = run.get("selected_views", {}).get(view)
+            cid = run.get("final_selected_views" if render_mode == "final" else "selected_views", {}).get(view)
             candidate = next((c for c in run["candidates"] if c["candidate_id"] == cid and c["view"] == view), None)
             if not candidate or not Path(str(candidate.get("image_path") or "")).is_file():
                 raise ValueError("Select an available image in this view before refining.")
             state = read_library_json(root / "state.json", self.app.config.base_library_path)
-            previous = (state.get("refinement_sessions") or {}).get(view)
+            sessions_key = "final_refinement_sessions" if render_mode == "final" else "refinement_sessions"
+            previous = (state.get(sessions_key) or {}).get(view)
             if previous:
                 record = self._read(run, previous)
                 if (cid in {record["base_candidate_id"], record.get("adopted_candidate_id")}
@@ -119,14 +125,14 @@ class LocalCharacterRefinementService:
                     "template_revision_id": str(render_input.get("template_revision_id") or ""),
                 }
             record = {"version": 1, "universe_id": self.app.universe_id, "pipeline": pipeline,
-                "run_id": run_id, "costume": costume, "session_id": sid, "view": view,
+                "run_id": run_id, "costume": costume, "session_id": sid, "view": view, "render_mode": render_mode,
                 "base_candidate_id": cid, "adopted_candidate_id": "", "revision": 0,
                 "reference_inputs": deepcopy((candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs") or []),
                 "review_context": review_context,
                 "analysis": {}, "attempts": [{"id": "original", "status": "READY", "image_path": str(target),
                     "accepted_direction": [], "base_attempt_id": "", "image_sha256": hashlib.sha256(target.read_bytes()).hexdigest()}]}
             self._write(run, record)
-            mutate_local_run_state(root, lambda state: state.setdefault("refinement_sessions", {}).update({view: sid}))
+            mutate_local_run_state(root, lambda state: state.setdefault(sessions_key, {}).update({view: sid}))
         return self.detail(pipeline, run_id, costume, sid)
 
     def _submit(self, method, pipeline, run_id, costume, session_id, identity):
@@ -161,8 +167,10 @@ class LocalCharacterRefinementService:
             inputs = []
             directory = path.parent / "analysis" / aid
             directory.mkdir(parents=True)
+            from zet.services.local_view_reference_service import selected_run_for_mode
+            selected = selected_run_for_mode(run, record.get("render_mode", "draft"))["selected_views"]
             for view in dict.fromkeys(views):
-                cid = run["selected_views"][view]
+                cid = selected[view]
                 c = next(c for c in run["candidates"] if c["candidate_id"] == cid)
                 source = Path(c["image_path"])
                 target = directory / (view + source.suffix.lower())
@@ -254,8 +262,8 @@ class LocalCharacterRefinementService:
                 guide_view = "BACK"
             guide = None
             if guide_view:
-                from zet.services.local_view_reference_service import selected_reference
-                guide = selected_reference(run, record["view"], {"mode": "selected_view", "source_view": guide_view})
+                from zet.services.local_view_reference_service import selected_reference, selected_run_for_mode
+                guide = selected_reference(selected_run_for_mode(run, record.get("render_mode", "draft")), record["view"], {"mode": "selected_view", "source_view": guide_view})
             instructions = text(payload.get("instructions", ""), "Refinement instructions")
             if operation == "rear_hair" and not instructions:
                 instructions = "Match lower-hair fullness and length to selected BACK while preserving the rear-quarter canvas."
@@ -302,6 +310,12 @@ class LocalCharacterRefinementService:
                     "character_refinement_session_id": session_id, "attempt_id": aid, "view": record["view"],
                     "costume": costume, "character": run["character"], "phase": run["phase"]},
                 "ai_workflow": "Character image refinement"}
+            sizing = None
+            if "render_mode" in record:
+                from zet.services.image_sizing_service import resolve_image_sizing
+                ratio = f"{width}:{height}"
+                sizing = resolve_image_sizing(self.app.config, record["render_mode"], ratio)
+                spec.update(render_mode=record["render_mode"], aspect_ratio=ratio)
             if pipeline == "head-image-edit":
                 from zet.services.local_render_backend_service import LocalRenderBackendService
                 profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset("comfyui-qwen-head-image-edit-v1")
@@ -315,6 +329,7 @@ class LocalCharacterRefinementService:
                 if payload.get("instructions"):
                     accepted_direction.append(instructions)
             record["attempts"].append({"id": aid, "operation_id": operation_id, "status": "QUEUED", "image_path": "",
+                **({"render_sizing": sizing} if sizing else {}),
                 **({"operation": operation, "guide_view": guide_view, "recipe_version": 1,
                     "reference_inputs": reference_inputs, "render_references": render_references} if pipeline == "head-image-edit" else {}),
                 "base_attempt_id": base_id, "accepted_direction": accepted_direction, "payload": spec,
@@ -337,11 +352,15 @@ class LocalCharacterRefinementService:
             try:
                 result = generation.status(attempt["request_id"])
             except KeyError:
-                result = generation.submit(attempt["payload"], request_id=attempt["request_id"], seeds=attempt["seeds"])
+                options = {"request_id": attempt["request_id"], "seeds": attempt["seeds"]}
+                if attempt.get("render_sizing"):
+                    options["frozen_sizing"] = attempt["render_sizing"]
+                result = generation.submit(attempt["payload"], **options)
             if result.get("images"):
                 contents, mime = generation.image(attempt["request_id"], 0)
                 suffix = {"image/jpeg": ".jpg", "image/webp": ".webp"}.get(mime, ".png")
-                output = self._path(run, session_id).parent / (attempt_id + suffix)
+                prefix = f"{record['render_mode']}_" if record.get("render_mode") in ("draft", "final") else ""
+                output = self._path(run, session_id).parent / (prefix + attempt_id + suffix)
                 result = {"status": "READY", "image_path": str(output), "image_sha256": hashlib.sha256(contents).hexdigest(), "error": ""}
             elif result["status"] in {"ERROR", "FAILED", "CANCELLED", "PARTIAL"}:
                 raise ValueError(result.get("error") or "The refinement render failed.")
@@ -384,42 +403,57 @@ class LocalCharacterRefinementService:
             run = workflow.prompt_improvement.detail(run_id, costume)
             record = self._read(run, session_id)
             attempt = self._attempt(record, payload.get("attempt_id"))
-            selected = run.get("selected_views", {}).get(record["view"])
+            mode = record.get("render_mode", "draft")
+            selection_key = "final_selected_views" if mode == "final" else "selected_views"
+            slots_key = "final_slots_by_view" if mode == "final" else "slots_by_view"
+            selected = run.get(selection_key, {}).get(record["view"])
             candidate = next((c for c in run["candidates"] if c["candidate_id"] == selected), {})
             owns_selection = (candidate.get("refinement") or {}).get("session_id") == session_id
             if not owns_selection and selected not in {record["base_candidate_id"], record.get("adopted_candidate_id")}:
                 raise ValueError("The selected image changed elsewhere. Open refinement from the new selection.")
             if payload.get("expected_selected_id") != selected:
                 raise ValueError("The selection changed. Refresh before adopting this attempt.")
+            if (attempt.get("adopted_candidate_id") == selected
+                    or owns_selection and candidate["refinement"]["attempt_id"] == attempt["id"]):
+                return self.detail(pipeline, run_id, costume, session_id)
+            from zet.services.local_mode_selection_service import LocalModeSelectionService
+            selection_service = LocalModeSelectionService(workflow)
+            qualifier = workflow.adapter._qualifier(costume) if pipeline == "costume-dressing" else ""
+            locked = selection_service.store.mode_record(run["character"], run["phase"], selection_service._pipeline(),
+                record["view"], qualifier, render_mode=mode) or {}
+            if locked.get("locked") and locked.get("batch_id") == run_id and locked.get("candidate_id") == selected:
+                raise ValueError("Unlock this image before adopting a refinement.")
             if pipeline == "head-image-edit":
+                from zet.services.local_view_reference_service import selected_run_for_mode
+                current_selections = selected_run_for_mode(run, mode)["selected_views"]
                 for ref in attempt.get("reference_inputs", record.get("reference_inputs", [])):
                     source_view = ref.get("view")
                     if ref.get("candidate_id") and source_view and source_view != record["view"]:
-                        current = next((c for c in run["candidates"] if c["candidate_id"] == run.get("selected_views", {}).get(source_view)), {})
+                        current = next((c for c in run["candidates"] if c["candidate_id"] == current_selections.get(source_view)), {})
                         image_path = Path(str(current.get("image_path") or ""))
                         if (current.get("candidate_id") != ref["candidate_id"] or not image_path.is_file()
                                 or (current.get("human_review") or {}).get("decision") == "reject"
                                 or (ref.get("sha256") and hashlib.sha256(image_path.read_bytes()).hexdigest() != ref["sha256"])):
                             raise ValueError("A refinement source or guide changed. Create a new attempt before adoption.")
             image = self.image_path(pipeline, run_id, costume, session_id, attempt["id"])
-            if (attempt.get("adopted_candidate_id") == selected
-                    or owns_selection and candidate["refinement"]["attempt_id"] == attempt["id"]):
-                return self.detail(pipeline, run_id, costume, session_id)
             from zet.services.render_slot_service import slot_maps
-            slots = slot_maps(run)
+            slots = slot_maps(run, mode)
             if selected not in slots[record["view"]]:
                 raise ValueError("Selected image no longer occupies a batch slot.")
             cid = uuid4().hex
             index = slots[record["view"]].index(selected)
-            adopted_image = root / "renders" / cid / ("refined" + image.suffix.lower())
+            adopted_image = root / "renders" / cid / (f"{mode}_refined" + image.suffix.lower())
             adopted_image.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(image, adopted_image)
             adopted = {**deepcopy(candidate), "candidate_id": cid, "image_path": str(adopted_image),
                 "image_sha256": attempt["image_sha256"], "status": "COMPLETE", "render_status": "COMPLETE",
                 "ask_id": "", "render_error": "", "human_review": {"decision": "undecided"},
+                "render_mode": mode,
                 "refinement": {"session_id": session_id, "attempt_id": attempt["id"], "base_candidate_id": record["base_candidate_id"],
                     "reference_inputs": attempt.get("reference_inputs", record.get("reference_inputs", [])),
                     **({"operation": attempt.get("operation", "correction"), "guide_view": attempt.get("guide_view", "")} if pipeline == "head-image-edit" else {})}}
+            if attempt.get("render_sizing"):
+                adopted.update({key: attempt["render_sizing"][key] for key in ("aspect_ratio", "target_pixels", "width", "height")})
             adopted.pop("render_input", None)
             adopted.pop("slot_managed", None)
             slots[record["view"]][index] = cid
@@ -428,14 +462,18 @@ class LocalCharacterRefinementService:
                 detached = state.setdefault("detached_candidates", [])
                 if selected not in detached:
                     detached.append(selected)
-                state["slots_by_view"] = slots
+                state[slots_key] = slots
                 state["slot_version"] = int(state.get("slot_version", 0)) + 1
-                state.setdefault("selected_views", {})[record["view"]] = cid
+                state.setdefault(selection_key, {})[record["view"]] = cid
                 if record["view"] == "FRONT":
-                    state["front_anchor"] = cid
+                    state["final_front_anchor" if mode == "final" else "front_anchor"] = cid
+                    if mode == "draft" and pipeline == "character-assembly":
+                        from zet.services.local_character_progression_service import invalidate_assembly_rankings
+                        invalidate_assembly_rankings(state)
             mutate_local_run_state(root, update)
-            from zet.services.local_character_progression_service import select
-            select(workflow, workflow.prompt_improvement.detail(run_id, costume), record["view"], cid)
+            if "render_mode" not in record:
+                from zet.services.local_character_progression_service import select
+                select(workflow, workflow.prompt_improvement.detail(run_id, costume), record["view"], cid)
             attempt["adopted_candidate_id"] = cid
             record["adopted_candidate_id"] = cid
             record["revision"] += 1

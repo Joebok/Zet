@@ -72,6 +72,42 @@ class AIWorkflowService:
             paths.update({path.name: path for path in self.root.glob("*.json")})
         return list(paths.values())
 
+    def _cancelled(self, task_id):
+        return (self.local_root / "Cancelled" / (task_id + ".json")).is_file()
+
+    def cancel_matching(self, predicate):
+        """Fence matching continuations and their attributed queued AI requests."""
+        from pathlib import Path
+        from zet.services.workflow_storage import supersede_task
+        paths = self.app.ai_proxy_service.ai_proxy_path_service
+        cancelled = set()
+        for path in self._paths():
+            record = self._read(path)
+            if (record.get("universe_id") != self.app.universe_id
+                    or record.get("status") not in {"WAITING", "RUNNING", "PAUSED_STORAGE", "RECOVERING"}
+                    or not predicate(record)):
+                continue
+            task_id = str(record["id"])
+            paths.jobs.validate_id(task_id)
+            marker = self.local_root / "Cancelled" / (task_id + ".json")
+            with file_lock(marker.with_suffix(".lock")):
+                write_json_atomic(marker, {"id": task_id, "reason": "Owning Draft images were deleted."})
+            cancelled.add(task_id)
+        if cancelled:
+            for job in paths.jobs.repository.all():
+                manifest = job.get("manifest") or {}
+                if (manifest.get("workflow_id") not in cancelled
+                        or job.get("harvest_state") in {"APPLIED", "FAILED", "SUPERSEDED"}):
+                    continue
+                ask_id = str(job["ask_id"])
+                paths.jobs.validate_id(ask_id)
+                task = paths.file_proxy_client.ask_root / ask_id
+                if not task.exists():
+                    task = paths.file_proxy_client.running_root / ask_id
+                supersede_task(Path(paths.config.base_ai_queue_path), task,
+                               "Owning Draft images were deleted.", state_root=paths.lifecycle.storage_root)
+        return cancelled
+
     def submit(self, target, args, *, service, owner=None, key=None, initial=None):
         if target.__name__ not in self.METHODS[service]:
             raise ValueError("Unregistered AI workflow continuation")
@@ -144,7 +180,11 @@ class AIWorkflowService:
         try:
             with file_lock(path.with_suffix(".lock"), timeout=0.05):
                 record = self._read(path)
-                if record["universe_id"] != self.app.universe_id or record["status"] in {"COMPLETE", "FAILED"}:
+                if record["universe_id"] != self.app.universe_id or record["status"] in {"COMPLETE", "FAILED", "CANCELLED"}:
+                    return
+                if self._cancelled(task_id):
+                    record.update(status="CANCELLED", updated_at=datetime.now(timezone.utc).isoformat())
+                    self._save(path, record)
                     return
                 if record["service"] == "prompt_generator" or (record["service"] == "post_render_prompt" and (record.get("args") or [None])[0] == "costume-dressing"):
                     record.update(status="FAILED", error="Workflow retired; use Costume Post Render Adjustments for costume template changes.",
@@ -165,11 +205,13 @@ class AIWorkflowService:
                         initial()
                     else:
                         target(*record["args"])
-                    record["status"] = "COMPLETE"
+                    record["status"] = "CANCELLED" if self._cancelled(task_id) else "COMPLETE"
                 except AIPending:
-                    record["status"] = "WAITING"
+                    record["status"] = "CANCELLED" if self._cancelled(task_id) else "WAITING"
                 except Exception as exc:
-                    if health.check_error(exc):
+                    if self._cancelled(task_id):
+                        record.update(status="CANCELLED", error="Owning Draft images were deleted.")
+                    elif health.check_error(exc):
                         record.update(status="PAUSED_STORAGE", error="Storage unavailable; resumption is automatic")
                     else:
                         record.update(status="FAILED", error=str(exc))
@@ -187,7 +229,7 @@ class AIWorkflowService:
             for path in self._paths():
                 try:
                     record = self._read(path)
-                    if record["universe_id"] == self.app.universe_id and record["status"] in {"WAITING", "RUNNING", "PAUSED_STORAGE", "RECOVERING"}:
+                    if record["universe_id"] == self.app.universe_id and not self._cancelled(record["id"]) and record["status"] in {"WAITING", "RUNNING", "PAUSED_STORAGE", "RECOVERING"}:
                         self._enqueue(record["id"])
                 except (OSError, ValueError, KeyError):
                     import logging
@@ -200,6 +242,7 @@ class AIWorkflowService:
                     record = self._read(path)
                     if (record["universe_id"] == self.app.universe_id
                             and str(session_id) in {str(value) for value in record.get("owner", {}).values()}
+                            and not self._cancelled(record["id"])
                             and record["status"] in {"WAITING", "RUNNING", "PAUSED_STORAGE", "RECOVERING"}):
                         return True
                 except (OSError, ValueError, KeyError):

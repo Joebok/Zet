@@ -1,5 +1,20 @@
 # Local character assets
 
+## Draft and Final rendering
+
+`LocalAssetStoreService` has internal mode-specific selection records, private
+Draft snapshots, and Final publication through the existing catalog transaction.
+Legacy lock records are read as Draft. Individual selection/lock APIs accept an
+explicit mode through `LocalModeSelectionService`; mode-scoped bulk lock APIs
+and completion checks are also available internally. Assembly/Dressing source
+resolution supports requested-mode lock preference and fallback, including within
+an explicitly selected source batch. Assembly input preparation freezes the
+requested mode's resolved references without replacing shared source snapshots;
+Body and Head input preparation also project same-batch anchors by requested mode
+and preserve saved reference order. Dressing input preparation resolves its
+Assembly source per request and can reuse the saved prompt and bindings. The dashboard exposes separate mode controls and slots. See the
+[completed plan](../../plans/completed/draft-final-rendering.md) for validation.
+
 ## Overview autogenerate with edited heads (2026-10-27)
 
 Dashboard Overview uses `LocalCharacterOverviewService` to sequence FRONT through
@@ -483,7 +498,7 @@ Operator trial update (2026-10-15): Joe accepted the Freydis improvement as suff
 
 `MinorCharacterService` handles named universe-local workspaces, input analysis and publication. `MinorCharacterWorkflow` in `minor_character_workflow_service.py` owns current boards, stage prompts, rendering and review. New workspaces use the current workflow only; retired records are excluded without migration or file deletion. The Quick Character notes above describe preceding view/history rules, superseded by [ADR 0015](../DECISIONS/0015-minor-character-alignment.md).
 
-Style alignment reconstructs identity, costume and details in universe style without enforcing an official view. Suggested changes/custom feedback refine it. Select a style image before generating any view. Every view independently uses this selected image with a short direction-only prompt, without the full character brief. Preview an aligned view and click **Continue to true-ups**, then **Try these changes** to refine it. Continue atomically selects the previewed rendered candidate and carries it in its existing slot, retaining matching checked suggestions and custom feedback. A separate Select click is optional; API callers omitting `candidate_id` continue with the existing selection. Inline guidance explains the transition and current image-task waits. Every rendered stage candidate can lock, including alignment images and carried selections. Style locks stay private to the workspace; Front, Three-quarter and Profile locks publish immutable Inventory images. Cards and review dialogs expose matching lock/unlock icon buttons. Unlock clears only the workspace lock, retaining the selection and any published Inventory images. Pending/failed review does not block selection or custom refinement.
+Style alignment reconstructs identity, costume and details in universe style without enforcing an official view. Suggested changes/custom feedback refine it. Select a style image before generating any view. Every view independently uses this selected image with a short direction-only prompt, without the full character brief. Preview an aligned view and click **Continue to true-ups**, then **Try these changes** to refine it. Continue atomically selects the previewed rendered candidate and carries it in its existing slot, retaining matching checked suggestions and custom feedback. A separate Select click is optional; API callers omitting `candidate_id` continue with the existing selection. Inline guidance explains the transition and current image-task waits. Every rendered stage candidate can lock, including alignment images and carried selections. Draft locks and Style locks stay private to the workspace; Final Front, Three-quarter and Profile locks publish immutable Inventory images. Cards and review dialogs expose matching lock/unlock icon buttons. Unlock clears only the workspace lock, retaining the selection and any published Inventory images. Pending/failed review does not block selection or custom refinement.
 
 Minor Characters offers five explicit views after Style alignment: Front, Front left 3/4, Front right 3/4, Left profile and Right profile. There is no side selector; each view can be generated and locked independently without completing the others. Existing current-workflow workspaces gain missing boards when read, preserving saved boards, selections, revisions and locks. Legacy `side` values remain stored for compatibility but do not restrict available views.
 
@@ -598,3 +613,57 @@ hair endpoint still requires human visual acceptance after future rendering.
 ## Environmental universe style (2026-10-30)
 
 Body Reference, Head Image, Head Image Edit and Costume Dressing choose universe style when creating a batch. The batch snapshot persists across subsequent view compilation. Overview automatic creation defaults canonical and rejects reuse of batches with a different variant or frozen style hash. Minor Characters stores universe_style_variant independently of source-style preservation, and includes it in analysis invalidation.
+
+Character-to-Image-Generator staging uses the destination board's Draft or Final
+mode when resolving selected and locked references, with the other mode as a
+fallback. It stages the configured target and the pipeline's default aspect ratio
+(square for Head, 2:3 for the other character pipelines); the generator can adjust
+these before submission. This includes Dressing's no-reference and rotation
+handoffs. Existing submitted requests retain their frozen inputs.
+
+The character dashboard's render-quality control switches the Draft and Final
+slot boards and their selections. The aspect-ratio control previews configured
+dimensions, and individual slot generation can reuse a same-view seed from the
+other mode. Locks and bulk locks operate on the displayed mode; Draft locks are
+private and Final locks publish. View and batch regeneration act on occupied
+slots in the displayed mode and report protected slots; failed-render Retry
+reuses its frozen inputs. New batch candidates begin as Draft at their pipeline's
+default ratio. Source-batch choices include Draft and Final selections and prefer
+the requested mode with fallback. The [completed implementation plan](../../plans/completed/draft-final-rendering.md) records validation.
+
+Minor Characters also stores independent Draft and Final boards, selections and
+locks. New Draft locks and Style locks use private snapshots; Final view locks
+publish to Inventory. An alignment uses the selected style in its own mode with
+fallback to the other mode. Failed slot Retry keeps its frozen render payload,
+seed and sizing. Legacy workspace boards and locks remain Draft.
+
+Refinement and private post-render trial sessions retain their Draft or Final
+mode. Refinement adopts into that mode’s selected slot, while comparison and
+trial references prefer that mode with fallback. New edits and trials freeze
+their configured sizing; retries retain the submitted sizing and inputs. Minor
+Character render references are also copied into private candidate inputs and
+checked against their saved hashes before reuse.
+
+Minor Character Draft cleanup can target one view or the whole workspace. It
+clears Draft selections and private locks, fences owned image requests, and
+removes their output bytes after confirmation. A pending Draft render cannot be
+created later by an already-running analysis. Final boards and Inventory copies
+remain available.
+
+Character pipeline batch and view controls also offer confirmed Draft cleanup.
+The operation fences matching renders, removes batch-owned Draft output images
+and private lock snapshots, and clears the batch's Draft selections, slots and
+review state. Final work, downstream results and Inventory copies are retained.
+
+Overview autogeneration prefers an available Final FRONT selection or lock,
+falling back to Draft. Its Draft locks use private snapshots rather than
+publishing through the legacy Inventory path.
+
+Legacy dashboard lock requests without an explicit mode also lock Drafts
+privately. Shared locked-source discovery prefers Final per pipeline, costume
+and view; an existing explicit Draft source key still resolves to that Draft.
+Head Image Edit phase-source selection follows the same preference.
+
+Matching resumable Minor Character preparation and review continuations are
+cancelled with the Drafts; attributed queued AI requests are fenced too. Older
+in-flight requests without workflow attribution cannot be identified individually.

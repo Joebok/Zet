@@ -69,6 +69,8 @@ class NarrativeTarget:
     candidates: dict = field(default_factory=dict)
     slots: list[str | None] = field(default_factory=lambda: [None] * 8)
     selected_id: str | None = None
+    final_slots: list[str | None] = field(default_factory=lambda: [None] * 8)
+    final_selected_id: str | None = None
     active_llm_job: str | None = None
     interview_model: str = ""
     prompt_model: str = ""

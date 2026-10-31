@@ -33,6 +33,10 @@ let layerDrag = null;
 let activeLayer = null;
 let brush = null;
 let reviewCandidate = null;
+let renderMode = 'draft';
+let renderRatio = '';
+let ratioTarget = '';
+let seedCandidate = '';
 let inventorySaved = null;
 let sourcePicker = null;
 let contextState = 'loading';
@@ -46,6 +50,12 @@ const fieldValue = field => field.type === 'checkbox' ? field.checked : field.va
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 const title = key => key.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
 const targetsWithAssemblyLast = targets => [...targets.filter(target => target.kind !== 'assembly'), ...targets.filter(target => target.kind === 'assembly')];
+const modeSlots = () => renderMode === 'final' ? (detail?.final_slots || Array(8).fill(null)) : (detail?.slots || []);
+const modeSelected = () => renderMode === 'final' ? detail?.final_selected_id : detail?.selected_id;
+const preferredSource = source => {
+  const ids = renderMode === 'final' ? [source.final_selected_id, source.selected_id] : [source.selected_id, source.final_selected_id];
+  return ids.find(id => id && (source.candidates || []).some(candidate => candidate.id === id)) || '';
+};
 const label = (key, value, textarea = true, name = title(key)) => {
   const helpKey = key.startsWith('override_') || visualFields.includes(key) ? 'visual_context' : key;
   const help = detail?.field_purposes?.[helpKey];
@@ -132,6 +142,20 @@ async function api(url, method = 'GET', data) {
     throw new Error(typeof result.detail === 'string' ? result.detail : JSON.stringify(result.detail || result));
   }
   return result;
+}
+
+async function updateRenderSize() {
+  const input = host.querySelector('#narrative-render-ratio'), output = host.querySelector('#narrative-size-preview');
+  if (!input || !output) return;
+  const mode = renderMode, ratio = input.value;
+  try {
+    const sizing = await api(`/api/image-generation/sizing?${new URLSearchParams({render_mode:mode,aspect_ratio:ratio})}`);
+    if (mode !== renderMode || ratio !== host.querySelector('#narrative-render-ratio')?.value) return;
+    input.setCustomValidity(''); output.textContent = `${sizing.width} × ${sizing.height}`;
+  } catch (error) {
+    if (mode !== renderMode || ratio !== host.querySelector('#narrative-render-ratio')?.value) return;
+    input.setCustomValidity(error.message); output.textContent = error.message;
+  }
 }
 
 async function action(callback) {
@@ -324,7 +348,7 @@ async function loadPageContent() {
         return `<li class="animation-shot"><div><div class="animation-thumb"><img src="${esc(asset.artwork_data_url||'')}" alt="Locked image for ${esc(asset.title||'scene')}">${layers}</div><button type="button" data-remove-shot="${i}">Remove scene</button></div><div class="animation-shot-body"><h4>${esc(asset.title||s.source_id)}</h4><div class="animation-controls"><label>Scene duration (ms)<input data-shot-duration="${i}" type="number" min="1" step="1" value="${s.duration_ms}"></label><label>Start zoom (×)<input data-zoom-start="${i}" type="number" min="1" step=".1" value="${first.zoom}"></label><label>End zoom (×)<input data-zoom-end="${i}" type="number" min="1" step=".1" value="${last.zoom}"></label><button type="button" data-pick-target="${i}">Choose zoom target</button><label>Transition<select data-transition="${i}"><option value="cut">Cut</option><option value="dissolve" ${s.transition?.type==='dissolve'?'selected':''}>Dissolve</option><option value="fade-through-black" ${s.transition?.type==='fade-through-black'?'selected':''}>Fade through black</option></select></label></div>${customCamera?'<p>Custom camera motion is preserved until zoom or target is changed.</p>':''}${rows}</div></li>`;
       };
       window.addEventListener('message',event=>{const frame=panel.querySelector('iframe');if(frame && event.source===frame.contentWindow && event.data?.type==='zet-animation-preview-height' && Number.isFinite(event.data.height)) frame.style.height=Math.max(1,event.data.height)+'px';},{signal:events.signal});
-      const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text moves and scales with the artwork.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)}${s.lettered?" (lettered)":""}</button>`).join(" ")}</div><ol class="animation-shots">${shots.map(card).join("")}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="${exportUrl}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:600px;border:0" scrolling="no"></iframe>`;
+      const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text moves and scales with the artwork.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)} · ${s.render_mode === 'final' ? 'Final' : 'Draft'}${s.lettered?" (lettered)":""}</button>`).join(" ")}</div><ol class="animation-shots">${shots.map(card).join("")}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="${exportUrl}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:600px;border:0" scrolling="no"></iframe>`;
         panel.querySelectorAll('[data-zoom-start],[data-zoom-end]').forEach(input=>input.addEventListener('input',()=>{input.dataset.dirty='true';}));
         panel.querySelectorAll('[data-text-row] input[type=range]').forEach(input=>input.addEventListener('input',()=>{const row=input.closest('[data-text-row]'),a=row.querySelector('[data-text-start]'),b=row.querySelector('[data-text-end]');if(Number(a.value)>Number(b.value)){if(input===a)b.value=a.value;else a.value=b.value;}row.dataset.dirty='true';row.querySelector('[data-in-value]').textContent=Math.round(Number(a.value))+'%';row.querySelector('[data-out-value]').textContent=Math.round(Number(b.value))+'%';const duration=Math.max(1,Number(panel.querySelector(`[data-shot-duration="${row.dataset.textRow}"]`).value)||1),start=Number(a.value),end=Number(b.value),fade=30000/duration;row.querySelector('[data-envelope]').setAttribute('points',`0,28 ${start},28 ${Math.min(end,start+fade)},2 ${end},2 ${Math.min(100,end+fade)},28 100,28`);}));
         panel.querySelectorAll('[data-pick-target]').forEach(button=>button.onclick=()=>action(async()=>{
@@ -398,8 +422,8 @@ async function loadPageContent() {
         <input aria-label="Target title" name="title" required placeholder="Title"><select name="kind" aria-label="Target kind"><option value="subscene">Subscene</option><option value="backdrop">Backdrop</option></select><button class="primary">Create and edit</button></form>
         ${detail.targets.some(target=>target.kind==='assembly') ? '' : '<button data-action="create-assembly">Create final assembly</button>'}
         <div class="narrative-actions"><button data-action="reference-backdrop">Reference backdrop from another scene</button><button data-action="import-subscene">Import subscene from another scene</button></div>
-        ${targetsWithAssemblyLast(detail.targets).map(target=>`<article class="narrative-card narrative-target-card" data-target-id="${target.id}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${target.selected_id ? ' · Image selected' : ''}</p>
-          ${target.selected_id ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(target.selected_id,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}${target.kind==='subscene' ? `<button class="danger" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`).join('')}</section>
+        ${targetsWithAssemblyLast(detail.targets).map(target=>{const selected=target.final_selected_id || target.selected_id;return `<article class="narrative-card narrative-target-card" data-target-id="${target.id}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${selected ? ' · Image selected' : ''}</p>
+          ${selected ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(selected,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}${target.kind==='subscene' ? `<button class="danger" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`;}).join('')}</section>
       <section class="narrative-card"><h2>Scene elements</h2><button data-action="new-element">Add element</button><div id="narrative-elements">${elementsHtml(detail.elements,false)}</div></section></div></div>`;
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
   } else {
@@ -441,7 +465,7 @@ function renderLayers() {
     const source = detail.assembly_sources.find(item=>item.id===layer.target_id);
     const options = source?.candidates || [];
     return `<article class="narrative-layer"><h3>${esc(layer.label)}</h3><img class="narrative-layer-thumb" src="${esc(layerUrl(layer))}" alt="${esc(layer.label)} cutout">
-      ${layer.source_kind==='element' ? '' : `<label>Candidate<select data-layer="${layer.id}" data-layer-field="candidate_id">${options.some(candidate=>candidate.id===layer.candidate_id) ? '' : `<option value="${layer.candidate_id}">Pinned image</option>`}${options.map(candidate=>`<option value="${candidate.id}" ${candidate.id===layer.candidate_id ? 'selected' : ''}>Slot ${candidate.slot}</option>`).join('')}</select></label>
+      ${layer.source_kind==='element' ? '' : `<label>Candidate<select data-layer="${layer.id}" data-layer-field="candidate_id">${options.some(candidate=>candidate.id===layer.candidate_id) ? '' : `<option value="${layer.candidate_id}">Pinned image</option>`}${options.map(candidate=>`<option value="${candidate.id}" ${candidate.id===layer.candidate_id ? 'selected' : ''}>${candidate.render_mode === 'final' ? 'Final' : 'Draft'} · Slot ${candidate.slot}</option>`).join('')}</select></label>
       <button data-current-selection="${layer.id}">Use current selection</button>`}
       <div class="narrative-layer-controls"><label>Role<select data-layer="${layer.id}" data-layer-field="role"><option value="group" ${layer.role==='group'?'selected':''}>Group</option>${layer.source_kind==='backdrop'?`<option value="base" ${layer.role==='base'?'selected':''}>Base backdrop</option>`:''}</select></label>
       <label><input type="checkbox" data-layer="${layer.id}" data-layer-field="visible" ${layer.visible?'checked':''}> Visible</label>
@@ -629,12 +653,13 @@ async function populateSourceTargets() {
 
 function chosenSource() {
   const source = sourcePicker.sources.find(source=>source.target_id===host.querySelector('#source-target').value);
-  return source ? {story_id:source.story_id,scene_id:source.scene_id,target_id:source.target_id,candidate_id:host.querySelector('#source-candidate').value || null} : null;
+  return source ? {story_id:source.story_id,scene_id:source.scene_id,target_id:source.target_id,candidate_id:host.querySelector('#source-candidate').value || null,render_mode:renderMode} : null;
 }
 
 async function populateSourceCandidates() {
   const source = sourcePicker.sources.find(source=>source.target_id===host.querySelector('#source-target').value);
-  host.querySelector('#source-candidate').innerHTML = '<option value="">'+(sourcePicker.kind==='subscene'?'Text only / no image needed':'Choose a completed candidate')+'</option>'+(source?.candidates||[]).map(candidate=>`<option value="${candidate.id}" ${candidate.id===source.selected_id?'selected':''}>Slot ${candidate.slot}${candidate.id===source.selected_id?' · Selected':''}</option>`).join('');
+  const preferred = source ? preferredSource(source) : '';
+  host.querySelector('#source-candidate').innerHTML = '<option value="">'+(sourcePicker.kind==='subscene'?'Text only / no image needed':'Choose a completed candidate')+'</option>'+(source?.candidates||[]).map(candidate=>`<option value="${candidate.id}" ${candidate.id===preferred?'selected':''}>${candidate.render_mode === 'final' ? 'Final' : 'Draft'} · Slot ${candidate.slot}${candidate.id===preferred?' · Selected':''}</option>`).join('');
   await previewNarrativeSource();
 }
 
@@ -670,9 +695,10 @@ function adaptationChanged() {
 }
 
 function renderTarget(targets) {
+  if (ratioTarget !== route.target) { ratioTarget = route.target; renderRatio = `${detail.width}:${detail.height}`; seedCandidate = ''; }
   const backdrop = detail.kind === 'backdrop';
   const assembly = detail.kind === 'assembly';
-  const viewingImages = window.matchMedia("(max-width: 1360px)").matches && detail.slots.some(id => id && detail.candidates[id]?.image);
+  const viewingImages = window.matchMedia("(max-width: 1360px)").matches && modeSlots().some(id => id && detail.candidates[id]?.image);
   root.innerHTML = `<h1 class="narrative-target-heading"><select id="narrative-target-select" aria-label="Scene page">${targetsWithAssemblyLast(targets).map(target=>`<option value="${target.id}" ${target.id === route.target ? 'selected' : ''}>${esc(target.title)} · ${title(target.kind)}</option>`).join('')}</select></h1>
     <div class="narrative-editor narrative-target-editor ${viewingImages ? 'has-images' : ''}"><details class="narrative-direction-settings" ${viewingImages ? '' : 'open'}><summary>Scene direction and references</summary><div>${sourcePanelHtml()}<section class="narrative-card"><h2>${backdrop ? 'Environment direction' : 'The moment'}</h2>
       <label>Universe style<select data-field="universe_style_variant"><option value="inherit" ${detail.universe_style_variant==='inherit'?'selected':''}>Inherit scene</option><option value="canonical" ${detail.universe_style_variant==='canonical'?'selected':''}>Canonical</option><option value="environmental" ${detail.universe_style_variant==='environmental'?'selected':''}>Environmental</option></select></label>
@@ -681,7 +707,7 @@ function renderTarget(targets) {
       ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
       ${label('framing',detail.framing,false)}<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
-    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button><button data-action="scene-text" ${detail.selected_id?"":"disabled"}>Edit selected image text</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
+    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button><button data-action="scene-text" ${modeSelected()?"":"disabled"}>Edit selected image text</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
     <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input · Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
       <p class="narrative-muted">Style source: ${esc(detail.style_source || 'saved scene')}</p>
@@ -699,10 +725,11 @@ function renderTarget(targets) {
       <div class="narrative-actions"><button class="primary" data-action="render" data-count="1">Render 1</button><button class="primary" data-action="render" data-count="4">Render 4</button><button data-action="refresh">Refresh</button></div>
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
-    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div class="narrative-actions"><label>Render quality <select id="narrative-render-mode"><option value="draft" ${renderMode==='draft'?'selected':''}>Draft</option><option value="final" ${renderMode==='final'?'selected':''}>Final</option></select></label><label>Aspect ratio <input id="narrative-render-ratio" value="${esc(renderRatio)}" required></label><span id="narrative-size-preview" role="status"></span><label>Seed <select id="narrative-seed-source"><option value="">New seed</option></select></label></div><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete all Draft images</button><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
   sourceVisibility();
   enableModelPickers();
   updateLive();
+  void updateRenderSize();
   loadModels();
   if (assembly) renderLayers();
   const sourceImage = host.querySelector('#backdrop-source-image');
@@ -781,6 +808,8 @@ function updateLive() {
   if (disposed) return;
   const history = host.querySelector('#narrative-interview');
   if (!history) return;
+  const editText = host.querySelector('[data-action="scene-text"]');
+  if (editText) editText.disabled = !modeSelected();
   const jobs = Object.values(detail.jobs);
   const imagePicker = host.querySelector('#narrative-interview-image');
   if (imagePicker) {
@@ -857,17 +886,23 @@ function updateLive() {
   host.querySelector('#narrative-job-status').innerHTML = `<p class="${working.length || llmSubmitting ? 'narrative-pending' : 'narrative-muted'}">${working.length ? working.map(job=>`${esc(job.kind)}: ${esc(job.status.toLowerCase())}${job.kind !== 'image' ? ' · '+esc(job.model || 'Model not recorded') : ''}`).join(' · ') : llmSubmitting ? 'Submitting LLM request…' : 'Ready'}${llmWorking ? ' · Final prompt is unavailable until the LLM finishes.' : ''}</p>`+
     failures.filter(job=>job.kind !== 'image').map(job=>`<div class="narrative-failure">${esc(modelName(job.provenance))} · ${esc(job.error)}${job.kind === 'interview' ? ` <button data-retry-job="${job.id}">Retry</button>` : ''}</div>`).join('');
   updatePromptIndicators();
-  const signature = JSON.stringify([detail.slots,detail.candidates,detail.selected_id]);
+  const slots = modeSlots(), selected = modeSelected();
+  const seedSelect=host.querySelector('#narrative-seed-source');
+  if(seedSelect){const sources=Object.values(detail.candidates).filter(candidate=>(candidate.render_mode || 'draft')!==renderMode && Number.isInteger(candidate.seed));
+    const options='<option value="">New seed</option>'+sources.map(candidate=>`<option value="${esc(candidate.id)}">Reuse ${candidate.render_mode==='final'?'Final':'Draft'} slot ${candidate.slot}</option>`).join('');
+    if(seedSelect.innerHTML!==options)seedSelect.innerHTML=options;
+    seedSelect.value=seedCandidate;if(seedSelect.value!==seedCandidate)seedCandidate='';}
+  const signature = JSON.stringify([renderMode,slots,detail.candidates,selected]);
   if (signature === slotSignature) return;
   slotSignature = signature;
-  host.querySelector('#narrative-slots').innerHTML = detail.slots.map((id,index)=>{
+  host.querySelector('#narrative-slots').innerHTML = slots.map((id,index)=>{
     const candidate = id ? detail.candidates[id] : null;
-    return `<article class="narrative-slot ${id && id === detail.selected_id ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === detail.selected_id ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3>Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
+    return `<article class="narrative-slot ${id && id === selected ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === selected ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3>Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
       ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${candidate ? '' : 'Empty'}</div>`}
-      ${candidate ? `<p class="narrative-muted image-card-state">${esc(candidate.status.toLowerCase())}${id === detail.selected_id ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
+      ${candidate ? `<p class="narrative-muted image-card-state">${renderMode === 'final' ? 'Final' : 'Draft'}${candidate.width && candidate.height ? ` · requested ${candidate.width} × ${candidate.height}` : ''} · ${esc(candidate.status.toLowerCase())}${id === selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
       ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
-      <div class="narrative-actions narrative-review-actions"><button data-review="${id}" aria-label="Review slot ${index+1}">Review</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== detail.selected_id ? 'primary' : ''}" ${id === detail.selected_id ? 'disabled' : ''}>${id === detail.selected_id ? 'Selected' : 'Select'}</button>` : ''}
-      ${!candidate.locked && id !== detail.selected_id ? `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regenerate'}</button>` : ''}
+      <div class="narrative-actions narrative-review-actions"><button data-review="${id}" aria-label="Review slot ${index+1}">Review</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== selected ? 'primary' : ''}" ${id === selected ? 'disabled' : ''}>${id === selected ? 'Selected' : 'Select'}</button>` : ''}
+      ${!candidate.locked && id !== selected ? `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regenerate'}</button>` : ''}
       <button data-candidate="${id}" data-candidate-action="clear" class="danger-text-action">Clear slot</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
       : `<div class="narrative-actions"><button class="primary" data-render-slot="${index+1}">Generate</button></div>`}</article>`;
   }).join('');
@@ -876,7 +911,7 @@ function updateLive() {
 
 function reviewImages() {
   // Occupied slots retain prompt/source inspection even before an image exists.
-  return detail?.slots.filter(id=>id && detail.candidates[id]) || [];
+  return modeSlots().filter(id=>id && detail.candidates[id]);
 }
 
 function renderImageReview() {
@@ -891,7 +926,7 @@ function renderImageReview() {
   if (!images.includes(reviewCandidate)) reviewCandidate = images[0];
   const candidate = detail.candidates[reviewCandidate];
   const index = images.indexOf(reviewCandidate);
-  const selected = reviewCandidate === detail.selected_id;
+  const selected = reviewCandidate === modeSelected();
   const image = host.querySelector('#review-image');
   image.hidden = !candidate.image;
   if (candidate.image) image.src = imageUrl(reviewCandidate);
@@ -917,7 +952,7 @@ function renderImageReview() {
     <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
       ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked?"disabled":""}>Edit text</button>` : ''}<button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected || !candidate.image ? 'disabled' : ''}>Select</button>
-      <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>Regenerate</button>
+      <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>${candidate.status === 'FAILED' ? 'Retry' : 'Regenerate'}</button>
       <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
       <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy || !candidate.image ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
       ${detail.kind === 'subscene' ? `<button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !(selected || candidate.locked) ? 'disabled' : ''} title="Select or lock this image before saving it to inventory">Save to inventory</button>` : ''}
@@ -1013,6 +1048,7 @@ async function poll() {
 }
 
 async function start(actionName, count = 1, slot, retryJobId) {
+  if (['generate','render'].includes(actionName) && !host.querySelector('#narrative-render-ratio').reportValidity()) return;
   await save();
   status(actionName === 'render' ? 'Queueing images…' : 'Queueing illustrator…');
   const direction = host.querySelector('#narrative-direction');
@@ -1022,7 +1058,7 @@ async function start(actionName, count = 1, slot, retryJobId) {
   updateLive();
   let result;
   try {
-    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
+    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,aspect_ratio:renderRatio,...(seedCandidate ? {seed_candidate_id:seedCandidate} : {})} : {}), ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
   } finally { llmSubmitting = false; updateLive(); }
   if (['interview','restart_interview'].includes(actionName)) interviewImage = '';
   mergeTarget(result);
@@ -1062,6 +1098,7 @@ async function assignElements() {
 }
 
 listen(host,'input',event=>{
+  if (event.target.id==='narrative-render-ratio') {renderRatio=event.target.value;void updateRenderSize();return;}
   if (event.target.id==='backdrop-link-mode') return;
   if (event.target.dataset.adaptation || event.target.dataset.crop) { adaptationChanged();updateLive();return; }
   if (event.target.dataset.layerField) {
@@ -1079,6 +1116,8 @@ listen(host,'input',event=>{
 });
 
 listen(host,'change',event=>{
+  if (event.target.id==='narrative-render-mode') {renderMode=event.target.value;seedCandidate='';slotSignature='';reviewCandidate=null;host.querySelector('#image-dialog')?.close();updateLive();void updateRenderSize();const button=host.querySelector('[data-action="scene-text"]');if(button)button.disabled=!modeSelected();return;}
+  if (event.target.id==='narrative-seed-source') {seedCandidate=event.target.value;return;}
   if (event.target.id==='assembly-active-layer') { activeLayer=event.target.value; renderPlacement(); return; }
   if (event.target.id==='narrative-interview-image') {interviewImage=event.target.value;updateLive();return;}
   if (event.target.id==='backdrop-link-mode') {const mode=event.target.value;action(async()=>{await save();await api(base(),'PATCH',{backdrop_link_mode:mode});await loadPage();});return;}
@@ -1215,9 +1254,10 @@ listen(host,'click',event=>{
       const layerId=button.dataset.currentSelection;
       const sourceId=detail.layers.find(item=>item.id===layerId).target_id;
       const scene=await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${sourceId}`);
-      if(!scene.selected_id) throw new Error('Select a source image first.');
+      const selected = renderMode === 'final' ? scene.final_selected_id || scene.selected_id : scene.selected_id || scene.final_selected_id;
+      if(!selected) throw new Error('Select a source image first.');
       const layer=detail.layers.find(item=>item.id===layerId);
-      layer.candidate_id=scene.selected_id;layer.strokes=[];layersChanged();await save();renderLayers();
+      layer.candidate_id=selected;layer.strokes=[];layersChanged();await save();renderLayers();
     } else if (button.dataset.deleteSubscene) {
       const target=detail.targets.find(item=>item.id===button.dataset.deleteSubscene);
       if (!target || !confirm(`Delete subscene “${target.title}”?`)) return;
@@ -1230,13 +1270,17 @@ listen(host,'click',event=>{
       await api(`${base()}/elements/${button.dataset.deleteElement}`,'DELETE'); await loadPage();
     } else if (button.dataset.candidate) {
       await save();
-      if (button.dataset.candidateAction === 'lock' && Object.entries(detail.candidates).some(([id, candidate]) => id !== button.dataset.candidate && candidate.locked)) {
-        if (!confirm('An image is already locked for this subscene. Lock this image and unlock all other images for this subscene?')) return;
+      if (button.dataset.candidateAction === 'lock' && Object.entries(detail.candidates).some(([id, candidate]) => id !== button.dataset.candidate && candidate.locked && (candidate.render_mode || 'draft') === renderMode)) {
+        if (!confirm(`An image is already locked in ${renderMode}. Lock this image and unlock the other ${renderMode} image?`)) return;
       }
       if(detail.kind==='assembly' && (detail.scene_text?.length || detail.candidates[button.dataset.candidate]?.scene_text_final) && !(detail.candidates[button.dataset.candidate]?.locked && !detail.candidates[button.dataset.candidate]?.scene_text_pending) && button.dataset.candidateAction==='select'){await window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.candidate,done:async result=>{detail=result;updateLive();}});return;}
-      const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction});
+      const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction,render_mode:renderMode});
       if (result) { detail=result; updateLive(); status('Updated'); }
-    } else if (button.dataset.renderSlot) await start('render',1,Number(button.dataset.renderSlot));
+    } else if (button.dataset.renderSlot) {
+      const slot=Number(button.dataset.renderSlot), id=modeSlots()[slot-1], candidate=id && detail.candidates[id];
+      if (candidate?.status === 'FAILED') {const result=await api(base()+`/candidates/${id}`,'POST',{action:'retry',render_mode:renderMode});if(result){detail=result;updateLive();status('Retry queued.');}}
+      else await start('render',1,slot);
+    }
     else if (button.dataset.retryJob) {
       const job = detail.jobs[button.dataset.retryJob]; await start(job.kind,job.candidate_ids?.length === 4 ? 4 : 1,undefined,job.detail.kind==='assembly' || job.detail.source_snapshot?.image_file ? job.id : undefined);
     } else {
@@ -1245,12 +1289,18 @@ listen(host,'click',event=>{
         case 'import-subscene': await chooseNarrativeSource('subscene');break;
         case 'refresh-backdrop': case 'copy-source-current': case 'copy-source-generation': case 'reuse-backdrop': case 'crop-backdrop': {
           await save();
-          const request = {'refresh-backdrop':{action:'refresh'},'copy-source-current':{action:'copy_inputs',basis:'current'},'copy-source-generation':{action:'copy_inputs',basis:'generation'},'reuse-backdrop':{action:'reuse'},'crop-backdrop':{action:'crop'}}[button.dataset.action];
+          const request = {'refresh-backdrop':{action:'refresh',render_mode:renderMode},'copy-source-current':{action:'copy_inputs',basis:'current'},'copy-source-generation':{action:'copy_inputs',basis:'generation'},'reuse-backdrop':{action:'reuse',render_mode:renderMode},'crop-backdrop':{action:'crop',render_mode:renderMode}}[button.dataset.action];
           await api(base()+'/backdrop-source','POST',request);await loadPage();break;
         }
         case 'apply-backdrop-operation': await start('generate',1);break;
         case 'preview-crop': {await save();const image=host.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
-        case 'scene-text': if(!detail.selected_id)throw Error('Select an image first.'); await save(); await window.ZetSceneText.open({base:base(),universe,candidate:detail.selected_id,done:async result=>{detail=result;updateLive();reviewCandidate=detail.selected_id;if(!host.querySelector('#image-dialog').open)host.querySelector('#image-dialog').showModal();renderImageReview();}});break;
+        case 'delete-draft-images': {
+          if (!confirm('Delete all Draft images for this target, including selected and locked Drafts? Matching work will be cancelled. Final images and Inventory copies remain.')) break;
+          await save(); const result = await api(base()+'/delete-draft-images','POST',{});
+          if (result) { detail=result; updateLive(); status('Draft images deleted.'); }
+          break;
+        }
+        case 'scene-text': if(!modeSelected())throw Error('Select an image first.'); await save(); await window.ZetSceneText.open({base:base(),universe,candidate:modeSelected(),done:async result=>{detail=result;updateLive();reviewCandidate=modeSelected();if(!host.querySelector('#image-dialog').open)host.querySelector('#image-dialog').showModal();renderImageReview();}});break;
         case 'scene-text-raw': await save(); await window.ZetSceneText.open({base:base(),universe,done:async()=>loadPage()});break;
         case 'create-assembly': {await save();const target=await api(base()+'/targets','POST',{title:'Final assembly',kind:'assembly'});await navigate({...route,target:target.id});break;}
         case 'add-element-layer': {
@@ -1262,7 +1312,7 @@ listen(host,'click',event=>{
         case 'add-layer': {
           await save();const source=detail.assembly_sources.find(item=>item.id===host.querySelector('#assembly-source').value);
           if(!source?.candidates.length) throw new Error('Generate a completed source image first.');
-          detail.layers.push({target_id:source.id,candidate_id:source.selected_id||source.candidates[0].id,role:source.kind==='backdrop'&&!detail.layers.some(layer=>layer.role==='base')?'base':'group',x:.1,y:.2,scale:.4,z:detail.layers.length,opacity:1});
+          detail.layers.push({target_id:source.id,candidate_id:preferredSource(source)||source.candidates[0].id,role:source.kind==='backdrop'&&!detail.layers.some(layer=>layer.role==='base')?'base':'group',x:.1,y:.2,scale:.4,z:detail.layers.length,opacity:1});
           layersChanged();await save();renderLayers();break;
         }
         case 'download-composite': case 'preview-composite': {
@@ -1368,7 +1418,7 @@ restoreProvider = window.ZetTaskCapture.registerProvider(() => {
     selections.render_target = {state:contextState,id:route.target,label:contextLabels.render_target || route.target};
     if (detail?.kind==='subscene') selections.subscene = {...selections.render_target};
     source.searchParams.set('target',route.target);
-    const id = host.querySelector('#image-dialog').open ? reviewCandidate : detail?.selected_id
+    const id = host.querySelector('#image-dialog').open ? reviewCandidate : modeSelected()
       || new URLSearchParams(location.search).get('task_candidate');
     if (id) {
       const candidate = detail?.candidates?.[id];

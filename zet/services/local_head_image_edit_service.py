@@ -32,9 +32,10 @@ class LocalHeadImageEditService(LocalHeadImageService):
         if (source_phase == target_phase or source_dir.parent != character_root
                 or not (source_dir / "Character.md").is_file()):
             raise LocalHeadImageError("Choose a different available phase of this character as the source.")
-        records = self.asset_store.locked_assets(character, source_phase, pipeline=self.asset_pipeline)
-        return next((record for record in records if record.get("view") == "FRONT"
-                     and not record.get("qualifier")), None)
+        records = self.asset_store.locked_assets(character, source_phase, pipeline=self.asset_pipeline, render_mode=None)
+        return next((record for mode in ("final", "draft") for record in records
+                     if record.get("view") == "FRONT" and not record.get("qualifier")
+                     and record.get("render_mode", "draft") == mode), None)
 
     def _ranking_guidance(self, run, view):
         from Scripts.Compile_Character_Template import load_template_sections

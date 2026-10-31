@@ -1,5 +1,17 @@
 # Data, configuration, and ownership
 
+Narrative targets retain legacy `slots` and `selected_id` as Draft and use
+`final_slots` and `final_selected_id` for Final. Candidate `render_mode` defaults
+to Draft when absent; new render jobs retain frozen `render_sizing`. See the
+[completed draft/final plan](../plans/completed/draft-final-rendering.md) for validation.
+
+Character run state retains legacy `slots_by_view` and `selected_views` as Draft,
+with `final_slots_by_view` and `final_selected_views` for Final. Local asset keys
+use their existing key for Draft and a `final:` prefix for Final. Minor Character
+workspaces similarly retain `boards`, `selected` and `locked` as Draft alongside
+`final_boards`, `final_selected` and `final_locked`. Image Generator stores a
+Final board beside its legacy Draft board. Missing mode fields mean Draft.
+
 Story animation version-1 shots may contain `camera_mode: "target"`; missing
 mode retains legacy camera-center interpretation. Camera keyframes store normalized
 image target coordinates and zoom factors. Timed lettering remains opacity
@@ -170,6 +182,14 @@ New Narrative scenes default `canvas` to `4:3`; legacy scenes missing it still
 read as `16:9`. Scene ratios seed dimensions only when creating targets, using
 the [Narrative canvas policy](COMPONENTS/NARRATIVE.md#initial-canvas-dimensions).
 Persisted target dimensions and historical snapshots are not migrated.
+
+`Render.DraftTargetPixels` and `Render.FinalTargetPixels` default to 1,048,576
+and 4,194,304. Config persists both; the shared sizing policy and explicit Image
+Generator requests resolve them, with mode-separated workspace boards and output
+controls. Explicit-mode character slot requests also retain the resolved sizing
+on their candidate and frozen input. AI Proxy filenames for newly prepared
+frozen-size requests start with the mode and a unique identifier; existing queued
+requests retain their saved filenames. See the completed draft/final plan for validation.
 
 Narrative interview jobs may include a `review` record built by
 [interview_review](../zet/services/narrative_interview_service.py): validated whole-field proposals

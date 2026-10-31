@@ -1,5 +1,7 @@
 # Architectural decision records
 
+[0039 - Independent Draft and Final image work](0039-draft-final-images.md) records mode ownership, confirmed Draft cleanup and metadata-based selective copying.
+
 [0034 - Immediate AI job deletion](0034-immediate-ai-job-deletion.md) separates
 durable deletion from automatic background disk cleanup.
 

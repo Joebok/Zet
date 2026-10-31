@@ -49,7 +49,19 @@ def prepare_render(staging, ask, config):
     profile = dict(profiles[ask["render_preset"]])
     allowed = {"width", "height", "steps", "cfg", "sampler_name", "scheduler", "denoise",
                "text_encoder", "vae", "disable_prompt_globals"}
-    profile.update({key: value for key, value in ask.get("render_overrides", {}).items() if key in allowed})
+    overrides = {key: value for key, value in ask.get("render_overrides", {}).items() if key in allowed}
+    if ask.get("render_sizing"):
+        from zet.services.image_sizing_service import validate_frozen_image_sizing
+        sizing = validate_frozen_image_sizing(ask["render_sizing"])
+        for key in ("width", "height"):
+            if key in overrides and overrides[key] != sizing[key]:
+                raise ValueError("Render overrides conflict with frozen output dimensions.")
+            overrides[key] = sizing[key]
+    profile.update(overrides)
+    if ask.get("render_sizing"):
+        # A legacy preset aspect ratio otherwise makes the compiler recalculate
+        # dimensions and discard the request's frozen pixel budget.
+        profile.pop("aspect_ratio", None)
     config_path = project / "config.toml"
     machine = tomllib.loads(config_path.read_text(encoding="utf-8")).get("ComfyUI", {}) if config_path.is_file() else {}
     refs = ask.get("reference_files", [])
@@ -84,6 +96,8 @@ def prepare_render(staging, ask, config):
                 "seed": compilation.seed, "resolved_seed": compilation.seed, "width": compilation.width,
                 "height": compilation.height, "prompts": compilation.prompts, "qwen_reference_preparation": preparation,
                 "qwen_reference_cache": compilation.debug.get("qwen_reference_cache")}
+    if ask.get("render_sizing"):
+        metadata["render_sizing"] = dict(ask["render_sizing"])
     # Managed ComfyUI may be stopped until this request is admitted. Treat its
     # checkpoint as available here; the proxy reports actual model failures from
     # the submitted job.

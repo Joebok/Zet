@@ -25,6 +25,7 @@ from zet.services.image_generation_workspace_service import ImageGenerationWorks
 from zet.services.library_reference_service import read_library_json, serialize_library_document
 from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
 from zet.services.ai_job_service import AIExecutionError
+from zet.services.image_sizing_service import resolve_image_sizing
 
 
 IMAGE_GENERATION_CONSUMER = "zet-image-generation"
@@ -87,14 +88,22 @@ class AdHocImageGenerationService:
             "max_count": IMAGE_GENERATION_MAX_COUNT,
             "default_width": IMAGE_GENERATION_DEFAULT_WIDTH,
             "default_height": IMAGE_GENERATION_DEFAULT_HEIGHT,
+            "draft_target_pixels": self.zet_app.config.draft_target_pixels,
+            "final_target_pixels": self.zet_app.config.final_target_pixels,
             "max_references": IMAGE_GENERATION_MAX_REFERENCES,
         }
 
-    def submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None) -> dict[str, Any]:
+    def sizing(self, render_mode: str, aspect_ratio: str) -> dict[str, Any]:
+        try:
+            return resolve_image_sizing(self.zet_app.config, render_mode, aspect_ratio)
+        except ValueError as exc:
+            raise AdHocImageGenerationError(str(exc)) from exc
+
+    def submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None, frozen_sizing: dict | None = None) -> dict[str, Any]:
         request_id = request_id or uuid4().hex
         self.proxy_paths.jobs.validate_id(request_id)
         with self._lock, file_lock(self.results_root / request_id / ".collect.lock"):
-            return self._submit(payload, request_id=request_id, seeds=seeds)
+            return self._submit(payload, request_id=request_id, seeds=seeds, frozen_sizing=frozen_sizing)
 
     def render_configuration(self, payload: dict[str, Any], mode: str) -> dict[str, Any]:
         """Resolve optional character settings while keeping ordinary ad hoc defaults."""
@@ -131,7 +140,7 @@ class AdHocImageGenerationService:
                 "disable_prompt_globals": supplied.get("disable_prompt_globals", True),
                 "append_reference_labels": supplied.get("append_reference_labels", True)}
 
-    def _submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None) -> dict[str, Any]:
+    def _submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None, frozen_sizing: dict | None = None) -> dict[str, Any]:
         mode = str(payload.get("mode") or "txt2img").strip().lower()
         if mode not in {"txt2img", "img2img"}:
             raise AdHocImageGenerationError("Choose txt2img or img2img.")
@@ -165,8 +174,11 @@ class AdHocImageGenerationService:
             raise AdHocImageGenerationError("Image count must be between 1 and 16.") from exc
         if not 1 <= count <= IMAGE_GENERATION_MAX_COUNT:
             raise AdHocImageGenerationError("Image count must be between 1 and 16.")
-        width = self._dimension(payload.get("width", IMAGE_GENERATION_DEFAULT_WIDTH), "Width")
-        height = self._dimension(payload.get("height", IMAGE_GENERATION_DEFAULT_HEIGHT), "Height")
+        sizing = frozen_sizing
+        if sizing is None and "render_mode" in payload:
+            sizing = self.sizing(payload["render_mode"], payload.get("aspect_ratio", "1:1"))
+        width = self._dimension(sizing["width"] if sizing else payload.get("width", IMAGE_GENERATION_DEFAULT_WIDTH), "Width")
+        height = self._dimension(sizing["height"] if sizing else payload.get("height", IMAGE_GENERATION_DEFAULT_HEIGHT), "Height")
 
         reference_images: list[dict[str, Any]] = []
         if mode == "img2img":
@@ -205,8 +217,10 @@ class AdHocImageGenerationService:
                 metadata = item.get("metadata") or {}
                 if not isinstance(metadata, dict):
                     raise AdHocImageGenerationError(f"Reference image {index} metadata is invalid.")
+                if "render_mode" in metadata and metadata["render_mode"] not in ("draft", "final"):
+                    raise AdHocImageGenerationError(f"Reference image {index} render mode is invalid.")
                 metadata = {key: metadata[key] for key in
-                            ("role", "prompt_role", "image_index", "view", "source_view") if key in metadata}
+                            ("role", "prompt_role", "image_index", "view", "source_view", "render_mode") if key in metadata}
                 reference_images.append({"label": label, "bytes": reference_bytes, "extension": extension,
                                          "metadata": metadata})
             if source_asset_id:
@@ -276,6 +290,9 @@ class AdHocImageGenerationService:
             children.append({"ask_id": "", "reserved_ask_id": "Image_" + uuid4().hex, "index": index, "seed": seed, "status": "QUEUED"})
         job = self._new_job(request_id, mode, count, workspace, children, prompt_path, "QUEUED", "")
         job.update(self._request_details(payload, width, height, user_prompt))
+        if sizing:
+            job["render_sizing"] = dict(sizing)
+            job["render_payload"].update(render_mode=sizing["render_mode"], aspect_ratio=sizing["aspect_ratio"])
         job["submission"] = {"checkpoint": checkpoint, "preset_name": preset_name, "references": references,
                              **({"overrides": render_config["overrides"]} if render_config.get("overrides") else {}),
                              "disable_prompt_globals": render_config["disable_prompt_globals"],
@@ -332,7 +349,8 @@ class AdHocImageGenerationService:
         staged = self.zet_app.ai_proxy_service.stage_render_task_local_render_ask(
             {"ask_id": "adhoc_" + job["request_id"], "transport_job_id": child["reserved_ask_id"],
              "ad_hoc_request_id": job["request_id"], "ad_hoc_child_index": child["index"],
-             "workflow": intent["workflow"], "ai_owner": intent["owner"]},
+             "workflow": intent["workflow"], "ai_owner": intent["owner"],
+             "render_sizing": job.get("render_sizing")},
             job["prompt_path"], job["workspace"], allow_parallel=True, seed=child["seed"],
             checkpoint=intent["checkpoint"], render_preset=intent["preset_name"], image_generation="comfyui",
             render_overrides={"width": intent["width"], "height": intent["height"],
@@ -366,7 +384,7 @@ class AdHocImageGenerationService:
     @staticmethod
     def _request_details(payload, width, height, prompt):
         return {
-            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "reference_images", "reference_image", "source_asset_id", "source_checksum", "reconstruction", "render_config", "universe_style_variant", "universe_style") if key in payload},
+            "render_payload": {key: payload[key] for key in ("mode", "prompt", "negative_prompt", "width", "height", "render_mode", "aspect_ratio", "reference_images", "reference_image", "source_asset_id", "source_checksum", "reconstruction", "render_config", "universe_style_variant", "universe_style") if key in payload},
             "reconstruction": payload.get("reconstruction", {}),
             "prompt": prompt,
             "negative_prompt": str(payload.get("negative_prompt") or "").strip(),
@@ -419,6 +437,8 @@ class AdHocImageGenerationService:
                 "error": job["error"],
                 "prompt": job.get("prompt", ""),
                 "negative_prompt": job.get("negative_prompt", ""),
+                "render_sizing": job.get("render_sizing"),
+                "width": job.get("width"), "height": job.get("height"),
                 "source_asset_id": job.get("source_asset_id", ""),
                 "source_checksum": job.get("source_checksum", ""),
                 "reconstruction": job.get("reconstruction", {}),
@@ -487,6 +507,36 @@ class AdHocImageGenerationService:
             del self._jobs[request_id]
             shutil.rmtree(self.results_root / request_id, ignore_errors=True)
 
+    def cancel_owned_request(self, request_id: str, owner: dict[str, str]) -> None:
+        """Fence a workflow-owned request and remove its generated image bytes."""
+        from zet.services.workflow_storage import supersede_task
+        self.proxy_paths.jobs.validate_id(request_id)
+        with self._lock, file_lock(self.results_root / request_id / ".collect.lock"):
+            job = self._read_saved_job(request_id)
+            if job is None:
+                return
+            recorded = (job.get("submission") or {}).get("owner") or {}
+            if recorded and recorded != owner:
+                raise AdHocImageGenerationError("This image request belongs to another workflow.")
+            for child in job["children"]:
+                ask_id = child.get("ask_id") or child.get("reserved_ask_id")
+                if ask_id and not child.get("done"):
+                    self.proxy_paths.jobs.validate_id(ask_id)
+                    task = self.proxy_client.ask_root / ask_id
+                    if not task.exists():
+                        task = self.proxy_client.running_root / ask_id
+                    supersede_task(Path(self.proxy_paths.config.base_ai_queue_path), task,
+                                   "The owning Draft image was deleted.",
+                                   state_root=self.proxy_paths.lifecycle.storage_root)
+                if not child.get("done"):
+                    child.update(status="CANCELLED", done=True, error="Deleted with Draft images.")
+            job.update(status="CANCELLED", error="Deleted with Draft images.", finished_at=time.time(),
+                       images=[None] * len(job["images"]))
+            self._jobs[request_id] = job
+            self._save_job_locked(job)
+            for index in range(job["count"]):
+                (self.results_root / request_id / f"image-{index}.bin").unlink(missing_ok=True)
+
     def clear_image(self, request_id: str, index: int) -> dict[str, Any]:
         with self._lock:
             job = self._jobs.get(request_id)
@@ -500,6 +550,8 @@ class AdHocImageGenerationService:
             return self.status(request_id)
 
     def _refresh(self, job: dict[str, Any]) -> None:
+        if job["status"] == "CANCELLED":
+            return
         # A crash after the saved child commit but before the receipt is safe to finish.
         for child in job["children"]:
             if child.get("done") and child.get("ask_id") and not self.proxy_paths.lifecycle.read_receipt(child["ask_id"]):
@@ -641,6 +693,7 @@ class AdHocImageGenerationService:
         )}
         record["submission"] = job.get("submission")
         record["render_payload"] = job.get("render_payload")
+        record["render_sizing"] = job.get("render_sizing")
         record["image_slots_version"] = job.get("image_slots_version", 0)
         record["source_asset_id"] = job.get("source_asset_id", "")
         record["source_checksum"] = job.get("source_checksum", "")

@@ -81,6 +81,110 @@ class LocalAssetStoreService:
         view_key = str(view).strip().upper()
         return f"{pipeline_key}:{qualifier_key}:{view_key}" if qualifier_key else f"{pipeline_key}:{view_key}"
 
+    @classmethod
+    def mode_key(cls, pipeline: str, view: str, qualifier: str = "", *, render_mode: str = "draft") -> str:
+        if render_mode not in ("draft", "final"):
+            raise LocalAssetStoreError("Render mode must be draft or final.")
+        key = cls.key(pipeline, view, qualifier)
+        return key if render_mode == "draft" else f"final:{key}"
+
+    def mode_record(self, character: str, phase: str, pipeline: str, view: str,
+                    qualifier: str = "", *, render_mode: str = "draft") -> dict[str, Any] | None:
+        key = self.mode_key(pipeline, view, qualifier, render_mode=render_mode)
+        record = self.detail(character, phase)["assets"].get(key)
+        return {**record, "render_mode": record.get("render_mode", "draft")} if record else None
+
+    def resolve_locked_mode(self, character: str, phase: str, pipeline: str, view: str,
+                            qualifier: str = "", *, render_mode: str = "draft") -> dict[str, Any] | None:
+        """Prefer the requested mode, falling back to the other available lock."""
+        self.mode_key(pipeline, view, qualifier, render_mode=render_mode)
+        records = {item["key"]: item for item in self.locked_assets(character, phase, pipeline, qualifier, render_mode=None)}
+        other = "final" if render_mode == "draft" else "draft"
+        for mode in (render_mode, other):
+            record = records.get(self.mode_key(pipeline, view, qualifier, render_mode=mode))
+            if record:
+                return {**record, "render_mode": mode}
+        return None
+
+    def record_mode_selection(self, character: str, phase: str, pipeline: str, view: str, *,
+                              candidate_id: str, image_path: str | Path, batch_id: str,
+                              qualifier: str = "", render_mode: str = "draft") -> dict[str, Any]:
+        """Store a mode-specific working selection without publishing an image."""
+        key = self.mode_key(pipeline, view, qualifier, render_mode=render_mode)
+        image = Path(image_path).resolve()
+        if not candidate_id or not batch_id or not image.is_relative_to(self.library_root) or not image.is_file():
+            raise LocalAssetStoreError("Choose an available image from this library and a valid batch.")
+        path = self.workspace_path(character, phase)
+        with file_lock(path.with_suffix(".lock")):
+            value = self._read(character, phase)
+            assets = value.setdefault("assets", {})
+            current = assets.get(key) or {}
+            if current.get("locked"):
+                raise LocalAssetStoreError("Unlock this mode's image before changing its selection.")
+            record = {**current, "pipeline": str(pipeline), "view": str(view).upper(), "qualifier": str(qualifier or ""),
+                      "render_mode": render_mode, "candidate_id": str(candidate_id), "batch_id": str(batch_id),
+                      "image_path": str(image), "image_sha256": self._image_hash(image),
+                      "selected": True, "stale": False, "locked": False,
+                      "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+            assets[key] = record
+            write_library_json(path, value, self.library_root)
+            return dict(record)
+
+    def clear_mode_selection(self, character: str, phase: str, pipeline: str, view: str,
+                             qualifier: str = "", *, render_mode: str = "draft", batch_id: str = "") -> bool:
+        """Clear an unlocked selection in one mode, optionally fenced to its batch."""
+        key = self.mode_key(pipeline, view, qualifier, render_mode=render_mode)
+        path = self.workspace_path(character, phase)
+        with file_lock(path.with_suffix(".lock")):
+            value = self._read(character, phase)
+            assets = value.get("assets") or {}
+            record = assets.get(key)
+            if not record or (batch_id and record.get("batch_id") != batch_id):
+                return False
+            if record.get("locked"):
+                raise LocalAssetStoreError("Unlock this mode's image before clearing its selection.")
+            del assets[key]
+            write_library_json(path, value, self.library_root)
+            return True
+
+    def lock_private_draft(self, character: str, phase: str, pipeline: str, view: str,
+                           qualifier: str = "") -> dict[str, Any]:
+        """Freeze a selected Draft for downstream use without adding it to Inventory."""
+        from zet.services.atomic_file_service import write_bytes_atomic
+        key = self.mode_key(pipeline, view, qualifier)
+        path = self.workspace_path(character, phase)
+        with file_lock(path.with_suffix(".lock")):
+            value = self._read(character, phase)
+            record = (value.get("assets") or {}).get(key)
+            if not record or not record.get("selected"):
+                raise LocalAssetStoreError("Select a Draft image before locking it.")
+            if record.get("locked"):
+                locked_path = Path(str(record.get("locked_image_path") or ""))
+                locked_path = (locked_path if locked_path.is_absolute() else self.library_root / locked_path).resolve()
+                if not locked_path.is_relative_to(self.library_root) or not locked_path.is_file():
+                    raise LocalAssetStoreError("The locked Draft image is unavailable.")
+                return dict(record)
+            source = Path(str(record.get("image_path") or ""))
+            source = (source if source.is_absolute() else self.library_root / source).resolve()
+            if not source.is_relative_to(self.library_root) or not source.is_file():
+                raise LocalAssetStoreError("The selected Draft image is unavailable.")
+            contents = source.read_bytes()
+            digest = hashlib.sha256(contents).hexdigest()
+            if digest != record.get("image_sha256"):
+                raise LocalAssetStoreError("The selected Draft image changed. Select it again before locking.")
+            identity = hashlib.sha256(f"{key}\0{record.get('batch_id')}\0{record.get('candidate_id')}".encode()).hexdigest()[:16]
+            destination = (path.parent / "draft-locks" / f"draft-{identity}-{digest}{source.suffix.lower()}").resolve()
+            if not destination.is_relative_to(self.library_root):
+                raise LocalAssetStoreError("The Draft lock destination is outside this library.")
+            if destination.exists() and self._image_hash(destination) != digest:
+                raise LocalAssetStoreError("The saved Draft lock is damaged.")
+            if not destination.exists():
+                write_bytes_atomic(destination, contents)
+            record.update(locked=True, locked_image_path=str(destination), render_mode="draft",
+                          locked_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+            write_library_json(path, value, self.library_root)
+            return dict(record)
+
     @staticmethod
     def _safe(value: str) -> str:
         result = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value or "").strip()).strip("_")
@@ -109,8 +213,11 @@ class LocalAssetStoreService:
         value = self._read(character, phase)
         return {"character": character, "phase": phase, "assets": value.get("assets", {})}
 
-    def locked_assets(self, character: str, phase: str, pipeline: str = "", qualifier: str = "") -> list[dict[str, Any]]:
+    def locked_assets(self, character: str, phase: str, pipeline: str = "", qualifier: str = "", *,
+                      render_mode: str | None = "draft") -> list[dict[str, Any]]:
         """Return published locks whose permanent files are available."""
+        if render_mode not in (None, "draft", "final"):
+            raise LocalAssetStoreError("Render mode must be draft or final.")
         records = self.detail(character, phase)["assets"]
         from zet.repositories.entity_library_repository import EntityLibraryRepository
         database = self.library_root / "catalog.sqlite3"
@@ -122,6 +229,8 @@ class LocalAssetStoreService:
                 f"SELECT asset_id FROM assets WHERE status='archived' AND asset_id IN ({marks})", tuple(ids))}
         result = []
         for key, record in records.items():
+            if render_mode is not None and record.get("render_mode", "draft") != render_mode:
+                continue
             if pipeline and record.get("pipeline", "").lower() != pipeline.lower():
                 continue
             if qualifier and str(record.get("qualifier") or "").lower() != qualifier.lower():
@@ -135,17 +244,20 @@ class LocalAssetStoreService:
         return sorted(result, key=lambda item: item["key"])
 
     def all_selected_views_locked(self, run: dict[str, Any], pipeline: str, *,
-                                  qualifier: str = "", require_front_anchor: bool = True) -> bool:
+                                  qualifier: str = "", require_front_anchor: bool = True,
+                                  render_mode: str = "draft") -> bool:
         """Verify completed publication independently of advisory rankings."""
+        if render_mode not in ("draft", "final"):
+            raise LocalAssetStoreError("Render mode must be draft or final.")
         views = run.get("views") or []
-        selected = run.get("selected_views") or {}
+        selected = run.get("selected_views" if render_mode == "draft" else "final_selected_views") or {}
+        front_anchor = run.get("front_anchor" if render_mode == "draft" else "final_front_anchor")
         if not views or any(not selected.get(view) for view in views):
             return False
-        if ((require_front_anchor or run.get("front_anchor"))
-                and run.get("front_anchor") != selected.get("FRONT")):
+        if ((require_front_anchor or front_anchor) and front_anchor != selected.get("FRONT")):
             return False
         locks = {record["view"]: record for record in self.locked_assets(
-            run["character"], run["phase"], pipeline=pipeline, qualifier=qualifier
+            run["character"], run["phase"], pipeline=pipeline, qualifier=qualifier, render_mode=render_mode
         ) if str(record.get("qualifier") or "").casefold() == qualifier.casefold()}
         candidates = {item["candidate_id"]: item for item in run.get("candidates") or []}
         for view in views:
@@ -284,6 +396,25 @@ class LocalAssetStoreService:
             "_require_current_selection": True,
         }])[0]
 
+    def lock_final(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
+        """Publish the current Final selection through the recoverable catalog transaction."""
+        key = self.mode_key(pipeline, view, qualifier, render_mode="final")
+        path = self.workspace_path(character, phase)
+        with file_lock(path.with_suffix(".lock")):
+            record = self._read(character, phase)["assets"].get(key)
+            if not record or not record.get("selected") or record.get("stale"):
+                raise LocalAssetStoreError(f"Select a Final candidate for {key} before locking it.")
+            if record.get("locked"):
+                existing = next((item for item in self.locked_assets(character, phase, pipeline, qualifier, render_mode="final")
+                                 if item["key"] == key), None)
+                if not existing:
+                    raise LocalAssetStoreError(f"The locked Final image for {key} is unavailable.")
+                return existing
+            return self.promote_chain(character, phase, [{
+                **record, "pipeline": pipeline, "view": view.upper(), "qualifier": qualifier,
+                "render_mode": "final", "_require_current_selection": True,
+            }])[0]
+
     def promote_chain(self, character: str, phase: str, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Publish a set of locks with idempotent recovery across catalog and workspace state."""
         path = self.workspace_path(character, phase)
@@ -295,17 +426,23 @@ class LocalAssetStoreService:
             for item in records:
                 pipeline, view = str(item["pipeline"]), str(item["view"]).upper()
                 qualifier = str(item.get("qualifier") or "")
-                image = Path(str(item["image_path"])).resolve()
+                image = Path(str(item["image_path"]))
+                image = (image if image.is_absolute() else self.library_root / image).resolve()
                 if not image.is_relative_to(self.library_root) or not image.is_file():
                     raise LocalAssetStoreError(f"Selected image for {pipeline} {view} is missing.")
                 digest = self._image_hash(image)
-                key = self.key(pipeline, view, qualifier)
+                mode = item.get("render_mode")
+                if mode == "draft":
+                    raise LocalAssetStoreError("Draft images must be locked privately.")
+                key = self.mode_key(pipeline, view, qualifier, render_mode=mode) if mode else self.key(pipeline, view, qualifier)
                 if item.get("_require_current_selection"):
                     current = assets.get(key) or {}
                     if (not current.get("selected") or current.get("stale")
                             or current.get("candidate_id") != item.get("candidate_id")
                             or current.get("batch_id") != item.get("batch_id")):
                         raise LocalAssetStoreError(f"Selection for {key} changed before it could be locked.")
+                    if mode == "final" and current.get("image_sha256") != digest:
+                        raise LocalAssetStoreError(f"The selected Final image for {key} changed before it could be locked.")
                 if not item.get("candidate_id") or not item.get("batch_id"):
                     raise LocalAssetStoreError(f"Selected local image for {key} has no candidate or batch identity.")
                 prepared.append({**item, "character": character, "phase": phase,
@@ -328,7 +465,8 @@ class LocalAssetStoreService:
                 next_records = next_state.setdefault("assets", {})
                 next_result = []
                 for item, published in zip(prepared, published_assets):
-                    key = self.key(item["pipeline"], item["view"], item.get("qualifier", ""))
+                    mode = item.get("render_mode")
+                    key = self.mode_key(item["pipeline"], item["view"], item.get("qualifier", ""), render_mode=mode) if mode else self.key(item["pipeline"], item["view"], item.get("qualifier", ""))
                     image = item["source"]
                     digest = item["checksum"]
                     current = next_records.get(key, {})
@@ -347,6 +485,8 @@ class LocalAssetStoreService:
                                           or current.get("reference_key") or ""),
                         "updated_at": stamp, "locked_at": stamp,
                     }
+                    if mode:
+                        record["render_mode"] = mode
                     if item.get("prompt_generator"):
                         record["prompt_generator"] = copy.deepcopy(item["prompt_generator"])
                     if current.get("image_sha256") != digest or current.get("candidate_id") != record["candidate_id"]:
@@ -378,8 +518,8 @@ class LocalAssetStoreService:
                     raise
                 raise LocalAssetStoreError(f"Could not publish selected local assets: {exc}") from exc
 
-    def unlock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
-        key = self.key(pipeline, view, qualifier)
+    def unlock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "", *, render_mode: str = "draft") -> dict[str, Any]:
+        key = self.mode_key(pipeline, view, qualifier, render_mode=render_mode)
         path = self.workspace_path(character, phase)
         with file_lock(path.with_suffix(".lock")):
             value = self._read(character, phase)

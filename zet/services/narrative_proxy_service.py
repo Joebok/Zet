@@ -57,6 +57,11 @@ class NarrativeProxyService:
                             ollama_request_options={"system": "You are an illustration assistant. Keep reasoning minimal. "
                                                     "Return only the requested JSON, without explaining your process."})
         else:
+            if job.get("render_sizing"):
+                from zet.services.image_sizing_service import validate_frozen_image_sizing
+                sizing = validate_frozen_image_sizing(job["render_sizing"])
+                width, height = sizing["width"], sizing["height"]
+                manifest["render_sizing"] = sizing
             manifest.update(ollama_model="", image_generation="comfyui", render_preset=RENDER_PRESET,
                             workflow_kind="qwen_narrative_prompt", checkpoint=self.config.comfyui_checkpoint,
                             seed=seed, reference_files=references or [],

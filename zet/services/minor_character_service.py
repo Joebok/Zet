@@ -38,6 +38,9 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             raise QuickCharacterWizardError("This workspace belongs to the retired workflow. Create a new Minor Character.")
         for view in self._views(value):
             value["boards"].setdefault(view, self._empty_board(value, view))
+            value.setdefault("final_boards", {}).setdefault(view, self._empty_board(value, view, "final"))
+        value.setdefault("final_selected", {})
+        value.setdefault("final_locked", {})
         return value
 
     def _write(self, session):
@@ -66,8 +69,9 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         value["character_id"] = value["session_id"]
         for ref in value["references"]:
             ref["url"] = f"/api/minor-characters/{value['session_id']}/references/{ref['reference_id']}"
-        for view, locked in value.get("locked", {}).items():
-            locked["image_url"] = f"/api/minor-characters/{value['session_id']}/locked/{view}"
+        for key, mode in (("locked", "draft"), ("final_locked", "final")):
+            for view, locked in value.get(key, {}).items():
+                locked["image_url"] = f"/api/minor-characters/{value['session_id']}/locked/{view}?render_mode={mode}"
         return value
 
     def delete_character(self, sid):
@@ -94,10 +98,9 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             grouped[self.name_key(record["name"])] = record
         result = []
         for record in grouped.values():
-            locked = {
-                view: {**item, "image_url": f"/api/minor-characters/{record['session_id']}/locked/{view}"}
-                for view, item in (record.get("locked") or {}).items()
-            }
+            locked = {view: {**item, "image_url": f"/api/minor-characters/{record['session_id']}/locked/{view}?render_mode={mode}"}
+                      for key, mode in (("locked", "draft"), ("final_locked", "final"))
+                      for view, item in (record.get(key) or {}).items()}
             result.append({"character_id": record["session_id"], "name": record["name"], "locked": locked})
         return sorted(result, key=lambda s: self.name_key(s["name"]))
 
@@ -124,8 +127,6 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             if interrupted:
                 self._write(record)
                 value = self._public(record)
-        for view, locked in value["locked"].items():
-            locked["image_url"] = f"/api/minor-characters/{canonical['session_id']}/locked/{view}"
         return value
 
     def get_session(self, sid):
@@ -298,7 +299,7 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                     session[key] = text(payload[key], key)
             if "board_edit" in payload:
                 edit = payload["board_edit"]
-                board = self._board(session, edit["view"], edit["revision"])
+                board = self._board(session, edit["view"], edit["revision"], edit.get("render_mode", "draft"))
                 self._edit_board(board, edit)
                 board["revision"] += 1
             if before != self._signature(session):
@@ -332,6 +333,8 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 raise QuickCharacterWizardError("Add at least one reference image.")
             if answers is not None:
                 session["answers"] = answers
+            if pending and pending.get("render_mode", "draft") == "draft":
+                pending = {**pending, "_cleanup_epoch": (session.get("draft_cleanup_epochs") or {}).get(pending["view"], 0)}
             session.update(analysis_inputs=self._snapshot(session), status="DRAFTING",
                            job={"kind": "draft", "status": "RUNNING", "error": ""})
             self._write(session)
@@ -364,6 +367,11 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                     session.update(reconstruction_id=job["id"], target_hash=job["target_hash"])
             session.pop("analysis_inputs", None)
             session["proposals_approved"] = True
+            if pending and "_cleanup_epoch" in pending:
+                pending = dict(pending)
+                epoch = pending.pop("_cleanup_epoch")
+                if epoch != (session.get("draft_cleanup_epochs") or {}).get(pending["view"], 0):
+                    pending = None
             if pending and not session["needs_analysis"] and not self._deleted_candidate(session, pending.get("candidate_id")):
                 candidate = self._new_candidate(session, **pending)
             else:
@@ -374,68 +382,157 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         if candidate:
             self._render_job(sid, candidate["candidate_id"], pending["item_ids"])
 
-    def lock_view(self, sid, view, candidate_id="", expected=None):
+    def delete_draft_images(self, sid, view=""):
+        """Remove Draft outputs and cancel their work for one view or the workspace."""
+        from datetime import datetime, timezone
+        from zet.services.ai_workflow_service import AIWorkflowService
+        sid = self._canonical(sid)["session_id"]
+        with self._lock(sid):
+            session = self._read(sid)
+            views = [view] if view else self._views(session)
+            if any(item not in self._views(session) for item in views):
+                raise QuickCharacterWizardError("Choose a character stage or view.")
+            root = self._directory(sid).resolve()
+            candidates = [c for c in session["candidates"] if c.get("view") in views
+                          and c.get("render_mode", "draft") == "draft"]
+            candidate_ids = {c["candidate_id"] for c in candidates}
+            cutoff = datetime.now(timezone.utc).isoformat()
+            outputs = []
+            for candidate in candidates:
+                request_id = candidate.get("render_request_id") or candidate.get("request_id")
+                if request_id:
+                    self._generation().cancel_owned_request(request_id, {"session_id": sid, "candidate_id": candidate["candidate_id"]})
+                if candidate.get("filename"):
+                    outputs.append(candidate["filename"])
+                candidate.update(status="CANCELLED", filename="", error="Deleted with Draft images.")
+            epochs = session.setdefault("draft_cleanup_epochs", {})
+            for item in views:
+                epochs[item] = epochs.get(item, 0) + 1
+                board = self._board(session, item)
+                revision = board["revision"] + 1
+                board.clear()
+                board.update(self._empty_board(session, item))
+                board["revision"] = revision
+                session["selected"].pop(item, None)
+                lock = session["locked"].pop(item, None) or {}
+                if lock.get("snapshot"):
+                    outputs.append(lock["snapshot"])
+            if session.get("preview_candidate_id") in candidate_ids:
+                session["preview_candidate_id"] = ""
+            for relative in outputs:
+                path = (root / relative).resolve()
+                if not path.is_relative_to(root) or path == root:
+                    raise QuickCharacterWizardError("Draft output is outside this workspace.")
+                path.unlink(missing_ok=True)
+            self._write(session)
+            result = self._public(session)
+        def matches(record):
+            if (record.get("service") != "minor" or record.get("owner", {}).get("session_id") != sid
+                    or record.get("created_at", "") > cutoff):
+                return False
+            args = record.get("args") or []
+            if record.get("method") == "_analyze_then_render" and len(args) > 3:
+                pending = args[3] or {}
+                return pending.get("render_mode", "draft") == "draft" and pending.get("view") in views
+            if len(args) > 1:
+                candidate = args[1]
+                identity = candidate.get("candidate_id") if isinstance(candidate, dict) else candidate
+                return identity in candidate_ids
+            return False
+        AIWorkflowService(self.app).cancel_matching(matches)
+        return result
+
+    def lock_view(self, sid, view, candidate_id="", expected=None, render_mode="draft"):
         from zet.services.quick_character_publication_service import publish_quick_character
         sid = self._canonical(sid)["session_id"]
         with self._lock(sid):
             session = self._read(sid)
-            if self._deleted_candidate(session, candidate_id or session["selected"].get(view)):
+            board = self._board(session, view, expected, render_mode)
+            selected_key = "final_selected" if render_mode == "final" else "selected"
+            locked_key = "final_locked" if render_mode == "final" else "locked"
+            if self._deleted_candidate(session, candidate_id or session[selected_key].get(view)):
                 raise MinorCharacterNotFound("This candidate's iteration has been deleted.")
-            candidate = next((c for c in session["candidates"] if c["candidate_id"] == (candidate_id or session["selected"].get(view))
-                and c["view"] == view and c.get("filename")), None)
+            candidate = next((c for c in session["candidates"] if c["candidate_id"] == (candidate_id or session[selected_key].get(view))
+                and c["view"] == view and c.get("render_mode", "draft") == render_mode and c.get("filename")
+                and c["candidate_id"] in board["slots"]), None)
             if not candidate:
                 raise QuickCharacterWizardError("Select an image for this view first.")
+            existing = session[locked_key].get(view) or {}
+            if existing and existing.get("candidate_id") != candidate["candidate_id"]:
+                raise QuickCharacterWizardConflict("Unlock this mode's existing image before locking another.")
             if not (self._directory(sid) / candidate["filename"]).is_file():
                 raise QuickCharacterWizardError("This candidate image is unavailable.")
-            board = self._board(session, view, expected)
             board["selected_id"] = candidate["candidate_id"]
             board["revision"] += 1
-            session["selected"][view] = candidate["candidate_id"]
-            locked = {"candidate_id": candidate["candidate_id"], "source_session_id": sid, "locked_at": self._now()}
-            if view != "STYLE":
-                frozen = {**session, **candidate.get("inputs", {})}
+            session[selected_key][view] = candidate["candidate_id"]
+            locked = {"candidate_id": candidate["candidate_id"], "source_session_id": sid, "locked_at": self._now(), "render_mode": render_mode}
+            if render_mode == "final" and view != "STYLE":
+                frozen = {**session, **candidate.get("inputs", {}), "selected": {**session["selected"], view: candidate["candidate_id"]}}
                 published = publish_quick_character(self.app, frozen, self._directory(sid), views=[view])
                 session["minor_set_id"] = published["set_id"]
                 locked.update(asset_id=published["asset_ids"][view], set_id=published["set_id"])
-            session["locked"][view] = locked
+            else:
+                from zet.services.atomic_file_service import write_bytes_atomic
+                source = self._directory(sid) / candidate["filename"]
+                relative = f"locks/{render_mode}_{view}_{candidate['candidate_id']}{source.suffix}"
+                destination = self._directory(sid) / relative
+                contents = source.read_bytes()
+                if destination.exists() and destination.read_bytes() != contents:
+                    raise QuickCharacterWizardConflict("The locked image snapshot has changed.")
+                if not destination.exists():
+                    write_bytes_atomic(destination, contents)
+                locked["snapshot"] = relative
+            session[locked_key][view] = locked
             self._write(session)
             return self._public(session)
 
-    def unlock_view(self, sid, view, candidate_id, expected=None):
+    def unlock_view(self, sid, view, candidate_id, expected=None, render_mode="draft"):
         sid = self._canonical(sid)["session_id"]
         with self._lock(sid):
             session = self._read(sid)
-            board = self._board(session, view, expected)
-            if session["locked"].get(view, {}).get("candidate_id") != candidate_id:
+            board = self._board(session, view, expected, render_mode)
+            locked_key = "final_locked" if render_mode == "final" else "locked"
+            if session[locked_key].get(view, {}).get("candidate_id") != candidate_id:
                 raise QuickCharacterWizardConflict("This view's locked image changed. Reload it before trying again.")
-            session["locked"].pop(view)
+            session[locked_key].pop(view)
             board["revision"] += 1
             self._write(session)
             return self._public(session)
 
     def accept(self, sid, revision_id):
         session = self._read(sid)
-        for view in session["selected"]:
-            if view != "STYLE":
-                self.lock_view(sid, view)
+        views = [view for view in session["final_selected"] if view != "STYLE"]
+        if not views:
+            raise QuickCharacterWizardError("Select a Final view before publishing.")
+        for view in views:
+            self.lock_view(sid, view, render_mode="final")
         return self.get_character(sid)
 
     def owner(self, asset_id):
         for record in self._records():
-            if any(v.get("asset_id") == asset_id for v in record["locked"].values()):
+            if any(v.get("asset_id") == asset_id for key in ("locked", "final_locked") for v in record[key].values()):
                 return self._canonical(record["session_id"])["session_id"]
             for candidate in record["candidates"]:
                 if uuid5(NAMESPACE_URL, f"zet:minor-character:{record['session_id']}:{candidate['candidate_id']}:{candidate['view']}").hex == asset_id.replace("-", ""):
                     return self._canonical(record["session_id"])["session_id"]
         return None
 
-    def locked_image_path(self, sid, view):
+    def locked_image_path(self, sid, view, render_mode="draft"):
         session = self._canonical(sid)
-        if view == "STYLE" and session["locked"].get(view):
+        if render_mode not in ("draft", "final"):
+            raise QuickCharacterWizardError("Render mode must be draft or final.")
+        locks = session["final_locked" if render_mode == "final" else "locked"]
+        record = locks.get(view) or {}
+        if record.get("snapshot"):
+            path = (self._directory(sid) / record["snapshot"]).resolve()
+            if not path.is_relative_to(self._directory(sid).resolve()) or not path.is_file():
+                raise QuickCharacterWizardError("The locked image snapshot is unavailable.")
+            return path
+        if view == "STYLE" and record:
             candidate = next(c for c in session["candidates"]
-                             if c["candidate_id"] == session["locked"][view]["candidate_id"])
+                             if c["candidate_id"] == record["candidate_id"])
             return self._directory(sid) / candidate["filename"]
-        asset_id = session["locked"].get(view, {}).get("asset_id")
+        asset_id = record.get("asset_id")
         if not asset_id:
             raise QuickCharacterWizardError("This view has no locked image.")
         return Path(self.app.entity_library_service.get_asset(asset_id)["image_path"])

@@ -16,25 +16,66 @@ class ImageGenerationWorkspace:
         self.path = generator.results_root / "workspace.json"
         self.lock = generator.results_root / "workspace.lock"
 
-    def _load(self):
+    def _load(self, render_mode="draft"):
+        if render_mode not in ("draft", "final"):
+            raise ValueError("Render mode must be draft or final.")
         if not self.path.exists():
-            return {"version": 1, "slots": [None] * 8, "selected_slot": None, "imported_browser_state": False}
-        board = json.loads(self.path.read_text(encoding="utf-8"))
+            board = {"version": 1, "slots": [None] * 8, "selected_slot": None, "imported_browser_state": False}
+        else:
+            board = json.loads(self.path.read_text(encoding="utf-8"))
         if board.get("version") != 1 or len(board.get("slots", [])) != 8:
             raise ValueError("Unsupported Image Generation workspace.")
+        if render_mode == "final":
+            board = board.get("final_board") or {"version": 1, "slots": [None] * 8,
+                                                  "selected_slot": None, "imported_browser_state": True}
+            if board.get("version") != 1 or len(board.get("slots", [])) != 8:
+                raise ValueError("Unsupported Final Image Generation workspace.")
         return board
 
-    def detail(self):
-        with file_lock(self.lock), self.generator._lock:
-            return self._detail(self._load())
+    def _save(self, board, render_mode="draft"):
+        if render_mode == "final":
+            draft = self._load()
+            draft["final_board"] = board
+            board = draft
+        write_json_atomic(self.path, board)
 
-    def reset_for_staging(self):
+    def detail(self, render_mode="draft"):
+        with file_lock(self.lock), self.generator._lock:
+            return {**self._detail(self._load(render_mode)), "render_mode": render_mode}
+
+    def reset_for_staging(self, render_mode="draft"):
         """Detach all results and selection without deleting jobs or image bytes."""
         with file_lock(self.lock), self.generator._lock:
-            board = self._load()
+            board = self._load(render_mode)
             board.update(slots=[None] * 8, selected_slot=None, imported_browser_state=True)
-            write_json_atomic(self.path, board)
-            return self._detail(board)
+            self._save(board, render_mode)
+            return {**self._detail(board), "render_mode": render_mode}
+
+    def delete_draft_images(self):
+        """Cancel and clear this workspace's Draft results, retaining Final work."""
+        with file_lock(self.lock), self.generator._lock:
+            board = self._load("draft")
+            final_ids = {item["requestId"] for item in self._load("final")["slots"] if item}
+            request_ids = {item["requestId"] for item in board["slots"] if item} - final_ids
+            for request_id in request_ids:
+                job = self.generator._read_saved_job(request_id)
+                if job is None:
+                    # An analysis can reserve slots before its render job exists;
+                    # removing the reservation fences its eventual submission.
+                    continue
+                owner = (job.get("submission") or {}).get("owner") or {}
+                if owner:
+                    raise RenderSlotConflict("A Draft result is owned by another workflow.")
+                self.generator.cancel_owned_request(request_id, {})
+            board.update(slots=[None] * 8, selected_slot=None, imported_browser_state=True)
+            self._save(board, "draft")
+            result = {**self._detail(board), "render_mode": "draft"}
+        if request_ids:
+            from zet.services.ai_workflow_service import AIWorkflowService
+            AIWorkflowService(self.generator.zet_app).cancel_matching(
+                lambda record: record.get("service") == "reconstruction"
+                and record.get("owner", {}).get("reconstruction_id") in request_ids)
+        return result
 
     def _detail(self, board):
         jobs = {}
@@ -52,47 +93,61 @@ class ImageGenerationWorkspace:
                         "error": pending.get("error", "Render submission was interrupted. Clear this slot and generate again."),
                         "results": [], "prompt": pending.get("prompt", "")}
             busy |= jobs[request_id]["status"] in {"QUEUED", "RUNNING"}
-        return {**board, "jobs": list(jobs.values()), "busy": busy, "empty_count": board["slots"].count(None)}
+        return {**{key: value for key, value in board.items() if key != "final_board"}, "jobs": list(jobs.values()), "busy": busy, "empty_count": board["slots"].count(None)}
 
-    def reserve_reconstruction(self, request_id, count):
+    def reserve_reconstruction(self, request_id, count, render_mode="draft"):
         with file_lock(self.lock), self.generator._lock:
-            board = self._load()
+            board = self._load(render_mode)
             indices = [i for i, value in enumerate(board["slots"]) if value is None][:count]
             if len(indices) != count:
                 raise RenderSlotConflict("Not enough empty slots. Clear slots before reconstructing.")
             for child, position in enumerate(indices):
                 board["slots"][position] = {"requestId": request_id, "index": child}
             board["imported_browser_state"] = True
-            write_json_atomic(self.path, board)
+            self._save(board, render_mode)
 
-    def selected_result(self, expected):
+    def selected_result(self, expected, render_mode=None):
         """Resolve an exact completed selection in this universe, never a client path."""
         with file_lock(self.lock), self.generator._lock:
-            board = self._load()
-            position = board["selected_slot"]
-            assignment = board["slots"][position] if position is not None else None
-            if (not isinstance(expected, dict) or not assignment or assignment != expected
-                    or type(expected.get("index")) is not int):
+            assignment = None
+            if render_mode not in (None, "draft", "final"):
+                raise ValueError("Render mode must be draft or final.")
+            selected_mode = None
+            for mode in ((render_mode,) if render_mode else ("draft", "final")):
+                board = self._load(mode)
+                position = board["selected_slot"]
+                current = board["slots"][position] if position is not None else None
+                if current and current == expected:
+                    assignment = current
+                    selected_mode = mode
+                    break
+            if (not isinstance(expected, dict) or not assignment or type(expected.get("index")) is not int):
                 raise RenderSlotConflict("The selected image changed. Select the current image and try again.")
             self.generator.status(assignment["requestId"])
             contents, _, provenance = self.generator.library_result(assignment["requestId"], assignment["index"])
             return contents, {"request_id": assignment["requestId"], "image_index": assignment["index"],
                               "asset_id": "", "label": "Selected Image Generation result",
+                              "render_mode": selected_mode,
                               "reconstruction": provenance.get("reconstruction", {})}
 
-    def submit_reconstruction(self, request_id, inputs, expected_source=None):
+    def submit_reconstruction(self, request_id, inputs, expected_source=None, *, render_mode="draft", frozen_sizing=None,
+                              source_render_mode=None):
         with file_lock(self.lock), self.generator._lock:
             if request_id in self.generator._jobs:
                 return
-            board = self._load()
+            board = self._load(render_mode)
             if expected_source is not None:
-                selected = board["selected_slot"]
-                if selected is None or board["slots"][selected] != expected_source:
+                source_board = self._load(source_render_mode or render_mode)
+                selected = source_board["selected_slot"]
+                if selected is None or source_board["slots"][selected] != expected_source:
                     raise RenderSlotConflict("The selected source changed during analysis. Start again.")
             children = {item["index"] for item in board["slots"] if item and item["requestId"] == request_id}
             if children != set(range(inputs["count"])):
                 raise RenderSlotConflict("Reconstruction slots changed during analysis. Start a new reconstruction.")
-            self.generator.submit(inputs, request_id=request_id)
+            options = {"request_id": request_id}
+            if frozen_sizing:
+                options["frozen_sizing"] = frozen_sizing
+            self.generator.submit(inputs, **options)
 
     def import_browser(self, payload):
         with file_lock(self.lock), self.generator._lock:
@@ -117,7 +172,8 @@ class ImageGenerationWorkspace:
 
     def action(self, operation, payload):
         with file_lock(self.lock), self.generator._lock:
-            board = self._load()
+            render_mode = payload.get("render_mode", "draft")
+            board = self._load(render_mode)
             detail = self._detail(board)
             slot = payload.get("slot")
             index = render_count(slot) - 1 if slot is not None else None
@@ -161,6 +217,8 @@ class ImageGenerationWorkspace:
                         if job.get("reconstruction") and "reconstruction" not in inputs:
                             inputs["reconstruction"] = deepcopy(job["reconstruction"])
                         seeds = [child["seed"]] if operation == "retry" and child and "seed" in child else None
+                    if operation != "retry" and "render_mode" in payload:
+                        inputs["render_mode"] = render_mode
                     inputs["count"] = len(indices)
                     request_id = uuid4().hex
                     # Save inputs and reservation before publishing asks. Crash recovery can
@@ -169,16 +227,19 @@ class ImageGenerationWorkspace:
                     for child_index, position in enumerate(indices):
                         board["slots"][position] = {"requestId": request_id, "index": child_index}
                     board["imported_browser_state"] = True
-                    write_json_atomic(self.path, board)
+                    self._save(board, render_mode)
                     try:
-                        self.generator.submit(inputs, request_id=request_id, seeds=seeds)
+                        submit_options = {"request_id": request_id, "seeds": seeds}
+                        if operation == "retry" and job.get("render_sizing"):
+                            submit_options["frozen_sizing"] = job["render_sizing"]
+                        self.generator.submit(inputs, **submit_options)
                     except Exception:
                         if request_id not in self.generator._jobs:
                             board["slots"] = previous
-                            write_json_atomic(self.path, board)
+                            self._save(board, render_mode)
                         raise
                 else:
                     raise ValueError("Unknown Image Generation slot action.")
             board["imported_browser_state"] = True
-            write_json_atomic(self.path, board)
-            return self._detail(board)
+            self._save(board, render_mode)
+            return {**self._detail(board), "render_mode": render_mode}

@@ -65,6 +65,8 @@ class Config:
     ai_queue_debug_retention_days: int = 7
     ai_queue_debug_max_bytes: int = 1073741824
     render_backend: str = "local_image"
+    draft_target_pixels: int = 1048576
+    final_target_pixels: int = 4194304
     ai_prompt_analysis_model: str = "general:latest"
     ai_image_description_model: str = "image-analysis:latest"
     ai_image_prompt_generation_model: str = "image-analysis:latest"
@@ -263,6 +265,10 @@ class ConfigService:
             ai_harvest = ConfigService._ai_harvest_config(payload)
             storage = ConfigService._storage_config(payload)
             render = ConfigService._render_config(payload)
+            for key, default in (("DraftTargetPixels", 1048576), ("FinalTargetPixels", 4194304)):
+                value = render.get(key, default)
+                if type(value) is not int or not 65536 <= value <= 16777216:
+                    raise ConfigServiceError(f"Render.{key} must be an integer between 65536 and 16777216.")
             ai_prompt_analysis = ConfigService._ai_prompt_analysis_config(payload)
             preset_path = Path(ConfigService._normalize_path_value(runtime.get("StatePath", ""))) / "Local_Render_Presets.json" if runtime.get("StatePath") else None
             library_base = ConfigService._normalize_path_value(base_folders.get("BaseLibraryPath", ""))
@@ -357,6 +363,8 @@ class ConfigService:
                 ai_queue_debug_retention_days=max(1, int(ai_harvest.get("DebugRetentionDays", 7))),
                 ai_queue_debug_max_bytes=max(1, int(ai_harvest.get("DebugMaxBytes", 1073741824))),
                 render_backend=str(render.get("Backend", "local_image")),
+                draft_target_pixels=int(render.get("DraftTargetPixels", 1048576)),
+                final_target_pixels=int(render.get("FinalTargetPixels", 4194304)),
                 ai_prompt_analysis_model=str(
                     ai_models.get(
                         "PromptAnalysis", ai_prompt_analysis.get("Model", "general:latest")

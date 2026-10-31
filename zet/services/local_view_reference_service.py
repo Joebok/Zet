@@ -34,6 +34,30 @@ def batch_view_reference(source_view: str, target_view: str, path: str, candidat
             "notes": f"Design reference from {source_view}; output must show {target_view}. Do not rotate the target toward this image or invent hidden front details."}
 
 
+def selected_run_for_mode(run: dict, render_mode: str) -> dict:
+    """Project available same-batch selections with mode preference and fallback."""
+    if render_mode not in ("draft", "final"):
+        raise ValueError("Render mode must be draft or final.")
+    selections = {"draft": dict(run.get("selected_views") or {}),
+                  "final": dict(run.get("final_selected_views") or {})}
+    for mode, field in (("draft", "front_anchor"), ("final", "final_front_anchor")):
+        if run.get(field):
+            selections[mode].setdefault("FRONT", run[field])
+    candidates = {item.get("candidate_id"): item for item in run.get("candidates") or []}
+    chosen = {}
+    for view in run.get("views") or []:
+        for mode in (render_mode, "draft" if render_mode == "final" else "final"):
+            cid = selections[mode].get(view)
+            candidate = candidates.get(cid) or {}
+            image = Path(str(candidate.get("image_path") or ""))
+            if (candidate.get("view") == view and candidate.get("render_mode", "draft") == mode
+                    and (candidate.get("human_review") or {}).get("decision") != "reject"
+                    and image.is_file() and image.resolve().is_relative_to(Path(run["root"]).resolve())):
+                chosen[view] = cid
+                break
+    return {**run, "selected_views": chosen, "front_anchor": chosen.get("FRONT")}
+
+
 def selected_reference(run: dict, view: str, recipe: dict) -> dict | None:
     source_view = recipe.get("source_view")
     if recipe.get("mode") != "selected_view":
@@ -49,7 +73,8 @@ def selected_reference(run: dict, view: str, recipe: dict) -> dict | None:
         raise ValueError(f"Select an available, non-rejected {source_view} image in this batch first.")
     if not image.resolve().is_relative_to(Path(run["root"]).resolve()):
         raise ValueError("The selected reference must belong to this batch.")
-    return batch_view_reference(source_view, view, str(image), cid)
+    return {**batch_view_reference(source_view, view, str(image), cid),
+            "render_mode": candidate.get("render_mode", "draft")}
 
 
 def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:

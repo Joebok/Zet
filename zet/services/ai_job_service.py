@@ -367,14 +367,22 @@ class AIJobService:
             signature = json.dumps([system, prompt, schema,
                                    [hashlib.sha256(Path(image).read_bytes()).hexdigest() for image in images or []]], sort_keys=True)
             metadata.setdefault("job_id", "AI_" + hashlib.sha256((context["id"] + signature).encode()).hexdigest()[:32])
-            metadata.setdefault("owner", context["owner"])
+            metadata["owner"] = {**(metadata.get("owner") or context["owner"]), "workflow_id": context["id"]}
             metadata.setdefault("workflow", context["service"])
             metadata.setdefault("admission", context.get("admission"))
         elif (metadata.get("owner") or {}).get("evaluation_id"):
             signature = json.dumps([metadata["owner"], system, prompt, schema,
                 [hashlib.sha256(Path(image).read_bytes()).hexdigest() for image in images or []]], sort_keys=True)
             metadata.setdefault("job_id", "AI_" + hashlib.sha256((self.paths.config.universe_id + signature).encode()).hexdigest()[:32])
-        job_id = self.submit_text(model, system, prompt, schema, images, **metadata)
+        if context is not None:
+            from zet.services.storage_health_service import recovery_root
+            marker = recovery_root(self.paths.config) / "Workflows" / "Cancelled" / (context["id"] + ".json")
+            with file_lock(marker.with_suffix(".lock")):
+                if marker.is_file():
+                    raise RuntimeError("The owning Draft work was cancelled.")
+                job_id = self.submit_text(model, system, prompt, schema, images, **metadata)
+        else:
+            job_id = self.submit_text(model, system, prompt, schema, images, **metadata)
         cache = self.lifecycle.root / "StructuredResults" / f"{job_id}.json"
         if cache.is_file():
             saved = json.loads(cache.read_text(encoding="utf-8"))

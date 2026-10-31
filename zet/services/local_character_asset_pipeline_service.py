@@ -160,10 +160,8 @@ class LocalCharacterAssetPipelineService:
         name = re.sub(r"[^A-Za-z0-9_-]+", "-", costume).strip("-") or "Costume"
         return self.character_root / character / phase / f"Costume_{name.replace('-', '_')}.md"
 
-    def _locked(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
-        key = self.asset_store.key(pipeline, view, qualifier)
-        records = self.asset_store.locked_assets(character, phase, pipeline=pipeline, qualifier=qualifier)
-        record = next((item for item in records if item["key"] == key), None)
+    def _locked(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "", *, render_mode: str = "draft") -> dict[str, Any]:
+        record = self.asset_store.resolve_locked_mode(character, phase, pipeline, view, qualifier, render_mode=render_mode)
         if record is None:
             raise LocalCharacterAssetPipelineError(f"A locked {pipeline} file is required for {view}.")
         return record
@@ -203,7 +201,7 @@ class LocalCharacterAssetPipelineService:
             runs = adapter.list_run_summaries(character, phase)
             values = []
             for item in runs:
-                selected = item.get("selected_views") or {}
+                selected = {**(item.get("selected_views") or {}), **(item.get("final_selected_views") or {})}
                 if not selected:
                     continue
                 values.append({"run_id": item["run_id"], "batch_name": self._batch_label(item),
@@ -212,23 +210,32 @@ class LocalCharacterAssetPipelineService:
         return options
 
     def _selected_batch_input(self, character: str, phase: str, pipeline: str, run_id: str,
-                              view: str, costume: str) -> dict[str, Any]:
+                              view: str, costume: str, *, render_mode: str = "draft") -> dict[str, Any]:
         adapter = self._source_adapter(pipeline)
         run = adapter.detail(run_id)
-        candidate_id = (run.get("selected_views") or {}).get(view)
-        candidate = next((item for item in run.get("candidates", [])
-                          if item.get("candidate_id") == candidate_id and item.get("view") == view), None)
-        image = Path(str((candidate or {}).get("image_path") or "")).resolve()
+        if render_mode not in ("draft", "final"):
+            raise LocalCharacterAssetPipelineError("Render mode must be draft or final.")
+        fields = (("final_selected_views", "final"), ("selected_views", "draft")) if render_mode == "final" else (("selected_views", "draft"), ("final_selected_views", "final"))
         source_root = Path(str(run.get("root") or "")).resolve()
-        if (not candidate_id or not candidate or not image.is_file()
-                or not image.is_relative_to(source_root)):
+        candidate = None
+        for field, selected_mode in fields:
+            candidate_id = (run.get(field) or {}).get(view)
+            possible = next((item for item in run.get("candidates", [])
+                             if item.get("candidate_id") == candidate_id and item.get("view") == view), None)
+            image = Path(str((possible or {}).get("image_path") or "")).resolve()
+            if (candidate_id and possible and possible.get("render_mode", "draft") == selected_mode
+                    and (possible.get("human_review") or {}).get("decision") != "reject"
+                    and image.is_file() and image.is_relative_to(source_root)):
+                candidate = possible
+                break
+        if candidate is None:
             raise LocalCharacterAssetPipelineError(
                 f"Selected {pipeline} image for {view} is missing from batch {self._batch_label(run)}.")
         digest = self._hash(image)
         if candidate.get("image_sha256") and candidate["image_sha256"] != digest:
             raise LocalCharacterAssetPipelineError(f"Selected {pipeline} image for {view} has changed.")
         local_pipeline = "Character-Assembly" if pipeline == "Character-Assembly" else pipeline
-        key = self.asset_store.key(local_pipeline, view)
+        key = self.asset_store.mode_key(local_pipeline, view, render_mode=selected_mode)
         selected_asset = (run.get("local_assets") or {}).get(key) or {}
         if (selected_asset.get("batch_id") == run_id and selected_asset.get("candidate_id") == candidate_id
                 and selected_asset.get("image_sha256") and selected_asset["image_sha256"] != digest):
@@ -236,18 +243,18 @@ class LocalCharacterAssetPipelineService:
         return {"pipeline": local_pipeline, "view": view, "qualifier": "", "key": key,
                 "candidate_id": candidate_id, "batch_id": run_id, "batch_name": self._batch_label(run),
                 "image_path": str(image), "image_sha256": digest, "sha256": digest,
-                "selected": True, "locked": bool(candidate.get("locked"))}
+                "selected": True, "locked": bool(candidate.get("locked")), "render_mode": selected_mode}
 
     def _resolve_view_inputs(self, character: str, phase: str, costume: str, view: str,
-                             source_batches: dict[str, str], head_pipeline: str = "head-image") -> dict[str, dict[str, Any]]:
+                             source_batches: dict[str, str], head_pipeline: str = "head-image", *, render_mode: str = "draft") -> dict[str, dict[str, Any]]:
         result = {}
         for role, pipeline in self._requirements(head_pipeline):
             selected_batch = str(source_batches.get(role) or "").strip()
             if selected_batch and selected_batch != "locked":
-                result[role] = {**self._selected_batch_input(character, phase, pipeline, selected_batch, view, costume),
+                result[role] = {**self._selected_batch_input(character, phase, pipeline, selected_batch, view, costume, render_mode=render_mode),
                                 "source_mode": "batch"}
             else:
-                record = self._locked(character, phase, pipeline, view)
+                record = self._locked(character, phase, pipeline, view, render_mode=render_mode)
                 result[role] = {**record, "pipeline": pipeline, "view": view,
                                 "qualifier": "", "image_sha256": record["image_sha256"],
                                 "sha256": record["image_sha256"], "source_mode": "locked"}
@@ -384,6 +391,7 @@ class LocalCharacterAssetPipelineService:
                 index += 1
                 candidates.append({"candidate_id": view_candidate_id(view, ordinal), "view": view, "ordinal": ordinal,
                                   "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
+                                  "render_mode": "draft", "aspect_ratio": "2:3",
                                   "human_review": {"decision": "undecided"}, "retry_count": 0})
         spec = {"schema_version": 1, "review_version": 3, "kind": self.pipeline, "run_id": run_id,
                 "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
@@ -538,6 +546,7 @@ class LocalCharacterAssetPipelineService:
                     "costume": spec.get("costume", ""), "created_at": spec.get("created_at", ""),
                     "status": status, "candidate_count": len(candidates), "current_views": current_views,
                     "selected_views": state.get("selected_views") or {},
+                    "final_selected_views": state.get("final_selected_views") or {},
                 })
             except (OSError, LocalCharacterAssetPipelineError, ValueError):
                 continue
@@ -554,9 +563,9 @@ class LocalCharacterAssetPipelineService:
         self._write(spec_path, spec)
         return self.detail(run_id, costume)
 
-    def _locked_view_inputs(self, run: dict[str, Any], view: str) -> dict[str, dict[str, Any]]:
+    def _locked_view_inputs(self, run: dict[str, Any], view: str, *, render_mode: str = "draft") -> dict[str, dict[str, Any]]:
         return self._resolve_view_inputs(run["character"], run["phase"], str(run.get("costume") or ""),
-                                         view, run.get("source_batches") or {}, run.get("head_pipeline", "head-image"))
+                                         view, run.get("source_batches") or {}, run.get("head_pipeline", "head-image"), render_mode=render_mode)
 
     def _lineage_warnings(self, run: dict[str, Any]) -> dict[str, list[str]]:
         warnings: dict[str, list[str]] = {}
@@ -600,7 +609,8 @@ class LocalCharacterAssetPipelineService:
                         if source_key not in source_runs:
                             source_runs[source_key] = self._source_adapter(pipeline).detail(source_batch)
                         source_run = source_runs[source_key]
-                        selected = str((source_run.get("selected_views") or {}).get(view) or "")
+                        selection_field = "final_selected_views" if source.get("render_mode") == "final" else "selected_views"
+                        selected = str((source_run.get(selection_field) or {}).get(view) or "")
                         candidate = next((item for item in source_run.get("candidates", [])
                                           if item.get("candidate_id") == source_candidate), None)
                         selected_path = Path(str((candidate or {}).get("image_path") or ""))
@@ -681,7 +691,8 @@ class LocalCharacterAssetPipelineService:
             else:
                 source = inputs[role]
                 refs.append({"role": role, "path": source["image_path"], "view": view,
-                             "body_view": view, "head_view": view, "character": run["character"], "phase": run["phase"]})
+                             "body_view": view, "head_view": view, "character": run["character"], "phase": run["phase"],
+                             "render_mode": source.get("render_mode", "draft")})
         return custom_references(run, view, self.pipeline, refs) if use_recipe and self.pipeline != "character-assembly" else refs
 
     def _compile(self, run: dict[str, Any], view: str, refs: list[dict[str, Any]], *, output_dir: Path | None = None, use_reference_recipe: bool = False, render_mode: str | None = None) -> dict[str, Any]:
@@ -712,12 +723,20 @@ class LocalCharacterAssetPipelineService:
         return result
 
     def queue_render_candidate(self, run_id: str, candidate_id: str, costume: str = "") -> dict[str, Any]:
+        with file_lock(self._run_root(run_id, costume) / "state.lock"):
+            return self._queue_render_candidate_locked(run_id, candidate_id, costume)
+
+    def _queue_render_candidate_locked(self, run_id: str, candidate_id: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
             raise LocalCharacterAssetPipelineError(f"Unknown candidate: {candidate_id}")
         if self.pipeline == "character-assembly":
-            guard_view(run, candidate["view"])
+            if candidate.get("render_mode") is not None:
+                from zet.services.local_view_reference_service import selected_run_for_mode
+                guard_view(selected_run_for_mode(run, candidate["render_mode"]), candidate["view"])
+            else:
+                guard_view(run, candidate["view"])
         from zet.services.local_character_progression_service import prepare_candidate
         if run.get("character_progression") or self.pipeline == "costume-dressing":
             from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
@@ -749,13 +768,18 @@ class LocalCharacterAssetPipelineService:
         profile = saved_input.get("render_profile") or profile
         ask_id = f"LocalCharacterAsset_{run_id}_{candidate_id}_{candidate.get('retry_count', 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
-                    "pipeline": f"Local-{self.definition['label'].removeprefix('Local ')}", "pipeline_stage": "LOCAL_CHARACTER_RENDER"}
+                    "pipeline": f"Local-{self.definition['label'].removeprefix('Local ')}", "pipeline_stage": "LOCAL_CHARACTER_RENDER",
+                    "render_sizing": saved_input.get("render_sizing")}
         render_references = saved_input["references"]
+        overrides = dict(saved_input.get("render_profile") or {})
+        if saved_input.get("render_sizing"):
+            overrides.pop("width", None)
+            overrides.pop("height", None)
         ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
             manifest, prompt_copy, candidate_root, allow_parallel=True, seed=int(candidate["seed"]),
             checkpoint=str(profile.get("diffusion_model") or ""), render_preset=preset_name,
             image_generation="comfyui", reference_files=render_references,
-            render_overrides=saved_input.get("render_profile"),
+            render_overrides=overrides or None,
         )
         ask = self._read(ask_path / "ask_manifest.json")
         target = render_root / str(ask.get("target_output_file") or target.name)
@@ -794,6 +818,13 @@ class LocalCharacterAssetPipelineService:
         return self.app.ai_proxy_service.ai_proxy_path_service.jobs.execution_status(ask_id)
 
     def _harvest_render(self, run: dict[str, Any], candidate: dict[str, Any]) -> None:
+        with file_lock(Path(run["root"]) / "state.lock"):
+            current = self.detail(run["run_id"], run.get("costume", ""))
+            if not any(c["candidate_id"] == candidate["candidate_id"] for c in current["candidates"]):
+                return
+            return self._harvest_render_locked(current, candidate)
+
+    def _harvest_render_locked(self, run: dict[str, Any], candidate: dict[str, Any]) -> None:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
         ask_id = str(candidate.get("ask_id") or "")
         answer_dir = paths.answer_path(ask_id)
@@ -866,6 +897,7 @@ class LocalCharacterAssetPipelineService:
         if self.pipeline == "character-assembly" and view != "FRONT" and not assembly_front(run):
             raise LocalCharacterAssetPipelineError("Select an available FRONT image before ranking remaining views.")
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
+                      and item.get("render_mode", "draft") == "draft"
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
@@ -1004,6 +1036,7 @@ class LocalCharacterAssetPipelineService:
 
     def _rank(self, run: dict[str, Any], view: str) -> dict[str, Any]:
         survivors = [item for item in run["candidates"] if item["view"] == view
+                     and item.get("render_mode", "draft") == "draft"
                      and Path(str(item.get("image_path") or "")).is_file()]
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
         for survivor in survivors:
@@ -1156,7 +1189,7 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before rerunning failed candidates in other views.")
         self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], self.definition["asset_pipeline"], view, self._qualifier(costume))
         root, state = self._state(run_id, costume)
-        failed = [item for item in run["candidates"] if item["view"] == view and
+        failed = [item for item in run["candidates"] if item["view"] == view and item.get("render_mode", "draft") == "draft" and
                   (item.get("status") == "FAILED" or item.get("human_review", {}).get("decision") == "reject")]
         from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
         for candidate in failed:
@@ -1171,7 +1204,7 @@ class LocalCharacterAssetPipelineService:
         supersede_evaluations(state, {view}, "Candidates in this view are being re-run.")
         state.update(status="QUEUED", stop_requested=False, target_views=[view],
                      target_candidate_ids=[item["candidate_id"] for item in run["candidates"]
-                                           if item["view"] == view])
+                                           if item["view"] == view and item.get("render_mode", "draft") == "draft"])
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 
@@ -1210,7 +1243,7 @@ class LocalCharacterAssetPipelineService:
             return self.unselect_view(run_id, view, costume)
         qualifier = self._qualifier(costume)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        if not candidate or candidate["view"] != view:
+        if not candidate or candidate["view"] != view or candidate.get("render_mode", "draft") != "draft":
             raise LocalCharacterAssetPipelineError("Choose a candidate from this view.")
         auto_approved = bool(autogenerate and view == "FRONT")
         if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
@@ -1543,7 +1576,7 @@ class LocalCharacterAssetPipelineService:
         root, state = self._state(run_id, costume)
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, {view}, "A view or its inputs are being re-run.")
-        for candidate in [item for item in run["candidates"] if item["view"] == view]:
+        for candidate in [item for item in run["candidates"] if item["view"] == view and item.get("render_mode", "draft") == "draft"]:
             from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {})[candidate["candidate_id"]] = {
@@ -1560,6 +1593,9 @@ class LocalCharacterAssetPipelineService:
             state["views_started"] = False
             if self.pipeline == "character-assembly":
                 invalidate_assembly_rankings(state)
+        if any(item.get("render_mode", "draft") == "final" for item in run["candidates"]):
+            state["target_candidate_ids"] = [item["candidate_id"] for item in run["candidates"]
+                                             if item["view"] == view and item.get("render_mode", "draft") == "draft"]
         state.update(status="QUEUED", stop_requested=False)
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
@@ -1602,17 +1638,22 @@ class LocalCharacterAssetPipelineService:
                         continue
                 self._compile(run, view, self._references(run, view))
         from zet.services.local_image_pipeline_policy import clear_candidate_artifacts
-        for candidate in run["candidates"]:
+        draft_candidates = [item for item in run["candidates"] if item.get("render_mode", "draft") == "draft"]
+        for candidate in draft_candidates:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
         for view in rerun_views:
             selected = (state.get("selected_views") or {}).get(view)
             if selected:
                 self.asset_store.clear_batch_selection(run["character"], run["phase"], self.definition["asset_pipeline"], view, run_id, self._qualifier(costume))
+        final_ids = {item["candidate_id"] for item in run["candidates"] if item.get("render_mode", "draft") == "final"}
+        final_states = {key: value for key, value in (state.get("candidates") or {}).items() if key in final_ids}
+        if final_ids:
+            state["target_candidate_ids"] = [item["candidate_id"] for item in draft_candidates]
         state.update(status="QUEUED", stop_requested=False, front_anchor=None, views_started=False,
                      selected_views={}, rankings={},
-                     candidates={item["candidate_id"]: {"status": "PENDING", "image_path": "", "ask_id": "",
+                     candidates={**final_states, **{item["candidate_id"]: {"status": "PENDING", "image_path": "", "ask_id": "",
                          "retry_count": int(item.get("retry_count") or 0) + 1,
-                         "human_review": {"decision": "undecided"}} for item in run["candidates"]})
+                         "human_review": {"decision": "undecided"}} for item in draft_candidates}})
         self._write(root / "state.json", state)
         return self.detail(run_id, costume)
 
@@ -1648,7 +1689,8 @@ class LocalCharacterAssetPipelineService:
         requires_front_anchor = self.pipeline == "character-assembly" or self._requires_front_anchor(run)
         if self.pipeline == "character-assembly" and candidate_id and not assembly_front(run):
             raise LocalCharacterAssetPipelineError("Select an available FRONT image before running remaining views.")
-        missing = [item for item in run["candidates"]
+        draft_candidates = [item for item in run["candidates"] if item.get("render_mode", "draft") == "draft"]
+        missing = [item for item in draft_candidates
                    if not Path(str(item.get("image_path") or "")).is_file()]
         if requires_front_anchor and not candidate_id and not any(item["view"] == "FRONT" for item in missing):
             raise LocalCharacterAssetPipelineError("A FRONT selection is required for other views.")
@@ -1663,7 +1705,7 @@ class LocalCharacterAssetPipelineService:
         if run.get("status") == "READY_FOR_VIEWS" and run.get("target_views"):
             return {**run, "target_views": [], "blocked_views": {}}
         candidates_by_view = {
-            view: [item for item in run["candidates"] if item["view"] == view]
+            view: [item for item in draft_candidates if item["view"] == view]
             for view in VIEWS
         }
         target_views = set()
@@ -1694,7 +1736,7 @@ class LocalCharacterAssetPipelineService:
         supersede_evaluations(state, {item["view"] for item in missing}, "Missing images are being retried.")
         self._withdraw_queued_asks(run_id, costume, candidate_ids={item["candidate_id"] for item in missing})
         missing_ids = {item["candidate_id"] for item in missing}
-        for candidate in run["candidates"]:
+        for candidate in draft_candidates:
             update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
             update.update(error="", render_error="", review_error="")
             if candidate["candidate_id"] in missing_ids:

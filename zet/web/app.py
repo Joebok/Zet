@@ -763,6 +763,9 @@ def _indexed_page_payload(page, *, items: list | None = None) -> dict[str, Any]:
 
 def _automation_settings_from_payload(payload: dict[str, Any], defaults: AutomationSettings | None = None) -> AutomationSettings:
     """Build automation settings, preserving current values for omitted fields."""
+    for key in ("draft_target_pixels", "final_target_pixels"):
+        if key in payload and type(payload[key]) is not int:
+            raise ValueError(f"{key} must be an integer.")
     defaults = defaults or AutomationSettings(
         local_render_preset="body-reference-preview",
         local_render_positive_prompt_globals="",
@@ -820,6 +823,8 @@ def _automation_settings_from_payload(payload: dict[str, Any], defaults: Automat
         ai_harvest_auto_enabled=bool(payload.get("ai_harvest_auto_enabled", defaults.ai_harvest_auto_enabled)),
         ai_harvest_interval_seconds=int(payload.get("ai_harvest_interval_seconds", defaults.ai_harvest_interval_seconds)),
         render_backend=str(payload.get("render_backend", defaults.render_backend)),
+        draft_target_pixels=int(payload.get("draft_target_pixels", defaults.draft_target_pixels)),
+        final_target_pixels=int(payload.get("final_target_pixels", defaults.final_target_pixels)),
         local_render_backend=str(payload.get("local_render_backend", defaults.local_render_backend)),
         stable_matrix_profile=stable_profile,
         stable_matrix_positive_prompt_globals=stable_positive,
@@ -1300,9 +1305,9 @@ def _create_available_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/local/character-overview/image/{character}/{phase}/{costume}")
-    def local_character_overview_image(character: str, phase: str, costume: str) -> FileResponse:
+    def local_character_overview_image(character: str, phase: str, costume: str, render_mode: str = "draft") -> FileResponse:
         try:
-            path = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).image_path(character, phase, costume)
+            path = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).image_path(character, phase, costume, render_mode)
             return FileResponse(path)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

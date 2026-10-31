@@ -101,11 +101,15 @@ class LocalPostRenderPromptService:
         workflow, run = self._context(pipeline, run_id, costume)
         payload = payload or {}
         view = str(payload.get("view") or "").upper()
+        mode = payload.get("render_mode", "draft")
+        if mode not in ("draft", "final"):
+            raise ValueError("Render mode must be draft or final.")
         if view not in run["views"]:
             raise ValueError("Choose a batch view for Post Render Adjustments.")
         root = Path(run["root"])
         state = read_library_json(root / "state.json", pipeline_library_root_for_path(root))
-        existing = str((state.get("post_render_prompt_sessions") or {}).get(view) or "")
+        sessions_key = "final_post_render_prompt_sessions" if mode == "final" else "post_render_prompt_sessions"
+        existing = str((state.get(sessions_key) or {}).get(view) or "")
         if existing:
             try:
                 record = self._read(run, existing)
@@ -116,17 +120,19 @@ class LocalPostRenderPromptService:
             except ValueError as exc:
                 if "Historical adjustment session" not in str(exc):
                     raise
+        mode_run = {**run, "candidates": [c for c in run["candidates"] if c.get("render_mode", "draft") == mode],
+                    "selected_views": run.get("final_selected_views" if mode == "final" else "selected_views") or {}}
         choices = dict(payload.get("representatives") or {})
-        representatives, omitted = self.revisions.representatives(run, choices)
+        representatives, omitted = self.revisions.representatives(mode_run, choices)
         for item in omitted:
             omitted_view = item["view"]
             if omitted_view == view and omitted_view not in choices:
-                available = next((c for c in run["candidates"] if c["view"] == omitted_view
+                available = next((c for c in mode_run["candidates"] if c["view"] == omitted_view
                                   and Path(str(c.get("image_path") or "")).is_file()
                                   and (c.get("human_review") or {}).get("decision") != "reject"), None)
                 if available:
                     choices[omitted_view] = available["candidate_id"]
-        representatives, _ = self.revisions.representatives(run, choices)
+        representatives, _ = self.revisions.representatives(mode_run, choices)
         representatives = [item for item in representatives if item["view"] == view]
         if not representatives:
             raise ValueError("Render this view before starting Post Render Adjustments.")
@@ -145,6 +151,9 @@ class LocalPostRenderPromptService:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
             candidate = next(c for c in run["candidates"] if c["candidate_id"] == item["candidate_id"])
+            from PIL import Image
+            with Image.open(source) as image:
+                aspect_ratio = candidate.get("aspect_ratio") or f"{image.width}:{image.height}"
             prompt_path = Path(str(candidate.get("prompt_path") or ""))
             saved_prompt = (candidate.get("render_input") or {}).get("prompt") or candidate.get("prompt") or (
                 prompt_path.read_text(encoding="utf-8") if prompt_path.is_file() else "")
@@ -153,6 +162,7 @@ class LocalPostRenderPromptService:
                            "prompt": str(saved_prompt)})
         record = {"version": 1, "kind": self.session_kind, "source_label": self.source_label, "session_id": session_id, "universe_id": self.app.universe_id,
                   "pipeline": pipeline, "run_id": run_id, "costume": costume, "view": view,
+                  "render_mode": mode, "aspect_ratio": aspect_ratio,
                   "created_at": _now(), "status": "OBSERVING", "round": 0,
                   "base_revision_id": active.get("revision_id", ""), "sources": sources,
                   "character_source_id": character["source_id"], "master_sha256": _hash(master_bytes),
@@ -164,9 +174,9 @@ class LocalPostRenderPromptService:
             self._write(run, record)
             from zet.services.local_image_pipeline_policy import mutate_local_run_state
             def remember(state):
-                sessions = dict(state.get("post_render_prompt_sessions") or {})
+                sessions = dict(state.get(sessions_key) or {})
                 sessions[view] = session_id
-                state["post_render_prompt_sessions"] = sessions
+                state[sessions_key] = sessions
             mutate_local_run_state(Path(run["root"]), remember)
         return self.detail(pipeline, run_id, costume, session_id)
 
@@ -195,10 +205,12 @@ class LocalPostRenderPromptService:
         public.pop("current_text", None)
         visible_views = [record["view"]] if record.get("view") else run["views"]
         public["observations"] = {view: run.get("view_reviews", {}).get(view, {}) for view in visible_views}
+        mode = record.get("render_mode", "draft")
+        selected = run.get("final_selected_views" if mode == "final" else "selected_views") or {}
         public["views"] = [{"view": view, "candidates": [{"candidate_id": c["candidate_id"],
             "image_available": bool(c.get("image_available") or Path(str(c.get("image_path") or "")).is_file()),
-            "selected": c["candidate_id"] == (run.get("selected_views") or {}).get(view)}
-            for c in run["candidates"] if c["view"] == view]} for view in visible_views]
+            "selected": c["candidate_id"] == selected.get(view)}
+            for c in run["candidates"] if c["view"] == view and c.get("render_mode", "draft") == mode]} for view in visible_views]
         proposed_text = record.get("trial", {}).get("text") or record["current_text"]
         if record["status"] == "REVIEW_READY":
             selected = set(record["analysis"].get("selected_ids") or [])
@@ -274,6 +286,8 @@ class LocalPostRenderPromptService:
             raise ValueError("Choose an available, non-rejected image from this view.")
         with file_lock(path.with_suffix(".lock")):
             record = self._read(run, session_id)
+            if candidate.get("render_mode", "draft") != record.get("render_mode", "draft"):
+                raise ValueError("Choose an image from this render mode.")
             if record.get("view") and view != record["view"]:
                 raise ValueError("Choose an image from this adjustment view.")
             if record["status"] not in {"OBSERVING", "REVIEW_READY", "FAILED"}:
@@ -283,6 +297,10 @@ class LocalPostRenderPromptService:
                 raise ValueError("This view is outside the improvement evidence set.")
             target = path.parent / "evidence" / f"{view}{image.suffix.lower()}"
             shutil.copy2(image, target)
+            if "render_mode" in record:
+                from PIL import Image
+                with Image.open(image) as source:
+                    record["aspect_ratio"] = candidate.get("aspect_ratio") or f"{source.width}:{source.height}"
             prompt_path = Path(str(candidate.get("prompt_path") or ""))
             frozen.update(candidate_id=candidate_id, path=str(target), sha256=_hash(target.read_bytes()), reason="explicit",
                           prompt=str((candidate.get("render_input") or {}).get("prompt") or candidate.get("prompt") or (
@@ -411,7 +429,8 @@ class LocalPostRenderPromptService:
                     for index in range(self.trial_count):
                         aid = uuid4().hex
                         directory = path.parent / "compiled" / trial_id / view / aid
-                        saved = workflow.slots.prepare_input(run, view, directory / "inputs", recompile=True, output_dir=directory / "prompt")
+                        saved = workflow.slots.prepare_input(run, view, directory / "inputs", recompile=True, output_dir=directory / "prompt",
+                            render_mode=record.get("render_mode"), aspect_ratio=record.get("aspect_ratio"))
                         saved = self._freeze_trial_input(record, saved)
                         attempts.append({"id": aid, "view": view, "number": index + 1, "status": "QUEUED",
                                          "input": saved, "request_id": uuid4().hex, "seed": record["seeds"][index] if record.get("seeds") else random.SystemRandom().randrange(0, 2**63 - 1),
@@ -458,14 +477,21 @@ class LocalPostRenderPromptService:
                     ("steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae") if key in profile}
             if refs:
                 spec["reference_images"] = refs
+            sizing = saved.get("render_sizing")
+            if sizing:
+                spec.update(render_mode=sizing["render_mode"], aspect_ratio=sizing["aspect_ratio"])
             try:
                 result = generation.status(attempt["request_id"])
             except KeyError:
-                result = generation.submit(spec, request_id=attempt["request_id"], seeds=[attempt["seed"]])
+                options = {"request_id": attempt["request_id"], "seeds": [attempt["seed"]]}
+                if sizing:
+                    options["frozen_sizing"] = sizing
+                result = generation.submit(spec, **options)
             if result.get("images"):
                 contents, mime = generation.image(attempt["request_id"], 0)
                 suffix = {"image/jpeg": ".jpg", "image/webp": ".webp"}.get(mime, ".png")
-                image = self._path(run, session_id).parent / "trials" / (attempt_id + suffix)
+                prefix = f"{record['render_mode']}_" if record.get("render_mode") in ("draft", "final") else ""
+                image = self._path(run, session_id).parent / "trials" / (prefix + attempt_id + suffix)
                 outcome = {"status": "READY", "image_path": str(image), "sha256": _hash(contents), "error": ""}
             elif result["status"] in {"ERROR", "FAILED", "CANCELLED", "PARTIAL"}:
                 raise ValueError(result.get("error") or "Trial render failed.")

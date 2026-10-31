@@ -254,6 +254,10 @@ def create_narrative_router(app_provider):
     def apply_interview_review(story: str, scene: str, target: str, data: dict = Body(...)):
         return call(author().apply_interview, story, scene, target, data)
 
+    @router.post(target_path + "/delete-draft-images")
+    def delete_draft_images(story: str, scene: str, target: str):
+        return call(generation().delete_draft_images, story, scene, target)
+
     @router.post(target_path + "/candidates/{candidate}")
     def candidate_action(story: str, scene: str, target: str, candidate: str, data: dict = Body(...)):
         return call(generation().candidate_action, story, scene, target, candidate, data)

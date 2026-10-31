@@ -29,7 +29,7 @@
     frontSourcePath: "", poll: null, previewGeneration: 0, sourcePreviewGeneration: 0, contextKey: "", compareOpposite: false,
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
     runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false, bulkActionPending: false,
-    costumeSettingsDrafts: {} };
+    costumeSettingsDrafts: {}, seedSources: {}, renderMode: "draft" };
   const restoreParams = new URLSearchParams(window.location.search);
 
   function contextKey() {
@@ -37,6 +37,29 @@
   }
 
   function isCostume() { return state.pipeline === "costume-dressing"; }
+  function modeRun(run) {
+    if (!run) return run;
+    const mode = state.renderMode;
+    return {...run, candidates: (run.candidates || []).filter(c => (c.render_mode || "draft") === mode),
+      selected_views: run.selected_views_by_mode?.[mode] || (mode === "draft" ? run.selected_views : run.final_selected_views) || {},
+      front_anchor: mode === "draft" ? run.front_anchor : run.final_front_anchor,
+      slots_by_view: run.slots_by_mode?.[mode] || (mode === "draft" ? run.slots_by_view : run.final_slots_by_view) || {},
+      slot_controls: run.slot_controls_by_mode?.[mode] || run.slot_controls || {},
+      rankings: mode === "draft" ? run.rankings : {}, evaluations: mode === "draft" ? run.evaluations : {}};
+  }
+  async function updateSizePreview() {
+    const mode = state.renderMode, ratio = $("aspect-ratio").value;
+    try {
+      const sizing = await request(`/api/image-generation/sizing?${new URLSearchParams({render_mode: mode, aspect_ratio: ratio})}`);
+      if (mode !== state.renderMode || ratio !== $("aspect-ratio").value) return;
+      $("aspect-ratio").setCustomValidity("");
+      $("size-preview").textContent = `${sizing.width} × ${sizing.height}`;
+    } catch (error) {
+      if (mode !== state.renderMode || ratio !== $("aspect-ratio").value) return;
+      $("aspect-ratio").setCustomValidity(error.message);
+      $("size-preview").textContent = error.message;
+    }
+  }
   function hasSharedAssetRouter() { return ["character-assembly", "costume-dressing"].includes(state.pipeline); }
   function baseUrl() { return `/api/local/${state.pipeline}`; }
   function selectedCostume() { return $("costume")?.value || ""; }
@@ -54,6 +77,7 @@
     if (!state.pipeline || !document.querySelector("#local-pipeline-page").classList.contains("active")) return;
     const params = new URLSearchParams(window.location.search);
     params.set("page", Object.keys(pagePipelines).find((page) => pagePipelines[page] === state.pipeline));
+    params.set("render_mode", state.renderMode);
     const runId = $("runs").value;
     if (runId) params.set("local_batch", runId);
     else params.delete("local_batch");
@@ -118,6 +142,7 @@
       case "lock-all-preview":
       case "lock-all":
       case "unlock-all": return `${baseUrl()}/runs/${id}/${action}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "delete-drafts": return `${baseUrl()}/runs/${id}/delete-draft-images${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "lock-preview": return `${baseUrl()}/runs/${id}/views/${encodedView}/lock-preview${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "unlock": return `${baseUrl()}/runs/${id}/views/${encodedView}/unlock${query()}`;
       case "proceed": return `${baseUrl()}/runs/${id}/views/FRONT/proceed${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -389,13 +414,27 @@
     return input;
   }
 
+  function candidateModeLabel(candidate, image) {
+    const label = document.createElement("p");
+    label.className = "image-card-state";
+    const update = () => {
+      const mode = candidate.render_mode === "final" ? "Final" : "Draft";
+      const dimensions = image?.naturalWidth && image?.naturalHeight
+        ? ` · ${image.naturalWidth} × ${image.naturalHeight}` : "";
+      label.textContent = `${mode}${dimensions}`;
+    };
+    if (image) image.onload = update;
+    update();
+    return label;
+  }
+
   function renderSelectedViews(run) {
     const host = $("selected");
     host.replaceChildren();
     const selected = run.selected_views || {};
     const qualifier = isCostume() ? String(run.costume || "").trim().toLowerCase()
       .replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") : "";
-    const assetKey = (view) => `${state.pipeline}${qualifier ? `:${qualifier}` : ""}:${view}`;
+    const assetKey = (view) => `${state.renderMode === "final" ? "final:" : ""}${state.pipeline}${qualifier ? `:${qualifier}` : ""}:${view}`;
     const controls = document.createElement("div");
     controls.className = "button-row local-pipeline-bulk-controls";
     const hasUnlockedSelection = Object.entries(selected).some(([view, id]) => {
@@ -403,9 +442,10 @@
       return id && !(asset?.locked && asset.batch_id === run.run_id && asset.candidate_id === id);
     });
     const hasLocks = Object.entries(run.local_assets || {}).some(([key, asset]) =>
-      asset.locked && key === assetKey(asset.view));
+      asset.locked && asset.batch_id === run.run_id && key === assetKey(asset.view));
     addButton(controls, "Lock all", "lock-all", { disabled: state.bulkActionPending || !hasUnlockedSelection });
     addButton(controls, "Unlock all", "unlock-all", { disabled: state.bulkActionPending || !hasLocks });
+    addButton(controls, "Delete all Draft images", "delete-drafts", { disabled: state.bulkActionPending });
     host.append(controls);
     const lockNotice = document.createElement("p");
     lockNotice.className = "local-pipeline-lock-notice";
@@ -431,8 +471,8 @@
         image.src = imageUrl(candidate);
         image.alt = `Selected ${view} candidate ${candidate.candidate_id}`;
         article.append(image);
-        const assetKey = `${state.pipeline}${qualifier ? `:${qualifier}` : ""}:${view}`;
-        const asset = run.local_assets?.[assetKey];
+        article.append(candidateModeLabel(candidate, image));
+        const asset = run.local_assets?.[assetKey(view)];
         const locked = Boolean(asset?.locked && asset.candidate_id === candidate.candidate_id
           && asset.batch_id === run.run_id);
         const lockedInAnotherBatch = Boolean(asset?.locked && asset.batch_id !== run.run_id);
@@ -466,7 +506,7 @@
 
   function refinementUrl(view) {
     const params = new URLSearchParams({ pipeline: state.pipeline, run_id: state.run.run_id, view,
-      universe_id: document.querySelector("#universe-select").value });
+      universe_id: document.querySelector("#universe-select").value, render_mode: state.renderMode });
     if (isCostume()) params.set("costume", selectedCostume());
     return `/local-character-refinement?${params}`;
   }
@@ -493,13 +533,14 @@
       image.alt = `${view} candidate ${candidate.candidate_id}`;
       imageButton.append(image);
       card.append(imageButton);
+      card.append(candidateModeLabel(candidate, image));
       if (candidate.elapsed_seconds != null && Number.isFinite(Number(candidate.elapsed_seconds))) {
         const generationTime = document.createElement("p");
         generationTime.className = "local-pipeline-generation-time muted";
         generationTime.textContent = `Generated in ${Math.round(Number(candidate.elapsed_seconds))} seconds`;
         card.append(generationTime);
       }
-    }
+    } else card.append(candidateModeLabel(candidate, null));
     const status = document.createElement("p");
     status.className = "muted image-card-state";
     const rankingOrder = ranking.luna_ordered_candidate_ids?.length
@@ -553,7 +594,11 @@
     const suffix = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
     const path = `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/slots${slot ? `/${slot}/${operation}` : ""}${suffix}`;
     const recompile = Boolean($("views").querySelector(`details[data-view="${view}"] input[data-recompile]`)?.checked);
-    await request(path, {method: "POST", body: JSON.stringify({... (slot ? {expected_candidate_id: state.run.slots_by_view?.[view]?.[slot - 1] || null} : {count}), recompile})});
+    if (operation !== "clear" && operation !== "retry" && !$("aspect-ratio").reportValidity()) return;
+    const selectedSlots = modeRun(state.run).slots_by_view;
+    const seedSource = $("views").querySelector(`details[data-view="${view}"] select[data-seed-source]`)?.value || "";
+    await request(path, {method: "POST", body: JSON.stringify({... (slot ? {expected_candidate_id: selectedSlots?.[view]?.[slot - 1] || null} : {count}), recompile, render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value,
+      ...(["generate", "regenerate"].includes(operation) && seedSource ? {seed_candidate_id: seedSource} : {})})});
     if (generation !== state.generation || state.run?.run_id !== runId || contextKey() !== key) return;
     await loadRun(runId, generation);
     setStatus(operation === "clear" ? "Slot cleared." : "Renders queued.");
@@ -579,10 +624,10 @@
     state.run = latest;
     $("saved-style").textContent = latest.universe_style_variant ? `Batch style: ${latest.universe_style_variant}` : "Batch style: canonical";
     window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id), frontRenderControl);
-    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_view, run?.slot_controls, run?.render_settings, run?.rankings, run?.evaluations, run?.selected_views, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
+    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.selected_views_by_mode, run?.local_assets, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
     const replacement = document.createElement("div");
-    if (changed) renderViews(latest, replacement);
+    if (changed) renderViews(modeRun(latest), replacement);
     const host = $("views");
     for (const next of [...replacement.children]) {
       const previous = [...host.children].find(item => item.dataset.view === next.dataset.view);
@@ -650,7 +695,7 @@
         else if (!oldSection && newSection) previous.append(newSection);
       }
     }
-    if (JSON.stringify(oldRun?.selected_views) !== JSON.stringify(latest.selected_views) || JSON.stringify(oldRun?.local_assets) !== JSON.stringify(latest.local_assets)) renderSelectedViews(latest);
+    if (JSON.stringify(modeRun(oldRun)?.selected_views) !== JSON.stringify(modeRun(latest).selected_views) || JSON.stringify(oldRun?.local_assets) !== JSON.stringify(latest.local_assets)) renderSelectedViews(modeRun(latest));
     setBusyControls(); updateRefreshButton();
     $("summary").textContent = `${latest.character} · ${latest.phase}${latest.costume ? ` · ${latest.costume}` : ""} · ${latest.render_progress?.COMPLETE || 0}/${latest.candidate_count} images · ${statusLabels[latest.status] || latest.status}`;
     if ($("review-dialog").open && changed) {
@@ -838,9 +883,7 @@
       const evaluation = run.evaluations?.[view] || {};
       const viewActions = document.createElement("span");
       viewActions.className = "button-row compact";
-      const viewReady = isCostume() ? !run.slot_controls?.[view]?.stage_reason : view === "FRONT" || (state.pipeline === "character-assembly"
-        ? Boolean(run.selected_views?.FRONT) && !run.stale_selections?.includes("FRONT")
-        : run.use_front_anchor === false || Boolean(run.front_anchor));
+      const viewReady = !run.slot_controls?.[view]?.stage_reason;
       addRecompileOption(viewActions);
       const stageReason = run.slot_controls?.[view]?.stage_reason || "";
       const stageMenu = document.createElement("details"); stageMenu.className = "local-stage-menu";
@@ -855,9 +898,22 @@
           title: controls.rotation_reason || `Rotate selected ${controls.rotation_source_view} into ${view}.` });
       }
       viewActions.append(stageMenu);
+      const otherCandidates = (state.run?.candidates || []).filter(candidate => candidate.view === view
+        && (candidate.render_mode || "draft") !== state.renderMode && candidate.seed != null);
+      if (otherCandidates.length) {
+        const seedLabel = document.createElement("label"); seedLabel.textContent = "Seed";
+        const seedSelect = document.createElement("select"); seedSelect.dataset.seedSource = view;
+        seedSelect.add(new Option("New seed", ""));
+        for (const candidate of otherCandidates) seedSelect.add(new Option(`Reuse ${candidate.candidate_id} (${candidate.render_mode === "final" ? "Final" : "Draft"})`, candidate.candidate_id));
+        const seedKey = `${state.renderMode}:${view}`;
+        seedSelect.value = state.seedSources[seedKey] || "";
+        seedSelect.addEventListener("change", () => { state.seedSources[seedKey] = seedSelect.value; });
+        seedLabel.append(seedSelect); viewActions.append(seedLabel);
+      }
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
-      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.some((item) => item.status === "FAILED" || item.human_review?.decision === "reject"), view });
+      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !candidates.some((item) => item.render_status === "FAILED"), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || (!isCostume() && !viewReady) || !candidates.some((item) => item.image_path), view });
+      addButton(viewActions, "Delete Draft images", "delete-drafts", { disabled: state.bulkActionPending, view });
       addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
       const ai = run.view_reviews?.[view]?.ai_observations || {};
       summary.append(viewActions);
@@ -874,11 +930,12 @@
         for (const role of roles) {
           const figure = document.createElement("figure");
           const caption = document.createElement("figcaption");
-          caption.textContent = role.replaceAll("_", " ");
+          const source = run.sources?.[view]?.[role] || {};
+          const sourceMode = source.render_mode === "final" ? "Final" : source.render_mode === "draft" ? "Draft" : "";
+          caption.textContent = `${role.replaceAll("_", " ")}${sourceMode ? ` · ${sourceMode}` : ""}`;
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          const source = run.sources?.[view]?.[role] || {};
           const version = source.sha256 || source.image_sha256 || source.image_path ||
             (role === "front_reference" ? run.front_source_sha256 || run.front_source : "");
           image.src = versionedImageUrl(route("source", run.run_id, view, role), version);
@@ -919,7 +976,8 @@
           const imageIndex = reference.image_index || index + 1;
           const promptRole = reference.prompt_role || reference.role || "reference";
           const label = reference.label || reference.tag || "Reference image";
-          caption.textContent = `Image ${imageIndex} — ${promptRole}: ${label}`;
+          const referenceMode = reference.render_mode === "final" ? "Final" : reference.render_mode === "draft" ? "Draft" : "";
+          caption.textContent = `Image ${imageIndex} — ${promptRole}: ${label}${referenceMode ? ` · ${referenceMode}` : ""}`;
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
@@ -1098,8 +1156,8 @@
     $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary}${state.pipeline === "character-assembly" ? ` · Heads: ${run.head_pipeline === "head-image-edit" ? "Head-Image Edit" : "Head-Image"}` : ""} · ${run.run_id} · ${completed}/${run.candidate_count || (run.candidates || []).length} images · ${statusLabels[run.status] || run.status}${run.front_anchor ? ` · FRONT ${run.front_anchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
-    renderSelectedViews(run);
-    renderViews(run);
+    renderSelectedViews(modeRun(run));
+    renderViews(modeRun(run));
     updateRefreshButton();
   }
 
@@ -1139,7 +1197,7 @@
       const loaded = await request(route("detail", runId));
       if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
       const sameRun = state.run?.run_id === loaded.run_id;
-      if (sameRun) mergeLiveRun(loaded); else { state.run = loaded; state.costumeSettingsDrafts = {}; }
+      if (sameRun) mergeLiveRun(loaded); else { state.run = loaded; state.costumeSettingsDrafts = {}; state.seedSources = {}; }
       syncRunOption(loaded);
       state.runState = "selected";
       state.polledRun = null;
@@ -1296,6 +1354,10 @@
 
   function configurePipeline(pipeline) {
     state.pipeline = pipeline;
+    state.renderMode = new URLSearchParams(window.location.search).get("render_mode") === "final" ? "final" : "draft";
+    $("render-quality").value = state.renderMode;
+    $("aspect-ratio").value = ["head-image", "head-image-edit"].includes(pipeline) ? "1:1" : "2:3";
+    void updateSizePreview();
     state.runsState = "loading";
     state.runState = "absent";
     state.costumesState = isCostume() ? "loading" : "absent";
@@ -1317,7 +1379,6 @@
     $("source-batches").hidden = !hasSharedAssetRouter();
     $("head-pipeline-label").hidden = pipeline !== "character-assembly";
     $("head-pipeline").value = "head-image";
-    $("rerun-refresh-option").hidden = !hasSharedAssetRouter();
     if (hasSharedAssetRouter()) $("use-anchor").checked = false;
     $("source-option").hidden = !["head-image", "head-image-edit"].includes(pipeline);
     $("source-remove").hidden = true;
@@ -1356,6 +1417,7 @@
   }
 
   async function perform(action, view = "", candidateId = "", body = undefined) {
+    if (["select", "unselect", "lock", "unlock"].includes(action)) body = {...(body || {}), render_mode: state.renderMode};
     if (action === "proceed" && state.run?.character_progression) body = {
       expected_stage: state.run.character_progression.stage, back_reference: $("back-reference").value };
     const runId = state.run?.run_id || "";
@@ -1384,6 +1446,9 @@
         : blocked.length ? `No views are ready. ${blocked[0]}` : "No unstarted views remain.");
     } else if (action === "resume" && result.status !== "QUEUED") {
       setStatus("Batch ready to continue.");
+    } else if (["rerun", "rerun-view", "rerun-failed"].includes(action) && result?.submitted_candidate_ids) {
+      const failures = Object.entries(result.errors || {});
+      setStatus(`${result.submitted_candidate_ids.length} render(s) queued.${failures.length ? ` Failed: ${failures.map(([id, error]) => `${id}: ${error}`).join(" · ")}` : ""}`, failures.length > 0);
     } else if (["start", "resume", "stop", "retry", "rerun", "rerun-view", "rerun-failed", "reevaluate", "reevaluate-view"].includes(action)) {
       setStatus(action === "stop" ? "Stop requested." : "Work queued.");
     } else if (action === "lock" || action === "unlock" || action === "select" || action === "unselect") {
@@ -1412,7 +1477,7 @@
   }
 
   function orderedReviewCandidates() {
-    const run = state.run;
+    const run = modeRun(state.run);
     const views = orderedViews(run);
     return views.flatMap(view => sortCandidatesByDisplayOrder(run, view,
       (run?.candidates || []).filter(item => item.view === view),
@@ -1492,7 +1557,7 @@
   function renderReview() {
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
-    const run = state.run;
+    const run = modeRun(state.run);
     const oppositeViews = {
       LEFT_PROFILE: "RIGHT_PROFILE", RIGHT_PROFILE: "LEFT_PROFILE",
       FRONT_LEFT_3_4: "FRONT_RIGHT_3_4", FRONT_RIGHT_3_4: "FRONT_LEFT_3_4",
@@ -1549,6 +1614,7 @@
     panel.replaceChildren();
     const title = document.createElement("h2");
     title.textContent = candidate.candidate_id;
+    const modeLabel = candidateModeLabel(candidate, candidate.image_path ? reviewImage : null);
     const view = document.createElement("p");
     view.className = "local-pipeline-review-position";
     view.textContent = `${candidate.view} · Slot ${candidate.slot || candidate.ordinal} · ${state.reviewIndex + 1} of ${state.reviewCandidates.length} · ${statusLabels[candidate.status] || candidate.status}`;
@@ -1712,7 +1778,7 @@
     quality.append(qualityHeading);
     if (rankingInfo.textContent) quality.append(rankingInfo);
     if (analysis.childElementCount) quality.append(analysis);
-    panel.append(title, view);
+    panel.append(title, modeLabel, view);
     if (rankingInfo.textContent || analysis.childElementCount) panel.append(quality);
     if (renderError) panel.append(renderError);
     actions.append(...moreActions.children);
@@ -1752,22 +1818,23 @@
     const view = button.dataset.view;
     if (state.bulkActionPending) return;
     if (action === "lock-all" || action === "unlock-all") {
-      const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation;
+      const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation, mode = state.renderMode;
       const current = () => state.run?.run_id === runId && state.pipeline === pipeline
-        && contextKey() === context && state.generation === generation;
+        && contextKey() === context && state.generation === generation && state.renderMode === mode;
       state.bulkActionPending = true;
       if (action === "lock-all") setStatus("Checking selected views for publication…");
-      renderSelectedViews(state.run);
+      renderSelectedViews(modeRun(state.run));
       try {
-        let body;
-        let summary = `Unlock all locked images in this pipeline for ${state.run.character} / ${state.run.phase}${isCostume() ? ` / ${state.run.costume}` : ""}, including other batches? Published Inventory images will be retained.`;
+        let body = {render_mode: state.renderMode};
+        let summary = `Unlock this batch's ${state.renderMode} images? Published Inventory images will be retained.`;
         if (action === "lock-all") {
-          const plan = await request(route("lock-all-preview", runId));
+          const previewUrl = new URL(route("lock-all-preview", runId), location.origin);
+          previewUrl.searchParams.set("render_mode", state.renderMode);
+          const plan = await request(previewUrl.pathname + previewUrl.search);
           if (!current()) return;
           if (!plan.views.length) { setStatus("All selected images are already locked."); return; }
-          body = { selected_views: plan.selected_views };
-          summary = `Lock all ${plan.views.length} selected images in this batch?\n\n${plan.views.join(", ")}`;
-          if (plan.changes?.length) summary += `\n\nPublish or replace these images, including required lineage:\n${plan.changes.map(item => `${item.pipeline} ${item.view} · ${item.batch_name || "selected batch"}${item.replacing_batch ? ` (currently ${item.replacing_batch})` : ""}`).join("\n")}`;
+          body = {render_mode: state.renderMode, selected_views: plan.selected_views};
+          summary = `Lock all ${plan.views.length} selected ${state.renderMode} images in this batch?\n\n${plan.views.join(", ")}`;
         }
         const confirmed = await confirmAction(action === "lock-all" ? "Lock selected images" : "Unlock pipeline images",
           summary, action === "lock-all" ? "Lock all" : "Unlock all");
@@ -1784,8 +1851,15 @@
         setStatus(`${result.completed_views.length} image(s) ${action === "lock-all" ? "locked" : "unlocked"}.${failures.length ? ` Failed: ${failures.map(([view, error]) => `${view}: ${error}`).join(" · ")}` : ""}`, failures.length > 0);
       } finally {
         state.bulkActionPending = false;
-        if (state.run) renderSelectedViews(state.run);
+        if (state.run) renderSelectedViews(modeRun(state.run));
       }
+      return;
+    }
+    if (action === "delete-drafts") {
+      const scope = view ? `${view} in this batch` : "this batch";
+      if (!(await confirmAction("Delete Draft images?", `Delete all Draft images for ${scope}, including selected and locked images? Matching work will be cancelled. Final images and Inventory copies remain.`, "Delete Draft images"))) return;
+      await perform(action, view, "", view ? {view} : {});
+      setStatus("Draft images deleted.");
       return;
     }
     if (action?.startsWith("stage-")) button.closest(".local-stage-menu")?.removeAttribute("open");
@@ -1797,7 +1871,7 @@
         const run = state.run, pipeline = state.pipeline, costume = isCostume() ? selectedCostume() : "";
         const query = costume ? `?costume=${encodeURIComponent(costume)}` : "";
         const result = await request(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/post-render-prompt${query}`,
-          { method: "POST", body: JSON.stringify({ view }) });
+          { method: "POST", body: JSON.stringify({ view, render_mode: state.renderMode }) });
         const params = new URLSearchParams({ universe_id: document.querySelector("#universe-select").value,
           pipeline, run_id: run.run_id, session_id: result.session_id, view,
           page: Object.keys(pagePipelines).find(page => pagePipelines[page] === pipeline) });
@@ -1809,18 +1883,18 @@
     if (action === "stage-image-generation" || action === "stage-rotation" || action === "stage-no-costume-ref") {
       const rotation = action === "stage-rotation";
       const noCostumeRef = action === "stage-no-costume-ref";
-      const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation;
+      const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation, renderMode = state.renderMode;
       const params = new URLSearchParams();
       if (isCostume()) params.set("costume", selectedCostume());
       const recompile = Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
       const current = () => state.pipeline === pipeline && state.run?.run_id === runId
-        && state.generation === generation && contextKey() === context
+        && state.generation === generation && contextKey() === context && state.renderMode === renderMode
         && document.querySelector("#local-pipeline-page").classList.contains("active");
       button.disabled = true;
       try {
         await window.zetStageCharacterViewInImageGenerator(
           `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/image-generation-stage?${params}`,
-          recompile, current, rotation, noCostumeRef);
+          recompile, current, rotation, noCostumeRef, renderMode);
       } finally { button.disabled = Boolean(state.run?.slot_controls?.[view]?.[
         rotation ? "rotation_reason" : noCostumeRef ? "no_costume_ref_reason" : "stage_reason"]); }
       return;
@@ -1860,28 +1934,23 @@
       return;
     }
     if (action === "lock") {
-      if (hasSharedAssetRouter()) {
-        const plan = await request(route("lock-preview", state.run.run_id, view));
-        const changes = plan.changes || [];
-        const summary = changes.length
-          ? `Lock ${view} and replace these lineage images?\n\n${changes.map((item) => `${item.pipeline} ${item.view} · ${item.batch_name || "selected batch"}${item.replacing_batch ? ` (currently ${item.replacing_batch})` : ""}`).join("\n")}`
-          : `Lock the selected ${view} image? Its required lineage is already locked to these images.`;
-        if (!(await confirmAction(`Lock ${view} image?`, summary, "Lock image"))) return;
-      }
+      if (!(await confirmAction(`Lock ${view} image?`, `Lock the selected ${state.renderMode} ${view} image?`, "Lock image"))) return;
       await perform("lock", view, candidateId);
       return;
     }
     if (action === "rerun" || action === "rerun-view") {
-      const refreshSources = $("rerun-refresh-sources").checked;
       const recompile = action === "rerun"
         ? $("rerun-recompile").checked
         : Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
-      const label = recompile || refreshSources ? "refresh references from the chosen source batches" : "retain the original reference snapshots";
-      const compileLabel = recompile ? " Recompile prompts from current templates and coding." : "";
-      if (!(await confirmAction(action === "rerun" ? "Replace this batch?" : `Replace ${view} candidates?`,
-        action === "rerun" ? `Re-run this batch and ${label}?${compileLabel} This replaces generated images and reviews.` : `Replace all ${view} candidates and ${label}?${compileLabel}`,
-        "Re-run"))) return;
-      await perform(action, view, candidateId, { refresh_sources: refreshSources, recompile });
+      if (action === "rerun-view") {
+        if (!$("aspect-ratio").reportValidity()) return;
+        if (!(await confirmAction(`Regenerate ${view}?`, `Regenerate occupied ${state.renderMode} slots for ${view}? Selected, locked, and active slots are reported separately.`, "Regenerate"))) return;
+        await perform(action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
+        return;
+      }
+      if (!$("aspect-ratio").reportValidity()) return;
+      if (!(await confirmAction(`Regenerate ${state.renderMode} batch?`, `Regenerate occupied ${state.renderMode} slots across this batch? Selected, locked, and active slots are reported separately.`, "Regenerate"))) return;
+      await perform(action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
       return;
     }
     if (["delete", "rerun-failed", "unselect", "unlock"].includes(action)) {
@@ -1901,10 +1970,18 @@
       await perform("move-rank", view, candidateId, { candidate_id: candidateId, direction: action === "rank-up" ? "up" : "down" });
       return;
     }
-    await perform(action, view, candidateId, action === "rename" ? { batch_name: $("batch-name").value } : action === "select" || action === "unselect" ? { candidate_id: action === "unselect" ? "" : candidateId } : undefined);
+    await perform(action, view, candidateId, action === "rename" ? { batch_name: $("batch-name").value } : action === "select" || action === "unselect" ? { candidate_id: action === "unselect" ? "" : candidateId } : action === "rerun-failed" ? {render_mode: state.renderMode} : undefined);
   }
 
   function bind() {
+    $("render-quality").addEventListener("change", () => {
+      state.renderMode = $("render-quality").value;
+      state.renderedSelections = {};
+      syncPipelineRoute();
+      void updateSizePreview();
+      render();
+    });
+    $("aspect-ratio").addEventListener("input", () => void updateSizePreview());
     $("refresh").addEventListener("click", () => {
       if (state.polledRun && state.polledRun.run_id === state.run?.run_id) {
         state.run = state.polledRun;

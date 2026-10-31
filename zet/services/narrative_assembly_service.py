@@ -33,8 +33,8 @@ class NarrativeAssemblyService:
             record = self.repository.read(story, scene, target)
             if record["kind"] == "assembly":
                 continue
-            result.append({key: record[key] for key in ("id", "title", "kind", "selected_id")} | {
-                "candidates": [{"id": item["id"], "slot": item["slot"]} for item in record["candidates"].values()
+            result.append({key: record[key] for key in ("id", "title", "kind", "selected_id", "final_selected_id")} | {
+                "candidates": [{"id": item["id"], "slot": item["slot"], "render_mode": item.get("render_mode", "draft")} for item in record["candidates"].values()
                                if item["status"] == "COMPLETE" and item["image"]]})
         return result
 
@@ -89,7 +89,7 @@ class NarrativeAssemblyService:
             elif not isinstance(source_id, str) or not isinstance(candidate_id, str):
                 raise ValueError("Choose a completed source image for each layer.")
             elif existing.get("target_id") == source_id and existing.get("candidate_id") == candidate_id and (folder / existing["source_file"]).is_file():
-                metadata = {key: existing[key] for key in ("source_file", "label", "narrative", "source_kind")}
+                metadata = {key: existing[key] for key in ("source_file", "label", "narrative", "source_kind", "render_mode") if key in existing}
             else:
                 if source_id not in available:
                     raise ValueError("Choose a source target from this scene.")
@@ -102,7 +102,7 @@ class NarrativeAssemblyService:
                 if not (folder / filename).is_file():
                     write_bytes_atomic(folder / filename, source_path.read_bytes())
                 metadata = {"source_file": filename, "label": source["title"], "narrative": source["narrative"],
-                            "source_kind": source["kind"]}
+                            "source_kind": source["kind"], "render_mode": candidate.get("render_mode", "draft")}
             role = supplied.get("role", "base" if metadata["source_kind"] == "backdrop" and index == 0 else "group")
             if role not in {"base", "group"} or (role == "base" and metadata["source_kind"] != "backdrop"):
                 raise ValueError("The base layer must be a backdrop.")

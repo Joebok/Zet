@@ -1,5 +1,7 @@
 # Capability code map
 
+Draft/Final rendering: `image_sizing_service.py` owns target-pixel sizing; `LocalModeSelectionService` and `LocalAssetStoreService` own mode-scoped character selection and locks. The workflow and dashboard expose individual and bulk mode actions. See the [completed plan](../plans/completed/draft-final-rendering.md).
+
 Dashboard Overview (2026-10-27): `local_character_overview.js` mounts the
 character/phase/costume grid through `zet.js` and `index.html`; the former standalone
 route redirects into the shell. Assets → Character Overview retains onboarding.
@@ -329,3 +331,26 @@ maintained regressions. See [Narrative](COMPONENTS/NARRATIVE.md#save-a-subscene-
 ## Final assembly output canvas (2026-10-30)
 
 NarrativeAssemblyService owns manual backdrop composition and reference geometry; narrative_prompt_service.py describes it for reference assembly. narrative.js and narrative.css own active-layer placement and output-size canvas presentation. See [Narrative](COMPONENTS/NARRATIVE.md#final-assembly-output-canvas-2026-10-30).
+
+## Draft and Final rendering
+
+`image_sizing_service.py` owns configured mode sizing. `CharacterRenderSlots`,
+`LocalModeSelectionService` and `LocalAssetStoreService` own character mode
+slots, selections and locks. Narrative and Minor Character services retain
+independent mode boards and resolve references with mode preference. Image
+Generator workspace validates reconstruction sources on their original board,
+independently of the destination board. Refinement and private post-render
+trials retain their session mode and frozen sizing. See the
+[completed plan](../plans/completed/draft-final-rendering.md) for validation.
+
+Selective copy: `zet/scripts/backup_image_manifest.py` enumerates Inventory and
+locked Final image paths from metadata; `Backup-Images.ps1` copies those paths
+and existing Markdown/text scope. See [Library](COMPONENTS/LIBRARY.md).
+
+Draft cleanup: `CharacterRenderSlots.delete_draft_images`,
+`MinorCharacterService.delete_draft_images`, `NarrativeGenerationService.delete_draft_images`
+and `ImageGenerationWorkspace.delete_draft_images` own their respective scopes.
+`AdHocImageGenerationService.cancel_owned_request` fences shared image jobs.
+
+`AIWorkflowService.cancel_matching` fences matching durable continuations and
+attributed structured AI asks; `AIJobService` binds new asks to workflow IDs.

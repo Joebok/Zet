@@ -41,7 +41,12 @@ class LocalCostumePostRenderService(LocalPostRenderPromptService):
         return matches[0]
 
     @staticmethod
-    def _contract(workflow, run, view):
+    def _contract(workflow, run, view, render_mode=None):
+        if render_mode is not None:
+            from zet.services.local_view_reference_service import selected_run_for_mode
+            run = selected_run_for_mode(run, render_mode)
+            sources = workflow.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+            run = {**run, "sources": {**(run.get("sources") or {}), view: sources}}
         settings = render_settings(run, view)
         references = CostumeRenderModeService(workflow).references(run, view, settings)
         return {"settings": settings, "references": [{"role": ref["role"], "view": ref.get("view"),
@@ -53,7 +58,7 @@ class LocalCostumePostRenderService(LocalPostRenderPromptService):
         record.update(version=2, revision=0, seeds=[random.SystemRandom().randrange(0, 2**63 - 1) for _ in range(4)],
                       render_profile=LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"),
                           config=self.app.config).preset(workflow.adapter.definition["preset"]),
-                      render_contract=self._contract(workflow, run, record["view"]),
+                      render_contract=self._contract(workflow, run, record["view"], record.get("render_mode")),
                       criteria_snapshot=CostumeAdjustmentCriteriaService(workflow).detail(run, record["view"]))
 
     def _freeze_trial_input(self, record, saved):
@@ -64,7 +69,7 @@ class LocalCostumePostRenderService(LocalPostRenderPromptService):
         super()._write(run, record)
 
     def _validate_round(self, record, workflow, run, operation, payload=None):
-        if self._contract(workflow, run, record["view"]) != record["render_contract"]:
+        if self._contract(workflow, run, record["view"], record.get("render_mode")) != record["render_contract"]:
             raise ValueError("Rendering mode or reference inputs changed. Cancel this session and open a new review.")
         if active_revision(Path(run["root"])).get("revision_id", "") not in {record["base_revision_id"], record.get("final_revision_id")}:
             raise ValueError("The active batch revision changed. Start a new review.")

@@ -65,11 +65,12 @@ class NarrativeReferenceService:
                             if candidate["status"] == "COMPLETE" and candidate["image"]:
                                 path = self._file(story["id"], scene_id, target_id, candidate["image"])
                                 if path.is_file():
-                                    candidates.append({"id": candidate["id"], "slot": candidate["slot"]})
+                                    candidates.append({"id": candidate["id"], "slot": candidate["slot"],
+                                                       "render_mode": candidate.get("render_mode", "draft")})
                         result.append({"story_id": story["id"], "story_title": story["title"],
                                        "scene_id": scene_id, "scene_title": scene["title"],
                                        "target_id": target_id, "title": target["title"], "kind": kind,
-                                       "selected_id": target["selected_id"], "candidates": candidates})
+                                       "selected_id": target["selected_id"], "final_selected_id": target.get("final_selected_id"), "candidates": candidates})
             return result
 
     def _file(self, story, scene, target, relative):
@@ -97,7 +98,13 @@ class NarrativeReferenceService:
             detail = self.author.target(story, scene, target)
             if detail["kind"] not in {"backdrop", "subscene"}:
                 raise ValueError("Choose a backdrop or subscene.")
-            candidate_id = source.get("candidate_id") or detail["selected_id"]
+            mode = source.get("render_mode", "draft")
+            if mode not in ("draft", "final"):
+                raise ValueError("Render mode must be draft or final.")
+            preferred = (detail.get("final_selected_id"), detail.get("selected_id")) if mode == "final" else (detail.get("selected_id"), detail.get("final_selected_id"))
+            candidate_id = source.get("candidate_id") or next((cid for cid in preferred if cid and
+                (item := detail["candidates"].get(cid)) and item.get("status") == "COMPLETE" and item.get("image")
+                and self._file(story, scene, target, item["image"]).is_file()), None)
             candidate = detail["candidates"].get(candidate_id, {})
             if candidate_id and (not candidate or candidate["status"] != "COMPLETE" or not candidate["image"]):
                 raise ValueError("Choose a completed source candidate.")
@@ -111,6 +118,7 @@ class NarrativeReferenceService:
             if generation_inputs is None and candidate.get("source_snapshot"):
                 generation_inputs = deepcopy(candidate["source_snapshot"].get("generation_inputs"))
             return {"story_id": story, "scene_id": scene, "target_id": target, "candidate_id": candidate_id,
+                    **({"render_mode": candidate.get("render_mode", "draft")} if candidate_id else {}),
                     "story_title": story_record["title"], "scene_title": scene_record["title"],
                     "title": detail["title"], "kind": detail["kind"], "prompt": prompt or "",
                     "prompt_provenance": deepcopy(candidate.get("prompt_provenance", {})),
@@ -196,6 +204,7 @@ class NarrativeReferenceService:
                 if source is None and action == "refresh":
                     old = record["source_snapshot"]
                     source = {key: old.get(key, "") for key in ("story_id", "scene_id", "target_id")}
+                    source["render_mode"] = data.get("render_mode", old.get("render_mode", "draft"))
                 old = record.get("source_snapshot", {})
                 record["source_snapshot"] = self._pin(story, scene, target, source or {})
                 new = record["source_snapshot"]
@@ -218,7 +227,7 @@ class NarrativeReferenceService:
                 # An old text response must not overwrite this explicit replacement.
                 record["active_llm_job"] = None
             elif action in {"reuse", "crop"}:
-                self._local_candidate(story, scene, target, record, action)
+                self._local_candidate(story, scene, target, record, action, data.get("render_mode", "draft"))
             else:
                 raise ValueError("Unknown backdrop reference action.")
             self.repository.write(record, story, scene, target)
@@ -277,20 +286,25 @@ class NarrativeReferenceService:
             image.save(stream, format="PNG")
             return stream.getvalue()
 
-    def _local_candidate(self, story, scene, target, record, action):
-        if None not in record["slots"]:
+    def _local_candidate(self, story, scene, target, record, action, render_mode="draft"):
+        if render_mode not in ("draft", "final"):
+            raise ValueError("Render mode must be draft or final.")
+        slot_key = "final_slots" if render_mode == "final" else "slots"
+        selection_key = "final_selected_id" if render_mode == "final" else "selected_id"
+        slots = record[slot_key]
+        if None not in slots:
             raise ValueError("Clear a slot before adding a reused or cropped backdrop.")
         payload = (self.crop(story, scene, target, record) if action == "crop" else
                    self._file(story, scene, target, record["source_snapshot"].get("image_file")).read_bytes())
         validate_image(payload)
-        index = record["slots"].index(None)
+        index = slots.index(None)
         candidate = asdict(NarrativeCandidate(target, index + 1, 0, status="COMPLETE"))
-        candidate.update(image=f"images/{candidate['id']}.png", prompt=record["source_snapshot"].get("prompt", ""),
+        candidate.update(image=f"images/{render_mode}_{candidate['id']}.png", render_mode=render_mode, prompt=record["source_snapshot"].get("prompt", ""),
                          prompt_provenance=deepcopy(record["source_snapshot"].get("prompt_provenance", {})),
                          source_snapshot=deepcopy(record["source_snapshot"]),
                          backdrop_adaptation={**deepcopy(record["backdrop_adaptation"]), "operation": "crop" if action == "crop" else "unchanged"})
         write_bytes_atomic(self.repository.folder(story, scene, target) / candidate["image"], payload)
         record["candidates"][candidate["id"]] = candidate
-        record["slots"][index] = candidate["id"]
-        if not record["selected_id"]:
-            record["selected_id"] = candidate["id"]
+        slots[index] = candidate["id"]
+        if not record[selection_key]:
+            record[selection_key] = candidate["id"]

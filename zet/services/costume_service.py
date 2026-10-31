@@ -339,14 +339,14 @@ class CostumeService:
         name = self.costume_name_from_slug(path.stem.removeprefix("Costume_"))
         role = self._extract_template_field(contents, ["Costume Role", "Role"]) or None
         assets = self.local_sources.store.locked_assets(
-            character, phase, pipeline="costume-dressing", qualifier=name
+            character, phase, pipeline="costume-dressing", qualifier=name, render_mode=None
         ) if self.local_sources else []
         return Costume(
             name=name,
             slug=self.safe_costume_slug(name),
             path=str(path),
             role=role,
-            asset_count=len(assets),
+            asset_count=len({asset.get("view") for asset in assets}),
         )
 
     def _sync_costume_name(self, markdown: str, costume_name: str) -> str:

@@ -247,6 +247,7 @@ class LocalHeadImageService:
                 index += 1
                 candidates.append({"candidate_id": view_candidate_id(view, ordinal), "view": view, "ordinal": ordinal,
                                    "seed": seeds[index - 1], "status": "PENDING", "image_path": "",
+                                   "render_mode": "draft", "aspect_ratio": "1:1",
                                    "human_review": {"decision": "undecided"},
                                    "retry_count": 0})
         apply_phase_change = bool(payload.get("apply_phase_change")) and bool(source_snapshot)
@@ -301,7 +302,7 @@ class LocalHeadImageService:
             value["interrupted"] = False
         value["selected_views"] = state.get("selected_views") or {}
         value["rankings"] = state.get("rankings") or {}
-        value["front_anchor"] = state.get("front_anchor") or spec.get("front_anchor")
+        value["front_anchor"] = state.get("front_anchor", spec.get("front_anchor"))
         value["local_assets"] = self.asset_store.detail(value["character"], value["phase"]).get("assets", {})
         for view, ranking in value["rankings"].items():
             if ranking.get("status") != "COMPLETE":
@@ -410,7 +411,7 @@ class LocalHeadImageService:
                                         if item.get("status") == "RUNNING" and item.get("view")})
                 if status in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED"} and self.asset_store.all_selected_views_locked({
                     **spec, **state, "run_id": run_id, "candidates": list(candidates.values()),
-                    "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
+                    "front_anchor": state.get("front_anchor", spec.get("front_anchor")),
                 }, self.asset_pipeline):
                     status = "COMPLETE"
                 result.append({
@@ -422,8 +423,9 @@ class LocalHeadImageService:
                     "candidate_count": len(candidates),
                     "complete_count": sum(bool(item.get("image_path")) for item in candidates.values()),
                     "current_views": current_views,
-                    "front_anchor": state.get("front_anchor") or spec.get("front_anchor"),
+                    "front_anchor": state.get("front_anchor", spec.get("front_anchor")),
                     "selected_views": state.get("selected_views") or {},
+                    "final_selected_views": state.get("final_selected_views") or {},
                 })
             except (OSError, ValueError, KeyError, json.JSONDecodeError):
                 continue
@@ -447,6 +449,10 @@ class LocalHeadImageService:
         mutate_local_run_state(root, apply)
 
     def queue_render_candidate(self, run_id: str, candidate_id: str) -> dict[str, Any]:
+        with file_lock(self._run_root(run_id) / "state.lock"):
+            return self._queue_render_candidate_locked(run_id, candidate_id)
+
+    def _queue_render_candidate_locked(self, run_id: str, candidate_id: str) -> dict[str, Any]:
         run = self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
         if not candidate:
@@ -502,16 +508,22 @@ class LocalHeadImageService:
             self._update(run_id, candidate_id, render_input=saved_input)
         ask_id = f"{self.ask_prefix}_{run_id}_{candidate_id}_{int(candidate.get('retry_count') or 0)}"
         manifest = {"ask_id": ask_id, "character": run["character"], "phase": run["phase"],
-                    "pipeline": self.queue_pipeline, "pipeline_stage": "HEAD_IMAGE_RENDER"}
+                    "pipeline": self.queue_pipeline, "pipeline_stage": "HEAD_IMAGE_RENDER",
+                    "render_sizing": saved_input.get("render_sizing")}
+        overrides = dict(profile) if self.pipeline_id == "head-image-edit" else {}
+        if saved_input.get("render_sizing"):
+            overrides.pop("width", None)
+            overrides.pop("height", None)
         ask_path = self.app.ai_proxy_service.stage_render_task_local_render_ask(
             manifest, prompt_copy, candidate_dir, allow_parallel=True, seed=int(candidate["seed"]),
             checkpoint=str(profile.get("diffusion_model") or ""), render_preset=preset_name,
             image_generation="comfyui", reference_files=references,
-            render_overrides=profile if self.pipeline_id == "head-image-edit" else None,
+            render_overrides=overrides or None,
         )
         ask = self._read_json((ask_path / "ask_manifest.json"))
         output_path = render_dir / str(ask.get("target_output_file") or output_name)
         reference_images = [{"role": str(reference.get("role") or ""),
+                             **({"render_mode": reference["render_mode"]} if reference.get("render_mode") in {"draft", "final"} else {}),
                              "label": str(reference.get("label") or ""),
                              "path": str(reference.get("path") or ""),
                              "sha256": self._hash(Path(reference["path"]))}
@@ -529,6 +541,12 @@ class LocalHeadImageService:
         return self.app.ai_proxy_service.ai_proxy_path_service.jobs.execution_status(ask_id)
 
     def _harvest(self, run_id: str, candidate: dict[str, Any]) -> None:
+        with file_lock(self._run_root(run_id) / "state.lock"):
+            if not any(c["candidate_id"] == candidate["candidate_id"] for c in self.detail(run_id)["candidates"]):
+                return
+            return self._harvest_locked(run_id, candidate)
+
+    def _harvest_locked(self, run_id: str, candidate: dict[str, Any]) -> None:
         paths = self.app.ai_proxy_service.ai_proxy_path_service
         ask_id = str(candidate.get("ask_id") or "")
         answer_dir = paths.answer_path(ask_id)
@@ -751,6 +769,7 @@ class LocalHeadImageService:
         view = str(view or "").upper()
         run = self.detail(run_id)
         candidates = [item for item in run.get("candidates") or [] if item.get("view") == view
+                      and item.get("render_mode", "draft") == "draft"
                       and (candidate_ids is None or item["candidate_id"] in candidate_ids)
                       and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
@@ -826,6 +845,7 @@ class LocalHeadImageService:
         if evaluation_id and (active.get("evaluation_id") != evaluation_id or active.get("status") not in {"RUNNING", "STAGING"}):
             return run
         survivors = [item for item in run["candidates"] if item["view"] == view
+                     and item.get("render_mode", "draft") == "draft"
                      and Path(str(item.get("image_path") or "")).is_file()]
         from zet.services.image_harvest_service import candidate_admission, require_candidate_harvest
         for survivor in survivors:
@@ -892,6 +912,7 @@ class LocalHeadImageService:
             run = self.detail(run_id)
             current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "")
                 for item in run.get("candidates") or [] if item.get("view") == view
+                and item.get("render_mode", "draft") == "draft"
                 and Path(str(item.get("image_path") or "")).is_file()}
             if current_hashes != input_hashes:
                 return
@@ -934,7 +955,7 @@ class LocalHeadImageService:
             self._write(root / "state.json", state)
             return self.detail(run_id)
         candidate = next((item for item in run["candidates"] if item["candidate_id"] == candidate_id), None)
-        if not candidate or candidate["view"] != view:
+        if not candidate or candidate["view"] != view or candidate.get("render_mode", "draft") != "draft":
             raise LocalHeadImageError("Choose a candidate from this view.")
         auto_approved = bool(autogenerate and view == FRONT)
         if auto_approved and candidate.get("human_review", {}).get("decision") == "reject":
@@ -1042,7 +1063,8 @@ class LocalHeadImageService:
             raise LocalHeadImageError("Wait for active batch work to finish before generating other views.")
         claimed = set(run.get("target_views") or [])
         pending_views = [view for view in VIEWS if view != FRONT and view not in claimed and
-                         (candidates := [item for item in run["candidates"] if item["view"] == view]) and
+                         (candidates := [item for item in run["candidates"] if item["view"] == view
+                                         and item.get("render_mode", "draft") == "draft"]) and
                          all(item.get("status") == "PENDING" and not item.get("image_path") for item in candidates)]
         if pending_views:
             self._run_update(run_id, status="READY_FOR_VIEWS", stop_requested=False, target_views=pending_views)
@@ -1065,15 +1087,16 @@ class LocalHeadImageService:
 
     def _invalidate_downstream(self, run: dict[str, Any], state: dict[str, Any]) -> None:
         downstream = set(VIEWS[1:])
-        self._withdraw_queued_asks(run["run_id"], affected_views=downstream)
+        candidates = [candidate for candidate in run["candidates"]
+                      if candidate["view"] in downstream and candidate.get("render_mode", "draft") == "draft"]
+        self._withdraw_queued_asks(run["run_id"], affected_views=downstream,
+                                   candidate_ids={candidate["candidate_id"] for candidate in candidates})
         root = Path(run["root"])
         for view in downstream:
             self._clear_owned_selection(run, view)
             state.setdefault("selected_views", {}).pop(view, None)
             state.setdefault("rankings", {}).pop(view, None)
-        for candidate in run["candidates"]:
-            if candidate["view"] not in downstream:
-                continue
+        for candidate in candidates:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
                 status="PENDING", render_input=None, image_path="", image_sha256="", ask_id="",
@@ -1151,11 +1174,12 @@ class LocalHeadImageService:
 
     def _reset_batch(self, run: dict[str, Any], *, status: str) -> None:
         run_id = run["run_id"]
-        self._withdraw_queued_asks(run_id)
+        draft_candidates = [item for item in run["candidates"] if item.get("render_mode", "draft") == "draft"]
+        self._withdraw_queued_asks(run_id, candidate_ids={item["candidate_id"] for item in draft_candidates})
         root, state = self._state(run_id)
         for view in VIEWS:
             self._clear_owned_selection(run, view)
-        for candidate in run["candidates"]:
+        for candidate in draft_candidates:
             clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
             state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {}).update(
                 status="PENDING", render_input=None, image_path="", image_sha256="", ask_id="",
@@ -1164,7 +1188,8 @@ class LocalHeadImageService:
                 seed=str(random.SystemRandom().randrange(0, 2**63 - 1)),
             )
         state.update(status=status, stop_requested=False, error="", front_anchor=None,
-                     selected_views={}, rankings={}, target_views=[], target_candidate_ids=[])
+                     selected_views={}, rankings={}, target_views=[],
+                     target_candidate_ids=[item["candidate_id"] for item in draft_candidates] if len(draft_candidates) != len(run["candidates"]) else [])
         self._write(root / "state.json", state)
 
     def rerun_view(self, run_id: str, view: str) -> dict[str, Any]:
@@ -1175,10 +1200,12 @@ class LocalHeadImageService:
         affected_views = set(VIEWS) if view == FRONT and not run.get("character_progression") else {view}
         self._assert_rerun_allowed(run, affected_views)
         root, state = self._state(run_id)
-        self._withdraw_queued_asks(run_id, affected_views=affected_views)
+        affected_candidates = [item for item in run["candidates"] if item["view"] in affected_views and item.get("render_mode", "draft") == "draft"]
+        self._withdraw_queued_asks(run_id, affected_views=affected_views,
+                                  candidate_ids={item["candidate_id"] for item in affected_candidates})
         for affected in affected_views:
             self._clear_owned_selection(run, affected)
-        for item in run["candidates"]:
+        for item in affected_candidates:
             if item["view"] in affected_views:
                 clear_candidate_artifacts(root, item["candidate_id"], item.get("image_path"))
                 state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
@@ -1194,7 +1221,7 @@ class LocalHeadImageService:
         if view == FRONT:
             state["front_anchor"] = None
         state.update(status="RUNNING", stop_requested=False, error="", target_views=[view],
-                     target_candidate_ids=[item["candidate_id"] for item in run["candidates"]
+                     target_candidate_ids=[item["candidate_id"] for item in affected_candidates
                                            if item["view"] == view])
         self._write(root / "state.json", state)
         return self.detail(run_id)
@@ -1206,7 +1233,7 @@ class LocalHeadImageService:
             raise LocalHeadImageError(f"Unknown view: {view}")
         self._assert_rerun_allowed(run, {view})
         root, state = self._state(run_id)
-        candidates = [item for item in run["candidates"] if item["view"] == view and
+        candidates = [item for item in run["candidates"] if item["view"] == view and item.get("render_mode", "draft") == "draft" and
                       (item.get("status") in {"FAILED", "FAILED"} or
                        item.get("human_review", {}).get("decision") == "reject")]
         if not candidates:

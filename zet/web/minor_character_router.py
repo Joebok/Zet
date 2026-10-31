@@ -66,10 +66,16 @@ def create_minor_character_router(provider):
     def delete(sid: str):
         return call(lambda s: s.delete_character(sid))
 
+    @router.post("/{sid}/delete-draft-images")
+    def delete_draft_images(sid: str, data: dict = Body(default={})):
+        return {"character": call(lambda s: s.delete_draft_images(sid, str(data.get("view") or "")))}
+
     @router.post("/{sid}/generate")
     def generate(sid: str, data: dict = Body(...)):
         return {"character": call(lambda s: s.render(sid, "", str(data.get("view", "FRONT")),
-            str(data.get("instructions", "")), str(data.get("candidate_id", "")), data.get("item_ids", []), expected=data["revision"]))}
+            str(data.get("instructions", "")), str(data.get("candidate_id", "")), data.get("item_ids", []), expected=data["revision"],
+            render_mode=data.get("render_mode", "draft"), aspect_ratio=data.get("aspect_ratio"),
+            seed_candidate_id=data.get("seed_candidate_id", "")))}
 
     @router.post("/{sid}/boards/{view}/{action}")
     def board_action(sid: str, view: str, action: str, data: dict = Body(...)):
@@ -89,11 +95,11 @@ def create_minor_character_router(provider):
 
     @router.post("/{sid}/lock")
     def lock(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.lock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"]))}
+        return {"character": call(lambda s: s.lock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"], render_mode=data.get("render_mode", "draft")))}
 
     @router.post("/{sid}/unlock")
     def unlock(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.unlock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"]))}
+        return {"character": call(lambda s: s.unlock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"], render_mode=data.get("render_mode", "draft")))}
 
     @router.get("/{sid}/references/{reference_id}")
     def reference(sid: str, reference_id: str):
@@ -104,7 +110,7 @@ def create_minor_character_router(provider):
         return FileResponse(call(lambda s: s.image_path(sid, candidate_id=candidate_id)))
 
     @router.get("/{sid}/locked/{view}")
-    def locked(sid: str, view: str):
-        return FileResponse(call(lambda s: s.locked_image_path(sid, view)))
+    def locked(sid: str, view: str, render_mode: str = "draft"):
+        return FileResponse(call(lambda s: s.locked_image_path(sid, view, render_mode)))
 
     return router

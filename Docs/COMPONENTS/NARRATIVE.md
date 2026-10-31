@@ -2,6 +2,14 @@
 
 Narrative provides prose-oriented authoring and generation independent of Scene Builder's templates, schemas, and pipeline records. It shares universe configuration, the image library, and infrastructure, not the structured-scene authoring lifecycle. [ADR 0002](../DECISIONS/0002-independent-narrative-workflow.md) records this boundary.
 
+Draft and Final have separate candidate slots, selections and locks. The target
+board exposes a mode and aspect ratio with a configured-size preview; new render
+jobs freeze sizing, and failed-image Retry reuses the saved request and seed.
+Existing candidates remain Draft. Source pickers identify each mode and prefer
+the requested selection with fallback, while already pinned assembly layers stay
+unchanged. Backdrop reuse/crop and scene-text confirmation affect the chosen
+candidate's mode. The [completed plan](../../plans/completed/draft-final-rendering.md) records validation.
+
 ## Implementation and interfaces
 
 | Module | Responsibility |
@@ -86,7 +94,7 @@ mappings and strict lookup failures; the four approved fast scenarios passed.
 
 ## Data and job lifecycle
 
-Locking a candidate replaces every other lock within that target, including final assemblies. The dashboard asks for confirmation when another candidate is already locked; cancelling preserves the existing locks. Selection remains independent.
+Locking a candidate replaces other locks in the same render mode within that target, including final assemblies; locks in the other mode remain independent. The dashboard asks for confirmation when another candidate is already locked; cancelling preserves the existing locks. Selection remains independent.
 
 Responsive cards and image review follow [Dashboard UI](DASHBOARD_UI.md). Existing
 targets with images prioritize viewing on compact screens, with direction and
@@ -363,3 +371,11 @@ changes. Explicit target-creation dimensions override the initial size. Imported
 subscenes retain copied dimensions; linked backdrop local reuse retains source/crop
 bytes. Existing scenes retain their saved ratio; older records missing `canvas`
 continue to read as 16:9. Frozen job and assembly snapshots remain unchanged.
+
+Narrative finished-source discovery prefers a selected Final assembly and falls
+back to a selected Draft assembly when no finished Final image is available.
+
+A target's **Delete all Draft images** action confirms once, fences matching
+active render/prompt jobs, and removes its Draft candidates, selections, locks
+and lettering artifacts. Final candidates and independent Inventory copies
+remain.

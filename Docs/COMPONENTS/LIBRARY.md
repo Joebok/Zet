@@ -110,3 +110,19 @@ usage maintenance replays there, including after restart. Image dependencies use
 availability/catalog version metadata; text/JSON dependency fingerprints remain.
 Primary saves return without synchronous index rebuilds. See
 [ADR 0023](../DECISIONS/0023-streamlined-image-integrity.md).
+
+## Selective image copy
+
+`Backup-Images.ps1` copies Markdown and text as before and obtains image paths
+from `backup_image_manifest.py`. The manifest reads the authoritative Inventory
+catalog and workflow locks: all Inventory images and locked Final character,
+Minor Character and Narrative outputs are eligible. A Narrative lock uses its
+confirmed lettered image when present. Drafts, unlocked work, working Image
+Generator results and intermediate images are excluded unless in Inventory.
+Missing eligible images and unreadable metadata fail enumeration before copying.
+This remains a selective copy, not a database or complete library backup; it
+does not remove files from the destination.
+
+Image Generator can delete all Draft workspace images after confirmation. It
+cancels owned image requests and clears Draft reservations and selection; the
+Final board and separately saved Inventory images remain.

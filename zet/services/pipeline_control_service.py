@@ -26,6 +26,8 @@ class AutomationSettings:
     ai_harvest_auto_enabled: bool
     ai_harvest_interval_seconds: int
     render_backend: str
+    draft_target_pixels: int = 1048576
+    final_target_pixels: int = 4194304
     local_render_backend: str = "comfyui"
     stable_matrix_profile: str = ""
     stable_matrix_positive_prompt_globals: str = ""
@@ -177,6 +179,8 @@ class PipelineControlService:
             ai_harvest_auto_enabled=bool(self.config.ai_harvest_auto_enabled),
             ai_harvest_interval_seconds=int(self.config.ai_harvest_interval_seconds),
             render_backend=str(self.config.render_backend),
+            draft_target_pixels=self.config.draft_target_pixels,
+            final_target_pixels=self.config.final_target_pixels,
             local_render_backend=str(self.config.local_render_backend),
             stable_matrix_profile=str(self.config.local_render_preset),
             stable_matrix_positive_prompt_globals=str(self.config.local_render_positive_prompt_globals),
@@ -236,6 +240,8 @@ class PipelineControlService:
             {"Scope": "Project config", "Setting": "AIHarvest.AutoEnabled", "Value": self.config.ai_harvest_auto_enabled},
             {"Scope": "Project config", "Setting": "AIHarvest.IntervalSeconds", "Value": self.config.ai_harvest_interval_seconds},
             {"Scope": "Project config", "Setting": "Render.Backend", "Value": self.config.render_backend},
+            {"Scope": "Project config", "Setting": "Render.DraftTargetPixels", "Value": self.config.draft_target_pixels},
+            {"Scope": "Project config", "Setting": "Render.FinalTargetPixels", "Value": self.config.final_target_pixels},
             {"Scope": "Project config", "Setting": "AIModels.AssetWorkflow", "Value": self.config.ai_asset_workflow_model},
             {"Scope": "Project config", "Setting": "AIModels.CodexDefault", "Value": self.config.codex_default_model},
             {"Scope": "Project config", "Setting": "AIModels.PromptCondense", "Value": self.config.prompt_condense_model},
@@ -269,6 +275,8 @@ class PipelineControlService:
             ("AIHarvest", "AutoEnabled"): settings.ai_harvest_auto_enabled,
             ("AIHarvest", "IntervalSeconds"): settings.ai_harvest_interval_seconds,
             ("Render", "Backend"): settings.render_backend,
+            ("Render", "DraftTargetPixels"): settings.draft_target_pixels,
+            ("Render", "FinalTargetPixels"): settings.final_target_pixels,
             ("AIModels", "AssetWorkflow"): settings.ai_asset_workflow_model,
             ("AIModels", "CodexDefault"): settings.codex_default_model,
             ("AIModels", "PromptCondense"): settings.prompt_condense_model,
@@ -297,6 +305,9 @@ class PipelineControlService:
         for key, model in values.items():
             if model != self.config.llm_role_models.get(key):
                 catalog.validate(model, required=list(get_role(key).capabilities))
+        for value in (settings.draft_target_pixels, settings.final_target_pixels):
+            if isinstance(value, bool) or not isinstance(value, int) or not 65536 <= value <= 16777216:
+                raise PipelineControlServiceError("Target pixels must be integers between 65536 and 16777216.")
         render_backend = settings.render_backend.strip()
         if render_backend not in self.SAFE_RENDER_BACKENDS:
             choices = ", ".join(sorted(self.SAFE_RENDER_BACKENDS))

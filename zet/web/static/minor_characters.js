@@ -9,7 +9,8 @@
     primary_reference_id:"mc-primary", comparison_reference_id:"mc-comparison-reference"};
   let character = null, universe = "", characters = [], references = [], entryAsset = null;
   let patch = {}, saving = null, saveTimer = null, pollTimer = null, pending = false, generation = 0;
-  let view = "STYLE", preview = "", referenceSignature = "";
+  let view = "STYLE", preview = "", referenceSignature = "", renderMode = "draft";
+  const seedSources = new Map();
   let feedback = "", feedbackDirty = false;
   const suggestions = new Map();
   let comparisonId = "";
@@ -21,6 +22,18 @@
   const message = (text, error = false) => { $("mc-message").textContent = text; $("mc-message").classList.toggle("error", error); };
   const label = value => ({STYLE:"Style alignment", FRONT:"Front", FRONT_LEFT_3_4:"Front left 3/4",
     FRONT_RIGHT_3_4:"Front right 3/4", LEFT_PROFILE:"Left profile", RIGHT_PROFILE:"Right profile"})[value] || value;
+  const boardsOf = (value, mode = renderMode) => mode === "final" ? value?.final_boards || {} : value?.boards || {};
+  const selections = () => renderMode === "final" ? character?.final_selected || {} : character?.selected || {};
+  const locks = () => renderMode === "final" ? character?.final_locked || {} : character?.locked || {};
+  const styleSelection = () => selections().STYLE || (renderMode === "final" ? character?.selected?.STYLE : character?.final_selected?.STYLE) || "";
+  async function updateSizePreview() {
+    const mode=renderMode, ratio=$("mc-render-ratio").value;
+    try {
+      const sizing=await bridge.fetchJson(`/api/image-generation/sizing?${new URLSearchParams({render_mode:mode,aspect_ratio:ratio})}`);
+      if(mode!==renderMode || ratio!==$("mc-render-ratio").value)return;
+      $("mc-render-ratio").setCustomValidity("");$("mc-size-preview").textContent=`${sizing.width} × ${sizing.height}`;
+    } catch(error) {if(mode===renderMode && ratio===$("mc-render-ratio").value){$("mc-render-ratio").setCustomValidity(error.message);$("mc-size-preview").textContent=error.message;}}
+  }
   async function api(path = "", method = "GET", body) {
     if (universe !== bridge.universe()) throw new Error("The active universe changed. Reopen Minor Characters.");
     if (method !== "GET") { pollVersion++; clearTimeout(pollTimer); }
@@ -61,7 +74,7 @@
     saving = api(`/${id}`, "PATCH", data).then(({character:next}) => {
       if (character?.character_id !== id) return;
       for (const key of Object.keys(data)) if (patch[key] === data[key]) delete patch[key];
-      if (patch.board_edit) patch.board_edit.revision = next.boards[patch.board_edit.view].revision;
+      if (patch.board_edit) patch.board_edit.revision = boardsOf(next,patch.board_edit.render_mode)[patch.board_edit.view].revision;
       if (data.references && !patch.references) references = next.references;
       show(next); message("Saved");
     }).finally(() => { saving = null; });
@@ -106,6 +119,8 @@
     $("mc-review").close(); comparisonId = "";
     await flush(); generation++; clearTimeout(pollTimer); pollFailures = 0; pollError = ""; patch = {}; feedback = ""; feedbackDirty = false; suggestions.clear();
     const result = await api(`/${id}`); character = result.character;
+    $("mc-render-ratio").value=character.framing === "portrait" ? "1:1" : "2:3";
+    void updateSizePreview();
     references = character.references; referenceSignature = "";
     view = character.views.includes(character.active_view) ? character.active_view : "STYLE";
     preview = character.preview_candidate_id || ""; route(character.character_id);
@@ -143,7 +158,7 @@
     });
   }
   function show(next) {
-    const edit=patch.board_edit, previous=edit && character?.boards[edit.view], incoming=edit && next.boards[edit.view];
+    const edit=patch.board_edit, previous=edit && boardsOf(character,edit.render_mode)[edit.view], incoming=edit && boardsOf(next,edit.render_mode)[edit.view];
     if (previous && incoming && previous.template_candidate_id===incoming.template_candidate_id
         && incoming.revision>=edit.revision) edit.revision=incoming.revision;
     character = next;
@@ -205,7 +220,7 @@
     }
   }
   function choice() { return character?.candidates.find(c=>c.candidate_id===preview && c.view===view); }
-  function board() { return character?.boards[view]; }
+  function board() { return boardsOf(character)[view]; }
   function occupied() { return (board()?.slots || []).map(id=>character.candidates.find(c=>c.candidate_id===id)).filter(c=>c?.image_url); }
   function persistEdit() {
     const source = choice()?.candidate_id || board()?.edit.candidate_id || "";
@@ -213,31 +228,33 @@
     const itemIds = [...(suggestions.get(source) || [])];
     if (current && current.candidate_id === source && current.view === view
         && current.instructions === feedback && JSON.stringify(current.item_ids || []) === JSON.stringify(itemIds)) return;
-    changed("board_edit", {view, revision:board().revision, candidate_id:source,
+    changed("board_edit", {view, render_mode:renderMode, revision:board().revision, candidate_id:source,
       item_ids:itemIds, instructions:feedback});
   }
   async function selectCandidate(id = preview) {
     await flush(); show((await api(`/${character.character_id}/select`,"POST",{candidate_id:id,revision:board().revision})).character);
   }
   async function slotAction(action, slot, count = 1) {
+    if (!["clear","retry"].includes(action) && !$("mc-render-ratio").reportValidity()) return;
     const id=character.character_id, target=view, current=generation, key=`${id}:${target}:${slot ?? "add"}`;
     if (slotPending.has(key)) return;
     slotPending.add(key); renderImages(); updateButtons();
     try {
       await flush();
-      const result=await api(`/${id}/boards/${target}/slots/action`,"POST",{action,slot,count,revision:board().revision});
+      const seed=$("mc-seed-source").value;
+      const result=await api(`/${id}/boards/${target}/slots/action`,"POST",{action,slot,count,revision:board().revision,render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value,...(["add","regenerate"].includes(action) && seed ? {seed_candidate_id:seed} : {})});
       if (character?.character_id===id && current===generation) show(result.character);
     } catch (error) { message(error.message,true); }
     finally { slotPending.delete(key); if (character?.character_id===id) {renderImages();updateButtons();} }
   }
   async function lockCandidate(candidate) {
     await flush();
-    const locked=character.locked[candidate.view]?.candidate_id===candidate.candidate_id;
-    show((await api(`/${character.character_id}/${locked ? "unlock" : "lock"}`,"POST",{view:candidate.view,candidate_id:candidate.candidate_id,revision:board().revision})).character);
-    message(locked ? "View unlocked. Saved Inventory images are retained." : candidate.view==="STYLE" ? "Style alignment locked." : "Locked image saved to Inventory.");
+    const locked=locks()[candidate.view]?.candidate_id===candidate.candidate_id;
+    show((await api(`/${character.character_id}/${locked ? "unlock" : "lock"}`,"POST",{view:candidate.view,candidate_id:candidate.candidate_id,revision:board().revision,render_mode:renderMode})).character);
+    message(locked ? "View unlocked. Saved Inventory images are retained." : renderMode === "draft" || candidate.view==="STYLE" ? "Image locked privately." : "Locked image saved to Inventory.");
   }
   function lockControl(candidate) {
-    const locked=character.locked[candidate.view]?.candidate_id===candidate.candidate_id;
+    const locked=locks()[candidate.view]?.candidate_id===candidate.candidate_id;
     const title=`${locked ? "Unlock" : "Lock"} ${label(candidate.view).toLowerCase()}`;
     const control=button(locked ? "🔒 Unlock" : "🔓 Lock",()=>lockCandidate(candidate));
     control.title=title;control.setAttribute("aria-label",title);control.setAttribute("aria-pressed",String(locked));
@@ -257,10 +274,10 @@
       if (candidate) add(id, candidate.image_url, caption, candidate.sha256);
     };
     if (view==="STYLE") {
-      for (const id of character.boards.STYLE.slots) addCandidate(id,"Style-alignment candidate");
+      for (const id of boardsOf(character).STYLE.slots) addCandidate(id,"Style-alignment candidate");
     } else {
-      addCandidate(character.selected.STYLE,"Selected style alignment");
-      for (const other of character.views.filter(v=>v!=="STYLE" && v!==view)) addCandidate(character.selected[other],`Selected ${label(other).toLowerCase()}`);
+      addCandidate(styleSelection(),"Selected style alignment");
+      for (const other of character.views.filter(v=>v!=="STYLE" && v!==view)) addCandidate(selections()[other],`Selected ${label(other).toLowerCase()}`);
     }
     return result;
   }
@@ -287,9 +304,9 @@
     }
     if (candidate?.image_url && index>=0) {
       const figure=imageFigure(candidate.image_url,`${character.name} · ${label(view)} · Slot ${board().slots.indexOf(preview)+1}`);
-      const select=button(character.selected[view]===preview ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
+      const select=button(selections()[view]===preview ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
       select.classList.add("primary-action");
-      select.disabled=pending || character.selected[view]===preview;
+      select.disabled=pending || selections()[view]===preview;
       const actions=element("div","","button-row mc-review-actions");actions.append(previous,select);
       if (candidate.can_lock) {
         actions.append(lockControl(candidate));
@@ -312,7 +329,11 @@
   function renderImages() {
     if (!character.views.includes(view)) view="STYLE";
     const current=board();
-    if (!current?.slots.includes(preview)) preview=current?.slots.find(id=>id===character.selected[view]) || current?.slots.find(Boolean) || "";
+    const seedKey=`${renderMode}:${view}`, seedSelect=$("mc-seed-source");
+    const otherCandidates=character.candidates.filter(candidate=>candidate.view===view && (candidate.render_mode || "draft")!==renderMode && Number.isInteger(candidate.seed));
+    const seedSignature=JSON.stringify([seedKey,otherCandidates.map(candidate=>candidate.candidate_id)]);
+    if(seedSelect.dataset.signature!==seedSignature){seedSelect.replaceChildren(new Option("New seed",""),...otherCandidates.map(candidate=>new Option(`Reuse ${candidate.candidate_id.slice(0,8)} (${candidate.render_mode === "final" ? "Final" : "Draft"})`,candidate.candidate_id)));seedSelect.dataset.signature=seedSignature;seedSelect.value=seedSources.get(seedKey) || "";}
+    if (!current?.slots.includes(preview)) preview=current?.slots.find(id=>id===selections()[view]) || current?.slots.find(Boolean) || "";
     $("mc-tabs").replaceChildren();
     for (const target of character.views) {
       const tab=button(label(target),async()=>{
@@ -321,10 +342,10 @@
           message(`Saving changes before switching to ${label(target)}…`);
           await flush();
         }
-        view=target;preview="";comparisonId="";feedback=character.boards[target]?.edit.instructions || "";feedbackDirty=false;
+        view=target;preview="";comparisonId="";feedback=boardsOf(character)[target]?.edit.instructions || "";feedbackDirty=false;
         changed("active_view",view);show(character);
       });
-      tab.disabled=target!=="STYLE" && !character.selected.STYLE && !character.boards[target]?.slots.some(Boolean);
+      tab.disabled=target!=="STYLE" && !styleSelection() && !boardsOf(character)[target]?.slots.some(Boolean);
       tab.title=tab.disabled ? "Select a style-alignment image first" : "";
       tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(view===target));$("mc-tabs").append(tab);
     }
@@ -347,24 +368,26 @@
       if (candidate?.error) card.append(element("p", candidate.error, "error"));
       const controls=element("div","","button-row mc-slot-actions");
       const submitting=slotPending.size>0;
-      const regen=button(candidate ? "Regenerate" : "Generate",async()=>{
+      const slotLocked=Boolean(candidate && locks()[view]?.candidate_id===candidate.candidate_id);
+      const regen=button(candidate?.status === "FAILED" ? "Retry" : candidate ? "Regenerate" : "Generate",async()=>{
         if(candidate) previewCandidate(candidate.candidate_id);
-        await slotAction("regenerate",slot);
+        await slotAction(candidate?.status === "FAILED" ? "retry" : "regenerate",slot);
       },operation=>operation());
-      regen.disabled=pending || submitting || !current?.template_candidate_id;
+      regen.disabled=pending || submitting || slotLocked || !current?.template_candidate_id;
       const clear=button("Clear slot",async()=>{
         if(candidate) previewCandidate(candidate.candidate_id);
         await slotAction("clear",slot);
-      },operation=>operation());clear.disabled=pending || submitting || !candidate;
-      const select=button(candidate && character.selected[view]===candidate.candidate_id ? "Selected" : "Select",async()=>{
+      },operation=>operation());clear.disabled=pending || submitting || slotLocked || !candidate;
+      if (slotLocked) regen.title=clear.title="Unlock this image before replacing its slot.";
+      const select=button(candidate && selections()[view]===candidate.candidate_id ? "Selected" : "Select",async()=>{
         previewCandidate(candidate.candidate_id);await selectCandidate(candidate.candidate_id);
       });select.disabled=pending || !candidate?.image_url;
       clear.classList.add("danger-text-action");
       if (!candidate) regen.classList.add("primary-action");
-      else if (character.selected[view] !== candidate.candidate_id) select.classList.add("primary-action");
-      card.classList.toggle("is-selected", Boolean(candidate && character.selected[view] === candidate.candidate_id));
-      card.dataset.state = !candidate ? "empty" : character.locked[view]?.candidate_id === candidate.candidate_id ? "locked" : character.selected[view] === candidate.candidate_id ? "selected" : candidate.status === "FAILED" ? "failed" : candidate.image_url ? "available" : "pending";
-      if (candidate) card.append(element("p", `${candidate.status.toLowerCase()}${character.selected[view] === candidate.candidate_id ? " · Selected" : ""}${character.locked[view]?.candidate_id === candidate.candidate_id ? " · Locked" : ""}`, "muted image-card-state"));
+      else if (selections()[view] !== candidate.candidate_id) select.classList.add("primary-action");
+      card.classList.toggle("is-selected", Boolean(candidate && selections()[view] === candidate.candidate_id));
+      card.dataset.state = !candidate ? "empty" : locks()[view]?.candidate_id === candidate.candidate_id ? "locked" : selections()[view] === candidate.candidate_id ? "selected" : candidate.status === "FAILED" ? "failed" : candidate.image_url ? "available" : "pending";
+      if (candidate) card.append(element("p", `${renderMode === "final" ? "Final" : "Draft"}${candidate.render_sizing ? ` · requested ${candidate.render_sizing.width} × ${candidate.render_sizing.height}` : ""} · ${candidate.status.toLowerCase()}${selections()[view] === candidate.candidate_id ? " · Selected" : ""}${locks()[view]?.candidate_id === candidate.candidate_id ? " · Locked" : ""}`, "muted image-card-state"));
       if (regen.disabled) card.append(element("p", pending || submitting ? "An operation is in progress." : "Select an alignment image to enable rendering.", "slot-action-reason muted"));
       controls.append(select);
       if(candidate?.can_lock) {
@@ -397,11 +420,12 @@
   }
   function updateButtons() {
     const busy = pending || slotPending.size>0 || character?.busy;
+    $("mc-render-mode").disabled = pending || slotPending.size>0;
     const current=board();
     const candidate=choice(), aligning=view!=="STYLE" && current?.mode!=="true_up";
     $("mc-generate").textContent=view==="STYLE" ? "Generate style alignment" : "Generate view alignment";
     $("mc-generate-help").textContent=view==="STYLE" ? "Establish style and character details without requiring an official view. Select an image before generating views." : "Uses only the selected style image and a short orientation prompt. A new alignment replaces this view's working board.";
-    $("mc-generate").disabled=!character || busy || (view==="STYLE" ? !references.length : !character.selected.STYLE);
+    $("mc-generate").disabled=!character || busy || (view==="STYLE" ? !references.length : !styleSelection());
     $("mc-refine").disabled=!character || busy || (!choice()?.image_url && !current?.edit.candidate_id) || (view!=="STYLE" && current?.mode!=="true_up");
     $("mc-refine").title=aligning ? "Continue to true-ups above to enable these changes" : "";
     $("mc-continue-true-ups").hidden=view==="STYLE" || current?.mode==="true_up";
@@ -412,7 +436,7 @@
         : "Generate a view image, then preview it and continue to true-ups to enable changes."
       : "Use checked suggestions, your additional changes, or both. Suggested changes do not need to finish before you can refine an image.";
     $("mc-undo").disabled=busy || !current?.can_undo;
-    $("mc-restart").disabled=busy || !character || (view==="STYLE" ? !references.length : !character.selected.STYLE);
+    $("mc-restart").disabled=busy || !character || (view==="STYLE" ? !references.length : !styleSelection());
     $("mc-analyze").disabled = !character || busy || !references.length;
     $("mc-add-reference").disabled = pending || references.length>=3;
     $("mc-upload-trigger").disabled = references.length>=3;
@@ -431,22 +455,26 @@
   }
   async function generateImage(refine) {
     await flush();
+    if (!$('mc-render-ratio').reportValidity()) return;
     const source=choice()?.candidate_id || board().edit.candidate_id;
     const result=await api(`/${character.character_id}/generate`,"POST",{view,revision:board().revision,
+      render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value,
+      ...($("mc-seed-source").value ? {seed_candidate_id:$("mc-seed-source").value} : {}),
       ...(refine ? {candidate_id:source,instructions:feedback,item_ids:[...(suggestions.get(source)||[])]} : {})});
     feedbackDirty=false;
-    preview=result.character.boards[view].template_candidate_id;show(result.character);
+    preview=boardsOf(result.character)[view].template_candidate_id;show(result.character);
   }
   async function boardAction(action) {
     await flush();
     const result=await api(`/${character.character_id}/boards/${view}/${action}`,"POST",{revision:board().revision,
+      render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value,
       ...(action==="continue" ? {candidate_id:choice()?.candidate_id || board().selected_id} : {})});
     preview="";show(result.character);
   }
   function viewWorkStarted() {
     return character.views.some(target=>{
       if (target==="STYLE") return false;
-      const current=character.boards[target];
+      const current=boardsOf(character)[target];
       return Boolean(current?.template_candidate_id || current?.slots.some(Boolean) || current?.selected_id
         || current?.mode==="true_up" || current?.can_undo);
     });
@@ -454,12 +482,12 @@
   async function restartCurrentOperation() {
     const target=view, confirmViews=target==="STYLE" && viewWorkStarted();
     if (confirmViews && !(await confirmAction("Restart Style alignment?",
-      "Restarting Style alignment will discard all view images and revisions.", "Restart"))) return;
+      `Restarting ${renderMode} Style alignment will discard that mode's view images and revisions.`, "Restart"))) return;
     await flush();
     const result=await api(`/${character.character_id}/boards/${target}/restart`,"POST",{
-      revision:board().revision, confirm_views_discarded:confirmViews});
+      revision:board().revision, confirm_views_discarded:confirmViews,render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value});
     patch={}; feedback=""; feedbackDirty=false; suggestions.clear(); comparisonId="";
-    view=target; preview=target==="STYLE" ? "" : result.character.boards[target].template_candidate_id;
+    view=target; preview=target==="STYLE" ? "" : boardsOf(result.character)[target].template_candidate_id;
     show(result.character);
   }
   async function load() {
@@ -484,6 +512,9 @@
     if (key==="name") { const match=characters.find(c=>c.character_id!==character?.character_id && c.name.trim().toLocaleLowerCase()===value.trim().toLocaleLowerCase());
       $("mc-rename-match").replaceChildren(); if(match) $("mc-rename-match").append(button(`Open existing ${match.name}`,async()=>{delete patch.name;await open(match.character_id);})); }
   });
+  $("mc-render-mode").addEventListener("change",()=>act(async()=>{await flush();renderMode=$("mc-render-mode").value;preview="";comparisonId="";feedback=boardsOf(character)[view]?.edit.instructions || "";feedbackDirty=false;void updateSizePreview();if(character)show(character);}));
+  $("mc-render-ratio").addEventListener("input",()=>void updateSizePreview());
+  $("mc-seed-source").addEventListener("change",()=>seedSources.set(`${renderMode}:${view}`,$("mc-seed-source").value));
   $("mc-feedback").addEventListener("input",()=>{feedback=$("mc-feedback").value;feedbackDirty=true;persistEdit();});
   $("mc-new-name").addEventListener("input",nameMatch);
   $("mc-create-form").addEventListener("submit",event=>{event.preventDefault();act(async()=>{
@@ -494,6 +525,16 @@
   });});
   $("mc-continue-true-ups").addEventListener("click",()=>act(()=>boardAction("continue")));
   $("mc-undo").addEventListener("click",()=>act(()=>boardAction("undo")));
+  for (const [id, all] of [["mc-delete-draft-view", false], ["mc-delete-draft-all", true]]) {
+    $(id).addEventListener("click",()=>act(async()=>{
+      const scope = all ? "this character" : label(view);
+      if (!(await confirmAction("Delete Draft images?", `Delete all Draft images for ${scope}, including selected and locked images? Matching renders will be cancelled. Final images and Inventory copies remain.`, "Delete Draft images"))) return;
+      await flush();
+      const result = await api(`/${character.character_id}/delete-draft-images`, "POST", all ? {} : {view});
+      preview=""; comparisonId=""; feedback=""; feedbackDirty=false;
+      show(result.character); message("Draft images deleted.");
+    }));
+  }
   $("mc-restart").addEventListener("click",()=>act(restartCurrentOperation));
   $("mc-delete").addEventListener("click",()=>act(()=>deleteCharacter(character.character_id,character.name)));
   $("mc-continue").addEventListener("click",()=>act(async()=>{entryAsset=null;await open($("mc-continue-choice").value);}));
