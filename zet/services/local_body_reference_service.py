@@ -565,6 +565,7 @@ class LocalBodyReferenceService:
                 if candidate.get("luna_status") in {"QUEUED", "RUNNING"}:
                     candidate["luna_status"] = "INTERRUPTED"
         value["candidates"] = list(candidates.values())
+        value["root"] = str(root)
         from zet.services.local_view_reference_service import selected_run_for_mode
         from zet.services.local_image_ranking_service import locked_draft_comparison
         final_anchor = selected_run_for_mode(value, "final").get("front_anchor")
@@ -618,7 +619,6 @@ class LocalBodyReferenceService:
                 and self._all_selected_views_locked(value)):
             value["status"] = "COMPLETE"
             value["stale_selections"] = []
-        value["root"] = str(root)
         value["local_assets"] = self.asset_store.detail(
             str(value.get("character") or ""), str(value.get("phase") or "")
         ).get("assets", {})
