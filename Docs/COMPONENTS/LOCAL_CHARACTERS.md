@@ -1,5 +1,7 @@
 # Local character assets
 
+Shared slot recovery reattaches current candidates affected by the historical render-wait timeout to their original queued requests, or restores successful harvested images to review eligibility. It checks slot membership, request identity and receipts before changing state.
+
 ## Mode-aware batch rendering (2026-10-31)
 
 The five local character pipelines expose Run front and Run available for the

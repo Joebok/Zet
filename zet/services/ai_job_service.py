@@ -58,7 +58,7 @@ class AIJobService:
                     execution = json.loads((self.client.root / "Control/execution_status.json").read_text(encoding="utf-8"))
                 except FileNotFoundError:
                     execution = {}
-                if execution.get("local_execution_blocked"):
+                if execution.get("local_execution_blocked") and execution.get("health") != "busy":
                     return {**info, "status": "HELD", "blocking_reason": execution.get("reason", "Backend reconciliation requires attention"), "location": "recovery"}
             return {**info, "status": "SUPERSEDED" if recovery["status"] == "SUPERSEDED" else "RECOVERING",
                     "blocking_reason": recovery.get("reason", ""), "location": "recovery"}
@@ -109,7 +109,7 @@ class AIJobService:
     def is_pending(self, job_id):
         """Known unfinished requests do not expire while queued or being collected."""
         return self.inspect(job_id)["status"] in {
-            "QUEUED", "RUNNING", "ANSWERED", "HARVESTING", "HARVEST_FAILED", "TRANSFERRING", "RECOVERY_REQUIRED", "PAUSED_STORAGE", "RECOVERING", "HELD"}
+            "QUEUED", "RUNNING", "ANSWERED", "HARVESTING", "HARVEST_FAILED", "TRANSFERRING", "RECOVERY_REQUIRED", "PAUSED_STORAGE", "RECOVERING", "RECONCILING", "HELD"}
 
     def assert_image_harvest(self, job_id, image_path, expected_hash=""):
         """Check a current domain-owned file; callers fence candidate/attempt identity."""

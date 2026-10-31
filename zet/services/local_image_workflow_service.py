@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from datetime import datetime, timezone
+import json
 
 from zet.services.local_body_reference_service import LocalBodyReferenceService
 from zet.services.local_character_asset_pipeline_service import LocalCharacterAssetPipelineService
@@ -14,6 +16,18 @@ from zet.services.render_slot_service import CharacterRenderSlots, RenderSlotCon
 
 class LocalImageWorkflowError(ValueError):
     pass
+
+
+def read_proxy_health(control: Path) -> dict[str, str]:
+    try:
+        health = json.loads(control.read_text(encoding="utf-8"))
+        observed = datetime.fromisoformat(str(health.get("observed_at", "")).replace("Z", "+00:00"))
+        if observed.tzinfo is None or (datetime.now(timezone.utc) - observed).total_seconds() > 90:
+            raise ValueError("stale proxy status")
+        return {"status": health.get("health", "unavailable"), "observed_at": health.get("observed_at", ""),
+                "reason": health.get("reason", "") if health.get("health") == "attention" else ""}
+    except (OSError, ValueError, TypeError):
+        return {"status": "unavailable", "reason": "AI_Proxy status unavailable"}
 
 
 class LocalImagePipelineWorkflowService:
@@ -66,6 +80,8 @@ class LocalImagePipelineWorkflowService:
                     "slot_render_ids": list(state.get("slot_render_ids") or []),
                     "slot_review_views": list(state.get("slot_review_views") or []),
                     "final_slot_review_views": list(state.get("final_slot_review_views") or []),
+                    "timeout_candidates": any("Timed out waiting for the render" in str(c.get("render_error") or "")
+                                              for c in (state.get("candidates") or {}).values()),
                     "target_candidate_ids": list(state.get("target_candidate_ids") or []),
                     "target_views": list(state.get("target_views") or []),
                 })
@@ -406,6 +422,8 @@ class LocalImagePipelineWorkflowService:
         """Return loaded workflow state in the same shape for detail and mutation routes."""
         presented = self.prompt_improvement.project(run)
         presented = self.slots.detail(presented)
+        control = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.root / "Control" / "execution_status.json"
+        presented["proxy_health"] = read_proxy_health(control)
         pipeline = getattr(self.adapter, "asset_pipeline", None) or getattr(self.adapter, "definition", {}).get("asset_pipeline", self.pipeline)
         qualifier = self.adapter._qualifier(str(presented.get("costume") or "")) if self.pipeline == "costume-dressing" else ""
         records = self.adapter.asset_store.locked_assets(presented["character"], presented["phase"], pipeline, qualifier, render_mode="draft")
@@ -417,6 +435,19 @@ class LocalImagePipelineWorkflowService:
             image_path = str(candidate.get("image_path") or "")
             available = bool(image_path and Path(image_path).is_file())
             candidate["image_available"] = available
+            if not available and candidate.get("ask_id") and candidate.get("render_status") in {"QUEUED", "RUNNING"}:
+                try:
+                    info = self.app.ai_proxy_service.ai_proxy_path_service.jobs.inspect(candidate["ask_id"])
+                except (OSError, ValueError):
+                    info = {"status": "RECONCILING"}
+                state = info.get("status", "RECONCILING")
+                if info.get("location") == "receipt":
+                    state = "RECOVERY_REQUIRED"
+                candidate["queue_status_label"] = {"QUEUED": "Queued", "RUNNING": "Rendering", "ANSWERED": "Collecting results",
+                    "HARVESTING": "Collecting results", "TRANSFERRING": "Collecting results", "HARVEST_FAILED": "Collection needs attention",
+                    "RECOVERY_REQUIRED": "Recovery needs attention", "PAUSED_STORAGE": "Waiting for storage", "HELD": "AI_Proxy needs attention",
+                    "RECOVERING": "Recovering", "RECONCILING": "Checking job status"}.get(state, "Checking job status")
+                candidate["queue_checked_at"] = datetime.now(timezone.utc).isoformat()
             if not available:
                 candidate["image_path"] = ""
         from zet.services.local_mode_progress_service import progress_by_mode

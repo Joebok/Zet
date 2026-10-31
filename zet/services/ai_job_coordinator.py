@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 import socket
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from zet.repositories.ai_job_repository import AIJobRepository, timestamp
@@ -38,6 +39,7 @@ class AIJobCoordinator:
         self._stop = threading.Event()
         self._thread = None
         self._discovered = set()
+        self._image_poll_at = {}
         from zet.services.storage_recovery_service import StorageRecoveryService
         self.recovery = StorageRecoveryService(app)
         self.handlers = {
@@ -164,6 +166,8 @@ class AIJobCoordinator:
     def _sweep(self, *, retry_failed=False):
         from zet.services.storage_health_service import StorageUnavailable
         from zet.services.ai_job_cleanup_service import AIJobCleanupService
+        cutoff = time.monotonic() - 300
+        self._image_poll_at = {key: due for key, due in self._image_poll_at.items() if due >= cutoff}
         AIJobCleanupService(self.app.ai_proxy_service.ai_proxy_path_service).cleanup_pending()
         lifecycle = self.app.ai_proxy_service.ai_proxy_path_service.lifecycle
         before = {row.get("ask_id") for _, row in lifecycle.iter_receipts() or ()}
@@ -311,6 +315,12 @@ class AIJobCoordinator:
                 continue
             ask = record.get("manifest", {})
             consumer = record.get("consumer", "zet")
+            if consumer == "zet-image-generation":
+                key = (app.universe_id, ask.get("ad_hoc_request_id") or job_id)
+                now = time.monotonic()
+                if now < self._image_poll_at.get(key, 0):
+                    continue
+                self._image_poll_at[key] = now + 30
             try:
                 handler = self.handlers.get(consumer)
                 if handler is not None:

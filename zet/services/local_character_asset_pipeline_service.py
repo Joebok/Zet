@@ -895,7 +895,6 @@ class LocalCharacterAssetPipelineService:
         if candidate is None:
             return True
         target = Path(str(candidate.get("image_path") or ""))
-        deadline = time.monotonic() + 1860
         while not self.app.ai_proxy_service.ai_proxy_path_service.jobs.image_harvest_ready(str(candidate.get("ask_id") or ""), target):
             if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id, costume)["candidates"]):
                 return True
@@ -908,8 +907,6 @@ class LocalCharacterAssetPipelineService:
             _, answer = self._proxy_answer(str(candidate.get("ask_id") or ""))
             if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalCharacterAssetPipelineError(str(answer.get("error_message") or "Local render failed."))
-            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(candidate.get("ask_id") or "")):
-                raise LocalCharacterAssetPipelineError("Timed out waiting for the local render.")
             time.sleep(max(.5, float(self.app.config.comfyui_poll_seconds)))
         self._update(run_id, candidate_id, costume, status="WAITING_FOR_HUMAN_REVIEW", image_sha256=self._hash(target), rendered_at=self._now())
         return True

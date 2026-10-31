@@ -580,7 +580,10 @@
       ? ranking.luna_ordered_candidate_ids
       : ranking.ordered_candidate_ids || [];
     const rank = rankingOrder.indexOf(candidate.candidate_id);
-    status.textContent = `${candidate.slot_waiting ? `Waiting for prerequisites · ${candidate.slot_waiting}` : renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${rank >= 0 ? ` · Rank #${rank + 1}${ranking.status === "STALE" ? " (stale)" : ""}` : ""}`;
+    const proxy = state.run?.proxy_health;
+    const warning = ["QUEUED", "RUNNING"].includes(candidate.render_status) && ["attention", "unavailable"].includes(proxy?.status) ? ` · ${proxy.reason || "AI_Proxy needs attention"}` : "";
+    const checked = candidate.queue_checked_at ? ` · Checked ${new Date(candidate.queue_checked_at).toLocaleTimeString()}` : "";
+    status.textContent = `${candidate.slot_waiting ? `Waiting for prerequisites · ${candidate.slot_waiting}` : candidate.queue_status_label || renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${warning}${checked}${rank >= 0 ? ` · Rank #${rank + 1}${ranking.status === "STALE" ? " (stale)" : ""}` : ""}`;
     if (candidate.override) status.textContent += " / Override";
     card.append(status);
     const renderError = renderErrorDetails(candidate);
@@ -1385,9 +1388,15 @@
   function startPolling() {
     clearInterval(state.poll);
     state.poll = setInterval(() => {
-      if (state.pipeline && document.querySelector("#local-pipeline-page").classList.contains("active") && state.run?.run_id) void pollForImages(state.run.run_id, state.generation);
-    }, 5000);
+      if (!document.hidden && state.pipeline && document.querySelector("#local-pipeline-page").classList.contains("active") && state.run?.run_id) void pollForImages(state.run.run_id, state.generation);
+    }, 30000);
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.pipeline && document.querySelector("#local-pipeline-page")?.classList.contains("active") && state.run?.run_id) {
+      void pollForImages(state.run.run_id, state.generation);
+    }
+  });
 
   function configurePipeline(pipeline) {
     state.pipeline = pipeline;

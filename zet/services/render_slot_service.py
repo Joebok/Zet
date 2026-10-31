@@ -18,9 +18,14 @@ SLOT_COUNT = 8
 ASSEMBLY_INPUT_VERSION = 2
 _SLOT_WORKERS: set[str] = set()
 _SLOT_WORKERS_LOCK = threading.Lock()
+_SLOT_WAKEUPS: dict[str, threading.Event] = {}
 
 
 class RenderSlotConflict(ValueError):
+    pass
+
+
+class RenderExecutionFailure(ValueError):
     pass
 
 
@@ -573,6 +578,54 @@ class CharacterRenderSlots:
         result["submitted_candidate_ids"] = created
         return result
 
+    def recover_timeouts(self, run_id: str, costume: str = "") -> None:
+        """Reattach current slots to their original requests after a historical wait timeout."""
+        from zet.services.workflow_storage import file_lock, validate_image
+        from zet.services.local_image_pipeline_policy import mutate_local_run_state
+
+        root = Path(self.workflow.prompt_improvement.detail(run_id, costume)["root"])
+        jobs = self.adapter.app.ai_proxy_service.ai_proxy_path_service.jobs
+        with file_lock(root / "state.lock"):
+            run = self.workflow.prompt_improvement.detail(run_id, costume)
+            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            if state.get("stop_requested") or state.get("slot_paused"):
+                return
+            slots = {cid for field in ("slots_by_view", "final_slots_by_view")
+                     for values in (state.get(field) or {}).values() for cid in values if cid}
+            changes = {}
+            pending = []
+            for candidate in run.get("candidates", []):
+                cid = candidate.get("candidate_id")
+                ask = str(candidate.get("ask_id") or "")
+                saved_error = (state.get("candidates") or {}).get(cid, {}).get("render_error", "")
+                if cid not in slots or not ask or "Timed out waiting for the render" not in str(saved_error):
+                    continue
+                info = jobs.inspect(ask)
+                record = jobs.repository.get(ask)
+                manifest = record.get("manifest") or {}
+                source = str(manifest.get("source_ask_id") or "")
+                if (manifest.get("ask_id") != ask or manifest.get("universe_id") != self.adapter.app.universe_id
+                        or run_id not in source or f"_{cid}_" not in source or info.get("status") in {"DELETED", "SUPERSEDED"}
+                        or info.get("current_attempt_id", ask) != ask):
+                    continue
+                target = Path(str(candidate.get("image_path") or ""))
+                if info.get("location") == "receipt" and info.get("execution_status") == "SUCCEEDED" and info.get("answer_status") == "SUCCESS" and target.is_file() and target.resolve().is_relative_to(root.resolve()):
+                    validate_image(target.read_bytes())
+                    changes[cid] = {"status": "WAITING_FOR_HUMAN_REVIEW", "render_error": "", "image_sha256": self.adapter._hash(target)}
+                elif info.get("location") == "receipt" and info.get("execution_status") == "SUCCEEDED" and info.get("answer_status") == "SUCCESS":
+                    changes[cid] = {"status": "QUEUED", "render_error": ""}
+                    pending.append(cid)
+                elif info.get("location") in {"ask", "running", "answer", "inbox"} or info.get("status") in {"RECOVERY_REQUIRED", "RECONCILING", "PAUSED_STORAGE", "HELD", "RECOVERING", "HARVEST_FAILED"}:
+                    changes[cid] = {"status": "RUNNING" if info.get("location") == "running" else "QUEUED", "render_error": ""}
+                    pending.append(cid)
+            if changes:
+                def apply(state):
+                    for cid, update in changes.items():
+                        state.setdefault("candidates", {}).setdefault(cid, {}).update(update)
+                    ids = state.setdefault("slot_render_ids", [])
+                    ids.extend(cid for cid in pending if cid not in ids)
+                mutate_local_run_state(root, apply)
+
     def collect(self, run_id: str, costume: str = "") -> None:
         """Reconcile independent slot asks without owning the batch runner lock."""
         from zet.services.local_image_pipeline_policy import mutate_local_run_state
@@ -616,41 +669,45 @@ class CharacterRenderSlots:
                                 if not candidate.get("ask_id"):
                                     self.adapter.queue_render_candidate(run_id, cid, **kwargs)
                                     candidate = next(c for c in load()["candidates"] if c["candidate_id"] == cid)
-                                if self.workflow.pipeline == "body-reference":
-                                    target = Path(candidate["image_path"])
-                                    self.adapter._harvest_local_body_reference_answer(run_id, cid, candidate["ask_id"], target)
-                                elif self.workflow.pipeline in {"head-image", "head-image-edit"}:
-                                    self.adapter._harvest(run_id, candidate)
-                                else:
-                                    self.adapter._harvest_render(run, candidate)
                                 target = Path(candidate["image_path"])
-                                status, answer = self.adapter._proxy_answer(candidate["ask_id"])
+                                status, answer = ("HARVESTED", {}) if target.is_file() else self.adapter._proxy_answer(candidate["ask_id"])
+                                if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
+                                    raise RenderExecutionFailure(answer.get("error_message") or "AI Proxy render failed.")
+                                if not target.is_file():
+                                    if self.workflow.pipeline == "body-reference":
+                                        self.adapter._harvest_local_body_reference_answer(run_id, cid, candidate["ask_id"], target)
+                                    elif self.workflow.pipeline in {"head-image", "head-image-edit"}:
+                                        self.adapter._harvest(run_id, candidate)
+                                    else:
+                                        self.adapter._harvest_render(run, candidate)
+                                target = Path(candidate["image_path"])
                                 if target.is_file():
                                     updates = {"status": "WAITING_FOR_HUMAN_REVIEW", "image_sha256": self.adapter._hash(target), "render_error": ""}
                                     changed.add((candidate.get("render_mode", "draft"), candidate["view"]))
                                     done.add(cid)
-                                elif answer.get("status") in {"ERROR", "RETRY_LATER"} or status == "UNKNOWN":
-                                    raise ValueError(answer.get("error_message") or "Render ask is missing. Use Retry to resubmit it.")
                                 else:
-                                    queued_at = datetime.fromisoformat(candidate["queued_at"])
-                                    # Queue time counts toward the one-hour grace period.
-                                    # Known unfinished asks remain owned by AI_Proxy.
-                                    if ((datetime.now(queued_at.tzinfo) - queued_at).total_seconds() > 3600
-                                            and not self.adapter.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(candidate["ask_id"])):
-                                        raise ValueError("Timed out waiting for the render. Use Retry after checking AI_Proxy.")
                                     updates = {"status": "RUNNING" if status == "RUNNING" else "QUEUED"}
-                                self._update(run_id, cid, costume, updates)
-                            except Exception as exc:
+                                if any(candidate.get(key) != value for key, value in updates.items()):
+                                    self._update(run_id, cid, costume, updates)
+                            except RenderExecutionFailure as exc:
                                 self._update(run_id, cid, costume, {"status": "FAILED", "render_error": str(exc)})
                                 done.add(cid)
                                 changed.add((candidate.get("render_mode", "draft"), candidate["view"]))
+                            except Exception as exc:
+                                if not candidate.get("ask_id") and isinstance(exc, ValueError):
+                                    self._update(run_id, cid, costume, {"status": "FAILED", "render_error": str(exc)})
+                                    done.add(cid)
+                                    changed.add((candidate.get("render_mode", "draft"), candidate["view"]))
+                                else:
+                                    mutate_local_run_state(root, lambda state: state.update(slot_collection_error=str(exc)))
                     def finish(state):
                         state["slot_render_ids"] = [cid for cid in state.get("slot_render_ids", []) if cid not in done]
                         for mode, view in changed:
                             views = state.setdefault("slot_review_views" if mode == "draft" else "final_slot_review_views", [])
                             if view not in views:
                                 views.append(view)
-                    mutate_local_run_state(root, finish)
+                    if done or changed:
+                        mutate_local_run_state(root, finish)
                     for mode, view in review_views | changed:
                         with file_lock(root / "state.lock"):
                             run = load()
@@ -668,7 +725,13 @@ class CharacterRenderSlots:
                             if any(Path(str(c.get("image_path") or "")).is_file() for c in mode_candidates):
                                 self.workflow.stage_view_evaluation(run_id, view, costume=costume, render_mode=mode)
                             mutate_local_run_state(root, lambda state, view=view, field=field: state.update({field: [v for v in state.get(field, []) if v != view]}))
-                    time.sleep(max(.5, float(self.adapter.app.config.comfyui_poll_seconds)))
+                    with _SLOT_WORKERS_LOCK:
+                        wakeup = _SLOT_WAKEUPS.get(str(root.resolve()))
+                    if wakeup is None:
+                        time.sleep(30)
+                    else:
+                        wakeup.wait(30)
+                        wakeup.clear()
         except TimeoutError:
             return
 
@@ -818,7 +881,7 @@ class CharacterRenderSlots:
             raise RenderSlotConflict("No occupied slots in this mode.")
         return {"render_mode": payload["render_mode"], "submitted_candidate_ids": submitted, "errors": errors}
 
-    def start(self, run_id: str, costume: str = "") -> None:
+    def start(self, run_id: str, costume: str = "", *, wake: bool = True) -> None:
         """Deduplicate collectors and close the last-action/worker-exit race."""
         from zet.services.local_character_overview_service import submit_local_pipeline_task
         run = self.workflow.prompt_improvement.detail(run_id, costume)
@@ -826,8 +889,11 @@ class CharacterRenderSlots:
         key = str(root.resolve())
         with _SLOT_WORKERS_LOCK:
             if key in _SLOT_WORKERS:
+                if wake:
+                    _SLOT_WAKEUPS[key].set()
                 return
             _SLOT_WORKERS.add(key)
+            _SLOT_WAKEUPS[key] = threading.Event()
 
         def work():
             finished = False
@@ -841,6 +907,7 @@ class CharacterRenderSlots:
             finally:
                 with _SLOT_WORKERS_LOCK:
                     _SLOT_WORKERS.discard(key)
+                    _SLOT_WAKEUPS.pop(key, None)
                 if finished and (root / "state.json").is_file():
                     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
                     if not state.get("stop_requested") and not state.get("slot_paused") and (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):

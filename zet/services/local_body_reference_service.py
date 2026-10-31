@@ -2147,7 +2147,6 @@ class LocalBodyReferenceService:
         if candidate is None:
             return True
         image = Path(str(candidate.get("image_path") or ""))
-        deadline = time.monotonic() + 1860
         while not self.app.ai_proxy_service.ai_proxy_path_service.jobs.image_harvest_ready(str(candidate.get("ask_id") or ""), image):
             if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id)["candidates"]):
                 return True
@@ -2160,8 +2159,6 @@ class LocalBodyReferenceService:
             if proxy_status == "RUNNING" and candidate.get("status") != "RUNNING":
                 self._candidate_update(run_id, candidate_id, {"status": "RUNNING"})
                 candidate["status"] = "RUNNING"
-            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(candidate.get("ask_id") or "")):
-                raise LocalBodyReferenceError("Timed out waiting for the render; use Retry after checking AI Proxy.")
             time.sleep(max(0.5, float(self.app.config.comfyui_poll_seconds)))
         self._candidate_update(run_id, candidate_id, {"status": "WAITING_FOR_HUMAN_REVIEW", "completed_at": "",
                                                     "image_sha256": self._hash(image), "render_error": ""})

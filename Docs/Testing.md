@@ -1,5 +1,9 @@
 # Local testing
 
+## Long-running render queues (2026-10-31)
+
+The approved fast Zet scenarios passed (four scenarios, 42.3 seconds) and the existing AI_Proxy file-job, dashboard and ComfyUI settlement scenarios passed (three scenarios). Disposable checks exercised queued and retained-answer reattachment, successful-image recovery, missing evidence, repeated recovery, stopped and detached candidates, deletion and replaced attempts. Isolated checks exercised ready, busy, unresolved, recovered and stale heartbeat status. Disposable Chromium checks exercised candidate status labels, unavailable proxy, 30-second polling, hidden-page suspension and refresh on return. These checks used prepared local fixtures; they did not deploy or run live models. The affected production batch requires reconciliation after a separately authorized update.
+
 ## Bulk render lock contention (2026-10-31)
 
 All four approved fast E2E scenarios passed (`npm.cmd run test:e2e`, 42.2s).

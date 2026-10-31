@@ -1,5 +1,7 @@
 # Capability code map
 
+Long-running local renders: CharacterRenderSlots.recover_timeouts reattaches historically timed-out slots; StorageRecoveryService discovers them. LocalImagePipelineWorkflowService projects queue and proxy health; AI_Proxy publishes the execution heartbeat.
+
 Mode-aware local batches: `CharacterRenderSlots.run_available` reserves configured candidates for the slot collector. `local_mode_progress_service.py` projects Draft/Final progress for workflow detail and batch summaries. The shared local pipeline and batch-status controllers expose the mode actions.
 
 Character image ranking keeps Draft and Final evaluations separate. The shared ranking service resolves matching Draft locks as comparison-only evidence; character adapters fence results and the slot collector recovers each mode independently. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md).

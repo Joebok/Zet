@@ -1,5 +1,7 @@
 # System contracts
 
+Queue waiting time alone never invalidates a character render. Historical timeout recovery retains original request and candidate identities, and terminal worker outcomes remain distinct from collection problems.
+
 New local character Final render inputs require Final same-batch selections and
 Final upstream pipeline locks. Explicit external images and existing frozen
 requests remain valid. Draft mode retains its existing preference and fallback.

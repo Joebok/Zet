@@ -88,7 +88,7 @@ class LocalRunAllRemainingService:
                     state_path = Path(run["root"]) / "state.json"
                     state = self._read(state_path)
                     if not run.get("stop_requested") and (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):
-                        LocalImagePipelineWorkflowService(self.app, self.project_root, pipeline).slots.start(run_id, kwargs.get("costume", ""))
+                        LocalImagePipelineWorkflowService(self.app, self.project_root, pipeline).slots.start(run_id, kwargs.get("costume", ""), wake=False)
                 except Exception:
                     continue
                 images = [Path(str(item.get("image_path") or "")) for item in run.get("candidates") or []]

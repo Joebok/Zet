@@ -601,7 +601,6 @@ class LocalHeadImageService:
         if candidate is None:
             return True
         target = Path(str(candidate.get("image_path") or ""))
-        deadline = time.monotonic() + 1860
         while not self.app.ai_proxy_service.ai_proxy_path_service.jobs.image_harvest_ready(str(candidate.get("ask_id") or ""), target):
             if not any(c["candidate_id"] == candidate_id for c in self.detail(run_id)["candidates"]):
                 return True
@@ -614,8 +613,6 @@ class LocalHeadImageService:
             _, answer = self._proxy_answer(str(candidate.get("ask_id") or ""))
             if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
                 raise LocalHeadImageError(str(answer.get("error_message") or "ComfyUI render failed."))
-            if time.monotonic() >= deadline and not self.app.ai_proxy_service.ai_proxy_path_service.jobs.is_pending(str(candidate.get("ask_id") or "")):
-                raise LocalHeadImageError("Timed out waiting for the ComfyUI render.")
             time.sleep(max(.5, float(self.app.config.comfyui_poll_seconds)))
         try:
             self._update(run_id, candidate_id, status="WAITING_FOR_HUMAN_REVIEW", image_sha256=self._hash(target), rendered_at=self._now())

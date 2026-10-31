@@ -1,5 +1,7 @@
 # AI queues, harvesting, and recovery
 
+Slot render collection checks pending candidates at 30-second intervals. Queue age alone does not fail a slot; terminal worker errors remain failures and collection errors retain the pending request. Timeout recovery reuses only current slot identities and never submits a replacement request.
+
 Zet is a **producer/subscriber** of a separate AI Proxy system. Queue payloads may be shared across machines; consumer routes and completion state may be local. This document owns transport/recovery flow; per-workflow state semantics belong to [LOCAL_CHARACTERS](LOCAL_CHARACTERS.md), [SCENE_BUILDER](SCENE_BUILDER.md), or [NARRATIVE](NARRATIVE.md).
 
 ## Interfaces and storage boundaries

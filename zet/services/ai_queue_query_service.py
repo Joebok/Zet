@@ -82,7 +82,7 @@ class AIQueueQueryService:
                            "task_type": ask.get("task_type", ""), "worker_type": ask.get("worker_type", ""),
                            "created_at": envelope.get("created_at", rows.get(path.name, {}).get("created_at", "")),
                            "owner": {key: value for key, value in ask.items() if key.endswith("_id") or key in {"character", "phase", "view", "costume"}}, "details": ""}
-                    if status == "QUEUED" and provider in {"ollama", "comfyui"} and execution.get("local_execution_blocked"):
+                    if status == "QUEUED" and provider in {"ollama", "comfyui"} and execution.get("local_execution_blocked") and execution.get("health") != "busy":
                         row.update(status="HELD", details=execution.get("reason", "Local execution is blocked"))
                     if root == self.paths.manual_ask_root():
                         from zet.services.workflow_storage import task_state_path

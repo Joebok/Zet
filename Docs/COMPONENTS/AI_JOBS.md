@@ -1,5 +1,7 @@
 # Shared AI jobs
 
+Local render slots preserve queued requests across long waits. Historical slot wait-timeout errors are reconciled against current slot ownership, the original request identity, transport evidence and successful receipts. A retained result is not a new execution. AI_Proxy's additive execution status includes a 30-second heartbeat and distinguishes active ComfyUI work from a held backend; Zet treats status older than 90 seconds as unavailable. Older proxies without a heartbeat display unavailable until updated.
+
 This document owns the unified creative AI request, collection, activity and model
 selection interfaces introduced on 2026-10-16. [Queues](QUEUES.md) owns envelope
 transfer and retention; workflow components own interpretation of their outputs.
