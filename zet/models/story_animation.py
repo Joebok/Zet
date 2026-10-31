@@ -10,7 +10,8 @@ class ResolvedAnimation:
     duration_ms: int
     shots: tuple[dict, ...]
     assets: dict[str, dict]
+    transitions: tuple[dict, ...]
 
 
 def default_spec(name: str) -> dict:
-    return {"version": 1, "name": name, "aspect_ratio": "16:9", "shots": []}
+    return {"version": 2, "name": name, "aspect_ratio": "16:9", "shots": [], "transitions": []}

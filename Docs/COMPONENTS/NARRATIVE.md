@@ -43,6 +43,8 @@ fixture checks cover these contracts; S1/S3 remain the maintained regressions.
 
 ## Story animation (initial implementation, 2026-10-30)
 
+Version 2 stores transitions by position, independently of scene order. Opening and closing fades hold the first or last scene during their timer; internal fades and dissolves overlap scenes, and timed cuts hold the outgoing scene. The workspace supports white fades, ordering, refresh from locked assemblies, and text visibility through the scene endpoint. The Celestial Sphere animation was converted once with a backup; there is no automatic migration.
+
 Animations are persisted beneath a story in `animations/<id>/`; their versioned
 specification references pinned source IDs and contains ordered shots, durations,
 camera tracks, text opacity tracks and transitions. `StoryAnimationService`
@@ -65,7 +67,7 @@ text fades. Full keyframe editing, animation management controls and the optiona
 LLM interview are not implemented. No maintained E2E scenario covers animation.
 
 Target camera mode stores normalized image coordinates with start/end zoom in
-version-1 keyframes. The player clamps framing to the fitted image and keeps
+version-2 keyframes. The player clamps framing to the fitted image and keeps
 lettering attached to the artwork using the same camera transform. Older camera-center tracks retain their camera interpretation.
 Text timing is edited using percentage fade-in and fade-out start controls; fades use up to 300 ms. Existing custom tracks remain unchanged until edited.
 The target picker saves the current animation through the revision-checked path.

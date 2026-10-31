@@ -19,7 +19,7 @@ from zet.models.story_animation import ResolvedAnimation
 
 
 EASINGS = {"linear", "ease-in-out", "step"}
-TRANSITIONS = {"cut", "dissolve", "fade-through-black"}
+TRANSITIONS = {"cut", "dissolve", "fade-through-black", "fade-through-white"}
 
 
 def normalize_durations(spec):
@@ -45,19 +45,6 @@ def normalize_durations(spec):
                 if normalized and isinstance(normalized[-1],dict) and normalized[-1].get("time_ms")==key["time_ms"]: normalized[-1]=key
                 else: normalized.append(key)
             keys[:]=normalized
-    for i,shot in enumerate(result["shots"]):
-        if not isinstance(shot,dict): continue
-        tr=shot.get("transition")
-        if not isinstance(tr,dict) or tr.get("type","cut")=="cut": continue
-        overlap=tr.get("duration_ms",0); duration=shot.get("duration_ms")
-        if isinstance(overlap,bool) or not isinstance(overlap,(int,float)) or not math.isfinite(overlap) or not isinstance(duration,int): continue
-        previous=result["shots"][i-1].get("transition",{}).get("duration_ms",0) if i and isinstance(result["shots"][i-1],dict) and isinstance(result["shots"][i-1].get("transition",{}),dict) else 0
-        if not isinstance(previous,int) or isinstance(previous,bool): continue
-        next_duration=result["shots"][i+1].get("duration_ms",duration) if i+1<len(result["shots"]) and isinstance(result["shots"][i+1],dict) else duration
-        if not isinstance(next_duration,int) or isinstance(next_duration,bool): continue
-        limit=min(duration-previous,next_duration)
-        if limit<1: shot["transition"]={"type":"cut","duration_ms":0}
-        else: tr["duration_ms"]=max(1,min(limit,round(overlap)))
     return result
 
 
@@ -67,9 +54,9 @@ def _finite(value, name):
 
 
 def validate_spec(spec: dict) -> dict:
-    if not isinstance(spec, dict) or spec.get("version") != 1:
-        raise ValueError("Animation specification version 1 is required.")
-    if set(spec) - {"version", "name", "aspect_ratio", "shots"}:
+    if not isinstance(spec, dict) or spec.get("version") != 2:
+        raise ValueError("Animation specification version 2 is required.")
+    if set(spec) - {"version", "name", "aspect_ratio", "shots", "transitions"}:
         raise ValueError("Animation instructions contain unsupported fields.")
     if not isinstance(spec.get("name"), str) or not spec["name"].strip():
         raise ValueError("Animation name is required.")
@@ -82,11 +69,24 @@ def validate_spec(spec: dict) -> dict:
     shots = spec.get("shots")
     if not isinstance(shots, list) or len(shots) > 256:
         raise ValueError("Shots must be a list of at most 256 entries.")
+    transitions = spec.get("transitions")
+    if not isinstance(transitions, list) or len(transitions) != (len(shots)+1 if shots else 0):
+        raise ValueError("Animation needs one transition at each scene boundary.")
+    for index, transition in enumerate(transitions):
+        if not isinstance(transition, dict) or set(transition) != {"type", "duration_ms"} or transition["type"] not in TRANSITIONS:
+            raise ValueError("Unsupported transition.")
+        duration = transition["duration_ms"]
+        if isinstance(duration, bool) or not isinstance(duration, int) or duration < 0:
+            raise ValueError("Transition duration must be a nonnegative integer.")
+        if transition["type"] != "cut" and duration < 1:
+            raise ValueError("Dissolves and fades need a positive duration.")
+        if index in (0, len(transitions)-1) and transition["type"] == "dissolve":
+            raise ValueError("Opening and closing transitions cannot dissolve.")
     ids = set()
     for shot in shots:
         if not isinstance(shot, dict) or not isinstance(shot.get("id"), str) or not shot["id"] or shot["id"] in ids:
             raise ValueError("Every shot needs a unique ID.")
-        if set(shot) - {"id", "source_id", "duration_ms", "camera", "camera_mode", "text", "transition"}:
+        if set(shot) - {"id", "source_id", "duration_ms", "camera", "camera_mode", "text"}:
             raise ValueError("Shot contains unsupported instruction fields.")
         if shot.get("camera_mode", "center") not in {"center", "target"}:
             raise ValueError("Unsupported camera mode.")
@@ -96,16 +96,6 @@ def validate_spec(spec: dict) -> dict:
         duration = shot.get("duration_ms")
         if isinstance(duration, bool) or not isinstance(duration, int) or duration < 1:
             raise ValueError("Shot duration must be a positive integer in milliseconds.")
-        transition = shot.get("transition", {"type": "cut", "duration_ms": 0})
-        if not isinstance(transition, dict) or transition.get("type", "cut") not in TRANSITIONS:
-            raise ValueError("Unsupported shot transition.")
-        overlap = transition.get("duration_ms", 0)
-        if isinstance(overlap, bool) or not isinstance(overlap, int) or overlap < 0:
-            raise ValueError("Transition duration must be a nonnegative integer.")
-        if transition.get("type", "cut") == "cut" and overlap:
-            raise ValueError("Cut transitions must have zero duration.")
-        if transition.get("type", "cut") != "cut" and overlap < 1:
-            raise ValueError("Dissolves and fades need a positive duration.")
         for track, default_easing in (("camera", "linear"),):
             keys = shot.get(track, [])
             if not isinstance(keys, list): raise ValueError("Camera keyframes must be a list.")
@@ -129,11 +119,13 @@ def validate_spec(spec: dict) -> dict:
                 previous = t; _finite(opacity, "Text opacity")
                 if not 0 <= opacity <= 1 or key.get("easing", "linear") not in EASINGS: raise ValueError("Text opacity/easing is invalid.")
     for index, shot in enumerate(shots[:-1]):
-        overlap = shot.get("transition", {}).get("duration_ms", 0)
+        tr = transitions[index+1]
+        overlap = tr["duration_ms"] if tr["type"] != "cut" else 0
         if overlap > shot["duration_ms"] or overlap > shots[index+1]["duration_ms"]:
             raise ValueError("Transition overlap cannot exceed either adjoining shot.")
     for index in range(1, len(shots)-1):
-        if shots[index-1].get("transition", {}).get("duration_ms", 0) + shots[index].get("transition", {}).get("duration_ms", 0) > shots[index]["duration_ms"]:
+        before, after = transitions[index], transitions[index+1]
+        if (before["duration_ms"] if before["type"] != "cut" else 0) + (after["duration_ms"] if after["type"] != "cut" else 0) > shots[index]["duration_ms"]:
             raise ValueError("Transitions cannot overlap three shots at once.")
     return spec
 
@@ -153,13 +145,15 @@ def _state(keys, t, fields, defaults):
 
 
 def resolve_animation(spec: dict, pinned_assets: dict[str, dict]) -> ResolvedAnimation:
-    validate_spec(spec); cursor=0; resolved=[]
+    validate_spec(spec); transitions=spec["transitions"]; cursor=transitions[0]["duration_ms"] if transitions else 0; resolved=[]
     for index, shot in enumerate(spec["shots"]):
         if shot["source_id"] not in pinned_assets: raise ValueError(f"Pinned source {shot['source_id']} is missing.")
-        transition=shot.get("transition", {"type":"cut", "duration_ms":0}); overlap=transition.get("duration_ms",0) if index < len(spec["shots"])-1 else 0
+        transition=transitions[index+1]; overlap=transition["duration_ms"] if index < len(spec["shots"])-1 and transition["type"] != "cut" else 0
         resolved.append({**shot, "start_ms":cursor, "end_ms":cursor+shot["duration_ms"], "transition":transition})
         cursor += shot["duration_ms"]-overlap
-    return ResolvedAnimation(spec["name"], *(float(x) for x in spec.get("aspect_ratio","16:9").split(":")), cursor, tuple(resolved), pinned_assets)
+        if index < len(spec["shots"])-1 and transition["type"] == "cut": cursor += transition["duration_ms"]
+    if transitions: cursor += transitions[-1]["duration_ms"]
+    return ResolvedAnimation(spec["name"], *(float(x) for x in spec.get("aspect_ratio","16:9").split(":")), cursor, tuple(resolved), pinned_assets, tuple(transitions))
 
 
 class StoryAnimationService:
@@ -176,7 +170,7 @@ class StoryAnimationService:
         name=str(data.get("name") or "Animation").strip()
         if not name: raise ValueError("Animation name is required.")
         animation=uuid4().hex; folder=self.folder(story,animation); folder.mkdir(parents=True)
-        spec={"version":1,"name":name,"aspect_ratio":data.get("aspect_ratio","16:9"),"shots":[]}
+        spec={"version":2,"name":name,"aspect_ratio":data.get("aspect_ratio","16:9"),"shots":[],"transitions":[]}
         validate_spec(spec); write_json_atomic(folder/"spec.json",{"revision":0,"spec":spec,"assets":{},"interviews":[]})
         return self.read(story,animation)
     def read(self, story, animation, include_assets=True):
@@ -223,14 +217,16 @@ class StoryAnimationService:
                     except (FileNotFoundError,KeyError): continue
                     result.append({"id":f"{scene_id}:{target_id}:{candidate_id}","scene_id":scene_id,"target_id":target_id,"candidate_id":candidate_id,"title":scene["title"],"image":str(image),"render_mode":item.get("render_mode","draft"),"lettered":bool(item.get("scene_text_final")),"text_entries":item.get("scene_text_final",{}).get("entries",[])})
         return result
-    def bind(self, story, animation, data):
-        source=next((x for x in self.sources(story) if x["id"]==data.get("source_id")),None)
+    def _snapshot(self, story, animation, source_id):
+        source=next((x for x in self.sources(story) if x["id"]==source_id),None)
         if not source: raise ValueError("Choose an available locked final assembly.")
         folder=self.folder(story,animation); original=self.repository.folder(story,source["scene_id"],source["target_id"])/self.repository.read(story,source["scene_id"],source["target_id"])["candidates"][source["candidate_id"]]["image"]
         target=self.repository.read(story,source["scene_id"],source["target_id"]); candidate=target["candidates"][source["candidate_id"]]
-        asset_id=hashlib.sha256((source["id"]+hashlib.sha256(original.read_bytes()).hexdigest()).encode()).hexdigest()
+        final=candidate.get("scene_text_final",{})
+        identity=json.dumps(final,sort_keys=True,ensure_ascii=False,separators=(",",":"))
+        asset_id=hashlib.sha256((source["id"]+hashlib.sha256(original.read_bytes()).hexdigest()+identity).encode()).hexdigest()
         art_name=asset_id+".png"; write_bytes_atomic(folder/art_name,original.read_bytes())
-        layers={}; entries=[]; final=candidate.get("scene_text_final",{})
+        layers={}; entries=[]
         if final:
             entries=final.get("entries",[]); placements=final.get("placements",{}); style=final.get("style",{})
             with Image.open(original) as img: size=img.size; base=img.convert("RGBA")
@@ -244,6 +240,42 @@ class StoryAnimationService:
                 actual=base.convert("RGBA")
                 if expected.size!=actual.size or ImageChops.difference(expected.convert("RGBA"),actual).getbbox(): raise ValueError("Confirmed lettering layers do not reproduce the locked finished image; independent fades are unavailable.")
         asset={"id":asset_id,"source_id":source["id"],"title":source["title"],"render_mode":source.get("render_mode","draft"),"artwork":art_name,"text_layers":layers,"text_entries":entries,"text_style":final.get("style",{}),"width":Image.open(original).width,"height":Image.open(original).height,"sha256":hashlib.sha256(original.read_bytes()).hexdigest(),"lettering_separable":bool(final)}
+        return asset
+    def bind(self, story, animation, data):
+        asset=self._snapshot(story,animation,data.get("source_id")); folder=self.folder(story,animation)
         with self.repository.lock():
-            doc=json.loads((folder/"spec.json").read_text(encoding="utf-8")); doc["assets"][asset_id]=asset; doc["revision"]+=1; write_json_atomic(folder/"spec.json",doc)
+            doc=json.loads((folder/"spec.json").read_text(encoding="utf-8")); doc["assets"][asset["id"]]=asset; doc["revision"]+=1; write_json_atomic(folder/"spec.json",doc)
+        return {**self.read(story,animation), "bound_asset_id":asset["id"]}
+    def refresh(self, story, animation, shot_id, data):
+        folder=self.folder(story,animation)
+        spec=normalize_durations(data.get("spec")); validate_spec(spec)
+        with self.repository.lock():
+            current=json.loads((folder/"spec.json").read_text(encoding="utf-8"))
+            if data.get("revision") != current["revision"]: raise ValueError("Animation changed; reload before saving.")
+            if any(s["source_id"] not in current["assets"] for s in spec["shots"]): raise ValueError("A shot references a source not pinned to this animation.")
+            shot=next((s for s in spec["shots"] if s["id"]==shot_id),None)
+            if shot is None: raise ValueError("Scene not found in animation.")
+            old=current["assets"][shot["source_id"]]
+            scene_id,target_id,candidate_id=old["source_id"].split(":")
+            target=self.repository.read(story,scene_id,target_id)
+            mode=old.get("render_mode") or "draft"
+            selected=target.get("final_selected_id" if mode=="final" else "selected_id")
+            candidates=target.get("candidates",{})
+            def eligible(key):
+                c=candidates.get(key,{})
+                return bool(c.get("locked")) and (c.get("render_mode") or "draft")==mode
+            choice=selected if eligible(selected) else candidate_id if eligible(candidate_id) else None
+            if not choice: raise ValueError("No matching locked scene is available to refresh.")
+            asset=self._snapshot(story,animation,f"{scene_id}:{target_id}:{choice}")
+            old_entries=old.get("text_entries",[]); new_entries=asset.get("text_entries",[]); tracks=shot.get("text",{}); matched={}; used=set()
+            for entry in new_entries:
+                if entry["id"] in tracks: matched[entry["id"]]=tracks[entry["id"]]; used.add(entry["id"])
+            for entry in new_entries:
+                if entry["id"] in matched: continue
+                options=[e for e in old_entries if e["id"] not in used and e.get("text")==entry.get("text") and e["id"] in tracks]
+                if len(options)==1 and sum(e.get("text")==entry.get("text") for e in new_entries)==1:
+                    matched[entry["id"]]=tracks[options[0]["id"]]; used.add(options[0]["id"])
+            shot["source_id"]=asset["id"]; shot["text"]=matched
+            current["assets"][asset["id"]]=asset; current.update(spec=spec,revision=current["revision"]+1)
+            write_json_atomic(folder/"spec.json",current)
         return self.read(story,animation)

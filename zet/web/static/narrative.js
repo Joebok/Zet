@@ -280,7 +280,7 @@ async function loadPageContent() {
       const panel=host.querySelector('#story-animation-workspace'); panel.hidden=false;
       const [animations,sources]=await Promise.all([api(`${base()}/animations`),api(`/api/narrative/stories/${route.story}/animation-sources`)]);
       const animation=animations[0]||await api(`${base()}/animations`,'POST',{name:'New animation',aspect_ratio:'16:9'});
-      let doc=await api(`${base()}/animations/${animation.id}`); let shots=doc.spec.shots;
+      let doc=await api(`${base()}/animations/${animation.id}`); let shots=doc.spec.shots, transitions=doc.spec.transitions;
       const timing = (keys,duration) => {
         if (!keys?.length) return {start:0,end:100*(duration-Math.min(300,Math.floor(duration/2)))/duration};
         const rise=keys.findIndex((k,i)=>i && k.opacity>keys[i-1].opacity);
@@ -290,7 +290,8 @@ async function loadPageContent() {
       const textKeys=(start,end,duration)=>{
         const a=Math.round(duration*start/100), b=Math.round(duration*end/100);
         const fadeIn=Math.min(300,Math.max(0,b-a)), fadeOut=Math.min(300,duration-b);
-        const points=[[0,0],[a,0],[a+fadeIn,1],[b,1],[b+fadeOut,0]];
+        const points=[[0,0],[a,0],[a+fadeIn,1],[b,1]];
+        if(fadeOut>0) points.push([b+fadeOut,0]);
         const result=[]; for(const [time_ms,opacity] of points){if(result.length && result.at(-1).time_ms===time_ms) result.at(-1).opacity=opacity;else result.push({time_ms,opacity});} return result;
       };
       const simpleCamera=shot=>{
@@ -315,19 +316,17 @@ async function loadPageContent() {
             const point=shot.camera?.[0] || {x:.5,y:.5};
             shot.camera_mode='target'; shot.camera=[{time_ms:0,x:point.x,y:point.y,zoom:a},{time_ms:shot.duration_ms,x:point.x,y:point.y,zoom:b}];
           }
-          const transition=panel.querySelector(`[data-transition="${i}"]`).value;
-          if(transition !== (shot.transition?.type || 'cut')) shot.transition={type:transition,duration_ms:transition==='cut'?0:1000};
           panel.querySelectorAll(`[data-text-row="${i}"]`).forEach(row=>{
             const textId=row.dataset.textId, a=row.querySelector('[data-text-start]'), b=row.querySelector('[data-text-end]');
             if(row.dataset.dirty==='true' || !shot.text[textId]?.length || (oldDuration!==shot.duration_ms && simpleText.has(textId))) shot.text[textId]=textKeys(Number(a.value),Number(b.value),shot.duration_ms);
           });
         });
-        shots.forEach((shot,i)=>{const tr=shot.transition;if(!tr || tr.type==='cut')return;const previous=i?shots[i-1].transition?.duration_ms||0:0;const limit=Math.min(shot.duration_ms-previous,shots[i+1]?.duration_ms??shot.duration_ms);if(limit<1)shot.transition={type:'cut',duration_ms:0};else tr.duration_ms=Math.max(1,Math.min(tr.duration_ms,limit));});
+        transitions.forEach((tr,i)=>{tr.type=panel.querySelector(`[data-transition="${i}"]`).value;const value=panel.querySelector(`[data-transition-duration="${i}"]`).value;if(value==='' || !Number.isInteger(Number(value)) || Number(value)<0) throw Error('Transition time must be a nonnegative whole number.');tr.duration_ms=Number(value);});
       };
       const save=async()=>{
         collect();
-        doc=await api(`${base()}/animations/${animation.id}`,'PUT',{revision:doc.revision,spec:{...doc.spec,shots}});
-        shots=doc.spec.shots;
+        doc=await api(`${base()}/animations/${animation.id}`,'PUT',{revision:doc.revision,spec:{...doc.spec,shots,transitions}});
+        shots=doc.spec.shots; transitions=doc.spec.transitions;
         render();
       };
       const exportUrl=`/api/narrative/stories/${route.story}/animations/${animation.id}/html?universe_id=${encodeURIComponent(universe)}`;
@@ -342,15 +341,17 @@ async function loadPageContent() {
           const background=color(style.background_color), opacity=Math.max(0,Math.min(1,Number(style.opacity??1)));
           const rgba=background?`rgba(${parseInt(background.slice(1,3),16)},${parseInt(background.slice(3,5),16)},${parseInt(background.slice(5,7),16)},${opacity})`:'';
           const appearance=[style.font_family?`font-family:${esc(style.font_family)}`:'',color(style.text_color)?`color:${color(style.text_color)}`:'',rgba?`background:${rgba}`:'',color(style.outline_color)?`border:${Math.max(0,Math.min(20,Number(style.outline_width)||0))}px solid ${color(style.outline_color)}`:'',style.shape==='ellipse'?'border-radius:50%':style.shape==='rectangle'?'border-radius:0':''].filter(Boolean).join(';');
-          return `<div class="animation-text-row" data-text-row="${i}" data-text-id="${esc(e.id)}"><span style="${appearance}">${markup}</span><div class="animation-text-times"><div class="animation-timeline-labels"><span>Fade in <output data-in-value>${Math.round(t.start)}%</output></span><span>Fade out <output data-out-value>${Math.round(t.end)}%</output></span></div><div class="animation-timeline"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline data-envelope points="0,28 ${t.start},28 ${Math.min(t.end,t.start+30000/s.duration_ms)},2 ${t.end},2 ${Math.min(100,t.end+30000/s.duration_ms)},28 100,28" /></svg><input aria-label="Fade in start" data-text-start type="range" min="0" max="100" step="0.1" value="${t.start}"><input aria-label="Fade out start" data-text-end type="range" min="0" max="100" step="0.1" value="${t.end}"></div><div class="animation-timeline-labels"><small>0%</small><small>100%</small></div></div></div>`;
+          return `<div class="animation-text-row" data-text-row="${i}" data-text-id="${esc(e.id)}"><span style="${appearance}">${markup}</span><div class="animation-text-times"><div class="animation-timeline-labels"><span>Fade in <output data-in-value>${Math.round(t.start)}%</output></span><span>Fade out <output data-out-value>${Math.round(t.end)}%</output></span></div><div class="animation-timeline"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline data-envelope points="0,28 ${t.start},28 ${Math.min(t.end,t.start+30000/s.duration_ms)},2 ${t.end},2 ${t.end < 100 ? `${Math.min(100,t.end+30000/s.duration_ms)},28 100,28` : '100,2'}" /></svg><input aria-label="Fade in start" data-text-start type="range" min="0" max="100" step="0.1" value="${t.start}"><input aria-label="Fade out start" data-text-end type="range" min="0" max="100" step="0.1" value="${t.end}"></div><div class="animation-timeline-labels"><small>0%</small><small>100%</small></div></div></div>`;
 
         }).join('');
-        return `<li class="animation-shot"><div><div class="animation-thumb"><img src="${esc(asset.artwork_data_url||'')}" alt="Locked image for ${esc(asset.title||'scene')}">${layers}</div><button type="button" data-remove-shot="${i}">Remove scene</button></div><div class="animation-shot-body"><h4>${esc(asset.title||s.source_id)}</h4><div class="animation-controls"><label>Scene duration (ms)<input data-shot-duration="${i}" type="number" min="1" step="1" value="${s.duration_ms}"></label><label>Start zoom (×)<input data-zoom-start="${i}" type="number" min="1" step=".1" value="${first.zoom}"></label><label>End zoom (×)<input data-zoom-end="${i}" type="number" min="1" step=".1" value="${last.zoom}"></label><button type="button" data-pick-target="${i}">Choose zoom target</button><label>Transition<select data-transition="${i}"><option value="cut">Cut</option><option value="dissolve" ${s.transition?.type==='dissolve'?'selected':''}>Dissolve</option><option value="fade-through-black" ${s.transition?.type==='fade-through-black'?'selected':''}>Fade through black</option></select></label></div>${customCamera?'<p>Custom camera motion is preserved until zoom or target is changed.</p>':''}${rows}</div></li>`;
+        return `<li class="animation-shot"><div><div class="animation-thumb"><img src="${esc(asset.artwork_data_url||'')}" alt="Locked image for ${esc(asset.title||'scene')}">${layers}</div><button type="button" data-refresh-shot="${i}">Refresh scene</button><button type="button" data-remove-shot="${i}">Remove scene</button><button type="button" data-move-shot="${i}" data-direction="-1" ${i===0?'disabled':''}>Move up</button><button type="button" data-move-shot="${i}" data-direction="1" ${i===shots.length-1?'disabled':''}>Move down</button></div><div class="animation-shot-body"><h4>${esc(asset.title||s.source_id)}</h4><div class="animation-controls"><label>Scene duration (ms)<input data-shot-duration="${i}" type="number" min="1" step="500" value="${s.duration_ms}"></label><label>Start zoom (×)<input data-zoom-start="${i}" type="number" min="1" step=".1" value="${first.zoom}"></label><label>End zoom (×)<input data-zoom-end="${i}" type="number" min="1" step=".1" value="${last.zoom}"></label><button type="button" data-pick-target="${i}">Choose zoom target</button></div>${customCamera?'<p>Custom camera motion is preserved until zoom or target is changed.</p>':''}${rows}</div></li>`;
       };
       window.addEventListener('message',event=>{const frame=panel.querySelector('iframe');if(frame && event.source===frame.contentWindow && event.data?.type==='zet-animation-preview-height' && Number.isFinite(event.data.height)) frame.style.height=Math.max(1,event.data.height)+'px';},{signal:events.signal});
-      const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text moves and scales with the artwork.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)} · ${s.render_mode === 'final' ? 'Final' : 'Draft'}${s.lettered?" (lettered)":""}</button>`).join(" ")}</div><ol class="animation-shots">${shots.map(card).join("")}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="${exportUrl}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:600px;border:0" scrolling="no"></iframe>`;
+      const transitionRow=(tr,i)=>`<li class="animation-transition"><strong>${i===0?'Opening':i===shots.length?'Closing':'Between scenes'}</strong><label>Transition<select data-transition="${i}">${[['cut','Cut'],...(i>0&&i<shots.length?[['dissolve','Dissolve']]:[]),['fade-through-black','Fade through black'],['fade-through-white','Fade through white']].map(([v,label])=>`<option value="${v}" ${tr.type===v?'selected':''}>${label}</option>`).join('')}</select></label><label>Time (ms)<input type="number" min="0" step="50" data-transition-duration="${i}" value="${tr.duration_ms}"></label></li>`;
+      const render=()=>{panel.innerHTML=`<h3>${esc(doc.spec.name)}</h3><p>Locked sources only. Scene text moves and scales with the artwork.</p><div>${sources.map(s=>`<button type="button" data-bind-source="${esc(s.id)}">Add ${esc(s.title)} · ${s.render_mode === 'final' ? 'Final' : 'Draft'}${s.lettered?" (lettered)":""}</button>`).join(" ")}</div><ol class="animation-shots">${shots.length?transitionRow(transitions[0],0)+shots.map((s,i)=>card(s,i)+transitionRow(transitions[i+1],i+1)).join(''):''}</ol><div class="narrative-actions"><button id="save-animation">Save</button><button id="preview-animation">Preview</button><a id="export-animation" href="${exportUrl}">Download HTML</a></div><iframe title="Animation preview" sandbox="allow-scripts" style="width:100%;height:600px;border:0" scrolling="no"></iframe>`;
+        panel.querySelectorAll('[data-transition]').forEach(select=>select.addEventListener('change',()=>{const input=panel.querySelector(`[data-transition-duration="${select.dataset.transition}"]`);if(select.value!=='cut' && Number(input.value)===0) input.value=1000;}));
         panel.querySelectorAll('[data-zoom-start],[data-zoom-end]').forEach(input=>input.addEventListener('input',()=>{input.dataset.dirty='true';}));
-        panel.querySelectorAll('[data-text-row] input[type=range]').forEach(input=>input.addEventListener('input',()=>{const row=input.closest('[data-text-row]'),a=row.querySelector('[data-text-start]'),b=row.querySelector('[data-text-end]');if(Number(a.value)>Number(b.value)){if(input===a)b.value=a.value;else a.value=b.value;}row.dataset.dirty='true';row.querySelector('[data-in-value]').textContent=Math.round(Number(a.value))+'%';row.querySelector('[data-out-value]').textContent=Math.round(Number(b.value))+'%';const duration=Math.max(1,Number(panel.querySelector(`[data-shot-duration="${row.dataset.textRow}"]`).value)||1),start=Number(a.value),end=Number(b.value),fade=30000/duration;row.querySelector('[data-envelope]').setAttribute('points',`0,28 ${start},28 ${Math.min(end,start+fade)},2 ${end},2 ${Math.min(100,end+fade)},28 100,28`);}));
+        panel.querySelectorAll('[data-text-row] input[type=range]').forEach(input=>input.addEventListener('input',()=>{const row=input.closest('[data-text-row]'),a=row.querySelector('[data-text-start]'),b=row.querySelector('[data-text-end]');if(Number(a.value)>Number(b.value)){if(input===a)b.value=a.value;else a.value=b.value;}row.dataset.dirty='true';row.querySelector('[data-in-value]').textContent=Math.round(Number(a.value))+'%';row.querySelector('[data-out-value]').textContent=Math.round(Number(b.value))+'%';const duration=Math.max(1,Number(panel.querySelector(`[data-shot-duration="${row.dataset.textRow}"]`).value)||1),start=Number(a.value),end=Number(b.value),fade=30000/duration;row.querySelector('[data-envelope]').setAttribute('points',`0,28 ${start},28 ${Math.min(end,start+fade)},2 ${end},2 ${end < 100 ? `${Math.min(100,end+fade)},28 100,28` : '100,2'}`);}));
         panel.querySelectorAll('[data-pick-target]').forEach(button=>button.onclick=()=>action(async()=>{
           collect();
           const index=Number(button.dataset.pickTarget), shot=shots[index], asset=doc.assets[shot.source_id];
@@ -379,12 +380,15 @@ async function loadPageContent() {
           collect();
           const sourceId=b.dataset.bindSource;
           doc=await api(`${base()}/animations/${animation.id}/sources`,'POST',{source_id:sourceId});
-          const asset=Object.values(doc.assets).find(asset=>asset.source_id===sourceId);
+          const asset=doc.assets[doc.bound_asset_id];
           if(!asset)throw new Error('The selected scene was not pinned. Try adding it again.');
-          shots.push({id:crypto.randomUUID(),source_id:asset.id,duration_ms:8000,camera:[{time_ms:0,x:.5,y:.5,zoom:1}],text:{},transition:{type:'cut',duration_ms:0}});
+          shots.push({id:crypto.randomUUID(),source_id:asset.id,duration_ms:8000,camera:[{time_ms:0,x:.5,y:.5,zoom:1}],text:{}});
+          if(shots.length===1) transitions=[{type:'cut',duration_ms:0},{type:'cut',duration_ms:0}];else transitions.splice(transitions.length-1,0,{type:'cut',duration_ms:0});
           render();
         }));
-        panel.querySelectorAll('[data-remove-shot]').forEach(b=>b.onclick=()=>action(async()=>{collect();shots.splice(Number(b.dataset.removeShot),1);render()}));
+        panel.querySelectorAll('[data-remove-shot]').forEach(b=>b.onclick=()=>action(async()=>{collect();const i=Number(b.dataset.removeShot);if(shots.length===1)transitions=[];else transitions.splice(i===shots.length-1?i:i+1,1);shots.splice(i,1);render()}));
+        panel.querySelectorAll('[data-move-shot]').forEach(b=>b.onclick=()=>action(async()=>{collect();const i=Number(b.dataset.moveShot),j=i+Number(b.dataset.direction);[shots[i],shots[j]]=[shots[j],shots[i]];render()}));
+        panel.querySelectorAll('[data-refresh-shot]').forEach(b=>b.onclick=()=>action(async()=>{collect();const shot=shots[Number(b.dataset.refreshShot)];doc=await api(`${base()}/animations/${animation.id}/shots/${shot.id}/refresh`,'POST',{revision:doc.revision,spec:{...doc.spec,shots,transitions}});shots=doc.spec.shots;transitions=doc.spec.transitions;render()}));
         panel.querySelector('#save-animation').onclick=()=>action(save);
         panel.querySelector('#preview-animation').onclick=()=>action(async()=>{
           await save();

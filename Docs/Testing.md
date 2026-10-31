@@ -1,5 +1,9 @@
 # Local testing
 
+## Animation transitions and refresh (2026-10-31)
+
+The four approved fast E2E scenarios passed (`npm.cmd run test:e2e`, 44.3s). Disposable Chromium checks exercised text endpoint visibility, transition controls and a white-fade midpoint, ordering, refresh, preview and download. A resolver probe checked overlapping and boundary timing. The converted Celestial Sphere document was read and compiled to standalone HTML. Physical-device behavior and live image quality were not checked. No permanent scenario or live model call was added.
+
 ## Animation preview and timing (2026-10-30)
 
 The four approved fast scenarios passed (`npm.cmd run test:e2e`, 41.1s).

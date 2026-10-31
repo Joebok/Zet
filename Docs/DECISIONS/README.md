@@ -1,5 +1,7 @@
 # Architectural decision records
 
+[0040 - Positional animation transitions](0040-positional-animation-transitions.md) records boundary-owned transition timing and the one-time animation update.
+
 [0039 - Independent Draft and Final image work](0039-draft-final-images.md) records mode ownership, confirmed Draft cleanup and metadata-based selective copying.
 
 [0034 - Immediate AI job deletion](0034-immediate-ai-job-deletion.md) separates

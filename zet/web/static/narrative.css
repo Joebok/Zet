@@ -22,6 +22,9 @@
 .narrative-app button:focus-visible, .narrative-app a:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
 .narrative-card { padding:1.2rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:1rem; }
 .animation-shots { list-style:none; padding:0; display:grid; gap:.8rem; }
+.animation-transition { display:flex; align-items:end; flex-wrap:wrap; gap:.7rem; padding:.5rem .8rem; }
+.animation-transition label { display:flex; flex-direction:column; gap:.25rem; font-size:.85rem; }
+.animation-transition input { width:7.5rem; }
 .animation-shot { display:grid; grid-template-columns:minmax(130px,210px) minmax(0,1fr); gap:1rem; padding:.8rem; border:1px solid var(--border); border-radius:8px; }
 .animation-thumb { display:grid; align-self:start; background:var(--surface-subtle); }
 .animation-thumb img { grid-area:1/1; width:100%; height:auto; }

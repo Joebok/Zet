@@ -12,7 +12,7 @@ workspaces similarly retain `boards`, `selected` and `locked` as Draft alongside
 `final_boards`, `final_selected` and `final_locked`. Image Generator stores a
 Final board beside its legacy Draft board. Missing mode fields mean Draft.
 
-Story animation version-1 shots may contain `camera_mode: "target"`; missing
+Story animation version-2 shots may contain `camera_mode: "target"`; missing
 mode retains legacy camera-center interpretation. Camera keyframes store normalized
 image target coordinates and zoom factors. Timed lettering remains opacity
 keyframes, with no separate persisted timing record. Pinned assets also retain the
@@ -361,3 +361,5 @@ Universe descriptors additionally support `environmental_art_style`. Missing/emp
 ## Final assembly backdrop placement
 
 Narrative assembly layers accept `fit: manual` for a backdrop. Its existing `x` and `y` are normalized canvas coordinates and `scale` is width divided by canvas width. Cover and contain retain centered preset behavior. Frozen assembly snapshots retain the layer values used at submission.
+
+Story animation version 2 stores transitions by boundary, independent of scene order. Refresh pins artwork and confirmed lettering as content-derived snapshots and revision-checks the updated document.

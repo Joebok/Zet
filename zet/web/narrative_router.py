@@ -208,6 +208,10 @@ def create_narrative_router(app_provider):
     def bind_animation_source(story: str, animation_id: str, data: dict = Body(...)):
         return call(animation().bind, story, animation_id, data)
 
+    @router.post("/stories/{story}/animations/{animation_id}/shots/{shot_id}/refresh")
+    def refresh_animation_source(story: str, animation_id: str, shot_id: str, data: dict = Body(...)):
+        return call(animation().refresh, story, animation_id, shot_id, data)
+
     @router.get("/stories/{story}/animations/{animation_id}/html")
     def animation_html(story: str, animation_id: str, preview: bool = Query(False)):
         from zet.services.story_animation_service import resolve_animation
