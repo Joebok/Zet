@@ -42,6 +42,8 @@ def create_local_character_asset_pipeline_router(
             raise
         except RenderSlotConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except TimeoutError as exc:
+            raise HTTPException(status_code=409, detail="The batch is busy updating render state. Try again shortly.") from exc
         except StorageUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc), headers={"Retry-After": RETRY_AFTER_SECONDS}) from exc
         except Exception as exc:

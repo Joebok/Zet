@@ -96,5 +96,10 @@ is fenced; supported character/manual transports remain available.
 ## Supplemental render-slot work (2026-10-12)
 Character slot allocation saves new candidate identities and target IDs before dispatch. An independent slot collector resumes persisted `slot_render_ids` after restart; existing batch runners exclude these additions and empty slots are not queued work. New slot actions can publish while other renders run, with state transactions fencing cleared candidates. Clearing/replacing a candidate detaches its active membership and changes the advisory evaluation fence, retaining old artifacts so late answers cannot populate replacement slots. Prompt/reference snapshots persist per candidate and remain ordered. Image Generation saves its board reservation before staging jobs and persists child seeds/status/errors; new result arrays are indexed by submission child rather than arrival order. Queue publication/readiness/ownership protocols are unchanged. See [ADR 0007](../DECISIONS/0007-stable-render-slots.md).
 
+Slot collection holds the run-state lock for one candidate at a time, allowing
+dashboard reads and pause/slot actions between candidates. Each transaction
+reloads pending membership; sweep bookkeeping merges into current state so
+concurrent additions survive and ranking waits for newly reserved work too.
+
 ## Automatic outage recovery
 Queue/library unavailability pauses work while both polling hosts remain alive. Fixed-local evidence coordinates reconnect and restart; verified interrupted executions receive subscriber-owned fresh attempts, while successful results receive collection-only recovery. Ordinary retained failures still require their existing recovery path. See [storage recovery](STORAGE_RECOVERY.md).

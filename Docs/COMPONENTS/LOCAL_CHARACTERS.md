@@ -14,6 +14,9 @@ Batches page present mode-specific progress. Pause stops slot collection without
 withdrawing submitted proxy requests; those requests can finish and their results
 are collected after Resume. Restart recovery honors a paused collector and
 resumes unpaused slot work even when the shared Draft batch status is Complete.
+The collector releases the run-state lock between candidates and rechecks pause
+and current pending membership before each transaction. A lock timeout returns
+HTTP 409 with retry guidance rather than a misleading missing-batch 404.
 
 Draft and Final rankings are independent. Multi-candidate ranking compares an
 available locked Draft for the same pipeline and view, including the costume for

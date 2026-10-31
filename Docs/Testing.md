@@ -1,5 +1,20 @@
 # Local testing
 
+## Bulk render lock contention (2026-10-31)
+
+All four approved fast E2E scenarios passed (`npm.cmd run test:e2e`, 42.2s).
+The disposable `test-results/check_bulk_lock.py` reproduced a concurrent read
+timeout with the previous collector and passed with the fix: concurrent reads,
+pause between candidates, detached-candidate skipping, retained new pending work,
+completion bookkeeping, and deferred ranking. Isolated router checks passed busy
+409 responses for all five pipelines and retained missing-run 404 behavior.
+Python syntax and `git diff --check` passed. No maintained scenarios were added.
+
+Read-only production inspection confirmed both reported Final actions saved
+pending work, and one subsequent Body image completed. The Body detail 404 carried
+a workflow lock timeout. These observations do not establish completion of every
+render or deployment of the local fix; no render submissions or queue edits were made.
+
 ## Mode-aware local batches (2026-10-31)
 
 Disposable isolated checks exercised FRONT bulk submission in all five local

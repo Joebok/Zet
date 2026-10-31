@@ -595,9 +595,18 @@ class CharacterRenderSlots:
                                         for view in state.get(field) or []}
                         if not pending and not review_views:
                             return
-                        changed = set()
-                        done = set()
-                        for cid in pending:
+                    changed = set()
+                    done = set()
+                    for cid in pending:
+                        # Keep membership checks and result commits fenced, but let
+                        # dashboard reads and pause/slot actions in between asks.
+                        with file_lock(root / "state.lock"):
+                            run = load()
+                            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+                            if run.get("stop_requested") or state.get("slot_paused"):
+                                return
+                            if cid not in (state.get("slot_render_ids") or []):
+                                continue
                             candidate = next((c for c in run["candidates"] if c["candidate_id"] == cid), None)
                             if candidate is None:
                                 done.add(cid)
@@ -632,22 +641,29 @@ class CharacterRenderSlots:
                                 self._update(run_id, cid, costume, {"status": "FAILED", "render_error": str(exc)})
                                 done.add(cid)
                                 changed.add((candidate.get("render_mode", "draft"), candidate["view"]))
-                        def finish(state):
-                            state["slot_render_ids"] = [cid for cid in state.get("slot_render_ids", []) if cid not in done]
-                            for mode, view in changed:
-                                views = state.setdefault("slot_review_views" if mode == "draft" else "final_slot_review_views", [])
-                                if view not in views:
-                                    views.append(view)
-                        mutate_local_run_state(root, finish)
-                        run = load()
-                        for mode, view in review_views | changed:
+                    def finish(state):
+                        state["slot_render_ids"] = [cid for cid in state.get("slot_render_ids", []) if cid not in done]
+                        for mode, view in changed:
+                            views = state.setdefault("slot_review_views" if mode == "draft" else "final_slot_review_views", [])
+                            if view not in views:
+                                views.append(view)
+                    mutate_local_run_state(root, finish)
+                    for mode, view in review_views | changed:
+                        with file_lock(root / "state.lock"):
+                            run = load()
+                            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+                            if run.get("stop_requested") or state.get("slot_paused"):
+                                return
+                            field = "slot_review_views" if mode == "draft" else "final_slot_review_views"
+                            if view not in (state.get(field) or []):
+                                continue
                             mode_candidates = [c for c in run["candidates"] if c["view"] == view
                                                and c.get("render_mode", "draft") == mode]
-                            if any(c.get("render_status") in {"QUEUED", "RUNNING"} for c in mode_candidates):
+                            if any(c["candidate_id"] in (state.get("slot_render_ids") or [])
+                                   or c.get("render_status") in {"QUEUED", "RUNNING"} for c in mode_candidates):
                                 continue
                             if any(Path(str(c.get("image_path") or "")).is_file() for c in mode_candidates):
                                 self.workflow.stage_view_evaluation(run_id, view, costume=costume, render_mode=mode)
-                            field = "slot_review_views" if mode == "draft" else "final_slot_review_views"
                             mutate_local_run_state(root, lambda state, view=view, field=field: state.update({field: [v for v in state.get(field, []) if v != view]}))
                     time.sleep(max(.5, float(self.adapter.app.config.comfyui_poll_seconds)))
         except TimeoutError:
