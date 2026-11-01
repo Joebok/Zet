@@ -810,6 +810,11 @@ function updatePromptIndicators() {
 
 function updateLive() {
   if (disposed) return;
+  const imagesCard = host.querySelector('#narrative-images-card');
+  if (imagesCard) {
+    imagesCard.dataset.renderMode = renderMode;
+    imagesCard.querySelector('h2').classList.add('render-mode-heading');
+  }
   const history = host.querySelector('#narrative-interview');
   if (!history) return;
   const editText = host.querySelector('[data-action="scene-text"]');
@@ -901,7 +906,7 @@ function updateLive() {
   slotSignature = signature;
   host.querySelector('#narrative-slots').innerHTML = slots.map((id,index)=>{
     const candidate = id ? detail.candidates[id] : null;
-    return `<article class="narrative-slot ${id && id === selected ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === selected ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3>Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
+    return `<article class="narrative-slot ${id && id === selected ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === selected ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3 class="render-mode-heading">Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
       ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${candidate ? '' : 'Empty'}</div>`}
       ${candidate ? `<p class="narrative-muted image-card-state">${renderMode === 'final' ? 'Final' : 'Draft'}${candidate.width && candidate.height ? ` · requested ${candidate.width} × ${candidate.height}` : ''} · ${esc(candidate.status.toLowerCase())}${id === selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
       ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}

@@ -2084,6 +2084,7 @@ document.querySelector("#image-true-up-apply").addEventListener("click", async (
 });
 
 function renderImageGenerationStatus() {
+  document.querySelector("#image-generation-page").dataset.renderMode = imageGenerationRenderMode.value;
   const busy = imageGenerationPending;
   imageGenerationRenderMode.disabled = busy;
   const emptyCount = imageGenerationSlots.filter(item => !item).length;
@@ -2110,6 +2111,7 @@ function renderImageGenerationStatus() {
     card.className = `image-generation-result${index === imageGenerationSelectedSlot ? " is-selected" : ""}`;
     card.dataset.state = index === imageGenerationSelectedSlot ? "selected" : "available";
     const title = document.createElement("figcaption");
+    title.className = "render-mode-heading";
     title.textContent = `Slot ${index + 1}${index === imageGenerationSelectedSlot ? " · Selected" : ""}${job ? ` · ${imageGenerationSizeLabel(job)}` : ""}`;
     card.append(title);
     if (result) {
@@ -4646,7 +4648,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261030-output-canvas');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261031-final-mode-cues');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;

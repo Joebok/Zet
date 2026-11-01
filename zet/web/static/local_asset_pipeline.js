@@ -917,6 +917,7 @@
       details.open = selectionChanged && selected ? false : (previousOpen.has(view) ? previousOpen.get(view) : !selected);
       const summary = document.createElement("summary");
       const heading = document.createElement("strong");
+      heading.className = "render-mode-heading";
       heading.textContent = `${view} · ${run.selected_views?.[view] || "not selected"} · ${candidates.filter((item) => item.image_path).length}/${candidates.length} images`;
       summary.append(heading);
       const ranking = run.rankings?.[view] || {};
@@ -1232,6 +1233,7 @@
   }
 
   function render() {
+    document.getElementById("local-pipeline-page").dataset.renderMode = state.renderMode;
     const run = state.run;
     renderModeSource(run);
     window.ZetTemplateImprovement?.update(run, state.pipeline, () => loadRun(run?.run_id || ""), frontRenderControl);

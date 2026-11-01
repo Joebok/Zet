@@ -1,5 +1,6 @@
 :root {
   --canvas: #f5f7fa;
+  --canvas-final: #a8c9bf;
   --surface: #ffffff;
   --surface-subtle: #eef2f6;
   --border: #cbd5e1;
@@ -50,6 +51,24 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+body:has(.page.active[data-render-mode="final"], .page.active [data-render-mode="final"]) {
+  background: var(--canvas-final);
+}
+
+[data-render-mode="final"] .render-mode-heading::before {
+  content: "Final";
+  display: inline-block;
+  margin-inline-end: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: middle;
 }
 
 .app-header {

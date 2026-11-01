@@ -5,6 +5,15 @@ pipeline page offers Run front and Run available, and the Batches page labels
 and links each actionable render mode. Pause batch pauses slot collection;
 already submitted renders can finish at the proxy and are collected after Resume.
 
+Final mode uses the shared `--canvas-final` muted green background and a teal
+**Final** pill before each character view heading. Minor Characters, Image
+Generation and Narrative Scenes reuse the treatment for their image workspace
+and slot headings, including empty slots. Controllers expose their current mode
+through `data-render-mode`; shared CSS limits the canvas cue to the active page,
+so switching to Draft or navigating elsewhere restores the usual background.
+Disposable Chromium presentation checks verified scrolled visibility and mode/
+navigation resets; physical-device appearance was not checked.
+
 The [UI style guide](../UI_STYLE_GUIDE.md) owns the target visual and interaction
 standards, including button/glyph roles, card anatomy, review dialogs, immediate
 action acknowledgement, and feedback beside its initiating action. Adoption is

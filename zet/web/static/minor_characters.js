@@ -329,6 +329,7 @@
     previewCandidate(id);renderImages(); if (!$("mc-review").open) $("mc-review").showModal(); renderReview();
   }
   function renderImages() {
+    $("minor-characters-page").dataset.renderMode = renderMode;
     if (!character.views.includes(view)) view="STYLE";
     const current=board();
     const seedKey=`${renderMode}:${view}`, seedSelect=$("mc-seed-source");
@@ -356,7 +357,7 @@
     $("mc-slots").replaceChildren();$("mc-add-renders").replaceChildren();
     for(let slot=0;slot<4;slot++) {
       const candidate=character.candidates.find(c=>c.candidate_id===current?.slots[slot]);
-      const card=element("section","","mc-slot");card.append(element("strong",`Slot ${slot+1}`));
+      const card=element("section","","mc-slot");card.append(element("strong",`Slot ${slot+1}`,"render-mode-heading"));
       card.addEventListener("click",event=>{
         if (!candidate?.image_url || event.target.closest("button")) return;
         previewCandidate(candidate.candidate_id);renderImages();updateButtons();
