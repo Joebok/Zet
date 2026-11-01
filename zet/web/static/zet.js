@@ -3182,8 +3182,8 @@ function renderHeaderStoryContext() {
 }
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["local-overview", "Overview"], ["local-head-image-edit", "Head-Image (Edit)"], ["onboarding", "Character Overview"], ["local-body-reference", "Body-Reference"],
-    ["local-head-image", "Head-Image (Construct)"], ["local-character-assembly", "Character-Assembly"],
+    ["local-overview", "Overview"], ["onboarding", "Character Overview"], ["local-body-reference", "Body-Reference"],
+    ["local-head-image-edit", "Head-Image (Edit)"], ["local-head-image", "Head-Image (Construct)"], ["local-character-assembly", "Character-Assembly"],
     ["local-costume-dressing", "Costume-Dressing"], ["identity-keys", "Identity Keys"],
     ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
     ["minor-characters", "Minor Characters"],
