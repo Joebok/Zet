@@ -820,6 +820,31 @@ main {
   font-weight: 600;
 }
 
+.local-pipeline-view > :is(.local-pipeline-render-tools, .local-pipeline-override, .local-pipeline-observations) {
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+  padding: 8px 0 0;
+}
+
+.local-pipeline-view > :is(.local-pipeline-render-tools, .local-pipeline-override, .local-pipeline-observations) > summary {
+  display: list-item;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.local-pipeline-render-tools > .button-row.compact {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.local-pipeline-review-progress {
+  margin: 10px 0 0;
+}
+
+.local-pipeline-review-progress[hidden] {
+  display: none;
+}
+
 .local-pipeline-view-observations label {
   display: block;
 }

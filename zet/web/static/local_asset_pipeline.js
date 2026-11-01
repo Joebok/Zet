@@ -163,7 +163,7 @@
     })());
   }
 
-  function route(action, runId = state.run?.run_id || "", view = "", candidateId = "") {
+  function route(action, runId = state.run?.run_id || "", view = "", candidateId = "", referenceCandidateId = "") {
     const id = encodeURIComponent(runId);
     const encodedView = encodeURIComponent(view);
     const candidate = encodeURIComponent(candidateId);
@@ -173,7 +173,7 @@
       case "create": return `${baseUrl()}/runs`;
       case "detail": return `${baseUrl()}/runs/${id}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "image": return `${baseUrl()}/runs/${id}/images/${candidate}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "reference-image": return `${baseUrl()}/runs/${id}/reference-images/${encodedView}/${encodeURIComponent(candidate)}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "reference-image": return `${baseUrl()}/runs/${id}/reference-images/${encodedView}/${candidate}?${new URLSearchParams({render_mode: state.renderMode, candidate_id: referenceCandidateId, ...(isCostume() ? {costume: selectedCostume()} : {})})}`;
       case "rename": return `${baseUrl()}/runs/${id}/name${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "start": return `${baseUrl()}/runs/${id}/start${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "run-available": return `${baseUrl()}/runs/${id}/run-available${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -748,7 +748,11 @@
         }
       }
       const view = next.dataset.view;
-      const sourceSignature = run => JSON.stringify([run?.sources?.[view], run?.front_source_sha256, (run?.candidates || []).filter(item => item.view === view).map(item => item.reference_images)]);
+      const sourceSignature = run => {
+        const board = modeRun(run);
+        return JSON.stringify([board?.sources?.[view], board?.front_source_sha256, board?.slots_by_view?.[view],
+          (board?.candidates || []).filter(item => item.view === view).map(item => [item.candidate_id, item.reference_images])]);
+      };
       if (sourceSignature(oldRun) !== sourceSignature(latest)) {
         previous.querySelectorAll(".local-pipeline-sources").forEach(section => section.remove());
         next.querySelectorAll(".local-pipeline-sources").forEach(section => previous.insertBefore(section, previous.querySelector(".local-pipeline-render-tools")));
@@ -952,9 +956,11 @@
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
     const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
     const previousToolsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-render-tools"), (details) => [details.dataset.view, details.open]));
+    const previousOverrideOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.querySelector(".local-pipeline-override")?.open]));
     host.replaceChildren();
     for (const view of orderedViews(run)) {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
+      const slots = run.slots_by_view?.[view] || [...candidates.map(item => item.candidate_id), ...Array(Math.max(0, 8 - candidates.length)).fill(null)];
       const details = document.createElement("details");
       details.className = "local-pipeline-view";
       details.dataset.view = view;
@@ -993,7 +999,9 @@
       addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
       const ai = run.view_reviews?.[view]?.ai_observations || {};
       details.append(summary);
-      details.append(viewOverrideInput(run, view));
+      const override = viewOverrideInput(run, view);
+      override.open = previousOverrideOpen.get(view) || false;
+      details.append(override);
       const activeHeadSource = run.front_sources_by_mode?.[state.renderMode] || (state.renderMode === "draft" || !run.apply_phase_change ? {path: run.front_source, sha256: run.front_source_sha256} : {});
       if (hasSharedAssetRouter() || (["head-image", "head-image-edit"].includes(state.pipeline) && view === "FRONT" && activeHeadSource.path)) {
         const roles = ["head-image", "head-image-edit"].includes(state.pipeline)
@@ -1023,13 +1031,14 @@
       const referenceImages = [];
       const seenReferences = new Set();
       for (const candidate of candidates) {
-        for (const reference of candidate.reference_images || []) {
+        if (!slots.includes(candidate.candidate_id)) continue;
+        for (const [index, reference] of (candidate.reference_images || []).entries()) {
           const key = reference.sha256
             ? `sha256:${reference.sha256}`
             : `${reference.role || ""}\u0000${reference.prompt_role || ""}\u0000${reference.label || reference.tag || ""}`;
           if (reference.path && !seenReferences.has(key)) {
             seenReferences.add(key);
-            referenceImages.push(reference);
+            referenceImages.push({reference, index, candidateId: candidate.candidate_id});
           }
         }
       }
@@ -1041,12 +1050,11 @@
         ? new Set(["character_assembly"])
         : new Set();
       const remainingReferences = referenceImages
-        .map((reference, index) => ({ reference, index }))
         .filter(({ reference }) => !renderedRoles.has(reference.role));
       if (remainingReferences.length) {
         const sources = document.createElement("div");
         sources.className = "local-pipeline-sources";
-        for (const { reference, index } of remainingReferences) {
+        for (const { reference, index, candidateId } of remainingReferences) {
           const figure = document.createElement("figure");
           const caption = document.createElement("figcaption");
           const imageIndex = reference.image_index || index + 1;
@@ -1057,7 +1065,7 @@
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          image.src = versionedImageUrl(route("reference-image", run.run_id, view, String(index)),
+          image.src = versionedImageUrl(route("reference-image", run.run_id, view, String(index), candidateId),
             reference.sha256 || reference.path || `${view}:${reference.role || "reference"}:${index}`);
           figure.append(caption, image);
           sources.append(figure);
@@ -1135,14 +1143,14 @@
         { view, disabled: ["QUEUED", "RUNNING"].includes(ai.status) || !candidates.some(item => item.image_available) });
       observationDetails.append(observationSection);
       const reviewProgress = document.createElement("p");
+      reviewProgress.className = "status-badge review local-pipeline-review-progress";
+      reviewProgress.hidden = !(evaluation.evaluation_id || ranking.status);
       if (evaluation.evaluation_id || ranking.status) {
-        reviewProgress.className = "muted local-pipeline-review-progress";
         const rankText = evaluationLabels[evaluation.ranking_status] || evaluationLabels[ranking.status] || "Ranking not queued";
         reviewProgress.textContent = `Luna ranking · ${rankText}`;
       }
       const gallery = document.createElement("div");
       gallery.className = "local-pipeline-gallery";
-      const slots = run.slots_by_view?.[view] || [...candidates.map(item => item.candidate_id), ...Array(Math.max(0, 8 - candidates.length)).fill(null)];
       const candidateSlots = slots.map((id, index) => ({
         id,
         slot: index + 1,
@@ -1190,17 +1198,16 @@
       const toolsTitle = document.createElement("summary");
       toolsTitle.textContent = "Render tools";
       tools.append(toolsTitle, viewActions, countControl);
-      const override = details.querySelector(".local-pipeline-override");
-      if (override) tools.append(override);
       if (isCostume()) {
         const costumeControls = details.querySelector(".costume-render-settings");
         if (costumeControls) tools.append(costumeControls);
       } else if (recipeSection.isConnected || recipeSection.parentElement === details) tools.append(recipeSection);
       tools.append(promptHelp);
       details.insertBefore(gallery, details.children[1] || null);
+      gallery.insertAdjacentElement("afterend", reviewProgress);
       details.append(tools);
+      details.append(override);
       details.append(observationDetails);
-      if (reviewProgress.textContent) details.append(reviewProgress);
       const continuation = document.createElement("div");
       continuation.className = "button-row compact";
       if (!isCostume()) addButton(continuation, "Continue", "proceed", { primary: true });

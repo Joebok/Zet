@@ -111,6 +111,43 @@ class LocalImagePipelineWorkflowService:
                 continue
         return result
 
+    def reference_image_path(self, run_id: str, view: str, index: int, *,
+                             candidate_id: str = "", render_mode: str = "draft", costume: str = "") -> Path:
+        """Resolve saved reference bytes by candidate identity and ordered input index."""
+        if render_mode not in {"draft", "final"}:
+            raise ValueError("Render mode must be draft or final.")
+        run = self.adapter.detail(run_id, **({"costume": costume} if self.pipeline == "costume-dressing" else {}))
+        candidates = [item for item in run.get("candidates", [])
+                      if str(item.get("view") or "").upper() == view.upper()
+                      and item.get("render_mode", "draft") == render_mode]
+        if candidate_id:
+            candidate = next((item for item in candidates if item.get("candidate_id") == candidate_id), {})
+            references = candidate.get("reference_images") or []
+        else:
+            # Compatibility for positional URLs: use the same mode and occupied
+            # slots as the dashboard, never references from another mode/history.
+            from zet.services.render_slot_service import slot_maps
+            slots = set(slot_maps(run, render_mode).get(view.upper(), []))
+            references, seen = [], set()
+            for candidate in candidates:
+                if candidate.get("candidate_id") not in slots:
+                    continue
+                for reference in candidate.get("reference_images") or []:
+                    digest = reference.get("sha256")
+                    key = ("sha256", digest) if digest else (
+                        reference.get("role") or "", reference.get("prompt_role") or "",
+                        reference.get("label") or reference.get("tag") or "",
+                    )
+                    if reference.get("path") and key not in seen:
+                        seen.add(key)
+                        references.append(reference)
+        if index < 0 or index >= len(references):
+            raise FileNotFoundError("Reference image is unavailable.")
+        path = Path(str(references[index].get("path") or "")).resolve()
+        if not path.is_file() or not path.is_relative_to(self.adapter.library_root):
+            raise FileNotFoundError("Reference image is unavailable.")
+        return path
+
     def action(self, name: str, **args: Any) -> dict[str, Any] | list[dict[str, Any]]:
         """Call a stable action name while preserving adapter-specific render details."""
         run_id = str(args.get("run_id") or "")

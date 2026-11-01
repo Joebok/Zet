@@ -226,33 +226,10 @@ def create_local_character_asset_pipeline_router(
             return FileResponse(path)
 
         @router.get(f"{prefix}/runs/{{run_id}}/reference-images/{{view}}/{{index}}")
-        def reference_image(run_id: str, view: str, index: int, costume: str = Query(""), _pipeline: str = pipeline):
-            def resolve_reference():
-                adapter = service(_pipeline).adapter
-                run = adapter.detail(run_id, **({"costume": costume} if _pipeline == "costume-dressing" else {}))
-                references = []
-                seen = set()
-                for candidate in run.get("candidates", []):
-                    if str(candidate.get("view") or "").upper() != view.upper():
-                        continue
-                    for reference in candidate.get("reference_images", []):
-                        path = str(reference.get("path") or "")
-                        digest = str(reference.get("sha256") or "")
-                        key = ("sha256", digest) if digest else (
-                            str(reference.get("role") or ""),
-                            str(reference.get("prompt_role") or ""),
-                            str(reference.get("label") or reference.get("tag") or ""),
-                        )
-                        if path and key not in seen:
-                            seen.add(key)
-                            references.append(reference)
-                if index < 0 or index >= len(references):
-                    raise FileNotFoundError("Reference image is unavailable.")
-                path = Path(str(references[index].get("path") or "")).resolve()
-                if not path.is_file():
-                    raise FileNotFoundError("Reference image is unavailable.")
-                return path
-            path = call(resolve_reference, missing=404)
+        def reference_image(run_id: str, view: str, index: int, costume: str = Query(""),
+                            candidate_id: str = Query(""), render_mode: str = Query("draft"), _pipeline: str = pipeline):
+            path = call(lambda: service(_pipeline).reference_image_path(
+                run_id, view, index, candidate_id=candidate_id, render_mode=render_mode, costume=costume), missing=404)
             return FileResponse(path)
 
         if shared_sources:

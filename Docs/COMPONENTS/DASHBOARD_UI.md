@@ -4,6 +4,8 @@ Character pipeline batch creation uses a modal with an optional name. Selected
 thumbnails open a viewing-only image sequence with arrow navigation. View
 galleries precede reference images and collapsed render tools. Batch status and
 generation controls share the upper panel; occasional batch actions use a menu.
+Each view places its Luna ranking pill below the gallery, followed by separate
+Render tools, override image, and Observations disclosures with dividers.
 Stage opens an overlaid menu, and successful action acknowledgements quiet after
 five seconds. The [completed plan](../../plans/completed/character-pipeline-ui.md)
 records restart behavior and validation.

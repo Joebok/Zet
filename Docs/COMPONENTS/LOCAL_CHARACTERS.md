@@ -297,6 +297,14 @@ responses carry the same presented run fields as detail, allowing the page to me
 them directly without another detail request. Candidate images use the focused
 resolver above; reference previews keep URLs stable for their saved content identity.
 
+Reference thumbnails on all five character pipeline pages identify the owning
+candidate, render mode and original ordered reference index. The shared workflow
+service resolves that saved input within the bound library; the browser only
+deduplicates references from occupied slots in the displayed mode. Supplemental
+images retain their original input numbering, and polling refreshes thumbnails
+when slot ownership changes. Legacy positional URLs default to Draft and remain
+mode/slot scoped. This presentation lookup does not change frozen render inputs.
+
 ### Costume-Dressing per-view readiness feedback (2026-10-28)
 
 The batch view controls display Dressing's saved mode-specific `mode_reasons`,
