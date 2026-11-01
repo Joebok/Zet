@@ -1,5 +1,18 @@
 # Local testing
 
+## Deployment Node discovery on Windows (2026-11-01)
+
+Disposable subprocess checks reproduced the updater's exact missing-Node error
+with an npm shim on PATH and Node omitted. The repaired controller passed npm
+pretest/test lifecycle scripts and nested Node execution, retained the selected
+npm, recovered both tools from the standard installation when absent from PATH,
+and reported explicit missing-Node/npm failures. Python syntax and
+`git diff --check` passed. `npm.cmd run test:e2e` passed all four approved fast
+scenarios (49.1s). The suite logged a storage-maintenance lock timeout and a
+Windows connection-reset callback without failing any scenario. These checks
+do not establish production recovery; no production restart or deployment was
+performed. No maintained scenarios were added.
+
 ## Completed-view re-evaluation (2026-10-31)
 
 Post-deployment follow-up exposed a second batch-wide guard in the outer action

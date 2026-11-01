@@ -102,6 +102,32 @@ def release_python(release):
     return release / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
+def validation_command(env):
+    """Resolve Node/npm and give lifecycle scripts the same tool directories."""
+    path = env.get("PATH", "")
+    npm_name = "npm.cmd" if os.name == "nt" else "npm"
+    npm = shutil.which(npm_name, path=path)
+    node = shutil.which("node.exe" if os.name == "nt" else "node", path=path)
+    if not node and os.name == "nt":
+        # A long-running dashboard may have inherited PATH before Node was installed.
+        candidates = [Path(npm).parent / "node.exe"] if npm else []
+        for key in ("PROGRAMW6432", "PROGRAMFILES", "PROGRAMFILES(X86)"):
+            if env.get(key):
+                candidates.append(Path(env[key]) / "nodejs" / "node.exe")
+        if env.get("LOCALAPPDATA"):
+            candidates.append(Path(env["LOCALAPPDATA"]) / "Programs" / "nodejs" / "node.exe")
+        node = next((str(candidate) for candidate in candidates if candidate.is_file()), None)
+    if not node:
+        raise RuntimeError("Node.js is unavailable; install Node.js or add its directory to Zet's PATH. Production was not stopped.")
+    env["PATH"] = str(Path(node).parent) + os.pathsep + path
+    npm = npm or shutil.which(npm_name, path=env["PATH"])
+    if not npm:
+        raise RuntimeError("npm is unavailable; production was not stopped.")
+    env["PATH"] = str(Path(npm).parent) + os.pathsep + env["PATH"]
+    # Keep the Windows shell command fixed; paths are supplied through the environment.
+    return ["cmd.exe", "/d", "/c", "npm.cmd run test:e2e"] if os.name == "nt" else [npm, "run", "test:e2e"]
+
+
 def library_reference_version(container):
     """Return the highest path format declared by a universe in this library container."""
     container = Path(container)
@@ -213,11 +239,7 @@ def stage(request, update):
     env.pop("PYTHONPATH", None)
     env.pop("ZET_WORKER_MODE", None)
     update("validating")
-    npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
-    if not npm:
-        raise RuntimeError("npm is unavailable; production was not stopped.")
-    # npm's Windows command shim is invoked directly via cmd with a fixed command, no data interpolation.
-    command = ["cmd.exe", "/d", "/c", "npm.cmd run test:e2e"] if os.name == "nt" else [npm, "run", "test:e2e"]
+    command = validation_command(env)
     try:
         with test_lock(request["workflow_state_root"]):
             run(command, cwd=release, env=env, timeout=600)

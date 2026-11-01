@@ -107,6 +107,11 @@ renderer presets and model caches have explicit persistent-state paths.
 Restart offers Update and restart or Restart current version. Update stages and
 runs the approved isolated baseline BEFORE stopping production. The controller is
 copied outside releases; a check lock serializes worker/staging fixed-port tests.
+The controller resolves Node and npm and passes both tool directories to validation
+children. On Windows, if inherited PATH omits Node, it checks beside npm and the
+standard Program Files and per-user Programs/nodejs directories. Custom installs
+outside those locations must be on Zet's PATH. Missing tools block promotion before
+production stops.
 Staging writes test output under runtime `state/validation/<operation-id>`, removes
 it after a passing run, and removes npm test packages from the release after validation.
 Failed test output remains in state for diagnosis; new release directories do not
