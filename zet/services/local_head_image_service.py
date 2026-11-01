@@ -131,7 +131,7 @@ class LocalHeadImageService:
 
     def _run_root(self, run_id: str) -> Path:
         if not re.fullmatch(r"\d{8}_\d{6}_\d{6}", str(run_id or "")):
-            raise LocalHeadImageError("Invalid Local Head-Image batch ID.")
+            raise LocalHeadImageError(f"Invalid {pipeline_page_config(self.pipeline_id)['label']} batch ID.")
         for path in self.root.glob(f"*/ */{self.asset_pipeline}/{run_id}".replace(" ", "")):
             if (path / "spec.json").is_file() and self._read_json(path / "spec.json").get("kind") == self.run_kind:
                 return path
@@ -141,7 +141,7 @@ class LocalHeadImageService:
         for path in self.root.glob(f"*/*/{self.asset_pipeline}/{run_id}"):
             if (path / "spec.json").is_file() and self._read_json(path / "spec.json").get("kind") == self.run_kind:
                 return path
-        raise LocalHeadImageError(f"Local Head-Image batch not found: {run_id}")
+        raise LocalHeadImageError(f"{pipeline_page_config(self.pipeline_id)['label']} batch not found: {run_id}")
 
     def preview(self, payload: dict[str, Any]) -> dict[str, Any]:
         character, phase = str(payload.get("character") or "").strip(), str(payload.get("phase") or "").strip()
@@ -150,7 +150,7 @@ class LocalHeadImageService:
         status_loader = getattr(self.app, "character_onboarding_status", None)
         status = status_loader(character, phase) if callable(status_loader) else None
         if status is not None and not status.template_ready:
-            raise LocalHeadImageError("A valid Character.md is required before local Head-Image can run: " + "; ".join(status.validation_errors))
+            raise LocalHeadImageError(f"A valid Character.md is required before {pipeline_page_config(self.pipeline_id)['label']} can run: " + "; ".join(status.validation_errors))
         from zet.services.local_character_progression_service import planned_views
         views = planned_views(payload, pipeline=self.pipeline_id)
         front_count, other_count = render_count(payload.get("front_count"), 8), render_count(payload.get("other_count"), 4)
@@ -204,7 +204,7 @@ class LocalHeadImageService:
         records = self.asset_store.locked_assets(character, phase, pipeline=pipeline, render_mode=mode)
         record = next((item for item in records if item.get("view") == FRONT and not item.get("qualifier")), None)
         if not record:
-            raise LocalHeadImageError(f"Lock a {mode.title()} FRONT {pipeline} image in {phase} first.")
+            raise LocalHeadImageError(f"Lock a {mode.title()} FRONT {pipeline_page_config(pipeline)['label']} image in {phase} first.")
         if record.get("image_sha256") and self._hash(Path(record["image_path"])) != record["image_sha256"]:
             raise LocalHeadImageError("The locked source image no longer matches its recorded checksum.")
         return record["image_path"], {"kind": "locked_phase", "phase": phase, "pipeline": pipeline,
@@ -679,7 +679,7 @@ class LocalHeadImageService:
         run = self.detail(run_id)
         if (ask.get("ask_id") != ask_id or answer.get("ask_id") != ask_id
                 or ask.get("pipeline") != self.queue_pipeline or not self._ask_belongs_to_run(ask, run)):
-            raise LocalHeadImageError("AI Proxy answer does not belong to this Local Head-Image candidate.")
+            raise LocalHeadImageError(f"AI Proxy answer does not belong to this {pipeline_page_config(self.pipeline_id)['label']} candidate.")
         if answer.get("status") in {"ERROR", "RETRY_LATER", "FAILED"}:
             raise LocalHeadImageError(str(answer.get("error_message") or "AI Proxy render failed."))
         if answer.get("status") != "SUCCESS" or Path(str(answer.get("expected_output") or "")).name != answer.get("expected_output"):

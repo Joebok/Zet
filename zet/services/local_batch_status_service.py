@@ -5,16 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+from zet.services.local_image_pipeline_policy import LOCAL_IMAGE_PIPELINES
 
 
 PIPELINES = ("body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing")
-PIPELINE_LABELS = {
-    "body-reference": "Body-Reference",
-    "head-image": "Head-Image",
-    "head-image-edit": "Head-Image Edit",
-    "character-assembly": "Character-Assembly",
-    "costume-dressing": "Costume-Dressing",
-}
+PIPELINE_LABELS = {key: LOCAL_IMAGE_PIPELINES[key].label for key in PIPELINES}
 
 STATUS_GROUPS = (
     ("PAUSED_STORAGE", "Paused — storage unavailable"),

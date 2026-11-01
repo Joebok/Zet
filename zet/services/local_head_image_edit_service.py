@@ -56,14 +56,14 @@ class LocalHeadImageEditService(LocalHeadImageService):
         if payload.get("apply_phase_change") is True and not re.sub(
                 r"<!--.*?-->", "", sections.get("HEAD_EDIT_PHASE_CHANGES", ""), flags=re.S).strip():
             result["can_create"] = False
-            result["blocking_reasons"].append("Author Head-Image Edit phase-change rules in the target phase first.")
+            result["blocking_reasons"].append("Author Head-Image (Edit) phase-change rules in the target phase first.")
         source_phase = str(payload.get("front_source_phase") or "").strip()
         source_path = str(payload.get("front_source_path") or "").strip()
         record = self._locked_phase_source(payload)
         if source_phase and record is None:
             result["can_create"] = False
             result["blocking_reasons"].append(
-                f"Lock a FRONT Head-Image Edit image in {source_phase} before creating this batch.")
+                f"Lock a FRONT Head-Image (Edit) image in {source_phase} before creating this batch.")
         elif payload.get("apply_phase_change") is True and not (source_phase or source_path):
             result["can_create"] = False
             result["blocking_reasons"].append("Choose a source phase or upload a FRONT image for phase change.")

@@ -131,7 +131,7 @@
   let statusTimer;
   function setStatus(message, error = false) {
     clearTimeout(statusTimer);
-    $("status").textContent = message || "";
+    $("status").textContent = window.ZetPipelineMessage(message);
     $("status").classList.toggle("error", error);
     $("status").classList.toggle("success", !error && Boolean(message));
     if (message && !error) statusTimer = setTimeout(() => setStatus(""), 5000);
@@ -277,10 +277,10 @@
       if (asset) {
         const image = document.createElement("img");
         image.src = universeImageUrl(`/api/local/assets/${encodeURIComponent(asset.key)}/image?${new URLSearchParams({ character, phase, v: asset.image_sha256 || "" })}`);
-        image.alt = `Locked FRONT Head-Image Edit image from ${phase}`;
+        image.alt = `Locked FRONT ${window.ZetPipelineLabel($("source-pipeline").value)} image from ${phase}`;
         host.append(image);
       } else {
-        host.append(`No locked FRONT Head-Image Edit image in ${phase}. `);
+        host.append(`No locked FRONT ${window.ZetPipelineLabel($("source-pipeline").value)} image in ${phase}. `);
         const link = document.createElement("a");
         link.href = `/?${new URLSearchParams({ page: "local-head-image-edit", character, phase })}`;
         link.textContent = `Go to ${phase} and lock FRONT first`;
@@ -1268,7 +1268,7 @@
       image.src = versionedImageUrl(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source?render_mode=${mode}`, record.sha256);
       image.alt = `${mode} phase-change source`;
       image.style.maxWidth = "160px";
-      host.append(image, document.createTextNode(` ${record.origin?.phase || "Uploaded"} · ${record.origin?.pipeline || ""}`));
+      host.append(image, document.createTextNode(` ${record.origin?.phase || "Uploaded"} · ${window.ZetPipelineLabel(record.origin?.pipeline || "")}`));
     } else host.textContent = "No source selected for this mode.";
     const selector = $("mode-source-phase");
     const previous = selector.value;
@@ -1313,7 +1313,7 @@
     const phaseChangeSummary = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules applied" : "";
     const modeProgress = run.progress_by_mode?.[state.renderMode];
     const modeAnchor = modeRun(run)?.front_anchor;
-    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary}${state.pipeline === "character-assembly" ? ` · Heads: ${run.head_pipeline === "head-image-edit" ? "Head-Image Edit" : "Head-Image"}` : ""} · ${run.run_id} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${modeProgress ? `${modeProgress.complete_count}/${modeProgress.candidate_count}` : `${completed}/${run.candidate_count || (run.candidates || []).length}`} images · ${statusLabels[modeProgress?.status || run.status] || modeProgress?.status || run.status}${modeAnchor ? ` · FRONT ${modeAnchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
+    $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary}${state.pipeline === "character-assembly" ? ` · Heads: ${window.ZetPipelineLabel(run.head_pipeline || "head-image")}` : ""} · ${run.run_id} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${modeProgress ? `${modeProgress.complete_count}/${modeProgress.candidate_count}` : `${completed}/${run.candidate_count || (run.candidates || []).length}`} images · ${statusLabels[modeProgress?.status || run.status] || modeProgress?.status || run.status}${modeAnchor ? ` · FRONT ${modeAnchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
     renderSelectedViews(modeRun(run));
@@ -1442,12 +1442,12 @@
       const blockers = result.blocking_reasons || [];
       renderSourceBatchOptions(result);
       const canCreate = result.can_create !== false && blockers.length === 0;
-      $("readiness").textContent = blockers.length ? blockers.join(" · ")
+      $("readiness").textContent = blockers.length ? blockers.map(window.ZetPipelineMessage).join(" · ")
         : `${result.candidate_count || ""} candidates across ${(result.views || []).length} views. ${canCreate ? "Ready to create." : "Resolve requirements first."}`;
       $("create").disabled = !canCreate;
     } catch (error) {
       if (generation !== state.previewGeneration) return;
-      $("readiness").textContent = error.message;
+      $("readiness").textContent = window.ZetPipelineMessage(error.message);
       $("create").disabled = true;
     }
   }
@@ -1538,7 +1538,7 @@
     populateSourcePhases();
     updateSourceControls();
     document.querySelector("#local-pipeline-title").textContent = {
-      "body-reference": "Body-Reference", "head-image": "Head-Image", "head-image-edit": "Head-Image Edit",
+      "body-reference": "Body-Reference", "head-image": "Head-Image (Construct)", "head-image-edit": "Head-Image (Edit)",
       "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing",
     }[pipeline];
     $("costume-label").hidden = !isCostume();

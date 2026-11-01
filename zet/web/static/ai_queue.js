@@ -10,9 +10,9 @@
     for (const item of rows) {
       const row = document.createElement("tr");
       row.dataset.jobId = item.ask_id;
-      for (const value of [item.universe_id, ({ PAUSED_STORAGE: "Paused — storage unavailable", RECOVERING: "Recovering" })[item.status] || item.status, [item.workflow, item.target].filter(Boolean).join(" / "), item.task_type || item.ask_id,
+      for (const value of [item.universe_id, ({ PAUSED_STORAGE: "Paused — storage unavailable", RECOVERING: "Recovering" })[item.status] || item.status, [window.ZetPipelineLabel(item.workflow), item.target].filter(Boolean).join(" / "), item.task_type || item.ask_id,
         `${item.provider || ""} Â· ${item.model || ""}`, item.created_at,
-        [item.failure_stage && `Stage: ${item.failure_stage}`, item.details,
+        [item.failure_stage && `Stage: ${item.failure_stage}`, window.ZetPipelineMessage(item.details),
           item.age_seconds != null && `Age: ${Math.floor(item.age_seconds / 60)} min`, item.recovery_action].filter(Boolean).join(" Â· ")]) {
         const cell = document.createElement("td"); cell.textContent = value || ""; row.append(cell);
       }
@@ -70,7 +70,7 @@
       for (const [name, id] of [["universes", "ai-filter-universe"], ["workflows", "ai-filter-workflow"]]) {
         const select = document.getElementById(id), previous = select.value;
         select.replaceChildren(new Option(name === "universes" ? "All universes" : "All workflows", ""),
-          ...(payload.facets?.[name] || []).map(value => new Option(value, value)));
+          ...(payload.facets?.[name] || []).map(value => new Option(name === "workflows" ? window.ZetPipelineLabel(value) : value, value)));
         select.value = previous;
       }
       render();
@@ -79,7 +79,7 @@
       recent.replaceChildren();
       for (const item of payload.recent_harvests || []) {
         const row = document.createElement("tr");
-        for (const value of [item.harvested_at, item.ask_id, item.task_type, item.asset_id, item.status, item.details]) {
+        for (const value of [item.harvested_at, item.ask_id, item.task_type, item.asset_id, item.status, window.ZetPipelineMessage(item.details)]) {
           const cell = document.createElement("td"); cell.textContent = value ?? ""; row.append(cell);
         }
         recent.append(row);

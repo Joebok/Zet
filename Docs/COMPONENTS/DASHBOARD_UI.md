@@ -1,5 +1,7 @@
 # Dashboard presentation and image input
 
+The Assets menu lists Head-Image (Edit) first and labels the legacy workflow Head-Image (Construct). Pipeline identifiers and source defaults remain unchanged.
+
 Character pipeline batch creation uses a modal with an optional name. Selected
 thumbnails open a viewing-only image sequence with arrow navigation. View
 galleries precede reference images and collapsed render tools. Batch status and

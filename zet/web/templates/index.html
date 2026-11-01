@@ -84,10 +84,10 @@
       <div class="toolbar-menu local-assets-menu">
         <button id="local-assets-button" class="tab workflow-tab" type="button" aria-expanded="false" aria-controls="local-assets-menu">Assets ▾</button>
         <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
+          <button class="tab workflow-tab" data-page="local-head-image-edit">Head-Image (Edit)</button>
           <button class="tab workflow-tab" data-page="onboarding">Character Overview</button>
           <button class="tab workflow-tab" data-page="local-body-reference">Body-Reference</button>
-          <button class="tab workflow-tab" data-page="local-head-image">Head-Image</button>
-          <button class="tab workflow-tab" data-page="local-head-image-edit">Head-Image Edit</button>
+          <button class="tab workflow-tab" data-page="local-head-image">Head-Image (Construct)</button>
           <button class="tab workflow-tab" data-page="local-character-assembly">Character-Assembly</button>
           <button class="tab workflow-tab" data-page="local-costume-dressing">Costume-Dressing</button>
         </div>
@@ -296,7 +296,7 @@
             <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" max="8" value="4"></label>
             <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
             <label id="local-pipeline-head-pipeline-label" hidden>Head pipeline
-              <select id="local-pipeline-head-pipeline"><option value="head-image">Head-Image</option><option value="head-image-edit">Head-Image Edit</option></select>
+              <select id="local-pipeline-head-pipeline"><option value="head-image">Head-Image (Construct)</option><option value="head-image-edit">Head-Image (Edit)</option></select>
             </label>
             <div id="local-pipeline-source-batches" class="local-pipeline-source-batches" hidden></div>
             <div id="local-pipeline-source-option" hidden>
@@ -312,7 +312,7 @@
               </div>
               <div id="local-pipeline-locked-source" hidden>
                 <label>Source phase<select id="local-pipeline-source-phase"></select></label>
-                <label>Source pipeline<select id="local-pipeline-source-pipeline"><option value="head-image">Head Image</option><option value="head-image-edit" selected>Head Image Edit</option></select></label>
+                <label>Source pipeline<select id="local-pipeline-source-pipeline"><option value="head-image">Head-Image (Construct)</option><option value="head-image-edit" selected>Head-Image (Edit)</option></select></label>
                 <div id="local-pipeline-locked-preview" class="muted">Choose a source phase.</div>
               </div>
             </div>
@@ -331,7 +331,7 @@
           <div id="local-pipeline-mode-source-current"></div>
           <label>Source type<select id="local-pipeline-mode-source-kind"><option value="locked">Locked FRONT from another phase</option><option value="upload">Upload or paste FRONT</option></select></label>
           <label>Source phase<select id="local-pipeline-mode-source-phase"></select></label>
-          <label>Source pipeline<select id="local-pipeline-mode-source-pipeline"><option value="head-image">Head Image</option><option value="head-image-edit">Head Image Edit</option></select></label>
+          <label>Source pipeline<select id="local-pipeline-mode-source-pipeline"><option value="head-image">Head-Image (Construct)</option><option value="head-image-edit">Head-Image (Edit)</option></select></label>
           <div id="local-pipeline-mode-source-preview" class="muted"></div>
           <label>Upload FRONT<input id="local-pipeline-mode-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
           <div id="local-pipeline-mode-source-paste" contenteditable="true" role="textbox" aria-label="Paste FRONT source">Paste a FRONT image here</div>
@@ -410,7 +410,7 @@
               <select id="asset-filter-pipeline">
                 <option value="">All</option>
                 <option value="Body-Reference">Body-Reference</option>
-                <option value="Head-Image">Head-Image</option>
+                <option value="Head-Image">Head-Image (Construct)</option>
                 <option value="Character-Assembly">Character-Assembly</option>
                 <option value="Costume-Dressing">Costume-Dressing</option>
                 <option value="Expression">Expression</option>
@@ -2191,6 +2191,7 @@ Add prompt language here.
   <script src="/static/render_slots.js?v=20261020-image-cards"></script>
   <script src="/static/ai_model_picker.js?v=20261016"></script>
   <script src="/static/storage_status.js?v=20261017"></script>
+  <script src="/static/pipeline_labels.js"></script>
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/local_character_overview.js?v=20261027"></script>

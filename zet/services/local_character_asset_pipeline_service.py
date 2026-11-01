@@ -295,7 +295,7 @@ class LocalCharacterAssetPipelineService:
         inputs, blocking_reasons = {}, []
         head_pipeline = str(payload.get("head_pipeline") or "head-image")
         if head_pipeline not in {"head-image", "head-image-edit"}:
-            raise LocalCharacterAssetPipelineError("Choose Head-Image or Head-Image Edit as the head pipeline.")
+            raise LocalCharacterAssetPipelineError("Choose Head-Image (Construct) or Head-Image (Edit) as the head pipeline.")
         source_batches = payload.get("source_batches") or {}
         if not isinstance(source_batches, dict):
             raise LocalCharacterAssetPipelineError("Source batch choices must be an object keyed by source role.")

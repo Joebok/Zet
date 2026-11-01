@@ -406,7 +406,7 @@ class LocalCharacterOverviewService:
             if pipeline == "character-assembly" and not compatible:
                 raise LocalCharacterOverviewError(
                     "The locked Assembly FRONT uses a legacy head source. Unlock it in Character-Assembly "
-                    "before autogenerating with Head-Image Edit."
+                    "before autogenerating with Head-Image (Edit)."
                 )
             return existing_lock
         selected = self._front_selection(pipeline, character, phase, costume)

@@ -43,9 +43,9 @@
         } else card.append(make("div", "overview-placeholder", "No locked front image"));
         const state = slot.image_url ? `${slot.render_mode === "final" ? "Final" : "Draft"} · Locked${slot.locked_modes?.length > 1 ? " · Both modes" : ""}` : slot.message || ({
           IDLE: "Ready to generate.", QUEUED: "Queued.",
-          RUNNING: `Working on ${slot.pipeline}…`, CANCELLED: "Stopped. Start again to retry.",
+          RUNNING: `Working on ${window.ZetPipelineLabel(slot.pipeline)}…`, CANCELLED: "Stopped. Start again to retry.",
         }[slot.state] || slot.state);
-        card.append(make("p", `overview-state${slot.state === "ERROR" ? " error" : ""}`, state));
+        card.append(make("p", `overview-state${slot.state === "ERROR" ? " error" : ""}`, window.ZetPipelineMessage(state)));
         const actions = make("div", "button-row");
         const active = ["RUNNING", "QUEUED"].includes(slot.state);
         if (active || !slot.image_url) {

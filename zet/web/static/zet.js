@@ -3182,8 +3182,8 @@ function renderHeaderStoryContext() {
 }
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["local-overview", "Overview"], ["onboarding", "Character Overview"], ["local-body-reference", "Body-Reference"],
-    ["local-head-image", "Head-Image"], ["local-head-image-edit", "Head-Image Edit"], ["local-character-assembly", "Character-Assembly"],
+    ["local-overview", "Overview"], ["local-head-image-edit", "Head-Image (Edit)"], ["onboarding", "Character Overview"], ["local-body-reference", "Body-Reference"],
+    ["local-head-image", "Head-Image (Construct)"], ["local-character-assembly", "Character-Assembly"],
     ["local-costume-dressing", "Costume-Dressing"], ["identity-keys", "Identity Keys"],
     ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
     ["minor-characters", "Minor Characters"],
@@ -3970,7 +3970,7 @@ function renderAssetTable() {
     }
     const values = [
       asset.asset_id,
-      asset.pipeline,
+      window.ZetPipelineLabel(asset.pipeline),
       asset.body_view,
       asset.costume_or_expression,
       asset.asset_state,
@@ -4056,7 +4056,7 @@ function renderDetail(detail) {
   const asset = detail.asset;
   detailTitle.textContent = `Asset ${asset.asset_id}`;
   detailSummary.textContent = [
-    asset.pipeline,
+    window.ZetPipelineLabel(asset.pipeline),
     asset.body_view,
     asset.pipeline_stage_display || asset.pipeline_stage,
     asset.actor_display || asset.actor,
@@ -4558,8 +4558,8 @@ async function activatePage(page, options = {}) {
   if (LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
       "local-body-reference": "Body-Reference",
-      "local-head-image": "Head-Image",
-      "local-head-image-edit": "Head-Image Edit",
+      "local-head-image": "Head-Image (Construct)",
+      "local-head-image-edit": "Head-Image (Edit)",
       "local-character-assembly": "Character-Assembly",
       "local-costume-dressing": "Costume-Dressing",
     };
@@ -4825,7 +4825,7 @@ async function loadIdentityKeys() {
 function renderIdentityKeySources(selected = identityKeySource.value) {
   const options = [option("", "Select a locked local image")];
   for (const item of state.localAssetSources) {
-    const label = [item.pipeline, item.view, item.costume].filter(Boolean).join(" · ");
+    const label = [window.ZetPipelineLabel(item.pipeline), item.view, item.costume].filter(Boolean).join(" · ");
     options.push(option(item.source_key, label));
   }
   identityKeySource.replaceChildren(...options);
@@ -7601,7 +7601,7 @@ function renderImagePickerTable(picker) {
       const tagCell = document.createElement("td");
       tagCell.textContent = item.tag || "";
       const sourceCell = document.createElement("td");
-      sourceCell.textContent = [item.character, item.phase, item.pipeline].filter(Boolean).join(" | ") || item.kind || "";
+      sourceCell.textContent = [item.character, item.phase, window.ZetPipelineLabel(item.pipeline)].filter(Boolean).join(" | ") || item.kind || "";
       row.append(tagCell, labelCell, sourceCell);
     }
     makeSelectableRow(row, item.label || item.tag || "reference", false, () => picker.onSelect(item));
@@ -7830,7 +7830,7 @@ function selectImageCatalogItem(catalogId) {
   imageCatalogEditorTitle.textContent = item.label || item.tag;
   imageCatalogPreview.src = fileUrl(item.image_path);
   imageCatalogPreview.hidden = false;
-  imageCatalogSourceDetail.textContent = [item.source_type, item.character, item.phase, item.costume, item.pipeline, item.story_slug, item.scene_slug, item.subscene_id, item.tag].filter(Boolean).join(" · ");
+  imageCatalogSourceDetail.textContent = [item.source_type, item.character, item.phase, item.costume, window.ZetPipelineLabel(item.pipeline), item.story_slug, item.scene_slug, item.subscene_id, item.tag].filter(Boolean).join(" · ");
   imageCatalogManagedActions.hidden = !item.is_managed;
   imageCatalogManagedLabel.value = item.managed_label || item.label || "";
   imageCatalogManagedSet.value = item.reference_set_id || "";
@@ -9091,7 +9091,7 @@ function renderPhaseComparison(payload) {
   phaseComparisonCharacter.value = state.phaseComparison.character;
   syncPhaseComparisonPhaseOptions();
   const currentPipeline = phaseComparisonPipeline.value;
-  setSelectOptions(phaseComparisonPipeline, payload.available_pipelines || []);
+  setSelectOptionsWithLabels(phaseComparisonPipeline, (payload.available_pipelines || []).map(value => ({value, label: window.ZetPipelineLabel(value)})));
   phaseComparisonPipeline.value = (payload.available_pipelines || []).includes(payload.pipeline)
     ? payload.pipeline
     : ((payload.available_pipelines || []).includes(currentPipeline) ? currentPipeline : (((payload.available_pipelines || []).includes("Character-Assembly") ? "Character-Assembly" : "")));
@@ -9143,7 +9143,7 @@ function renderPhaseComparisonRow(row) {
     return;
   }
   phaseComparisonMeta.textContent =
-    `${row.pipeline} | ${row.slot_label} | ${state.phaseComparison.selectedIndex + 1} of ${state.phaseComparison.rows.length}`;
+    `${window.ZetPipelineLabel(row.pipeline)} | ${row.slot_label} | ${state.phaseComparison.selectedIndex + 1} of ${state.phaseComparison.rows.length}`;
   phaseComparisonLeftTitle.textContent = row.left?.phase || "Left Phase";
   phaseComparisonRightTitle.textContent = row.right?.phase || "Right Phase";
   renderPhaseComparisonSide(phaseComparisonLeftImage, phaseComparisonLeftMeta, row.left);
@@ -10508,7 +10508,7 @@ function renderRows(tbody, rows, columns) {
         time.textContent = formatLocalTimestamp(value);
         cell.append(time);
       } else {
-        cell.textContent = value;
+        cell.textContent = column === "pipeline" ? window.ZetPipelineLabel(value) : value;
       }
       row.append(cell);
     }
@@ -10622,7 +10622,7 @@ function appendPipelineInspectionNodes(nodes, container, search, ancestorMatches
       details.className = "inspection-tree-node";
       details.open = Boolean(search) || pipelineInspectionNodeContains(item, state.selectedPipelineInspectionId);
       const summary = document.createElement("summary");
-      summary.textContent = item.label;
+      summary.textContent = window.ZetPipelineLabel(item.label);
       const children = document.createElement("div");
       children.className = "inspection-tree-children";
       appendPipelineInspectionNodes(item.children, children, search, selfMatches);
@@ -10632,7 +10632,7 @@ function appendPipelineInspectionNodes(nodes, container, search, ancestorMatches
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = item.label;
+    button.textContent = window.ZetPipelineLabel(item.label);
     button.title = item.path || "";
     if (item.pipeline_id === state.selectedPipelineInspectionId) button.setAttribute("aria-current", "true");
     button.addEventListener("click", () => selectPipelineInspection(item.pipeline_id));
@@ -10700,7 +10700,7 @@ async function selectPipelineInspection(pipelineId) {
   renderPipelineInspectionFiles();
   clearPipelineInspectionPreview("Select a file to preview its contents.");
   const pipeline = flattenPipelineInspections().find((item) => item.pipeline_id === pipelineId);
-  pipelineInspectionFilesTitle.textContent = pipeline?.label || "Files";
+  pipelineInspectionFilesTitle.textContent = window.ZetPipelineLabel(pipeline?.label) || "Files";
   try {
     const payload = await fetchJson(`/api/pipeline-inspection/files?${pipelineInspectionParams().toString()}`);
     if (state.selectedPipelineInspectionId !== pipelineId) return;
@@ -10827,7 +10827,7 @@ function renderPipelineControls(payload) {
   renderRows(projectConfigTableBody, payload.project_config_rows || [], ["Scope", "Setting", "Value"]);
   renderRows(pipelineStageTableBody, payload.pipeline_rows || [], ["pipeline", "step", "stage", "actor", "worker", "asset_count"]);
   const currentPipeline = batchRenderPipeline.value;
-  setSelectOptions(batchRenderPipeline, payload.pipeline_names || []);
+  setSelectOptionsWithLabels(batchRenderPipeline, (payload.pipeline_names || []).map(value => ({value, label: window.ZetPipelineLabel(value)})));
   if ((payload.pipeline_names || []).includes(currentPipeline)) {
     batchRenderPipeline.value = currentPipeline;
   }
@@ -11112,7 +11112,7 @@ async function runBatchRenderReset() {
     }
     const confirmed = await confirmAction(
       "Reset pipeline assets",
-      `Reset ${pipeline} assets for ${state.character} / ${state.phase} to RENDER? Affected: ${counts.affected}; skipped: ${counts.skipped || 0}; locked: ${counts.locked || 0}. This clears queued render items and existing render outputs.`,
+      `Reset ${window.ZetPipelineLabel(pipeline)} assets for ${state.character} / ${state.phase} to RENDER? Affected: ${counts.affected}; skipped: ${counts.skipped || 0}; locked: ${counts.locked || 0}. This clears queued render items and existing render outputs.`,
       "Reset Assets",
     );
     if (!confirmed) {
@@ -11283,7 +11283,7 @@ function renderRenderConsoleDetail(detail) {
   renderConsoleTitle.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.expected_output || task.ask_id}`;
   consoleAskId.textContent = task.ask_id;
   consoleAssetLabel.textContent = storyLabel || `Asset ${task.asset_id ?? "unknown"} | ${task.character} / ${task.phase}`;
-  consolePipelineLabel.textContent = `${task.pipeline} | ${task.pipeline_stage}`;
+  consolePipelineLabel.textContent = `${window.ZetPipelineLabel(task.pipeline)} | ${task.pipeline_stage}`;
   consoleExpectedOutput.textContent = task.expected_output || "";
   renderConsolePrompt.value = detail.prompt || "";
   const isScene = Boolean(detail.manifest?.story_slug && detail.manifest?.scene_slug);
@@ -11993,7 +11993,7 @@ function renderManifestTaskTable() {
     const proxyLabel = proxyJob
       ? `${proxyJob.display_state || proxyJob.state}${proxyJob.trusted_worker_backend ? ` · ${proxyJob.trusted_worker_backend}` : ""}${proxyJob.diagnostic ? ` · ${proxyJob.diagnostic}` : ""}`
       : "Ready";
-    for (const value of [task.asset_id, task.pipeline, task.body_view, proxyLabel]) {
+    for (const value of [task.asset_id, window.ZetPipelineLabel(task.pipeline), task.body_view, proxyLabel]) {
       const cell = document.createElement("td");
       cell.textContent = value ?? "";
       row.append(cell);
@@ -12204,7 +12204,7 @@ function renderLocalRunAllStatus(campaign) {
       character: item.character, phase: item.phase });
     if (item.costume) params.set("local_costume", item.costume);
     const link = document.createElement("a"); link.href = `/?${params}`;
-    link.textContent = `Review ${item.character} ${item.pipeline} batch`;
+    link.textContent = `Review ${item.character} ${window.ZetPipelineLabel(item.pipeline)} batch`;
     localRunAllStatus.append(document.createElement("br"), link);
   }
   localRunAllStatus.hidden = false;

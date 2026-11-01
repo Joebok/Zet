@@ -255,7 +255,7 @@ class LocalCharacterRefinementService:
             if operation not in {"correction", "rear_hair"}:
                 raise ValueError("Unknown refinement operation.")
             if (operation != "correction" or guide_view) and pipeline != "head-image-edit":
-                raise ValueError("Render guides are supported only by Head-Image Edit.")
+                raise ValueError("Render guides are supported only by Head-Image (Edit).")
             if operation == "rear_hair":
                 if record["view"] not in {"BACK_LEFT_3_4", "BACK_RIGHT_3_4"}:
                     raise ValueError("BACK-guided hair finishing requires a rear-quarter canvas.")

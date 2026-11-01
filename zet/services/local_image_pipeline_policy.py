@@ -57,10 +57,10 @@ LOCAL_IMAGE_PIPELINES: dict[str, LocalImagePipelineConfig] = {
         "body-reference", "Body-Reference", ("character", "phase"), "body-reference", "body_reference",
         (), False, "body-reference", front_anchor_rule="required"),
     "head-image": LocalImagePipelineConfig(
-        "head-image", "Head-Image", ("character", "phase"), "head-image", "head_image",
+        "head-image", "Head-Image (Construct)", ("character", "phase"), "head-image", "head_image",
         ("front_reference",), True, "head-image", front_anchor_rule="required"),
     "head-image-edit": LocalImagePipelineConfig(
-        "head-image-edit", "Head-Image Edit", ("character", "phase"), "head-image-edit", "head_image_edit",
+        "head-image-edit", "Head-Image (Edit)", ("character", "phase"), "head-image-edit", "head_image_edit",
         ("front_reference",), True, "head-image", front_anchor_rule="required"),
     "character-assembly": LocalImagePipelineConfig(
         "character-assembly", "Character-Assembly", ("character", "phase"), "character-assembly",
