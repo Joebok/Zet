@@ -12,6 +12,8 @@ Local character batches show Draft and Final progress separately. The shared
 pipeline page offers Run front and Run available, and the Batches page labels
 and links each actionable render mode. Pause batch pauses slot collection;
 already submitted renders can finish at the proxy and are collected after Resume.
+Batches cards reuse the pipeline canvas colors for Draft and Final, with outlined
+Mode pills alongside the pipeline pills. Cards have no individual Create task button.
 
 Final mode uses the shared `--canvas-final` muted green background and a teal
 **Final** pill before each character view heading. Minor Characters, Image

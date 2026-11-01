@@ -46,6 +46,7 @@
     const card = document.createElement("article");
     card.className = `batch-status-card${batch.pipeline === "scene" ? " batch-status-scene" : ""}`;
     card.dataset.runId = batch.run_id;
+    if (batch.render_mode) card.dataset.batchMode = batch.render_mode;
     if (batch.run_id === selectedRun) card.setAttribute("aria-current", "true");
 
     const title = document.createElement("h3");
@@ -68,20 +69,6 @@
     appendField(fields, "Costume", batch.costume);
     appendField(fields, "Current view", batch.current_view);
     card.append(title, fields);
-    if (pipelinePages[batch.pipeline] || batch.pipeline === "scene") {
-      const report = document.createElement("button");
-      report.type = "button";
-      report.textContent = "Create task";
-      report.addEventListener("click", () => {
-        selectedRun = batch.run_id;
-        for (const item of groupsHost.querySelectorAll("[data-run-id]")) {
-          if (item.dataset.runId === selectedRun) item.setAttribute("aria-current", "true");
-          else item.removeAttribute("aria-current");
-        }
-        void window.ZetTaskCapture.open();
-      });
-      card.append(report);
-    }
     if (batch.pipeline === "scene" && batch.status === "READY_TO_PUBLISH") {
       const review = document.createElement("a");
       const url = new URL(directBatchUrl(batch), window.location.href);

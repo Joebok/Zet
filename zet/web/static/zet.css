@@ -1433,6 +1433,14 @@ main {
   border-color: #a7c5df;
 }
 
+.batch-status-card[data-batch-mode="draft"] {
+  background: var(--canvas);
+}
+
+.batch-status-card[data-batch-mode="final"] {
+  background: var(--canvas-final);
+}
+
 .batch-status-review-link {
   display: inline-block;
   font-weight: 600;
@@ -1517,6 +1525,10 @@ main {
   color: var(--text-muted);
   font-size: 12px;
   padding: 4px 8px;
+}
+
+.batch-status-mode {
+  border: 1px solid color-mix(in srgb, currentColor 28%, var(--border));
 }
 
 .batch-status-pipeline {
