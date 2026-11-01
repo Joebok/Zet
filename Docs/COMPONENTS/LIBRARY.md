@@ -120,6 +120,9 @@ Minor Character and Narrative outputs are eligible. A Narrative lock uses its
 confirmed lettered image when present. Drafts, unlocked work, working Image
 Generator results and intermediate images are excluded unless in Inventory.
 Missing eligible images and unreadable metadata fail enumeration before copying.
+Discovery uses the supplied root and its immediate `universe.json` child folders,
+reading only each root's catalog and canonical workflow metadata locations.
+Archived catalogs and workflow snapshots under migration/backup folders are excluded.
 This remains a selective copy, not a database or complete library backup; it
 does not remove files from the destination.
 

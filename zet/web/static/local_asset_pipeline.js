@@ -38,6 +38,38 @@
   }
 
   function isCostume() { return state.pipeline === "costume-dressing"; }
+  function regenDescription(run, view, recompile) {
+    const mode = state.renderMode === "final" ? "Final" : "Draft";
+    const recipe = run.view_reference_recipes?.[view] || {mode: "default"};
+    let references;
+    if (state.pipeline === "character-assembly") {
+      references = `Resolve the matching ${mode} Body Reference and Head Image inputs for this view again.`;
+    } else if (isCostume()) {
+      const settings = run.render_settings?.[view] || {};
+      references = `Resolve the matching ${mode} Character Assembly input again.`;
+      if (view !== "FRONT" && settings.mode === "doll-dressing-no-ref") references += " No selected costume view is used.";
+      else if (view !== "FRONT") references += settings.mode === "rotate"
+        ? ` Rotate the selected ${settings.costume_reference_view} costume view.`
+        : ` Use the selected ${settings.costume_reference_view} costume view as a reference.`;
+    } else if (view === "FRONT") {
+      const source = run.front_sources_by_mode?.[state.renderMode] || (state.renderMode === "draft" || !run.apply_phase_change ? {path: run.front_source} : {});
+      references = recipe.mode === "selected_view" && (state.pipeline === "body-reference" || !run.apply_phase_change)
+        ? `Use the selected ${recipe.source_view} image as the reference for new renders (${mode} mode).`
+        : state.pipeline !== "body-reference" && source.path && (run.apply_phase_change || recipe.mode !== "none")
+        ? `Use the configured ${mode} FRONT input for new renders.` : "No batch view reference is used for FRONT.";
+    } else if (recipe.mode === "none") {
+      references = "No batch view reference is used.";
+    } else {
+      const predecessor = {FRONT_LEFT_3_4: "FRONT", FRONT_RIGHT_3_4: "FRONT", LEFT_PROFILE: "FRONT_LEFT_3_4", RIGHT_PROFILE: "FRONT_RIGHT_3_4", BACK_LEFT_3_4: "LEFT_PROFILE", BACK_RIGHT_3_4: "RIGHT_PROFILE", BACK: "BACK_LEFT_3_4"};
+      const source = recipe.mode === "selected_view" ? recipe.source_view : run.character_progression
+        ? (state.pipeline === "head-image-edit" || (state.pipeline === "body-reference" && view === "BACK") ? "FRONT" : view === "BACK" ? run.character_progression.back_reference || predecessor[view] : predecessor[view])
+        : "FRONT";
+      references = `Use the currently selected ${source} image as the reference for new renders (${mode} mode).`;
+    }
+    const prompt = recompile ? "Recompile the view prompt using this batch’s effective templates, including its accepted revision."
+      : "Reuse the saved view prompt where valid. Preparation may recompile it when needed.";
+    return `Regenerate eligible occupied ${mode} slots for ${view} with fresh seeds.\n\nPrompts: ${prompt}\n\nReferences: ${references} Dynamic inputs are captured for new renders; supplemental images follow the prompt’s compilation rules. Source images and locks remain unchanged.\n\nSelected, locked, and active slots are skipped, with reasons reported afterward.`;
+  }
   function modeRun(run) {
     if (!run) return run;
     const mode = state.renderMode;
@@ -2117,7 +2149,7 @@
         : Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
       if (action === "rerun-view") {
         if (!$("aspect-ratio").reportValidity()) return;
-        if (!(await confirmAction(`Regenerate ${view}?`, `Regenerate occupied ${state.renderMode} slots for ${view}? Selected, locked, and active slots are reported separately.`, "Regenerate"))) return;
+        if (!(await confirmAction(`Regenerate ${view}?`, regenDescription(state.run, view, recompile), "Regenerate", {tone: "primary"}))) return;
         await perform(action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
         return;
       }

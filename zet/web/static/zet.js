@@ -4375,10 +4375,12 @@ function dialogResult(dialog) {
   });
 }
 
-async function confirmAction(title, message, confirmLabel = "Confirm") {
+async function confirmAction(title, message, confirmLabel = "Confirm", { tone = "danger" } = {}) {
   confirmationTitle.textContent = title;
   confirmationMessage.textContent = message;
   confirmationConfirm.textContent = confirmLabel;
+  confirmationConfirm.classList.toggle("danger-action", tone !== "primary");
+  confirmationConfirm.classList.toggle("primary-action", tone === "primary");
   confirmationDialog.returnValue = "cancel";
   return (await dialogResult(confirmationDialog)) === "confirm";
 }
