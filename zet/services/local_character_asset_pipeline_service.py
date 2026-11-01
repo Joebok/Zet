@@ -394,6 +394,7 @@ class LocalCharacterAssetPipelineService:
                                   "render_mode": "draft", "aspect_ratio": "2:3",
                                   "human_review": {"decision": "undecided"}, "retry_count": 0})
         spec = {"schema_version": 1, "review_version": 3, "kind": self.pipeline, "run_id": run_id,
+                "batch_name": str(payload.get("batch_name") or "").strip(),
                 "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "costume": plan["costume"], "views": plan["views"], "front_count": plan["front_count"],

@@ -164,10 +164,19 @@ class LocalImagePipelineWorkflowService:
         if name == "preview":
             return self.adapter.preview(payload)
         if name == "create":
+            name = payload.get("batch_name", "")
+            if not isinstance(name, str) or len(name.strip()) > 120:
+                raise LocalImageWorkflowError("Batch name must be text of at most 120 characters.")
+            payload = {**payload, "batch_name": name.strip()}
             created = self.adapter.create_run(payload)
             return self.prompt_improvement.detail(str(created.get("run_id") or ""), costume)
         if name == "detail":
             return self._present_run(self.prompt_improvement.detail(run_id, costume))
+        if name in {"restart_preview", "restart_batch"}:
+            from zet.services.local_character_batch_restart_service import LocalCharacterBatchRestartService
+            restart = LocalCharacterBatchRestartService(self)
+            return (restart.preview(run_id, payload, costume) if name == "restart_preview"
+                    else restart.clear_mode(run_id, payload, costume))
         if name in {"generate_slots", "clear_slot", "regenerate_slot", "retry_render_slot"}:
             operation = {"generate_slots": "generate", "clear_slot": "clear", "regenerate_slot": "regenerate", "retry_render_slot": "retry"}[name]
             return self.slots.change(run_id, view, operation, payload, costume)

@@ -30,7 +30,7 @@
     frontSourcePath: "", poll: null, previewGeneration: 0, sourcePreviewGeneration: 0, contextKey: "", comparisonChoice: "front",
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
     runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false, bulkActionPending: false,
-    costumeSettingsDrafts: {}, seedSources: {}, renderMode: "draft" };
+    costumeSettingsDrafts: {}, restartPending: false, renderMode: "draft" };
   const restoreParams = new URLSearchParams(window.location.search);
 
   function contextKey() {
@@ -96,10 +96,13 @@
     return data;
   }
 
+  let statusTimer;
   function setStatus(message, error = false) {
+    clearTimeout(statusTimer);
     $("status").textContent = message || "";
     $("status").classList.toggle("error", error);
     $("status").classList.toggle("success", !error && Boolean(message));
+    if (message && !error) statusTimer = setTimeout(() => setStatus(""), 5000);
   }
 
   function busy(run = state.run) { return Boolean(run && (activeStatuses.has(run.status) || run.slot_work_pending || run.slot_render_ids?.length)); }
@@ -145,13 +148,14 @@
       case "resume": return `${baseUrl()}/runs/${id}/resume${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "stop": return `${baseUrl()}/runs/${id}/stop${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun": return `${baseUrl()}/runs/${id}/rerun${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "restart":
+      case "restart-preview": return `${baseUrl()}/runs/${id}/${action}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "reevaluate": return `${baseUrl()}/runs/${id}/reevaluate${query({ render_mode: state.renderMode })}`;
       case "delete": return `${baseUrl()}/runs/${id}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun-view": return `${baseUrl()}/runs/${id}/views/${encodedView}/rerun${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "rerun-failed": return `${baseUrl()}/runs/${id}/rerun-failed${query({ view })}`;
       case "observations": return `${baseUrl()}/runs/${id}/views/${encodedView}/observations${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "reanalyze": return `${baseUrl()}/runs/${id}/views/${encodedView}/reanalyze${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "prompt-improvement-package": return `${baseUrl()}/runs/${id}/prompt-improvement-package${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "move-rank": return `${baseUrl()}/runs/${id}/views/${encodedView}/ranking/move${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "select":
       case "unselect": return `${baseUrl()}/runs/${id}/views/${encodedView}/select${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -182,6 +186,7 @@
   function payload() {
     const lockedPhaseSource = ["head-image", "head-image-edit"].includes(state.pipeline) && $("apply-phase-change").checked && $("source-mode").value === "locked";
     return {
+      batch_name: $("create-name").value,
       character: document.querySelector("#character-select").value,
       phase: document.querySelector("#phase-select").value,
       costume: isCostume() ? selectedCostume() : "",
@@ -301,12 +306,10 @@
     $("stop").hidden = !isBusy;
     $("stop").disabled = !isBusy;
     $("stop").textContent = run?.slot_render_ids?.length ? "Pause batch" : "Stop batch";
-    $("rerun").disabled = !run || isBusy;
+    $("rerun").disabled = !run || isBusy || state.restartPending;
     const reevaluateReason = run?.reevaluation_reasons_by_mode?.[state.renderMode]?.batch ?? "Re-evaluation availability is loading.";
     $("reevaluate").disabled = Boolean(reevaluateReason);
     $("reevaluate").title = reevaluateReason;
-    $("prompt-improvement-package").hidden = !run;
-    if (run) $("prompt-improvement-package").href = route("prompt-improvement-package", run.run_id);
     $("delete").disabled = !run || isBusy;
     $("rename").hidden = !run;
     $("proceed").hidden = !run;
@@ -376,7 +379,7 @@
       $("proceed").title = readyViews.length ? `Ready: ${readyViews.join(", ")}` : "No views are ready to run.";
     }
     $("style-choice").hidden = state.pipeline === "character-assembly";
-    $("saved-style").hidden = state.pipeline === "character-assembly";
+    $("saved-style").hidden = !run;
     if (state.pipeline === "character-assembly") $("anchor-option").hidden = true;
     $("back-reference-label").hidden = state.pipeline !== "head-image" || !(run?.character_progression?.requested_views || []).includes("BACK");
     if (run && $("back-reference").dataset.runId !== run.run_id) {
@@ -425,6 +428,7 @@
     button.textContent = text;
     if (title) button.title = title;
     if (["delete", "clear"].includes(action)) button.classList.add("danger-text-action");
+    if (action === "delete-drafts") button.classList.add("danger-action");
     button.dataset.localAction = action;
     button.dataset.view = view;
     button.dataset.candidate = candidate;
@@ -439,7 +443,7 @@
     label.className = "local-pipeline-recompile-option";
     const text = document.createElement("span");
     text.textContent = "Recompile";
-    label.title = "Generate, Regen and Regen view: compile the prompt from current templates first. Retry reuses saved inputs.";
+    label.title = "Recompile the prompt from current templates before regenerating this view.";
     const input = document.createElement("input");
     input.type = "checkbox";
     input.dataset.recompile = "true";
@@ -482,7 +486,7 @@
     addButton(controls, "Lock all", "lock-all", { disabled: state.bulkActionPending || !hasUnlockedSelection });
     addButton(controls, "Unlock all", "unlock-all", { disabled: state.bulkActionPending || !hasLocks });
     addButton(controls, "Delete all Draft images", "delete-drafts", { disabled: state.bulkActionPending });
-    host.append(controls);
+    $("batch-bulk-actions").replaceChildren(controls);
     const lockNotice = document.createElement("p");
     lockNotice.className = "local-pipeline-lock-notice";
     lockNotice.setAttribute("role", "status");
@@ -506,7 +510,13 @@
         image.loading = "lazy";
         image.src = imageUrl(candidate);
         image.alt = `Selected ${view} candidate ${candidate.candidate_id}`;
-        article.append(image);
+        const imageButton = document.createElement("button");
+        imageButton.type = "button";
+        imageButton.className = "local-pipeline-selected-image";
+        imageButton.setAttribute("aria-label", `Review selected ${view} image`);
+        imageButton.append(image);
+        imageButton.addEventListener("click", () => openReview(candidate.candidate_id, true));
+        article.append(imageButton);
         article.append(candidateModeLabel(candidate, image));
         const asset = run.local_assets?.[assetKey(view)];
         const locked = Boolean(asset?.locked && asset.candidate_id === candidate.candidate_id
@@ -632,12 +642,9 @@
     const generation = state.generation, runId = state.run.run_id, key = contextKey();
     const suffix = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
     const path = `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/slots${slot ? `/${slot}/${operation}` : ""}${suffix}`;
-    const recompile = Boolean($("views").querySelector(`details[data-view="${view}"] input[data-recompile]`)?.checked);
     if (operation !== "clear" && operation !== "retry" && !$("aspect-ratio").reportValidity()) return;
     const selectedSlots = modeRun(state.run).slots_by_view;
-    const seedSource = $("views").querySelector(`details[data-view="${view}"] select[data-seed-source]`)?.value || "";
-    await request(path, {method: "POST", body: JSON.stringify({... (slot ? {expected_candidate_id: selectedSlots?.[view]?.[slot - 1] || null} : {count}), recompile, render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value,
-      ...(["generate", "regenerate"].includes(operation) && seedSource ? {seed_candidate_id: seedSource} : {})})});
+    await request(path, {method: "POST", body: JSON.stringify({... (slot ? {expected_candidate_id: selectedSlots?.[view]?.[slot - 1] || null} : {count}), render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value})});
     if (generation !== state.generation || state.run?.run_id !== runId || contextKey() !== key) return;
     await loadRun(runId, generation);
     setStatus(operation === "clear" ? "Slot cleared." : "Renders queued.");
@@ -712,13 +719,19 @@
       const sourceSignature = run => JSON.stringify([run?.sources?.[view], run?.front_source_sha256, (run?.candidates || []).filter(item => item.view === view).map(item => item.reference_images)]);
       if (sourceSignature(oldRun) !== sourceSignature(latest)) {
         previous.querySelectorAll(".local-pipeline-sources").forEach(section => section.remove());
-        next.querySelectorAll(".local-pipeline-sources").forEach(section => previous.insertBefore(section, previous.querySelector(".local-pipeline-observations")));
+        next.querySelectorAll(".local-pipeline-sources").forEach(section => previous.insertBefore(section, previous.querySelector(".local-pipeline-render-tools")));
       }
       const observations = previous.querySelector("textarea[data-view-observations]");
       if (observations && observations.value === (oldRun?.view_reviews?.[view]?.observations || "")) observations.value = latest.view_reviews?.[view]?.observations || "";
       const recompile = previous.querySelector("input[data-recompile]");
       const nextRecompile = next.querySelector("input[data-recompile]");
       if (recompile && nextRecompile) nextRecompile.checked = recompile.checked;
+      const oldActions = previous.querySelector(".local-pipeline-view-actions");
+      const nextActions = next.querySelector(".local-pipeline-view-actions");
+      if (oldActions && nextActions && !oldActions.contains(document.activeElement)) {
+        nextActions.querySelector(".local-stage-menu").open = oldActions.querySelector(".local-stage-menu").open;
+        oldActions.replaceWith(nextActions);
+      }
       const oldRecipe = previous.querySelector(".local-pipeline-reference-recipe"), nextRecipe = next.querySelector(".local-pipeline-reference-recipe");
       if (oldRecipe && nextRecipe && (JSON.stringify(oldRun?.view_reference_recipes?.[view]) !== JSON.stringify(latest.view_reference_recipes?.[view]) || JSON.stringify(oldRun?.selected_views) !== JSON.stringify(latest.selected_views))) {
         const oldSelect = oldRecipe.querySelector("select"), nextSelect = nextRecipe.querySelector("select");
@@ -906,6 +919,7 @@
     }
     const previousOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.open]));
     const previousObservationsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-observations"), (details) => [details.dataset.view, details.open]));
+    const previousToolsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-render-tools"), (details) => [details.dataset.view, details.open]));
     host.replaceChildren();
     for (const view of orderedViews(run)) {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
@@ -913,8 +927,7 @@
       details.className = "local-pipeline-view";
       details.dataset.view = view;
       const selected = run.selected_views?.[view] || "";
-      const selectionChanged = Object.hasOwn(state.renderedSelections, view) && state.renderedSelections[view] !== selected;
-      details.open = selectionChanged && selected ? false : (previousOpen.has(view) ? previousOpen.get(view) : !selected);
+      details.open = previousOpen.has(view) ? previousOpen.get(view) : true;
       const summary = document.createElement("summary");
       const heading = document.createElement("strong");
       heading.className = "render-mode-heading";
@@ -923,12 +936,13 @@
       const ranking = run.rankings?.[view] || {};
       const evaluation = run.evaluations?.[view] || {};
       const viewActions = document.createElement("span");
-      viewActions.className = "button-row compact";
+      viewActions.className = "button-row compact local-pipeline-view-actions";
       const viewReady = !run.slot_controls?.[view]?.stage_reason;
       addRecompileOption(viewActions);
       const stageReason = run.slot_controls?.[view]?.stage_reason || "";
       const stageMenu = document.createElement("details"); stageMenu.className = "local-stage-menu";
       const stageLabel = document.createElement("summary"); stageLabel.textContent = "Stage…"; stageMenu.append(stageLabel);
+      stageLabel.addEventListener("click", event => event.stopPropagation());
       const stageItems = document.createElement("div"); stageItems.className = "local-stage-items"; stageMenu.append(stageItems);
       addButton(stageItems, "Stage in Image Generator", "stage-image-generation", { disabled: Boolean(stageReason), view, title: stageReason });
       if (isCostume()) {
@@ -938,27 +952,14 @@
         addButton(stageItems, "Stage Rotation", "stage-rotation", { disabled: Boolean(controls.rotation_reason), view,
           title: controls.rotation_reason || `Rotate selected ${controls.rotation_source_view} into ${view}.` });
       }
-      viewActions.append(stageMenu);
-      const otherCandidates = (state.run?.candidates || []).filter(candidate => candidate.view === view
-        && (candidate.render_mode || "draft") !== state.renderMode && candidate.seed != null);
-      if (otherCandidates.length) {
-        const seedLabel = document.createElement("label"); seedLabel.textContent = "Seed";
-        const seedSelect = document.createElement("select"); seedSelect.dataset.seedSource = view;
-        seedSelect.add(new Option("New seed", ""));
-        for (const candidate of otherCandidates) seedSelect.add(new Option(`Reuse ${candidate.candidate_id} (${candidate.render_mode === "final" ? "Final" : "Draft"})`, candidate.candidate_id));
-        const seedKey = `${state.renderMode}:${view}`;
-        seedSelect.value = state.seedSources[seedKey] || "";
-        seedSelect.addEventListener("change", () => { state.seedSources[seedKey] = seedSelect.value; });
-        seedLabel.append(seedSelect); viewActions.append(seedLabel);
-      }
       addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !candidates.some((item) => item.render_status === "FAILED"), view });
       const reevaluateReason = run.reevaluation_reasons_by_mode?.[state.renderMode]?.views?.[view] ?? "Re-evaluation availability is loading.";
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: Boolean(reevaluateReason), view, title: reevaluateReason });
       addButton(viewActions, "Delete Draft images", "delete-drafts", { disabled: state.bulkActionPending, view });
+      viewActions.append(stageMenu);
       addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
       const ai = run.view_reviews?.[view]?.ai_observations || {};
-      summary.append(viewActions);
       details.append(summary);
       details.append(viewOverrideInput(run, view));
       const activeHeadSource = run.front_sources_by_mode?.[state.renderMode] || (state.renderMode === "draft" || !run.apply_phase_change ? {path: run.front_source, sha256: run.front_source_sha256} : {});
@@ -1149,8 +1150,23 @@
         });
       }
       const control = run.slot_controls?.[view] || {};
-      details.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason}));
-      details.append(gallery);
+      const countControl = window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason});
+      const tools = document.createElement("details");
+      tools.className = "local-pipeline-render-tools";
+      tools.dataset.view = view;
+      tools.open = previousToolsOpen.get(view) || false;
+      const toolsTitle = document.createElement("summary");
+      toolsTitle.textContent = "Render tools";
+      tools.append(toolsTitle, viewActions, countControl);
+      const override = details.querySelector(".local-pipeline-override");
+      if (override) tools.append(override);
+      if (isCostume()) {
+        const costumeControls = details.querySelector(".costume-render-settings");
+        if (costumeControls) tools.append(costumeControls);
+      } else if (recipeSection.isConnected || recipeSection.parentElement === details) tools.append(recipeSection);
+      tools.append(promptHelp);
+      details.insertBefore(gallery, details.children[1] || null);
+      details.append(tools);
       details.append(observationDetails);
       if (reviewProgress.textContent) details.append(reviewProgress);
       const continuation = document.createElement("div");
@@ -1240,10 +1256,10 @@
     renderLineageWarnings(run);
     if (!run) {
       $("lineage-warning").hidden = true;
-      $("options").open = true;
       $("summary").textContent = "No batch selected. Check requirements and create a new batch.";
       $("rename").hidden = true;
       $("selected").replaceChildren();
+      $("batch-bulk-actions").replaceChildren();
       $("selected").hidden = true;
       $("views").replaceChildren();
       state.renderedSelections = {};
@@ -1252,11 +1268,8 @@
       setBusyControls();
       return;
     }
-    if ($("options").dataset.batch !== run.run_id) {
-      if (window.matchMedia("(max-width: 1360px)").matches) $("options").open = false;
-      $("options").dataset.batch = run.run_id;
-    }
     const progress = run.page_summary || {};
+    $("saved-style").textContent = `Batch style: ${run.universe_style_variant || "canonical"}`;
     const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
     const phaseChangeSummary = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules applied" : "";
     const modeProgress = run.progress_by_mode?.[state.renderMode];
@@ -1305,7 +1318,7 @@
       const loaded = await request(route("detail", runId));
       if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
       const sameRun = state.run?.run_id === loaded.run_id;
-      if (sameRun) mergeLiveRun(loaded); else { state.run = loaded; state.costumeSettingsDrafts = {}; state.seedSources = {}; }
+      if (sameRun) mergeLiveRun(loaded); else { state.run = loaded; state.costumeSettingsDrafts = {}; setStatus(""); }
       syncRunOption(loaded);
       state.runState = "selected";
       state.polledRun = null;
@@ -1597,6 +1610,9 @@
   function orderedReviewCandidates() {
     const run = modeRun(state.run);
     const views = orderedViews(run);
+    if (state.reviewSelectedOnly) return views.map(view =>
+      (run?.candidates || []).find(item => item.view === view && item.candidate_id === run.selected_views?.[view] && item.image_path)
+    ).filter(Boolean);
     return views.flatMap(view => sortCandidatesByDisplayOrder(run, view,
       (run?.candidates || []).filter(item => item.view === view),
       item => item.candidate_id, item => physicalSlotNumber(run, view, item)));
@@ -1642,6 +1658,11 @@
     if (state.reviewActionPending) return;
     const candidate = state.reviewCandidates[state.reviewIndex];
     if (!candidate) return;
+    if (state.reviewSelectedOnly) {
+      const next = state.reviewIndex + direction;
+      if (next >= 0 && next < state.reviewCandidates.length) { state.reviewIndex = next; renderReview(); }
+      return;
+    }
     state.reviewActionPending = true;
     reviewPending("Saving this review before moving to another candidate…");
     try {
@@ -1737,6 +1758,24 @@
     placeholder.hidden = Boolean(candidate.image_path);
     placeholder.textContent = "No image available yet.";
     const panel = $("review-panel");
+    if (state.reviewSelectedOnly) {
+      compareImage.closest("figure").hidden = true;
+      compareImage.closest(".local-pipeline-review-comparison").classList.add("single-image");
+      panel.replaceChildren();
+      const heading = document.createElement("h2");
+      heading.textContent = `${candidate.view} · ${state.reviewIndex + 1} of ${state.reviewCandidates.length}`;
+      const lock = Object.values(run.local_assets || {}).some(item => item.locked && item.batch_id === run.run_id && item.candidate_id === candidate.candidate_id);
+      const status = document.createElement("p");
+      status.textContent = lock ? "Locked" : "Selected";
+      panel.append(heading, status);
+      $("review-prev").disabled = state.reviewIndex <= 0;
+      $("review-next").disabled = state.reviewIndex >= state.reviewCandidates.length - 1;
+      $("review-prev-view").hidden = true;
+      $("review-next-view").hidden = true;
+      return;
+    }
+    $("review-prev-view").hidden = false;
+    $("review-next-view").hidden = false;
     const previousCandidate = panel.dataset.candidate;
     const previousDetails = panel.querySelector(".local-pipeline-review-details");
     const detailsOpen = previousDetails?.open || false;
@@ -1935,7 +1974,8 @@
   }
 
   let reviewOrigin = null;
-  function openReview(candidateId) {
+  function openReview(candidateId, selectedOnly = false) {
+    state.reviewSelectedOnly = selectedOnly;
     state.reviewCandidates = orderedReviewCandidates();
     state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
     if (state.reviewIndex < 0) return;
@@ -2019,7 +2059,7 @@
       const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation, renderMode = state.renderMode;
       const params = new URLSearchParams();
       if (isCostume()) params.set("costume", selectedCostume());
-      const recompile = Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
+      const recompile = false;
       const current = () => state.pipeline === pipeline && state.run?.run_id === runId
         && state.generation === generation && contextKey() === context && state.renderMode === renderMode
         && document.querySelector("#local-pipeline-page").classList.contains("active");
@@ -2081,9 +2121,21 @@
         await perform(action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
         return;
       }
-      if (!$("aspect-ratio").reportValidity()) return;
-      if (!(await confirmAction(`Regenerate ${state.renderMode} batch?`, `Regenerate occupied ${state.renderMode} slots across this batch? Selected, locked, and active slots are reported separately.`, "Regenerate"))) return;
-      await perform(action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
+      const runId = state.run.run_id, mode = state.renderMode, generation = state.generation, context = contextKey(), pipeline = state.pipeline;
+      const current = () => state.run?.run_id === runId && state.renderMode === mode && state.generation === generation && contextKey() === context && state.pipeline === pipeline;
+      const body = {render_mode: mode, recompile};
+      state.restartPending = true;
+      $("rerun").disabled = true;
+      try {
+        const preview = await request(route("restart-preview", runId), {method: "POST", body: JSON.stringify(body)});
+        if (!current()) return;
+        if (preview.issues?.length) { setStatus(preview.issues.join(" "), true); return; }
+        const locked = preview.locked_views?.length ? `\n\nLOCKED images will be cleared: ${preview.locked_views.join(", ")}.` : "";
+        const description = `Clear ${preview.candidate_count} ${mode} candidates, including ${preview.image_count} images and all selections in this mode?${locked}\n\nThe batch will be ready to run. No renders will start.`;
+        if (!(await confirmAction(`Re-start ${mode} batch?`, description, "Re-start batch")) || !current()) return;
+        await request(route("restart", runId), {method: "POST", body: JSON.stringify({...body, confirmation_token: preview.confirmation_token})});
+        if (current()) { await loadRun(runId, generation); setStatus(`${mode === "final" ? "Final" : "Draft"} batch ready to run.`); }
+      } finally { state.restartPending = false; setBusyControls(); }
       return;
     }
     if (["delete", "rerun-failed", "unselect", "unlock"].includes(action)) {
@@ -2116,6 +2168,7 @@
         .catch(error => setStatus(error.message, true));
     });
     $("render-quality").addEventListener("change", () => {
+      setStatus("");
       state.runRequest++;
       state.renderMode = $("render-quality").value;
       state.renderedSelections = {};
@@ -2137,9 +2190,20 @@
       void Promise.all([refreshRuns(), readiness()]).catch((error) => setStatus(error.message, true));
     });
     $("preview").addEventListener("click", () => void readiness());
+    $("open-create").addEventListener("click", () => {
+      $("create-status").textContent = "";
+      $("options").showModal();
+      void readiness();
+    });
+    $("cancel-create").addEventListener("click", () => $("options").close());
+    $("options").addEventListener("close", () => $("open-create").focus());
     $("create").addEventListener("click", async () => {
+      $("create").disabled = true;
+      $("create-status").textContent = "Creating batch…";
       try {
         const created = await request(route("create"), { method: "POST", body: JSON.stringify(payload()) });
+        $("options").close();
+        $("create-name").value = "";
         state.frontSourcePath = "";
         $("apply-phase-change").checked = false;
         $("apply-phase-change").disabled = state.pipeline !== "head-image-edit";
@@ -2153,7 +2217,7 @@
         await refreshRuns(created.run_id);
         if (hasSharedAssetRouter()) void readiness();
         setStatus(state.pipeline === "character-assembly" ? "Batch created. Run front, select a FRONT image, then Run remaining. Luna will compare proportions and identity with your selected FRONT." : "Batch created. Analyze and accept its governing prompts, then Continue to generate FRONT.");
-      } catch (error) { setStatus(error.message, true); await readiness(); }
+      } catch (error) { $("create-status").textContent = error.message; await readiness(); }
     });
     $("rename").addEventListener("submit", async (event) => { event.preventDefault(); await handleAction({ dataset: { localAction: "rename" } }).catch((error) => setStatus(error.message, true)); });
     $("runs").addEventListener("change", () => {
@@ -2247,7 +2311,7 @@
       $("source-remove").hidden = true;
       void readiness();
     });
-    for (const host of [$("views"), $("selected")]) host.addEventListener("click", (event) => {
+    for (const host of [$("views"), $("selected"), $("batch-bulk-actions")]) host.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-local-action]");
       if (button?.closest("summary")) {
         event.preventDefault();
@@ -2256,6 +2320,11 @@
       if (button) void handleAction(button).catch((error) => setStatus(error.message, true));
     });
     $("review-close").addEventListener("click", () => $("review-dialog").close());
+    $("review-dialog").addEventListener("keydown", event => {
+      if (!state.reviewSelectedOnly || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      event.preventDefault();
+      void navigateReview(event.key === "ArrowLeft" ? -1 : 1);
+    });
     $("review-dialog").addEventListener("close", () => {
       if (reviewOrigin) {
         const origin = reviewOrigin.element?.isConnected ? reviewOrigin.element

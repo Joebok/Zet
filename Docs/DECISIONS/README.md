@@ -113,3 +113,5 @@ explicitly authored body landmark, with frozen requests preserved.
 [0037 - Manual scene text](0037-manual-scene-text.md) records post-render lettering, inherited style and candidate confirmation.
 
 [0038 - Compatible animation zoom targets](0038-animation-zoom-target.md) records the opt-in target camera interpretation.
+
+[0042 - Character batch restart is mode-scoped](0042-character-mode-restart.md) records confirmed clearing and idle preparation.

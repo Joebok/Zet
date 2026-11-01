@@ -198,6 +198,16 @@ def create_local_character_asset_pipeline_router(
             instance.slots.start(run_id, qualifier)
             return result
 
+        @router.post(f"{prefix}/runs/{{run_id}}/restart-preview")
+        def restart_preview(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "restart_preview", run_id=run_id, payload=payload,
+                                       costume=costume if _pipeline == "costume-dressing" else ""))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/restart")
+        def restart(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "restart_batch", run_id=run_id, payload=payload,
+                                       costume=costume if _pipeline == "costume-dressing" else ""))
+
         @router.post(f"{prefix}/runs/{{run_id}}/rerun")
         def rerun(run_id: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
@@ -308,13 +318,6 @@ def create_local_character_asset_pipeline_router(
             path = call(lambda: action(_pipeline, "post_render_prompt_image_path", run_id=run_id,
                                        session_id=session_id, attempt_id=attempt_id, costume=costume), missing=404)
             return FileResponse(path)
-
-        @router.get(f"{prefix}/runs/{{run_id}}/prompt-improvement-package")
-        def prompt_improvement_package(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
-            path = call(lambda: service(_pipeline).prompt_improvement.create_package(
-                run_id, costume if _pipeline == "costume-dressing" else ""), missing=404)
-            return FileResponse(path, media_type="application/zip", filename=f"{_pipeline}_{run_id}_prompt_improvement.zip",
-                                background=BackgroundTask(path.unlink, missing_ok=True))
 
         @router.get(f"{prefix}/runs/{{run_id}}/template-revisions")
         def template_revisions(run_id: str, revision_id: str = Query(""), costume: str = Query(""), _pipeline: str = pipeline):

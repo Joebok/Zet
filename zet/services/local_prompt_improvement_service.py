@@ -1,4 +1,4 @@
-"""Per-view prompt improvement observations and portable review packages."""
+"""Per-view prompt improvement observations."""
 from __future__ import annotations
 
 from zet.services.llm_role_service import resolve_role_model
@@ -7,13 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import hashlib
 import json
-import os
 from pathlib import Path
-import tempfile
 import threading
 from typing import Any
 from uuid import uuid4
-import zipfile
 
 from zet.services.library_reference_service import (
     pipeline_library_root_for_path, read_library_json, write_library_json,
@@ -326,172 +323,3 @@ class LocalPromptImprovementService:
                 "Do not claim to inspect missing images. Return concise observations, not rewritten prompts.\n\n"
                 f"Image mapping:\n{mapping}\n\nMissing images and reasons:\n{json.dumps(missing, indent=2)}\n\n"
                 f"Saved image prompt:\n{self._saved_prompt(run, view)}")
-
-    def create_package(self, run_id: str, costume: str = "") -> Path:
-        run = self.detail(run_id, costume)
-        root = self._root(run)
-        handle, name = tempfile.mkstemp(prefix="zet_prompt_improvement_", suffix=".zip")
-        os.close(handle)
-        target = Path(name)
-        manifest: dict[str, Any] = {"pipeline": self.pipeline, "run_id": run_id,
-            "character": run.get("character"), "phase": run.get("phase"), "costume": run.get("costume"),
-            "created_at": _now(), "files": [], "missing": [], "source_changes": [], "unverified_sources": []}
-        included: set[Path] = set()
-        archive_names: set[str] = set()
-        known_source_hashes: dict[str, str] = {}
-        try:
-            with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                def add_text(label: str, value: str) -> None:
-                    data = value.encode("utf-8")
-                    archive.writestr(label, data)
-                    manifest["files"].append({"name": label, "sha256": hashlib.sha256(data).hexdigest()})
-
-                def add(path: Path, label: str, expected_hash: str = "") -> None:
-                    path = path.resolve()
-                    if not path.is_file():
-                        manifest["missing"].append({"label": label, "path": str(path)})
-                        return
-                    if path in included and label.startswith("sources/"):
-                        current_hash = _hash(path) if expected_hash else ""
-                        if expected_hash and current_hash != expected_hash:
-                            manifest["source_changes"].append({"label": label, "expected_sha256": expected_hash,
-                                                                "current_sha256": current_hash})
-                        return
-                    digest = _hash(path)
-                    if expected_hash and digest != expected_hash:
-                        manifest["source_changes"].append({"label": label, "expected_sha256": expected_hash,
-                                                            "current_sha256": digest})
-                    elif label.startswith("sources/") and not expected_hash:
-                        manifest["unverified_sources"].append(label)
-                    included.add(path)
-                    archive_name = label.replace("\\", "/")
-                    if archive_name in archive_names:
-                        archive_name = f"sources/{hashlib.sha256(str(path).encode()).hexdigest()[:8]}_{path.name}"
-                    archive_names.add(archive_name)
-                    archive.write(path, archive_name)
-                    manifest["files"].append({"name": archive_name, "sha256": digest,
-                                              "expected_sha256": expected_hash, "original_path": str(path) if label.startswith("sources/") else ""})
-
-                reviews = run.get("view_reviews") or {}
-                for view in run.get("views") or []:
-                    images, missing = self._images(run, view)
-                    for item, path in images:
-                        add(path, f"images/{view}/{item['candidate_id']}{path.suffix.lower()}")
-                    manifest["missing"].extend({"label": f"images/{view}/{item['candidate_id']}", **item} for item in missing)
-                    prompt_dir = root / "prompts" / view
-                    for filename in ("Final_Image_Prompt.md", "Prompt_Source_Map.json", "dependency_manifest.json", "Compiled_Sections.md", "Prompt_Source_Hashes.json"):
-                        path = prompt_dir / filename
-                        if path.is_file():
-                            add(path, f"prompts/{view}/{filename}")
-                    if not (prompt_dir / "Final_Image_Prompt.md").is_file():
-                        prompt = self._saved_prompt(run, view)
-                        if prompt:
-                            add_text(f"prompts/{view}/Final_Image_Prompt.md", prompt)
-                    hash_path = prompt_dir / "Prompt_Source_Hashes.json"
-                    if hash_path.is_file():
-                        hash_record = read_library_json(hash_path, pipeline_library_root_for_path(root))
-                        if isinstance(hash_record.get("sources"), list):
-                            source_hashes = {str(item.get("path") or ""): str(item.get("sha256") or "")
-                                             for item in hash_record["sources"] if isinstance(item, dict)}
-                        else:
-                            source_hashes = {str(key): str(value) for key, value in hash_record.items()
-                                             if key != "library_path_format_version"}
-                    else:
-                        source_hashes = {}
-                    known_source_hashes.update(source_hashes)
-                    for source in _source_paths(prompt_dir / "Prompt_Source_Map.json"):
-                        add(source, f"sources/{source.name}", source_hashes.get(str(source.resolve()), ""))
-                    for source_name, expected in source_hashes.items():
-                        if not Path(source_name).is_file():
-                            manifest["source_changes"].append({"label": source_name,
-                                "expected_sha256": expected, "current_sha256": "", "reason": "Source missing"})
-                    snapshot = next((item for item in run.get("prompt_snapshots") or [] if item.get("view") == view), {})
-                    render_prompt = str(snapshot.get("qwen_prompt") or "")
-                    if render_prompt:
-                        add_text(f"prompts/{view}/Render_Prompt.md", render_prompt)
-                    for candidate in (item for item in run.get("candidates") or [] if item.get("view") == view):
-                        prompt = str(candidate.get("prompt") or "")
-                        if prompt and prompt != render_prompt:
-                            add_text(f"prompts/{view}/candidates/{candidate['candidate_id']}.md", prompt)
-                    for key in ("source_map", "dependency_manifest"):
-                        path_value = snapshot.get(key)
-                        if path_value:
-                            path = Path(str(path_value))
-                            add(path, f"prompts/{view}/{path.name}")
-                if self.pipeline == "scene":
-                    add(root / "snapshot.json", "Scene_Batch_Snapshot.json")
-                    add(root / "spec.json", "Scene_Batch_Spec.json")
-                    for view, group in run["groups"].items():
-                        if group.get("ir_path"):
-                            add(Path(group["ir_path"]), f"prompts/{view}/Scene_Render_IR.json")
-                        for index, reference in enumerate(group.get("reference_images") or [], 1):
-                            source = Path(reference["path"])
-                            add(source, f"references/{view}/{index:03d}{source.suffix.lower()}", reference.get("sha256", ""))
-                        for record in [*group.get("analysis_history", []), group.get("analysis") or {}]:
-                            if record.get("status") == "COMPLETE":
-                                add(Path(record["result_path"]), f"analysis/{view}/{record['ask_id']}.md")
-                else:
-                    character = Path(self.adapter.app.config.base_character_path) / str(run.get("character") or "") / str(run.get("phase") or "") / "Character.md"
-                    add(character, "sources/Character.md", known_source_hashes.get(str(character.resolve()), ""))
-                costume_path = run.get("costume_path")
-                if costume_path:
-                    path = Path(str(costume_path))
-                    add(path, "sources/Costume.md", known_source_hashes.get(str(path.resolve()), ""))
-                for path in (self.project_root / "Config" / "Prompt_Templates").glob("*.md"):
-                    if path.stem in {"body_reference_v2", "head_image_v2", "character_assembly_v2", "costume_dressing_v2",
-                                     "final_image_prompt_tail_v1"} and (path.stem.startswith(self.pipeline.replace("-", "_")) or path.stem == "final_image_prompt_tail_v1"):
-                        add(path, f"sources/{path.name}", known_source_hashes.get(str(path.resolve()), ""))
-                from zet.services.local_template_revision_service import compiler_guidance
-                add_text("Prompt_Compiler_Guide.md", compiler_guidance())
-                for view in run.get("views") or []:
-                    if self.pipeline == "scene":
-                        continue
-                    roles = {"character-assembly": ("body_reference", "head_image"),
-                             "costume-dressing": ("character_assembly",)}.get(self.pipeline, ())
-                    if view != "FRONT" or (self.pipeline in {"head-image", "head-image-edit"} and run.get("front_source")):
-                        roles = (*roles, "front_reference")
-                    for role in roles:
-                        try:
-                            source = self._reference_path(run, view, role, costume)
-                        except Exception:
-                            source = None
-                        if source:
-                            add(source, f"references/{view}/{role}{source.suffix.lower()}")
-                        else:
-                            manifest["missing"].append({"label": f"references/{view}/{role}", "reason": "Reference unavailable"})
-                add_text("Observations.json", json.dumps(reviews, indent=2, ensure_ascii=False))
-                add_text("ChatGPT_Review_Request.md", self._package_request(run))
-                archive.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
-            return target
-        except Exception:
-            target.unlink(missing_ok=True)
-            raise
-
-    def _reference_path(self, run: dict[str, Any], view: str, role: str, costume: str) -> Path | None:
-        if role == "front_reference" and self.pipeline in {"head-image", "head-image-edit"} and view == "FRONT" and run.get("front_source"):
-            return Path(str(run["front_source"]))
-        if self.pipeline in {"character-assembly", "costume-dressing"} and role != "front_reference":
-            try:
-                return self.adapter.source_path(run["run_id"], view, role, costume)
-            except Exception:
-                return None
-        if view != "FRONT" and role == "front_reference":
-            candidate = next((item for item in run.get("candidates") or [] if item["candidate_id"] == run.get("front_anchor")), None)
-            if candidate and candidate.get("image_path"):
-                return Path(str(candidate["image_path"]))
-        return None
-
-    def _package_request(self, run: dict[str, Any]) -> str:
-        subject = (f"{run.get('story_slug')}/{run.get('scene_slug')}" if self.pipeline == "scene" else
-                   f"{run.get('character')}/{run.get('phase')}")
-        return (f"# Prompt Improvement Review\n\nReview the {self.pipeline} batch for {subject}. "
-                "Use Observations.json, all available images, saved compiled prompts, the relevant source templates, "
-                "source maps, dependency manifests, and Prompt_Compiler_Guide.md. Identify major structural variation "
-                "that clearer prompt or template wording could reduce. Give evidence by view and candidate ID. "
-                "Distinguish prompt ambiguity from model inconsistency and missing images. "
-                "For every source template you recommend changing, return the complete proposed replacement template, ready for review, "
-                "with only minimal, targeted changes. Identify the exact source sections changed and explain how each change compiles "
-                "into the final prompt. Preserve all required tags and compiler contracts. "
-                "Identify issues that template edits alone cannot adequately address. Where evidence supports it, recommend specific "
-                "improvements to compilation, review, image selection, or other parts of the process, and keep these recommendations "
-                "separate from the proposed templates. Do not edit files or treat any suggested change as approved.\n")

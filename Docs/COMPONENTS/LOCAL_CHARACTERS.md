@@ -1,5 +1,14 @@
 # Local character assets
 
+Character pipeline **Re-start batch** clears candidates, selections and locks in
+the displayed Draft or Final mode after a fenced confirmation. It preserves the
+other mode and published Inventory copies. Recompile selects current masters by
+skipping improvement; Assembly compiles directly. Locked phase-change sources are
+refreshed for the selected mode, and Assembly/Dressing resolve current upstream
+references when preparing renders. Restart does not dispatch rendering. The
+[completed plan](../../plans/completed/character-pipeline-ui.md) records validation.
+The durable behavior is recorded in [ADR 0042](../DECISIONS/0042-character-mode-restart.md).
+
 Head Image and Head Image Edit phase changes use independent Draft and Final sources. Each mode can use an upload or a matching-mode locked FRONT from either head pipeline in another phase. Legacy sources are Draft. The hosted Tsaeytte Youth batch has been configured with the corresponding Adult locks; see the [active plan](../../plans/active/phase-change-mode-sources.md) for remaining validation.
 
 Shared slot recovery reattaches current candidates affected by the historical render-wait timeout to their original queued requests, or restores successful harvested images to review eligibility. It checks slot membership, request identity and receipts before changing state.

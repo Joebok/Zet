@@ -1,5 +1,13 @@
 # Dashboard presentation and image input
 
+Character pipeline batch creation uses a modal with an optional name. Selected
+thumbnails open a viewing-only image sequence with arrow navigation. View
+galleries precede reference images and collapsed render tools. Batch status and
+generation controls share the upper panel; occasional batch actions use a menu.
+Stage opens an overlaid menu, and successful action acknowledgements quiet after
+five seconds. The [completed plan](../../plans/completed/character-pipeline-ui.md)
+records restart behavior and validation.
+
 Local character batches show Draft and Final progress separately. The shared
 pipeline page offers Run front and Run available, and the Batches page labels
 and links each actionable render mode. Pause batch pauses slot collection;

@@ -292,7 +292,7 @@ class LocalHeadImageService:
                                      apply_phase_change=apply_phase_change)
         spec = {"schema_version": 1, "review_version": 3, "kind": self.run_kind, "run_id": run_id,
                 "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
-                "batch_name": "",
+                "batch_name": str(payload.get("batch_name") or "").strip(),
                 "created_at": self._now(), "status": "QUEUED", "character": plan["character"], "phase": plan["phase"],
                 "views": plan["views"], "front_count": plan["front_count"], "other_count": plan["other_count"],
                 "candidate_count": total, "front_source": source_snapshot,

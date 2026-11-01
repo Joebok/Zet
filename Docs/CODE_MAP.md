@@ -1,5 +1,10 @@
 # Capability code map
 
+Character batch restart: `LocalCharacterBatchRestartService` owns the fingerprinted
+preview and mode-scoped clearing transition. The local router and shared pipeline
+controller expose Re-start without dispatching renders. The completed plan records
+validation and limits: [character pipeline UI](../plans/completed/character-pipeline-ui.md).
+
 Long-running local renders: CharacterRenderSlots.recover_timeouts reattaches historically timed-out slots; StorageRecoveryService discovers them. LocalImagePipelineWorkflowService projects queue and proxy health; AI_Proxy publishes the execution heartbeat.
 
 Mode-aware local batches: `CharacterRenderSlots.run_available` reserves configured candidates for the slot collector. `local_mode_progress_service.py` projects Draft/Final progress for workflow detail and batch summaries. The shared local pipeline and batch-status controllers expose the mode actions.
@@ -313,7 +318,7 @@ Assembly front-first workflow: `local_character_progression_service` owns the se
 
 Scene-text finish/settings follow-up: `scene_text.js` shares inline and dialog appearance controls; candidate editing saves shared entries and independent placements through `NarrativeSceneTextService`. `narrative.js` routes selected-image editing and clean review with finished-revision URLs. `zet.js` owns combined universe settings; the universe API exposes read-only `storage_path`.
 
-Backdrop linking/cropping (2026-10-29): `narrative_backdrop_policy.backdrop_reference` owns effective image-use policy; `NarrativeReferenceService` owns pinned sources, legacy normalization and exact crops. Scene reference binding prepares cropped inputs; generation freezes them and fences mode changes. `narrative.js` owns conditional modes and crop interaction. Approved S1–S4 remain regressions; new behavior uses disposable checks.
+Backdrop linking/cropping (2026-10-29): `narrative_backdrop_policy.backdrop_reference` owns effective image-use policy; `NarrativeReferenceService` owns pinned sources, legacy normalization and exact crops. Scene reference binding prepares cropped inputs; generation freezes them and fences mode changes. `narrative.js` owns conditional modes and crop interaction. Approved S1-S4 remain regressions; new behavior uses disposable checks.
 
 
 ## Environmental universe style (2026-10-30)

@@ -257,29 +257,42 @@
             <label id="local-pipeline-costume-label" hidden>Costume<select id="local-pipeline-costume"></select></label>
             <label class="local-pipeline-batch-label">Batch<select id="local-pipeline-runs"></select></label>
             <button id="local-pipeline-refresh" type="button">Refresh</button>
-            <button id="local-pipeline-start" class="primary-action" type="button" disabled>Start batch</button>
-            <button id="local-pipeline-stop" class="danger-action" type="button" hidden>Stop</button>
-            <button id="local-pipeline-rerun" type="button" disabled>Re-run batch</button>
+            <button id="local-pipeline-open-create" type="button">Create New Batch</button>
             <label class="local-pipeline-recompile-option"><span>Recompile</span><input id="local-pipeline-rerun-recompile" type="checkbox"></label>
-            <button id="local-pipeline-reevaluate" type="button" disabled>Re-evaluate</button>
-            <a id="local-pipeline-prompt-improvement-package" hidden download>Download Prompt Improvement Package</a>
-            <button id="local-pipeline-proceed" type="button" hidden disabled>Run remaining</button>
-            <button id="local-pipeline-delete" class="danger-action" type="button" disabled>Delete batch</button>
+            <button id="local-pipeline-rerun" type="button" disabled>Re-start batch</button>
+            <details class="local-batch-menu">
+              <summary>Batch actions</summary>
+              <div class="local-batch-menu-items">
+                <form id="local-pipeline-rename" class="local-pipeline-controls" hidden>
+                  <label>Batch name<input id="local-pipeline-batch-name" type="text" maxlength="120"></label>
+                  <button class="primary-action" type="submit">Save name</button>
+                </form>
+                <button id="local-pipeline-reevaluate" type="button" disabled>Re-evaluate</button>
+                <div id="local-pipeline-batch-bulk-actions"></div>
+                <button id="local-pipeline-delete" class="danger-action" type="button" disabled>Delete batch</button>
+              </div>
+            </details>
           </div>
-          <form id="local-pipeline-rename" class="local-pipeline-controls" hidden>
-            <label>Batch name<input id="local-pipeline-batch-name" type="text" maxlength="120"></label>
-            <button class="primary-action" type="submit">Save name</button>
-          </form>
           <p id="local-pipeline-summary" class="muted" role="status"></p>
           <section id="local-pipeline-progression" role="status" hidden></section>
           <label id="local-pipeline-back-reference-label" hidden>Reference for BACK
             <select id="local-pipeline-back-reference"><option value="BACK_LEFT_3_4">Selected back-left three-quarter</option><option value="BACK_RIGHT_3_4">Selected back-right three-quarter</option></select>
           </label>
           <section id="local-pipeline-lineage-warning" class="local-pipeline-lineage-warning" role="status" hidden></section>
-          <details id="local-pipeline-options" class="local-pipeline-options" data-viewer-settings open>
-            <summary>New batch settings</summary>
+          <div class="button-row compact" id="local-pipeline-render-options">
+            <label>Render quality<select id="local-pipeline-render-quality"><option value="draft">Draft</option><option value="final">Final</option></select></label>
+            <label>Aspect ratio<input id="local-pipeline-aspect-ratio" value="2:3" required></label>
+            <span id="local-pipeline-size-preview" role="status"></span>
+            <button id="local-pipeline-start" class="primary-action" type="button" disabled>Start batch</button>
+            <button id="local-pipeline-stop" class="danger-action" type="button" hidden>Stop</button>
+            <button id="local-pipeline-proceed" class="primary-action" type="button" hidden disabled>Run remaining</button>
+          </div>
+          <p id="local-pipeline-saved-style"></p>
+          <dialog id="local-pipeline-options" class="local-pipeline-options" aria-labelledby="local-pipeline-create-title">
+            <h2 id="local-pipeline-create-title">Create New Batch</h2>
             <div class="local-pipeline-options-body">
-            <label id="local-pipeline-style-choice">Batch universe style<select id="local-pipeline-style-variant"><option value="canonical">Canonical</option><option value="environmental">Environmental</option></select></label><p id="local-pipeline-saved-style"></p><label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" max="8" value="8"></label>
+            <label>Name<input id="local-pipeline-create-name" type="text" maxlength="120"></label>
+            <label id="local-pipeline-style-choice">Batch universe style<select id="local-pipeline-style-variant"><option value="canonical">Canonical</option><option value="environmental">Environmental</option></select></label><label>FRONT candidates<input id="local-pipeline-front-count" type="number" min="1" max="8" value="8"></label>
             <label>Other candidates per view<input id="local-pipeline-other-count" type="number" min="1" max="8" value="4"></label>
             <label id="local-pipeline-anchor-option" hidden><span>Use FRONT anchor for other views</span><input id="local-pipeline-use-anchor" type="checkbox"></label>
             <label id="local-pipeline-head-pipeline-label" hidden>Head pipeline
@@ -304,18 +317,15 @@
               </div>
             </div>
             <button id="local-pipeline-preview" type="button">Check requirements</button>
+            <button id="local-pipeline-cancel-create" type="button">Cancel</button>
             <button id="local-pipeline-create" class="primary-action" type="button" disabled>Create batch</button>
             <p id="local-pipeline-readiness" class="muted" role="status"></p>
+            <p id="local-pipeline-create-status" class="action-message" role="status"></p>
             </div>
-          </details>
+          </dialog>
           <p id="local-pipeline-status" class="action-message" role="status"></p>
         </section>
         <details id="local-template-improvement" class="control-panel template-improvement" hidden></details>
-        <div class="button-row compact" id="local-pipeline-render-options">
-          <label>Render quality<select id="local-pipeline-render-quality"><option value="draft">Draft</option><option value="final">Final</option></select></label>
-          <label>Aspect ratio<input id="local-pipeline-aspect-ratio" value="2:3" required></label>
-          <span id="local-pipeline-size-preview" role="status"></span>
-        </div>
         <section id="local-pipeline-mode-source" class="control-panel" hidden>
           <h3 id="local-pipeline-mode-source-title">Phase-change FRONT source</h3>
           <div id="local-pipeline-mode-source-current"></div>

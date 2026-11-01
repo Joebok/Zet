@@ -481,7 +481,7 @@ class LocalBodyReferenceService:
         spec = {
             "schema_version": 2, "review_version": 3, "kind": "local_body_reference", "run_id": run_id,
             "universe_id": str(getattr(self.app.config, "universe_id", "Moonsea")),
-            "batch_name": "",
+            "batch_name": str(payload.get("batch_name") or "").strip(),
             "created_at": self._now(), "status": "QUEUED", "character": plan["character"],
             "phase": plan["phase"], "views": plan["views"], "front_view": FRONT_VIEW,
             "front_count": plan["front_count"], "other_count": plan["other_count"],
