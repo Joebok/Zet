@@ -1,5 +1,23 @@
 # Local testing
 
+## Command-line release update (2026-11-01)
+
+Disposable temporary-state checks passed terminal initiation, ready/boot/config/
+revision mismatch rejection, managed-dashboard ownership, existing dashboard
+self-PID checks, concurrent-operation fencing, local controller copying and
+active-release containment. Prepared controller states passed stage-only/success,
+failure/rollback/recovery-required exit codes, waiting through intermediate
+failure until rollback completed, premature exit and timeout handling. CLI
+argument forwarding, Python syntax, PowerShell parsing and help passed. A copied
+wrapper in a temporary project passed both Windows PowerShell 5 and PowerShell 7
+from another working directory, including paths with spaces and zero/nonzero
+exit propagation. The focused checks passed again after status polling was ordered
+to observe process exit before reading the final status.
+
+`npm.cmd run test:e2e` passed all four approved fast scenarios (48.5s).
+`git diff --check` passed. No permanent scenarios, production update/restart or
+live AI calls were added or performed; production deployment remains unverified.
+
 ## Deployment Node discovery on Windows (2026-11-01)
 
 Disposable subprocess checks reproduced the updater's exact missing-Node error

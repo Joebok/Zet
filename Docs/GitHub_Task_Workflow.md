@@ -136,6 +136,29 @@ declaration and provide an explicitly reviewed migration. Code rollback does not
 establish data rollback safety. After promotion, run run_zet_runtime.bat independently
 of the development branch. First promotion requires merged main to contain this workflow.
 
+### Command-line update
+
+From the project root, run `./Update_Release.ps1` in PowerShell. It deploys the
+latest merged `origin/main`, runs the approved isolated validation, then restarts
+Zet and its harvester. `./Update_Release.ps1 -StageOnly` validates without promotion;
+`-RuntimeRoot C:\path\to\Zet_Runtime` overrides Runtime.Root from the project config.
+The script can also be invoked by absolute path from another working directory.
+
+The wrapper requires the project's Python 3 virtual environment and an already
+running managed production release. First adoption still uses the dashboard.
+It uses this checkout's deployment service/controller and the terminal environment,
+so it can recover when the active release's updater inherited PATH without Node.
+It does not commit/push local changes or publish a GitHub release. The deployed
+code comes from merged main; the active production config and template-edit guards
+remain authoritative. The CLI verifies the serving boot/config/revision and managed
+dashboard process before starting; it does not construct the creative application.
+
+Progress includes the operation ID and status-file path. The command waits through
+any rollback, returns zero only after successful promotion or requested staging,
+and returns nonzero for failure, rollback, recovery-required, or controller exit.
+Interrupting or timing out the wait does not cancel a launched deployment; inspect
+the printed status file before retrying. Logs remain in Runtime.Root/state.
+
 ### Accepted template edits and update recovery
 
 Restart previews local tracked edits and offers **Create template PR** for global

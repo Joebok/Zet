@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from uuid import uuid4
+from urllib.request import urlopen
 
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.github_client import TaskServiceError
@@ -20,6 +21,7 @@ class DeploymentService:
         self.root = Path(app.config.runtime_root).resolve() if app.config.runtime_root else None
         self.store = app.task_service.store
         self.templates = TemplatePublicationService(app)
+        self.controller_process = None
 
     def status(self):
         record = self.store.get("deployment", "current", {}) if self.root else {}
@@ -34,7 +36,8 @@ class DeploymentService:
                 "operation": {key: record[key] for key in ("id", "state", "target_revision", "error", "recovery_error", "boot_id") if key in record},
                 "local_edits": self.templates.status()}
 
-    def start(self, boot_id, *, stage_only=False):
+    def start(self, boot_id, *, stage_only=False, runtime_address=None):
+        """Start from the dashboard, or a terminal with verified live identity."""
         if not self.root or self.app.config.runtime_role == "development":
             raise TaskServiceError("Production deployment is not configured for this instance.", 409)
         self.templates.require_enabled()
@@ -42,9 +45,9 @@ class DeploymentService:
             if self.templates.record().get("state") in BUSY:
                 raise TaskServiceError("A template publication is active or interrupted. Finish or retry it before updating.", 409)
             receipt = self.templates.deployment_receipt()
-            return self._start(boot_id, stage_only=stage_only, receipt=receipt)
+            return self._start(boot_id, stage_only=stage_only, receipt=receipt, runtime_address=runtime_address)
 
-    def _start(self, boot_id, *, stage_only, receipt):
+    def _start(self, boot_id, *, stage_only, receipt, runtime_address=None):
         with self.store.transaction() as db:
             existing = self.store.read(db, "deployment", "current", {})
             if existing.get("status_path") and Path(existing["status_path"]).is_file():
@@ -54,15 +57,27 @@ class DeploymentService:
             state = self.root / "state"
             state.mkdir(parents=True, exist_ok=True)
             helper = state / "deploy_release.py"
-            shutil.copy2(Path(__file__).parents[1] / "scripts" / "deploy_release.py", helper)
-            shutil.copy2(Path(__file__).with_name("template_publication_core.py"), state / "template_publication_core.py")
             active = state / "active-release.json"
             previous = json.loads(active.read_text(encoding="utf-8")) if active.exists() else {}
             process = self.app.process_service
             owned = [info for info in process.list_processes() if any(process._matches(info, spec) for spec in process.specs())]
             pids = [info.pid for info in owned]
-            if not stage_only and os.getpid() not in pids:
+            host = os.environ.get("ZET_WEB_HOST", "0.0.0.0")
+            port = int(os.environ.get("ZET_WEB_PORT", "8081"))
+            if runtime_address is not None:
+                host, port = runtime_address
+                with urlopen(f"http://127.0.0.1:{port}/api/health", timeout=5) as response:
+                    health = json.load(response)
+                expected_instance = self.app.config.runtime_role + ":" + str(self.app.config_path.resolve())
+                if (not health.get("ready") or health.get("boot_id") != boot_id
+                        or health.get("revision") != self.app.task_service.zet_revision
+                        or health.get("instance") != expected_instance
+                        or not any(process._matches(info, process.specs()[0]) for info in owned)):
+                    raise TaskServiceError("The running dashboard does not match the active release boot, revision and managed config; no update was scheduled.", 409)
+            elif not stage_only and os.getpid() not in pids:
                 raise TaskServiceError("This server is not identified by the managed production config; no restart was scheduled.", 409)
+            shutil.copy2(Path(__file__).parents[1] / "scripts" / "deploy_release.py", helper)
+            shutil.copy2(Path(__file__).with_name("template_publication_core.py"), state / "template_publication_core.py")
             identifier = uuid4().hex
             request_path = state / f"deployment-{identifier}.json"
             role_state = self.app.config.runtime_state_path or str(self.app.config_path.resolve().parent / "Config")
@@ -73,15 +88,15 @@ class DeploymentService:
                        "library_root": str(Path(self.app.config.base_library_path).resolve()),
                        "library_container": str(Path(self.app.config.library_container_path or self.app.config.base_library_path).resolve()),
                        "previous_release": previous.get("release"), "previous_revision": self.app.task_service.zet_revision,
-                       "old_boot": boot_id, "pids": pids, "host": os.environ.get("ZET_WEB_HOST", "0.0.0.0"),
+                       "old_boot": boot_id, "pids": pids, "host": host,
                        "owned_processes": [{"pid": info.pid, "command_line": info.command_line} for info in owned],
-                       "port": int(os.environ.get("ZET_WEB_PORT", "8081")), "health_url": "http://127.0.0.1:" + os.environ.get("ZET_WEB_PORT", "8081"),
+                       "port": port, "health_url": f"http://127.0.0.1:{port}",
                        "original_command": process.specs()[0].command, "original_harvester_command": process.specs()[1].command, "stage_only": stage_only}
             write_json_atomic(request_path, request)
             self.store.write(db, "deployment", "current", {**request, "status_path": str(request_path.with_name(request_path.stem + "-status.json"))})
             db.commit()
             try:
-                subprocess.Popen([sys.executable, "-B", str(helper), "--request", str(request_path)],
+                self.controller_process = subprocess.Popen([sys.executable, "-B", str(helper), "--request", str(request_path)],
                                  cwd=state, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
             except OSError as exc:
