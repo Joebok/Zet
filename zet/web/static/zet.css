@@ -5686,7 +5686,8 @@ dd {
 #ai-jobs-table .ai-job-status button { flex: none; white-space: nowrap; }
 
 .template-improvement { min-width: 0; }
-.template-improvement > summary { cursor: pointer; font-weight: 650; }
+.template-improvement > summary,
+#local-pipeline-mode-source > summary { cursor: pointer; font-weight: 650; }
 .template-improvement label { display: grid; gap: .4rem; margin: .7rem 0; }
 .template-improvement textarea, .template-improvement select { width: 100%; min-width: 0; }
 .template-improvement .template-review-instructions { min-height: 4.5rem; box-sizing: border-box; }

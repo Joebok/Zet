@@ -326,8 +326,8 @@
           <p id="local-pipeline-status" class="action-message" role="status"></p>
         </section>
         <details id="local-template-improvement" class="control-panel template-improvement" hidden></details>
-        <section id="local-pipeline-mode-source" class="control-panel" hidden>
-          <h3 id="local-pipeline-mode-source-title">Phase-change FRONT source</h3>
+        <details id="local-pipeline-mode-source" class="control-panel" hidden>
+          <summary id="local-pipeline-mode-source-title">Phase-change FRONT source</summary>
           <div id="local-pipeline-mode-source-current"></div>
           <label>Source type<select id="local-pipeline-mode-source-kind"><option value="locked">Locked FRONT from another phase</option><option value="upload">Upload or paste FRONT</option></select></label>
           <label>Source phase<select id="local-pipeline-mode-source-phase"></select></label>
@@ -337,7 +337,7 @@
           <div id="local-pipeline-mode-source-paste" contenteditable="true" role="textbox" aria-label="Paste FRONT source">Paste a FRONT image here</div>
           <button id="local-pipeline-mode-source-save" type="button">Save source</button>
           <p id="local-pipeline-mode-source-status" role="status"></p>
-        </section>
+        </details>
         <section id="local-pipeline-selected" class="local-pipeline-selected" aria-label="Selected views"></section>
         <section id="local-pipeline-views" class="local-pipeline-views"></section>
       </div>
