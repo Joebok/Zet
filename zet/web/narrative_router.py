@@ -76,13 +76,30 @@ def create_narrative_router(app_provider):
     @router.post("/scene-text-style/preview")
     def text_style_preview(data: dict = Body(...)):
         from zet.services.scene_text_style_service import validate_style
-        from zet.services.scene_text_render_service import render
+        from zet.services.scene_text_render_service import render, tight_box
+        from PIL import Image
+        from pathlib import Path
         from io import BytesIO
         from base64 import b64encode
-        style = call(validate_style, data)
-        image, errors = call(render, (1216, 420), [{"id":"sample", "text":"Scene text with <b>bold</b> and <i>italic</i>.", "tail":"straight"}], {"sample":{"box":[.1,.1,.8,.65],"tip":[.7,.95]}}, style)
+        style = call(validate_style, data.get("style", data))
+        sample_text = data.get("sample_text", "The goblin laughed! <b>Bold</b> and <i>italic</i>.")
+        if not isinstance(sample_text, str) or len(sample_text)>1000: raise HTTPException(400, detail="Sample text must be 1,000 characters or fewer.")
+        asset = Path(__file__).resolve().parents[1] / "assets" / "scene_text_test.png"
+        with Image.open(asset) as backdrop: size=backdrop.size
+        entry={"id":"sample","text":sample_text,"tail":"none"}
+        box=[.05,.12,.48,.65]
+        try:
+            box=tight_box(size,sample_text,box,style)
+            box[0]=.05;box[1]=.12
+        except ValueError: pass
+        image, errors = call(render, size, [entry], {"sample":{"box":box}}, style)
         output=BytesIO();image.save(output,format="PNG")
-        return {"overlay":"data:image/png;base64,"+b64encode(output.getvalue()).decode(), "errors":errors}
+        return {"overlay":"data:image/png;base64,"+b64encode(output.getvalue()).decode(), "errors":errors, "width":size[0], "height":size[1]}
+
+    @router.get("/scene-text-style/backdrop")
+    def text_style_backdrop():
+        from pathlib import Path
+        return FileResponse(Path(__file__).resolve().parents[1] / "assets" / "scene_text_test.png", media_type="image/png")
 
     @router.get("/library")
     def library(q: str = Query("")):
@@ -284,6 +301,7 @@ def create_narrative_router(app_provider):
         service = app_provider().narrative_scene_text_service
         if operation == "save": return call(service.save, story, scene, target, data, candidate or None)
         if operation == "preview": return call(service.preview, story, scene, target, data, candidate or None)
+        if operation == "shrink": return call(service.shrink, story, scene, target, data, candidate or None)
         if operation == "confirm" and candidate: return call(service.confirm, story, scene, target, candidate, data)
         raise HTTPException(400, detail="Unknown scene text action.")
 

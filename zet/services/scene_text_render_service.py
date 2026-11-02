@@ -26,13 +26,30 @@ class Runs(HTMLParser):
     def handle_decl(self, decl): raise ValueError("HTML declarations are not supported.")
     def handle_pi(self, data): raise ValueError("Processing instructions are not supported.")
 
-def render(size, entries, placements, style):
-    image=Image.new("RGBA",size); errors=[]; w,h=size; scale=w/1216
+def _layout(text, style, scale, available_width):
+    runs=Runs(text).runs
+    if not ''.join(c for c,_,_ in runs).strip(): raise ValueError("Enter text.")
     fonts=[ImageFont.truetype(str(Path("C:/Windows/Fonts")/name), max(1,round(style["font_size"]*scale))) for name in FONTS[style["font_family"]]]
+    lines=[[]]; widths=[0]
+    for char,bold,italic in runs:
+        font=fonts[int(bold)+2*int(italic)]; cw=font.getlength(char) if char!='\n' else 0
+        if char=='\n': lines.append([]); widths.append(0); continue
+        if widths[-1]+cw>available_width and lines[-1]:
+            split=next((i for i in range(len(lines[-1])-1,-1,-1) if lines[-1][i][0]==' '), None)
+            carry=[] if split is None else lines[-1][split+1:]
+            if split is not None: lines[-1]=lines[-1][:split]; widths[-1]=sum(f.getlength(c) for c,f in lines[-1])
+            lines.append(carry); widths.append(sum(f.getlength(c) for c,f in carry))
+        lines[-1].append((char,font)); widths[-1]+=cw
+    lineh=max(sum(f.getmetrics()) for f in fonts)*1.15
+    return fonts, lines, widths, lineh
+
+def _scale(size):
+    return math.sqrt((size[0]*size[1])/(896*1184))
+
+def render(size, entries, placements, style):
+    image=Image.new("RGBA",size); errors=[]; w,h=size; scale=_scale(size)
     for entry in entries:
         try:
-            runs=Runs(entry["text"]).runs
-            if not ''.join(c for c,_,_ in runs).strip(): raise ValueError("Enter text.")
             place=placements.get(entry["id"], {}); box=place.get("box")
             if not box or len(box)!=4: raise ValueError("Place this text on the image.")
             if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in box): raise ValueError("Invalid box.")
@@ -42,17 +59,7 @@ def render(size, entries, placements, style):
             padding=style["padding"]*scale+style["outline_width"]*scale
             inset=1/math.sqrt(2) if style["shape"]=="ellipse" else 0.94 if style["shape"]=="rounded" else 1
             aw,ah=bw*inset-2*padding,bh*inset-2*padding
-            lines=[[]]; widths=[0]
-            for char,bold,italic in runs:
-                font=fonts[int(bold)+2*int(italic)]; cw=font.getlength(char) if char!='\n' else 0
-                if char=='\n': lines.append([]); widths.append(0); continue
-                if widths[-1]+cw>aw and lines[-1]:
-                    split=next((i for i in range(len(lines[-1])-1,-1,-1) if lines[-1][i][0]==' '), None)
-                    carry=[] if split is None else lines[-1][split+1:]
-                    if split is not None: lines[-1]=lines[-1][:split]; widths[-1]=sum(f.getlength(c) for c,f in lines[-1])
-                    lines.append(carry); widths.append(sum(f.getlength(c) for c,f in carry))
-                lines[-1].append((char,font)); widths[-1]+=cw
-            lineh=max(sum(f.getmetrics()) for f in fonts)*1.15
+            fonts,lines,widths,lineh=_layout(entry["text"],style,scale,aw)
             if aw<=0 or ah<=0 or max(widths)>aw or len(lines)*lineh>ah: raise ValueError("Text overflows: enlarge the box or edit the text.")
             mask=Image.new("L",size); d=ImageDraw.Draw(mask); rect=(round(x),round(y),round(x+bw),round(y+bh))
             if style["shape"]=="ellipse": d.ellipse(rect,fill=255)
@@ -82,3 +89,29 @@ def render(size, entries, placements, style):
                 yy+=lineh
         except ValueError as exc: errors.append({"id":entry["id"],"message":str(exc)})
     return image,errors
+
+def tight_box(size, text, box, style):
+    """Return the smallest box preserving the current wrapped line content."""
+    if not box or len(box)!=4: raise ValueError("Place this text on the image first.")
+    w,h=size; scale=_scale(size); inset=1/math.sqrt(2) if style["shape"]=="ellipse" else 0.94 if style["shape"]=="rounded" else 1
+    padding=(style["padding"]+style["outline_width"])*scale
+    x,y,bw,bh=(box[0]*w,box[1]*h,box[2]*w,box[3]*h)
+    old_fonts,old_lines,_,lineh=_layout(text,style,scale,max(1,bw*inset-2*padding))
+    old_signature=[[c for c,_ in line] for line in old_lines]
+    min_content=max((sum(font.getlength(char) for char,font in line) for line in old_lines),default=0)
+    new_w=max(1,math.ceil((min_content+2*padding)/inset))
+    # Find the narrowest pixel width that reproduces the old line breaks.
+    high=max(new_w,math.ceil(bw));low=new_w
+    while low<high:
+        middle=(low+high)//2
+        _,candidate_lines,_,_=_layout(text,style,scale,max(1,middle*inset-2*padding))
+        if [[c for c,_ in line] for line in candidate_lines] == old_signature: high=middle
+        else: low=middle+1
+    new_w=low
+    new_h=max(1,math.ceil((len(old_lines)*lineh+2*padding)/inset))
+    cx,cy=x+bw/2,y+bh/2
+    new_w=min(w,new_w);new_h=min(h,new_h)
+    nx=max(0,min(w-new_w,cx-new_w/2));ny=max(0,min(h-new_h,cy-new_h/2))
+    if new_w>bw+1 or new_h>bh+1: raise ValueError("Text already overflows this box; enlarge it before shrinking.")
+    result=list(box);result[:]=[nx/w,ny/h,new_w/w,new_h/h]
+    return result

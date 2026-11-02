@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 from PIL import Image
 from zet.services.scene_text_style_service import effective_style, signature
-from zet.services.scene_text_render_service import render, Runs
+from zet.services.scene_text_render_service import render, Runs, tight_box
 from zet.services.atomic_file_service import write_bytes_atomic
 
 class NarrativeSceneTextService:
@@ -65,6 +65,19 @@ class NarrativeSceneTextService:
         overlay,errors=render(size,data.get('entries',state['entries']),data.get('placements',state['placements']),state['style'])
         output=BytesIO();overlay.save(output,format='PNG')
         return {**state,'overlay':'data:image/png;base64,'+base64.b64encode(output.getvalue()).decode(),'errors':errors}
+    def shrink(self,story,scene,target,data,candidate=None):
+        state=self.state(story,scene,target,candidate)
+        if state['locked']: raise ValueError('Unlock this image before editing scene text.')
+        entry_id=data.get('entry_id');entry=next((item for item in state['entries'] if item['id']==entry_id),None)
+        if entry is None: raise ValueError('Choose a scene text entry first.')
+        placement=deepcopy(state['placements'].get(entry_id,{}));record=self.repository.read(story,scene,target)
+        size=(record['width'],record['height'])
+        if candidate:
+            with Image.open(self.repository.folder(story,scene,target)/record['candidates'][candidate]['image']) as source:size=source.size
+        placement['box']=tight_box(size,entry['text'],placement.get('box'),state['style'])
+        _,errors=render(size,[entry],{entry_id:placement},state['style'])
+        if errors: raise ValueError(errors[0]['message'])
+        return {'placement':placement}
     def confirm(self,story,scene,target,candidate,data):
         with self.repository.lock():
             state=self.state(story,scene,target,candidate)

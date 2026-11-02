@@ -117,3 +117,5 @@ explicitly authored body landmark, with frozen requests preserved.
 [0038 - Compatible animation zoom targets](0038-animation-zoom-target.md) records the opt-in target camera interpretation.
 
 [0042 - Character batch restart is mode-scoped](0042-character-mode-restart.md) records confirmed clearing and idle preparation.
+
+[0043 - Scene text scales with pixel area](0043-scene-text-pixel-area-scaling.md) records backdrop anchored sizing and line-preserving box shrinking.

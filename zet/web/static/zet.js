@@ -184,7 +184,6 @@ let zineTaskRestorePending = taskStoryRoute.get("task_context") === "1" && taskS
 
 let startupRecoveryTimer = null;
 const universeSelect = document.querySelector("#universe-select");
-let universeLetteringSettings;
 const universeSettingsForm = document.querySelector("#universe-settings-form");
 const universeSettingsArtStyle = document.querySelector("#universe-settings-art-style");
 const universeSettingsEnvironmentStyle = document.querySelector("#universe-settings-environment-style");
@@ -4304,12 +4303,12 @@ function updateDirtyIndicators() {
 }
 
 function editorGuardForPage(page = activePageName()) {
-  if (page === "universe-settings" && (universeSettingsArtStyle.value !== state.savedUniverseArtStyle || universeSettingsEnvironmentStyle.value !== state.savedUniverseEnvironmentStyle || universeLetteringSettings?.dirty())) {
+  if (page === "universe-settings" && (universeSettingsArtStyle.value !== state.savedUniverseArtStyle || universeSettingsEnvironmentStyle.value !== state.savedUniverseEnvironmentStyle)) {
     return {
       name: "Universe settings",
       autosave: false,
       save: saveUniverseSettings,
-      discard: () => { universeSettingsArtStyle.value = state.savedUniverseArtStyle; universeSettingsEnvironmentStyle.value = state.savedUniverseEnvironmentStyle; universeLetteringSettings?.reset(); },
+      discard: () => { universeSettingsArtStyle.value = state.savedUniverseArtStyle; universeSettingsEnvironmentStyle.value = state.savedUniverseEnvironmentStyle; },
     };
   }
   if (page === "stories" && state.storyDetail && storySnapshot() !== state.savedBaselines.story) {
@@ -13172,7 +13171,7 @@ async function loadUniverseSettings(universeId) {
   state.universeSettingsId = universe.universe_id;
   state.savedUniverseArtStyle = universe.canonical_art_style || "";
   state.savedUniverseEnvironmentStyle = universe.environmental_art_style || "";
-  universeLetteringSettings = await window.ZetSceneText.style({universe:universe.universe_id,container:document.querySelector('#universe-lettering-settings')});
+  document.querySelector('#open-universe-scene-text-style').onclick = () => window.ZetSceneText.style({universe:universe.universe_id}).catch(error => setUniverseMessage('universe-settings-message', error.message, 'error'));
   document.querySelector('#universe-settings-identity').textContent = `Universe: ${universe.universe_id} · Storage: ${universe.storage_path || 'Unavailable'} · Layout: ${universe.layout_version}`;
 
   universeSettingsArtStyle.value = state.savedUniverseArtStyle;
@@ -13186,14 +13185,13 @@ async function saveUniverseSettings() {
   const response = await fetch(`/api/universes/${encodeURIComponent(state.universeSettingsId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ canonical_art_style: universeSettingsArtStyle.value, environmental_art_style: universeSettingsEnvironmentStyle.value, scene_text_style: universeLetteringSettings.values() }),
+    body: JSON.stringify({ canonical_art_style: universeSettingsArtStyle.value, environmental_art_style: universeSettingsEnvironmentStyle.value }),
   });
   const payload = await response.json();
   if (!response.ok) {
     setUniverseMessage("universe-settings-message", payload.detail || "Unable to save universe settings.", "error");
     return false;
   }
-  universeLetteringSettings.markSaved();
   state.savedUniverseArtStyle = payload.universe.canonical_art_style || "";
   state.savedUniverseEnvironmentStyle = payload.universe.environmental_art_style || "";
   const universe = state.universes.find((item) => item.universe_id === payload.universe.universe_id);

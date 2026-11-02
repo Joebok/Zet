@@ -323,7 +323,7 @@ Interview and prompt writing are separate model roles, preserving explicit per-t
 
 ## Manual scene text (2026-10-29)
 
-Final assemblies have Scene text authoring and a full-viewport placement editor. Add/reorder entries, use restricted bold/italic markup, choose no tail or a straight tail, draw boxes and move/resize them. Tail tips stay in image space while the attachment can move around the bubble. Text uses a fixed effective size; overflow prevents confirmation. Full screen is optional; the viewport editor remains available without browser fullscreen.
+Final assemblies have Scene text authoring and a full-viewport placement editor. Add/reorder entries, use restricted bold/italic markup, choose no tail or a straight tail, draw boxes and move/resize them. Tail tips stay in image space while the attachment can move around the bubble. Font size, padding, outline and tail width scale by the square root of actual image pixel count relative to the packaged 896x1184 draft preview backdrop. The shared universe/story style dialog previews against that backdrop; its sample bubble fits the sample text. Shrink box minimizes a candidate box while preserving its current wrapping. Overflow prevents confirmation. Full screen is optional; the viewport editor remains available without browser fullscreen.
 
 In an empty raw placement editor, typing text, choosing a tail or dragging on the image creates the first entry automatically. Add scene text creates subsequent entries. Text typed before placement is saved with the entry even if no box has been drawn yet.
 
