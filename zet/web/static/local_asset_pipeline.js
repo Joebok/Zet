@@ -2866,7 +2866,13 @@
       syncPipelineRoute();
       void loadRun($("runs").value).catch((error) => setStatus(error.message, true));
     });
-    $("costume").addEventListener("change", () => { syncPipelineRoute(); void refreshContext(); });
+    $("costume").addEventListener("change", () => {
+      state.view = "";
+      state.run = null;
+      $("runs").value = "";
+      syncPipelineRoute();
+      void refreshContext();
+    });
     $("style-variant").addEventListener("change", scheduleReadiness);
     $("front-count").addEventListener("change", scheduleReadiness);
     $("other-count").addEventListener("change", scheduleReadiness);

@@ -12,8 +12,10 @@ The Assets menu lists Head-Image (Edit) after Body-Reference and before Head-Ima
 Character pipeline batch creation uses a modal with an optional name. An existing
 batch opens on a summary page with one selected or locked card per requested view;
 its view links open mode-scoped galleries, ranking, review, references and render
-tools. Draft/Final, batch, universe and costume remain in the page URL. Summary
-and view polling use separate projections; card images use bounded thumbnails,
+tools. Draft/Final, batch, universe and costume remain in the page URL. Batch
+and view pages keep the Costume-Dressing selector visible; changing costume opens
+that costume's batch summary. Summary and view polling use separate projections;
+card images use bounded thumbnails,
 while the review viewer requests originals. Master preparation and comparison
 reports run only on explicit clicks. Create and Re-evaluate report authoritative
 validation after an attempt instead of disabling the controls from a preview.

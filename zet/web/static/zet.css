@@ -633,6 +633,13 @@ main {
   gap: 4px;
 }
 
+.local-pipeline-costume-label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+  max-width: min(360px, 100%);
+}
+
 .local-pipeline-recompile-option {
   align-items: center;
   display: inline-flex !important;
