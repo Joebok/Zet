@@ -17,6 +17,10 @@ and view polling use separate projections; card images use bounded thumbnails,
 while the review viewer requests originals. Master preparation and comparison
 reports run only on explicit clicks. Create and Re-evaluate report authoritative
 validation after an attempt instead of disabling the controls from a preview.
+Batch card view names remain readable links, and selected/locked images open the
+review pane with previous/next and Left/Right navigation across available views.
+View review offers selected FRONT, the selected opposite side, and the matching
+locked Draft as side-by-side comparisons when available.
 Each view places its Luna ranking pill below the gallery, followed by separate
 Render tools, override image, and Observations disclosures with dividers.
 Stage opens an overlaid menu, and successful action acknowledgements quiet after

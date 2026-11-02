@@ -96,9 +96,19 @@ class LocalPipelineProjectionService:
             candidate_id = selected.get(view) or ""
             candidate = by_id.get(candidate_id) or {}
             record = run["_assets"].get(self._asset_key(run, view, mode)) or {}
+            selected_available = bool(candidate_id and self._candidate_available(run, candidate))
+            lock_path = Path(str(record.get("locked_image_path") or "")).resolve()
+            locked_available = bool(record.get("locked") and lock_path.is_file()
+                                    and lock_path.is_relative_to(Path(self.adapter.library_root).resolve()))
             cards.append({"view": view, "selected_candidate_id": candidate_id,
-                          "selected_available": bool(candidate_id and self._candidate_available(run, candidate)),
-                          "selected_image_sha256": candidate.get("image_sha256", "") if candidate_id else "",
+                          "selected_available": selected_available,
+                          "selected_image_sha256": candidate.get("image_sha256", "") if selected_available else "",
+                          "locked_key": self._asset_key(run, view, mode) if locked_available else "",
+                          "locked_image_sha256": record.get("image_sha256", "") if locked_available else "",
+                          "locked_available": locked_available,
+                          "display_kind": "selected" if selected_available else "locked" if locked_available else "",
+                          "display_candidate_id": candidate_id if selected_available else record.get("candidate_id", "") if locked_available else "",
+                          "display_image_sha256": candidate.get("image_sha256", "") if selected_available else record.get("image_sha256", "") if locked_available else "",
                           "locked": bool(record.get("locked") and record.get("batch_id") == run_id
                                          and record.get("candidate_id") == candidate_id),
                           "locked_candidate_id": record.get("candidate_id", "") if record.get("locked") else ""})
@@ -125,6 +135,12 @@ class LocalPipelineProjectionService:
                 "costume": run.get("costume", ""), "batch_name": run.get("batch_name", ""),
                 "status": run.get("status", ""), "error": run.get("error", ""), "render_mode": mode,
                 "views": list(views), "selected_cards": cards, "progress_by_mode": progress,
+                "selected_comparison_images": {view: {"candidate_id": candidate_id,
+                    "image_sha256": by_id[candidate_id].get("image_sha256", "")}
+                    for view, candidate_id in selected.items()
+                    if candidate_id in by_id and by_id[candidate_id].get("render_mode", "draft") == mode
+                    and self._candidate_available(run, by_id[candidate_id])},
+                "locked_draft_comparisons": run["locked_draft_comparisons"],
                 "selected_views_by_mode": run["selected_views_by_mode"],
                 "character_progression": flow, "progression": progression,
                 "front_anchor": run.get("front_anchor"), "final_front_anchor": run.get("final_front_anchor"),

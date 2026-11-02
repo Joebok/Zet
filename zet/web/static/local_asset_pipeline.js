@@ -884,13 +884,21 @@
       article.className = "local-pipeline-selected-card";
       const heading = document.createElement("h2"), link = document.createElement("a");
       link.href = viewUrl(card.view); link.textContent = card.view.replaceAll("_", " ");
+      link.className = "image-card-text-control";
       heading.append(link); article.append(heading);
-      if (card.selected_available) {
+      if (card.display_kind) {
         const image = document.createElement("img");
         image.loading = "lazy";
-        image.src = versionedImageUrl(route("thumbnail", run.run_id, "", card.selected_candidate_id), card.selected_image_sha256 || "");
-        image.alt = `Selected ${card.view} ${state.renderMode} image`;
-        article.append(image);
+        image.src = card.display_kind === "selected"
+          ? versionedImageUrl(route("thumbnail", run.run_id, "", card.display_candidate_id), card.display_image_sha256 || "")
+          : versionedImageUrl(`/api/local/assets/${encodeURIComponent(card.locked_key)}/image?${new URLSearchParams({character: run.character, phase: run.phase})}`, card.display_image_sha256 || "");
+        image.alt = `${card.display_kind === "selected" ? "Selected" : "Locked"} ${card.view} ${state.renderMode} image`;
+        const imageButton = document.createElement("button");
+        imageButton.type = "button"; imageButton.className = "local-pipeline-selected-image";
+        imageButton.setAttribute("aria-label", `Review ${card.display_kind} ${card.view} image`);
+        imageButton.append(image);
+        imageButton.addEventListener("click", () => openReview(card.view, true));
+        article.append(imageButton);
       }
       const status = document.createElement("p");
       status.textContent = card.locked ? "Selected and locked" : card.selected_candidate_id
@@ -2211,6 +2219,17 @@
   function orderedReviewCandidates() {
     const run = modeRun(state.run);
     const views = orderedViews(run);
+    if (state.reviewBatchCards) return views.map(view => {
+      const card = (state.run.review_cards || []).find(item => item.view === view && item.display_kind);
+      if (!card) return null;
+      const locked = card.display_kind === "locked";
+      const imageUrlForReview = locked
+        ? universeImageUrl(`/api/local/assets/${encodeURIComponent(card.locked_key)}/image?${new URLSearchParams({character: state.run.character, phase: state.run.phase})}`)
+        : imageUrl({candidate_id: card.display_candidate_id, image_sha256: card.display_image_sha256}, true);
+      return {candidate_id: `${card.display_kind}:${card.view}:${card.display_candidate_id}`, view,
+        image_path: imageUrlForReview, review_image_url: versionedImageUrl(imageUrlForReview, card.display_image_sha256),
+        review_card: card, render_mode: state.renderMode};
+    }).filter(Boolean);
     if (state.reviewSelectedOnly) return views.map(view =>
       (run?.candidates || []).find(item => item.view === view && item.candidate_id === run.selected_views?.[view] && item.image_path)
     ).filter(Boolean);
@@ -2315,15 +2334,19 @@
     const oppositeView = oppositeViews[candidate.view];
     const selectedViews = run.selected_views || {};
     const candidates = run.candidates || [];
+    const compareIdentity = (view) => state.run.selected_comparison_images?.[view];
     const frontId = run.front_anchor || selectedViews.FRONT;
     const front = candidates.find((item) => item.candidate_id === frontId && item.view === "FRONT" && item.image_path);
+    const frontSummary = compareIdentity("FRONT");
     const oppositeId = oppositeView && selectedViews[oppositeView];
-    const opposite = oppositeId && candidates.find((item) => item.candidate_id === oppositeId
-      && item.view === oppositeView && item.image_path);
+    const opposite = oppositeId && candidates.find((item) => item.candidate_id === oppositeId && item.view === oppositeView && item.image_path);
+    const oppositeSummary = oppositeView && compareIdentity(oppositeView);
     const draft = state.run.locked_draft_comparisons?.[candidate.view];
     const options = [];
     if (front && front.candidate_id !== candidate.candidate_id) options.push({id: "front", label: "Selected FRONT", src: imageUrl(front, true)});
+    else if (frontSummary && frontSummary.candidate_id !== candidate.candidate_id) options.push({id: "front", label: "Selected FRONT", src: versionedImageUrl(route("image", state.run.run_id, "", frontSummary.candidate_id), frontSummary.image_sha256)});
     if (opposite) options.push({id: "opposite", label: `Selected ${oppositeView}`, src: imageUrl(opposite, true)});
+    else if (oppositeSummary) options.push({id: "opposite", label: `Selected ${oppositeView}`, src: versionedImageUrl(route("image", state.run.run_id, "", oppositeSummary.candidate_id), oppositeSummary.image_sha256)});
     if (draft) {
       const params = new URLSearchParams({character: state.run.character, phase: state.run.phase, v: draft.image_sha256 || ""});
       options.push({id: "draft", label: `Locked Draft · ${candidate.view}`, src: universeImageUrl(`/api/local/assets/${encodeURIComponent(draft.key)}/image?${params}`)});
@@ -2348,7 +2371,7 @@
     compareImage.closest(".local-pipeline-review-comparison").classList.toggle("single-image", !comparison);
     const reviewImage = $("review-image");
     reviewImage.hidden = !candidate.image_path;
-    if (candidate.image_path) reviewImage.src = imageUrl(candidate, true);
+    if (candidate.image_path) reviewImage.src = candidate.review_image_url || imageUrl(candidate, true);
     else reviewImage.removeAttribute("src");
     reviewImage.alt = `${candidate.view} candidate ${candidate.candidate_id}`;
     let placeholder = reviewImage.parentElement.querySelector(".image-review-placeholder");
@@ -2365,7 +2388,8 @@
       panel.replaceChildren();
       const heading = document.createElement("h2");
       heading.textContent = `${candidate.view} · ${state.reviewIndex + 1} of ${state.reviewCandidates.length}`;
-      const lock = Object.values(run.local_assets || {}).some(item => item.locked && item.batch_id === run.run_id && item.candidate_id === candidate.candidate_id);
+      const lock = candidate.review_card?.display_kind === "locked"
+        || Object.values(run.local_assets || {}).some(item => item.locked && item.batch_id === run.run_id && item.candidate_id === candidate.candidate_id);
       const status = document.createElement("p");
       status.textContent = lock ? "Locked" : "Selected";
       panel.append(heading, status);
@@ -2579,9 +2603,10 @@
 
   let reviewOrigin = null;
   function openReview(candidateId, selectedOnly = false) {
+    state.reviewBatchCards = typeof candidateId === "string" && state.run?.scoped_kind === "summary";
     state.reviewSelectedOnly = selectedOnly;
     state.reviewCandidates = orderedReviewCandidates();
-    state.reviewIndex = state.reviewCandidates.findIndex((item) => item.candidate_id === candidateId);
+    state.reviewIndex = state.reviewCandidates.findIndex((item) => state.reviewBatchCards ? item.view === candidateId : item.candidate_id === candidateId);
     if (state.reviewIndex < 0) return;
     state.comparisonChoice = "front";
     delete $("review-panel").dataset.candidate;

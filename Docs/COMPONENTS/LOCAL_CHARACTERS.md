@@ -15,6 +15,13 @@ the exact prompt and ordered references. A blocked view is reported individually
 Final locking checks captured reference bytes for edited head, Assembly and
 Dressing images. Historical differences remain inspectable; a later upstream
 selection alone does not change the frozen render inputs.
+
+Batch summaries also carry compact selected/locked image identities for cards
+and review comparisons. Cards open the shared original-image review pane and
+arrow through available selected/locked views. A view review can compare with
+selected FRONT, its selected opposite side, and the matching locked Draft when
+those images are available; view projections still contain only that view's
+candidate records.
 The policy is recorded in [ADR 0044](../DECISIONS/0044-character-batch-review-freshness.md).
 
 Run front/available, slot generate/regenerate/retry, and view regenerate/re-run failed
