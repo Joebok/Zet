@@ -39,6 +39,7 @@ def render_image(
     seed: int | None = None,
     render_overrides: dict[str, Any] | None = None,
     checkpoint: str | None = None,
+    cancel_marker_path: Path | None = None,
 ) -> LocalRenderResult:
     request = LocalRenderRequest(
         project_root=project_root,
@@ -53,6 +54,7 @@ def render_image(
         seed=seed,
         render_overrides=render_overrides,
         checkpoint=checkpoint,
+        cancel_marker_path=cancel_marker_path,
     )
     return render_request(request)
 
@@ -79,5 +81,6 @@ def render_request(request: LocalRenderRequest) -> LocalRenderResult:
             seed=request.seed,
             render_overrides=request.render_overrides,
             checkpoint=request.checkpoint,
+            cancel_marker_path=request.cancel_marker_path,
         )
     raise LocalRenderError(f"Unsupported local render backend for profile {request.profile_name}: {backend}")

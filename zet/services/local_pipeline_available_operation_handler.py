@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable
+import json
 
 from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json
 from zet.services.local_pipeline_available_preparation_service import LocalPipelineAvailablePreparationService
@@ -41,6 +42,10 @@ class LocalPipelineAvailableOperationHandler:
             check_operation_context(current, request)
             if workflow.slots._busy_reason(current):
                 raise OperationBlocked(workflow.slots._busy_reason(current))
+            if request["action"] == "rerun_view":
+                waiting = self._cancel_active_view(workflow, current, request)
+                if waiting:
+                    raise OperationWaiting(waiting)
             if runner_lock_active(root):
                 raise OperationWaiting("Waiting for the batch runner to finish.")
             spec = read_library_json(root / "spec.json", pipeline_library_root_for_path(root))
@@ -107,6 +112,52 @@ class LocalPipelineAvailableOperationHandler:
             if outcome is not None:
                 return outcome
         return self._outcome(saved)
+
+    @staticmethod
+    def _cancel_active_view(workflow, run: dict, request: dict) -> str:
+        """Request per-ask ComfyUI cancellation and wait for the collector to settle it."""
+        from zet.services.local_image_evaluation_service import mode_field
+        from zet.services.local_image_pipeline_policy import mutate_local_run_state
+        from zet.services.workflow_storage import supersede_task
+
+        view, mode = request["view"], request["render_mode"]
+        slot_field = mode_field("slots_by_view", mode)
+        ids = set((run.get(slot_field) or {}).get(view) or [])
+        candidates = [item for item in run.get("candidates") or []
+                      if item.get("candidate_id") in ids and item.get("render_mode", "draft") == mode
+                      and item.get("render_status") in {"QUEUED", "RUNNING"}
+                      and workflow.slots._protected(run, item) ==
+                      "Wait for this render to finish before clearing or regenerating it."]
+        if not candidates:
+            return ""
+        proxy_paths = workflow.app.ai_proxy_service.ai_proxy_path_service
+        queue_root = Path(proxy_paths.config.base_ai_queue_path)
+        queued_paths = {path.name: path for path in proxy_paths.task_paths("ask")}
+        running_paths = {path.name: path for path in proxy_paths.task_paths("running")}
+        awaiting = []
+        for candidate in candidates:
+            ask_id = str(candidate.get("ask_id") or "")
+            if not ask_id:
+                awaiting.append(candidate["candidate_id"])
+                continue
+            running_path = running_paths.get(ask_id)
+            queued_path = queued_paths.get(ask_id)
+            if running_path is not None and running_path.is_dir():
+                from zet.services.atomic_file_service import write_json_atomic
+                write_json_atomic(running_path / ".zet_cancel.json", {"ask_id": ask_id, "reason": "view regeneration"})
+                awaiting.append(candidate["candidate_id"])
+            elif queued_path is not None:
+                supersede_task(queue_root, queued_path, "Cancelled for view regeneration.",
+                               state_root=proxy_paths.lifecycle.storage_root)
+                def detach(state, candidate_id=candidate["candidate_id"]):
+                    state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(
+                        status="FAILED", render_error="Cancelled for view regeneration.")
+                    state["slot_render_ids"] = [item for item in state.get("slot_render_ids", []) if item != candidate_id]
+                mutate_local_run_state(Path(run["root"]), detach)
+            else:
+                awaiting.append(candidate["candidate_id"])
+        return (f"Waiting for view renders to stop and settle: {', '.join(awaiting)}."
+                if awaiting else "")
 
     def _handoff(self, workflow, request: dict, operation_id: str, reservation, saved: dict) -> dict | None:
         """Serialize Stop against durable handoff admission, then wake the collector."""

@@ -79,7 +79,7 @@
   function updateFrontButton() {
     if (!frontButton) return;
     const control = context.frontControl?.();
-    frontButton.disabled = !control || control.disabled;
+    frontButton.disabled = accepting || !control || control.disabled;
     frontButton.title = control?.reason || "FRONT has already started.";
   }
   function appendStatusAndFront(revision) {
@@ -157,11 +157,32 @@
     button(actions, "Analyze prompts", () => analyze());
     button(actions, "Restart from current masters", () => analyze(true));
     button(actions, "Skip improvement — use current masters", async () => {
+      const differs = Boolean(data?.active_revision?.differs_from_master);
+      if (differs && !(await confirmAction("Use current masters?",
+        "The active batch version differs from current masters. Proceeding compiles and selects current masters for new renders; existing images and earlier versions remain unchanged.",
+        "Use current masters", {tone: "primary"}))) return;
       const initial = serial;
-      const value = await request(endpoint(), { method: "POST", body: JSON.stringify({ from_master: true, skip_analysis: true, expected_active: data?.active_revision_id || "" }) });
-      if (serial !== initial) return;
-      data = value; selectedRevision = value.revision.revision_id; signature = ""; renderData(); await context.reload();
-      status("Improvement skipped. Current masters compiled for this batch; FRONT is ready to start.");
+      accepting = true; updateFrontButton();
+      status("Compiling current masters for this batch…");
+      try {
+        const value = await request(endpoint(), { method: "POST", body: JSON.stringify({ from_master: true, skip_analysis: true, expected_active: data?.active_revision_id || "" }) });
+        if (serial !== initial) return;
+        selectedRevision = value.revision.revision_id;
+        await context.reload();
+        if (serial !== initial) return;
+        const parsed = new URL(endpoint(), window.location.origin);
+        parsed.searchParams.set("revision_id", selectedRevision);
+        const refreshed = await request(parsed.pathname + parsed.search);
+        if (serial !== initial) return;
+        if (refreshed.active_revision_id !== selectedRevision
+            || refreshed.accepted_revision_id !== selectedRevision) {
+          throw new Error("The batch did not refresh to the accepted master version. Reload saved results before starting renders.");
+        }
+        data = refreshed; signature = ""; renderData();
+        status("Improvement skipped. Current masters are active and the batch is refreshed; FRONT is ready to start.");
+      } finally {
+        accepting = false; updateFrontButton();
+      }
     });
     const reload = button(actions, "Reload saved results", refresh);
     reload.title = "Reload saved versions and analysis status. Does not recompile or incorporate master-template edits.";

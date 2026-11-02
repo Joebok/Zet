@@ -40,6 +40,13 @@ Additional isolated checks passed a changed Body proxy outcome before reservatio
 Stop restoration of a recovery-required uncommitted retry, and cross-process
 replay with the raw-state guard after a detach interruption.
 
+Costume-Dressing refresh/regeneration (2026-11-02): disposable checks passed
+targeted ComfyUI cancellation against a fake HTTP server, verifying the exact
+prompt ID is sent to `/interrupt` and replacement cannot proceed until history
+settles. The existing S2 scenario and full S1–S4 baseline passed. This does not
+exercise a live ComfyUI backend, cross-process shared-queue cancellation, or a
+browser confirmation with master drift; those remain unverified.
+
 ## Command-line release update (2026-11-01)
 
 Disposable temporary-state checks passed terminal initiation, ready/boot/config/

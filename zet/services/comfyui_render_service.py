@@ -128,6 +128,36 @@ def _request_bytes(url: str, timeout: float = 60) -> bytes:
         raise LocalRenderUnavailable(f"ComfyUI image download failed: {url}") from exc
 
 
+def _interrupt_prompt(server_url: str, prompt_id: str) -> None:
+    """Interrupt only the owned ComfyUI prompt; an empty success body is valid."""
+    body = json.dumps({"prompt_id": prompt_id}).encode("utf-8")
+    request = Request(f"{server_url.rstrip('/')}/interrupt", data=body, method="POST")
+    request.add_header("Content-Type", "application/json")
+    try:
+        with urlopen(request, timeout=10):
+            return
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise LocalRenderUnavailable(f"Unable to request cancellation for ComfyUI prompt {prompt_id}.") from exc
+
+
+def _cancel_prompt(server_url: str, prompt_id: str) -> bool:
+    """Cancel a specific queued/running prompt and report whether it was queued."""
+    queue = _request_json(f"{server_url.rstrip('/')}/queue")
+    if not isinstance(queue, dict):
+        raise LocalRenderError("ComfyUI queue response is invalid; cancellation was not confirmed.")
+    def contains(name):
+        items = queue.get(name)
+        return isinstance(items, list) and any(isinstance(item, (list, tuple)) and len(item) > 1
+                                                and str(item[1]) == prompt_id for item in items)
+    if contains("queue_running"):
+        _interrupt_prompt(server_url, prompt_id)
+        return False
+    if contains("queue_pending"):
+        _request_json(f"{server_url.rstrip('/')}/queue", "POST", {"delete": [prompt_id]})
+        return True
+    return False
+
+
 def list_comfyui_node_types(server_url: str) -> set[str]:
     payload = _request_json(f"{server_url.rstrip('/')}/object_info")
     if not isinstance(payload, dict):
@@ -196,14 +226,15 @@ def run_comfyui_workflow(
     reference_files: list[dict[str, Any]] | None = None,
     poll_seconds: float = 1.0,
     timeout_seconds: float = 300.0,
+    cancel_marker_path: Path | None = None,
 ) -> ComfyUIRunResult:
     with file_lock(output_dir / "ComfyUI_Submission.lock"):
         return _run_comfyui_workflow(workflow, server_url=server_url, output_dir=output_dir,
                                     reference_files=reference_files, poll_seconds=poll_seconds,
-                                    timeout_seconds=timeout_seconds)
+                                    timeout_seconds=timeout_seconds, cancel_marker_path=cancel_marker_path)
 
 
-def _run_comfyui_workflow(workflow, *, server_url, output_dir, reference_files, poll_seconds, timeout_seconds):
+def _run_comfyui_workflow(workflow, *, server_url, output_dir, reference_files, poll_seconds, timeout_seconds, cancel_marker_path=None):
     base_url = server_url.rstrip("/")
     journal_path = output_dir / "ComfyUI_Submission.json"
     journal = json.loads(journal_path.read_text(encoding="utf-8")) if journal_path.is_file() else {}
@@ -238,6 +269,28 @@ def _run_comfyui_workflow(workflow, *, server_url, output_dir, reference_files, 
     deadline = time.monotonic() + timeout_seconds
     record: dict[str, Any] | None = None
     while time.monotonic() < deadline:
+        if cancel_marker_path and Path(cancel_marker_path).is_file():
+            try:
+                was_pending = _cancel_prompt(base_url, prompt_id)
+                cancel_deadline = time.monotonic() + max(30.0, timeout_seconds)
+                while time.monotonic() < cancel_deadline:
+                    history = _request_json(f"{base_url}/history/{urllib.parse.quote(prompt_id)}")
+                    if isinstance(history, dict) and isinstance(history.get(prompt_id), dict):
+                        write_json_atomic(journal_path, {**journal, "status": "CANCELLED", "cancelled_at": time.time()})
+                        raise LocalRenderError(f"ComfyUI prompt {prompt_id} was cancelled and settled.")
+                    if was_pending:
+                        queue = _request_json(f"{base_url}/queue")
+                        pending = queue.get("queue_pending") if isinstance(queue, dict) else None
+                        running = queue.get("queue_running") if isinstance(queue, dict) else None
+                        still_queued = any(isinstance(item, (list, tuple)) and len(item) > 1 and str(item[1]) == prompt_id
+                                           for item in (pending or []) + (running or []))
+                        if not still_queued:
+                            write_json_atomic(journal_path, {**journal, "status": "CANCELLED", "cancelled_at": time.time()})
+                            raise LocalRenderError(f"Queued ComfyUI prompt {prompt_id} was removed.")
+                    time.sleep(max(0.1, poll_seconds))
+                raise LocalRenderUnavailable(f"Cancellation of ComfyUI prompt {prompt_id} was not confirmed.")
+            except LocalRenderError:
+                raise
         history = _request_json(f"{base_url}/history/{urllib.parse.quote(prompt_id)}")
         if isinstance(history, dict) and isinstance(history.get(prompt_id), dict):
             record = history[prompt_id]

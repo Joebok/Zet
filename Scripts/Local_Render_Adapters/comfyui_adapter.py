@@ -128,6 +128,7 @@ def render_preview(
     seed: int | None = None,
     render_overrides: dict[str, Any] | None = None,
     checkpoint: str | None = None,
+    cancel_marker_path: Path | None = None,
 ) -> LocalRenderResult:
     profile = _load_profile(project_root, profile_name)
     allowed_overrides = {
@@ -273,6 +274,7 @@ def render_preview(
         reference_files=compilation.debug.get("references_used", []),
         poll_seconds=float(config.get("PollSeconds", 1.0)),
         timeout_seconds=float(profile.get("timeout_seconds") or config.get("TimeoutSeconds", 300.0)),
+        cancel_marker_path=cancel_marker_path,
     )
     completed_at = datetime.now()
     metadata_path = render_dir / "ComfyUI_Render_Metadata.json"

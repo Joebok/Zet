@@ -144,6 +144,8 @@ def render_image_kwargs(ask_manifest: dict, prompt_path: Path, folder: Path, pre
     if "checkpoint" in parameters:
         value = ask_manifest.get("checkpoint")
         kwargs["checkpoint"] = str(value) if value is not None else None
+    if "cancel_marker_path" in parameters:
+        kwargs["cancel_marker_path"] = folder / ".zet_cancel.json"
     return kwargs
 
 

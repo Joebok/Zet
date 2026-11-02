@@ -27,6 +27,7 @@ class LocalRenderRequest:
     seed: int | None = None
     render_overrides: dict[str, Any] | None = None
     checkpoint: str | None = None
+    cancel_marker_path: Path | None = None
 
 
 @dataclass

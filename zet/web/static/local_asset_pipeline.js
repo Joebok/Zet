@@ -281,7 +281,11 @@
     params.set("page", Object.keys(pagePipelines).find((page) => pagePipelines[page] === state.pipeline));
     params.set("render_mode", state.renderMode);
     const runId = $("runs").value;
-    if (runId) params.set("local_batch", runId);
+    if (runId) {
+      params.set("local_batch", runId);
+      if (state.run?.character) params.set("character", state.run.character);
+      if (state.run?.phase) params.set("phase", state.run.phase);
+    }
     else params.delete("local_batch");
     if (isCostume() && selectedCostume()) params.set("local_costume", selectedCostume());
     else params.delete("local_costume");
@@ -1212,7 +1216,7 @@
         addButton(stageItems, "Stage Rotation", "stage-rotation", { disabled: Boolean(controls.rotation_reason), view,
           title: controls.rotation_reason || `Rotate selected ${controls.rotation_source_view} into ${view}.` });
       }
-      addButton(viewActions, "Regen view", "rerun-view", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !viewReady || !candidates.length, view });
+      addButton(viewActions, "Regen view", "rerun-view", { disabled: !viewReady || !candidates.length, view });
       addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !candidates.some((item) => item.render_status === "FAILED"), view });
       const reevaluateReason = run.reevaluation_reasons_by_mode?.[state.renderMode]?.views?.[view] ?? "Re-evaluation availability is loading.";
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: Boolean(reevaluateReason), view, title: reevaluateReason });
@@ -2476,7 +2480,11 @@
         : Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
       if (action === "rerun-view") {
         if (!$("aspect-ratio").reportValidity()) return;
-        if (!(await confirmAction(`Regenerate ${view}?`, regenDescription(state.run, view, recompile), "Regenerate", {tone: "primary"}))) return;
+        const activeCount = (state.run?.candidates || []).filter(item => item.view === view
+          && item.render_mode === state.renderMode && ["QUEUED", "RUNNING"].includes(item.render_status)).length;
+        const description = `${regenDescription(state.run, view, recompile)}${activeCount
+          ? `\n\n${activeCount} active render(s) in this view will be cancelled and allowed to settle before replacements start. Selected and locked images will be preserved.` : ""}`;
+        if (!(await confirmAction(`Regenerate ${view}?`, description, "Regenerate", {tone: "primary"}))) return;
         await submitViewAction(button, action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
         return;
       }
