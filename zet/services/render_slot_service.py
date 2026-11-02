@@ -326,6 +326,14 @@ class CharacterRenderSlots:
             default_ratio = "1:1" if self.workflow.pipeline in {"head-image", "head-image-edit"} else "2:3"
             sizing = resolve_image_sizing(self.workflow.app.config, render_mode, aspect_ratio or default_ratio)
             run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final")
+        from zet.services.template_source_service import active_revision
+        root = Path(run["root"])
+        revision = active_revision(root)
+        if render_mode is not None:
+            for source in revision.get("sources") or []:
+                path = Path(source["source_path"])
+                if not path.is_file() or hashlib.sha256(path.read_text(encoding="utf-8").encode("utf-8")).hexdigest() != source.get("master_sha256"):
+                    raise RenderSlotConflict(f"Current master changed: {source.get('label') or path.name}. Use current masters before a new render.")
         if self.workflow.pipeline == "costume-dressing":
             from zet.services.costume_render_mode_service import CostumeRenderModeService
             if render_mode is not None:
@@ -339,9 +347,7 @@ class CharacterRenderSlots:
             return saved
         packet_facts = {}
         packet_declarations = []
-        from zet.services.template_source_service import active_revision
         from zet.services.local_view_reference_service import custom_references, reference_recipes
-        root = Path(run["root"])
         pipeline = self.workflow.pipeline
         request_run = run
         if pipeline == "character-assembly" and render_mode is not None:
@@ -349,7 +355,6 @@ class CharacterRenderSlots:
             # both modes and must not be replaced when another render is prepared.
             resolved = self._mode_sources(run, view, render_mode)
             request_run = {**run, "sources": {**(run.get("sources") or {}), view: resolved}}
-        revision = active_revision(root)
         output = output_dir or root / "prompts" / view
         stamp = output / "Template_Revision.json"
         compiled_revision = json.loads(stamp.read_text(encoding="utf-8")).get("revision_id", "") if stamp.is_file() else ""
@@ -626,7 +631,7 @@ class CharacterRenderSlots:
                 if view in (state.get(evaluation_field) or {}):
                     state[evaluation_field][view].update(evaluation_id=uuid4().hex, status="SUPERSEDED")
                 ranking = state.setdefault(mode_field("rankings", render_mode), {}).get(view)
-                if ranking:
+                if ranking and created:
                     ranking.update(status="STALE", stale_reason="Render slots changed.")
                 if render_mode == "draft":
                     review = state.setdefault("view_reviews", {}).setdefault(view, {})

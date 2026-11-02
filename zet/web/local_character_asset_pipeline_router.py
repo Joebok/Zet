@@ -50,6 +50,12 @@ def create_local_character_asset_pipeline_router(
         except Exception as exc:
             raise HTTPException(status_code=missing, detail=str(exc)) from exc
 
+    def acknowledgement(result: Any, compact: bool) -> Any:
+        if not compact or not isinstance(result, dict):
+            return result
+        return {key: result[key] for key in ("run_id", "status", "slot_paused", "submitted_candidate_ids",
+                                               "blocked_views", "errors") if key in result}
+
     def run_all_service() -> LocalRunAllRemainingService:
         return LocalRunAllRemainingService(app_factory(), root)
 
@@ -104,8 +110,8 @@ def create_local_character_asset_pipeline_router(
             return service(_pipeline).action(name, **args)
 
         @router.put(f"{prefix}/runs/{{run_id}}/views/{{view}}/render-settings")
-        def save_render_settings(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "save_render_settings", run_id=run_id, view=view, costume=costume, payload=payload))
+        def save_render_settings(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "save_render_settings", run_id=run_id, view=view, costume=costume, payload=payload)), compact)
 
         @router.get(f"{prefix}/runs/{{run_id}}/views/{{view}}/acceptance-criteria")
         def acceptance_criteria(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
@@ -156,13 +162,33 @@ def create_local_character_asset_pipeline_router(
             return call(lambda: {"runs": action(_pipeline, "list", character=character, phase=phase, costume=costume if _pipeline == "costume-dressing" else "")})
 
         @router.put(f"{prefix}/runs/{{run_id}}/name")
-        def rename_run(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "rename_batch", run_id=run_id, payload=payload, costume=costume if _pipeline == "costume-dressing" else ""), missing=404)
+        def rename_run(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "rename_batch", run_id=run_id, payload=payload, costume=costume if _pipeline == "costume-dressing" else ""), missing=404), compact)
 
         @router.get(f"{prefix}/runs/{{run_id}}")
         def detail(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "detail", run_id=run_id,
                                        costume=costume if _pipeline == "costume-dressing" else ""), missing=404)
+
+        @router.get(f"{prefix}/runs/{{run_id}}/summary")
+        def summary(run_id: str, render_mode: str = Query("draft"), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: service(_pipeline).summary(run_id, render_mode=render_mode,
+                costume=costume if _pipeline == "costume-dressing" else ""), missing=404)
+
+        @router.get(f"{prefix}/runs/{{run_id}}/views/{{view}}")
+        def view_detail(run_id: str, view: str, render_mode: str = Query("draft"), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: service(_pipeline).view_detail(run_id, view, render_mode=render_mode,
+                costume=costume if _pipeline == "costume-dressing" else ""), missing=404)
+
+        @router.get(f"{prefix}/runs/{{run_id}}/comparisons/{{kind}}")
+        def comparison_report(run_id: str, kind: str, render_mode: str = Query("draft"), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: service(_pipeline).comparison_report(run_id, kind, render_mode=render_mode,
+                costume=costume if _pipeline == "costume-dressing" else ""), missing=404)
+
+        @router.post(f"{prefix}/runs/{{run_id}}/use-current-masters")
+        def use_current_masters(run_id: str, render_mode: str = Query("draft"), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: service(_pipeline).use_current_masters(run_id, render_mode=render_mode,
+                costume=costume if _pipeline == "costume-dressing" else ""))
 
         @router.post(f"{prefix}/runs/{{run_id}}/start")
         def start(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
@@ -189,7 +215,7 @@ def create_local_character_asset_pipeline_router(
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/slots/{{slot}}/{{operation}}")
-        def slot_action(run_id: str, view: str, slot: int, operation: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+        def slot_action(run_id: str, view: str, slot: int, operation: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
             names = {"generate": "generate_slots", "clear": "clear_slot", "regenerate": "regenerate_slot", "retry": "retry_render_slot"}
             if operation not in names:
                 raise HTTPException(status_code=404, detail="Unknown slot action.")
@@ -197,7 +223,7 @@ def create_local_character_asset_pipeline_router(
             qualifier = costume if _pipeline == "costume-dressing" else ""
             result = call(lambda: instance.action(names[operation], run_id=run_id, view=view, payload={**payload, "slot": slot}, costume=qualifier))
             instance.slots.start(run_id, qualifier)
-            return result
+            return acknowledgement(result, compact)
 
         @router.post(f"{prefix}/runs/{{run_id}}/restart-preview")
         def restart_preview(run_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
@@ -226,12 +252,31 @@ def create_local_character_asset_pipeline_router(
             path = call(lambda: service(_pipeline).adapter.image_path(run_id, candidate_id, **({"costume": costume} if _pipeline == "costume-dressing" else {})), missing=404)
             return FileResponse(path)
 
+        @router.get(f"{prefix}/runs/{{run_id}}/thumbnails/{{candidate_id}}")
+        def candidate_thumbnail(run_id: str, candidate_id: str, costume: str = Query(""), v: str = Query(""), _pipeline: str = pipeline):
+            from zet.services.local_pipeline_thumbnail_service import LocalPipelineThumbnailService
+            instance = service(_pipeline)
+            path = call(lambda: LocalPipelineThumbnailService(instance).candidate(run_id, candidate_id,
+                costume=costume if _pipeline == "costume-dressing" else "", version=v), missing=404)
+            return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"})
+
         @router.get(f"{prefix}/runs/{{run_id}}/reference-images/{{view}}/{{index}}")
         def reference_image(run_id: str, view: str, index: int, costume: str = Query(""),
                             candidate_id: str = Query(""), render_mode: str = Query("draft"), _pipeline: str = pipeline):
             path = call(lambda: service(_pipeline).reference_image_path(
                 run_id, view, index, candidate_id=candidate_id, render_mode=render_mode, costume=costume), missing=404)
             return FileResponse(path)
+
+        @router.get(f"{prefix}/runs/{{run_id}}/reference-thumbnails/{{view}}/{{index}}")
+        def reference_thumbnail(run_id: str, view: str, index: int, costume: str = Query(""),
+                                candidate_id: str = Query(""), render_mode: str = Query("draft"),
+                                v: str = Query(""), _pipeline: str = pipeline):
+            from zet.services.local_pipeline_thumbnail_service import LocalPipelineThumbnailService
+            instance = service(_pipeline)
+            path = call(lambda: LocalPipelineThumbnailService(instance).reference(run_id, view, index,
+                candidate_id=candidate_id, render_mode=render_mode,
+                costume=costume if _pipeline == "costume-dressing" else "", version=v), missing=404)
+            return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"})
 
         if shared_sources:
             @router.get(f"{prefix}/runs/{{run_id}}/sources/{{view}}/{{role}}")
@@ -240,11 +285,28 @@ def create_local_character_asset_pipeline_router(
                 path = call(lambda: service(_pipeline).adapter.source_path(
                     run_id, view, role, costume, render_mode=render_mode), missing=404)
                 return FileResponse(path)
+
+            @router.get(f"{prefix}/runs/{{run_id}}/source-thumbnails/{{view}}/{{role}}")
+            def source_thumbnail(run_id: str, view: str, role: str, costume: str = Query(""),
+                                 render_mode: str | None = Query(None), v: str = Query(""), _pipeline: str = pipeline):
+                from zet.services.local_pipeline_thumbnail_service import LocalPipelineThumbnailService
+                instance = service(_pipeline)
+                path = call(lambda: LocalPipelineThumbnailService(instance).source(run_id, view, role,
+                    costume=costume, render_mode=render_mode, version=v), missing=404)
+                return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"})
         elif pipeline in {"head-image", "head-image-edit"}:
             @router.get(f"{prefix}/runs/{{run_id}}/source")
             def front_source(run_id: str, render_mode: str = Query("draft"), _pipeline: str = pipeline):
                 path = call(lambda: service(_pipeline).adapter.front_source_path(run_id, render_mode), missing=404)
                 return FileResponse(path)
+
+            @router.get(f"{prefix}/runs/{{run_id}}/source-thumbnail")
+            def front_source_thumbnail(run_id: str, render_mode: str = Query("draft"), v: str = Query(""), _pipeline: str = pipeline):
+                from zet.services.local_pipeline_thumbnail_service import LocalPipelineThumbnailService
+                instance = service(_pipeline)
+                path = call(lambda: LocalPipelineThumbnailService(instance).front_source(run_id,
+                    render_mode=render_mode, version=v), missing=404)
+                return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, no-cache"})
 
             @router.put(f"{prefix}/runs/{{run_id}}/source")
             def update_front_source(run_id: str, payload: dict[str, Any] = Body(...), _pipeline: str = pipeline):
@@ -259,8 +321,8 @@ def create_local_character_asset_pipeline_router(
         def image_prompt(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
             return PlainTextResponse(call(lambda: service(_pipeline).adapter.image_prompt(run_id, view, **({"costume": costume} if _pipeline == "costume-dressing" else {})), missing=404), media_type="text/markdown")
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/select")
-        def select(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "select_view", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), payload=payload, costume=costume if _pipeline == "costume-dressing" else ""))
+        def select(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "select_view", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), payload=payload, costume=costume if _pipeline == "costume-dressing" else "")), compact)
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/rank")
         def rank(run_id: str, view: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
@@ -269,14 +331,14 @@ def create_local_character_asset_pipeline_router(
             return {"queued": True, "run_id": run_id, "view": view.upper()}
 
         @router.put(f"{prefix}/runs/{{run_id}}/views/{{view}}/observations")
-        def save_observations(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "save_observations", run_id=run_id, view=view, payload=payload,
-                                       costume=costume if _pipeline == "costume-dressing" else ""))
+        def save_observations(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "save_observations", run_id=run_id, view=view, payload=payload,
+                                       costume=costume if _pipeline == "costume-dressing" else "")), compact)
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/reanalyze")
-        def reanalyze(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "reanalyze", run_id=run_id, view=view,
-                                       costume=costume if _pipeline == "costume-dressing" else ""))
+        def reanalyze(run_id: str, view: str, costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "reanalyze", run_id=run_id, view=view,
+                                       costume=costume if _pipeline == "costume-dressing" else "")), compact)
 
         @router.post(f"{prefix}/runs/{{run_id}}/post-render-prompt")
         def open_post_render_prompt(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
@@ -327,13 +389,13 @@ def create_local_character_asset_pipeline_router(
                                        revision_id=revision_id, payload=payload))
 
         @router.put(f"{prefix}/runs/{{run_id}}/views/{{view}}/reference-recipe")
-        def save_view_reference(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "save_view_reference", run_id=run_id, view=view,
-                                       costume=costume, payload=payload))
+        def save_view_reference(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "save_view_reference", run_id=run_id, view=view,
+                                       costume=costume, payload=payload)), compact)
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/ranking/move")
-        def move_rank(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "move_rank", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), direction=str(payload.get("direction") or ""), payload=payload, costume=costume if _pipeline == "costume-dressing" else ""))
+        def move_rank(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "move_rank", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), direction=str(payload.get("direction") or ""), payload=payload, costume=costume if _pipeline == "costume-dressing" else "")), compact)
 
         @router.post(f"{prefix}/runs/{{run_id}}/rerun-failed")
         def rerun_failed(run_id: str, background_tasks: BackgroundTasks, view: str = Query(""), costume: str = Query(""), payload: dict[str, Any] = Body(default={}), _pipeline: str = pipeline):
@@ -371,16 +433,16 @@ def create_local_character_asset_pipeline_router(
                         costume if _pipeline == "costume-dressing" else ""))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/lock")
-        def lock(run_id: str, view: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "lock_view", run_id=run_id, view=view, payload=payload, costume=costume if _pipeline == "costume-dressing" else ""))
+        def lock(run_id: str, view: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "lock_view", run_id=run_id, view=view, payload=payload, costume=costume if _pipeline == "costume-dressing" else "")), compact)
 
         @router.get(f"{prefix}/runs/{{run_id}}/views/{{view}}/lock-preview")
         def lock_preview(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
             return call(lambda: action(_pipeline, "lock_preview", run_id=run_id, view=view, costume=costume if _pipeline == "costume-dressing" else ""))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/unlock")
-        def unlock(run_id: str, view: str, character: str = Query(...), phase: str = Query(...), payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "unlock_view", run_id=run_id, payload=payload, character=character, phase=phase, view=view, costume=costume if _pipeline == "costume-dressing" else ""))
+        def unlock(run_id: str, view: str, character: str = Query(...), phase: str = Query(...), payload: dict[str, Any] = Body(default={}), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "unlock_view", run_id=run_id, payload=payload, character=character, phase=phase, view=view, costume=costume if _pipeline == "costume-dressing" else "")), compact)
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/proceed")
         def proceed(run_id: str, view: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
@@ -392,8 +454,8 @@ def create_local_character_asset_pipeline_router(
             return result
 
         @router.post(f"{prefix}/runs/{{run_id}}/candidates/{{candidate_id}}/review")
-        def review(run_id: str, candidate_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "review_candidate", run_id=run_id, candidate_id=candidate_id, payload=payload, costume=costume if _pipeline == "costume-dressing" else ""))
+        def review(run_id: str, candidate_id: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
+            return acknowledgement(call(lambda: action(_pipeline, "review_candidate", run_id=run_id, candidate_id=candidate_id, payload=payload, costume=costume if _pipeline == "costume-dressing" else "")), compact)
 
         @router.post(f"{prefix}/runs/{{run_id}}/candidates/{{candidate_id}}/retry")
         def retry(run_id: str, candidate_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):

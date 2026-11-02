@@ -343,52 +343,8 @@ class LocalHeadImageService:
         value["final_ranking_history"] = state.get("final_ranking_history") or {}
         value["front_anchor"] = state.get("front_anchor", spec.get("front_anchor"))
         value["local_assets"] = self.asset_store.detail(value["character"], value["phase"]).get("assets", {})
-        from zet.services.local_image_ranking_service import locked_draft_comparison
-        from zet.services.local_view_reference_service import selected_run_for_mode
-        final_anchor = selected_run_for_mode(value, "final").get("front_anchor")
-        final_anchor_candidate = next((c for c in value["candidates"] if c["candidate_id"] == final_anchor), {})
-        final_anchor_hash = str(final_anchor_candidate.get("image_sha256") or "")
-        for view, ranking in value["final_rankings"].items():
-            if ranking.get("status") != "COMPLETE":
-                continue
-            hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in value["candidates"]
-                      if item.get("view") == view and item.get("render_mode", "draft") == "final"
-                      and Path(str(item.get("image_path") or "")).is_file()}
-            if ranking.get("input_hashes") != hashes:
-                ranking.update(status="STALE", stale_reason="The candidates changed. Re-evaluate this view.")
-            elif view != FRONT and ranking.get("anchor_hash", "") != final_anchor_hash:
-                ranking.update(status="STALE", stale_reason="The selected FRONT anchor changed.")
-            elif len(ranking.get("ordered_candidate_ids") or []) > 1 and ranking.get("locked_draft_comparison") != locked_draft_comparison(self.asset_store, value, self.asset_pipeline, view):
-                ranking.update(status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
-        for view, ranking in value["rankings"].items():
-            if ranking.get("status") != "COMPLETE":
-                continue
-            if len(ranking.get("ordered_candidate_ids") or []) > 1:
-                from zet.services.local_image_ranking_service import locked_draft_comparison
-                comparison = locked_draft_comparison(self.asset_store, value, self.asset_pipeline, view)
-                if ranking.get("locked_draft_comparison") != comparison:
-                    ranking.update(status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
-                    continue
-            candidates_by_id = {item["candidate_id"]: item for item in value["candidates"]}
-            ranked = [candidates_by_id.get(candidate_id) for candidate_id in ranking.get("ordered_candidate_ids", [])]
-            if any(not candidate for candidate in ranked):
-                ranking["status"] = "STALE"
-                ranking["stale_reason"] = "A ranked candidate is missing. Re-evaluate this view."
-        stale = []
-        anchor = next((c for c in value["candidates"] if c["candidate_id"] == value.get("front_anchor")), None)
-        anchor_path = Path(str((anchor or {}).get("image_path") or ""))
-        anchor_hash = str((anchor or {}).get("image_sha256") or "") if anchor_path.is_file() else ""
-        for view, ranking in value["rankings"].items():
-            if view == FRONT:
-                continue
-            if ranking.get("status") in {"COMPLETE", "STALE"} and ranking.get("anchor_hash") != anchor_hash:
-                ranking.update(status="STALE", stale_reason="The selected FRONT anchor changed.")
-                stale.append(view)
-        for candidate in value["candidates"]:
-            if candidate.get("view") == FRONT:
-                continue
-        value["stale_views"] = sorted(set(stale))
-        value["stale_selections"] = stale
+        value["stale_views"] = []
+        value["stale_selections"] = []
         stale_selected = []
         by_id = {item["candidate_id"]: item for item in value["candidates"]}
         for view, candidate_id in value["selected_views"].items():
@@ -1062,8 +1018,6 @@ class LocalHeadImageService:
                 if ranking.get("locked_draft_comparison") != locked_draft_comparison(self.asset_store, run, self.asset_pipeline, view):
                     from zet.services.local_image_evaluation_service import supersede_evaluations
                     supersede_evaluations(state, {view}, "The locked Draft comparison changed.", render_mode=render_mode)
-                    state.setdefault(mode_field("rankings", render_mode), {}).setdefault(view, {}).update(
-                        status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
                     return
             current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "")
                 for item in run.get("candidates") or [] if item.get("view") == view
@@ -1267,17 +1221,6 @@ class LocalHeadImageService:
         """Preserve downstream renders when a human changes the FRONT choice."""
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, set(VIEWS) - {FRONT}, "The selected FRONT anchor changed.")
-        for view in VIEWS[1:]:
-            ranking = state.setdefault("rankings", {}).get(view)
-            if ranking:
-                ranking.update(status="STALE", stale_reason="The selected FRONT anchor changed.")
-            for candidate in run.get("candidates") or []:
-                if candidate.get("view") != view:
-                    continue
-                update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
-                if state.get("selected_views", {}).get(view) == candidate.get("candidate_id"):
-                    update["stale_selection"] = True
-
     def rerun(self, run_id: str) -> dict[str, Any]:
         """Clear the current batch's candidates and reviews, then restart FRONT."""
         return self.rerun_view(run_id, FRONT)
@@ -1434,13 +1377,6 @@ class LocalHeadImageService:
                 state.setdefault("candidates", {}).setdefault(item["candidate_id"], {}).update(
                     status="WAITING_FOR_HUMAN_REVIEW", render_error="",
                     human_review={"decision": "undecided"})
-        rankings = state.setdefault("rankings", {})
-        for target in targets:
-            if rankings.get(target):
-                rankings[target].update(
-                    status="STALE",
-                    stale_reason="This view is being re-evaluated; rank it again after the review finishes.",
-                )
         state["status"] = "REEVALUATING"
         self._write(root / "state.json", state)
         return self.detail(run_id)

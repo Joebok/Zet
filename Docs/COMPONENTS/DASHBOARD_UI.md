@@ -9,10 +9,14 @@ for validation limits.
 
 The Assets menu lists Head-Image (Edit) after Body-Reference and before Head-Image (Construct). Pipeline identifiers and source defaults remain unchanged.
 
-Character pipeline batch creation uses a modal with an optional name. Selected
-thumbnails open a viewing-only image sequence with arrow navigation. View
-galleries precede reference images and collapsed render tools. Batch status and
-generation controls share the upper panel; occasional batch actions use a menu.
+Character pipeline batch creation uses a modal with an optional name. An existing
+batch opens on a summary page with one selected or locked card per requested view;
+its view links open mode-scoped galleries, ranking, review, references and render
+tools. Draft/Final, batch, universe and costume remain in the page URL. Summary
+and view polling use separate projections; card images use bounded thumbnails,
+while the review viewer requests originals. Master preparation and comparison
+reports run only on explicit clicks. Create and Re-evaluate report authoritative
+validation after an attempt instead of disabling the controls from a preview.
 Each view places its Luna ranking pill below the gallery, followed by separate
 Render tools, override image, and Observations disclosures with dividers.
 Stage opens an overlaid menu, and successful action acknowledgements quiet after
@@ -26,11 +30,11 @@ already submitted renders can finish at the proxy and are collected after Resume
 Batches cards reuse the pipeline canvas colors for Draft and Final, with outlined
 Mode pills alongside the pipeline pills. Cards have no individual Create task button.
 
-Batch detail includes both render modes. Switching Draft/Final preserves an
-in-flight detail load; returning after an interrupted initial load requests the
-batch again. The page distinguishes loading and failed retrieval from an absent
-batch. Missing Final prerequisites block individual view actions while retaining
-the batch's Draft images and empty Final selection/candidate cards.
+The summary carries compact progress for both modes. A view request contains one
+mode and one view; navigation and request generations prevent older responses from
+replacing the current page. Missing Final prerequisites are reported when a render
+action is attempted. The batch's Draft images and empty Final cards remain visible
+in their respective modes.
 
 Final mode uses the shared `--canvas-final` muted green background and a teal
 **Final** pill before each character view heading. Minor Characters, Image

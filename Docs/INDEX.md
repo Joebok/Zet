@@ -46,6 +46,7 @@ The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and r
 ## Other documentation
 
 - [Dashboard UI](COMPONENTS/DASHBOARD_UI.md): responsive shell, image review, card semantics, touch image input, and isolated screenshot inspection.
+- [Character pipeline validation and polling inventory](CHARACTER_PIPELINE_VALIDATION_POLLING_INVENTORY.md): review draft of current checks, guards, refresh loops, and preliminary keep/move/manual recommendations for the five batch-based pipelines.
 
 - [README.md](../README.md) and [Tutorial.md](../Tutorial.md): installation/product usage. Some descriptions predate the current production renderer; verify against [local characters](COMPONENTS/LOCAL_CHARACTERS.md) and code.
 - [.github/CODEX_WORKFLOW.md](../.github/CODEX_WORKFLOW.md): issue selection and delivery when that workflow is explicitly requested.

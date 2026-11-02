@@ -569,44 +569,11 @@ class LocalBodyReferenceService:
                     candidate["luna_status"] = "INTERRUPTED"
         value["candidates"] = list(candidates.values())
         value["root"] = str(root)
-        from zet.services.local_view_reference_service import selected_run_for_mode
-        from zet.services.local_image_ranking_service import locked_draft_comparison
-        final_anchor = selected_run_for_mode(value, "final").get("front_anchor")
-        final_front = next((item for item in value["candidates"] if item.get("candidate_id") == final_anchor), {})
-        for view, ranking in value["final_rankings"].items():
-            if ranking.get("status") not in {"COMPLETE", "EMPTY"}:
-                continue
-            eligible = [item for item in value["candidates"] if item.get("view") == view
-                        and item.get("render_mode", "draft") == "final"
-                        and item.get("human_review", {}).get("decision") != "reject"
-                        and Path(str(item.get("image_path") or "")).is_file()]
-            hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in eligible}
-            anchor_hash = str(final_front.get("image_sha256") or "") if view != FRONT_VIEW else ""
-            comparison = locked_draft_comparison(self.asset_store, value, "Body-Reference", view) if len(eligible) > 1 else None
-            if (ranking.get("input_hashes") != hashes or ranking.get("anchor_hash", "") != anchor_hash
-                    or (len(eligible) > 1 and ranking.get("locked_draft_comparison") != comparison)):
-                ranking.update(status="STALE", stale_reason="Candidates, FRONT anchor or locked Draft changed. Re-evaluate this view.")
         stale_selections: list[str] = []
         by_id = {item["candidate_id"]: item for item in value["candidates"]}
         for view, ranking in (value.get("rankings") or {}).items():
             if view not in value.get("views", []):
                 continue
-            if ranking.get("status") == "COMPLETE" and len(ranking.get("ordered_candidate_ids") or []) > 1:
-                from zet.services.local_image_ranking_service import locked_draft_comparison
-                comparison = locked_draft_comparison(self.asset_store, value, "Body-Reference", view)
-                if ranking.get("locked_draft_comparison") != comparison:
-                    ranking.update(status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
-            anchor = next((item for item in by_id.values() if item.get("candidate_id") == value.get("front_anchor")), None)
-            anchor_image = Path(str(anchor.get("image_path") or "")) if anchor else None
-            anchor_hash = str((anchor or {}).get("image_sha256") or "") if view != FRONT_VIEW else ""
-            candidates_for_view = [item for item in by_id.values() if item.get("view") == view
-                                   and item.get("render_mode", "draft") == "draft"
-                                   and item.get("human_review", {}).get("decision") != "reject"
-                                   and Path(str(item.get("image_path") or "")).is_file()]
-            current_hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates_for_view}
-            if ranking.get("status") in {"COMPLETE", "EMPTY"} and (
-                    ranking.get("input_hashes") != current_hashes or ranking.get("anchor_hash", "") != anchor_hash):
-                ranking.update(status="STALE", stale_reason="Candidate set or FRONT anchor changed after ranking.")
             selected_id = (value.get("selected_views") or {}).get(view)
             selected = by_id.get(selected_id)
             image = Path(str((selected or {}).get("image_path") or ""))
@@ -1835,8 +1802,6 @@ class LocalBodyReferenceService:
             if len(current_hashes) > 1 and locked_draft_comparison(self.asset_store, latest, "Body-Reference", view) != draft_comparison:
                 from zet.services.local_image_evaluation_service import supersede_evaluations
                 supersede_evaluations(current, {view}, "The locked Draft comparison changed.", render_mode=render_mode)
-                current.setdefault(mode_field("rankings", render_mode), {}).setdefault(view, {}).update(
-                    status="STALE", stale_reason="The locked Draft comparison changed. Re-evaluate this view.")
                 return
             latest_anchor = selected_run_for_mode(latest, render_mode).get("front_anchor")
             latest_front = next((item for item in latest["candidates"] if item.get("candidate_id") == latest_anchor), {})
@@ -1931,18 +1896,6 @@ class LocalBodyReferenceService:
         from zet.services.local_image_evaluation_service import supersede_evaluations
         supersede_evaluations(state, set(run.get("views") or []) - {FRONT_VIEW},
                               "The selected FRONT anchor changed.")
-        for view in run.get("views") or []:
-            if view == FRONT_VIEW:
-                continue
-            ranking = state.setdefault("rankings", {}).get(view)
-            if ranking:
-                ranking.update(status="STALE", stale_reason="The selected FRONT anchor changed.")
-            for candidate in run.get("candidates") or []:
-                if candidate.get("view") != view:
-                    continue
-                if state.get("selected_views", {}).get(view) == candidate.get("candidate_id"):
-                    state["candidates"][candidate["candidate_id"]]["stale_selection"] = True
-
 
     @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:

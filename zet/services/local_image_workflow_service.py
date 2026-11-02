@@ -111,6 +111,22 @@ class LocalImagePipelineWorkflowService:
                 continue
         return result
 
+    def summary(self, run_id: str, *, render_mode: str = "draft", costume: str = "") -> dict[str, Any]:
+        from zet.services.local_pipeline_projection_service import LocalPipelineProjectionService
+        return LocalPipelineProjectionService(self).summary(run_id, render_mode, costume)
+
+    def view_detail(self, run_id: str, view: str, *, render_mode: str = "draft", costume: str = "") -> dict[str, Any]:
+        from zet.services.local_pipeline_projection_service import LocalPipelineProjectionService
+        return LocalPipelineProjectionService(self).view(run_id, view, render_mode, costume)
+
+    def comparison_report(self, run_id: str, kind: str, *, render_mode: str = "draft", costume: str = "") -> dict[str, Any]:
+        from zet.services.local_pipeline_comparison_service import LocalPipelineComparisonService
+        return LocalPipelineComparisonService(self).report(run_id, kind, render_mode=render_mode, costume=costume)
+
+    def use_current_masters(self, run_id: str, *, render_mode: str = "draft", costume: str = "") -> dict[str, Any]:
+        from zet.services.local_current_masters_service import LocalCurrentMastersService
+        return LocalCurrentMastersService(self).use(run_id, render_mode=render_mode, costume=costume)
+
     def reference_image_path(self, run_id: str, view: str, index: int, *,
                              candidate_id: str = "", render_mode: str = "draft", costume: str = "") -> Path:
         """Resolve saved reference bytes by candidate identity and ordered input index."""
@@ -537,11 +553,6 @@ class LocalImagePipelineWorkflowService:
                 candidate["image_path"] = ""
         from zet.services.local_mode_progress_service import progress_by_mode
         presented["progress_by_mode"] = progress_by_mode(presented)
-        presented["reevaluation_reasons_by_mode"] = {
-            mode: {"batch": reevaluation_reason(presented, render_mode=mode),
-                   "views": {view: reevaluation_reason(presented, view, mode) for view in presented.get("views", [])}}
-            for mode in ("draft", "final")
-        }
         for mode, progress in presented["progress_by_mode"].items():
             pending = set(presented.get("slot_render_ids") or [])
             candidates = {c["candidate_id"]: c for c in presented.get("candidates") or []}

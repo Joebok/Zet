@@ -1,5 +1,15 @@
 # Capability code map
 
+Character batch/view pages: `LocalPipelineProjectionService` owns scoped summary
+and single-view reads; `LocalPipelineThumbnailService` owns verified bounded image
+derivatives; `LocalPipelineComparisonService` owns requested difference reports;
+`LocalCurrentMastersService` owns explicit master preparation and its per-view
+report. `LocalImagePipelineWorkflowService` and the local router expose these
+contracts. `local_asset_pipeline.js`, `zet.js`, and `index.html` own page navigation,
+review controls, thumbnail URLs and scoped refresh. Render-slot preparation
+rechecks the chosen master baseline on a new ask; mode selection and the local
+asset store own Final publication integrity.
+
 Character Run available and slot/view regeneration preparation: `LocalPipelineOperationService`,
 `LocalPipelineAvailableOperationHandler` and `LocalPipelineOperationReservation`
 own local admission, preparation and candidate checkpoints; the operation router

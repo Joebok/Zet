@@ -6070,3 +6070,13 @@ button:enabled:active, .button-link:active { filter: brightness(.92); }
 .local-operations-panel { width: min(32rem, 90vw); padding: 12px; overflow-wrap: anywhere; }
 .local-operation-item { padding: 8px 0; border-top: 1px solid var(--border); }
 .local-operation-item strong { display: block; }
+
+#local-pipeline-view-navigation { margin: 12px 0; }
+#local-pipeline-page[data-page-kind="view"] .local-pipeline-panel > .local-pipeline-controls,
+#local-pipeline-page[data-page-kind="view"] #local-pipeline-progression,
+#local-pipeline-page[data-page-kind="view"] #local-pipeline-saved-style,
+#local-pipeline-page[data-page-kind="view"] #local-pipeline-lineage-warning,
+#local-pipeline-page[data-page-kind="view"] #local-template-improvement,
+#local-pipeline-page[data-page-kind="view"] #local-pipeline-start,
+#local-pipeline-page[data-page-kind="view"] #local-pipeline-stop,
+#local-pipeline-page[data-page-kind="view"] #local-pipeline-proceed { display: none; }

@@ -5,7 +5,7 @@
   const universe = params.get("universe_id") || "", costume = params.get("costume") || "";
   const renderMode = params.get("render_mode") || "draft";
   const $ = id => document.getElementById(`refine-${id}`);
-  let data, current = "original", loading = false, acting = false, serial = 0, analysisSignature = "", comparisonsSignature = "";
+  let data, current = "original", loading = false, acting = false, serial = 0, analysisSignature = "", comparisonsSignature = "", pollTimer = null;
   const key = `character-refinement:${universe}:${pipeline}:${runId}:${view}:${renderMode}`;
   let draft = {};
   try { draft = JSON.parse(localStorage.getItem(key) || "{}"); } catch (_) { /* Ignore unavailable saved drafts. */ }
@@ -29,6 +29,20 @@
     return value;
   }
   function message(value, error = false) { $("message").textContent = value; $("message").classList.toggle("error", error); }
+  function schedulePoll() {
+    clearTimeout(pollTimer);
+    if (document.hidden) return;
+    if (!["QUEUED", "RUNNING", "STAGING", "PENDING"].includes(data?.analysis?.status)
+        && !(data?.attempts || []).some(attempt => ["QUEUED", "RUNNING", "STAGING", "PENDING"].includes(attempt.status))) return;
+    pollTimer = setTimeout(async () => {
+      if (loading || acting || document.hidden) { schedulePoll(); return; }
+      loading = true;
+      const initial = serial;
+      try { const value = await request(endpoint()); if (serial === initial) { data = value; render(); } }
+      catch (error) { message(error.message, true); }
+      finally { loading = false; schedulePoll(); }
+    }, 2000);
+  }
   function el(tag, text = "") { const element = document.createElement(tag); element.textContent = text; return element; }
   function render() {
     if (!data) return;
@@ -115,7 +129,7 @@
       if (operation === "adopt") message("Selected image updated. Return to the batch to Continue or publish it.");
       render(); saveDraft();
     } catch (error) { status.textContent = error.message; status.classList.add("error"); }
-    finally { status.removeAttribute("aria-busy"); acting = false; render(); }
+    finally { status.removeAttribute("aria-busy"); acting = false; render(); schedulePoll(); }
   }
   $("operation").value = draft.operation || "correction";
   $("guide-scope").value = draft.guideScope || "";
@@ -134,21 +148,17 @@
     if (!["body-reference", "head-image", "head-image-edit", "character-assembly", "costume-dressing"].includes(pipeline) || !runId || !view || !universe) throw new Error("Open refinement from a selected image in its batch.");
     const query = new URLSearchParams({ universe_id: universe, costume });
     data = await request(`/api/local/${pipeline}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/refinement?${query}`, {render_mode:renderMode});
-    const batch = await request(`/api/local/${pipeline}/runs/${encodeURIComponent(runId)}?${query}`);
-    const back = new URLSearchParams({ page: `local-${pipeline}`, local_batch: runId,
+    query.set("render_mode", renderMode);
+    const batch = await request(`/api/local/${pipeline}/runs/${encodeURIComponent(runId)}/summary?${query}`);
+    const back = new URLSearchParams({ page: `local-${pipeline}`, local_batch: runId, local_view: view,
       universe_id: universe, character: batch.character, phase: batch.phase, render_mode: renderMode });
     if (costume) back.set("local_costume", costume);
     $("return").href = `/?${back}`;
     $("title").textContent = `${batch.character} · ${view.replaceAll("_", " ")} · ${renderMode === "final" ? "Final" : "Draft"} refinement`;
     window.ZetModelPicker?.attach($("model"), { required: ["vision"], allowDefault: true });
     render();
-    setInterval(async () => {
-      if (loading || acting || document.hidden) return;
-      loading = true;
-      const initial = serial;
-      try { const value = await request(endpoint()); if (serial === initial) { data = value; render(); } } catch (error) { message(error.message, true); }
-      finally { loading = false; }
-    }, 2000);
+    schedulePoll();
   }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && data) schedulePoll(); });
   void initialize().catch(error => message(error.message, true));
 })();

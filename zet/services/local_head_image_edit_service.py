@@ -102,19 +102,20 @@ class LocalHeadImageEditService(LocalHeadImageService):
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalHeadImageError("Select an available image before locking.")
+        if not candidate.get("image_sha256") or self._hash(image) != candidate["image_sha256"]:
+            raise LocalHeadImageError("The selected head image changed; its saved bytes cannot be verified.")
         prompt_pilot = bool(candidate.get("prompt_generator"))
         refs = [] if prompt_pilot else ((candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", []))
         dependencies = []
         for ref in refs:
             source_view = ref.get("view")
             if ref.get("candidate_id") and source_view and source_view != view:
-                selected = next((item for item in run["candidates"] if item["candidate_id"] == run.get("selected_views", {}).get(source_view)), {})
-                source = Path(str(selected.get("image_path") or ""))
-                if (selected.get("candidate_id") != ref["candidate_id"] or not source.is_file()
-                        or (selected.get("human_review") or {}).get("decision") == "reject"
-                        or (ref.get("sha256") and self._hash(source) != ref["sha256"])):
-                    raise LocalHeadImageError("The selected source or guide changed; regenerate or refine before locking.")
-                dependencies.append({"key": self.asset_store.key(self.asset_pipeline, source_view), "image_sha256": self._hash(source)})
+                source = Path(str(ref.get("path") or "")).resolve()
+                if (not ref.get("sha256") or not source.is_file()
+                        or not source.is_relative_to(Path(run["root"]).resolve())
+                        or self._hash(source) != ref["sha256"]):
+                    raise LocalHeadImageError("The saved finishing guide is missing or changed; its render provenance cannot be verified.")
+                dependencies.append({"key": self.asset_store.key(self.asset_pipeline, source_view), "image_sha256": ref["sha256"]})
         return self.asset_store.lock_batch_selection(run["character"], run["phase"], self.asset_pipeline, view,
             candidate_id=cid, image_path=image, batch_id=run_id, dependencies=dependencies,
             prompt_generator=candidate.get("prompt_generator"))

@@ -9,6 +9,7 @@
   let loadState = "loading";
   let displayedUniverse = "";
   let selectedRun = new URLSearchParams(window.location.search).get("task_batch") || "";
+  const activeStatuses = new Set(["QUEUED", "PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "RECOVERING", "UNKNOWN"]);
 
   const pipelinePages = {
     "body-reference": "local-body-reference",
@@ -158,6 +159,10 @@
       }
       if (page.classList.contains("active") && !document.hidden
         && requestedUniverse !== document.querySelector("#universe-select").value) void refresh();
+      else if (page.classList.contains("active") && !document.hidden) {
+        stopPolling();
+        timer = window.setTimeout(() => void refresh(), loadState !== "selected" || batches.some(batch => activeStatuses.has(batch.status)) ? 3000 : 30000);
+      }
     }
   }
 
@@ -171,7 +176,6 @@
     if (!page.classList.contains("active") || document.hidden) return;
     discardOtherUniverseRows();
     void refresh();
-    timer = window.setInterval(() => void refresh(), 3000);
   }
 
   refreshButton.addEventListener("click", () => void refresh());

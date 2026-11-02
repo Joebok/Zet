@@ -337,5 +337,9 @@
     if (run && host.open && Date.now() - lastFetch > 1500) void refresh().catch(error => status(error.message, true));
   }
   host.addEventListener("toggle", () => { if (host.open) void refresh().catch(error => status(error.message, true)); });
-  window.ZetTemplateImprovement = { update };
+  window.ZetTemplateImprovement = { update,
+    refreshActive: () => {
+      if (host.open && ["PROPOSING", "VALIDATING"].includes(data?.revision?.status))
+        return refresh().catch(error => status(error.message, true));
+    } };
 })();

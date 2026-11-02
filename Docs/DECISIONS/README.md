@@ -1,5 +1,7 @@
 # Architectural decision records
 
+[0044 - Character batch review freshness and frozen publication inputs](0044-character-batch-review-freshness.md) records the in-progress ranking, explicit preparation and action-time publication policy.
+
 [0041 - Local Final reference gates](0041-local-final-reference-gates.md) records strict Final inputs and mode-aware bulk work.
 
 [0040 - Positional animation transitions](0040-positional-animation-transitions.md) records boundary-owned transition timing and the one-time animation update.

@@ -100,17 +100,11 @@ class LocalGateRetirementService:
                 for child in value:
                     clean_tree(child)
 
-        old_review_version = spec.get("review_version", 1)
         spec["review_version"] = 3
         clean_tree(spec)
         clean_tree(state)
-        # The old ranking prompt explicitly referenced gate results. Preserve it
-        # as history, but require a fresh comparison under the new review contract.
-        for ranking in (state.get("rankings") or {}).values():
-            if (isinstance(ranking, dict) and ranking.get("status") == "COMPLETE"
-                    and (old_review_version != 3 or ranking.get("gate_input_hashes"))):
-                ranking.update(status="STALE", stale_reason="Ranking review contract changed when gates were removed.")
-                changed = True
+        # Saved ranking advice stays visible. Only a newly queued image in this
+        # view and mode makes it stale; legacy gate evidence remains historical.
         return spec, state, changed or before != json.dumps([spec, state], sort_keys=True)
 
     @staticmethod

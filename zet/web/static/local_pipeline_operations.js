@@ -10,6 +10,7 @@
     "costume-dressing": "local-costume-dressing"};
   const storageKey = "zet.pending-character-operations.v1";
   let rows = [], refreshing = false;
+  let lastRefresh = 0;
   const submitting = new Set();
 
   function pending() {
@@ -38,6 +39,7 @@
       character: request.character || "", phase: request.phase || "", local_batch: request.run_id,
       render_mode: request.render_mode || "draft", task_universe: request.universe_id});
     if (request.costume) params.set("local_costume", request.costume);
+    if (request.view) params.set("local_view", request.view);
     return `${location.pathname}?${params}`;
   }
   function render() {
@@ -70,7 +72,7 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       rows = (await response.json()).operations || []; render();
     } catch (_) { message.textContent = "Could not refresh activity. Previously shown actions may be out of date."; }
-    finally { refreshing = false; }
+    finally { refreshing = false; lastRefresh = Date.now(); }
   }
   async function post(payload) {
     const response = await fetch("/api/local/operations", {method: "POST", headers: {"Content-Type": "application/json", "X-Zet-Universe": payload.universe_id}, body: JSON.stringify(payload)});
@@ -128,6 +130,9 @@
   });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) void recoverPending(); });
   window.ZetLocalOperations = {submit, refresh, rows: allRows};
-  setInterval(() => void refresh(), 2000);
+  setInterval(() => {
+    const fast = allRows().some(row => active.has(row.status) || row.status === "UNKNOWN");
+    if (fast || !panel.hidden || Date.now() - lastRefresh >= 30000) void refresh();
+  }, 2000);
   void recoverPending();
 })();

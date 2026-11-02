@@ -30,7 +30,7 @@
     frontSourcePath: "", poll: null, previewGeneration: 0, sourcePreviewGeneration: 0, contextKey: "", comparisonChoice: "front",
     polledRun: null, pollInFlight: false, renderedSelections: {}, runsState: "loading",
     runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false, bulkActionPending: false,
-    costumeSettingsDrafts: {}, restartPending: false, renderMode: "draft" };
+    costumeSettingsDrafts: {}, restartPending: false, renderMode: "draft", view: "" };
   const restoreParams = new URLSearchParams(window.location.search);
   const pendingBatchSubmissions = new Set();
   const pendingSlotSubmissions = new Set();
@@ -289,6 +289,8 @@
     else params.delete("local_batch");
     if (isCostume() && selectedCostume()) params.set("local_costume", selectedCostume());
     else params.delete("local_costume");
+    if (state.view) params.set("local_view", state.view);
+    else params.delete("local_view");
     const search = params.toString();
     window.history.replaceState({}, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
   }
@@ -346,7 +348,9 @@
       case "create": return `${baseUrl()}/runs`;
       case "detail": return `${baseUrl()}/runs/${id}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "image": return `${baseUrl()}/runs/${id}/images/${candidate}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "thumbnail": return `${baseUrl()}/runs/${id}/thumbnails/${candidate}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "reference-image": return `${baseUrl()}/runs/${id}/reference-images/${encodedView}/${candidate}?${new URLSearchParams({render_mode: state.renderMode, candidate_id: referenceCandidateId, ...(isCostume() ? {costume: selectedCostume()} : {})})}`;
+      case "reference-thumbnail": return `${baseUrl()}/runs/${id}/reference-thumbnails/${encodedView}/${candidate}?${new URLSearchParams({render_mode: state.renderMode, candidate_id: referenceCandidateId, ...(isCostume() ? {costume: selectedCostume()} : {})})}`;
       case "rename": return `${baseUrl()}/runs/${id}/name${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "start": return `${baseUrl()}/runs/${id}/start${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "run-available": return `${baseUrl()}/runs/${id}/run-available${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -386,6 +390,66 @@
     if (!version) return universeImageUrl(url);
     const resolved = universeImageUrl(url);
     return `${resolved}${resolved.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
+  }
+
+  async function showComparison(kind) {
+    if (!state.run?.run_id) { setStatus("Choose a batch before checking differences.", true); return; }
+    const runId = state.run.run_id, generation = state.generation, mode = state.renderMode, context = contextKey();
+    const host = $("comparison-report");
+    host.hidden = false;
+    host.textContent = "Checking saved batch evidence…";
+    try {
+      const suffix = query({render_mode: mode});
+      const report = await request(`${baseUrl()}/runs/${encodeURIComponent(runId)}/comparisons/${kind}${suffix}`);
+      if (generation !== state.generation || runId !== state.run?.run_id || mode !== state.renderMode || context !== contextKey()) return;
+      host.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = `${kind === "draft" ? "Final vs Draft" : kind === "masters" ? "Batch vs current masters" : "Frozen vs current references"}: ${report.changed_count} changed, ${report.unavailable_count} unavailable`;
+      host.append(title);
+      const list = document.createElement("ul");
+      for (const row of report.rows || []) {
+        const item = document.createElement("li");
+        item.textContent = `${row.view || row.label || row.source_id}${row.source_view ? ` / ${row.source_view}` : ""}: ${row.unavailable ? "unavailable" : row.changed === null ? "no comparison available" : row.changed ? "changed" : "unchanged"}`;
+        list.append(item);
+      }
+      host.append(list);
+    } catch (error) {
+      if (generation === state.generation && runId === state.run?.run_id && context === contextKey()) host.textContent = error.message;
+    }
+  }
+
+  async function useCurrentMasters() {
+    if (!state.run?.run_id) { setStatus("Choose a batch first.", true); return; }
+    const runId = state.run.run_id, generation = state.generation, mode = state.renderMode, context = contextKey();
+    const host = $("masters-report");
+    host.hidden = false;
+    host.textContent = "Compiling current masters and checking requested views…";
+    $("use-masters").disabled = true;
+    try {
+      const report = await request(`${baseUrl()}/runs/${encodeURIComponent(runId)}/use-current-masters${query({render_mode: mode})}`, {method: "POST"});
+      if (generation !== state.generation || runId !== state.run?.run_id || mode !== state.renderMode || context !== contextKey()) return;
+      host.replaceChildren();
+      const heading = document.createElement("strong");
+      heading.textContent = report.all_ready ? "Current masters prepared for every requested view." : "Current masters selected; some views still need inputs.";
+      host.append(heading);
+      for (const row of report.views || []) {
+        const item = document.createElement("details");
+        const label = document.createElement("summary");
+        label.textContent = `${row.view}: ${row.status === "ready" ? `prompt ${row.prompt_sha256.slice(0, 12)} · ${row.references.length} reference(s)` : row.reason}`;
+        item.append(label);
+        if (row.status === "ready") {
+          const refs = document.createElement("p");
+          refs.textContent = row.references.map(ref => `${ref.role || "reference"}: ${ref.candidate_id || ref.sha256.slice(0, 12) || "current"} (${ref.render_mode || mode})`).join(" · ") || "No image references.";
+          const prompt = document.createElement("pre");
+          prompt.textContent = row.prompt;
+          item.append(refs, prompt);
+        }
+        host.append(item);
+      }
+      await loadRun(runId);
+    } catch (error) {
+      if (generation === state.generation && runId === state.run?.run_id && context === contextKey()) host.textContent = error.message;
+    } finally { $("use-masters").disabled = false; }
   }
 
   function payload() {
@@ -471,7 +535,33 @@
   function orderedViews(run) {
     const order = ["FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"];
     const position = view => order.includes(view) ? order.indexOf(view) : order.length;
-    return [...(run?.views || [])].sort((a, b) => position(a) - position(b));
+    return [...(run?.views || [])].filter(view => !state.view || view === state.view).sort((a, b) => position(a) - position(b));
+  }
+
+  function viewUrl(view = "") {
+    const params = new URLSearchParams(window.location.search);
+    params.set("page", Object.keys(pagePipelines).find(page => pagePipelines[page] === state.pipeline));
+    params.set("render_mode", state.renderMode);
+    if (state.run?.run_id) params.set("local_batch", state.run.run_id);
+    if (state.run?.character) params.set("character", state.run.character);
+    if (state.run?.phase) params.set("phase", state.run.phase);
+    if (isCostume() && selectedCostume()) params.set("local_costume", selectedCostume());
+    if (view) params.set("local_view", view); else params.delete("local_view");
+    return `${window.location.pathname}?${params}`;
+  }
+
+  function renderViewNavigation(run) {
+    const host = $("view-navigation");
+    host.hidden = !state.view || !run;
+    if (host.hidden) return;
+    const views = [...(run.views || [])];
+    const index = views.indexOf(state.view);
+    $("return-batch").href = viewUrl();
+    for (const [id, target] of [["previous-view", views[index - 1]], ["next-view", views[index + 1]]]) {
+      const link = $(id);
+      link.hidden = !target;
+      if (target) { link.href = viewUrl(target); link.textContent = `${id === "previous-view" ? "Previous" : "Next"}: ${target.replaceAll("_", " ")}`; }
+    }
   }
 
   function syncViewContinueButtons(host = $("views")) {
@@ -502,6 +592,23 @@
 
   function setBusyControls() {
     const run = state.run;
+    if (run?.scoped_kind) {
+      const active = activeStatuses.has(run.status) || Boolean(run.slot_render_ids?.length);
+      $("start").hidden = !["QUEUED", "STOPPED", "INTERRUPTED", "CANCELLED"].includes(run.status);
+      $("start").disabled = active;
+      $("start").textContent = run.status === "QUEUED" ? "Start batch" : "Resume batch";
+      $("stop").hidden = !active;
+      $("stop").disabled = !active;
+      $("rerun").disabled = false;
+      $("reevaluate").disabled = false;
+      $("delete").disabled = false;
+      $("rename").hidden = false;
+      $("proceed").hidden = false;
+      $("proceed").disabled = false;
+      $("proceed").textContent = state.pipeline === "character-assembly"
+        ? run.progression?.next_views?.includes("FRONT") ? "Run front" : "Run remaining" : "Run available";
+      return;
+    }
     const operationBusy = (window.ZetLocalOperations?.rows() || []).some(row =>
       ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(row.status) && row.request?.universe_id === document.querySelector("#universe-select").value
       && row.request?.pipeline === state.pipeline && row.request?.run_id === run?.run_id);
@@ -515,9 +622,8 @@
     $("stop").disabled = !isBusy;
     $("stop").textContent = run?.slot_render_ids?.length ? "Pause batch" : "Stop batch";
     $("rerun").disabled = !run || isBusy || state.restartPending;
-    const reevaluateReason = run?.reevaluation_reasons_by_mode?.[state.renderMode]?.batch ?? "Re-evaluation availability is loading.";
-    $("reevaluate").disabled = operationBusy || Boolean(reevaluateReason);
-    $("reevaluate").title = reevaluateReason;
+    $("reevaluate").disabled = !run;
+    $("reevaluate").removeAttribute("title");
     $("delete").disabled = !run || isBusy;
     $("rename").hidden = !run;
     $("proceed").hidden = !run;
@@ -614,7 +720,7 @@
     return url.pathname + url.search;
   }
 
-  function imageUrl(candidate) { const url = universeImageUrl(route("image", state.run.run_id, "", candidate.candidate_id)); return `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(candidate.ask_id || candidate.image_sha256 || candidate.candidate_id)}`; }
+  function imageUrl(candidate, full = false) { return versionedImageUrl(route(full ? "image" : "thumbnail", state.run.run_id, "", candidate.candidate_id), candidate.image_sha256 || ""); }
 
   function renderErrorDetails(candidate) {
     const message = String(candidate.render_error || "").trim();
@@ -708,7 +814,10 @@
       const article = document.createElement("article");
       article.className = "local-pipeline-selected-card";
       const title = document.createElement("h2");
-      title.textContent = view;
+      const link = document.createElement("a");
+      link.href = viewUrl(view);
+      link.textContent = view.replaceAll("_", " ");
+      title.append(link);
       article.append(title);
       const candidate = (run.candidates || []).find((item) => item.candidate_id === selected[view] && item.image_path);
       if (!candidate) {
@@ -759,6 +868,75 @@
       host.append(article);
     }
     host.hidden = !run.views?.length;
+  }
+
+  function renderBatchCards(run) {
+    const host = $("selected");
+    host.replaceChildren();
+    const controls = document.createElement("div");
+    controls.className = "button-row compact";
+    addButton(controls, "Lock all", "lock-all");
+    addButton(controls, "Unlock all", "unlock-all");
+    addButton(controls, "Delete all Draft images", "delete-drafts");
+    $("batch-bulk-actions").replaceChildren(controls);
+    for (const card of run.selected_cards || []) {
+      const article = document.createElement("article");
+      article.className = "local-pipeline-selected-card";
+      const heading = document.createElement("h2"), link = document.createElement("a");
+      link.href = viewUrl(card.view); link.textContent = card.view.replaceAll("_", " ");
+      heading.append(link); article.append(heading);
+      if (card.selected_available) {
+        const image = document.createElement("img");
+        image.loading = "lazy";
+        image.src = versionedImageUrl(route("thumbnail", run.run_id, "", card.selected_candidate_id), card.selected_image_sha256 || "");
+        image.alt = `Selected ${card.view} ${state.renderMode} image`;
+        article.append(image);
+      }
+      const status = document.createElement("p");
+      status.textContent = card.locked ? "Selected and locked" : card.selected_candidate_id
+        ? card.selected_available ? "Selected · not locked" : "Selected image unavailable"
+        : card.locked_candidate_id ? "Locked image from another selection" : "No image selected";
+      article.append(status);
+      if (card.selected_candidate_id && card.selected_available) {
+        const actions = document.createElement("div"); actions.className = "button-row compact";
+        addButton(actions, card.locked ? "Unlock" : "Lock", card.locked ? "unlock" : "lock", {view: card.view});
+        article.append(actions);
+      }
+      host.append(article);
+    }
+    host.hidden = !run.selected_cards?.length;
+  }
+
+  function normalizeScoped(summary, detail = null) {
+    const mode = state.renderMode;
+    const run = {...summary, scoped_kind: detail ? "view" : "summary",
+      operation_contexts: {[mode]: {batch: summary.operation_context,
+        views: detail ? {[detail.view]: detail.operation_context} : {},
+        candidate_retry: detail?.candidate_retry_contexts || {},
+        evaluation: {batch: summary.evaluation_context,
+          views: detail ? {[detail.view]: detail.evaluation_context} : {}}}}};
+    if (!detail) return run;
+    return {...run, ...detail, scoped_kind: "view", progress_by_mode: summary.progress_by_mode,
+      progression: summary.progression, candidates: detail.candidates,
+      selected_views_by_mode: summary.selected_views_by_mode,
+      slots_by_mode: detail.slots_by_mode, slot_controls_by_mode: detail.slot_controls_by_mode,
+      rankings: mode === "draft" ? {[detail.view]: detail.ranking} : {},
+      final_rankings: mode === "final" ? {[detail.view]: detail.ranking} : {},
+      evaluations: mode === "draft" ? {[detail.view]: detail.evaluation} : {},
+      final_evaluations: mode === "final" ? {[detail.view]: detail.evaluation} : {},
+      view_reviews: {[detail.view]: detail.view_review},
+      view_reference_recipes: {[detail.view]: detail.reference_recipe},
+      render_settings: {[detail.view]: detail.render_settings}};
+  }
+
+  async function readScopedRun(runId) {
+    const mode = state.renderMode;
+    const suffix = query({render_mode: mode});
+    const summaryRequest = request(`${baseUrl()}/runs/${encodeURIComponent(runId)}/summary${suffix}`);
+    if (!state.view) return normalizeScoped(await summaryRequest);
+    const viewRequest = request(`${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(state.view)}${suffix}`);
+    const [summary, detail] = await Promise.all([summaryRequest, viewRequest]);
+    return normalizeScoped(summary, detail);
   }
 
   function refinementUrl(view) {
@@ -854,7 +1032,7 @@
   async function slotAction(operation, view, slot, count = 1, button = null) {
     const generation = state.generation, runId = state.run.run_id, key = contextKey();
     const suffix = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
-    const path = `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/slots${slot ? `/${slot}/${operation}` : ""}${suffix}`;
+    const path = `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/slots${slot ? `/${slot}/${operation}` : ""}${suffix}${suffix ? "&" : "?"}compact=true`;
     if (operation !== "clear" && operation !== "retry" && !$("aspect-ratio").reportValidity()) return;
     const submissionKey = `${key}\u0000${state.pipeline}\u0000${runId}\u0000${state.renderMode}\u0000${view}\u0000${slot || "add"}`;
     if (pendingSlotSubmissions.has(submissionKey)) return;
@@ -909,6 +1087,11 @@
   }
 
   function mergeLiveRun(latest) {
+    if (!state.view) {
+      state.run = latest;
+      render();
+      return;
+    }
     const currentId = state.reviewCandidates[state.reviewIndex]?.candidate_id;
     const decision = $("review-panel").querySelector("input[name='local-human-decision']:checked")?.value;
     const oldRun = state.run;
@@ -927,8 +1110,7 @@
     }
     state.run = latest;
     $("saved-style").textContent = latest.universe_style_variant ? `Batch style: ${latest.universe_style_variant}` : "Batch style: canonical";
-    window.ZetTemplateImprovement?.update(latest, state.pipeline, () => loadRun(latest.run_id), frontRenderControl);
-    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.reevaluation_reasons_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.final_rankings, run?.final_evaluations, run?.selected_views_by_mode, run?.local_assets, run?.locked_draft_comparisons, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
+    const signature = run => JSON.stringify([run?.candidates, run?.slots_by_mode, run?.slot_controls_by_mode, run?.render_settings, run?.rankings, run?.evaluations, run?.final_rankings, run?.final_evaluations, run?.selected_views_by_mode, run?.local_assets, run?.locked_draft_comparisons, run?.view_reviews, run?.sources, run?.front_source_sha256, run?.view_reference_recipes, run?.active_template_revision_id]);
     const changed = signature(oldRun) !== signature(latest);
     const replacement = document.createElement("div");
     if (changed) renderViews(modeRun(latest), replacement);
@@ -1009,7 +1191,6 @@
         else if (!oldSection && newSection) previous.append(newSection);
       }
     }
-    if (JSON.stringify(modeRun(oldRun)?.selected_views) !== JSON.stringify(modeRun(latest).selected_views) || JSON.stringify(oldRun?.local_assets) !== JSON.stringify(latest.local_assets)) renderSelectedViews(modeRun(latest));
     setBusyControls(); updateRefreshButton();
     const modeProgress = latest.progress_by_mode?.[state.renderMode];
     $("summary").textContent = `${latest.character} · ${latest.phase}${latest.costume ? ` · ${latest.costume}` : ""} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${modeProgress ? `${modeProgress.complete_count}/${modeProgress.candidate_count}` : `${latest.render_progress?.COMPLETE || 0}/${latest.candidate_count}`} images · ${statusLabels[modeProgress?.status || latest.status] || modeProgress?.status || latest.status}`;
@@ -1201,6 +1382,7 @@
       const evaluation = run.evaluations?.[view] || {};
       const viewActions = document.createElement("span");
       viewActions.className = "button-row compact local-pipeline-view-actions";
+      const actionTime = Boolean(run.scoped_kind);
       const viewReady = !run.slot_controls?.[view]?.stage_reason;
       addRecompileOption(viewActions);
       const stageReason = run.slot_controls?.[view]?.stage_reason || "";
@@ -1208,18 +1390,17 @@
       const stageLabel = document.createElement("summary"); stageLabel.textContent = "Stage…"; stageMenu.append(stageLabel);
       stageLabel.addEventListener("click", event => event.stopPropagation());
       const stageItems = document.createElement("div"); stageItems.className = "local-stage-items"; stageMenu.append(stageItems);
-      addButton(stageItems, "Stage in Image Generator", "stage-image-generation", { disabled: Boolean(stageReason), view, title: stageReason });
+      addButton(stageItems, "Stage in Image Generator", "stage-image-generation", { disabled: !actionTime && Boolean(stageReason), view, title: stageReason });
       if (isCostume()) {
         const controls = run.slot_controls?.[view] || {};
-        addButton(stageItems, "Stage no Costume ref", "stage-no-costume-ref", { disabled: Boolean(controls.no_costume_ref_reason), view,
+        addButton(stageItems, "Stage no Costume ref", "stage-no-costume-ref", { disabled: !actionTime && Boolean(controls.no_costume_ref_reason), view,
           title: controls.no_costume_ref_reason || "Stage without a prior rendered costume view." });
-        addButton(stageItems, "Stage Rotation", "stage-rotation", { disabled: Boolean(controls.rotation_reason), view,
+        addButton(stageItems, "Stage Rotation", "stage-rotation", { disabled: !actionTime && Boolean(controls.rotation_reason), view,
           title: controls.rotation_reason || `Rotate selected ${controls.rotation_source_view} into ${view}.` });
       }
-      addButton(viewActions, "Regen view", "rerun-view", { disabled: !viewReady || !candidates.length, view });
-      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: busy(run) || Boolean(run?.slot_render_ids?.length) || !candidates.some((item) => item.render_status === "FAILED"), view });
-      const reevaluateReason = run.reevaluation_reasons_by_mode?.[state.renderMode]?.views?.[view] ?? "Re-evaluation availability is loading.";
-      addButton(viewActions, "Re-evaluate", "reevaluate-view", { disabled: Boolean(reevaluateReason), view, title: reevaluateReason });
+      addButton(viewActions, "Regen view", "rerun-view", { disabled: !actionTime && (!viewReady || !candidates.length), view });
+      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: !actionTime && (busy(run) || Boolean(run?.slot_render_ids?.length) || !candidates.some((item) => item.render_status === "FAILED")), view });
+      addButton(viewActions, "Re-evaluate", "reevaluate-view", { view });
       addButton(viewActions, "Delete Draft images", "delete-drafts", { disabled: state.bulkActionPending, view });
       viewActions.append(stageMenu);
       addButton(viewActions, "Post Render Adjustments", "post-render-adjustments", { disabled: !candidates.some((item) => item.image_path), view });
@@ -1252,12 +1433,13 @@
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = `${caption.textContent}${identity.textContent ? ` ${identity.textContent}` : ""}`;
-          const version = source.sha256 || source.image_sha256 || source.image_path ||
-            (role === "front_reference" ? activeHeadSource.sha256 || activeHeadSource.path : "");
+          const version = source.sha256 || source.image_sha256 ||
+            (role === "front_reference" ? activeHeadSource.sha256 : "");
           const src = role === "front_reference"
-            ? `${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source?render_mode=${state.renderMode}`
+            ? `${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source-thumbnail?render_mode=${state.renderMode}`
             : (() => {
-                const url = new URL(route("source", run.run_id, view, role), window.location.href);
+                const url = new URL(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source-thumbnails/${encodeURIComponent(view)}/${encodeURIComponent(role)}`, window.location.href);
+                if (isCostume()) url.searchParams.set("costume", selectedCostume());
                 if (["character-assembly", "costume-dressing"].includes(state.pipeline)) url.searchParams.set("render_mode", state.renderMode);
                 return url.href;
               })();
@@ -1312,8 +1494,7 @@
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;
-          image.src = versionedImageUrl(route("reference-image", run.run_id, view, String(index), candidateId),
-            reference.sha256 || reference.path || `${view}:${reference.role || "reference"}:${index}`);
+          image.src = versionedImageUrl(route("reference-thumbnail", run.run_id, view, String(index), candidateId), reference.sha256 || "");
           figure.append(caption, image);
           sources.append(figure);
         }
@@ -1410,15 +1591,15 @@
         const empty = document.createElement("p"); empty.textContent = "Empty"; empty.className = "image-card-state"; card.dataset.state = "empty";
         card.append(title, empty);
         const control = run.slot_controls?.[view] || {};
-        addSlotButton(card, "Generate", "generate", view, index + 1, !control.can_generate, control.reason);
-        if (!control.can_generate && control.reason) {
+        addSlotButton(card, "Generate", "generate", view, index + 1, !run.scoped_kind && !control.can_generate, control.reason);
+        if (!run.scoped_kind && !control.can_generate && control.reason) {
           const reason = document.createElement("p"); reason.className = "slot-action-reason muted";
           reason.textContent = control.reason; card.append(reason);
         }
         window.ZetImageCardUI.scan(card);
         gallery.append(card);
       };
-      const lunaOrder = ranking.status === "COMPLETE"
+      const lunaOrder = ["COMPLETE", "STALE"].includes(ranking.status)
         ? (ranking.luna_ordered_candidate_ids?.length ? ranking.luna_ordered_candidate_ids : ranking.ordered_candidate_ids || [])
         : [];
       const displayCandidateSlots = lunaOrder.length
@@ -1437,7 +1618,7 @@
         });
       }
       const control = run.slot_controls?.[view] || {};
-      const countControl = window.ZetRenderSlots.countControl(control.empty_count || 0, (count, button) => void slotAction("generate", view, null, count, button), {disabled: !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason});
+      const countControl = window.ZetRenderSlots.countControl(control.empty_count || 0, (count, button) => void slotAction("generate", view, null, count, button), {disabled: !run.scoped_kind && !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason});
       const countButton = countControl.querySelector("button");
       countButton.dataset.localSlotView = view; countButton.dataset.localSlotNumber = "add"; countButton.dataset.localSlotDisabled = String(countButton.disabled);
       const tools = document.createElement("details");
@@ -1514,7 +1695,7 @@
     host.replaceChildren();
     if (record?.path) {
       const image = document.createElement("img");
-      image.src = versionedImageUrl(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source?render_mode=${mode}`, record.sha256);
+      image.src = versionedImageUrl(`${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source-thumbnail?render_mode=${mode}`, record.sha256);
       image.alt = `${mode} phase-change source`;
       image.style.maxWidth = "160px";
       host.append(image, document.createTextNode(` ${record.origin?.phase || "Uploaded"} · ${window.ZetPipelineLabel(record.origin?.pipeline || "")}`));
@@ -1537,10 +1718,26 @@
   }
 
   function render() {
-    document.getElementById("local-pipeline-page").dataset.renderMode = state.renderMode;
+    const page = document.getElementById("local-pipeline-page");
+    page.dataset.renderMode = state.renderMode;
+    page.dataset.pageKind = state.view ? "view" : "batch";
     const run = state.run;
-    renderModeSource(run);
-    window.ZetTemplateImprovement?.update(run, state.pipeline, () => loadRun(run?.run_id || ""), frontRenderControl);
+    renderViewNavigation(run);
+    const comparison = $("comparison-report");
+    const comparisonContext = `${state.pipeline}:${run?.run_id || ""}:${state.renderMode}:${isCostume() ? selectedCostume() : ""}`;
+    if (comparison.dataset.context !== comparisonContext) {
+      comparison.dataset.context = comparisonContext;
+      comparison.hidden = true;
+      comparison.replaceChildren();
+    }
+    const mastersReport = $("masters-report");
+    if (mastersReport.dataset.context !== comparisonContext) {
+      mastersReport.dataset.context = comparisonContext;
+      mastersReport.hidden = true;
+      mastersReport.replaceChildren();
+    }
+    if (!state.view) renderModeSource(run);
+    if (!state.view) window.ZetTemplateImprovement?.update(run, state.pipeline, () => loadRun(run?.run_id || ""), frontRenderControl);
     renderLineageWarnings(run);
     if (!run) {
       $("lineage-warning").hidden = true;
@@ -1560,6 +1757,23 @@
       setBusyControls();
       return;
     }
+    if (run.scoped_kind) {
+      $("saved-style").textContent = `Batch style: ${run.universe_style_variant || "canonical"}`;
+      const progress = run.progress_by_mode?.[state.renderMode] || {};
+      $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${progress.complete_count || 0}/${progress.candidate_count || 0} images · ${statusLabels[progress.status || run.status] || progress.status || run.status}`;
+      if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
+      setBusyControls();
+      if (run.scoped_kind === "summary") {
+        renderBatchCards(run);
+        $("views").replaceChildren();
+      } else {
+        $("selected").hidden = true;
+        $("batch-bulk-actions").replaceChildren();
+        renderViews(modeRun(run));
+      }
+      updateRefreshButton();
+      return;
+    }
     const progress = run.page_summary || {};
     $("saved-style").textContent = `Batch style: ${run.universe_style_variant || "canonical"}`;
     const completed = run.render_progress?.COMPLETE ?? progress.completed_count ?? run.complete_count ?? (run.candidates || []).filter((item) => item.image_path).length;
@@ -1569,8 +1783,14 @@
     $("summary").textContent = `${run.character} · ${run.phase}${run.costume ? ` · ${run.costume}` : ""}${phaseChangeSummary}${state.pipeline === "character-assembly" ? ` · Heads: ${window.ZetPipelineLabel(run.head_pipeline || "head-image")}` : ""} · ${run.run_id} · ${state.renderMode === "final" ? "Final" : "Draft"} · ${modeProgress ? `${modeProgress.complete_count}/${modeProgress.candidate_count}` : `${completed}/${run.candidate_count || (run.candidates || []).length}`} images · ${statusLabels[modeProgress?.status || run.status] || modeProgress?.status || run.status}${modeAnchor ? ` · FRONT ${modeAnchor}` : ""}${progress.stale_selections?.length ? ` · stale selections ${progress.stale_selections.join(", ")}` : ""}`;
     if (document.activeElement !== $("batch-name")) $("batch-name").value = run.batch_name || "";
     setBusyControls();
-    renderSelectedViews(modeRun(run));
-    renderViews(modeRun(run));
+    if (state.view) {
+      $("selected").hidden = true;
+      $("batch-bulk-actions").replaceChildren();
+      renderViews(modeRun(run));
+    } else {
+      renderSelectedViews(modeRun(run));
+      $("views").replaceChildren();
+    }
     updateRefreshButton();
   }
 
@@ -1607,7 +1827,7 @@
     state.runState = runId ? "loading" : "absent";
     if (!runId) { state.run = null; state.costumeSettingsDrafts = {}; render(); return; }
     try {
-      const loaded = await request(route("detail", runId));
+      const loaded = await readScopedRun(runId);
       if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
       const sameRun = state.run?.run_id === loaded.run_id;
       if (!sameRun) {
@@ -1651,7 +1871,7 @@
     state.pollInFlight = true;
     const requestId = state.runRequest;
     try {
-      const latest = await request(route("detail", runId));
+      const latest = await readScopedRun(runId);
       if (requestId !== state.runRequest || generation !== state.generation || state.run?.run_id !== runId) return;
       if (contextKey() !== state.contextKey || !document.querySelector("#local-pipeline-page").classList.contains("active")) return;
       mergeLiveRun(latest);
@@ -1689,10 +1909,15 @@
     syncPipelineRoute();
   }
 
+  let readinessTimer = null;
+  function scheduleReadiness() {
+    clearTimeout(readinessTimer);
+    readinessTimer = setTimeout(() => void readiness(), 250);
+  }
+
   async function readiness() {
     const generation = ++state.previewGeneration;
     if (lockedPhaseSourceSelected()) void refreshLockedPhaseSource();
-    $("create").disabled = true;
     $("readiness").textContent = "Checking required inputs…";
     try {
       const result = await request(route("preview"), { method: "POST", body: JSON.stringify(payload()) });
@@ -1702,15 +1927,15 @@
       const canCreate = result.can_create !== false && blockers.length === 0;
       $("readiness").textContent = blockers.length ? blockers.map(window.ZetPipelineMessage).join(" · ")
         : `${result.candidate_count || ""} candidates across ${(result.views || []).length} views. ${canCreate ? "Ready to create." : "Resolve requirements first."}`;
-      $("create").disabled = !canCreate;
     } catch (error) {
       if (generation !== state.previewGeneration) return;
       $("readiness").textContent = window.ZetPipelineMessage(error.message);
-      $("create").disabled = true;
+      // Create runs the authoritative check on click; preview is only guidance.
     }
   }
 
   async function refreshContext() {
+    clearTimeout(readinessTimer);
     state.generation += 1;
     document.querySelectorAll('[data-submission-status]').forEach((message) => { message.textContent = ""; });
     $("proceed").removeAttribute("aria-busy");
@@ -1738,7 +1963,7 @@
       await loadCostumes();
       if (generation !== state.generation) return;
       state.contextKey = contextKey();
-      await Promise.all([refreshRuns("", generation), readiness()]);
+      await Promise.all([refreshRuns("", generation), $("options").open ? readiness() : Promise.resolve()]);
     } catch (error) {
       if (generation !== state.generation) return;
       state.runState = "unavailable";
@@ -1774,9 +1999,23 @@
 
   function startPolling() {
     clearInterval(state.poll);
+    let promptReviewTicks = 0;
     state.poll = setInterval(() => {
-      if (!document.hidden && state.pipeline && document.querySelector("#local-pipeline-page").classList.contains("active") && state.run?.run_id) void pollForImages(state.run.run_id, state.generation);
-    }, 30000);
+      const run = state.run;
+      promptReviewTicks += 1;
+      if (promptReviewTicks >= 10 && !document.hidden && !state.view && document.querySelector("#local-pipeline-page").classList.contains("active")) {
+        promptReviewTicks = 0;
+        window.ZetTemplateImprovement?.refreshActive();
+      }
+      const activeEvaluation = Object.values(run?.evaluations || {}).some(item => ["STAGING", "RUNNING"].includes(item.status))
+        || Object.values(run?.final_evaluations || {}).some(item => ["STAGING", "RUNNING"].includes(item.status));
+      const pendingOperation = (window.ZetLocalOperations?.rows() || []).some(row => row.request?.run_id === run?.run_id
+        && row.request?.pipeline === state.pipeline && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN"].includes(row.status));
+      if (!document.hidden && state.pipeline && document.querySelector("#local-pipeline-page").classList.contains("active")
+        && run?.run_id && (activeStatuses.has(run.status) || run.slot_render_ids?.length || activeEvaluation || pendingOperation)) {
+        void pollForImages(run.run_id, state.generation);
+      }
+    }, 3000);
   }
 
   document.addEventListener("visibilitychange", () => {
@@ -1788,6 +2027,7 @@
   function configurePipeline(pipeline) {
     state.pipeline = pipeline;
     state.renderMode = new URLSearchParams(window.location.search).get("render_mode") === "final" ? "final" : "draft";
+    state.view = (new URLSearchParams(window.location.search).get("local_view") || "").toUpperCase();
     $("render-quality").value = state.renderMode;
     $("aspect-ratio").value = ["head-image", "head-image-edit"].includes(pipeline) ? "1:1" : "2:3";
     void updateSizePreview();
@@ -1851,11 +2091,10 @@
 
   async function perform(action, view = "", candidateId = "", body = undefined) {
     if (action === "proceed") {
-      const ready = bulkReadyViews(state.run);
       const frontSelected = Boolean(modeRun(state.run)?.selected_views?.FRONT);
       action = "run-available";
       body = {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value,
-        scope: !frontSelected && ready.includes("FRONT") ? "front" : "available"};
+        scope: frontSelected ? "available" : "front"};
     }
     if (["select", "unselect", "lock", "unlock", "move-rank"].includes(action)) body = {...(body || {}), render_mode: state.renderMode};
     const runId = state.run?.run_id || "";
@@ -1923,6 +2162,8 @@
     let path;
     if (action === "reevaluate-view") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/reevaluate${query({ view, render_mode: state.renderMode })}`;
     else path = route(action, state.run?.run_id, view, candidateId);
+    if (state.run?.scoped_kind && ["review", "select", "unselect", "move-rank", "lock", "unlock", "rename"].includes(action))
+      path += `${path.includes("?") ? "&" : "?"}compact=true`;
     const result = await request(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
     if (requestId !== state.runRequest || generation !== state.generation || pipeline !== state.pipeline ||
         context !== contextKey() || (runId && state.run?.run_id !== runId)) return result;
@@ -1945,14 +2186,14 @@
     } else if (action === "lock" || action === "unlock" || action === "select" || action === "unselect") {
       setStatus("Selection updated.");
     }
-    if (["review", "select", "unselect", "move-rank"].includes(action) && result?.run_id) {
+    if (!state.run?.scoped_kind && ["review", "select", "unselect", "move-rank"].includes(action) && result?.run_id) {
       mergeLiveRun(result);
     } else await loadRun(state.run?.run_id);
   }
 
   function sortCandidatesByDisplayOrder(run, view, candidates, candidateId = item => item.candidate_id, slotNumber = item => item.slot || item.ordinal || 0) {
     const ranking = run.rankings?.[view] || {};
-    const lunaOrder = ranking.status === "COMPLETE"
+    const lunaOrder = ["COMPLETE", "STALE"].includes(ranking.status)
       ? (ranking.luna_ordered_candidate_ids?.length ? ranking.luna_ordered_candidate_ids : ranking.ordered_candidate_ids || [])
       : [];
     const rankById = new Map(lunaOrder.map((id, index) => [id, index]));
@@ -2081,8 +2322,8 @@
       && item.view === oppositeView && item.image_path);
     const draft = state.run.locked_draft_comparisons?.[candidate.view];
     const options = [];
-    if (front && front.candidate_id !== candidate.candidate_id) options.push({id: "front", label: "Selected FRONT", src: imageUrl(front)});
-    if (opposite) options.push({id: "opposite", label: `Selected ${oppositeView}`, src: imageUrl(opposite)});
+    if (front && front.candidate_id !== candidate.candidate_id) options.push({id: "front", label: "Selected FRONT", src: imageUrl(front, true)});
+    if (opposite) options.push({id: "opposite", label: `Selected ${oppositeView}`, src: imageUrl(opposite, true)});
     if (draft) {
       const params = new URLSearchParams({character: state.run.character, phase: state.run.phase, v: draft.image_sha256 || ""});
       options.push({id: "draft", label: `Locked Draft · ${candidate.view}`, src: universeImageUrl(`/api/local/assets/${encodeURIComponent(draft.key)}/image?${params}`)});
@@ -2107,7 +2348,7 @@
     compareImage.closest(".local-pipeline-review-comparison").classList.toggle("single-image", !comparison);
     const reviewImage = $("review-image");
     reviewImage.hidden = !candidate.image_path;
-    if (candidate.image_path) reviewImage.src = imageUrl(candidate);
+    if (candidate.image_path) reviewImage.src = imageUrl(candidate, true);
     else reviewImage.removeAttribute("src");
     reviewImage.alt = `${candidate.view} candidate ${candidate.candidate_id}`;
     let placeholder = reviewImage.parentElement.querySelector(".image-review-placeholder");
@@ -2266,7 +2507,7 @@
       addSlotButton(moreActions, "Clear slot", "clear", candidate.view, slot, Boolean(candidate.slot_reason), candidate.slot_reason);
     }
     const control = run.slot_controls?.[candidate.view] || {};
-    const reviewCount = window.ZetRenderSlots.countControl(control.empty_count || 0, (count, button) => void slotAction("generate", candidate.view, null, count, button), {disabled: !control.can_generate, reason: control.reason});
+    const reviewCount = window.ZetRenderSlots.countControl(control.empty_count || 0, (count, button) => void slotAction("generate", candidate.view, null, count, button), {disabled: !state.run?.scoped_kind && !control.can_generate, reason: control.reason});
     const reviewCountButton = reviewCount.querySelector("button");
     reviewCountButton.dataset.localSlotView = candidate.view; reviewCountButton.dataset.localSlotNumber = "add"; reviewCountButton.dataset.localSlotDisabled = String(reviewCountButton.disabled);
     moreActions.append(reviewCount);
@@ -2431,14 +2672,14 @@
         await window.zetStageCharacterViewInImageGenerator(
           `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/image-generation-stage?${params}`,
           recompile, current, rotation, noCostumeRef, renderMode);
-      } finally { button.disabled = Boolean(state.run?.slot_controls?.[view]?.[
+      } finally { button.disabled = !state.run?.scoped_kind && Boolean(state.run?.slot_controls?.[view]?.[
         rotation ? "rotation_reason" : noCostumeRef ? "no_costume_ref_reason" : "stage_reason"]); }
       return;
     }
     if (action === "save-costume-render-settings") {
       const controls = button.closest(".costume-render-settings");
       const settings = state.run.render_settings[view];
-      const params = new URLSearchParams({costume: selectedCostume()});
+      const params = new URLSearchParams({costume: selectedCostume(), compact: "true"});
       button.disabled = true;
       try {
         await request(`${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/views/${encodeURIComponent(view)}/render-settings?${params}`,
@@ -2450,7 +2691,7 @@
     }
     if (action === "save-view-reference") {
       const value = button.closest(".local-pipeline-reference-recipe").querySelector("select").value;
-      const params = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
+      const params = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}&compact=true` : "?compact=true";
       await request(`${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/views/${encodeURIComponent(view)}/reference-recipe${params}`,
         { method: "PUT", body: JSON.stringify({ mode: ["default", "none"].includes(value) ? value : "selected_view", source_view: value, render_mode: state.renderMode }) });
       if (view === "BACK" && state.run.character_progression) $("back-reference").value = value;
@@ -2458,13 +2699,15 @@
     }
     if (action === "save-observations") {
       const observations = $("views").querySelector(`textarea[data-view-observations="${view}"]`)?.value || "";
-      const result = await request(route("observations", state.run.run_id, view), { method: "PUT", body: JSON.stringify({ observations }) });
+      const path = route("observations", state.run.run_id, view);
+      await request(`${path}${path.includes("?") ? "&" : "?"}compact=true`, { method: "PUT", body: JSON.stringify({ observations }) });
       await loadRun(state.run.run_id);
       setStatus("Observations saved.");
       return;
     }
     if (action === "run-observations") {
-      await request(route("reanalyze", state.run.run_id, view), { method: "POST" });
+      const path = route("reanalyze", state.run.run_id, view);
+      await request(`${path}${path.includes("?") ? "&" : "?"}compact=true`, { method: "POST" });
       await loadRun(state.run.run_id);
       setStatus(`AI Observations started for ${view}.`);
       return;
@@ -2541,12 +2784,15 @@
     $("render-quality").addEventListener("change", () => {
       setStatus("");
       state.renderMode = $("render-quality").value;
+      state.generation += 1;
+      state.runRequest += 1;
       state.renderedSelections = {};
       for (const run of state.runs) syncRunOption(run);
       if (state.run) syncRunOption(state.run);
       syncPipelineRoute();
       void updateSizePreview();
-      render();
+      if (state.run?.run_id) void loadRun(state.run.run_id, state.generation).catch(error => setStatus(error.message, true));
+      else render();
     });
     $("aspect-ratio").addEventListener("input", () => void updateSizePreview());
     $("refresh").addEventListener("click", () => {
@@ -2557,7 +2803,7 @@
         setStatus("Batch updates loaded.");
         return;
       }
-      void Promise.all([refreshRuns(), readiness()]).catch((error) => setStatus(error.message, true));
+      void Promise.all([refreshRuns(), $("options").open ? readiness() : Promise.resolve()]).catch((error) => setStatus(error.message, true));
     });
     $("preview").addEventListener("click", () => void readiness());
     $("open-create").addEventListener("click", () => {
@@ -2585,9 +2831,10 @@
         $("source-remove").hidden = true;
         if (hasSharedAssetRouter()) $("use-anchor").checked = false;
         await refreshRuns(created.run_id);
-        if (hasSharedAssetRouter()) void readiness();
+        if (hasSharedAssetRouter() && $("options").open) void readiness();
         setStatus(state.pipeline === "character-assembly" ? "Batch created. Run front, select a FRONT image, then Run remaining. Luna will compare proportions and identity with your selected FRONT." : "Batch created. Analyze and accept its governing prompts, then Continue to generate FRONT.");
       } catch (error) { $("create-status").textContent = error.message; await readiness(); }
+      finally { $("create").disabled = false; }
     });
     $("rename").addEventListener("submit", async (event) => { event.preventDefault(); await handleAction({ dataset: { localAction: "rename" } }).catch((error) => setStatus(error.message, true)); });
     $("runs").addEventListener("change", () => {
@@ -2595,17 +2842,19 @@
       void loadRun($("runs").value).catch((error) => setStatus(error.message, true));
     });
     $("costume").addEventListener("change", () => { syncPipelineRoute(); void refreshContext(); });
-    $("style-variant").addEventListener("change", () => void readiness());
-    $("front-count").addEventListener("change", () => void readiness());
-    $("other-count").addEventListener("change", () => void readiness());
-    $("use-anchor").addEventListener("change", () => void readiness());
-    $("source-batches").addEventListener("change", () => void readiness());
-    $("head-pipeline").addEventListener("change", () => { $("source-batches").replaceChildren(); void readiness(); });
+    $("style-variant").addEventListener("change", scheduleReadiness);
+    $("front-count").addEventListener("change", scheduleReadiness);
+    $("other-count").addEventListener("change", scheduleReadiness);
+    $("use-anchor").addEventListener("change", scheduleReadiness);
+    $("source-batches").addEventListener("change", scheduleReadiness);
+    $("head-pipeline").addEventListener("change", () => { $("source-batches").replaceChildren(); scheduleReadiness(); });
     $("start").addEventListener("click", () => void perform(["INTERRUPTED", "STOPPED"].includes(state.run?.status)
       || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) || state.run?.slot_paused ? "resume" : "start").catch((error) => setStatus(error.message, true)));
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));
     $("rerun").addEventListener("click", () => void handleAction({ dataset: { localAction: "rerun" } }).catch((error) => setStatus(error.message, true)));
     $("reevaluate").addEventListener("click", (event) => void submitBatchAction(event.currentTarget, "reevaluate"));
+    document.querySelectorAll("[data-local-comparison]").forEach(button => button.addEventListener("click", () => void showComparison(button.dataset.localComparison)));
+    $("use-masters").addEventListener("click", () => void useCurrentMasters());
     $("delete").addEventListener("click", () => void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)));
     $("proceed").addEventListener("click", (event) => void submitBatchAction(event.currentTarget, "proceed"));
     $("source-file").addEventListener("change", () => void uploadHeadSource($("source-file").files?.[0]));
@@ -2716,6 +2965,17 @@
     const pipeline = pagePipelines[page];
     if (!pipeline) return;
     if (pipeline === state.pipeline) {
+      const params = new URLSearchParams(window.location.search);
+      const routedView = (params.get("local_view") || "").toUpperCase();
+      const routedMode = params.get("render_mode") === "final" ? "final" : "draft";
+      if (routedView !== state.view || routedMode !== state.renderMode) {
+        state.view = routedView;
+        state.renderMode = routedMode;
+        $("render-quality").value = routedMode;
+        state.generation += 1;
+        if (state.run?.run_id) await loadRun(state.run.run_id, state.generation);
+        render();
+      }
       if (contextKey() !== state.contextKey || (!state.poll && !state.run)) await refreshContext();
       if (!state.poll) startPolling();
       return;
@@ -2724,6 +2984,7 @@
   }
 
   function deactivate() {
+    clearTimeout(readinessTimer);
     clearInterval(state.poll); state.poll = null; state.runRequest += 1;
     state.generation += 1;
     state.previewGeneration += 1;
@@ -2753,6 +3014,13 @@
     selections.run = { ...runSelection };
     selections.batch = { ...runSelection };
     if (runId) parameters.local_batch = runId;
+    const view = matching ? state.view : (routeParams.get("local_view") || "").toUpperCase();
+    if (view) {
+      parameters.local_view = view;
+      selections.view = { state: run ? run.views?.includes(view) ? "selected" : "unavailable" : status,
+        id: view, label: view.replaceAll("_", " ") };
+    }
+    parameters.render_mode = matching ? state.renderMode : routeParams.get("render_mode") === "final" ? "final" : "draft";
     if (pipeline === "costume-dressing") {
       const costume = matching && state.costumesState === "selected" ? selectedCostume() : routeParams.get("local_costume") || "";
       const costumeState = matching ? state.costumesState : "loading";

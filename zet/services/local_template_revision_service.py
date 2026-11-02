@@ -204,7 +204,7 @@ class LocalTemplateRevisionService:
                 "revision": revision}
 
     def start(self, pipeline, run_id, payload, costume=""):
-        if pipeline == "character-assembly":
+        if pipeline == "character-assembly" and not (payload.get("from_master") is True and payload.get("skip_analysis") is True):
             raise ValueError("Governing-template improvement is unavailable for Character Assembly.")
         workflow, run, directory = self._load(pipeline, run_id, costume)
         from zet.services.local_character_progression_service import enroll
@@ -231,7 +231,7 @@ class LocalTemplateRevisionService:
                     source.pop(key, None)
             allowed = self._editable_source_ids(workflow, run, live)
             editable = payload.get("source_ids", allowed)
-            if not isinstance(editable, list) or not editable or set(editable) - set(allowed):
+            if not isinstance(editable, list) or (not editable and pipeline != "character-assembly") or set(editable) - set(allowed):
                 raise ValueError("Choose existing governing templates to edit.")
             direction = payload.get("direction", "")
             if not isinstance(direction, str) or len(direction) > 20000:

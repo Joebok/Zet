@@ -260,6 +260,11 @@
     </section>
     <section id="local-pipeline-page" class="page">
       <div class="page-title-row"><h1 id="local-pipeline-title">Local Assets</h1></div>
+      <nav id="local-pipeline-view-navigation" class="button-row compact" aria-label="Batch view navigation" hidden>
+        <a id="local-pipeline-return-batch" class="button-link" href="#">Return to batch</a>
+        <a id="local-pipeline-previous-view" class="button-link" href="#" hidden>Previous view</a>
+        <a id="local-pipeline-next-view" class="button-link" href="#" hidden>Next view</a>
+      </nav>
       <div id="local-pipeline-content" class="local-pipeline-layout">
         <section class="control-panel local-pipeline-panel">
           <div class="local-pipeline-controls">
@@ -277,6 +282,14 @@
                   <button class="primary-action" type="submit">Save name</button>
                 </form>
                 <button id="local-pipeline-reevaluate" type="button" disabled>Re-evaluate</button>
+                <button id="local-pipeline-use-masters" type="button">Use current masters</button>
+                <div id="local-pipeline-masters-report" class="muted" role="status" hidden></div>
+                <div class="button-row compact" id="local-pipeline-comparison-actions">
+                  <button type="button" data-local-comparison="draft">Check vs Draft</button>
+                  <button type="button" data-local-comparison="masters">Check vs masters</button>
+                  <button type="button" data-local-comparison="references">Check references vs current</button>
+                </div>
+                <div id="local-pipeline-comparison-report" class="muted" role="status" hidden></div>
                 <div id="local-pipeline-batch-bulk-actions"></div>
                 <button id="local-pipeline-delete" class="danger-action" type="button" disabled>Delete batch</button>
               </div>
@@ -2203,7 +2216,7 @@ Add prompt language here.
   <script src="/static/pipeline_labels.js"></script>
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
-  <script src="/static/local_character_overview.js?v=20261027"></script>
+  <script src="/static/local_character_overview.js?v=20261102-batch-pages"></script>
   <script src="/static/zet.js?v=20261031-final-mode-cues"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>
@@ -2211,10 +2224,10 @@ Add prompt language here.
     <div id="mc-review-pair" class="qc-comparison-pair"></div>
   </dialog>
   <script src="/static/minor_characters.js?v=20261031-final-mode-cues"></script>
-  <script src="/static/local_template_improvement.js?v=20261028-accept-progress"></script>
-  <script src="/static/local_pipeline_operations.js?v=20261101-operations"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261101-operations"></script>
-  <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
+  <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
+  <script src="/static/local_pipeline_operations.js?v=20261102-batch-pages"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261102-batch-pages"></script>
+  <script src="/static/local_batch_status.js?v=20261102-batch-pages"></script>
 
 </body>
 </html>

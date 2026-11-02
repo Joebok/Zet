@@ -3848,7 +3848,7 @@ function browserRouteUrl() {
   }
   if (LOCAL_ASSET_PAGES.has(page)) {
     const currentParams = new URLSearchParams(window.location.search);
-    for (const key of ["character", "phase", "local_batch", "local_costume"]) {
+    for (const key of ["character", "phase", "local_batch", "local_costume", "local_view", "render_mode"]) {
       const value = currentParams.get(key);
       if (value) params.set(key, value);
     }

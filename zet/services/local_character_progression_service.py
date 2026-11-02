@@ -84,10 +84,6 @@ def invalidate_assembly_rankings(state):
     views = set(VIEW_ORDER) - {"FRONT"}
     reason = "Selected FRONT changed; re-evaluate proportions and identity against the current FRONT."
     supersede_evaluations(state, views, reason)
-    for view in views:
-        ranking = (state.get("rankings") or {}).get(view)
-        if ranking:
-            ranking.update(status="STALE", stale_reason=reason)
 
 
 def opened_views(run):
@@ -249,7 +245,7 @@ def project(run):
         for candidate in candidates.values():
             candidate["stale_source"] = any(w["candidate_id"] == candidate["candidate_id"] for w in warnings)
     # Ranking/reference drift is advice, not a new gate on human choices.
-    run["stale_selections"] = [v for v in selected if not available(v) or (is_head_edit(run) and v in run["stale_views"])]
+    run["stale_selections"] = [v for v in selected if not available(v)]
     if run["progression"]["complete"] and not busy and not run.get("stop_requested"):
         run["status"] = "COMPLETE"
     return run

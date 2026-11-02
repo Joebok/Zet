@@ -1,5 +1,22 @@
 # Local character assets
 
+## Batch and view reads (2026-11-02)
+
+The shared dashboard loads a compact batch summary or one Draft/Final view from
+`LocalPipelineProjectionService`; the former full detail route remains available
+to existing callers. Candidate, selected-card, reference and source thumbnails
+come from verified source bytes through a machine-local derived cache; review
+opens the original. `LocalPipelineComparisonService` provides explicit Draft,
+master and frozen-reference reports without changing ranking or selection.
+`LocalCurrentMastersService` selects a batch master revision and compiles each
+eligible requested view into a one-time prompt/reference report. New render
+preparation checks whether its selected master baseline changed, then freezes
+the exact prompt and ordered references. A blocked view is reported individually.
+Final locking checks captured reference bytes for edited head, Assembly and
+Dressing images. Historical differences remain inspectable; a later upstream
+selection alone does not change the frozen render inputs.
+The policy is recorded in [ADR 0044](../DECISIONS/0044-character-batch-review-freshness.md).
+
 Run front/available, slot generate/regenerate/retry, and view regenerate/re-run failed
 now submit durable local preparation operations. Their batch
 reservation freezes candidate IDs and seeds, commits targets individually, and
@@ -55,8 +72,8 @@ Draft and Final rankings are independent. Multi-candidate ranking compares an
 available locked Draft for the same pipeline and view, including the costume for
 Dressing. For Body-Reference Final rankings, Luna compares body matching and
 ignores mannequin-head differences from the Draft. Luna weighs fidelity alongside
-existing quality criteria. Changed comparison evidence makes saved advice stale;
-Re-evaluate refreshes the displayed mode. Single-candidate rankings remain
+existing quality criteria. Changed comparison evidence is available for explicit review;
+Re-evaluate refreshes the displayed mode on request. Single-candidate rankings remain
 deterministic.
 
 ## Draft and Final rendering
@@ -442,7 +459,7 @@ Costume-Dressing saved prompts include template revision and render mode provena
 
 [CharacterRenderSlots](../../zet/services/render_slot_service.py) owns atomic allocation and protection behind [LocalImagePipelineWorkflowService](../../zet/services/local_image_workflow_service.py). Detail includes `slots_by_view`, `slot_controls`, candidate slot numbers and action reasons. Render actions persist `slot_render_ids` before scheduling; an independent per-run collector submits/reconciles them without taking the batch runner lock. Other slots remain usable while renders run. Clear detaches running candidates so late answers cannot fill replacement slots. Startup recovery reattaches this collector. Candidate definitions added after creation live separately from mutable review state so rerun resets retain them. Clear detaches active membership and retains provenance/artifacts. Legacy galleries over eight remain visible; clear surplus unprotected candidates to reach capacity.
 
-The browser polls at two-second intervals while active, including in review. Updates patch slot/status sections and preserve unsaved observations, human decisions, focus and current candidate. Once a view has a complete ranking, candidate cards and previous/next review navigation follow Luna order, with unranked occupied candidates after ranked candidates in physical slot order; empty slots remain after candidates. This is presentation only: each card retains its physical slot label and its actions remain bound to that slot. Incomplete, stale or failed rankings leave cards and review navigation in physical slot order. Selected/locked outputs require explicit protection transitions; adding alternatives does not modify immutable library locks. Body ranking compares the valid, non-rejected candidate set. See [ADR 0007](../DECISIONS/0007-stable-render-slots.md) for the original slot design; the review contract is now ranking-only.
+The batch summary and opened view poll every 30 seconds while work is active. View updates preserve unsaved observations, human decisions, focus and current candidate. Once a view has a complete or stale ranking, candidate cards and previous/next review navigation follow the saved Luna order, with unranked occupied candidates after ranked candidates in physical slot order; empty slots remain after candidates. Stale advice remains visible until Re-evaluate. This is presentation only: each card retains its physical slot label and its actions remain bound to that slot. Failed or never-started rankings leave cards and review navigation in physical slot order. Selected/locked outputs require explicit protection transitions; adding alternatives does not modify immutable library locks. Body ranking compares the valid, non-rejected candidate set. See [ADR 0007](../DECISIONS/0007-stable-render-slots.md) for the original slot design; the review contract is now ranking-only.
 
 Re-running a whole view in Body-Reference, Head-Image, Assembly, or Dressing targets every candidate in that view, including candidates created through supplemental slots. The batch runner may skip slot-managed candidates during ordinary recovery because the slot collector owns those asks; the explicit view target lets the rerun render and rank the full replacement set.
 
@@ -466,9 +483,8 @@ View-scoped Re-evaluate waits for renders in that view and render mode; independ
 slot renders in other views or modes do not block it. The batch action still waits
 for all pending slot renders. Stopped/paused batches and active legacy batch
 execution remain blocked. `reevaluation_reason` owns these checks for both action
-validation and the transient `reevaluation_reasons_by_mode` detail projection;
-the dashboard uses the reasons for disabled controls and tooltips, including after
-polling. A review with no saved ranking displays "Ranking not queued" with the
+validation when the action is invoked. The dashboard leaves Re-evaluate available
+and displays the current refusal reason after an attempt. A review with no saved ranking displays "Ranking not queued" with the
 view action as recovery guidance; queued/running advice displays its current state.
 
 Explicit Re-evaluate refreshes candidate file bookkeeping through
@@ -478,7 +494,7 @@ hashes. A current candidate's existing file is sufficient for local review; save
 hashes, receipts and historical requests do not gate availability. Recovered render
 state enters human review without changing decisions, observations, selections or
 image bytes. Cancellation, candidate/attempt replacement and evaluation ownership
-still fence publication. Hashes continue to identify stale rankings and changed
+still fence publication. Hashes continue to fence changed evaluation inputs and
 inputs. This does not change immutable published-lock or transport validation.
 See [ADR 0021](../DECISIONS/0021-file-based-local-image-availability.md).
 
@@ -651,7 +667,7 @@ Local Assembly renders use exactly the matching Body-Reference and Head-Image, i
 
 Assembly uses **Run front**, then requires an available, non-rejected same-batch FRONT selection before **Run remaining** queues the other requested views together. This selection supplies ranking evidence only; matching body/head render inputs stay unchanged. There is no pre-render governing-template acceptance or predecessor recipe gate. Older partial batches and interrupted work respect the FRONT selection requirement; explicit per-view requests stay bounded, and whole-batch rerun starts again at FRONT. Rendering completion still leaves human selection and publication to the operator. Its pre-render template improvement panel and render-reference controls are unavailable; post-render Character.md improvement is described below. Existing batch revision history remains readable; fresh compilation uses current masters unless a post-render batch version is accepted. `CharacterRenderSlots.prepare_input` upgrades old prompt/manifests with the versioned two-image preparation contract, shared by Image Generator staging. Submitted requests and Retry retain their frozen inputs.
 
-For multi-candidate non-front ranking, Luna receives the required selected FRONT as a separately labeled comparison. Ranking guidance prioritizes matching head-to-body proportions and identity, including relative head size, shoulder/neck scale, torso/limbs and silhouette, while accounting for perspective and visibility. Matching body/head inputs remain candidate-specific evidence. FRONT is never a render input or publication dependency and does not control target camera angle or hidden features. Rankings retain comparison provenance. Changing, clearing or rejecting FRONT makes existing non-front advice stale and supersedes pending evaluations without clearing downstream images or selections; late results cannot commit against a different FRONT. Legacy multi-candidate rankings lacking the current comparison project as stale until Re-evaluate. The single-candidate shortcut remains deterministic. See [Testing](../Testing.md#assembly-front-ranking-validation-2026-10-20) for observed validation and artistic limits.
+For multi-candidate non-front ranking, Luna receives the required selected FRONT as a separately labeled comparison. Ranking guidance prioritizes matching head-to-body proportions and identity, including relative head size, shoulder/neck scale, torso/limbs and silhouette, while accounting for perspective and visibility. Matching body/head inputs remain candidate-specific evidence. FRONT is never a render input or publication dependency and does not control target camera angle or hidden features. Rankings retain comparison provenance. Changing, clearing or rejecting FRONT supersedes pending evaluations without clearing saved ranking advice, downstream images or selections; late results cannot commit against a different FRONT. Newly queued images stale only their own view and mode ranking. The single-candidate shortcut remains deterministic. See [Testing](../Testing.md#assembly-front-ranking-validation-2026-10-20) for earlier validation and artistic limits.
 
 ## LLM purpose separation (2026-10-22)
 

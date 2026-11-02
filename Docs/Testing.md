@@ -1,5 +1,59 @@
 # Local testing
 
+## Character batch/view pages (2026-11-02)
+
+The approved fast E2E suite passed 4/4 after scoped page integration and again
+after current-master and Final snapshot checks. Disposable fixture checks covered
+ten summary/view projections (five pipelines in Draft and Final), bounded
+thumbnail output and changed/missing-source refusal, and explicit prompt/reference
+comparison. A prepared Assembly browser check observed summary-only batch traffic,
+summary plus FRONT-detail traffic on a view page, one rendered gallery, and
+current-view thumbnails. Re-evaluate remained clickable in an empty Final view;
+its submitted operation returned the current refusal. An isolated Assembly
+`use-current-masters` HTTP call returned a ready FRONT prompt and two frozen
+reference identities. No live renderer, model, normal library, or production
+volume was used. The prepared browser checks do not establish all five populated
+view layouts or live-scale responsiveness.
+
+Further isolated browser checks opened Body-Reference, Head-Image Construct and
+Assembly in both modes. Each batch loaded summary only (plus an explicitly open
+prompt-review panel for Body/Head), and each view loaded summary plus FRONT detail,
+with one gallery and an enabled Re-evaluate action. There were no page errors.
+Current-master HTTP checks passed Draft and Final FRONT for Body/Head and Draft
+FRONT for Assembly; Assembly Final correctly named its missing locked Final Body
+reference. These checks used prepared empty runs, not rendered Final candidates.
+Additional isolated fixture work supplied Head-Edit authoring text and a
+published Assembly FRONT for Dressing. Head-Edit and Dressing each opened batch
+and FRONT pages in both modes with only summary/current-view requests, one gallery,
+enabled Re-evaluate, and no page errors. Draft master preparation reported ready;
+Dressing Final named the missing locked Final Assembly input. The isolated
+Assembly publication used a copied fixture image, not a renderer.
+Its populated Draft FRONT batch card and view card requested `/thumbnails/F-001`
+successfully; opening review requested `/images/F-001` (the original). The batch
+made no view-detail request, and the view made no other-view request.
+An isolated fabricated Assembly Final FRONT candidate exercised the actual
+selection and publication routes. Locking refused a removed frozen reference,
+then refused changed selected output bytes; after restoring both, Final lock
+succeeded. This checks action-time byte guards, not a real Final render.
+Isolated legacy Assembly and Dressing lock previews accepted a saved run-owned
+source snapshot after the upstream current selection and lock moved to different
+image bytes. Corrupting the frozen Body or Assembly snapshot produced a specific
+400 refusal; restoring it allowed the preview. An isolated Head-Edit Final
+nonfront candidate captured an earlier FRONT guide. Locking refused a missing
+guide, then succeeded with the guide restored even though a different Final
+FRONT was current. These records and image files were created only in the test
+library; catalog behavior under a live render was not exercised.
+Disposable service checks also refused a saved reference outside its batch root
+and a self-referential Costume source cycle before attempting publication.
+Final integration rerun after the active-poll cadence and view-response isolation
+adjustments passed all four approved fast scenarios (42.2s). Python compilation,
+changed JavaScript syntax, and `git diff --check` passed. The view endpoint now
+returns selection IDs for its own view only; the batch summary carries the
+page-wide selection map. Active image work is polled every 3 seconds only while
+the character page is visible; open prompt review refreshes about every 30
+seconds. Populated non-FRONT navigation, live render completion, and production
+volume remain unverified.
+
 ## Character pipeline operations (2026-11-01)
 
 Disposable isolated checks exercised real Draft and Final FRONT compilers for all

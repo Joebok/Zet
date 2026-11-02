@@ -4,6 +4,7 @@
   let generation = 0;
   let loading = false;
   let snapshot = "";
+  let activeWork = false;
   const outcomes = new Map();
   const pending = new Set();
   const host = () => document.querySelector("#local-overview-groups");
@@ -84,13 +85,14 @@
   }
 
   async function refresh() {
-    if (!context || loading || pending.size) return;
+    if (!context || loading || pending.size || document.hidden) return;
     const current = generation;
     loading = true;
     try {
       const data = await context.fetchJson("/api/local/character-overview", {headers: {"X-Zet-Universe": context.universeId}});
       if (current !== generation || pending.size) return;
       const next = JSON.stringify(data);
+      activeWork = (data.rows || []).some(row => (row.costumes || []).some(slot => ["RUNNING", "QUEUED", "RECOVERING", "UNKNOWN"].includes(slot.state)));
       if (next !== snapshot) { render(data); snapshot = next; }
       status().textContent = "Overview refreshes automatically while this page is open.";
       status().classList.remove("error");
@@ -98,7 +100,13 @@
       if (current !== generation) return;
       status().textContent = error.message;
       status().classList.add("error");
-    } finally { if (current === generation) loading = false; }
+    } finally {
+      if (current === generation) {
+        loading = false;
+        clearTimeout(timer);
+        if (context) timer = setTimeout(refresh, activeWork || pending.size ? 2500 : 30000);
+      }
+    }
   }
 
   async function act(slot, action, button) {
@@ -139,10 +147,9 @@
       status().textContent = "Loading…";
       status().classList.remove("error");
       void refresh();
-      timer = setInterval(refresh, 2500);
     },
     deactivate() {
-      clearInterval(timer);
+      clearTimeout(timer);
       generation += 1;
       context = null;
       loading = false;
@@ -151,4 +158,5 @@
       pending.clear();
     },
   };
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && context) void refresh(); });
 })();
