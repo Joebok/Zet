@@ -235,8 +235,10 @@ def create_local_character_asset_pipeline_router(
 
         if shared_sources:
             @router.get(f"{prefix}/runs/{{run_id}}/sources/{{view}}/{{role}}")
-            def source(run_id: str, view: str, role: str, costume: str = Query(""), _pipeline: str = pipeline):
-                path = call(lambda: service(_pipeline).adapter.source_path(run_id, view, role, costume), missing=404)
+            def source(run_id: str, view: str, role: str, costume: str = Query(""),
+                       render_mode: str | None = Query(None), _pipeline: str = pipeline):
+                path = call(lambda: service(_pipeline).adapter.source_path(
+                    run_id, view, role, costume, render_mode=render_mode), missing=404)
                 return FileResponse(path)
         elif pipeline in {"head-image", "head-image-edit"}:
             @router.get(f"{prefix}/runs/{{run_id}}/source")

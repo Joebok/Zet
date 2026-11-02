@@ -311,12 +311,19 @@ them directly without another detail request. Candidate images use the focused
 resolver above; reference previews keep URLs stable for their saved content identity.
 
 Reference thumbnails on all five character pipeline pages identify the owning
-candidate, render mode and original ordered reference index. The shared workflow
-service resolves that saved input within the bound library; the browser only
-deduplicates references from occupied slots in the displayed mode. Supplemental
-images retain their original input numbering, and polling refreshes thumbnails
-when slot ownership changes. Legacy positional URLs default to Draft and remain
-mode/slot scoped. This presentation lookup does not change frozen render inputs.
+candidate, render mode and original ordered reference index. Assembly and Dressing
+source previews resolve the displayed mode's current inputs through the same
+resolver and Final lock checks used for new renders. Their source-image route
+accepts an optional `render_mode`; without it, the route continues to serve the
+saved run snapshot. Preview metadata includes the resolved mode, candidate ID and
+checksum, and unavailable Final inputs are shown as errors rather than falling
+back to Draft. Captions keep the source role separate from the `Mode/ID` label.
+Candidate-specific references remain tied to their frozen render bytes. The
+browser deduplicates references from occupied slots in the displayed mode.
+Supplemental images retain their original input numbering, and polling refreshes
+thumbnails when slot ownership changes. Legacy positional URLs default to Draft
+and remain mode/slot scoped. This presentation lookup does not change frozen
+render inputs.
 
 ### Costume-Dressing per-view readiness feedback (2026-10-28)
 

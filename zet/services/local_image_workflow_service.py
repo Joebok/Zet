@@ -490,6 +490,23 @@ class LocalImagePipelineWorkflowService:
         """Return loaded workflow state in the same shape for detail and mutation routes."""
         presented = self.prompt_improvement.project(run)
         presented = self.slots.detail(presented)
+        if self.pipeline in {"character-assembly", "costume-dressing"}:
+            previews = {}
+            for mode in ("draft", "final"):
+                previews[mode] = {}
+                for view in presented.get("views", []):
+                    try:
+                        sources = self.slots._mode_sources(presented, view, mode)
+                        previews[mode][view] = {
+                            role: {"render_mode": record.get("render_mode", mode),
+                                   "candidate_id": record.get("candidate_id", ""),
+                                   "sha256": record.get("image_sha256") or record.get("sha256", ""),
+                                   "label": record.get("label", "")}
+                            for role, record in sources.items()
+                        }
+                    except (ValueError, OSError) as exc:
+                        previews[mode][view] = {"error": str(exc)}
+            presented["source_previews_by_mode"] = previews
         control = self.app.ai_proxy_service.ai_proxy_path_service.file_proxy_client.root / "Control" / "execution_status.json"
         presented["proxy_health"] = read_proxy_health(control)
         pipeline = getattr(self.adapter, "asset_pipeline", None) or getattr(self.adapter, "definition", {}).get("asset_pipeline", self.pipeline)

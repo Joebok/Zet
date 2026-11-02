@@ -1236,16 +1236,34 @@
         for (const role of roles) {
           const figure = document.createElement("figure");
           const caption = document.createElement("figcaption");
-          const source = run.sources?.[view]?.[role] || {};
-          const sourceMode = source.render_mode === "final" ? "Final" : source.render_mode === "draft" ? "Draft" : "";
-          caption.textContent = `${role.replaceAll("_", " ")}${sourceMode ? ` · ${sourceMode}` : ""}`;
+          const preview = run.source_previews_by_mode?.[state.renderMode]?.[view] || {};
+          const source = preview[role] || run.sources?.[view]?.[role] || {};
+          const actualMode = source.render_mode || source.origin?.render_mode || "";
+          const sourceMode = actualMode === "final" ? "Final" : actualMode === "draft" ? "Draft" : "";
+          caption.textContent = role.replaceAll("_", " ");
+          const identity = document.createElement("span");
+          identity.className = "muted";
+          const candidateId = source.candidate_id || source.origin?.candidate_id || "";
+          identity.textContent = candidateId ? `${sourceMode || "Uploaded"}/${candidateId}` : (source.origin?.kind === "upload" ? "Uploaded" : sourceMode);
           const image = document.createElement("img");
           image.loading = "lazy";
-          image.alt = caption.textContent;
+          image.alt = `${caption.textContent}${identity.textContent ? ` ${identity.textContent}` : ""}`;
           const version = source.sha256 || source.image_sha256 || source.image_path ||
             (role === "front_reference" ? activeHeadSource.sha256 || activeHeadSource.path : "");
-          image.src = versionedImageUrl(role === "front_reference" ? `${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source?render_mode=${state.renderMode}` : route("source", run.run_id, view, role), version);
-          figure.append(caption, image);
+          const src = role === "front_reference"
+            ? `${baseUrl()}/runs/${encodeURIComponent(run.run_id)}/source?render_mode=${state.renderMode}`
+            : (() => {
+                const url = new URL(route("source", run.run_id, view, role), window.location.href);
+                if (["character-assembly", "costume-dressing"].includes(state.pipeline)) url.searchParams.set("render_mode", state.renderMode);
+                return url.href;
+              })();
+          if (preview.error) {
+            image.hidden = true;
+            identity.textContent = preview.error;
+          } else {
+            image.src = versionedImageUrl(src, version);
+          }
+          figure.append(caption, identity, image);
           sources.append(figure);
         }
         details.append(sources);
@@ -1283,7 +1301,10 @@
           const promptRole = reference.prompt_role || reference.role || "reference";
           const label = reference.label || reference.tag || "Reference image";
           const referenceMode = reference.render_mode === "final" ? "Final" : reference.render_mode === "draft" ? "Draft" : "";
-          caption.textContent = `Image ${imageIndex} — ${promptRole}: ${label}${referenceMode ? ` · ${referenceMode}` : ""}`;
+          const referenceCandidate = reference.candidate_id || reference.source_candidate_id || "";
+          const identity = referenceCandidate ? `${referenceMode || "Uploaded"}/${referenceCandidate}`
+            : referenceMode || (reference.source_kind === "upload" ? "Uploaded" : "");
+          caption.textContent = `Image ${imageIndex} — ${promptRole}: ${label}${identity ? ` · ${identity}` : ""}`;
           const image = document.createElement("img");
           image.loading = "lazy";
           image.alt = caption.textContent;

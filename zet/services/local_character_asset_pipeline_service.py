@@ -1834,12 +1834,19 @@ class LocalCharacterAssetPipelineService:
         except ValueError as exc:
             raise LocalCharacterAssetPipelineError("Candidate image is unavailable.") from exc
 
-    def source_path(self, run_id: str, view: str, role: str, costume: str = "") -> Path:
+    def source_path(self, run_id: str, view: str, role: str, costume: str = "", *, render_mode: str | None = None) -> Path:
         run = self.detail(run_id, costume)
         view, role = view.upper(), str(role or "")
         if view not in VIEWS:
             raise LocalCharacterAssetPipelineError(f"Unknown view: {view}")
-        source = (run.get("sources", {}).get(view) or {}).get(role)
+        if render_mode is not None:
+            if render_mode not in {"draft", "final"} or self.pipeline not in {"character-assembly", "costume-dressing"}:
+                raise LocalCharacterAssetPipelineError("Mode-aware source previews are unavailable for this pipeline.")
+            from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+            workflow = LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline)
+            source = workflow.slots._mode_sources(run, view, render_mode).get(role)
+        else:
+            source = (run.get("sources", {}).get(view) or {}).get(role)
         if source:
             path = Path(str(source.get("image_path") or "")).resolve()
         elif role in {"front_assembly", "front_costume"}:
@@ -1850,7 +1857,8 @@ class LocalCharacterAssetPipelineService:
             path = Path(str((anchor or {}).get("image_path") or "")).resolve()
         else:
             raise LocalCharacterAssetPipelineError(f"No {role} source is available for {view}.")
-        if not path.is_file() or not path.is_relative_to(Path(run["root"]).resolve()):
+        allowed_root = self.library_root if render_mode is not None else Path(run["root"]).resolve()
+        if not path.is_file() or not path.is_relative_to(allowed_root.resolve()):
             raise LocalCharacterAssetPipelineError(f"The {role} source for {view} is unavailable.")
         return path
 
