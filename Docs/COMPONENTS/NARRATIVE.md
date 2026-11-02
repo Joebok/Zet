@@ -368,8 +368,14 @@ Other ratios aim for 2048² pixels, round each side to the nearest multiple of 3
 and reduce area when needed to fit the existing 256–4096 dimension limits.
 Ratios must be positive width:height values between 1:16 and 16:1.
 
-Saved target dimensions remain editable and do not follow later scene-canvas
-changes. Explicit target-creation dimensions override the initial size. Imported
+Saved subscenes edit a persistent aspect ratio in the direction card, initialized
+from the scene canvas. Changing it recalculates saved target dimensions using the
+same canvas policy; Draft and Final render dimensions are previewed in Images
+from the selected quality and ratio. Existing subscenes without a saved ratio
+retain their dimensions and display the scene ratio when those dimensions match
+its canvas size, or their saved width:height otherwise. Backdrop and assembly
+dimensions remain editable and do not follow later scene-canvas changes. Explicit
+target-creation dimensions override the initial size. Imported
 subscenes retain copied dimensions; linked backdrop local reuse retains source/crop
 bytes. Existing scenes retain their saved ratio; older records missing `canvas`
 continue to read as 16:9. Frozen job and assembly snapshots remain unchanged.

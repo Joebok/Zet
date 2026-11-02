@@ -44,7 +44,7 @@ let contextLabels = {};
 let candidateRestorePending = params.get('task_context') === '1';
 const active = new Set(['SUBMITTING', 'QUEUED', 'RUNNING', 'DISPATCHING']);
 const visualFields = ['setting', 'camera', 'perspective', 'lighting', 'style'];
-const targetFields = ['universe_style_variant', 'title', 'narrative', 'staging', 'physical_context', 'use_transparent_background', 'framing', 'width', 'height', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
+const targetFields = ['universe_style_variant', 'title', 'narrative', 'staging', 'physical_context', 'use_transparent_background', 'framing', 'width', 'height', 'aspect_ratio', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
 const assemblyModeName = mode => ({assemble_references:'Assemble from references', harmonize_composite:'Harmonize placed composite'}[mode] || 'Finish placed composite');
 const fieldValue = field => field.type === 'checkbox' ? field.checked : field.value;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
@@ -145,15 +145,15 @@ async function api(url, method = 'GET', data) {
 }
 
 async function updateRenderSize() {
-  const input = host.querySelector('#narrative-render-ratio'), output = host.querySelector('#narrative-size-preview');
+  const input = host.querySelector('#narrative-aspect_ratio') || host.querySelector('#narrative-render-ratio'), output = host.querySelector('#narrative-size-preview');
   if (!input || !output) return;
   const mode = renderMode, ratio = input.value;
   try {
     const sizing = await api(`/api/image-generation/sizing?${new URLSearchParams({render_mode:mode,aspect_ratio:ratio})}`);
-    if (mode !== renderMode || ratio !== host.querySelector('#narrative-render-ratio')?.value) return;
+    if (mode !== renderMode || ratio !== input.value) return;
     input.setCustomValidity(''); output.textContent = `${sizing.width} × ${sizing.height}`;
   } catch (error) {
-    if (mode !== renderMode || ratio !== host.querySelector('#narrative-render-ratio')?.value) return;
+    if (mode !== renderMode || ratio !== input.value) return;
     input.setCustomValidity(error.message); output.textContent = error.message;
   }
 }
@@ -699,7 +699,7 @@ function adaptationChanged() {
 }
 
 function renderTarget(targets) {
-  if (ratioTarget !== route.target) { ratioTarget = route.target; renderRatio = `${detail.width}:${detail.height}`; seedCandidate = ''; }
+  if (ratioTarget !== route.target) { ratioTarget = route.target; renderRatio = detail.kind === 'subscene' ? detail.aspect_ratio : `${detail.width}:${detail.height}`; seedCandidate = ''; }
   const backdrop = detail.kind === 'backdrop';
   const assembly = detail.kind === 'assembly';
   const viewingImages = window.matchMedia("(max-width: 1360px)").matches && modeSlots().some(id => id && detail.candidates[id]?.image);
@@ -709,7 +709,7 @@ function renderTarget(targets) {
       ${label('title',detail.title,false)}${label('narrative',detail.narrative,true,backdrop ? 'Describe the environment' : 'Describe what is happening')}
       ${label('staging',detail.staging,true,backdrop ? 'Environment composition' : 'Interaction and staging')}${label('physical_context',detail.physical_context)}
       ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
-      ${label('framing',detail.framing,false)}<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>
+      ${label('framing',detail.framing,false)}${detail.kind === 'subscene' ? `<label class="narrative-field">Aspect ratio<input data-field="aspect_ratio" id="narrative-aspect_ratio" value="${esc(renderRatio)}" required></label>` : `<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>`}
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
     ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button><button data-action="scene-text" ${modeSelected()?"":"disabled"}>Edit selected image text</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
@@ -729,7 +729,7 @@ function renderTarget(targets) {
       <div class="narrative-actions"><button class="primary" data-action="render" data-count="1">Render 1</button><button class="primary" data-action="render" data-count="4">Render 4</button><button data-action="refresh">Refresh</button></div>
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
-    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div class="narrative-actions"><label>Render quality <select id="narrative-render-mode"><option value="draft" ${renderMode==='draft'?'selected':''}>Draft</option><option value="final" ${renderMode==='final'?'selected':''}>Final</option></select></label><label>Aspect ratio <input id="narrative-render-ratio" value="${esc(renderRatio)}" required></label><span id="narrative-size-preview" role="status"></span><label>Seed <select id="narrative-seed-source"><option value="">New seed</option></select></label></div><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete all Draft images</button><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div class="narrative-actions"><label>Render quality <select id="narrative-render-mode"><option value="draft" ${renderMode==='draft'?'selected':''}>Draft</option><option value="final" ${renderMode==='final'?'selected':''}>Final</option></select></label>${detail.kind === 'subscene' ? '' : `<label>Aspect ratio <input id="narrative-render-ratio" value="${esc(renderRatio)}" required></label>`}<span id="narrative-size-preview" role="status"></span><label>Seed <select id="narrative-seed-source"><option value="">New seed</option></select></label></div><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete all Draft images</button><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
   sourceVisibility();
   enableModelPickers();
   updateLive();
@@ -999,6 +999,10 @@ function mergeTarget(updated) {
     if (list) list.innerHTML = elementsHtml(updated.elements,true);
   }
   detail = updated;
+  if (updated.kind === 'subscene' && !dirty.has('aspect_ratio') && renderRatio !== updated.aspect_ratio) {
+    renderRatio = updated.aspect_ratio;
+    void updateRenderSize();
+  }
   renderPlacement();
   updateLive();
 }
@@ -1057,7 +1061,7 @@ async function poll() {
 }
 
 async function start(actionName, count = 1, slot, retryJobId) {
-  if (['generate','render'].includes(actionName) && !host.querySelector('#narrative-render-ratio').reportValidity()) return;
+  if (['generate','render'].includes(actionName) && !(host.querySelector('#narrative-aspect_ratio') || host.querySelector('#narrative-render-ratio')).reportValidity()) return;
   await save();
   status(actionName === 'render' ? 'Queueing images…' : 'Queueing illustrator…');
   const direction = host.querySelector('#narrative-direction');
@@ -1108,6 +1112,7 @@ async function assignElements() {
 
 listen(host,'input',event=>{
   if (event.target.id==='narrative-render-ratio') {renderRatio=event.target.value;void updateRenderSize();return;}
+  if (event.target.id==='narrative-aspect_ratio') {renderRatio=event.target.value;event.target.setCustomValidity('');void updateRenderSize();}
   if (event.target.id==='backdrop-link-mode') return;
   if (event.target.dataset.adaptation || event.target.dataset.crop) { adaptationChanged();updateLive();return; }
   if (event.target.dataset.layerField) {

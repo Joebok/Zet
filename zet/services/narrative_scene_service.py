@@ -216,6 +216,8 @@ class NarrativeSceneService:
                     return self.repository.read(story, scene, existing_id)
             record = NarrativeTarget(self._title(data), kind)
             record.width, record.height = canvas_dimensions(parent["canvas"])
+            if kind == "subscene":
+                record.aspect_ratio = parent["canvas"]
             if kind == "backdrop":
                 record.framing = "Wide environment"
                 record.universe_style_variant = "environmental"
@@ -226,6 +228,7 @@ class NarrativeSceneService:
             if kind == "assembly":
                 record["assembly_mode"] = "harmonize_composite"
             self._patch(record, data, TARGET_FIELDS)
+            self._set_subscene_ratio(record, data)
             self._validate_target(record, parent)
             if kind == "assembly":
                 record["layers"] = self.app.narrative_assembly_service.bind_layers(story, scene, record, [])
@@ -243,6 +246,7 @@ class NarrativeSceneService:
             previous_layers = record["layers"]
             previous_prompt = record["prompt"]
             self._patch(record, data, TARGET_FIELDS)
+            self._set_subscene_ratio(record, data)
             self._validate_target(record, self.repository.read(story, scene))
             if record["kind"] == "assembly" and "layers" in data:
                 record["layers"] = self.app.narrative_assembly_service.bind_layers(story, scene, record, previous_layers)
@@ -262,6 +266,18 @@ class NarrativeSceneService:
                     record["prompt_provenance"]["assembly_mode"] = record["assembly_mode"]
                 record["active_llm_job"] = None
             return self.persist(record, story, scene, target)
+
+    @staticmethod
+    def _set_subscene_ratio(record: dict, data: dict) -> None:
+        if "aspect_ratio" in data:
+            if record["kind"] != "subscene":
+                raise ValueError("Only subscenes have an editable aspect ratio.")
+            ratio = data["aspect_ratio"]
+            width, height = canvas_dimensions(ratio)
+            record["aspect_ratio"] = ratio
+            record["width"], record["height"] = width, height
+        elif record["kind"] == "subscene" and ("width" in data or "height" in data):
+            record["aspect_ratio"] = ""
 
     @staticmethod
     def _validate_target(record, parent):
@@ -324,6 +340,9 @@ class NarrativeSceneService:
                   "scene_title": parent["title"], "effective_models": {
                       key: resolve_role_model(self.app.config, "narrative_interview" if key == "interview_model" else "narrative_prompt", record[key])
                       for key in ("interview_model", "prompt_model")}}
+        if record["kind"] == "subscene" and not detail["aspect_ratio"]:
+            detail["aspect_ratio"] = (parent["canvas"] if canvas_dimensions(parent["canvas"]) == (record["width"], record["height"])
+                                      else f"{record['width']}:{record['height']}")
         if record["kind"] == "assembly":
             for candidate_id, candidate in detail["candidates"].items():
                 if candidate.get("image") and (record.get("scene_text") or candidate.get("scene_text_final")):

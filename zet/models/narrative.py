@@ -60,6 +60,7 @@ class NarrativeTarget:
     framing: str = "Full body, complete silhouettes"
     width: int = 1216
     height: int = 832
+    aspect_ratio: str = ""
     element_ids: list[str] = field(default_factory=list)
     visual_overrides: dict = field(default_factory=dict)
     universe_style_variant: str = "inherit"
