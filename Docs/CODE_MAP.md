@@ -1,5 +1,17 @@
 # Capability code map
 
+Character Run available and slot/view regeneration preparation: `LocalPipelineOperationService`,
+`LocalPipelineAvailableOperationHandler` and `LocalPipelineOperationReservation`
+own local admission, preparation and candidate checkpoints; the operation router
+and `local_pipeline_operations.js` expose status and Activity. Batch/view Re-evaluate
+uses `LocalPipelineEvaluationOperationHandler`; Start and Resume use
+`LocalPipelineBatchOperationHandler` and `LocalPipelineBatchTransitionService`.
+Candidate-review retry uses `LocalPipelineCandidateRetryOperationHandler`,
+`LocalPipelineCandidateRetryReservation` and `LocalPipelineRetryArtifactService`;
+`local_pipeline_operation_context.py` projects its candidate-specific token.
+The old retry route rejects writes when operation admission is mounted. The
+[completed plan](../plans/completed/character-pipeline-operations.md) records validation limits.
+
 Character batch restart: `LocalCharacterBatchRestartService` owns the fingerprinted
 preview and mode-scoped clearing transition. The local router and shared pipeline
 controller expose Re-start without dispatching renders. The completed plan records

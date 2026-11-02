@@ -65,6 +65,10 @@ class CostumeRenderModeService:
                     "revision": current["revision"] + 1}
         self.validate(run, view, settings)
         def update(state):
+            from zet.services.local_pipeline_operation_reservation import active_preparation
+            if active_preparation(state):
+                from zet.services.render_slot_service import RenderSlotConflict
+                raise RenderSlotConflict("Another operation is preparing this batch. Wait before changing rendering settings.")
             revision = int(((state.get("render_settings") or {}).get(view) or {}).get("revision", 0))
             if payload.get("expected_revision") != revision:
                 raise ValueError("Rendering settings changed; refresh before saving.")

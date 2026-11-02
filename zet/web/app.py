@@ -989,8 +989,11 @@ def _create_available_app(
                 zet_app.library_index_reconciler.start()
                 _schedule_recovery(zet_app)
             application.state.ai_job_coordinator.start()
+            application.state.local_pipeline_operation_service.start()
             yield
         finally:
+            application.state.local_pipeline_operation_service.stop()
+            application.state.local_pipeline_operation_control.shutdown(wait=True)
             application.state.ai_job_coordinator.stop()
             application.state.image_generation_service.stop()
             application.state.task_status_service.stop()
@@ -1098,6 +1101,29 @@ def _create_available_app(
 
     from zet.services.ai_job_coordinator import AIJobCoordinator, image_services
     app.state.ai_job_coordinator = AIJobCoordinator(app.state.zet_app, resolve_job_app)
+    from concurrent.futures import ThreadPoolExecutor
+    from zet.repositories.local_pipeline_operation_repository import LocalPipelineOperationRepository
+    from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
+    from zet.services.local_pipeline_available_operation_handler import LocalPipelineAvailableOperationHandler
+    from zet.services.local_pipeline_batch_operation_handler import LocalPipelineBatchOperationHandler
+    from zet.services.local_pipeline_candidate_retry_operation_handler import LocalPipelineCandidateRetryOperationHandler
+    from zet.services.local_pipeline_evaluation_operation_handler import LocalPipelineEvaluationOperationHandler
+    from zet.services.local_pipeline_operation_service import LocalPipelineOperationDispatcher, LocalPipelineOperationService
+    from zet.services.storage_health_service import recovery_root
+    from zet.web.local_pipeline_operation_router import create_local_pipeline_operation_router
+
+    operation_repository = LocalPipelineOperationRepository(recovery_root(config) / "LocalPipelineOperations")
+    resolve_operation_workflow = lambda universe, pipeline: LocalImagePipelineWorkflowService(resolve_job_app(universe), PROJECT_ROOT, pipeline)
+    operation_handler = LocalPipelineOperationDispatcher(
+        LocalPipelineAvailableOperationHandler(operation_repository, resolve_operation_workflow),
+        LocalPipelineEvaluationOperationHandler(operation_repository, resolve_operation_workflow),
+        LocalPipelineBatchOperationHandler(operation_repository, resolve_operation_workflow),
+        LocalPipelineCandidateRetryOperationHandler(operation_repository, resolve_operation_workflow))
+    app.state.local_pipeline_operation_service = LocalPipelineOperationService(
+        operation_repository, operation_handler, supported_actions={"run_available", "generate_slots", "regenerate_slot", "retry_render_slot", "rerun_view", "rerun_failed", "reevaluate", "start", "resume", "retry_candidate"})
+    app.state.local_pipeline_operation_control = ThreadPoolExecutor(max_workers=2, thread_name_prefix="zet-operation-control")
+    app.include_router(create_local_pipeline_operation_router(app.state.local_pipeline_operation_service,
+        app.state.local_pipeline_operation_control, lambda: current_universe.get() or app.state.zet_app.universe_id))
 
     @app.middleware("http")
     async def bind_universe(request: Request, call_next):
@@ -1215,7 +1241,8 @@ def _create_available_app(
             return image_services(selected)[1]
 
     app.include_router(create_local_character_asset_pipeline_router(
-        lambda: _app(app.state.config_path), PROJECT_ROOT, _image_generation_service))
+        lambda: _app(app.state.config_path), PROJECT_ROOT, _image_generation_service,
+        lambda: app.state.local_pipeline_operation_service))
     app.include_router(create_ad_hoc_image_generation_router(_image_generation_service))
 
     def quick_character_wizard_service():

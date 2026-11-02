@@ -2,7 +2,8 @@
 from pathlib import Path
 
 from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json, write_library_json
-from zet.services.render_slot_service import slot_maps
+from zet.services.render_slot_service import RenderSlotConflict, slot_maps
+from zet.services.local_pipeline_operation_reservation import active_preparation
 from zet.services.workflow_storage import file_lock
 
 
@@ -45,6 +46,8 @@ class LocalModeSelectionService:
             run, view, qualifier = self._context(run_id, view, mode, costume)
             state_path = root / "state.json"
             state = read_library_json(state_path, pipeline_library_root_for_path(root))
+            if active_preparation(state):
+                raise RenderSlotConflict("Another operation is preparing this batch. Wait before changing selections.")
             field = "selected_views" if mode == "draft" else "final_selected_views"
             selected = state.setdefault(field, {})
             record = self.store.mode_record(run["character"], run["phase"], self._pipeline(), view, qualifier, render_mode=mode)
@@ -70,6 +73,9 @@ class LocalModeSelectionService:
         root = Path(run["root"])
         with file_lock(root / "state.lock"):
             run, view, qualifier = self._context(run_id, view, mode, costume)
+            state = read_library_json(root / "state.json", pipeline_library_root_for_path(root))
+            if active_preparation(state):
+                raise RenderSlotConflict("Another operation is preparing this batch. Wait before changing locks.")
             field = "selected_views" if mode == "draft" else "final_selected_views"
             candidate_id = (run.get(field) or {}).get(view)
             candidate = next((c for c in run.get("candidates", []) if c.get("candidate_id") == candidate_id), None)
@@ -89,6 +95,9 @@ class LocalModeSelectionService:
         root = Path(run["root"])
         with file_lock(root / "state.lock"):
             run, view, qualifier = self._context(run_id, view, mode, costume)
+            state = read_library_json(root / "state.json", pipeline_library_root_for_path(root))
+            if active_preparation(state):
+                raise RenderSlotConflict("Another operation is preparing this batch. Wait before changing locks.")
             record = self.store.mode_record(run["character"], run["phase"], self._pipeline(), view, qualifier, render_mode=mode)
             if not record or not record.get("locked") or record.get("batch_id") != run_id:
                 raise ValueError("This batch has no locked image in the requested mode.")

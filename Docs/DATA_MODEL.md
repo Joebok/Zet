@@ -1,5 +1,24 @@
 # Data, configuration, and ownership
 
+Character Run available and slot/view regeneration operations use versioned JSON records under the configured
+fixed-local storage recovery root's `LocalPipelineOperations/records`. Records own
+request identity, preparation status, progress and outcome; the universe batch
+state owns reserved candidate identities and commit checkpoints. Its Stop generation
+is included in operation input tokens so a request formed before Stop cannot
+start later. They do not replace the AI_Proxy transport or the entity catalog. Implementation and recovery
+limits are recorded in the [completed plan](../plans/completed/character-pipeline-operations.md).
+
+Candidate-review retry checkpoints live in batch state under
+`operation_candidate_retries`. They retain the operation ID, candidate identity,
+original artifact presence, frozen state changes and detach/commit phase. A
+matching operation-owned directory under the candidate render directory holds old
+generated output until the reset commits; cancellation before commit restores it.
+
+Body-Reference cancellation markers carry a unique stop token. The in-progress
+Start/Resume adapter records the digest of a consumed marker in batch state;
+a newer marker still cancels the batch. Older markers without a token remain
+valid.
+
 In-progress head phase-change batches may store `front_sources_by_mode` entries with a snapshot path, checksum and origin. Existing `front_source` fields retain Draft compatibility. See the [active plan](../plans/active/phase-change-mode-sources.md) for validation status.
 
 Narrative targets retain legacy `slots` and `selected_id` as Draft and use

@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261031-final-mode-cues">
+  <link rel="stylesheet" href="/static/zet.css?v=20261101-operations">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
   <link rel="stylesheet" href="/static/narrative.css?v=20261030-output-canvas">
 <link rel="stylesheet" href="/static/scene_text.css"><script src="/static/scene_text.js" defer></script>
@@ -117,6 +117,15 @@
       <button id="toolbar-restart-zet" class="toolbar-restart-button navigation-action" type="button" aria-label="Restart Zet" title="Restart Zet">♻</button>
       <button id="toolbar-task-attention" class="navigation-action" type="button" aria-haspopup="dialog">Tasks</button>
       <button id="toolbar-batches" class="tab navigation-action" data-page="local-batch-status" type="button">Batches</button>
+      <div class="toolbar-menu">
+        <button id="local-operations-button" class="navigation-action" type="button" aria-expanded="false" aria-controls="local-operations-panel">Activity</button>
+        <div id="local-operations-panel" class="toolbar-settings-menu local-operations-panel" hidden>
+          <strong>Character preparation</strong>
+          <button id="local-operations-refresh" type="button">Check status</button>
+          <p id="local-operations-message" role="status">Loading activity…</p>
+          <div id="local-operations-list"></div>
+        </div>
+      </div>
       <div class="toolbar-menu">
         <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
         <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
@@ -2203,7 +2212,8 @@ Add prompt language here.
   </dialog>
   <script src="/static/minor_characters.js?v=20261031-final-mode-cues"></script>
   <script src="/static/local_template_improvement.js?v=20261028-accept-progress"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261031-final-mode-cues"></script>
+  <script src="/static/local_pipeline_operations.js?v=20261101-operations"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261101-operations"></script>
   <script src="/static/local_batch_status.js?v=20261010-story-task-context"></script>
 
 </body>

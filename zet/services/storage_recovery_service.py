@@ -16,7 +16,8 @@ def submit_recovered_run(adapter, run_id, root, **options):
             with file_lock(Path(root) / "runner.lock", timeout=0):
                 kwargs = {"costume": options["costume"]} if "costume" in options else {}
                 latest = adapter.detail(run_id, **kwargs)
-                if latest.get("stop_requested") or latest.get("status") not in {"QUEUED", "INTERRUPTED", "PAUSED_STORAGE", "RECOVERING"}:
+                if (latest.get("stop_requested") or latest.get("slot_paused")
+                        or latest.get("status") not in {"QUEUED", "INTERRUPTED", "PAUSED_STORAGE", "RECOVERING"}):
                     return
                 adapter.execute_run(run_id, **options)
         except TimeoutError:
@@ -77,6 +78,9 @@ class StorageRecoveryService:
                         views = set(run.get("target_views") or [])
                         state = adapter._read_json(root / "state.json") if pipeline == "body-reference" else (
                             adapter._read_json(root / "state.json") if pipeline in {"head-image", "head-image-edit"} else adapter._read(root / "state.json"))
+                        from zet.services.local_pipeline_operation_reservation import active_preparation
+                        if active_preparation(state):
+                            continue
                         # Preserve a review-only operation; do not turn it into generation.
                         state.update(status="QUEUED", error="")
                         if pipeline == "body-reference":

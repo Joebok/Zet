@@ -1,5 +1,17 @@
 # System contracts
 
+Character operation preparation must retain its original universe, input context,
+candidate identities and seeds; a Stop before handoff must fence later commits,
+including requests admitted after Stop was pressed.
+Operation status describes preparation and must not imply render completion. See
+the [completed implementation plan](../plans/completed/character-pipeline-operations.md)
+for remaining recovery and action-coverage gaps. Body-Reference must honor a new
+cancellation marker even when an earlier marker was consumed by Resume.
+Candidate retry must not detach a selected or locked image. Its generated output
+is restored if preparation stops before the state reset, and old output is removed
+only after that reset commits. Runner and slot collector entry honor active
+preparation reservations.
+
 Queue waiting time alone never invalidates a character render. Historical timeout recovery retains original request and candidate identities, and terminal worker outcomes remain distinct from collection problems.
 
 New local character Final render inputs require Final same-batch selections and

@@ -918,7 +918,7 @@ class LocalCharacterAssetPipelineService:
 
 
 
-    def stage_view_evaluation(self, run_id: str, view: str, costume: str = "", *, candidate_ids: set[str] | None = None, render_mode: str = "draft") -> dict[str, Any]:
+    def stage_view_evaluation(self, run_id: str, view: str, costume: str = "", *, candidate_ids: set[str] | None = None, render_mode: str = "draft", evaluation_id: str = "") -> dict[str, Any]:
         from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service, update_view_evaluation
         from zet.services.local_image_evaluation_service import mode_field
         from zet.services.local_view_reference_service import selected_run_for_mode
@@ -932,10 +932,15 @@ class LocalCharacterAssetPipelineService:
                       and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
         previous = (run.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
+        from zet.services.local_image_evaluation_service import is_evaluation_replay
+        if is_evaluation_replay(previous, evaluation_id, hashes):
+            if previous.get("status") == "RUNNING":
+                self.reconcile_review_jobs(run_id, costume, render_mode=render_mode)
+            return previous
         if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
             self.reconcile_review_jobs(run_id, costume, render_mode=render_mode)
             return previous
-        evaluation_id = uuid4().hex
+        evaluation_id = evaluation_id or uuid4().hex
         def rank():
             if self.detail(run_id, costume).get("stop_requested"):
                 return
@@ -986,20 +991,26 @@ class LocalCharacterAssetPipelineService:
             with file_lock(root / "runner.lock", timeout=0):
                 with self._active_lock:
                     self._active.add(self._active_key(run_id))
-                run = self.detail(run_id, costume)
-                if candidate_ids is None and run.get("target_candidate_ids"):
-                    candidate_ids = set(run["target_candidate_ids"])
-                if views is None and run.get("target_views"):
-                    views = set(run["target_views"])
-                if views is None:
-                    views = set(VIEWS) if run.get("front_anchor") or not self._requires_front_anchor(run) else {"FRONT"}
-                if any(view != "FRONT" for view in views) and ((self.pipeline == "character-assembly" and not assembly_front(run))
-                        or (self._requires_front_anchor(run) and not run.get("front_anchor"))):
-                    self._run_update(run_id, costume, status="AWAITING_FRONT_ANCHOR",
-                                     error="Select a FRONT candidate before generating other views.")
-                    return
-                self._run_update(run_id, costume, status="RUNNING", error="", slot_work_pending=False,
-                                 target_views=sorted(views), target_candidate_ids=sorted(candidate_ids or []), recovery_render_only=render_only)
+                with file_lock(root / "state.lock"):
+                    run = self.detail(run_id, costume)
+                    from zet.services.local_pipeline_operation_reservation import active_preparation
+                    if active_preparation(self._read(root / "state.json")):
+                        return
+                    if run.get("stop_requested") or run.get("slot_paused") or run.get("status") == "CANCELLED":
+                        return
+                    if candidate_ids is None and run.get("target_candidate_ids"):
+                        candidate_ids = set(run["target_candidate_ids"])
+                    if views is None and run.get("target_views"):
+                        views = set(run["target_views"])
+                    if views is None:
+                        views = set(VIEWS) if run.get("front_anchor") or not self._requires_front_anchor(run) else {"FRONT"}
+                    if any(view != "FRONT" for view in views) and ((self.pipeline == "character-assembly" and not assembly_front(run))
+                            or (self._requires_front_anchor(run) and not run.get("front_anchor"))):
+                        self._run_update(run_id, costume, status="AWAITING_FRONT_ANCHOR",
+                                         error="Select a FRONT candidate before generating other views.")
+                        return
+                    self._run_update(run_id, costume, status="RUNNING", error="", slot_work_pending=False,
+                                     target_views=sorted(views), target_candidate_ids=sorted(candidate_ids or []), recovery_render_only=render_only)
                 for view in [item for item in VIEWS if item in views]:
                     pending = [item for item in self.detail(run_id, costume)["candidates"] if item["view"] == view
                                and (candidate_ids is not None or not item.get("slot_managed"))
@@ -1719,6 +1730,8 @@ class LocalCharacterAssetPipelineService:
     @serialize_local_run_state
     def delete_run(self, run_id: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
+        from zet.services.local_pipeline_operation_reservation import reject_reserved_deletion
+        reject_reserved_deletion(Path(run["root"]))
         if run.get("status") in {"RUNNING", "STOPPING", "REEVALUATING"} and not run.get("interrupted"):
             raise LocalCharacterAssetPipelineError("Stop the run and wait before deleting it.")
         for view in VIEWS:
@@ -1853,11 +1866,13 @@ class LocalCharacterAssetPipelineService:
 
 
     def request_stop(self, run_id: str, costume: str = "") -> dict[str, Any]:
-        root, state = self._state(run_id, costume)
-        from zet.services.local_image_evaluation_service import supersede_evaluations
-        supersede_evaluations(state, set(state.get("evaluations") or {}), "The run was stopped.")
-        state.update(status="CANCELLED", stop_requested=True)
-        self._write(root / "state.json", state)
+        root = self._run_root(run_id, costume)
+        with file_lock(root / "state.lock"):
+            root, state = self._state(run_id, costume)
+            from zet.services.local_image_evaluation_service import supersede_evaluations
+            supersede_evaluations(state, set(state.get("evaluations") or {}), "The run was stopped.")
+            state.update(status="CANCELLED", stop_requested=True)
+            self._write(root / "state.json", state)
         self._withdraw_queued_asks(run_id, costume)
         return self.detail(run_id, costume)
 

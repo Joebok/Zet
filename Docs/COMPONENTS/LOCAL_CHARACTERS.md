@@ -1,5 +1,14 @@
 # Local character assets
 
+Run front/available, slot generate/regenerate/retry, and view regenerate/re-run failed
+now submit durable local preparation operations. Their batch
+reservation freezes candidate IDs and seeds, commits targets individually, and
+hands them to the existing slot collector. Batch and view Re-evaluate also use
+durable operation admission, as do batch Start, Resume and candidate-review retry.
+Retry checkpoints generated-artifact detachment and the candidate state reset,
+then reattaches the existing runner. See the [completed plan](../../plans/completed/character-pipeline-operations.md)
+for recovery and validation limits.
+
 Character pipeline **Re-start batch** clears candidates, selections and locks in
 the displayed Draft or Final mode after a fenced confirmation. It preserves the
 other mode and published Inventory copies. Recompile selects current masters by
@@ -28,7 +37,11 @@ withdrawing submitted proxy requests; those requests can finish and their result
 are collected after Resume. Restart recovery honors a paused collector and
 resumes unpaused slot work even when the shared Draft batch status is Complete.
 The collector releases the run-state lock between candidates and rechecks pause
-and current pending membership before each transaction. A lock timeout returns
+and current pending membership before each transaction. Head-Image, Head-Image Edit,
+Assembly and Dressing serialize a runner’s initial state transition with Stop.
+Body-Reference also checks Stop before and after preflight; a queued Body batch can
+be stopped before its runner begins. Runner entry and recovery also honor the
+batch pause flag, so a delayed runner does not start after Stop. A lock timeout returns
 HTTP 409 with retry guidance rather than a misleading missing-batch 404.
 
 Mode progress treats an available nonempty image as completed render evidence,

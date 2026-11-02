@@ -18,6 +18,27 @@ def mode_field(name: str, render_mode: str = "draft") -> str:
     return name if render_mode == "draft" else f"final_{name}"
 
 
+def is_evaluation_replay(previous: dict[str, Any], evaluation_id: str, hashes: dict[str, str]) -> bool:
+    """Recognize an operation-owned evaluation without starting it again."""
+    if not evaluation_id:
+        return False
+    if previous.get("evaluation_id") != evaluation_id:
+        if previous.get("status") in {"RUNNING", "STAGING"}:
+            from zet.services.local_pipeline_operation_context import OperationBlocked
+            raise OperationBlocked("Another evaluation is already active for this view.")
+        return False
+    if previous.get("input_hashes") != hashes:
+        from zet.services.local_pipeline_operation_context import OperationInputsChanged
+        raise OperationInputsChanged("Evaluation images changed. Review the view before retrying.")
+    if previous.get("status") == "STAGING":
+        from zet.services.local_pipeline_operation_reservation import ReservationConflict
+        raise ReservationConflict("The saved evaluation handoff needs reconciliation.")
+    if previous.get("status") not in {"RUNNING", "COMPLETE"}:
+        from zet.services.local_pipeline_operation_context import OperationBlocked
+        raise OperationBlocked("The previous evaluation did not complete normally. Review the batch before retrying.")
+    return True
+
+
 def supersede_evaluations(state: dict[str, Any], views: set[str], reason: str, *, render_mode: str = "draft") -> None:
     """Make outstanding advice in the selected views unable to commit results."""
     stamp = datetime.now().astimezone().isoformat(timespec="seconds")

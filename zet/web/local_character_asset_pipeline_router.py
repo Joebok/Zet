@@ -20,6 +20,7 @@ from zet.services.storage_bootstrap_service import RETRY_AFTER_SECONDS
 def create_local_character_asset_pipeline_router(
     app_factory: Callable[[str | Path], Any], project_root: str | Path,
     image_generation_provider: Callable[[], Any],
+    operation_service_provider: Callable[[], Any] | None = None,
 ) -> APIRouter:
     router = APIRouter()
     root = Path(project_root)
@@ -394,6 +395,8 @@ def create_local_character_asset_pipeline_router(
 
         @router.post(f"{prefix}/runs/{{run_id}}/candidates/{{candidate_id}}/retry")
         def retry(run_id: str, candidate_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
+            if operation_service_provider is not None:
+                raise HTTPException(status_code=409, detail="Refresh the batch and submit candidate retry through the operation endpoint.")
             instance = service(_pipeline)
             result = call(lambda: instance.action("retry_candidate", run_id=run_id, candidate_id=candidate_id, costume=costume if _pipeline == "costume-dressing" else ""))
             submit_local_pipeline_task(instance.execute, run_id, views={next(item["view"] for item in result["candidates"] if item["candidate_id"] == candidate_id)}, costume=costume if _pipeline == "costume-dressing" else "")
@@ -401,7 +404,11 @@ def create_local_character_asset_pipeline_router(
 
         @router.post(f"{prefix}/runs/{{run_id}}/stop")
         def stop(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "stop", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""))
+            instance = service(_pipeline)
+            qualifier = costume if _pipeline == "costume-dressing" else ""
+            if operation_service_provider is None:
+                return call(lambda: instance.action("stop", run_id=run_id, costume=qualifier))
+            return call(lambda: operation_service_provider().stop_batch(instance, run_id, qualifier))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/rerun")
         def rerun_view(run_id: str, view: str, background_tasks: BackgroundTasks, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):

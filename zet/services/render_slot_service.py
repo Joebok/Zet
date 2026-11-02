@@ -67,6 +67,62 @@ def slot_maps(run: dict, render_mode: str = "draft") -> dict[str, list[str | Non
     return result
 
 
+def plan_available_targets(run: dict, spec: dict, state: dict, mode: str, scope: str, prerequisite) -> dict:
+    """Allocate stable candidate identities without compiling or writing files.
+
+    Call under the batch state lock and persist the returned targets in the same
+    transaction. Existing candidates retain their seed; new candidates receive
+    a seed and an unused identity exactly once for subsequent recovery.
+    """
+    from zet.services.local_image_pipeline_policy import view_candidate_id
+    if mode not in {"draft", "final"} or scope not in {"front", "available"}:
+        raise ValueError("Choose a valid render mode and scope.")
+    views = (run.get("character_progression") or {}).get("requested_views") or run.get("views") or []
+    views = [view for view in views if scope != "front" or view == "FRONT"]
+    maps = slot_maps(run, mode)
+    candidates = {item["candidate_id"]: item for item in run.get("candidates") or []}
+    all_candidates = merge_candidates(spec, state, include_detached=True)
+    pending = set(state.get("slot_render_ids") or [])
+    targets, blocked, errors = [], {}, {}
+    for view in views:
+        reason = prerequisite(run, view, mode)
+        if reason:
+            blocked[view] = reason
+            continue
+        try:
+            slots = maps[view]
+            count = render_count(run.get("front_count" if view == "FRONT" else "other_count"), 8 if view == "FRONT" else 4)
+            for index, cid in enumerate(slots[:count]):
+                candidate = candidates.get(cid) or {}
+                if (not cid or candidate.get("render_status") != "PENDING" or candidate.get("ask_id")
+                        or (candidate.get("image_path") and Path(candidate["image_path"]).is_file()) or cid in pending):
+                    continue
+                targets.append({"candidate_id": cid, "view": view, "mode": mode, "slot": index + 1,
+                                "seed": candidate.get("seed"), "existing": True})
+            deficit = max(0, count - sum(bool(cid) for cid in slots))
+            if not deficit:
+                continue
+            template = next((candidate for candidate in reversed(list(all_candidates.values())) if candidate.get("view") == view), None)
+            if template is None:
+                raise ValueError("This view has no saved render inputs.")
+            indices = [index for index, cid in enumerate(slots) if cid is None][:deficit]
+            if len(indices) != deficit:
+                raise ValueError("Not enough empty slots.")
+            ordinal = max((int(candidate.get("ordinal") or candidate["candidate_id"].rsplit("-", 1)[1])
+                           for candidate in all_candidates.values() if candidate.get("view") == view), default=0)
+            for index in indices:
+                ordinal += 1
+                cid = view_candidate_id(view, ordinal)
+                target = {"candidate_id": cid, "view": view, "mode": mode, "slot": index + 1,
+                          "seed": str(random.SystemRandom().randrange(0, 2**63 - 1)), "existing": False,
+                          "template_candidate_id": template["candidate_id"], "ordinal": ordinal}
+                targets.append(target)
+                all_candidates[cid] = target
+        except (ValueError, OSError, KeyError) as exc:
+            errors[view] = str(exc)
+    return {"targets": targets, "blocked_views": blocked, "errors": errors}
+
+
 def frozen_input(directory: Path, prompt: str, references: list[dict], preset: str, *, render_sizing: dict | None = None) -> dict:
     """Copy ordered reference bytes once, then verify them before each submission."""
     if render_sizing is not None:
@@ -133,6 +189,7 @@ class CharacterRenderSlots:
         state_path = Path(run["root"]) / "state.json"
         state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
         run["slot_paused"] = bool(state.get("slot_paused"))
+        run["stop_generation"] = state.get("stop_generation", 0)
         run["slots_by_view"] = maps = slot_maps(run)
         run["slots_by_mode"] = {"draft": maps, "final": slot_maps(run, "final")}
         run["selected_views_by_mode"] = {"draft": dict(run.get("selected_views") or {}),
@@ -194,7 +251,7 @@ class CharacterRenderSlots:
         mutate_local_run_state(root, update)
         return self.workflow.action("detail", run_id=run_id, costume=costume)
 
-    def run_available(self, run_id: str, payload: dict, costume: str = "") -> dict:
+    def run_available(self, run_id: str, payload: dict, costume: str = "", *, operation_id: str = "") -> dict:
         """Queue the configured number of candidates for each ready view."""
         from zet.services.workflow_storage import file_lock, runner_lock_active
         from zet.services.local_image_evaluation_service import mode_field
@@ -209,6 +266,9 @@ class CharacterRenderSlots:
         with file_lock(root / "state.lock"):
             run = load()
             state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            from zet.services.local_pipeline_operation_reservation import active_preparation
+            if active_preparation(state, owner_id=operation_id):
+                raise RenderSlotConflict("Another operation is preparing this batch. Wait for it to finish.")
             if state.get("slot_paused"):
                 raise RenderSlotConflict("Resume the paused batch before submitting more renders.")
             if self._busy_reason(run):
@@ -250,7 +310,7 @@ class CharacterRenderSlots:
                     deficit = max(0, target - sum(bool(cid) for cid in slots))
                     if deficit:
                         result = self.change(run_id, view, "generate", {"count": deficit, "render_mode": mode,
-                            "aspect_ratio": payload.get("aspect_ratio")}, costume)
+                            "aspect_ratio": payload.get("aspect_ratio")}, costume, operation_id=operation_id)
                         submitted.extend(result.get("submitted_candidate_ids") or [])
                 except (ValueError, OSError, KeyError) as exc:
                     errors[view] = str(exc)
@@ -442,7 +502,7 @@ class CharacterRenderSlots:
             return "Wait for this render to finish before clearing or regenerating it."
         return ""
 
-    def change(self, run_id: str, view: str, action: str, payload: dict, costume: str = "") -> dict:
+    def change(self, run_id: str, view: str, action: str, payload: dict, costume: str = "", *, operation_id: str = "") -> dict:
         from zet.services.local_image_pipeline_policy import view_candidate_id
         from zet.services.local_image_evaluation_service import supersede_evaluations
         from zet.services.workflow_storage import file_lock
@@ -460,6 +520,9 @@ class CharacterRenderSlots:
                 if reason:
                     raise RenderSlotConflict(reason)
                 state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+                from zet.services.local_pipeline_operation_reservation import active_preparation
+                if active_preparation(state, owner_id=operation_id):
+                    raise RenderSlotConflict("Another operation is preparing this batch. Wait for it to finish.")
                 if state.get("slot_paused") and action != "clear":
                     raise RenderSlotConflict("Resume the paused batch before submitting more renders.")
                 spec = json.loads((root / "spec.json").read_text(encoding="utf-8"))
@@ -649,6 +712,9 @@ class CharacterRenderSlots:
                         if run.get("stop_requested"):
                             return
                         state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+                        from zet.services.local_pipeline_operation_reservation import active_preparation
+                        if active_preparation(state):
+                            return
                         if state.get("slot_paused"):
                             return
                         pending = list(state.get("slot_render_ids") or [])
@@ -918,7 +984,8 @@ class CharacterRenderSlots:
                     _SLOT_WAKEUPS.pop(key, None)
                 if finished and (root / "state.json").is_file():
                     state = json.loads((root / "state.json").read_text(encoding="utf-8"))
-                    if not state.get("stop_requested") and not state.get("slot_paused") and (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):
+                    from zet.services.local_pipeline_operation_reservation import active_preparation
+                    if not active_preparation(state) and not state.get("stop_requested") and not state.get("slot_paused") and (state.get("slot_render_ids") or state.get("slot_review_views") or state.get("final_slot_review_views")):
                         self.start(run_id, costume)
         submit_local_pipeline_task(work)
 

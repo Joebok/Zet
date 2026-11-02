@@ -738,15 +738,21 @@ class LocalHeadImageService:
             with file_lock(root / "runner.lock", timeout=0):
                 with self._active_lock:
                     self._active.add(self._active_key(run_id))
-                run = self.detail(run_id)
-                if candidate_ids is None and run.get("target_candidate_ids"):
-                    candidate_ids = set(run["target_candidate_ids"])
-                if views is None and run.get("target_views"):
-                    views = set(run["target_views"])
-                if views is None:
-                    views = {FRONT} if not run.get("front_anchor") else {view for view in VIEWS if view != FRONT}
-                self._run_update(run_id, status="RUNNING", error="", slot_work_pending=False,
-                                 target_views=sorted(views), target_candidate_ids=sorted(candidate_ids or []), recovery_render_only=render_only)
+                with file_lock(root / "state.lock"):
+                    run = self.detail(run_id)
+                    from zet.services.local_pipeline_operation_reservation import active_preparation
+                    if active_preparation(self._read_json(root / "state.json")):
+                        return
+                    if run.get("stop_requested") or run.get("slot_paused") or run.get("status") == "CANCELLED":
+                        return
+                    if candidate_ids is None and run.get("target_candidate_ids"):
+                        candidate_ids = set(run["target_candidate_ids"])
+                    if views is None and run.get("target_views"):
+                        views = set(run["target_views"])
+                    if views is None:
+                        views = {FRONT} if not run.get("front_anchor") else {view for view in VIEWS if view != FRONT}
+                    self._run_update(run_id, status="RUNNING", error="", slot_work_pending=False,
+                                     target_views=sorted(views), target_candidate_ids=sorted(candidate_ids or []), recovery_render_only=render_only)
                 selected_views = [view for view in VIEWS if view in views]
                 for view in selected_views:
                     view_candidates = [item for item in self.detail(run_id)["candidates"]
@@ -883,7 +889,7 @@ class LocalHeadImageService:
         self._write(root / "state.json", state)
         return self.detail(run_id)
 
-    def stage_view_evaluation(self, run_id: str, view: str, *, candidate_ids: set[str] | None = None, render_mode: str = "draft") -> dict[str, Any]:
+    def stage_view_evaluation(self, run_id: str, view: str, *, candidate_ids: set[str] | None = None, render_mode: str = "draft", evaluation_id: str = "") -> dict[str, Any]:
         from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service, update_view_evaluation
         from zet.services.local_image_evaluation_service import mode_field
         view = str(view or "").upper()
@@ -894,10 +900,15 @@ class LocalHeadImageService:
                       and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
         previous = (run.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
+        from zet.services.local_image_evaluation_service import is_evaluation_replay
+        if is_evaluation_replay(previous, evaluation_id, hashes):
+            if previous.get("status") == "RUNNING":
+                self.reconcile_review_jobs(run_id, render_mode=render_mode)
+            return previous
         if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
             self.reconcile_review_jobs(run_id, render_mode=render_mode)
             return previous
-        evaluation_id = uuid4().hex
+        evaluation_id = evaluation_id or uuid4().hex
         def rank():
             if self.detail(run_id).get("stop_requested"):
                 return
@@ -1467,11 +1478,13 @@ class LocalHeadImageService:
         return self.detail(run_id)
 
     def request_stop(self, run_id: str) -> dict[str, Any]:
-        root, state = self._state(run_id)
-        from zet.services.local_image_evaluation_service import supersede_evaluations
-        supersede_evaluations(state, set(state.get("evaluations") or {}), "The run was stopped.")
-        state.update(stop_requested=True, status="CANCELLED")
-        self._write(root / "state.json", state)
+        root = self._run_root(run_id)
+        with file_lock(root / "state.lock"):
+            root, state = self._state(run_id)
+            from zet.services.local_image_evaluation_service import supersede_evaluations
+            supersede_evaluations(state, set(state.get("evaluations") or {}), "The run was stopped.")
+            state.update(stop_requested=True, status="CANCELLED")
+            self._write(root / "state.json", state)
         self._withdraw_queued_asks(run_id)
         return self.detail(run_id)
 
@@ -1511,6 +1524,8 @@ class LocalHeadImageService:
     @serialize_local_run_state
     def delete_run(self, run_id: str) -> dict[str, Any]:
         root = self._run_root(run_id)
+        from zet.services.local_pipeline_operation_reservation import reject_reserved_deletion
+        reject_reserved_deletion(root)
         run = self.detail(run_id)
         if run.get("status") in {"RUNNING", "STOPPING", "REEVALUATING"} and not run.get("interrupted"):
             raise LocalHeadImageError("Stop the batch and wait before deleting it.")

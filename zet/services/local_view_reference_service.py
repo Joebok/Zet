@@ -111,6 +111,10 @@ def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
     reference_run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final") if render_mode else run
     selected_reference(reference_run, view, recipe)
     def update(state):
+        from zet.services.local_pipeline_operation_reservation import active_preparation
+        if active_preparation(state):
+            from zet.services.render_slot_service import RenderSlotConflict
+            raise RenderSlotConflict("Another operation is preparing this batch. Wait before changing references.")
         state.setdefault("view_reference_recipes", {})[view] = recipe
         if view == "BACK" and state.get("character_progression"):
             state["character_progression"]["back_reference"] = recipe["source_view"]

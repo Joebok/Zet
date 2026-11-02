@@ -14,7 +14,7 @@ window.ZetRenderSlots = {
     button.type = "button"; button.textContent = "Add renders";
     button.disabled = disabled || !emptyCount; button.title = reason || (emptyCount ? "Fill empty slots" : "All slots are occupied");
     button.addEventListener("click", () => {
-      if (input.reportValidity()) onGenerate(Number(input.value));
+      if (input.reportValidity()) onGenerate(Number(input.value), button);
     });
     group.append(label, button);
     if (reason) {

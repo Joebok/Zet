@@ -32,6 +32,175 @@
     runState: "absent", costumesState: "absent", runRequest: 0, reviewActionPending: false, bulkActionPending: false,
     costumeSettingsDrafts: {}, restartPending: false, renderMode: "draft" };
   const restoreParams = new URLSearchParams(window.location.search);
+  const pendingBatchSubmissions = new Set();
+  const pendingSlotSubmissions = new Set();
+  const pendingViewSubmissions = new Set();
+
+  function showOperationStatus() {
+    if (!state.run) return;
+    const rows = (window.ZetLocalOperations?.rows() || []).filter(row => row.request?.action === "run_available" && row.request?.universe_id === document.querySelector("#universe-select").value
+      && row.request?.pipeline === state.pipeline && row.request?.run_id === state.run.run_id);
+    rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    const row = rows.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "RECOVERY_REQUIRED", "UNKNOWN"].includes(item.status)) || rows[0];
+    if (!row) return;
+    const button = $("proceed");
+    let message = button.parentElement.querySelector('[data-submission-status="proceed"]');
+    if (!message) {
+      message = document.createElement("span"); message.className = "action-message";
+      message.dataset.submissionStatus = "proceed"; message.setAttribute("role", "status");
+      button.insertAdjacentElement("afterend", message);
+    }
+    const error = row.error || row.result?.error;
+    const reasons = {...(row.result?.blocked_views || {}), ...(row.result?.errors || {})};
+    message.textContent = `${row.stage || row.status}${error ? `: ${error}` : ""}${Object.keys(reasons).length ? ` — ${Object.entries(reasons).map(([view, reason]) => `${view}: ${reason}`).join(" · ")}` : ""}`;
+    message.classList.toggle("error", ["BLOCKED", "FAILED", "RECOVERY_REQUIRED", "PARTIAL", "UNKNOWN"].includes(row.status));
+  }
+  function showBatchLifecycleStatus() {
+    if (!state.run) return;
+    const rows = (window.ZetLocalOperations?.rows() || []).filter(row => ["start", "resume"].includes(row.request?.action)
+      && row.request?.universe_id === document.querySelector("#universe-select").value && row.request?.pipeline === state.pipeline
+      && row.request?.run_id === state.run.run_id);
+    rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    const row = rows.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(item.status)) || rows[0];
+    if (!row) return;
+    const button = $("start");
+    let message = button.parentElement.querySelector('[data-submission-status="batch-lifecycle"]');
+    if (!message) {
+      message = document.createElement("span"); message.className = "action-message";
+      message.dataset.submissionStatus = "batch-lifecycle"; message.setAttribute("role", "status");
+      button.insertAdjacentElement("afterend", message);
+    }
+    message.textContent = `${row.stage || row.status}${row.error || row.result?.error ? `: ${row.error || row.result.error}` : ""}`;
+    message.classList.toggle("error", ["BLOCKED", "FAILED", "RECOVERY_REQUIRED", "PARTIAL", "UNKNOWN"].includes(row.status));
+  }
+  function showBatchEvaluationStatus() {
+    if (!state.run) return;
+    const rows = (window.ZetLocalOperations?.rows() || []).filter(row => row.request?.action === "reevaluate" && !row.request?.view
+      && row.request?.universe_id === document.querySelector("#universe-select").value && row.request?.pipeline === state.pipeline
+      && row.request?.run_id === state.run.run_id && row.request?.render_mode === state.renderMode);
+    rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    const row = rows.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(item.status)) || rows[0];
+    if (!row) return;
+    const button = $("reevaluate");
+    let message = button.parentElement.querySelector('[data-submission-status="reevaluate"]');
+    if (!message) {
+      message = document.createElement("span"); message.className = "action-message";
+      message.dataset.submissionStatus = "reevaluate"; message.setAttribute("role", "status");
+      button.insertAdjacentElement("afterend", message);
+    }
+    message.textContent = `${row.stage || row.status}${row.error || row.result?.error ? `: ${row.error || row.result.error}` : ""}`;
+    message.classList.toggle("error", ["BLOCKED", "FAILED", "RECOVERY_REQUIRED", "PARTIAL", "UNKNOWN"].includes(row.status));
+  }
+  function showSlotOperationStatus() {
+    if (!state.run) return;
+    const rows = (window.ZetLocalOperations?.rows() || []).filter(row => ["generate_slots", "regenerate_slot", "retry_render_slot"].includes(row.request?.action)
+      && row.request?.universe_id === document.querySelector("#universe-select").value && row.request?.pipeline === state.pipeline
+      && row.request?.run_id === state.run.run_id && row.request?.render_mode === state.renderMode);
+    rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    for (const button of document.querySelectorAll("[data-local-slot-view]")) {
+      const matching = rows.filter(item => item.request.view === button.dataset.localSlotView
+        && String(item.request.slot || "add") === button.dataset.localSlotNumber);
+      const row = matching.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(item.status)) || matching[0];
+      const inProgress = row && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(row.status);
+      button.disabled = button.dataset.localSlotDisabled === "true" || Boolean(inProgress);
+      if (!row) continue;
+      let message = button.nextElementSibling;
+      if (!message?.dataset.slotSubmissionStatus) {
+        message = document.createElement("span"); message.className = "action-message";
+        message.dataset.slotSubmissionStatus = "true"; message.setAttribute("role", "status");
+        button.insertAdjacentElement("afterend", message);
+      }
+      message.textContent = `${row.stage || row.status}${row.error || row.result?.error ? `: ${row.error || row.result.error}` : ""}`;
+      message.classList.toggle("error", ["BLOCKED", "FAILED", "RECOVERY_REQUIRED", "PARTIAL", "UNKNOWN"].includes(row.status));
+    }
+  }
+  function showViewOperationStatus() {
+    if (!state.run) return;
+    const rows = (window.ZetLocalOperations?.rows() || []).filter(row => ["rerun_view", "rerun_failed", "reevaluate"].includes(row.request?.action) && row.request?.view
+      && row.request?.universe_id === document.querySelector("#universe-select").value && row.request?.pipeline === state.pipeline
+      && row.request?.run_id === state.run.run_id && row.request?.render_mode === state.renderMode);
+    rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    for (const button of document.querySelectorAll("[data-local-view-operation]")) {
+      const action = {"rerun-view": "rerun_view", "rerun-failed": "rerun_failed", "reevaluate-view": "reevaluate"}[button.dataset.localViewOperation];
+      const matching = rows.filter(item => item.request.view === button.dataset.view && item.request.action === action);
+      const row = matching.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(item.status)) || matching[0];
+      const inProgress = row && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(row.status);
+      button.disabled = button.dataset.localViewDisabled === "true" || Boolean(inProgress);
+      if (!row) continue;
+      let message = button.nextElementSibling;
+      if (!message?.dataset.viewSubmissionStatus) {
+        message = document.createElement("span"); message.className = "action-message";
+        message.dataset.viewSubmissionStatus = "true"; message.setAttribute("role", "status");
+        button.insertAdjacentElement("afterend", message);
+      }
+      const reasons = {...(row.result?.blocked_views || {}), ...(row.result?.errors || {})};
+      message.textContent = `${row.stage || row.status}${row.error || row.result?.error ? `: ${row.error || row.result.error}` : ""}${Object.keys(reasons).length ? ` — ${Object.entries(reasons).map(([item, reason]) => `${item}: ${reason}`).join(" · ")}` : ""}`;
+      message.classList.toggle("error", ["BLOCKED", "FAILED", "RECOVERY_REQUIRED", "PARTIAL", "UNKNOWN"].includes(row.status));
+    }
+  }
+  window.addEventListener("zet-local-operations", () => { if (state.run) { setBusyControls(); showOperationStatus(); showBatchLifecycleStatus(); showBatchEvaluationStatus(); showSlotOperationStatus(); showViewOperationStatus(); } });
+
+  async function submitViewAction(button, action, view, candidateId, body) {
+    const key = `${contextKey()}\u0000${state.pipeline}\u0000${state.run?.run_id}\u0000${state.renderMode}\u0000${view}`;
+    if (pendingViewSubmissions.has(key)) return;
+    pendingViewSubmissions.add(key); button.disabled = true; button.setAttribute("aria-busy", "true");
+    let message = button.nextElementSibling;
+    if (!message?.dataset.viewSubmissionStatus) {
+      message = document.createElement("span"); message.className = "action-message";
+      message.dataset.viewSubmissionStatus = "true"; message.setAttribute("role", "status");
+      button.insertAdjacentElement("afterend", message);
+    }
+    message.classList.remove("error"); message.textContent = "Submitting…";
+    try {
+      const result = await perform(action, view, candidateId, body);
+      message.textContent = ["QUEUED", "PREPARING", "WAITING"].includes(result?.status) ? "Action queued — you can continue elsewhere." : result?.stage || "Request processed.";
+    } catch (error) {
+      message.textContent = `Could not confirm the request: ${error.message}. Check Activity before retrying.`;
+      message.classList.add("error");
+    } finally {
+      pendingViewSubmissions.delete(key); button.removeAttribute("aria-busy");
+      button.disabled = button.dataset.localViewDisabled === "true"; showViewOperationStatus();
+    }
+  }
+
+  async function submitBatchAction(button, action) {
+    const key = `${contextKey()}\u0000${state.pipeline}\u0000${state.run?.run_id || ""}\u0000${action}`;
+    if (pendingBatchSubmissions.has(key)) return;
+    const generation = state.generation;
+    const runId = state.run?.run_id;
+    const context = contextKey();
+    pendingBatchSubmissions.add(key);
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    let message = button.parentElement.querySelector(`[data-submission-status="${action}"]`);
+    if (!message) {
+      message = document.createElement("span");
+      message.className = "action-message";
+      message.dataset.submissionStatus = action;
+      message.setAttribute("role", "status");
+      button.insertAdjacentElement("afterend", message);
+    }
+    message.classList.remove("error");
+    message.textContent = "Submitting…";
+    try {
+      const result = await perform(action);
+      if (generation === state.generation && runId === state.run?.run_id && context === contextKey()) {
+        message.textContent = ["QUEUED", "PREPARING", "WAITING"].includes(result?.status)
+          ? "Action queued — you can continue elsewhere." : result?.stage || "Request processed. See batch status.";
+      }
+    } catch (error) {
+      if (generation === state.generation && runId === state.run?.run_id && context === contextKey()) {
+        message.textContent = `Could not confirm the request: ${error.message}. Refresh the batch before retrying.`;
+        message.classList.add("error");
+      }
+    } finally {
+      pendingBatchSubmissions.delete(key);
+      if (generation === state.generation && runId === state.run?.run_id && context === contextKey()) {
+        button.removeAttribute("aria-busy");
+        setBusyControls();
+      }
+    }
+  }
 
   function contextKey() {
     return `${document.querySelector("#universe-select").value}\u0000${document.querySelector("#character-select").value}\u0000${document.querySelector("#phase-select").value}\u0000${selectedCostume()}`;
@@ -329,7 +498,10 @@
 
   function setBusyControls() {
     const run = state.run;
-    const isBusy = !run?.slot_paused && (busy(run) || Boolean(run?.slot_render_ids?.length));
+    const operationBusy = (window.ZetLocalOperations?.rows() || []).some(row =>
+      ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(row.status) && row.request?.universe_id === document.querySelector("#universe-select").value
+      && row.request?.pipeline === state.pipeline && row.request?.run_id === run?.run_id);
+    const isBusy = operationBusy || (!run?.slot_paused && (busy(run) || Boolean(run?.slot_render_ids?.length)));
     const resumable = ["INTERRUPTED", "STOPPED"].includes(run?.status)
       || (run?.status === "CANCELLED" && run?.created_by_autogenerate) || Boolean(run?.slot_paused);
     $("start").hidden = !run;
@@ -340,7 +512,7 @@
     $("stop").textContent = run?.slot_render_ids?.length ? "Pause batch" : "Stop batch";
     $("rerun").disabled = !run || isBusy || state.restartPending;
     const reevaluateReason = run?.reevaluation_reasons_by_mode?.[state.renderMode]?.batch ?? "Re-evaluation availability is loading.";
-    $("reevaluate").disabled = Boolean(reevaluateReason);
+    $("reevaluate").disabled = operationBusy || Boolean(reevaluateReason);
     $("reevaluate").title = reevaluateReason;
     $("delete").disabled = !run || isBusy;
     $("rename").hidden = !run;
@@ -462,6 +634,9 @@
     if (["delete", "clear"].includes(action)) button.classList.add("danger-text-action");
     if (action === "delete-drafts") button.classList.add("danger-action");
     button.dataset.localAction = action;
+    if (["rerun-view", "rerun-failed", "reevaluate-view"].includes(action)) {
+      button.dataset.localViewOperation = action; button.dataset.localViewDisabled = String(disabled);
+    }
     button.dataset.view = view;
     button.dataset.candidate = candidate;
     button.disabled = disabled;
@@ -666,20 +841,67 @@
     if (operation === "clear") button.className = "danger-text-action";
     if (operation === "generate") button.className = "primary-action";
     button.disabled = disabled; button.title = reason || "";
-    button.addEventListener("click", () => void slotAction(operation, view, slot).catch(error => setStatus(error.message, true)));
+    button.dataset.localSlotView = view; button.dataset.localSlotNumber = String(slot || "add");
+    button.dataset.localSlotDisabled = String(disabled);
+    button.addEventListener("click", () => void slotAction(operation, view, slot, 1, button));
     host.append(button);
   }
 
-  async function slotAction(operation, view, slot, count = 1) {
+  async function slotAction(operation, view, slot, count = 1, button = null) {
     const generation = state.generation, runId = state.run.run_id, key = contextKey();
     const suffix = isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : "";
     const path = `${baseUrl()}/runs/${encodeURIComponent(runId)}/views/${encodeURIComponent(view)}/slots${slot ? `/${slot}/${operation}` : ""}${suffix}`;
     if (operation !== "clear" && operation !== "retry" && !$("aspect-ratio").reportValidity()) return;
+    const submissionKey = `${key}\u0000${state.pipeline}\u0000${runId}\u0000${state.renderMode}\u0000${view}\u0000${slot || "add"}`;
+    if (pendingSlotSubmissions.has(submissionKey)) return;
+    pendingSlotSubmissions.add(submissionKey);
+    let message;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      if (button.nextElementSibling?.dataset.slotSubmissionStatus) button.nextElementSibling.remove();
+      message = document.createElement("span");
+      message.className = "action-message";
+      message.dataset.slotSubmissionStatus = "true";
+      message.setAttribute("role", "status");
+      message.textContent = "Submitting…";
+      button.insertAdjacentElement("afterend", message);
+    }
     const selectedSlots = modeRun(state.run).slots_by_view;
-    await request(path, {method: "POST", body: JSON.stringify({... (slot ? {expected_candidate_id: selectedSlots?.[view]?.[slot - 1] || null} : {count}), render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value})});
-    if (generation !== state.generation || state.run?.run_id !== runId || contextKey() !== key) return;
-    await loadRun(runId, generation);
-    setStatus(operation === "clear" ? "Slot cleared." : "Renders queued.");
+    let accepted = false;
+    try {
+      if (operation !== "clear" && window.ZetLocalOperations) {
+        const expected = state.run?.operation_contexts?.[state.renderMode]?.views?.[view];
+        if (!expected) throw new Error("Batch inputs are still loading. Refresh before submitting.");
+        const actions = {generate: "generate_slots", regenerate: "regenerate_slot", retry: "retry_render_slot"};
+        const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
+          pipeline: state.pipeline, run_id: runId, character: state.run.character || "", phase: state.run.phase || "",
+          batch_name: state.run.batch_name || "", costume: isCostume() ? selectedCostume() : "", action: actions[operation],
+          render_mode: state.renderMode, view, ...(slot ? {slot, expected_candidate_id: selectedSlots?.[view]?.[slot - 1] || ""} : {count}),
+          aspect_ratio: $("aspect-ratio").value, expected_context: expected});
+        accepted = true;
+        if (generation === state.generation && state.run?.run_id === runId && contextKey() === key) {
+          if (message) message.textContent = ["QUEUED", "PREPARING", "WAITING"].includes(result.status) ? "Action queued — you can continue elsewhere." : result.stage;
+          setStatus("Action queued — you can continue elsewhere.");
+        }
+        return;
+      }
+      await request(path, {method: "POST", body: JSON.stringify({... (slot ? {expected_candidate_id: selectedSlots?.[view]?.[slot - 1] || null} : {count}), render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value})});
+      accepted = true;
+      if (generation !== state.generation || state.run?.run_id !== runId || contextKey() !== key) return;
+      if (message) message.textContent = operation === "clear" ? "Slot cleared." : "Renders queued.";
+      await loadRun(runId, generation);
+      setStatus(operation === "clear" ? "Slot cleared." : "Renders queued.");
+    } catch (error) {
+      if (generation === state.generation && state.run?.run_id === runId && contextKey() === key) {
+        const text = accepted ? `Request accepted; refresh failed: ${error.message}` : `Could not confirm request: ${error.message}. Refresh before retrying.`;
+        if (message) { message.textContent = text; message.classList.add("error"); }
+        setStatus(text, true);
+      }
+    } finally {
+      pendingSlotSubmissions.delete(submissionKey);
+      if (button) { button.removeAttribute("aria-busy"); button.disabled = button.dataset.localSlotDisabled === "true"; showSlotOperationStatus(); }
+    }
   }
 
   function mergeLiveRun(latest) {
@@ -1190,7 +1412,9 @@
         });
       }
       const control = run.slot_controls?.[view] || {};
-      const countControl = window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason});
+      const countControl = window.ZetRenderSlots.countControl(control.empty_count || 0, (count, button) => void slotAction("generate", view, null, count, button), {disabled: !control.can_generate, reason: control.legacy ? "Legacy gallery: clear surplus candidates before adding renders." : control.reason});
+      const countButton = countControl.querySelector("button");
+      countButton.dataset.localSlotView = view; countButton.dataset.localSlotNumber = "add"; countButton.dataset.localSlotDisabled = String(countButton.disabled);
       const tools = document.createElement("details");
       tools.className = "local-pipeline-render-tools";
       tools.dataset.view = view;
@@ -1295,7 +1519,11 @@
     renderLineageWarnings(run);
     if (!run) {
       $("lineage-warning").hidden = true;
-      $("summary").textContent = "No batch selected. Check requirements and create a new batch.";
+      $("summary").textContent = state.runState === "unavailable" || state.runsState === "unavailable"
+        ? "Unable to load this batch. Use Refresh to try again."
+        : state.runState === "loading" || state.runsState === "loading"
+        ? "Loading batch…"
+        : "No batch selected. Check requirements and create a new batch.";
       $("rename").hidden = true;
       $("selected").replaceChildren();
       $("batch-bulk-actions").replaceChildren();
@@ -1357,6 +1585,10 @@
       const loaded = await request(route("detail", runId));
       if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
       const sameRun = state.run?.run_id === loaded.run_id;
+      if (!sameRun) {
+        document.querySelectorAll('[data-submission-status]').forEach((message) => { message.textContent = ""; });
+        $("proceed").removeAttribute("aria-busy");
+      }
       if (sameRun) mergeLiveRun(loaded); else { state.run = loaded; state.costumeSettingsDrafts = {}; setStatus(""); }
       syncRunOption(loaded);
       state.runState = "selected";
@@ -1372,6 +1604,7 @@
     } catch (error) {
       if (requestId !== state.runRequest || generation !== state.generation) return;
       state.runState = "unavailable";
+      if (!state.run) render();
       throw error;
     }
   }
@@ -1454,6 +1687,8 @@
 
   async function refreshContext() {
     state.generation += 1;
+    document.querySelectorAll('[data-submission-status]').forEach((message) => { message.textContent = ""; });
+    $("proceed").removeAttribute("aria-busy");
     state.runRequest += 1;
     state.runsState = "loading";
     state.runState = "loading";
@@ -1473,12 +1708,18 @@
     $("source-preview").textContent = "No FRONT reference selected.";
     $("source-file").value = "";
     $("source-remove").hidden = true;
+    render();
     try {
       await loadCostumes();
       if (generation !== state.generation) return;
       state.contextKey = contextKey();
       await Promise.all([refreshRuns("", generation), readiness()]);
-    } catch (error) { setStatus(error.message, true); }
+    } catch (error) {
+      if (generation !== state.generation) return;
+      state.runState = "unavailable";
+      render();
+      setStatus(error.message, true);
+    }
   }
 
   async function loadCostumes() {
@@ -1599,6 +1840,61 @@
     const requestId = ++state.runRequest;
     const method = action === "rename"
       ? "PUT" : action === "delete" ? "DELETE" : "POST";
+    if (["start", "resume"].includes(action) && window.ZetLocalOperations) {
+      const expected = state.run?.operation_contexts?.[state.renderMode]?.batch;
+      if (!expected) throw new Error("Batch inputs are still loading. Refresh before submitting.");
+      const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
+        pipeline, run_id: runId, character: state.run.character || "", phase: state.run.phase || "",
+        batch_name: state.run.batch_name || "", costume: isCostume() ? selectedCostume() : "",
+        action, render_mode: state.renderMode, expected_context: expected});
+      if (generation === state.generation && context === contextKey() && state.run?.run_id === runId) setStatus("Action queued — you can continue elsewhere.");
+      return result;
+    }
+    if (action === "run-available" && window.ZetLocalOperations) {
+      const expected = body.scope === "front" ? state.run?.operation_contexts?.[state.renderMode]?.views?.FRONT : state.run?.operation_contexts?.[state.renderMode]?.batch;
+      if (!expected) throw new Error("Batch inputs are still loading. Refresh before submitting.");
+      const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
+        pipeline, run_id: runId, character: state.run.character || "", phase: state.run.phase || "",
+        batch_name: state.run.batch_name || "", costume: isCostume() ? selectedCostume() : "",
+        action: "run_available", render_mode: state.renderMode, aspect_ratio: body.aspect_ratio,
+        scope: body.scope, expected_context: expected});
+      if (generation === state.generation && context === contextKey() && state.run?.run_id === runId) setStatus("Action queued — you can continue elsewhere.");
+      return result;
+    }
+    if (["rerun-view", "rerun-failed"].includes(action) && window.ZetLocalOperations) {
+      const expected = state.run?.operation_contexts?.[state.renderMode]?.views?.[view];
+      if (!expected) throw new Error("Batch inputs are still loading. Refresh before submitting.");
+      const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
+        pipeline, run_id: runId, character: state.run.character || "", phase: state.run.phase || "",
+        batch_name: state.run.batch_name || "", costume: isCostume() ? selectedCostume() : "",
+        action: action === "rerun-view" ? "rerun_view" : "rerun_failed", render_mode: state.renderMode,
+        view, aspect_ratio: $("aspect-ratio").value, recompile: Boolean(body?.recompile), expected_context: expected});
+      if (generation === state.generation && context === contextKey() && state.run?.run_id === runId) setStatus("Action queued — you can continue elsewhere.");
+      return result;
+    }
+    if (["reevaluate", "reevaluate-view"].includes(action) && window.ZetLocalOperations) {
+      const contexts = state.run?.operation_contexts?.[state.renderMode]?.evaluation;
+      const expected = view ? contexts?.views?.[view] : contexts?.batch;
+      if (!expected) throw new Error("Evaluation inputs are still loading. Refresh before submitting.");
+      const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
+        pipeline, run_id: runId, character: state.run.character || "", phase: state.run.phase || "",
+        batch_name: state.run.batch_name || "", costume: isCostume() ? selectedCostume() : "",
+        action: "reevaluate", render_mode: state.renderMode, ...(view ? {view} : {}), expected_context: expected});
+      if (generation === state.generation && context === contextKey() && state.run?.run_id === runId) setStatus("Action queued — you can continue elsewhere.");
+      return result;
+    }
+    if (action === "retry" && window.ZetLocalOperations) {
+      const candidate = (state.run?.candidates || []).find(item => item.candidate_id === candidateId);
+      const expected = state.run?.operation_contexts?.[state.renderMode]?.candidate_retry?.[candidateId];
+      if (!candidate || candidate.view !== view || !expected) throw new Error("Candidate inputs changed. Refresh before submitting.");
+      const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
+        pipeline, run_id: runId, character: state.run.character || "", phase: state.run.phase || "",
+        batch_name: state.run.batch_name || "", costume: isCostume() ? selectedCostume() : "",
+        action: "retry_candidate", render_mode: state.renderMode, view, candidate_id: candidateId,
+        expected_context: expected});
+      if (generation === state.generation && context === contextKey() && state.run?.run_id === runId) setStatus("Action queued — you can continue elsewhere.");
+      return result;
+    }
     let path;
     if (action === "reevaluate-view") path = `${baseUrl()}/runs/${encodeURIComponent(state.run.run_id)}/reevaluate${query({ view, render_mode: state.renderMode })}`;
     else path = route(action, state.run?.run_id, view, candidateId);
@@ -1945,7 +2241,10 @@
       addSlotButton(moreActions, "Clear slot", "clear", candidate.view, slot, Boolean(candidate.slot_reason), candidate.slot_reason);
     }
     const control = run.slot_controls?.[candidate.view] || {};
-    moreActions.append(window.ZetRenderSlots.countControl(control.empty_count || 0, count => void slotAction("generate", candidate.view, null, count).catch(error => setStatus(error.message, true)), {disabled: !control.can_generate, reason: control.reason}));
+    const reviewCount = window.ZetRenderSlots.countControl(control.empty_count || 0, (count, button) => void slotAction("generate", candidate.view, null, count, button), {disabled: !control.can_generate, reason: control.reason});
+    const reviewCountButton = reviewCount.querySelector("button");
+    reviewCountButton.dataset.localSlotView = candidate.view; reviewCountButton.dataset.localSlotNumber = "add"; reviewCountButton.dataset.localSlotDisabled = String(reviewCountButton.disabled);
+    moreActions.append(reviewCount);
     if (!select.disabled) actions.append(select);
     if (candidate.image_path && adjustedPosition >= 0) {
       const up = document.createElement("button");
@@ -2157,7 +2456,7 @@
       if (action === "rerun-view") {
         if (!$("aspect-ratio").reportValidity()) return;
         if (!(await confirmAction(`Regenerate ${view}?`, regenDescription(state.run, view, recompile), "Regenerate", {tone: "primary"}))) return;
-        await perform(action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
+        await submitViewAction(button, action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
         return;
       }
       const runId = state.run.run_id, mode = state.renderMode, generation = state.generation, context = contextKey(), pipeline = state.pipeline;
@@ -2187,6 +2486,10 @@
       const labels = { delete: "Delete batch", unselect: "Unselect", unlock: "Unlock" };
       if (!(await confirmAction(titles[action] || "Confirm action", prompts[action], labels[action] || "Confirm"))) return;
     }
+    if (action === "rerun-failed" || action === "reevaluate-view" || action === "retry") {
+      await submitViewAction(button, action, view, candidateId, {render_mode: state.renderMode});
+      return;
+    }
     if (action === "rank-up" || action === "rank-down") {
       const ordered = modeRun(state.run).rankings?.[view]?.ordered_candidate_ids || [];
       const position = ordered.indexOf(candidateId);
@@ -2208,7 +2511,6 @@
     });
     $("render-quality").addEventListener("change", () => {
       setStatus("");
-      state.runRequest++;
       state.renderMode = $("render-quality").value;
       state.renderedSelections = {};
       for (const run of state.runs) syncRunOption(run);
@@ -2274,9 +2576,9 @@
       || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) || state.run?.slot_paused ? "resume" : "start").catch((error) => setStatus(error.message, true)));
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));
     $("rerun").addEventListener("click", () => void handleAction({ dataset: { localAction: "rerun" } }).catch((error) => setStatus(error.message, true)));
-    $("reevaluate").addEventListener("click", () => void perform("reevaluate").catch((error) => setStatus(error.message, true)));
+    $("reevaluate").addEventListener("click", (event) => void submitBatchAction(event.currentTarget, "reevaluate"));
     $("delete").addEventListener("click", () => void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)));
-    $("proceed").addEventListener("click", () => void perform("proceed").catch((error) => setStatus(error.message, true)));
+    $("proceed").addEventListener("click", (event) => void submitBatchAction(event.currentTarget, "proceed"));
     $("source-file").addEventListener("change", () => void uploadHeadSource($("source-file").files?.[0]));
     $("apply-phase-change").addEventListener("change", () => {
       updateSourceControls();
@@ -2385,7 +2687,7 @@
     const pipeline = pagePipelines[page];
     if (!pipeline) return;
     if (pipeline === state.pipeline) {
-      if (contextKey() !== state.contextKey) await refreshContext();
+      if (contextKey() !== state.contextKey || (!state.poll && !state.run)) await refreshContext();
       if (!state.poll) startPolling();
       return;
     }

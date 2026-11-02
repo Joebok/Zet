@@ -6066,3 +6066,7 @@ button:enabled:active, .button-link:active { filter: brightness(.92); }
 #local-overview-page .error { color: var(--danger); }
 #local-overview-page .navigation-action { display: inline-flex; align-items: center; }
 #local-overview-page .button-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.local-operations-panel { width: min(32rem, 90vw); padding: 12px; overflow-wrap: anywhere; }
+.local-operation-item { padding: 8px 0; border-top: 1px solid var(--border); }
+.local-operation-item strong { display: block; }

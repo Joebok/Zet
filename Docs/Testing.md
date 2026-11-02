@@ -1,5 +1,45 @@
 # Local testing
 
+## Character pipeline operations (2026-11-01)
+
+Disposable isolated checks exercised real Draft and Final FRONT compilers for all
+five pipelines, Body and Head-Image Edit multi-view preparation, handoff replay,
+Stop during held preparation, and a worker-process interruption after one commit.
+Collectors were mocked; no live model or renderer was called. Held-preparation
+in-process HTTP checks measured duplicate admission p95 4.6 ms and status p95
+2.2 ms over 30 requests. Chromium checks covered immediate submission feedback,
+page deactivation, Activity and lost-response reconciliation. These are not new
+maintained scenarios and do not establish production deployment or live rendering.
+The approved E2E baseline and remaining gaps are recorded in the
+[completed plan](../plans/completed/character-pipeline-operations.md).
+
+Additional disposable checks exercised slot generation, replacement and frozen-input
+retry with all five real compilers, plus protected-slot partial view regeneration
+and failed-only retry for Assembly. Browser checks covered queued slot and view
+actions; a subprocess interruption during multi-slot preparation resumed saved IDs
+and seeds. The collector was mocked in these checks.
+
+Start/Resume disposable checks covered paused Resume and replay in real fixtures
+for all five pipelines, Body-Reference cancellation-marker consumption and later
+Stop, cross-process interruption before mocked wakeup, and Stop during held
+Assembly detail loading. An isolated HTTP Resume and Chromium submitting-state
+check passed. These do not establish live rendering or production restart.
+
+Candidate-review retry disposable checks covered all five pipeline identities with
+fake workflows, artifact detach and commit, cancellation and failed-validation
+restoration, and cross-process replay after interruption. A prepared Chromium
+check covered submission fields and immediate feedback on all five pages. The
+All five pipeline real fixture checks passed candidate reset and scoped handoff
+after staging an isolated failed candidate. Head-Image Edit used test-only
+authoring sections; Costume-Dressing used test-only locked prerequisites.
+The first Assembly fixture had an unopened FRONT stage; after opening the stage,
+it exposed an operation-owned image projection change, which was masked only
+after capturing the raw candidate and spec guards. The runner was mocked;
+live rendering and deployment remain unverified.
+Additional isolated checks passed a changed Body proxy outcome before reservation,
+Stop restoration of a recovery-required uncommitted retry, and cross-process
+replay with the raw-state guard after a detach interruption.
+
 ## Command-line release update (2026-11-01)
 
 Disposable temporary-state checks passed terminal initiation, ready/boot/config/

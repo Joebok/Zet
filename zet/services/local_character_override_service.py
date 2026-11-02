@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from PIL import Image
 
+from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json
 from zet.services.local_image_pipeline_policy import mutate_local_run_state
 from zet.services.render_slot_service import RenderSlotConflict, slot_maps
 from zet.services.workflow_storage import file_lock, runner_lock_active, validate_image
@@ -34,6 +35,10 @@ class LocalCharacterOverrideService:
         view = view.upper()
         with file_lock(root / "state.lock"):
             run = load()
+            from zet.services.local_pipeline_operation_reservation import active_preparation
+            state = read_library_json(root / "state.json", pipeline_library_root_for_path(root))
+            if active_preparation(state):
+                raise RenderSlotConflict("Another operation is preparing this batch. Wait before importing an override.")
             if view not in run["views"]:
                 raise ValueError("Unknown character view.")
             if (runner_lock_active(root) or run.get("slot_work_pending") or run.get("slot_render_ids")

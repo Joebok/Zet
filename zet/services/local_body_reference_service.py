@@ -20,6 +20,7 @@ from PIL import Image
 from Scripts.Run_Body_Reference_Jobs import compile_body_reference_job
 
 from zet.services.local_candidate_review_contract import adjust_candidate_ranking, normalize_human_decision
+from zet.services.local_pipeline_cancel_marker import cancellation_marker_applies
 from zet.services.local_image_ranking_service import rank_images_with_luna, supplied_ranking_references
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.local_asset_store_service import LocalAssetStoreService
@@ -530,6 +531,7 @@ class LocalBodyReferenceService:
         value["review_version"] = int(value.get("review_version") or 1)
         value["interrupted"] = interrupted
         value["stop_requested"] = bool(state.get("stop_requested", False))
+        value["slot_paused"] = bool(state.get("slot_paused", False))
         value["review_only"] = bool(state.get("review_only", False))
         value["post_review_status"] = state.get("post_review_status") or ""
         value["error"] = state.get("error") or ("The Local Body-Reference runner stopped before this batch finished." if interrupted else "")
@@ -1094,6 +1096,8 @@ class LocalBodyReferenceService:
         if (root.parent.parent.parent != runs_root or root.name != run_id
                 or not root.is_relative_to(runs_root)):
             raise LocalBodyReferenceError("Invalid Local Body-Reference batch location.")
+        from zet.services.local_pipeline_operation_reservation import reject_reserved_deletion
+        reject_reserved_deletion(root)
         run = self.detail(run_id)
         candidates = {item["candidate_id"]: item for item in run.get("candidates", [])}
         active_selections = {
@@ -1126,7 +1130,7 @@ class LocalBodyReferenceService:
 
     def _save_state(self, run_id: str, state: dict[str, Any]) -> None:
         root = self._root(run_id)
-        if (root / "cancelled.json").is_file():
+        if cancellation_marker_applies(root, state):
             state.update(status="CANCELLED", stop_requested=True, error="Cancelled by user.")
         self._write(root / "state.json", state)
 
@@ -1465,7 +1469,7 @@ class LocalBodyReferenceService:
         def apply(state: dict[str, Any]) -> None:
             state.setdefault("candidates", {}).setdefault(candidate_id, {}).update(update)
             state["updated_at"] = self._now()
-            if (root / "cancelled.json").is_file():
+            if cancellation_marker_applies(root, state):
                 state.update(status="CANCELLED", stop_requested=True, error="Cancelled by user.")
         mutate_local_run_state(root, apply)
 
@@ -1477,7 +1481,7 @@ class LocalBodyReferenceService:
                 changes.pop("status", None)
                 changes.pop("error", None)
             state.update(changes, updated_at=self._now())
-            if (root / "cancelled.json").is_file():
+            if cancellation_marker_applies(root, state):
                 state.update(status="CANCELLED", stop_requested=True, error="Cancelled by user.")
         mutate_local_run_state(root, apply)
 
@@ -1633,7 +1637,7 @@ class LocalBodyReferenceService:
             time.sleep(1)
         self.execute_run(run_id)
 
-    def stage_view_evaluation(self, run_id: str, view: str, *, candidate_ids: set[str] | None = None, render_mode: str = "draft") -> dict[str, Any]:
+    def stage_view_evaluation(self, run_id: str, view: str, *, candidate_ids: set[str] | None = None, render_mode: str = "draft", evaluation_id: str = "") -> dict[str, Any]:
         from zet.services.local_image_evaluation_service import finish_evaluation, local_image_evaluation_service, update_view_evaluation
         from zet.services.local_image_evaluation_service import mode_field
         view = str(view or "").upper()
@@ -1644,10 +1648,15 @@ class LocalBodyReferenceService:
                       and Path(str(item.get("image_path") or "")).is_file()]
         hashes = {item["candidate_id"]: str(item.get("image_sha256") or "") for item in candidates}
         previous = (run.get(mode_field("evaluations", render_mode)) or {}).get(view) or {}
+        from zet.services.local_image_evaluation_service import is_evaluation_replay
+        if is_evaluation_replay(previous, evaluation_id, hashes):
+            if previous.get("status") == "RUNNING":
+                self.reconcile_review_jobs(run_id, render_mode=render_mode)
+            return previous
         if previous.get("status") == "RUNNING" and previous.get("input_hashes") == hashes:
             self.reconcile_review_jobs(run_id, render_mode=render_mode)
             return previous
-        evaluation_id = uuid4().hex
+        evaluation_id = evaluation_id or uuid4().hex
         def rank():
             if self.detail(run_id).get("stop_requested"):
                 return
@@ -2210,21 +2219,40 @@ class LocalBodyReferenceService:
         with self._active_runs_lock:
             self._active_runs.add(self._active_key(run_id))
         try:
-            initial_state = self._read_json((self._root(run_id) / "state.json"))
-            if initial_state.get("status") == "CANCELLED" or initial_state.get("stop_requested"):
+            root = self._root(run_id)
+            with file_lock(root / "state.lock"):
+                initial_state = self._read_json(root / "state.json")
+                from zet.services.local_pipeline_operation_reservation import active_preparation
+                if active_preparation(initial_state):
+                    return
+                stopped = (initial_state.get("status") == "CANCELLED" or initial_state.get("stop_requested")
+                           or initial_state.get("slot_paused"))
+                if not stopped:
+                    review_only = bool(initial_state.get("review_only"))
+                    target_views = list(initial_state.get("target_views") or [])
+                    saved_candidate_ids = set(initial_state.get("target_candidate_ids") or [])
+                    target_candidate_ids = saved_candidate_ids | candidate_ids if candidate_ids is not None else (
+                        saved_candidate_ids or None
+                    )
+                    if not review_only:
+                        self._run_update(run_id, status="PREFLIGHT", error="", slot_work_pending=False)
+            if stopped:
                 self._withdraw_queued_asks(run_id)
-                self._run_update(run_id, status="CANCELLED", stop_requested=True)
                 return
-            review_only = bool(initial_state.get("review_only"))
-            target_views = list(initial_state.get("target_views") or [])
-            saved_candidate_ids = set(initial_state.get("target_candidate_ids") or [])
-            target_candidate_ids = saved_candidate_ids | candidate_ids if candidate_ids is not None else (
-                saved_candidate_ids or None
-            )
             if not review_only:
-                self._run_update(run_id, status="PREFLIGHT", error="", slot_work_pending=False)
-                self._preflight()
-            self._run_update(run_id, status="REEVALUATING" if review_only else "RUNNING")
+                try:
+                    self._preflight()
+                except Exception:
+                    with file_lock(root / "state.lock"):
+                        current_state = self._read_json(root / "state.json")
+                        if current_state.get("status") == "CANCELLED" or current_state.get("stop_requested") or current_state.get("slot_paused"):
+                            return
+                    raise
+            with file_lock(root / "state.lock"):
+                current_state = self._read_json(root / "state.json")
+                if current_state.get("status") == "CANCELLED" or current_state.get("stop_requested") or current_state.get("slot_paused"):
+                    return
+                self._run_update(run_id, status="REEVALUATING" if review_only else "RUNNING")
             run = self.detail(run_id)
             views = target_views or list(views or []) or (list(run.get("views") or []) if review_only else (
                 [FRONT_VIEW] if not run.get("front_anchor") else
@@ -2320,7 +2348,11 @@ class LocalBodyReferenceService:
             pause_on_storage_error(self.app.config, exc)
             from zet.services.storage_health_service import storage_health
             if not storage_health(self.app.config).check_error(exc):
-                self._run_update(run_id, status="ERROR", review_only=False, error=str(exc))
+                root = self._root(run_id)
+                with file_lock(root / "state.lock"):
+                    current_state = self._read_json(root / "state.json")
+                    if current_state.get("status") != "CANCELLED" and not current_state.get("stop_requested"):
+                        self._run_update(run_id, status="ERROR", review_only=False, error=str(exc))
         finally:
             with self._active_runs_lock:
                 self._active_runs.discard(self._active_key(run_id))
@@ -2427,26 +2459,25 @@ class LocalBodyReferenceService:
 
     def request_stop(self, run_id: str) -> dict[str, Any]:
         root = self._root(run_id)
-        state = self._read_json((root / "state.json"))
-        if state.get("status") == "CANCELLED":
-            self._withdraw_queued_asks(run_id)
-            return self.detail(run_id)
-        active = {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING",
-                  "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"}
-        if state.get("status") not in active:
-            run = self.detail(run_id)
-            if not run.get("interrupted"):
-                raise LocalBodyReferenceError("This batch is not running.")
-        stamp = self._now()
-        self._write(root / "cancelled.json", {"run_id": run_id, "cancelled_at": stamp})
-        state["stop_requested"] = True
-        state["status"] = "CANCELLED"
-        from zet.services.local_image_evaluation_service import supersede_evaluations
-        supersede_evaluations(state, set(state.get("evaluations") or {}), "The run was stopped.")
-        state["cancelled_at"] = stamp
-        state["error"] = "Cancelled by user."
-        state["updated_at"] = stamp
-        self._save_state(run_id, state)
+        with file_lock(root / "state.lock"):
+            state = self._read_json(root / "state.json")
+            if state.get("status") != "CANCELLED":
+                active = {"QUEUED", "PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING",
+                          "WAITING_FOR_ANALYSIS", "WAITING_FOR_HUMAN_REVIEW"}
+                if state.get("status") not in active:
+                    run = self.detail(run_id)
+                    if not run.get("interrupted"):
+                        raise LocalBodyReferenceError("This batch is not running.")
+                stamp = self._now()
+                self._write(root / "cancelled.json", {"run_id": run_id, "cancelled_at": stamp, "stop_token": uuid4().hex})
+                state["stop_requested"] = True
+                state["status"] = "CANCELLED"
+                from zet.services.local_image_evaluation_service import supersede_evaluations
+                supersede_evaluations(state, set(state.get("evaluations") or {}), "The run was stopped.")
+                state["cancelled_at"] = stamp
+                state["error"] = "Cancelled by user."
+                state["updated_at"] = stamp
+                self._save_state(run_id, state)
         self._withdraw_queued_asks(run_id)
         return self.detail(run_id)
 

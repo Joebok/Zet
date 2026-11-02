@@ -54,12 +54,16 @@ class LocalCharacterBatchRestartService:
         store = selection.store
         with file_lock(root / "template_improvement" / "revisions.lock"), file_lock(root / "state.lock"), file_lock(store.workspace_path(initial["character"], initial["phase"]).with_suffix(".lock")):
             run = self.workflow.prompt_improvement.detail(run_id, costume)
+            from zet.services.local_pipeline_operation_reservation import active_preparation
+            state = read_library_json(root / "state.json", library)
+            if active_preparation(state):
+                from zet.services.render_slot_service import RenderSlotConflict
+                raise RenderSlotConflict("Another operation is preparing this batch. Wait before restarting it.")
             preview = self._preview_locked(run, mode, recompile, costume)
             if preview["issues"]:
                 raise ValueError(" ".join(preview["issues"]))
             if payload.get("confirmation_token") != preview["confirmation_token"]:
                 raise ValueError("Batch state or inputs changed; review the restart again.")
-            state = read_library_json(root / "state.json", library)
             spec = read_library_json(root / "spec.json", library)
             # Head phase-change sources are mode-specific snapshots. Prepare a
             # new immutable copy before touching any selections or candidates.

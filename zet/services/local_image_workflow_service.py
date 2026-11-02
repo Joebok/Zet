@@ -548,6 +548,8 @@ class LocalImagePipelineWorkflowService:
             mode_records = records if mode == "draft" else self.adapter.asset_store.locked_assets(
                 presented["character"], presented["phase"], pipeline, qualifier, render_mode=mode)
             progress["locked_count"] = sum(item.get("batch_id") == presented["run_id"] for item in mode_records)
+        from zet.services.local_pipeline_operation_context import operation_contexts
+        presented["operation_contexts"] = operation_contexts(presented)
         return presented
 
     def execute(self, run_id: str, *, views: set[str] | None = None, costume: str = "",
@@ -559,7 +561,16 @@ class LocalImagePipelineWorkflowService:
             self.adapter.execute_run(run_id, views=views, candidate_ids=candidate_ids,
                                      render_only=render_only)
 
-    def reevaluate(self, run_id: str, view: str = "", *, costume: str = "", render_mode: str = "draft") -> dict[str, Any]:
+    def check_operation_context(self, request: dict) -> None:
+        """Compare an admitted operation with current authoritative batch detail."""
+        from zet.services.local_pipeline_operation_context import check_operation_context
+        if request.get("pipeline") != self.pipeline or request.get("universe_id") != self.app.universe_id:
+            raise LocalImageWorkflowError("The operation does not belong to this pipeline and universe.")
+        run = self.action("detail", run_id=request["run_id"], costume=request.get("costume") or "")
+        check_operation_context(run, request)
+
+    def reevaluate(self, run_id: str, view: str = "", *, costume: str = "", render_mode: str = "draft",
+                   operation_id: str = "", before_stage=None) -> dict[str, Any]:
         """Refresh ranking using existing harvested images; observations are opt-in."""
         from zet.services.image_harvest_service import reconcile_candidate_harvest
         from zet.services.local_image_evaluation_service import mode_field
@@ -598,15 +609,28 @@ class LocalImagePipelineWorkflowService:
         run = reconcile_candidate_harvest(
             self.app, lambda: self.prompt_improvement.detail(run_id, costume), run, images)
         for target in targets:
-            self.stage_view_evaluation(run_id, target, costume=costume, render_mode=render_mode)
+            if operation_id:
+                from uuid import NAMESPACE_URL, uuid5
+                evaluation_id = uuid5(NAMESPACE_URL, f"zet:local-evaluation:{operation_id}:{render_mode}:{target}").hex
+                submit = lambda target=target, evaluation_id=evaluation_id: self.stage_view_evaluation(
+                    run_id, target, costume=costume, render_mode=render_mode, evaluation_id=evaluation_id)
+                if before_stage is not None:
+                    before_stage(target, evaluation_id, submit)
+                else:
+                    submit()
+            else:
+                self.stage_view_evaluation(run_id, target, costume=costume, render_mode=render_mode)
         return self.action("detail", run_id=run_id, costume=costume)
 
     def stage_view_evaluation(self, run_id: str, view: str, *, costume: str = "",
-                              candidate_ids: set[str] | None = None, render_mode: str = "draft") -> dict[str, Any]:
+                              candidate_ids: set[str] | None = None, render_mode: str = "draft", evaluation_id: str = "") -> dict[str, Any]:
         """Start advisory evaluation without taking the batch runner lock."""
+        options = {"candidate_ids": candidate_ids, "render_mode": render_mode}
+        if evaluation_id:
+            options["evaluation_id"] = evaluation_id
         if self.pipeline in {"character-assembly", "costume-dressing"}:
-            return self.adapter.stage_view_evaluation(run_id, view, costume, candidate_ids=candidate_ids, render_mode=render_mode)
-        return self.adapter.stage_view_evaluation(run_id, view, candidate_ids=candidate_ids, render_mode=render_mode)
+            return self.adapter.stage_view_evaluation(run_id, view, costume, **options)
+        return self.adapter.stage_view_evaluation(run_id, view, **options)
 
     def reconcile_review_jobs(self, run_id: str, *, costume: str = "") -> dict[str, Any]:
         """Resume persisted advisory jobs after a server restart."""

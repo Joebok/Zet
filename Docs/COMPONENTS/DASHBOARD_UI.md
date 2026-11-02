@@ -1,5 +1,12 @@
 # Dashboard presentation and image input
 
+Character Run available, slot generation/retry, view regeneration, Re-evaluate,
+batch Start/Resume and candidate-review retry show immediate submission feedback and expose preparation
+status in the shared Activity menu across navigation. An unconfirmed browser request
+retains its operation ID for reconciliation; Activity distinguishes preparation from
+render completion. See the [completed plan](../../plans/completed/character-pipeline-operations.md)
+for validation limits.
+
 The Assets menu lists Head-Image (Edit) after Body-Reference and before Head-Image (Construct). Pipeline identifiers and source defaults remain unchanged.
 
 Character pipeline batch creation uses a modal with an optional name. Selected
@@ -18,6 +25,12 @@ and links each actionable render mode. Pause batch pauses slot collection;
 already submitted renders can finish at the proxy and are collected after Resume.
 Batches cards reuse the pipeline canvas colors for Draft and Final, with outlined
 Mode pills alongside the pipeline pills. Cards have no individual Create task button.
+
+Batch detail includes both render modes. Switching Draft/Final preserves an
+in-flight detail load; returning after an interrupted initial load requests the
+batch again. The page distinguishes loading and failed retrieval from an absent
+batch. Missing Final prerequisites block individual view actions while retaining
+the batch's Draft images and empty Final selection/candidate cards.
 
 Final mode uses the shared `--canvas-final` muted green background and a teal
 **Final** pill before each character view heading. Minor Characters, Image
