@@ -257,11 +257,15 @@ and live inference were not exercised. No maintained scenario was added.
 
 ## Pipeline view order and continuation controls (2026-10-20)
 
-All four character pipeline pages display view sections and selected-view cards in
-render stage order: FRONT, front three-quarters, profiles, rear three-quarters,
-then BACK. The review panel's previous/next view controls use this same order,
-skipping views without review candidates. This is presentation order; saved view
-lists and render scheduling are unchanged. Each view has a Continue control below
+All five character pipeline pages display view sections and selected-view cards in
+FRONT, FRONT_LEFT_3_4, FRONT_RIGHT_3_4, LEFT_PROFILE, RIGHT_PROFILE,
+BACK_LEFT_3_4, BACK_RIGHT_3_4, BACK order. Individual view navigation and the
+summary review panel use this order and skip absent views. Selected or locked
+summary images open in the review panel and cycle through available summary images.
+Batch actions open a dialog and close when an action is chosen; reports remain on
+the summary page. Locked cards show a green “Locked” label, with green Lock and red
+Unlock icons. This is presentation order; saved view lists and render scheduling
+are unchanged. Each view has a Continue control below
 its observations and Luna ranking status. It appears when the top Continue control
 is available and enabled, shares its label and action, and updates during polling
 without replacing unsaved observations.

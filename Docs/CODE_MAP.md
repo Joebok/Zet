@@ -19,6 +19,9 @@ contracts. `local_asset_pipeline.js`, `zet.js`, and `index.html` own page naviga
 review controls, thumbnail URLs and scoped refresh. Render-slot preparation
 rechecks the chosen master baseline on a new ask; mode selection and the local
 asset store own Final publication integrity.
+`local_asset_pipeline.js` presents the five pipeline summaries in the shared
+FRONT-to-BACK view order, opens Batch actions in a dialog, and builds summary image
+review navigation from `selected_cards`; its reports remain in the summary page.
 
 Character Run available and slot/view regeneration preparation: `LocalPipelineOperationService`,
 `LocalPipelineAvailableOperationHandler` and `LocalPipelineOperationReservation`

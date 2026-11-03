@@ -22,7 +22,7 @@ Zet is a local creative-production dashboard for character references, illustrat
 - Reuse the approved end-to-end scenarios. Do not automatically add a test for every change or defect.
 - Get Joe's explicit approval before adding permanent tests, introducing scenarios, or materially expanding coverage. State which user task the proposed test covers and why existing scenarios are insufficient.
 - Disposable tests are allowed.
-- Approval applies only to the named tests or scenarios. The current approved baseline is three fast end-to-end scenarios and one separately invoked live narrative pipeline check.
+- Approval applies only to the named tests or scenarios. The current approved baseline is four fast end-to-end scenarios and one separately invoked live narrative pipeline check.
 - Repair existing tests when needed to preserve their approved purpose.
 - Do not add coverage targets, exhaustive permutations, snapshot suites, test frameworks, or dependencies without approval.
 - Exercise story and scene workflows through the Narrative Scenes dashboard, `/api/narrative`, and `NarrativeStories` storage. Do not add tests for the retiring Scene Builder or local scene-batch workflows.
@@ -37,6 +37,15 @@ Zet is a local creative-production dashboard for character references, illustrat
 - Preserve universe isolation, queue ownership and attempt fencing, locked-image integrity, serialization versions, and ordered image bindings; see [Docs/INVARIANTS.md](Docs/INVARIANTS.md).
 - Traditional character generation is retired. Active local character workflows reuse compilers but have independent run/selection storage. Narrative scenes are independent of Scene Builder. Follow the relevant component document before crossing these boundaries.
 - The entity library's `catalog.sqlite3` is authoritative; the machine-local library index is derived. Never treat their rebuild or migration procedures as interchangeable.
+
+## Pipeline guards and polling
+
+- Apply strict validation while preparing, queuing, harvesting, and placing an image: preserve universe isolation, ownership, attempt fencing, ordered bindings, and harvest receipts. New character requests use current governing masters and eligible same-mode references; retries use their frozen inputs.
+- Treat a harvested image’s prompt and captured inputs as its production record. Do not block selection or locking because its former sources, templates, rankings, or image hash differ from current values. Require ownership, slot membership, an available image, lock protection, and the publication transaction. Retain the exact prompt with a new lock.
+- Report an observed saved-source difference only as a persistent FYI on the affected image. Do not turn it into an error, work item, automatic deselection, or lock blocker.
+- Preview every selected or locked image affected by a bulk destructive action. Require explicit approval for each effect and recheck the effects on the server before committing.
+- Poll compact progress only while visible work is active; refresh detail when it settles. Refresh idle views on entry, relevant actions, tab return, or explicit request. Avoid routine completed-image lineage scans and full-library checks.
+- When changing these paths, validate the transport boundary and one representative completed-image case with the smallest approved or disposable checks. Do not add recurring validation, polling, or permanent test scenarios by default. Follow [ADR 0045](Docs/DECISIONS/0045-finished-image-source-policy.md) where older lineage guidance conflicts.
 
 ## Runtime and dependencies
 

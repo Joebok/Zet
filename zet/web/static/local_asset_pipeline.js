@@ -541,7 +541,7 @@
   function orderedViews(run) {
     const order = ["FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK"];
     const position = view => order.includes(view) ? order.indexOf(view) : order.length;
-    return [...(run?.views || [])].filter(view => !state.view || view === state.view).sort((a, b) => position(a) - position(b));
+    return [...(run?.views || [])].sort((a, b) => position(a) - position(b));
   }
 
   function viewUrl(view = "") {
@@ -560,7 +560,7 @@
     const host = $("view-navigation");
     host.hidden = !state.view || !run;
     if (host.hidden) return;
-    const views = [...(run.views || [])];
+    const views = orderedViews(run);
     const index = views.indexOf(state.view);
     $("return-batch").href = viewUrl();
     for (const [id, target] of [["previous-view", views[index - 1]], ["next-view", views[index + 1]]]) {
@@ -750,6 +750,7 @@
     if (["delete", "clear"].includes(action)) button.classList.add("danger-text-action");
     if (action === "delete-drafts") button.classList.add("danger-action");
     button.dataset.localAction = action;
+    if (action === "lock" || action === "unlock") button.classList.add("local-pipeline-lock-action");
     if (["rerun-view", "rerun-failed", "reevaluate-view"].includes(action)) {
       button.dataset.localViewOperation = action; button.dataset.localViewDisabled = String(disabled);
     }
@@ -835,7 +836,8 @@
         if (lockedInAnotherBatch) lockNotice.hidden = false;
         const lockState = document.createElement("p");
         lockState.className = locked ? "success-text" : "muted";
-        lockState.textContent = locked ? "Locked local asset" : "Selected · not locked";
+        lockState.textContent = locked ? "Locked" : "";
+        lockState.hidden = !locked;
         article.append(lockState);
         const controls = document.createElement("div");
         controls.className = "button-row compact";
@@ -869,7 +871,9 @@
     addButton(controls, "Unlock all", "unlock-all");
     addButton(controls, "Delete all Draft images", "delete-drafts");
     $("batch-bulk-actions").replaceChildren(controls);
-    for (const card of run.selected_cards || []) {
+    for (const view of orderedViews(run)) {
+      const card = (run.selected_cards || []).find(item => item.view === view);
+      if (!card) continue;
       const article = document.createElement("article");
       article.className = "local-pipeline-selected-card";
       const heading = document.createElement("h2"), link = document.createElement("a");
@@ -891,9 +895,11 @@
         article.append(imageButton);
       }
       const status = document.createElement("p");
-      status.textContent = card.locked ? "Selected and locked" : card.selected_candidate_id
-        ? card.selected_available ? "Selected · not locked" : "Selected image unavailable"
+      status.className = card.locked || card.display_kind === "locked" ? "success-text" : "";
+      status.textContent = card.locked || card.display_kind === "locked" ? "Locked" : card.selected_candidate_id
+        ? card.selected_available ? "" : "Selected image unavailable"
         : card.locked_candidate_id ? "Locked image from another selection" : "No image selected";
+      status.hidden = !status.textContent;
       article.append(status);
       if (card.selected_candidate_id && card.selected_available) {
         const actions = document.createElement("div"); actions.className = "button-row compact";
@@ -2222,7 +2228,7 @@
     const run = modeRun(state.run);
     const views = orderedViews(run);
     if (state.reviewBatchCards) return views.map(view => {
-      const card = (state.run.review_cards || []).find(item => item.view === view && item.display_kind);
+      const card = (state.run.selected_cards || []).find(item => item.view === view && item.display_kind);
       if (!card) return null;
       const locked = card.display_kind === "locked";
       const imageUrlForReview = locked
@@ -2390,7 +2396,7 @@
       panel.replaceChildren();
       const heading = document.createElement("h2");
       heading.textContent = `${candidate.view} · ${state.reviewIndex + 1} of ${state.reviewCandidates.length}`;
-      const lock = candidate.review_card?.display_kind === "locked"
+      const lock = candidate.review_card?.locked || candidate.review_card?.display_kind === "locked"
         || Object.values(run.local_assets || {}).some(item => item.locked && item.batch_id === run.run_id && item.candidate_id === candidate.candidate_id);
       const status = document.createElement("p");
       status.textContent = lock ? "Locked" : "Selected";
@@ -2881,7 +2887,15 @@
       } catch (error) { $("create-status").textContent = error.message; await readiness(); }
       finally { $("create").disabled = false; }
     });
-    $("rename").addEventListener("submit", async (event) => { event.preventDefault(); await handleAction({ dataset: { localAction: "rename" } }).catch((error) => setStatus(error.message, true)); });
+    $("open-batch-actions").addEventListener("click", () => $("batch-actions").showModal());
+    $("cancel-batch-actions").addEventListener("click", () => $("batch-actions").close());
+    $("batch-actions").addEventListener("close", () => $("open-batch-actions").focus());
+    $("cancel-rename").addEventListener("click", () => { $("rename").hidden = true; $("batch-actions").close(); });
+    $("rename").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      $("batch-actions").close();
+      await handleAction({ dataset: { localAction: "rename" } }).catch((error) => setStatus(error.message, true));
+    });
     $("runs").addEventListener("change", () => {
       syncPipelineRoute();
       void loadRun($("runs").value).catch((error) => setStatus(error.message, true));
@@ -2903,10 +2917,10 @@
       || (state.run?.status === "CANCELLED" && state.run?.created_by_autogenerate) || state.run?.slot_paused ? "resume" : "start").catch((error) => setStatus(error.message, true)));
     $("stop").addEventListener("click", () => void perform("stop").catch((error) => setStatus(error.message, true)));
     $("rerun").addEventListener("click", () => void handleAction({ dataset: { localAction: "rerun" } }).catch((error) => setStatus(error.message, true)));
-    $("reevaluate").addEventListener("click", (event) => void submitBatchAction(event.currentTarget, "reevaluate"));
-    document.querySelectorAll("[data-local-comparison]").forEach(button => button.addEventListener("click", () => void showComparison(button.dataset.localComparison)));
-    $("use-masters").addEventListener("click", () => void useCurrentMasters());
-    $("delete").addEventListener("click", () => void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)));
+    $("reevaluate").addEventListener("click", (event) => { $("batch-actions").close(); void submitBatchAction(event.currentTarget, "reevaluate"); });
+    document.querySelectorAll("[data-local-comparison]").forEach(button => button.addEventListener("click", () => { $("batch-actions").close(); void showComparison(button.dataset.localComparison); }));
+    $("use-masters").addEventListener("click", () => { $("batch-actions").close(); void useCurrentMasters(); });
+    $("delete").addEventListener("click", () => { $("batch-actions").close(); void handleAction({ dataset: { localAction: "delete" } }).catch((error) => setStatus(error.message, true)); });
     $("proceed").addEventListener("click", (event) => void submitBatchAction(event.currentTarget, "proceed"));
     $("source-file").addEventListener("change", () => void uploadHeadSource($("source-file").files?.[0]));
     $("apply-phase-change").addEventListener("change", () => {
@@ -2983,6 +2997,7 @@
     });
     for (const host of [$("views"), $("selected"), $("batch-bulk-actions")]) host.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-local-action]");
+      if (button && $("batch-actions").open) $("batch-actions").close();
       if (button?.closest("summary")) {
         event.preventDefault();
         event.stopPropagation();

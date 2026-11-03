@@ -273,28 +273,31 @@
             <button id="local-pipeline-refresh" type="button">Refresh</button>
             <button id="local-pipeline-open-create" type="button">Create New Batch</button>
             <button id="local-pipeline-rerun" type="button" disabled>Re-start batch</button>
-            <details class="local-batch-menu">
-              <summary>Batch actions</summary>
+            <button id="local-pipeline-open-batch-actions" type="button">Batch actions</button>
+            <dialog id="local-pipeline-batch-actions" class="local-pipeline-batch-actions" aria-labelledby="local-pipeline-batch-actions-title">
+              <h2 id="local-pipeline-batch-actions-title">Batch actions</h2>
               <div class="local-batch-menu-items">
                 <form id="local-pipeline-rename" class="local-pipeline-controls" hidden>
                   <label>Batch name<input id="local-pipeline-batch-name" type="text" maxlength="120"></label>
                   <button class="primary-action" type="submit">Save name</button>
+                  <button id="local-pipeline-cancel-rename" type="button">Cancel</button>
                 </form>
                 <button id="local-pipeline-reevaluate" type="button" disabled>Re-evaluate</button>
                 <button id="local-pipeline-use-masters" type="button">Preview next renders</button>
-                <div id="local-pipeline-masters-report" class="muted" role="status" hidden></div>
                 <div class="button-row compact" id="local-pipeline-comparison-actions">
                   <button type="button" data-local-comparison="draft">Check vs Draft</button>
                   <button type="button" data-local-comparison="masters">Check vs masters</button>
                   <button type="button" data-local-comparison="references">Check references vs current</button>
                 </div>
-                <div id="local-pipeline-comparison-report" class="muted" role="status" hidden></div>
                 <div id="local-pipeline-batch-bulk-actions"></div>
                 <button id="local-pipeline-delete" class="danger-action" type="button" disabled>Delete batch</button>
+                <button id="local-pipeline-cancel-batch-actions" type="button">Cancel</button>
               </div>
-            </details>
+            </dialog>
           </div>
           <p id="local-pipeline-summary" class="muted" role="status"></p>
+          <div id="local-pipeline-masters-report" class="muted" role="status" hidden></div>
+          <div id="local-pipeline-comparison-report" class="muted" role="status" hidden></div>
           <section id="local-pipeline-progression" role="status" hidden></section>
           <label id="local-pipeline-back-reference-label" hidden>Reference for BACK
             <select id="local-pipeline-back-reference"><option value="BACK_LEFT_3_4">Selected back-left three-quarter</option><option value="BACK_RIGHT_3_4">Selected back-right three-quarter</option></select>
