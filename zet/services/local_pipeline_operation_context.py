@@ -80,8 +80,8 @@ def operation_context(run: dict, mode: str, view: str = "") -> str:
         "draft": run.get("selected_views") or {}, "final": run.get("final_selected_views") or {}}
     selected_ids = set((selections.get("draft") or {}).values()) | set((selections.get("final") or {}).values())
     selected_ids.update((run.get("front_anchor"), run.get("final_front_anchor")))
-    selected_candidates = [{key: candidate.get(key) for key in
-                            ("candidate_id", "view", "render_mode", "image_path", "image_sha256", "human_review")}
+    selected_candidates = [{key: (candidate.get(key) or "draft") if key == "render_mode" else candidate.get(key)
+                            for key in ("candidate_id", "view", "render_mode", "image_path", "image_sha256", "human_review")}
                            for candidate in (run.get("candidates") or [])
                            if candidate.get("candidate_id") in selected_ids]
     selected_candidates.sort(key=lambda candidate: str(candidate.get("candidate_id") or ""))
