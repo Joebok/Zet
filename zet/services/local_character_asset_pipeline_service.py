@@ -664,7 +664,9 @@ class LocalCharacterAssetPipelineService:
         from zet.services.local_character_progression_service import prepare_candidate
         if run.get("character_progression") or self.pipeline == "costume-dressing":
             from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
-            candidate = prepare_candidate(LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline), run, candidate)
+            workflow = LocalImagePipelineWorkflowService(self.app, self.project_root, self.pipeline)
+            workflow.adapter.asset_store = self.asset_store
+            candidate = prepare_candidate(workflow, run, candidate)
 
         if not candidate.get("render_input") and candidate["view"] != "FRONT" and self._requires_front_anchor(run) and not run.get("front_anchor"):
             raise LocalCharacterAssetPipelineError("Select a FRONT candidate before generating other views.")

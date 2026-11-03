@@ -1944,6 +1944,8 @@
   let readinessTimer = null;
   function scheduleReadiness() {
     clearTimeout(readinessTimer);
+    state.previewGeneration += 1;
+    $("create").disabled = true;
     readinessTimer = setTimeout(() => void readiness(), 250);
   }
 
@@ -1951,12 +1953,14 @@
     const generation = ++state.previewGeneration;
     if (lockedPhaseSourceSelected()) void refreshLockedPhaseSource();
     $("readiness").textContent = "Checking required inputs…";
+    $("create").disabled = true;
     try {
       const result = await request(route("preview"), { method: "POST", body: JSON.stringify(payload()) });
       if (generation !== state.previewGeneration) return;
       const blockers = result.blocking_reasons || [];
       renderSourceBatchOptions(result);
       const canCreate = result.can_create !== false && blockers.length === 0;
+      $("create").disabled = !canCreate;
       $("readiness").textContent = blockers.length ? blockers.map(window.ZetPipelineMessage).join(" · ")
         : `${result.candidate_count || ""} candidates across ${(result.views || []).length} views. ${canCreate ? "Ready to create." : "Resolve requirements first."}`;
     } catch (error) {
@@ -2896,7 +2900,7 @@
         if (hasSharedAssetRouter() && $("options").open) void readiness();
         setStatus(state.pipeline === "character-assembly" ? "Batch created. Run front, select a FRONT image, then Run remaining. Luna will compare proportions and identity with your selected FRONT." : "Batch created. Analyze and accept its governing prompts, then Continue to generate FRONT.");
       } catch (error) { $("create-status").textContent = error.message; await readiness(); }
-      finally { $("create").disabled = false; }
+      finally { if (!$("options").open) $("create").disabled = true; }
     });
     $("open-batch-actions").addEventListener("click", () => $("batch-actions").showModal());
     $("cancel-batch-actions").addEventListener("click", () => $("batch-actions").close());

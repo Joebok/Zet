@@ -383,7 +383,7 @@ class CostumeWizardService:
                                      base_character_path=str(character_root))
         runtime_app.costume_template_status = lambda character, phase, costume: {"template_ready": True, "validation_errors": []}
         pipeline = LocalCharacterAssetPipelineService(runtime_app, self.project_root, "costume-dressing",
-                                                      runs_root=work_root / "runs")
+                                                      runs_root=work_root / "PipelineCandidates" / "Character-Pipeline")
         pipeline.asset_store = self.app.local_asset_source_service.store
         run_id = session.get("job", {}).get("render_run_id")
         if not run_id:

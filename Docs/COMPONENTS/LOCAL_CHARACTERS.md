@@ -1,5 +1,17 @@
 # Local character assets
 
+## Costume Wizard test renders and batch creation (2026-11-03)
+
+`CostumeWizardService._render_job` stages a single FRONT Dressing candidate in a
+private per-session library beneath `PipelineCandidates/Character-Pipeline`. It
+copies the draft character and costume templates there, while reading the
+selected universe's locked Assembly source through the real asset store. The
+private candidate is not a normal Dressing batch. The Create New Batch dialog
+enables Create only after its current requirements preview is ready; submission
+still runs the server's authoritative check. The approved S2 scenario covers
+normal Dressing batch creation, while an isolated prepared check staged a wizard
+test render without calling live AI services.
+
 ## Batch and view reads (2026-11-02)
 
 The shared dashboard loads a compact batch summary or one Draft/Final view from
