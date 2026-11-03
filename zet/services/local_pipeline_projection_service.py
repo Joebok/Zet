@@ -116,10 +116,20 @@ class LocalPipelineProjectionService:
         views = (run.get("character_progression") or {}).get("requested_views") or run.get("views") or []
         selected = run["selected_views_by_mode"][mode]
         by_id = {item.get("candidate_id"): item for item in run["candidates"]}
+        pending = set(run.get("slot_render_ids") or [])
         cards = []
         for view in views:
             candidate_id = selected.get(view) or ""
             candidate = by_id.get(candidate_id) or {}
+            slots = run["slots_by_mode"][mode].get(view, [])
+            slot_candidates = [by_id.get(cid) for cid in slots if cid]
+            slot_candidates = [item for item in slot_candidates if item
+                               and item.get("render_mode", "draft") == mode
+                               and item.get("view") == view]
+            queued = any(item.get("candidate_id") in pending
+                         or item.get("render_status", item.get("status")) in {"QUEUED", "RUNNING"}
+                         or item.get("status") in {"QUEUED", "RUNNING"}
+                         for item in slot_candidates)
             record = run["_assets"].get(self._asset_key(run, view, mode)) or {}
             selected_available = bool(candidate_id and self._candidate_available(run, candidate))
             lock_path = Path(str(record.get("locked_image_path") or "")).resolve()
@@ -136,9 +146,10 @@ class LocalPipelineProjectionService:
                           "display_image_sha256": candidate.get("image_sha256", "") if selected_available else record.get("image_sha256", "") if locked_available else "",
                           "locked": bool(record.get("locked") and record.get("batch_id") == run_id
                                          and record.get("candidate_id") == candidate_id),
-                          "locked_candidate_id": record.get("candidate_id", "") if record.get("locked") else ""})
+                          "locked_candidate_id": record.get("candidate_id", "") if record.get("locked") else "",
+                          "image_count": sum(bool(item.get("image_path")) for item in slot_candidates),
+                          "slot_count": len(slots), "renders_active": queued})
         progress = {}
-        pending = set(run.get("slot_render_ids") or [])
         for current_mode in ("draft", "final"):
             items = [item for item in run["candidates"] if item.get("render_mode", "draft") == current_mode]
             active = [item for item in items if item.get("candidate_id") in pending or item.get("render_status", item.get("status")) in {"QUEUED", "RUNNING"}]

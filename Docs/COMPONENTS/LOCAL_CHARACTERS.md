@@ -24,7 +24,12 @@ supersedes the older batch-overlay and lineage rules described in historical
 sections below.
 
 Batch summaries also carry compact selected/locked image identities for cards
-and review comparisons. Cards open the shared original-image review pane and
+and review comparisons. Unselected/unlocked view cards include the saved-path
+image count within their mode's slots and a queued/running cue derived from
+candidate status and pending render IDs. These are metadata-only attention
+indicators: they add no queue or image-file reads and use the existing summary
+refresh while work is active. The view and action paths retain authoritative
+availability checks. Cards open the shared original-image review pane and
 arrow through available selected/locked views. A view review can compare with
 selected FRONT, its selected opposite side, and the matching locked Draft when
 those images are available; view projections still contain only that view's

@@ -904,6 +904,14 @@
         : card.locked_candidate_id ? "Locked image from another selection" : "No image selected";
       status.hidden = !status.textContent;
       article.append(status);
+      if (!card.selected_candidate_id && !card.locked_candidate_id) {
+        const imageCount = Number(card.image_count || 0);
+        const attention = document.createElement("p");
+        attention.className = "local-pipeline-view-attention";
+        attention.textContent = `${imageCount}/${Number(card.slot_count || 0)} images · ${card.renders_active
+          ? "Renders queued/running" : imageCount ? "Review images" : "No renders queued"}`;
+        article.append(attention);
+      }
       if (card.selected_candidate_id && card.selected_available) {
         const actions = document.createElement("div"); actions.className = "button-row compact";
         addButton(actions, card.locked ? "Unlock" : "Lock", card.locked ? "unlock" : "lock", {view: card.view});
