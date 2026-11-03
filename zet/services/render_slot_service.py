@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from contextvars import ContextVar
 from datetime import datetime
 import hashlib
 import json
@@ -13,14 +12,13 @@ import time
 import threading
 from typing import Any
 from uuid import uuid4
-from zet.services.library_reference_service import pipeline_library_root_for_path, write_library_json
+from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json, write_library_json
 
 SLOT_COUNT = 8
 ASSEMBLY_INPUT_VERSION = 2
 _SLOT_WORKERS: set[str] = set()
 _SLOT_WORKERS_LOCK = threading.Lock()
 _SLOT_WAKEUPS: dict[str, threading.Event] = {}
-_preparation_source_capture = ContextVar("render_preparation_sources", default=None)
 
 
 class RenderSlotConflict(ValueError):
@@ -140,9 +138,6 @@ def frozen_input(directory: Path, prompt: str, references: list[dict], preset: s
         if source.resolve() != target.resolve():
             shutil.copy2(source, target)
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
-        capture = _preparation_source_capture.get()
-        if capture is not None:
-            capture.append((str(source), digest))
         frozen.append({**ref, "path": str(target), "sha256": digest})
     result = {"prompt": prompt, "references": frozen, "preset": preset}
     if render_sizing is not None:
@@ -455,7 +450,7 @@ class CharacterRenderSlots:
         saved["reference_recipe"] = recipe
         source_hashes = output / "Prompt_Source_Hashes.json"
         if source_hashes.is_file():
-            saved["template_sources"] = json.loads(source_hashes.read_text(encoding="utf-8")).get("sources", [])
+            saved["template_sources"] = read_library_json(source_hashes, pipeline_library_root_for_path(root)).get("sources", [])
         if pipeline == "head-image-edit":
             from zet.services.local_render_backend_service import LocalRenderBackendService
             saved["recipe_version"] = 1

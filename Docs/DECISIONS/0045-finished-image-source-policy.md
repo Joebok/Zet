@@ -16,6 +16,10 @@ Accepting a reviewed template improvement saves the governing master as part of
 the acceptance operation. A conflicting master edit prevents acceptance. Every new
 character ask compiles current masters and resolves current eligible same-mode
 references before freezing its prompt, ordered input bytes, identities and seed.
+Once preparation captures a prompt and ordered reference files, commit and queueing
+validate those captured files, not continued equality to original sources or master
+hashes. Source changes do not trigger automatic recompilation or source-stability
+rejection. Target ownership and protected-image checks remain required.
 Queued asks and retries keep their frozen inputs. Explicit source-batch choices
 remain in force; Final requires its current same-mode lock.
 

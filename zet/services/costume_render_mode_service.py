@@ -142,7 +142,8 @@ class CostumeRenderModeService:
         saved = frozen_input(Path(directory) / "inputs", prompt.read_text(encoding="utf-8"), refs, self.workflow.adapter.definition["preset"])
         source_hashes = output / "Prompt_Source_Hashes.json"
         if source_hashes.is_file():
-            saved["template_sources"] = json.loads(source_hashes.read_text(encoding="utf-8")).get("sources", [])
+            from zet.services.library_reference_service import read_library_json, pipeline_library_root_for_path
+            saved["template_sources"] = read_library_json(source_hashes, pipeline_library_root_for_path(run["root"])).get("sources", [])
         from zet.services.local_render_backend_service import LocalRenderBackendService
         saved["render_profile"] = LocalRenderBackendService(self.workflow.app.config.state_file(self.workflow.project_root, "Local_Render_Presets.json"),
             config=self.workflow.app.config).preset(saved["preset"])

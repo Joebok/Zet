@@ -1,5 +1,20 @@
 # Local testing
 
+## Captured-input regeneration correction (2026-11-03)
+
+A disposable real Dressing journey changed the costume master, submitted durable
+FRONT regen, verified the new text in its captured prompt and absolute decoded
+source provenance, and queued successfully. The same fixture exercised real FRONT
+preparation for Body, Head and Head Edit, plus Assembly generation (17.9s). Head
+Edit required authoring sections added only to the disposable character fixture;
+the initial attempt failed on their absence. A real reservation check accepted
+commit after deleting the original source and refused damaged captured bytes;
+selected/locked target protection was checked. Frozen Retry reused saved inputs
+with its original source missing. No live renders or maintained tests were added.
+The approved fast suite passed 4/4 (43.2s), with a nonfatal usage-maintenance
+file-lock message. Python AST and diff checks passed. The source-stability checks
+described below were removed by this correction.
+
 ## Character regen input checks (2026-11-03)
 
 The approved four-scenario fast suite passed. A disposable isolated Assembly

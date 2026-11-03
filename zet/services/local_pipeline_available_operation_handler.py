@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 import json
-import time
 
 from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json
 from zet.services.local_pipeline_available_preparation_service import LocalPipelineAvailablePreparationService
@@ -89,25 +88,12 @@ class LocalPipelineAvailableOperationHandler:
                     stopped = reservation.cancel(operation_id, pause=True)
                     return {"outcome": "CANCELLED", "submitted_candidate_ids": stopped["committed_candidate_ids"], "cancel_confirmed": True}
                 self.repository.update(operation_id, stage=f"Preparing {target['view']}: {index} of {total}", completed=index - 1, total=total)
-                attempts = 0
-                while True:
-                    try:
-                        prepared = preparation.prepare(request, operation_id, target["candidate_id"])
-                        if self.repository.get(operation_id).get("cancel_requested"):
-                            stopped = reservation.cancel(operation_id, pause=True)
-                            return {"outcome": "CANCELLED", "submitted_candidate_ids": stopped["committed_candidate_ids"], "cancel_confirmed": True}
-                        if prepared is not None:
-                            preparation.commit(request, operation_id, prepared)
-                        break
-                    except OperationWaiting as exc:
-                        attempts += 1
-                        if attempts >= 3:
-                            raise ReservationConflict("Sources kept changing during preparation. Submit the action again when they are stable.") from exc
-                        self.repository.update(operation_id, stage=str(exc))
-                        if self.repository.get(operation_id).get("cancel_requested"):
-                            stopped = reservation.cancel(operation_id, pause=True)
-                            return {"outcome": "CANCELLED", "submitted_candidate_ids": stopped["committed_candidate_ids"], "cancel_confirmed": True}
-                        time.sleep(0.2)
+                prepared = preparation.prepare(request, operation_id, target["candidate_id"])
+                if self.repository.get(operation_id).get("cancel_requested"):
+                    stopped = reservation.cancel(operation_id, pause=True)
+                    return {"outcome": "CANCELLED", "submitted_candidate_ids": stopped["committed_candidate_ids"], "cancel_confirmed": True}
+                if prepared is not None:
+                    preparation.commit(request, operation_id, prepared)
             if self.repository.get(operation_id).get("cancel_requested"):
                 stopped = reservation.cancel(operation_id, pause=True)
                 return {"outcome": "CANCELLED", "submitted_candidate_ids": stopped["committed_candidate_ids"], "cancel_confirmed": True}

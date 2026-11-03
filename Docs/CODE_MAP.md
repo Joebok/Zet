@@ -1,8 +1,8 @@
 # Capability code map
 
 Character render operation contexts distinguish target slots from fresh source
-resolution in `local_pipeline_operation_context.py`; preparation and source
-rechecks are owned by `local_pipeline_available_preparation_service.py`.
+resolution in `local_pipeline_operation_context.py`; preparation and captured-input
+commit checks are owned by `local_pipeline_available_preparation_service.py`.
 
 Current source/guard policy (2026-11-02):
 `LocalTemplateRevisionService.accept` commits reviewed masters;
