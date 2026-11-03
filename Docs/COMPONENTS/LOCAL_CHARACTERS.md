@@ -1,5 +1,14 @@
 # Local character assets
 
+## Render preparation contexts (2026-11-03)
+
+Render actions compare a target-slot context at admission and reservation. New
+renders resolve current masters and eligible same-mode references during preparation;
+source or master changes during compilation trigger another preparation attempt.
+Repeated changes block the operation with a specific reason. Slot ownership and
+selection/lock protection remain checked before commit. Render Retry retains its
+frozen inputs. Compact and full views use the same active revision identity.
+
 ## Costume Wizard test renders and batch creation (2026-11-03)
 
 `CostumeWizardService._render_job` stages a single FRONT Dressing candidate in a

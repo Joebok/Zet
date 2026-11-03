@@ -19,13 +19,44 @@ class OperationBlocked(ValueError):
     """The action needs a user correction before it can be submitted again."""
 
 
+RENDER_ACTIONS = frozenset({"run_available", "generate_slots", "regenerate_slot", "retry_render_slot", "rerun_view", "rerun_failed"})
+
+
+def _context_field(candidate, key):
+    value = candidate.get(key)
+    if key == "render_mode":
+        return value or "draft"
+    if key == "human_review" and value:
+        return {k: v for k, v in value.items() if k != "notes"}
+    return value
+
+
+def render_context(run: dict, mode: str, view: str = "") -> str:
+    """Fence the requested slots while allowing fresh sources at preparation."""
+    if mode not in {"draft", "final"}:
+        raise ValueError("Choose Draft or Final mode.")
+    views = list(run.get("views") or [])
+    if view and view not in views:
+        raise ValueError("Unknown character view.")
+    targets = [view] if view else views
+    slots = (run.get("slots_by_mode") or {}).get(mode) or {}
+    selections = run.get("selected_views_by_mode") or {"draft": run.get("selected_views") or {}, "final": run.get("final_selected_views") or {}}
+    snapshot = {"version": 1, "run_id": run.get("run_id"), "kind": run.get("kind"),
+                "mode": mode, "targets": targets, "stop_generation": run.get("stop_generation", 0),
+                "slots": {target: slots.get(target, []) for target in targets},
+                "selections": {m: {v: ids.get(v) for v in targets} for m, ids in selections.items()}}
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
 def check_operation_context(run: dict, request: dict) -> None:
     """Reject a stale displayed context before starting a domain transition."""
     mode = request.get("render_mode")
     view = str(request.get("view") or "")
     if request.get("action") == "run_available" and request.get("scope") == "front":
         view = "FRONT"
-    if request.get("action") == "reevaluate":
+    if request.get("action") in RENDER_ACTIONS:
+        current = render_context(run, mode, view)
+    elif request.get("action") == "reevaluate":
         current = evaluation_context(run, mode, view)
     elif request.get("action") == "retry_candidate":
         current = candidate_retry_context(run, mode, str(request.get("candidate_id") or ""))
@@ -80,7 +111,7 @@ def operation_context(run: dict, mode: str, view: str = "") -> str:
         "draft": run.get("selected_views") or {}, "final": run.get("final_selected_views") or {}}
     selected_ids = set((selections.get("draft") or {}).values()) | set((selections.get("final") or {}).values())
     selected_ids.update((run.get("front_anchor"), run.get("final_front_anchor")))
-    selected_candidates = [{key: (candidate.get(key) or "draft") if key == "render_mode" else candidate.get(key)
+    selected_candidates = [{key: _context_field(candidate, key)
                             for key in ("candidate_id", "view", "render_mode", "image_path", "image_sha256", "human_review")}
                            for candidate in (run.get("candidates") or [])
                            if candidate.get("candidate_id") in selected_ids]
@@ -111,7 +142,7 @@ def _candidate_retry_context(base: str, candidate: dict) -> str:
               "render_error", "ask_id", "image_path", "image_sha256", "retry_count", "luna_status",
               "local_job", "human_review", "seed", "prompt_sha256", "prompt_path", "template_revision_id",
               "render_input", "reference_images")
-    snapshot = {"version": 1, "base": base, "candidate": {key: candidate.get(key) for key in fields}}
+    snapshot = {"version": 1, "base": base, "candidate": {key: _context_field(candidate, key) for key in fields}}
     return hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
@@ -129,6 +160,7 @@ def operation_contexts(run: dict) -> dict:
     for mode in ("draft", "final"):
         views = {view: operation_context(run, mode, view) for view in run.get("views") or []}
         contexts[mode] = {"batch": operation_context(run, mode), "views": views,
+                          "render": {"batch": render_context(run, mode), "views": {view: render_context(run, mode, view) for view in run.get("views") or []}},
                           "candidate_retry": {candidate["candidate_id"]: _candidate_retry_context(views[candidate["view"]], candidate)
                                               for candidate in candidates if candidate.get("candidate_id")
                                               and candidate.get("render_mode", "draft") == mode and candidate.get("view") in views},
@@ -141,7 +173,7 @@ def evaluation_context(run: dict, mode: str, view: str = "") -> str:
     """Include the target image inventory and comparison locks for evaluation."""
     base = operation_context(run, mode, view)
     targets = [view] if view else list(run.get("views") or [])
-    images = [{key: candidate.get(key) for key in ("candidate_id", "view", "render_mode", "image_path", "image_sha256", "human_review")}
+    images = [{key: _context_field(candidate, key) for key in ("candidate_id", "view", "render_mode", "image_path", "image_sha256", "human_review")}
               for candidate in run.get("candidates") or []
               if candidate.get("view") in targets and candidate.get("render_mode", "draft") == mode]
     images.sort(key=lambda item: str(item.get("candidate_id") or ""))

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from contextvars import ContextVar
 from datetime import datetime
 import hashlib
 import json
@@ -19,6 +20,7 @@ ASSEMBLY_INPUT_VERSION = 2
 _SLOT_WORKERS: set[str] = set()
 _SLOT_WORKERS_LOCK = threading.Lock()
 _SLOT_WAKEUPS: dict[str, threading.Event] = {}
+_preparation_source_capture = ContextVar("render_preparation_sources", default=None)
 
 
 class RenderSlotConflict(ValueError):
@@ -137,7 +139,11 @@ def frozen_input(directory: Path, prompt: str, references: list[dict], preset: s
         target = directory / f"reference-{index + 1}{source.suffix}"
         if source.resolve() != target.resolve():
             shutil.copy2(source, target)
-        frozen.append({**ref, "path": str(target), "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        capture = _preparation_source_capture.get()
+        if capture is not None:
+            capture.append((str(source), digest))
+        frozen.append({**ref, "path": str(target), "sha256": digest})
     result = {"prompt": prompt, "references": frozen, "preset": preset}
     if render_sizing is not None:
         result["render_sizing"] = render_sizing

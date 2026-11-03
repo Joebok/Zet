@@ -926,6 +926,7 @@
     const mode = state.renderMode;
     const run = {...summary, scoped_kind: detail ? "view" : "summary",
       operation_contexts: {[mode]: {batch: summary.operation_context,
+        render: {batch: summary.render_context, views: {FRONT: summary.front_render_context, ...(detail ? {[detail.view]: detail.render_context} : {})}},
         views: detail ? {[detail.view]: detail.operation_context} : {},
         candidate_retry: detail?.candidate_retry_contexts || {},
         evaluation: {batch: summary.evaluation_context,
@@ -1075,7 +1076,7 @@
     let accepted = false;
     try {
       if (operation !== "clear" && window.ZetLocalOperations) {
-        const expected = state.run?.operation_contexts?.[state.renderMode]?.views?.[view];
+        const expected = state.run?.operation_contexts?.[state.renderMode]?.render?.views?.[view];
         if (!expected) throw new Error("Batch inputs are still loading. Refresh before submitting.");
         const actions = {generate: "generate_slots", regenerate: "regenerate_slot", retry: "retry_render_slot"};
         const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
@@ -2146,7 +2147,7 @@
       return result;
     }
     if (action === "run-available" && window.ZetLocalOperations) {
-      const expected = body.scope === "front" ? state.run?.operation_contexts?.[state.renderMode]?.views?.FRONT : state.run?.operation_contexts?.[state.renderMode]?.batch;
+      const expected = body.scope === "front" ? state.run?.operation_contexts?.[state.renderMode]?.render?.views?.FRONT : state.run?.operation_contexts?.[state.renderMode]?.render?.batch;
       if (!expected) throw new Error("Batch inputs are still loading. Refresh before submitting.");
       const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
         pipeline, run_id: runId, character: state.run.character || "", phase: state.run.phase || "",
@@ -2157,7 +2158,7 @@
       return result;
     }
     if (["rerun-view", "rerun-failed"].includes(action) && window.ZetLocalOperations) {
-      const expected = state.run?.operation_contexts?.[state.renderMode]?.views?.[view];
+      const expected = state.run?.operation_contexts?.[state.renderMode]?.render?.views?.[view];
       if (!expected) throw new Error("Batch inputs are still loading. Refresh before submitting.");
       const result = await window.ZetLocalOperations.submit({universe_id: document.querySelector("#universe-select").value,
         pipeline, run_id: runId, character: state.run.character || "", phase: state.run.phase || "",

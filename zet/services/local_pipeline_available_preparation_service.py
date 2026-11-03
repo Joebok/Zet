@@ -4,12 +4,13 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 import hashlib
+import json
 import re
 from uuid import uuid4
 
 from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json
 from zet.services.local_image_evaluation_service import mode_field, supersede_evaluations
-from zet.services.local_pipeline_operation_context import check_reserved_operation_context
+from zet.services.local_pipeline_operation_context import check_reserved_operation_context, operation_context, OperationWaiting
 from zet.services.local_pipeline_operation_reservation import LocalPipelineOperationReservation, ReservationConflict
 from zet.services.render_slot_service import frozen_input, merge_candidates, slot_maps, verify_input
 from zet.services.workflow_storage import file_lock
@@ -21,6 +22,21 @@ class LocalPipelineAvailablePreparationService:
 
     def _run(self, request):
         return self.workflow.action("detail", run_id=request["run_id"], costume=request.get("costume") or "")
+
+    def _input_signature(self, run, target):
+        sources = {}
+        if self.workflow.pipeline in {"character-assembly", "costume-dressing"}:
+            sources = self.workflow.slots._mode_sources(run, target["view"], target["mode"])
+        return (operation_context(run, target["mode"], target["view"]),
+                json.dumps(sources, sort_keys=True, default=str))
+
+    @staticmethod
+    def _sources_unchanged(sources):
+        try:
+            return all(Path(path).is_file() and hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest
+                       for path, digest in sources)
+        except OSError:
+            return False
 
     def prepare(self, request: dict, operation_id: str, candidate_id: str) -> dict | None:
         """Compile and freeze one reserved target outside the state lock."""
@@ -60,10 +76,35 @@ class LocalPipelineAvailablePreparationService:
             preset = template.get("render_preset") or ("comfyui-qwen-body-reference-text" if target["view"] == "FRONT" else "comfyui-qwen-body-reference-edit")
             frozen = frozen_input(root / "renders" / candidate_id / "inputs", prompt, template.get("reference_images") or [], preset)
         else:
-            frozen = self.workflow.slots.prepare_input(run, target["view"], root / "renders" / candidate_id / "inputs",
-                recompile=bool(target.get("recompile", target.get("existing"))), render_mode=target["mode"], aspect_ratio=request.get("aspect_ratio"))
+            from zet.services.render_slot_service import _preparation_source_capture
+            signature = self._input_signature(run, target)
+            sources = []
+            source_manifest = root / "prompts" / target["view"] / "Prompt_Source_Hashes.json"
+            try:
+                previous_sources = json.loads(source_manifest.read_text(encoding="utf-8")).get("sources", [])
+            except (OSError, ValueError):
+                previous_sources = []
+            before = {}
+            for item in previous_sources:
+                path = Path(str(item.get("path") or ""))
+                if path.is_file():
+                    before[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+            token = _preparation_source_capture.set(sources)
+            try:
+                frozen = self.workflow.slots.prepare_input(run, target["view"], root / "renders" / candidate_id / "inputs",
+                    recompile=bool(target.get("recompile", target.get("existing"))), render_mode=target["mode"], aspect_ratio=request.get("aspect_ratio"))
+            finally:
+                _preparation_source_capture.reset(token)
+            masters = [(item["path"], item["sha256"]) for item in frozen.get("template_sources", []) if item.get("path") and item.get("sha256")]
+            sources.extend(masters)
+            if any(before.get(path) != digest for path, digest in masters):
+                raise OperationWaiting("Governing sources changed during preparation; preparing again.")
+            if signature != self._input_signature(self._run(request), target) or not self._sources_unchanged(sources):
+                raise OperationWaiting("Inputs changed during preparation; preparing again.")
         verify_input(frozen)
-        return {"target": target, "render_input": frozen, "template": template}
+        return {"target": target, "render_input": frozen, "template": template,
+                "input_signature": signature if not target.get("retry") else None,
+                "source_checks": sources if not target.get("retry") else []}
 
     def commit(self, request: dict, operation_id: str, prepared: dict) -> bool:
         """Recheck current inputs and commit one prepared target atomically."""
@@ -80,6 +121,9 @@ class LocalPipelineAvailablePreparationService:
             reason = "" if target.get("retry_input_frozen") else self.workflow.slots._prerequisite(run, target["view"], target["mode"])
             if reason:
                 raise ReservationConflict(reason)
+            if prepared.get("input_signature") is not None and (prepared["input_signature"] != self._input_signature(run, target)
+                    or not self._sources_unchanged(prepared["source_checks"])):
+                raise OperationWaiting("Inputs changed during preparation; preparing again.")
             current["run"] = run
 
         def apply(state, reserved):

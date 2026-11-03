@@ -7,7 +7,7 @@ from typing import Any
 
 from zet.services.library_reference_service import read_library_json, write_library_json
 from zet.services.local_pipeline_operation_context import (
-    candidate_retry_context, evaluation_context, operation_context,
+    candidate_retry_context, evaluation_context, operation_context, render_context,
 )
 from zet.services.local_view_reference_service import reference_recipes
 from zet.services.render_slot_service import merge_candidates, slot_maps
@@ -47,8 +47,11 @@ class LocalPipelineProjectionService:
         run["final_slots_by_view"] = state.get("final_slots_by_view") or spec.get("final_slots_by_view") or {}
         run["slots_by_mode"] = {mode: slot_maps(run, mode) for mode in ("draft", "final")}
         run["selected_views_by_mode"] = {"draft": run["selected_views"], "final": run["final_selected_views"]}
+        if pipeline == "character-assembly":
+            run["use_front_anchor"] = False
         run["view_reference_recipes"] = reference_recipes(root, pipeline, state=run)
-        run["active_template_revision_id"] = (state.get("character_progression") or {}).get("accepted_revision_id", "")
+        from zet.services.template_source_service import active_revision
+        run["active_template_revision_id"] = active_revision(root).get("revision_id", "")
         if pipeline == "costume-dressing":
             from zet.services.costume_render_mode_service import render_settings
             run["render_settings"] = {view: render_settings(run, view) for view in run.get("views") or []}
@@ -191,7 +194,8 @@ class LocalPipelineProjectionService:
                 "universe_style_variant": run.get("universe_style_variant", "canonical"),
                 "active_template_revision_id": run["active_template_revision_id"],
                 "prompt_review": state.get("template_revision_review") or {},
-                "operation_context": operation_context(run, mode),
+                "operation_context": operation_context(run, mode), "render_context": render_context(run, mode),
+                "front_render_context": render_context(run, mode, "FRONT") if "FRONT" in run.get("views", []) else "",
                 "evaluation_context": evaluation_context(run, mode)}
 
     def view(self, run_id: str, view: str, mode: str = "draft", costume: str = "") -> dict:
@@ -278,7 +282,7 @@ class LocalPipelineProjectionService:
                 "selected_candidate_id": selected_id,
                 "locked": bool(record.get("locked") and record.get("batch_id") == run_id
                                and record.get("candidate_id") == selected_id),
-                "operation_context": operation_context(run, mode, view),
+                "operation_context": operation_context(run, mode, view), "render_context": render_context(run, mode, view),
                 "evaluation_context": evaluation_context(run, mode, view),
                 "candidate_retry_contexts": {item["candidate_id"]: candidate_retry_context(run, mode, item["candidate_id"])
                                              for item in candidates}}

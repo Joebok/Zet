@@ -1,5 +1,15 @@
 # Local testing
 
+## Character regen input checks (2026-11-03)
+
+The approved four-scenario fast suite passed. A disposable isolated Assembly
+journey submitted a durable view regen through the operation API, waited for
+successful preparation, and verified ordered Body and Head bindings. Separate
+stubbed checks covered target contexts, changed and missing reference files,
+pre-commit rechecking, and frozen Retry across five pipeline identities and
+both modes. Those stubbed checks do not establish real compiler behavior for
+every pipeline. No live render or maintained test was added.
+
 ## Simplified guards and polling (2026-11-02)
 
 The approved `npm run test:e2e` suite passed 4/4 after the current-master,
