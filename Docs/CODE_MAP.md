@@ -26,8 +26,10 @@ review navigation from `selected_cards`; its reports remain in the summary page.
 Character Run available and slot/view regeneration preparation: `LocalPipelineOperationService`,
 `LocalPipelineAvailableOperationHandler` and `LocalPipelineOperationReservation`
 own local admission, preparation and candidate checkpoints; the operation router
-and `local_pipeline_operations.js` expose status and Activity. Batch/view Re-evaluate
-uses `LocalPipelineEvaluationOperationHandler`; Start and Resume use
+and `local_pipeline_operations.js` expose status and Activity. Activity is an
+active/error projection with explicit error dismissal and navigation refresh;
+terminal records remain for request identity recovery. Batch/view Re-evaluate uses
+`LocalPipelineEvaluationOperationHandler`; Start and Resume use
 `LocalPipelineBatchOperationHandler` and `LocalPipelineBatchTransitionService`.
 Candidate-review retry uses `LocalPipelineCandidateRetryOperationHandler`,
 `LocalPipelineCandidateRetryReservation` and `LocalPipelineRetryArtifactService`;

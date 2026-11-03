@@ -4,13 +4,12 @@
   const message = document.getElementById("local-operations-message");
   const list = document.getElementById("local-operations-list");
   const active = new Set(["SUBMITTING", "QUEUED", "PREPARING", "WAITING"]);
-  const attention = new Set(["BLOCKED", "PARTIAL", "FAILED", "RECOVERY_REQUIRED", "UNKNOWN"]);
+  const errors = new Set(["FAILED", "RECOVERY_REQUIRED", "UNKNOWN"]);
   const pages = {"body-reference": "local-body-reference", "head-image": "local-head-image",
     "head-image-edit": "local-head-image-edit", "character-assembly": "local-character-assembly",
     "costume-dressing": "local-costume-dressing"};
   const storageKey = "zet.pending-character-operations.v1";
   let rows = [], refreshing = false;
-  let lastRefresh = 0;
   const submitting = new Set();
 
   function pending() {
@@ -28,7 +27,8 @@
   }
   function allRows() {
     const known = new Set(rows.flatMap(row => [row.id, ...(row.aliases || [])]).map(normalizedId));
-    return [...rows, ...pending().filter(item => !known.has(normalizedId(item.operation_id))).map(item => {
+    const visible = rows.filter(row => active.has(row.status) || errors.has(row.status));
+    return [...visible, ...pending().filter(item => !known.has(normalizedId(item.operation_id))).map(item => {
       const activeSubmission = submitting.has(normalizedId(item.operation_id));
       return {id: item.operation_id, request: item, status: activeSubmission ? "SUBMITTING" : "UNKNOWN",
         stage: activeSubmission ? "Submitting…" : "Submission not confirmed — check status before retrying"};
@@ -45,9 +45,9 @@
   function render() {
     const visibleRows = allRows();
     const activeCount = visibleRows.filter(row => active.has(row.status)).length;
-    const attentionCount = visibleRows.filter(row => attention.has(row.status)).length;
-    button.textContent = `Activity${activeCount || attentionCount ? ` (${activeCount}${attentionCount ? ` · ${attentionCount} need attention` : ""})` : ""}`;
-    message.textContent = visibleRows.length ? "Recent character preparation actions" : "No character preparation actions.";
+    const errorCount = visibleRows.filter(row => errors.has(row.status)).length;
+    button.textContent = `Activity${activeCount || errorCount ? ` (${activeCount} running${errorCount ? ` · ${errorCount} error${errorCount === 1 ? "" : "s"}` : ""})` : ""}`;
+    message.textContent = visibleRows.length ? "Character preparation in progress or failed" : "No active or failed character preparation.";
     list.replaceChildren();
     for (const row of visibleRows) {
       const item = document.createElement("div"); item.className = "local-operation-item";
@@ -61,6 +61,11 @@
       if (Object.keys(blocked).length) status.textContent += ` — ${Object.entries(blocked).map(([view, reason]) => `${view}: ${reason}`).join(" · ")}`;
       const link = document.createElement("a"); link.href = batchLink(request); link.textContent = "Open batch";
       item.append(title, status, link); list.append(item);
+      if (errors.has(row.status) && row.status !== "UNKNOWN") {
+        const dismiss = document.createElement("button"); dismiss.type = "button"; dismiss.textContent = "Dismiss";
+        dismiss.addEventListener("click", () => void dismissError(row.id, dismiss));
+        item.append(dismiss);
+      }
     }
     window.dispatchEvent(new CustomEvent("zet-local-operations", {detail: visibleRows}));
   }
@@ -72,7 +77,7 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       rows = (await response.json()).operations || []; render();
     } catch (_) { message.textContent = "Could not refresh activity. Previously shown actions may be out of date."; }
-    finally { refreshing = false; lastRefresh = Date.now(); }
+    finally { refreshing = false; }
   }
   async function post(payload) {
     const response = await fetch("/api/local/operations", {method: "POST", headers: {"Content-Type": "application/json", "X-Zet-Universe": payload.universe_id}, body: JSON.stringify(payload)});
@@ -113,6 +118,26 @@
     }
     await refresh();
   }
+  async function dismissError(id, control) {
+    control.disabled = true;
+    try {
+      const response = await fetch(`/api/local/operations/${encodeURIComponent(id)}/dismiss`, {method: "POST"});
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      rows = rows.filter(row => normalizedId(row.id) !== normalizedId(id));
+      render();
+    } catch (error) {
+      control.disabled = false;
+      message.textContent = `Could not dismiss error: ${error.message}`;
+    }
+  }
+  function closePanel() {
+    panel.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  }
+  function onNavigation() {
+    closePanel();
+    void recoverPending();
+  }
   button.addEventListener("click", () => {
     panel.hidden = !panel.hidden; button.setAttribute("aria-expanded", String(!panel.hidden));
     if (!panel.hidden) { positionPanel(); void refresh(); }
@@ -129,10 +154,6 @@
     if (event.key === "Escape" && !panel.hidden) { panel.hidden = true; button.setAttribute("aria-expanded", "false"); button.focus(); }
   });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) void recoverPending(); });
-  window.ZetLocalOperations = {submit, refresh, rows: allRows};
-  setInterval(() => {
-    const fast = allRows().some(row => active.has(row.status) || row.status === "UNKNOWN");
-    if (fast || (!panel.hidden && Date.now() - lastRefresh >= 30000)) void refresh();
-  }, 2000);
+  window.ZetLocalOperations = {submit, refresh, rows: allRows, onNavigation};
   void recoverPending();
 })();

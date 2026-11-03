@@ -39,4 +39,8 @@ def create_local_pipeline_operation_router(service: LocalPipelineOperationServic
     async def operation(operation_id: str):
         return await call(service.repository.get, operation_id)
 
+    @router.post("/{operation_id}/dismiss")
+    async def dismiss(operation_id: str):
+        return await call(service.dismiss, operation_id)
+
     return router

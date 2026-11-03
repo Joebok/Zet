@@ -138,12 +138,15 @@ class LocalPipelineOperationService:
     def list(self, *, universe_id: str = "", run_id: str = "", offset: int = 0, limit: int = 50) -> dict:
         if offset < 0 or not 1 <= limit <= 100:
             raise ValueError("Invalid operation page.")
-        rows = [record for record in self.repository.list()
+        rows = [record for record in self.repository.list_activity()
                 if (not universe_id or record["request"].get("universe_id") == universe_id)
                 and (not run_id or record["request"].get("run_id") == run_id)]
-        rows.sort(key=lambda record: (record.get("status") not in {"QUEUED", "PREPARING", "WAITING", "RECOVERY_REQUIRED"},
+        rows.sort(key=lambda record: (record.get("status") not in {"QUEUED", "PREPARING", "WAITING"},
                                       record.get("created_at", "")), reverse=False)
         return {"operations": rows[offset:offset + limit], "next_offset": offset + limit if offset + limit < len(rows) else None}
+
+    def dismiss(self, operation_id: str) -> dict:
+        return self.repository.dismiss(operation_id)
 
     def stop_batch(self, workflow, run_id: str, costume: str = "") -> dict:
         """Fence admitted preparation before applying the existing Stop behavior."""
@@ -252,7 +255,7 @@ class LocalPipelineOperationService:
                     if record["status"] == "PREPARING":
                         can_resume = getattr(self.handler, "can_resume", lambda record: False)
                         if not can_resume(record):
-                            self.repository.update(operation_id, status="RECOVERY_REQUIRED", stage="Preparation was interrupted; reconciliation is required.")
+                            self.repository.update(operation_id, status="RECOVERY_REQUIRED", stage="Preparation stopped unexpectedly")
                             return
                     elif record["status"] in {"QUEUED", "WAITING"}:
                         record = self.repository.transition(operation_id, {"QUEUED", "WAITING"}, status="PREPARING", stage="Checking inputs")
@@ -269,7 +272,7 @@ class LocalPipelineOperationService:
                     except OperationInputsChanged as exc:
                         self.repository.settle_unstarted(operation_id, "BLOCKED", "Inputs changed", str(exc))
                     except Exception as exc:
-                        self.repository.update(operation_id, status="RECOVERY_REQUIRED", stage="Preparation needs reconciliation.", error=str(exc))
+                        self.repository.update(operation_id, status="RECOVERY_REQUIRED", stage="Preparation failed", error=str(exc))
                     else:
                         self.repository.complete_preparation(operation_id, result)
             except TimeoutError:

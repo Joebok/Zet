@@ -4,7 +4,10 @@ Character **Run available**, slot generation/retry, view regeneration, Re-evalua
 batch Start/Resume and candidate-review retry are admitted to a fixed-local Zet operation record and
 prepared by a lifespan-managed worker. Prepared candidates hand off to
 the existing slot collector and AI_Proxy queue; the operation record describes
-preparation, not render completion. Validation limits are recorded in the
+preparation, not render completion. Activity shows active preparation and
+undismissed failures; terminal operation records remain available for request ID
+recovery but do not themselves block a new admission. Domain checkpoints and guards
+still govern execution. Validation limits are recorded in the
 [completed plan](../plans/completed/character-pipeline-operations.md).
 
 Head-Image Edit shares the head lifecycle through explicit identity/compiler

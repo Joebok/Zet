@@ -11,8 +11,9 @@ from zet.services.atomic_file_service import write_json_atomic
 from zet.services.workflow_storage import file_lock
 
 
-# An ambiguous interruption must continue fencing the batch until reconciled.
-ACTIVE = frozenset({"QUEUED", "PREPARING", "WAITING", "RECOVERY_REQUIRED"})
+# Activity records report progress and errors; execution checkpoints own guards.
+ACTIVE = frozenset({"QUEUED", "PREPARING", "WAITING"})
+ACTIVITY_ERRORS = frozenset({"FAILED", "RECOVERY_REQUIRED", "UNKNOWN"})
 
 
 class OperationConflict(ValueError):
@@ -56,6 +57,23 @@ class LocalPipelineOperationRepository:
             except FileNotFoundError:
                 continue
         return records
+
+    def list_activity(self) -> list[dict]:
+        """Return in-progress operations and errors not dismissed by the user."""
+        return [record for record in self.list()
+                if record.get("status") in ACTIVE
+                or record.get("status") in ACTIVITY_ERRORS and not record.get("dismissed_at")]
+
+    def dismiss(self, operation_id: str) -> dict:
+        """Hide a completed error without changing its execution checkpoint."""
+        with file_lock(self.root / "admission.lock"):
+            record = self.get(operation_id)
+            if record.get("status") not in ACTIVITY_ERRORS:
+                raise ValueError("Only a completed error can be dismissed.")
+            if not record.get("dismissed_at"):
+                record["dismissed_at"] = datetime.now(timezone.utc).isoformat()
+                write_json_atomic(self._path(record["id"]), record)
+            return record
 
     def admit(self, operation_id: str, request: dict) -> tuple[dict, bool]:
         path = self._path(operation_id)

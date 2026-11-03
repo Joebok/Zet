@@ -35,6 +35,9 @@
   const pendingBatchSubmissions = new Set();
   const pendingSlotSubmissions = new Set();
   const pendingViewSubmissions = new Set();
+  function clearOperationMessage(button, selector) {
+    button?.parentElement?.querySelector(selector)?.remove();
+  }
 
   function showOperationStatus() {
     if (!state.run) return;
@@ -42,8 +45,8 @@
       && row.request?.pipeline === state.pipeline && row.request?.run_id === state.run.run_id);
     rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
     const row = rows.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "RECOVERY_REQUIRED", "UNKNOWN"].includes(item.status)) || rows[0];
-    if (!row) return;
     const button = $("proceed");
+    if (!row) { clearOperationMessage(button, '[data-submission-status="proceed"]'); return; }
     let message = button.parentElement.querySelector('[data-submission-status="proceed"]');
     if (!message) {
       message = document.createElement("span"); message.className = "action-message";
@@ -62,8 +65,8 @@
       && row.request?.run_id === state.run.run_id);
     rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
     const row = rows.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(item.status)) || rows[0];
-    if (!row) return;
     const button = $("start");
+    if (!row) { clearOperationMessage(button, '[data-submission-status="batch-lifecycle"]'); return; }
     let message = button.parentElement.querySelector('[data-submission-status="batch-lifecycle"]');
     if (!message) {
       message = document.createElement("span"); message.className = "action-message";
@@ -80,8 +83,8 @@
       && row.request?.run_id === state.run.run_id && row.request?.render_mode === state.renderMode);
     rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
     const row = rows.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(item.status)) || rows[0];
-    if (!row) return;
     const button = $("reevaluate");
+    if (!row) { clearOperationMessage(button, '[data-submission-status="reevaluate"]'); return; }
     let message = button.parentElement.querySelector('[data-submission-status="reevaluate"]');
     if (!message) {
       message = document.createElement("span"); message.className = "action-message";
@@ -100,10 +103,10 @@
     for (const button of document.querySelectorAll("[data-local-slot-view]")) {
       const matching = rows.filter(item => item.request.view === button.dataset.localSlotView
         && String(item.request.slot || "add") === button.dataset.localSlotNumber);
-      const row = matching.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(item.status)) || matching[0];
-      const inProgress = row && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(row.status);
+      const row = matching.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN"].includes(item.status)) || matching[0];
+      const inProgress = row && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN"].includes(row.status);
       button.disabled = button.dataset.localSlotDisabled === "true" || Boolean(inProgress);
-      if (!row) continue;
+      if (!row) { if (button.nextElementSibling?.matches("[data-slot-submission-status]")) button.nextElementSibling.remove(); continue; }
       let message = button.nextElementSibling;
       if (!message?.dataset.slotSubmissionStatus) {
         message = document.createElement("span"); message.className = "action-message";
@@ -123,10 +126,10 @@
     for (const button of document.querySelectorAll("[data-local-view-operation]")) {
       const action = {"rerun-view": "rerun_view", "rerun-failed": "rerun_failed", "reevaluate-view": "reevaluate"}[button.dataset.localViewOperation];
       const matching = rows.filter(item => item.request.view === button.dataset.view && item.request.action === action);
-      const row = matching.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(item.status)) || matching[0];
-      const inProgress = row && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(row.status);
+      const row = matching.find(item => ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN"].includes(item.status)) || matching[0];
+      const inProgress = row && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN"].includes(row.status);
       button.disabled = button.dataset.localViewDisabled === "true" || Boolean(inProgress);
-      if (!row) continue;
+      if (!row) { if (button.nextElementSibling?.matches("[data-view-submission-status]")) button.nextElementSibling.remove(); continue; }
       let message = button.nextElementSibling;
       if (!message?.dataset.viewSubmissionStatus) {
         message = document.createElement("span"); message.className = "action-message";
@@ -616,7 +619,7 @@
       return;
     }
     const operationBusy = (window.ZetLocalOperations?.rows() || []).some(row =>
-      ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN", "RECOVERY_REQUIRED"].includes(row.status) && row.request?.universe_id === document.querySelector("#universe-select").value
+      ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN"].includes(row.status) && row.request?.universe_id === document.querySelector("#universe-select").value
       && row.request?.pipeline === state.pipeline && row.request?.run_id === run?.run_id);
     const isBusy = operationBusy || (!run?.slot_paused && (busy(run) || Boolean(run?.slot_render_ids?.length)));
     const resumable = ["INTERRUPTED", "STOPPED"].includes(run?.status)

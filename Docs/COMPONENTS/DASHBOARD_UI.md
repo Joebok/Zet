@@ -3,10 +3,13 @@
 Identity Key source choices combine Draft and Final locks by pipeline, costume and view without mode labels. Saved rows use light green for Draft-derived crops and dark green for Final-derived crops, driven by `source_render_mode` on the record.
 
 Character Run available, slot generation/retry, view regeneration, Re-evaluate,
-batch Start/Resume and candidate-review retry show immediate submission feedback and expose preparation
-status in the shared Activity menu across navigation. An unconfirmed browser request
-retains its operation ID for reconciliation; Activity distinguishes preparation from
-render completion. See the [completed plan](../../plans/completed/character-pipeline-operations.md)
+batch Start/Resume and candidate-review retry show immediate submission feedback.
+The shared Activity menu lists in-progress preparation and undismissed errors;
+completed and expected blocked/partial actions leave Activity. Errors can be
+dismissed without changing their operation checkpoint. Activity refreshes on
+navigation, menu open, tab return, submission or explicit request, with no timer.
+An unconfirmed browser request retains its operation ID. Activity tracks preparation
+and handoff, not render completion. See the [completed plan](../../plans/completed/character-pipeline-operations.md)
 for validation limits.
 
 The Assets menu lists Head-Image (Edit) after Body-Reference and before Head-Image (Construct). Pipeline identifiers and source defaults remain unchanged.

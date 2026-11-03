@@ -13,7 +13,11 @@ fixed-local storage recovery root's `LocalPipelineOperations/records`. Records o
 request identity, preparation status, progress and outcome; the universe batch
 state owns reserved candidate identities and commit checkpoints. Its Stop generation
 is included in operation input tokens so a request formed before Stop cannot
-start later. They do not replace the AI_Proxy transport or the entity catalog. Implementation and recovery
+start later. `dismissed_at` hides an error from Activity without changing its status
+or checkpoint. The Activity projection includes active statuses and undismissed
+errors; terminal successes, partial handoffs and expected blocks remain available
+for seven-day request identity recovery but are not listed. They do not replace the
+AI_Proxy transport or the entity catalog. Implementation and recovery
 limits are recorded in the [completed plan](../plans/completed/character-pipeline-operations.md).
 
 Candidate-review retry checkpoints live in batch state under

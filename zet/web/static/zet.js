@@ -4747,6 +4747,7 @@ async function activatePage(page, options = {}) {
   // Badge counts are supplemental navigation chrome.  Updating them can scan
   // project-wide queues, so do not hold the newly selected page open on it.
   void refreshProductionWorkSummary();
+  window.ZetLocalOperations?.onNavigation();
   return true;
 }
 
