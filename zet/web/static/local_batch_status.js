@@ -161,7 +161,8 @@
         && requestedUniverse !== document.querySelector("#universe-select").value) void refresh();
       else if (page.classList.contains("active") && !document.hidden) {
         stopPolling();
-        timer = window.setTimeout(() => void refresh(), loadState !== "selected" || batches.some(batch => activeStatuses.has(batch.status)) ? 3000 : 30000);
+        if (loadState !== "selected" || batches.some(batch => activeStatuses.has(batch.status)))
+          timer = window.setTimeout(() => void refresh(), 3000);
       }
     }
   }

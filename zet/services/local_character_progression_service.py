@@ -64,7 +64,7 @@ def accept_prompts(root, revision_id):
 
 
 def prompt_review_required(run):
-    return run.get("kind") != "character-assembly" and not (run.get("character_progression") or {}).get("accepted_revision_id")
+    return False
 
 
 def assembly_front(run):
@@ -226,24 +226,6 @@ def project(run):
         "next_views": next_views,
         "can_continue": not reason and bool(next_views), "reason": reason,
         "complete": all(available(v) for v in requested), "prompt_review_required": prompt_review_required(run)}
-    warnings = []
-    warned = set()
-    for candidate in candidates.values():
-        if selected.get(candidate["view"]) and selected[candidate["view"]] != candidate["candidate_id"]:
-            continue
-        for ref in (candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", []):
-            source_view = ref.get("view")
-            key = (candidate["view"], source_view)
-            if ref.get("candidate_id") and source_view and selected.get(source_view) != ref["candidate_id"] and key not in warned:
-                warned.add(key)
-                warnings.append({"view": candidate["view"], "candidate_id": candidate["candidate_id"],
-                    "message": f"Generated from an earlier {source_view} selection; your current choice has changed."})
-    run["reference_warnings"] = warnings
-    if is_head_edit(run):
-        stale = {warning["view"] for warning in warnings}
-        run["stale_views"] = sorted(stale)
-        for candidate in candidates.values():
-            candidate["stale_source"] = any(w["candidate_id"] == candidate["candidate_id"] for w in warnings)
     # Ranking/reference drift is advice, not a new gate on human choices.
     run["stale_selections"] = [v for v in selected if not available(v)]
     if run["progression"]["complete"] and not busy and not run.get("stop_requested"):
@@ -305,6 +287,10 @@ def select(workflow, run, view, candidate_id):
     pipeline = {"body-reference": "Body-Reference", "head-image": "Head-Image", "head-image-edit": "Head-Image-Edit",
                 "character-assembly": "Character-Assembly", "costume-dressing": "Costume-Dressing"}[workflow.pipeline]
     qualifier = adapter._qualifier(run.get("costume", "")) if workflow.pipeline == "costume-dressing" else ""
+    locked = adapter.asset_store.detail(run["character"], run["phase"])["assets"].get(
+        adapter.asset_store.key(pipeline, view, qualifier), {})
+    if locked.get("locked") and (locked.get("batch_id") != run["run_id"] or locked.get("candidate_id") != candidate_id):
+        raise ValueError(f"Unlock {pipeline} {view} before changing its selection.")
     dependencies = [{"key": s["key"], "image_sha256": s.get("sha256", "")}
                     for s in (run.get("sources", {}).get(view) or {}).values() if s.get("key")]
     if is_head_edit(run) and candidate:
@@ -320,8 +306,6 @@ def select(workflow, run, view, candidate_id):
             selected.pop(view, None)
         if view == "FRONT":
             state["front_anchor"] = candidate_id or None
-            if workflow.pipeline == "character-assembly" and (run.get("selected_views") or {}).get("FRONT") != candidate_id:
-                invalidate_assembly_rankings(state)
         if state.get("status") not in {"RUNNING", "PREFLIGHT", "REEVALUATING", "STOPPING"}:
             state["status"] = "AWAITING_HUMAN_SELECTION"
     mutate_local_run_state(root, update)

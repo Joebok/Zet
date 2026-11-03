@@ -173,6 +173,9 @@ class CharacterRenderSlots:
 
     def _mode_sources(self, run, view, render_mode):
         sources = self.adapter._locked_view_inputs(run, view, render_mode=render_mode)
+        for role, source in sources.items():
+            if source.get("render_mode", "draft") != render_mode:
+                raise ValueError(f"A {render_mode.title()} {role.replace('_', ' ')} image is required for {view}.")
         if render_mode == "final":
             for role, source in sources.items():
                 if source.get("render_mode", "draft") != "final":
@@ -325,15 +328,10 @@ class CharacterRenderSlots:
             from zet.services.local_view_reference_service import selected_run_for_mode
             default_ratio = "1:1" if self.workflow.pipeline in {"head-image", "head-image-edit"} else "2:3"
             sizing = resolve_image_sizing(self.workflow.app.config, render_mode, aspect_ratio or default_ratio)
-            run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final")
-        from zet.services.template_source_service import active_revision
+            run = selected_run_for_mode(run, render_mode, allow_fallback=False)
         root = Path(run["root"])
-        revision = active_revision(root)
-        if render_mode is not None:
-            for source in revision.get("sources") or []:
-                path = Path(source["source_path"])
-                if not path.is_file() or hashlib.sha256(path.read_text(encoding="utf-8").encode("utf-8")).hexdigest() != source.get("master_sha256"):
-                    raise RenderSlotConflict(f"Current master changed: {source.get('label') or path.name}. Use current masters before a new render.")
+        revision = {}
+        recompile = True
         if self.workflow.pipeline == "costume-dressing":
             from zet.services.costume_render_mode_service import CostumeRenderModeService
             if render_mode is not None:
@@ -449,6 +447,9 @@ class CharacterRenderSlots:
             saved["prompt_packet_declarations"] = packet_declarations
         saved["template_revision_id"] = revision.get("revision_id", "")
         saved["reference_recipe"] = recipe
+        source_hashes = output / "Prompt_Source_Hashes.json"
+        if source_hashes.is_file():
+            saved["template_sources"] = json.loads(source_hashes.read_text(encoding="utf-8")).get("sources", [])
         if pipeline == "head-image-edit":
             from zet.services.local_render_backend_service import LocalRenderBackendService
             saved["recipe_version"] = 1
@@ -464,7 +465,7 @@ class CharacterRenderSlots:
             return "Choose a Final phase-change FRONT source before rendering."
         if render_mode is not None:
             from zet.services.local_view_reference_service import selected_run_for_mode
-            run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final")
+            run = selected_run_for_mode(run, render_mode, allow_fallback=False)
         if self.workflow.pipeline == "costume-dressing":
             from zet.services.costume_render_mode_service import CostumeRenderModeService
             if render_mode is not None:
@@ -844,7 +845,38 @@ class CharacterRenderSlots:
                     errors[candidate["candidate_id"]] = str(exc)
         return {"render_mode": mode, "submitted_candidate_ids": completed, "errors": errors}
 
-    def delete_draft_images(self, run_id: str, view: str = "", costume: str = "") -> dict:
+    def _draft_delete_preview(self, run: dict, views: list[str]) -> dict:
+        from zet.services.local_mode_selection_service import LocalModeSelectionService
+        selection = LocalModeSelectionService(self.workflow)
+        qualifier = self.adapter._qualifier(run.get("costume", "")) if self.workflow.pipeline == "costume-dressing" else ""
+        effects = []
+        for view in views:
+            candidate_id = (run.get("selected_views") or {}).get(view)
+            if candidate_id:
+                effects.append({"id": f"unselect:draft:{view}:{candidate_id}",
+                                "label": f"Unselect Draft {view} ({candidate_id})"})
+            record = selection.store.mode_record(run["character"], run["phase"], selection._pipeline(), view, qualifier) or {}
+            if record.get("locked") and record.get("batch_id") == run["run_id"]:
+                effects.append({"id": f"unlock:draft:{view}:{record.get('candidate_id')}",
+                                "label": f"Unlock Draft {view} ({record.get('candidate_id')})"})
+        root = Path(run["root"])
+        token = hashlib.sha256(root.joinpath("state.json").read_bytes() +
+                               json.dumps(effects, sort_keys=True).encode()).hexdigest()
+        return {"protected_effects": effects, "confirmation_token": token,
+                "view_count": len(views)}
+
+    def preview_draft_delete(self, run_id: str, view: str = "", costume: str = "") -> dict:
+        from zet.services.workflow_storage import file_lock
+        run = self.workflow.prompt_improvement.detail(run_id, costume)
+        with file_lock(Path(run["root"]) / "state.lock"):
+            run = self.workflow.prompt_improvement.detail(run_id, costume)
+            views = [view.upper()] if view else list(run["views"])
+            if any(item not in run["views"] for item in views):
+                raise ValueError("Unknown character view.")
+            return self._draft_delete_preview(run, views)
+
+    def delete_draft_images(self, run_id: str, view: str = "", costume: str = "", *,
+                            confirmation_token: str = "", approved_effects: list[str] | None = None) -> dict:
         """Cancel and remove Draft outputs within one batch or view."""
         from zet.services.local_image_evaluation_service import supersede_evaluations
         from zet.services.local_mode_selection_service import LocalModeSelectionService
@@ -859,6 +891,12 @@ class CharacterRenderSlots:
             views = [view.upper()] if view else list(run["views"])
             if any(item not in run["views"] for item in views):
                 raise ValueError("Unknown character view.")
+            preview = self._draft_delete_preview(run, views)
+            if confirmation_token != preview["confirmation_token"]:
+                from zet.services.protected_effect_preview import ProtectedEffectsChanged
+                raise ProtectedEffectsChanged(preview)
+            if not isinstance(approved_effects, list) or set(approved_effects) != {effect["id"] for effect in preview["protected_effects"]}:
+                raise ValueError("Approve each selected or locked Draft image affected by deletion.")
             state = read_library_json(root / "state.json", library)
             spec = read_library_json(root / "spec.json", library)
             candidates = [c for c in merge_candidates(spec, state, include_detached=True).values()

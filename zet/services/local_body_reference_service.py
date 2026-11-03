@@ -571,15 +571,10 @@ class LocalBodyReferenceService:
         value["root"] = str(root)
         stale_selections: list[str] = []
         by_id = {item["candidate_id"]: item for item in value["candidates"]}
-        for view, ranking in (value.get("rankings") or {}).items():
-            if view not in value.get("views", []):
-                continue
-            selected_id = (value.get("selected_views") or {}).get(view)
+        for view, selected_id in (value.get("selected_views") or {}).items():
             selected = by_id.get(selected_id)
             image = Path(str((selected or {}).get("image_path") or ""))
-            if selected_id and (not selected or not image.is_file() or ranking.get("status") != "COMPLETE"
-                                or selected_id not in (ranking.get("ordered_candidate_ids") or [])
-                                or ranking.get("input_hashes", {}).get(selected_id) != str((selected or {}).get("image_sha256") or "")):
+            if selected_id and (not selected or not image.is_file()):
                 stale_selections.append(view)
         value["stale_selections"] = stale_selections
         if stale_selections and value["status"] not in {"PREFLIGHT", "RUNNING", "STOPPING", "REEVALUATING", "ERROR"}:
@@ -957,8 +952,6 @@ class LocalBodyReferenceService:
                     state.setdefault("ranking_history", {}).setdefault(FRONT_VIEW, []).append(
                         {"archived_at": stamp, "ranking": old_rank}
                     )
-                if not run.get("character_progression"):
-                    self._invalidate_views_after_anchor_change(run_id, state)
         else:
             if int(run.get("review_version") or 1) >= 2:
                 state.setdefault("selected_views", {}).pop(view, None)
@@ -1086,11 +1079,12 @@ class LocalBodyReferenceService:
                     str(record.get("qualifier") or ""),
                 )
         run = self.detail(run_id)
-        if any(record.get("selected") and record.get("batch_id") == run_id and not record.get("locked")
-               for record in run.get("local_assets", {}).values()):
-            raise LocalBodyReferenceError("Lock or unselect this batch's local assets before deleting it.")
         if self._runner_is_active(run_id):
             raise LocalBodyReferenceError("Wait for the batch runner to finish before deleting it.")
+        for record in run.get("local_assets", {}).values():
+            if record.get("selected") and record.get("batch_id") == run_id and not record.get("locked"):
+                self.asset_store.clear_batch_selection(run["character"], run["phase"], "Body-Reference",
+                                                       record["view"], run_id, str(record.get("qualifier") or ""))
         self._withdraw_queued_asks(run_id)
         shutil.rmtree(root)
         return {"deleted": True, "run_id": run_id}
@@ -1857,46 +1851,6 @@ class LocalBodyReferenceService:
                 state.setdefault(mode_field("evaluations", render_mode), {})[view] = active
         mutate_local_run_state(self._root(run_id), save)
 
-    def _invalidate_views_after_anchor_change(self, run_id: str, state: dict[str, Any]) -> None:
-        """Clear downstream selections and review state when FRONT identity changes."""
-        run = self.detail(run_id)
-        for view in (run.get("views") or []):
-            if view != FRONT_VIEW:
-                self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
-        root = self._root(run_id).resolve()
-        downstream_views = {view for view in (run.get("views") or []) if view != FRONT_VIEW}
-        downstream_candidates = [candidate for candidate in run.get("candidates") or []
-                                 if candidate.get("view") in downstream_views
-                                 and candidate.get("render_mode", "draft") == "draft"]
-        self._withdraw_queued_asks(run_id, affected_views=downstream_views,
-                                   candidate_ids={candidate["candidate_id"] for candidate in downstream_candidates})
-        selected = state.setdefault("selected_views", {})
-        rankings = state.setdefault("rankings", {})
-        for view in (run.get("views") or []):
-            if view == FRONT_VIEW:
-                continue
-            selected.pop(view, None)
-            rankings.pop(view, None)
-            self._clear_owned_selection(run, view)
-        for candidate in downstream_candidates:
-            image_path = str(candidate.get("image_path") or "")
-            clear_candidate_artifacts(root, candidate["candidate_id"], candidate.get("image_path"))
-            update = state.setdefault("candidates", {}).setdefault(candidate["candidate_id"], {})
-            update.update({
-                "status": "PENDING", "image_path": "", "image_sha256": "", "ask_id": "",
-                "render_input": None, "reference_images": [], "input_hashes": {}, "source_image_hash": "",
-                "render_error": "",
-                "analyses": {}, "analysis_history": [], "review_history": [],
-                "human_review": {"decision": "undecided"},
-                "retry_count": int(candidate.get("retry_count") or 0) + (1 if image_path else 0),
-            })
-
-    def _mark_downstream_review_stale(self, run: dict[str, Any], state: dict[str, Any]) -> None:
-        """Keep rendered work and selections when a human changes the FRONT choice."""
-        from zet.services.local_image_evaluation_service import supersede_evaluations
-        supersede_evaluations(state, set(run.get("views") or []) - {FRONT_VIEW},
-                              "The selected FRONT anchor changed.")
-
     @serialize_local_run_state
     def select_view(self, run_id: str, view: str, candidate_id: str, *, autogenerate: bool = False) -> dict[str, Any]:
         """Select the human-approved candidate for one version 2 view."""
@@ -1931,7 +1885,6 @@ class LocalBodyReferenceService:
             if view == FRONT_VIEW:
                 if state.get("front_anchor") == removed_id:
                     state["front_anchor"] = None
-                self._mark_downstream_review_stale(run, state)
             if state.get("status") not in ACTIVE_RUN_STATUSES and view != FRONT_VIEW:
                 state["status"] = "AWAITING_HUMAN_SELECTION" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
             elif state.get("status") not in ACTIVE_RUN_STATUSES:
@@ -1964,10 +1917,6 @@ class LocalBodyReferenceService:
         if previous_id != candidate_id:
             self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", view)
         old_anchor_id = state.get("front_anchor")
-        if view == FRONT_VIEW and old_anchor_id != candidate_id:
-            for downstream_view in run.get("views", []):
-                if downstream_view != FRONT_VIEW:
-                    self.asset_store.assert_batch_change_allowed(run["character"], run["phase"], "Body-Reference", downstream_view)
         selected[view] = candidate_id
         update = {"selected_at": self._now()}
         if auto_approved:
@@ -1976,7 +1925,6 @@ class LocalBodyReferenceService:
         if view == FRONT_VIEW:
             state["front_anchor"] = candidate_id
             if old_anchor_id != candidate_id:
-                self._mark_downstream_review_stale(run, state)
                 if state.get("status") not in ACTIVE_RUN_STATUSES:
                     state.update(status="READY_FOR_VIEWS", target_views=[], target_candidate_ids=[])
         image_hash = str(candidate.get("image_sha256") or "")
@@ -2023,18 +1971,10 @@ class LocalBodyReferenceService:
         if not candidate or not image.is_file():
             raise LocalBodyReferenceError("The selected candidate image is missing.")
         try:
-            dependencies = []
-            if view != FRONT_VIEW:
-                anchor = next((item for item in run["candidates"]
-                               if item["candidate_id"] == run.get("front_anchor")), None)
-                anchor_image = Path(str((anchor or {}).get("image_path") or ""))
-                if anchor_image.is_file():
-                    dependencies.append({"key": self.asset_store.key("Body-Reference", FRONT_VIEW),
-                                         "image_sha256": self._hash(anchor_image)})
             return self.asset_store.lock_batch_selection(
                 run["character"], run["phase"], "Body-Reference", view,
                 candidate_id=candidate_id, image_path=image, batch_id=run_id,
-                dependencies=dependencies,
+                dependencies=[], prompt=str((candidate.get("render_input") or {}).get("prompt") or candidate.get("prompt") or ""),
             )
         except Exception as exc:
             from zet.services.storage_health_service import pause_on_storage_error

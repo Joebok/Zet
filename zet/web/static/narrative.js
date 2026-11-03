@@ -134,10 +134,20 @@ async function api(url, method = 'GET', data) {
     ...(data !== undefined ? {body: JSON.stringify(data)} : {})});
   const result = await response.json();
   if (!response.ok) {
+    if (response.status === 409 && result.detail?.preview) {
+      const inspection = result.detail.preview;
+      const approved = await confirmProtectedEffects('Image state changed', result.detail.message,
+        inspection.protected_effects || [], 'Continue');
+      if (approved === null) return null;
+      return api(url, method, {...data, confirmation_token: inspection.confirmation_token,
+        approved_effects: approved});
+    }
     if (response.status === 409 && result.detail?.protected_images) {
       const images = result.detail.protected_images;
-      if (!confirm(`Delete these selected or locked images?\n\n${images.map(image => image.label).join('\n')}`)) return null;
-      return api(url, method, {...data, confirm_ids: images.map(image => image.id)});
+      const approved = await confirmProtectedEffects('Delete selected or locked images?',
+        'Approve each image this deletion will remove or unlock.', images, 'Delete images');
+      if (approved === null) return null;
+      return api(url, method, {...data, confirm_ids: approved});
     }
     throw new Error(typeof result.detail === 'string' ? result.detail : JSON.stringify(result.detail || result));
   }
@@ -796,9 +806,7 @@ function promptIndicator(candidate) {
   const operation = candidate.backdrop_adaptation?.operation;
   if (candidate.source_snapshot && ['crop','unchanged'].includes(operation)) return `<span class="narrative-prompt-indicator">${operation === 'crop' ? 'Local crop' : 'Local reuse'}</span>`;
   if (typeof candidate.prompt !== 'string' || !candidate.prompt) return '<span class="narrative-prompt-indicator">Prompt not recorded</span>';
-  const normalize = text=>text.replace(/\r\n?/g,'\n');
-  const current = host.querySelector('#narrative-prompt')?.value ?? detail.prompt;
-  return normalize(candidate.prompt) === normalize(current) ? '' : '<span class="narrative-prompt-indicator" title="Rendered with a different prompt than the current prompt." aria-label="Rendered with a different prompt than the current prompt.">Different prompt</span>';
+  return candidate.source_change_fyi ? '<span class="narrative-prompt-indicator" title="The saved prompt changed after this image was made.">Earlier prompt · FYI</span>' : '';
 }
 
 function updatePromptIndicators() {
@@ -1050,6 +1058,8 @@ async function save() {
 async function poll() {
   if (disposed) return;
   if (!route.target || pollBusy || busy) return;
+  if (document.hidden || (!llmSubmitting && !Object.values(detail?.jobs || {}).some(job =>
+    ['SUBMITTING','QUEUED','RUNNING','DISPATCHING','TRANSFERRING','RECONCILING'].includes(job.status)))) return;
   pollBusy = true;
   const url = base();
   try {
@@ -1309,8 +1319,14 @@ listen(host,'click',event=>{
         case 'apply-backdrop-operation': await start('generate',1);break;
         case 'preview-crop': {await save();const image=host.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
         case 'delete-draft-images': {
-          if (!confirm('Delete all Draft images for this target, including selected and locked Drafts? Matching work will be cancelled. Final images and Inventory copies remain.')) break;
-          await save(); const result = await api(base()+'/delete-draft-images','POST',{});
+          await save();
+          const inspection = await api(base()+'/delete-draft-images/preview','POST',{});
+          const approved = await confirmProtectedEffects('Delete Draft images?',
+            'Delete all Draft images for this target? Matching work will be cancelled. Final images and Inventory copies remain. Approve each affected selection or lock.',
+            inspection.protected_effects || [], 'Delete Draft images');
+          if (approved === null) break;
+          const result = await api(base()+'/delete-draft-images','POST',
+            {confirmation_token:inspection.confirmation_token,approved_effects:approved});
           if (result) { detail=result; updateLive(); status('Draft images deleted.'); }
           break;
         }

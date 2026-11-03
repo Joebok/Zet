@@ -386,8 +386,19 @@ class MinorCharacterWorkflow:
                 board.update(restored, slots=[None] * 4, selected_id="", prior_selection_id="", undo=None, revision=revision)
                 board["restored_source_id"] = board["edit"]["candidate_id"]
             elif action == "restart":
+                inspection = self._restart_preview(session, view, render_mode)
+                if data.get("confirmation_token") != inspection["confirmation_token"]:
+                    from zet.services.protected_effect_preview import ProtectedEffectsChanged
+                    raise ProtectedEffectsChanged(inspection)
+                approved = data.get("approved_effects")
+                if not isinstance(approved, list) or set(approved) != {effect["id"] for effect in inspection["protected_effects"]}:
+                    raise QuickCharacterWizardError("Approve each selection or lock affected by restart.")
                 if self._busy(session):
                     raise QuickCharacterWizardConflict("Wait for the current image task to finish before restarting.")
+                lock_key = "final_locked" if render_mode == "final" else "locked"
+                affected = self._views(session) if view == "STYLE" else [view]
+                for target in affected:
+                    session.setdefault(lock_key, {}).pop(target, None)
                 if view == "STYLE":
                     if not session["references"]:
                         raise QuickCharacterWizardError("Add at least one reference image before restarting Style alignment.")

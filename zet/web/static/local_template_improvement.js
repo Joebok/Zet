@@ -36,25 +36,21 @@
   function field(parent, title, control) { const label = el("label", title); label.append(control); parent.append(label); return control; }
   const chosenSources = () => [...sourceChoices.querySelectorAll("input:checked")].map(input => input.value);
   const editableSource = sourceId => (data?.editable_source_ids || []).includes(sourceId);
-  async function analyze(fromMaster = false) {
+  async function analyze() {
     const initial = serial, source_ids = chosenSources();
     if (!source_ids.length) throw new Error("Choose at least one source template to edit.");
     const value = await request(endpoint(), { method: "POST", body: JSON.stringify({
-      direction: direction.value, model: model.value, source_ids, from_master: fromMaster,
-      parent_revision_id: !fromMaster && data?.revision?.status === "READY" ? data.revision.revision_id : undefined }) });
+      direction: direction.value, model: model.value, source_ids, from_master: true }) });
     if (serial !== initial) return;
     selectedRevision = value.revision.revision_id; data = value; signature = ""; renderData(); await context.reload();
-    status(fromMaster ? "Restarted from current masters; earlier versions remain in history." : "Text analysis started. You can leave this page while it runs.");
+    status("Text analysis started from current masters. You can leave this page while it runs.");
   }
   function updateWorkflowStatus() {
     if (!workflowStatus || !data) return;
     workflowStatus.replaceChildren(el("h3", "Template status"));
     const revision = data.revision, activeId = data.active_revision_id;
     const notes = [];
-    if (!data.accepted_revision_id && context.run.character_progression) notes.push("Review required: accept a version or skip improvement before starting FRONT.");
-    if (activeId) {
-      notes.push(`New renders use batch version ${activeId.slice(0, 8)}.${data.active_revision.review_skipped ? " Improvement was skipped." : ""} ${data.active_revision.differs_from_master ? "Its templates differ from current masters; those differences are batch-only." : "Its frozen templates match current masters."}`);
-    } else notes.push("New renders use current master templates once the review gate is complete.");
+    notes.push("New renders compile current governing masters. Prompt improvement is optional.");
     if (revision) {
       const sources = new Map(data.sources.map(source => [source.source_id, source.text]));
       const pending = revision.sources.filter(source => editableSource(source.source_id) && source.text !== sources.get(source.source_id));
@@ -67,12 +63,12 @@
       } else if (revision.status === "READY") {
         notes.push(revision.review_skipped ? "This version compiled current masters without AI analysis." : revision.manual
           ? "Manual proposal saved and compiled." : `${revision.selected_ids?.length || 0} corrections accepted and compiled.`);
-        if (revision.revision_id !== activeId) notes.push("This saved proposal is not used for new renders. Choose Use for new renders to apply it to this batch.");
+        if (revision.revision_id !== activeId && !revision.promoted_at) notes.push("Save this proposal to the governing master to use it for new renders.");
       } else notes.push(`Viewed version: ${revision.status}${revision.error ? ` — ${revision.error}` : ""}.`);
       notes.push(revision.promoted_at ? `Master templates were updated from this version (${revision.promoted_at}). ${pending.length ? "Current masters have since changed." : "Current masters match this proposal."}`
         : pending.length ? `${pending.length} template(s) in this proposal differ from current masters. Master updates have not been applied from this version.`
           : "Current masters match this proposal; no master update is pending.");
-      if (drift) notes.push("Masters changed since this baseline. Restart from current masters to incorporate those edits before accepting or promoting.");
+      if (drift) notes.push("Masters changed since this review. Analyze again from current masters before accepting.");
     }
     for (const note of notes) workflowStatus.append(el("p", note));
   }
@@ -147,7 +143,7 @@
   function build() {
     host.replaceChildren();
     const summary = el("summary", "Improve governing templates"); host.append(summary);
-    host.append(el("p", "Review the compiled prompts, choose corrections or skip improvement, then start FRONT. Master updates remain a separate choice.", "muted"));
+    host.append(el("p", "Optional: review current masters and accept selected corrections. Accept saves the governing master before reporting success.", "muted"));
     active = el("p"); host.append(active);
     sourceChoices = el("div", "", "template-source-choices"); host.append(sourceChoices);
     direction = field(host, "Prompt review instructions / refinement feedback", el("textarea", "", "template-review-instructions")); direction.rows = 2; direction.maxLength = 20000;
@@ -155,38 +151,9 @@
     window.ZetModelPicker?.attach(model, { required: ["text"], allowDefault: true });
     const actions = el("div", "", "button-row"); host.append(actions);
     button(actions, "Analyze prompts", () => analyze());
-    button(actions, "Restart from current masters", () => analyze(true));
-    button(actions, "Skip improvement — use current masters", async () => {
-      const differs = Boolean(data?.active_revision?.differs_from_master);
-      if (differs && !(await confirmAction("Use current masters?",
-        "The active batch version differs from current masters. Proceeding compiles and selects current masters for new renders; existing images and earlier versions remain unchanged.",
-        "Use current masters", {tone: "primary"}))) return;
-      const initial = serial;
-      accepting = true; updateFrontButton();
-      status("Compiling current masters for this batch…");
-      try {
-        const value = await request(endpoint(), { method: "POST", body: JSON.stringify({ from_master: true, skip_analysis: true, expected_active: data?.active_revision_id || "" }) });
-        if (serial !== initial) return;
-        selectedRevision = value.revision.revision_id;
-        await context.reload();
-        if (serial !== initial) return;
-        const parsed = new URL(endpoint(), window.location.origin);
-        parsed.searchParams.set("revision_id", selectedRevision);
-        const refreshed = await request(parsed.pathname + parsed.search);
-        if (serial !== initial) return;
-        if (refreshed.active_revision_id !== selectedRevision
-            || refreshed.accepted_revision_id !== selectedRevision) {
-          throw new Error("The batch did not refresh to the accepted master version. Reload saved results before starting renders.");
-        }
-        data = refreshed; signature = ""; renderData();
-        status("Improvement skipped. Current masters are active and the batch is refreshed; FRONT is ready to start.");
-      } finally {
-        accepting = false; updateFrontButton();
-      }
-    });
     const reload = button(actions, "Reload saved results", refresh);
     reload.title = "Reload saved versions and analysis status. Does not recompile or incorporate master-template edits.";
-    host.append(el("p", "Restart recompiles and analyzes current masters, leaving earlier versions in history. Reload saved results only checks saved results and analysis status.", "muted"));
+    host.append(el("p", "Each analysis starts from current masters. Reload saved results checks prior reviews without changing templates.", "muted"));
     history = field(host, "Saved versions", el("select"));
     history.addEventListener("change", () => { selectedRevision = history.value; signature = ""; void refresh().catch(error => status(error.message, true)); });
     message = el("p", "", "action-message"); message.setAttribute("role", "status"); host.append(message);
@@ -194,7 +161,7 @@
   }
   function renderData() {
     if (!data) return;
-    active.textContent = data.active_revision_id ? `Batch version: ${data.active_revision_id.slice(0, 8)}. New renders use its frozen templates.` : "No batch template version selected.";
+    active.textContent = "New renders use current governing masters.";
     if (!sourceChoices.childElementCount) {
       sourceChoices.append(el("h3", "Templates the proposal may change"));
       data.sources.filter(source => editableSource(source.source_id)).forEach(source => {
@@ -249,7 +216,7 @@
       const accept = async () => {
         if (accepting) throw new Error("Prompt acceptance is already in progress.");
         accepting = true;
-        status("Compiling accepted prompts…");
+        status("Compiling corrections and saving governing masters…");
         try {
           await saving;
           const initial = serial;
@@ -257,7 +224,7 @@
             { method: "POST", body: JSON.stringify({ selected_ids: chosen() }) });
           if (serial !== initial) return;
           data = value; selectedRevision = value.revision.revision_id; signature = "";
-          renderData(); await context.reload(); status("Prompt version accepted. Use Continue when ready to generate.");
+          renderData(); await context.reload(); status("Corrections accepted and governing masters saved.");
           return value;
         } finally {
           accepting = false;
@@ -267,31 +234,22 @@
       button(reviewActions, "Apply selected and analyze again", async () => {
         const accepted = await accept(); if (!accepted) return;
         const value = await request(endpoint(), { method: "POST", body: JSON.stringify({
-          parent_revision_id: accepted.revision.revision_id, direction: direction.value, model: model.value,
+          from_master: true, direction: direction.value, model: model.value,
           source_ids: [...sourceChoices.querySelectorAll("input:checked")].map(input => input.value) }) });
         data = value; selectedRevision = value.revision.revision_id; signature = ""; renderData(); await context.reload();
       });
       result.append(reviewActions);
     }
-    const switchVersion = async id => {
-      const initial = serial;
-      const value = await request(endpoint("/activate"), { method: "POST", body: JSON.stringify({ revision_id: id, expected_active: data.active_revision_id }) });
-      if (initial !== serial) return;
-      data = value; signature = ""; renderData(); await context.reload(); status(id ? "Trial version active. Generate or regenerate an individual image to try it." : "Current master templates restored for new renders.");
-    };
     const toolbar = el("div", "", "button-row");
-    const tryButton = button(toolbar, "Use for new renders", () => switchVersion(revision.revision_id));
-    tryButton.disabled = revision.status !== "READY" || (revision.revision_id === data.active_revision_id && !context.run.progression?.prompt_review_required);
-
     const changed = revision.sources.filter(source => editableSource(source.source_id) && source.text !== source.master_text);
-    const promote = button(toolbar, "Update master templates…", async () => {
-      if (!(await confirmAction("Update master templates?",
+    const promote = button(toolbar, "Accept proposal and save masters…", async () => {
+      if (!(await confirmAction("Accept proposal and save masters?",
         `Apply version ${revision.revision_id.slice(0, 8)} to these templates?\n\n${changed.map(source => source.source_id).join("\n")}\n\nThis affects future compilations in other batches. Original text remains in the saved version.`,
-        "Update masters"))) return;
+        "Save masters"))) return;
       const initial = serial;
       const value = await request(endpoint(`/${revision.revision_id}/promote`), { method: "POST", body: JSON.stringify({ confirm: true }) });
       if (initial !== serial) return;
-      data = value; signature = ""; renderData(); await context.reload(); status("Master templates updated. Existing images and queued renders retain their saved inputs.");
+      data = value; signature = ""; renderData(); await context.reload(); status("Master templates updated. New renders use them automatically.");
     });
     promote.disabled = revision.status !== "READY" || !changed.length || changed.every(source => data.sources.some(master => master.source_id === source.source_id && master.text === source.text));
     for (const source of revision.sources) {

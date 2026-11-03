@@ -1,5 +1,42 @@
 # Local testing
 
+## Simplified guards and polling (2026-11-02)
+
+The approved `npm run test:e2e` suite passed 4/4 after the current-master,
+finished-image, FYI, protected-effect and polling changes. Disposable isolated
+checks passed source-hash/reference-identity comparisons and state-bound
+protected-effect refusal, changed-state preview and approved character deletion.
+An isolated Chromium check exercised the shared two-effect dialog, including
+disabled confirmation and Approve all, and observed zero Narrative detail reads
+over 4.5 idle seconds. A completed isolated Assembly batch and view made zero
+scoped reads over 4.8 idle seconds each. During simulated active work its view
+made three summary and one initial detail request; after settlement it made one
+additional detail request. Six summary responses took 22–26 ms in that fixture.
+An isolated Body review accepted a changed master, then refused a concurrent
+master edit with a diff and incomplete acceptance. Prepared Draft FRONT prompts
+were ready for Body, Head, Head Edit, and Assembly; Final FRONT prompts were
+ready for Body, Head, and Head Edit, while Assembly Final named its missing
+locked Final Body source. The approved S2 scenario exercises Assembly and
+Dressing publication. Python compilation, changed JavaScript syntax checks and
+`git diff --check` passed. No live Narrative/model/renderer check ran. The fast
+suite does not prove populated render inputs for every pipeline. A disposable
+asset-store fixture confirmed that Draft and Final locks retain the exact prompt
+and currently selected bytes after a manual image edit. A separate journal
+fixture confirmed committed publication recovery restores the lock and prompt,
+while uncommitted recovery restores the prior state. Older guard
+results below describe the behavior at their recorded revision, including checks
+that intentionally refused historical source differences.
+
+Follow-up isolated checks on 2026-11-03 verified that an explicitly selected
+source batch reads the selected image's current bytes after a manual edit, and
+that changing an upstream selection leaves a finished downstream image lockable.
+The approved fast suite passed 4/4 again after removing the remaining downstream
+staleness propagation and FRONT selection evaluation invalidation (42.6s). A final rerun after lock-protection fences passed 4/4 (43.7s), with a nonfatal usage-maintenance file-lock message.
+The approved fast suite passed 4/4 after the final deletion change (43.6s). An isolated asset-store fixture refused incidental reselection and clearing of a
+locked legacy image. An isolated Character-Assembly deletion fixture, using an
+external runtime lock path, confirmed that deleting its batch retains the locked
+copy and prompt. The fixture did not exercise an active queue or the browser dialog.
+
 ## Character batch/view pages (2026-11-02)
 
 The approved fast E2E suite passed 4/4 after scoped page integration and again

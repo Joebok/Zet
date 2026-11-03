@@ -207,7 +207,7 @@
   }
 
   function isCostume() { return state.pipeline === "costume-dressing"; }
-  function regenDescription(run, view, recompile) {
+  function regenDescription(run, view) {
     const mode = state.renderMode === "final" ? "Final" : "Draft";
     const recipe = run.view_reference_recipes?.[view] || {mode: "default"};
     let references;
@@ -235,9 +235,7 @@
         : "FRONT";
       references = `Use the currently selected ${source} image as the reference for new renders (${mode} mode).`;
     }
-    const prompt = recompile ? "Recompile the view prompt using this batch’s effective templates, including its accepted revision."
-      : "Reuse the saved view prompt where valid. Preparation may recompile it when needed.";
-    return `Regenerate eligible occupied ${mode} slots for ${view} with fresh seeds.\n\nPrompts: ${prompt}\n\nReferences: ${references} Dynamic inputs are captured for new renders; supplemental images follow the prompt’s compilation rules. Source images and locks remain unchanged.\n\nSelected, locked, and active slots are skipped, with reasons reported afterward.`;
+    return `Regenerate eligible occupied ${mode} slots for ${view} with fresh seeds.\n\nPrompts: Compile from current governing masters.\n\nReferences: ${references} Dynamic inputs are captured for new renders; supplemental images follow the prompt’s compilation rules. Source images and locks remain unchanged.\n\nSelected, locked, and active slots are skipped, with reasons reported afterward.`;
   }
   function modeRun(run) {
     if (!run) return run;
@@ -299,7 +297,15 @@
     const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json",
       "X-Zet-Universe": document.querySelector("#universe-select").value, ...options.headers } });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || response.statusText || "Request failed");
+    if (!response.ok && data.detail?.preview) {
+      const preview = data.detail.preview;
+      const approved = await confirmProtectedEffects("Image state changed", data.detail.message,
+        preview.protected_effects || [], "Continue");
+      if (approved === null) throw new Error("Action cancelled after image state changed.");
+      return request(path, {...options, body: JSON.stringify({...JSON.parse(options.body || "{}"),
+        confirmation_token: preview.confirmation_token, approved_effects: approved})});
+    }
+    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : response.statusText || "Request failed");
     return data;
   }
 
@@ -378,7 +384,7 @@
       case "lock-preview": return `${baseUrl()}/runs/${id}/views/${encodedView}/lock-preview${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
       case "unlock": return `${baseUrl()}/runs/${id}/views/${encodedView}/unlock${query()}`;
       case "proceed": return `${baseUrl()}/runs/${id}/views/FRONT/proceed${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
-      case "image-prompt": return `${baseUrl()}/runs/${id}/image-prompt/${encodedView}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
+      case "image-prompt": return `${baseUrl()}/runs/${id}/image-prompt/${encodedView}${query({render_mode: state.renderMode})}`;
             case "source": return ["head-image", "head-image-edit"].includes(state.pipeline)
         ? `${baseUrl()}/runs/${id}/source`
         : `${baseUrl()}/runs/${id}/sources/${encodedView}/${encodeURIComponent(candidate)}${isCostume() ? `?costume=${encodeURIComponent(selectedCostume())}` : ""}`;
@@ -430,7 +436,7 @@
       if (generation !== state.generation || runId !== state.run?.run_id || mode !== state.renderMode || context !== contextKey()) return;
       host.replaceChildren();
       const heading = document.createElement("strong");
-      heading.textContent = report.all_ready ? "Current masters prepared for every requested view." : "Current masters selected; some views still need inputs.";
+      heading.textContent = report.all_ready ? "Current masters and references are ready for every requested view." : "Some views still need inputs.";
       host.append(heading);
       for (const row of report.views || []) {
         const item = document.createElement("details");
@@ -755,22 +761,6 @@
     return button;
   }
 
-  function addRecompileOption(host, id = "") {
-    const label = document.createElement("label");
-    label.className = "local-pipeline-recompile-option";
-    const text = document.createElement("span");
-    text.textContent = "Recompile";
-    label.title = "Recompile the prompt from current templates before regenerating this view.";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.dataset.recompile = "true";
-    if (id) input.id = id;
-    label.append(text, input);
-    label.addEventListener("click", (event) => event.stopPropagation());
-    host.append(label);
-    return input;
-  }
-
   function candidateModeLabel(candidate, image) {
     const label = document.createElement("p");
     label.className = "image-card-state";
@@ -996,6 +986,13 @@
     status.textContent = `${candidate.slot_waiting ? `Waiting for prerequisites · ${candidate.slot_waiting}` : candidate.queue_status_label || renderStatusLabels[candidate.render_status] || statusLabels[candidate.status] || candidate.status || "Unknown"}${warning}${checked}${rank >= 0 ? ` · Rank #${rank + 1}${ranking.status === "STALE" ? " (stale)" : ""}` : ""}`;
     if (candidate.override) status.textContent += " / Override";
     card.append(status);
+    if (candidate.source_change_fyi) {
+      const fyi = document.createElement("span");
+      fyi.className = "muted";
+      fyi.textContent = "Source changed · FYI";
+      fyi.title = "A saved source changed after this image was made.";
+      card.append(fyi);
+    }
     const renderError = renderErrorDetails(candidate);
     if (renderError) card.append(renderError);
     const human = document.createElement("p");
@@ -1175,9 +1172,6 @@
       }
       const observations = previous.querySelector("textarea[data-view-observations]");
       if (observations && observations.value === (oldRun?.view_reviews?.[view]?.observations || "")) observations.value = latest.view_reviews?.[view]?.observations || "";
-      const recompile = previous.querySelector("input[data-recompile]");
-      const nextRecompile = next.querySelector("input[data-recompile]");
-      if (recompile && nextRecompile) nextRecompile.checked = recompile.checked;
       const oldActions = previous.querySelector(".local-pipeline-view-actions");
       const nextActions = next.querySelector(".local-pipeline-view-actions");
       if (oldActions && nextActions && !oldActions.contains(document.activeElement)) {
@@ -1392,7 +1386,6 @@
       viewActions.className = "button-row compact local-pipeline-view-actions";
       const actionTime = Boolean(run.scoped_kind);
       const viewReady = !run.slot_controls?.[view]?.stage_reason;
-      addRecompileOption(viewActions);
       const stageReason = run.slot_controls?.[view]?.stage_reason || "";
       const stageMenu = document.createElement("details"); stageMenu.className = "local-stage-menu";
       const stageLabel = document.createElement("summary"); stageLabel.textContent = "Stage…"; stageMenu.append(stageLabel);
@@ -1513,7 +1506,7 @@
       links.append(document.createTextNode(" · "));
       addLink(links, "Image prompt", route("image-prompt", run.run_id, view));
       const promptHelp = document.createElement("p"); promptHelp.className = "muted local-pipeline-prompt-help";
-      promptHelp.textContent = "Generate / Regen use the current view prompt. Recompile builds it from current templates first. Retry uses the failed render’s saved prompt.";
+      promptHelp.textContent = "Generate and Regenerate compile current governing masters and references. Retry uses the failed render’s saved inputs.";
       details.append(links, promptHelp);
       const recipeSection = document.createElement("div"); recipeSection.className = "local-pipeline-reference-recipe";
       const recipeLabel = document.createElement("label"); recipeLabel.textContent = "Reference for new individual renders";
@@ -1550,6 +1543,16 @@
         }
       }
       recipeSection.append(recipeHelp);
+      if (view !== "FRONT" && run.views?.includes(recipeSelect.value)) {
+        const sourceView = recipeSelect.value;
+        const candidateId = run.selected_views_by_mode?.[state.renderMode]?.[sourceView] || "";
+        const resolved = document.createElement("p");
+        resolved.className = "muted";
+        resolved.textContent = candidateId
+          ? `Next render reference: ${state.renderMode === "final" ? "Final" : "Draft"} ${sourceView} / ${candidateId}`
+          : `Next render reference: ${state.renderMode === "final" ? "Final" : "Draft"} ${sourceView} selection needed`;
+        recipeSection.append(resolved);
+      }
       if (isCostume()) details.append(costumeRenderControls(run, view));
       else if (state.pipeline !== "character-assembly") details.append(recipeSection);
       const observationDetails = document.createElement("details");
@@ -1746,9 +1749,7 @@
     }
     if (!state.view) renderModeSource(run);
     if (!state.view) window.ZetTemplateImprovement?.update(run, state.pipeline, () => loadRun(run?.run_id || ""), frontRenderControl);
-    renderLineageWarnings(run);
     if (!run) {
-      $("lineage-warning").hidden = true;
       $("summary").textContent = state.runState === "unavailable" || state.runsState === "unavailable"
         ? "Unable to load this batch. Use Refresh to try again."
         : state.runState === "loading" || state.runsState === "loading"
@@ -1802,14 +1803,6 @@
     updateRefreshButton();
   }
 
-  function renderLineageWarnings(run) {
-    const host = $("lineage-warning");
-    const warnings = run?.lineage_warnings || {};
-    const views = Object.entries(warnings).filter(([, entries]) => entries?.length);
-    host.hidden = !views.length;
-    host.textContent = views.length ? "Source lineage warning" : "";
-  }
-
   function renderSourceBatchOptions(result) {
     if (!hasSharedAssetRouter()) return;
     const host = $("source-batches");
@@ -1839,6 +1832,7 @@
       if (requestId !== state.runRequest || generation !== state.generation || contextKey() !== state.contextKey) return;
       const sameRun = state.run?.run_id === loaded.run_id;
       if (!sameRun) {
+        state.awaitingSettle = false;
         document.querySelectorAll('[data-submission-status]').forEach((message) => { message.textContent = ""; });
         $("proceed").removeAttribute("aria-busy");
       }
@@ -1869,9 +1863,7 @@
     const modeStatus = run.progress_by_mode?.[state.renderMode]?.status || run.status;
     const label = statusLabels[modeStatus] || modeStatus;
     const phaseChangeLabel = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules" : "";
-    const progressionLabel = !["character-assembly", "costume-dressing"].includes(state.pipeline) && run.character_progression
-      && !run.character_progression.accepted_revision_id ? " · Prompt review" : "";
-    option.textContent = `${summary.batch_name || run.batch_name || run.run_id} · ${label}${phaseChangeLabel}${progressionLabel} · ${run.run_id}`;
+    option.textContent = `${summary.batch_name || run.batch_name || run.run_id} · ${label}${phaseChangeLabel} · ${run.run_id}`;
   }
 
   async function pollForImages(runId, generation = state.generation) {
@@ -1879,9 +1871,24 @@
     state.pollInFlight = true;
     const requestId = state.runRequest;
     try {
-      const latest = await readScopedRun(runId);
+      const suffix = query({render_mode: state.renderMode});
+      const summary = normalizeScoped(await request(`${baseUrl()}/runs/${encodeURIComponent(runId)}/summary${suffix}`));
       if (requestId !== state.runRequest || generation !== state.generation || state.run?.run_id !== runId) return;
       if (contextKey() !== state.contextKey || !document.querySelector("#local-pipeline-page").classList.contains("active")) return;
+      const operationActive = (window.ZetLocalOperations?.rows() || []).some(row => row.request?.run_id === runId
+        && row.request?.pipeline === state.pipeline && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN"].includes(row.status));
+      const active = activeStatuses.has(summary.status) || summary.slot_render_ids?.length
+        || summary.progress_by_mode?.[state.renderMode]?.current_views?.length || operationActive;
+      if (state.view && active) {
+        state.awaitingSettle = true;
+        state.run.progress_by_mode = summary.progress_by_mode;
+        state.run.status = summary.status;
+        syncRunOption(state.run);
+        return;
+      }
+      const latest = state.view ? await readScopedRun(runId) : summary;
+      if (requestId !== state.runRequest || generation !== state.generation || state.run?.run_id !== runId) return;
+      state.awaitingSettle = false;
       mergeLiveRun(latest);
     } catch (error) {
       setStatus(`Unable to check renders: ${error.message}. Retrying automatically.`, true);
@@ -1903,7 +1910,7 @@
     for (const run of state.runs) {
       const phaseChangeLabel = ["head-image", "head-image-edit"].includes(state.pipeline) && run.apply_phase_change ? " · Phase change rules" : "";
       const modeStatus = run.progress_by_mode?.[state.renderMode]?.status || run.status;
-      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[modeStatus] || modeStatus}${phaseChangeLabel}${!["character-assembly", "costume-dressing"].includes(state.pipeline) && run.character_progression ? !run.character_progression.accepted_revision_id ? " · Prompt review" : "" : ""} · ${run.run_id}`, run.run_id));
+      select.add(new Option(`${run.batch_name || run.run_id} · ${statusLabels[modeStatus] || modeStatus}${phaseChangeLabel} · ${run.run_id}`, run.run_id));
     }
     if (!state.runs.length) select.add(new Option("No batches for this character, phase, and costume", ""));
     const current = state.run?.run_id;
@@ -2007,20 +2014,14 @@
 
   function startPolling() {
     clearInterval(state.poll);
-    let promptReviewTicks = 0;
     state.poll = setInterval(() => {
       const run = state.run;
-      promptReviewTicks += 1;
-      if (promptReviewTicks >= 10 && !document.hidden && !state.view && document.querySelector("#local-pipeline-page").classList.contains("active")) {
-        promptReviewTicks = 0;
-        window.ZetTemplateImprovement?.refreshActive();
-      }
       const activeEvaluation = Object.values(run?.evaluations || {}).some(item => ["STAGING", "RUNNING"].includes(item.status))
         || Object.values(run?.final_evaluations || {}).some(item => ["STAGING", "RUNNING"].includes(item.status));
       const pendingOperation = (window.ZetLocalOperations?.rows() || []).some(row => row.request?.run_id === run?.run_id
         && row.request?.pipeline === state.pipeline && ["SUBMITTING", "QUEUED", "PREPARING", "WAITING", "UNKNOWN"].includes(row.status));
       if (!document.hidden && state.pipeline && document.querySelector("#local-pipeline-page").classList.contains("active")
-        && run?.run_id && (activeStatuses.has(run.status) || run.slot_render_ids?.length || activeEvaluation || pendingOperation)) {
+        && run?.run_id && (activeStatuses.has(run.status) || run.slot_render_ids?.length || activeEvaluation || pendingOperation || state.awaitingSettle)) {
         void pollForImages(run.run_id, state.generation);
       }
     }, 3000);
@@ -2034,6 +2035,7 @@
 
   function configurePipeline(pipeline) {
     state.pipeline = pipeline;
+    state.awaitingSettle = false;
     state.renderMode = new URLSearchParams(window.location.search).get("render_mode") === "final" ? "final" : "draft";
     state.view = (new URLSearchParams(window.location.search).get("local_view") || "").toUpperCase();
     $("render-quality").value = state.renderMode;
@@ -2659,8 +2661,15 @@
     }
     if (action === "delete-drafts") {
       const scope = view ? `${view} in this batch` : "this batch";
-      if (!(await confirmAction("Delete Draft images?", `Delete all Draft images for ${scope}, including selected and locked images? Matching work will be cancelled. Final images and Inventory copies remain.`, "Delete Draft images"))) return;
-      await perform(action, view, "", view ? {view} : {});
+      const body = view ? {view} : {};
+      const previewUrl = new URL(route(action, state.run.run_id, view), location.origin);
+      previewUrl.pathname += "/preview";
+      const preview = await request(previewUrl.pathname + previewUrl.search, {method: "POST", body: JSON.stringify(body)});
+      const approved = await confirmProtectedEffects("Delete Draft images?",
+        `Delete Draft images for ${scope}? Matching work will be cancelled. Final images and Inventory copies remain. Approve each affected selection or lock.`,
+        preview.protected_effects || [], "Delete Draft images");
+      if (approved === null) return;
+      await perform(action, view, "", {...body, confirmation_token: preview.confirmation_token, approved_effects: approved});
       setStatus("Draft images deleted.");
       return;
     }
@@ -2688,7 +2697,7 @@
       const runId = state.run.run_id, pipeline = state.pipeline, context = contextKey(), generation = state.generation, renderMode = state.renderMode;
       const params = new URLSearchParams();
       if (isCostume()) params.set("costume", selectedCostume());
-      const recompile = false;
+      const recompile = true;
       const current = () => state.pipeline === pipeline && state.run?.run_id === runId
         && state.generation === generation && contextKey() === context && state.renderMode === renderMode
         && document.querySelector("#local-pipeline-page").classList.contains("active");
@@ -2743,14 +2752,12 @@
       return;
     }
     if (action === "rerun" || action === "rerun-view") {
-      const recompile = action === "rerun"
-        ? $("rerun-recompile").checked
-        : Boolean(button.closest(".local-pipeline-view")?.querySelector("input[data-recompile]")?.checked);
+      const recompile = true;
       if (action === "rerun-view") {
         if (!$("aspect-ratio").reportValidity()) return;
         const activeCount = (state.run?.candidates || []).filter(item => item.view === view
           && item.render_mode === state.renderMode && ["QUEUED", "RUNNING"].includes(item.render_status)).length;
-        const description = `${regenDescription(state.run, view, recompile)}${activeCount
+        const description = `${regenDescription(state.run, view)}${activeCount
           ? `\n\n${activeCount} active render(s) in this view will be cancelled and allowed to settle before replacements start. Selected and locked images will be preserved.` : ""}`;
         if (!(await confirmAction(`Regenerate ${view}?`, description, "Regenerate", {tone: "primary"}))) return;
         await submitViewAction(button, action, view, candidateId, {render_mode: state.renderMode, aspect_ratio: $("aspect-ratio").value, recompile});
@@ -2765,15 +2772,28 @@
         const preview = await request(route("restart-preview", runId), {method: "POST", body: JSON.stringify(body)});
         if (!current()) return;
         if (preview.issues?.length) { setStatus(preview.issues.join(" "), true); return; }
-        const locked = preview.locked_views?.length ? `\n\nLOCKED images will be cleared: ${preview.locked_views.join(", ")}.` : "";
-        const description = `Clear ${preview.candidate_count} ${mode} candidates, including ${preview.image_count} images and all selections in this mode?${locked}\n\nThe batch will be ready to run. No renders will start.`;
-        if (!(await confirmAction(`Re-start ${mode} batch?`, description, "Re-start batch")) || !current()) return;
-        await request(route("restart", runId), {method: "POST", body: JSON.stringify({...body, confirmation_token: preview.confirmation_token})});
+        const description = `Clear ${preview.candidate_count} ${mode} candidates, including ${preview.image_count} images? The batch will be ready to run; no renders will start. Approve each affected selection or lock.`;
+        const approved = await confirmProtectedEffects(`Re-start ${mode} batch?`, description,
+          preview.protected_effects || [], "Re-start batch");
+        if (approved === null || !current()) return;
+        await request(route("restart", runId), {method: "POST", body: JSON.stringify({...body, approved_effects: approved, confirmation_token: preview.confirmation_token})});
         if (current()) { await loadRun(runId, generation); setStatus(`${mode === "final" ? "Final" : "Draft"} batch ready to run.`); }
       } finally { state.restartPending = false; setBusyControls(); }
       return;
     }
-    if (["delete", "rerun-failed", "unselect", "unlock"].includes(action)) {
+    if (action === "delete") {
+      const previewUrl = new URL(route("delete", state.run.run_id), location.origin);
+      previewUrl.pathname += "/delete-preview";
+      const inspection = await request(previewUrl.pathname + previewUrl.search, {method: "POST"});
+      const approved = await confirmProtectedEffects("Delete batch?",
+        "Delete this batch and its run-owned files? Locked copies in Inventory remain. Approve each affected selection or lock.",
+        inspection.protected_effects || [], "Delete batch");
+      if (approved === null) return;
+      await perform("delete", "", "", {confirmation_token: inspection.confirmation_token,
+        approved_effects: approved});
+      return;
+    }
+    if (["rerun-failed", "unselect", "unlock"].includes(action)) {
       const prompts = {
         delete: "Delete this batch and its run-owned files?", rerun: "Re-run the batch? This replaces generated images and reviews.",
         "rerun-view": `Replace all ${view} candidates?`, "rerun-failed": `Re-run failed ${view} candidates?`,

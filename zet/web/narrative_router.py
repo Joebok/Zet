@@ -3,6 +3,7 @@ from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 
 from zet.services.narrative_scene_service import ProtectedNarrativeImages
+from zet.services.protected_effect_preview import ProtectedEffectsChanged
 
 
 def create_narrative_router(app_provider):
@@ -13,6 +14,8 @@ def create_narrative_router(app_provider):
             return method(*args)
         except ProtectedNarrativeImages as exc:
             raise HTTPException(409, detail={"message": str(exc), "protected_images": exc.images}) from exc
+        except ProtectedEffectsChanged as exc:
+            raise HTTPException(409, detail={"message": str(exc), "preview": exc.preview}) from exc
         except KeyError as exc:
             raise HTTPException(404, detail=str(exc).strip("'")) from exc
         except (ValueError, FileNotFoundError) as exc:
@@ -276,8 +279,12 @@ def create_narrative_router(app_provider):
         return call(author().apply_interview, story, scene, target, data)
 
     @router.post(target_path + "/delete-draft-images")
-    def delete_draft_images(story: str, scene: str, target: str):
-        return call(generation().delete_draft_images, story, scene, target)
+    def delete_draft_images(story: str, scene: str, target: str, data: dict = Body(default={})):
+        return call(generation().delete_draft_images, story, scene, target, data)
+
+    @router.post(target_path + "/delete-draft-images/preview")
+    def preview_draft_delete(story: str, scene: str, target: str):
+        return call(generation().preview_draft_delete, story, scene, target)
 
     @router.post(target_path + "/candidates/{candidate}")
     def candidate_action(story: str, scene: str, target: str, candidate: str, data: dict = Body(...)):

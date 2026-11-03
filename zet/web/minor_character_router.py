@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 
 from zet.services.quick_character_wizard_service import QuickCharacterWizardConflict
 from zet.services.minor_character_service import MinorCharacterNotFound
+from zet.services.protected_effect_preview import ProtectedEffectsChanged
 
 
 def create_minor_character_router(provider):
@@ -17,6 +18,8 @@ def create_minor_character_router(provider):
             return operation(provider())
         except MinorCharacterNotFound as exc:
             raise HTTPException(404, str(exc)) from exc
+        except ProtectedEffectsChanged as exc:
+            raise HTTPException(409, {"message": str(exc), "preview": exc.preview}) from exc
         except QuickCharacterWizardConflict as exc:
             raise HTTPException(409, str(exc)) from exc
         except (ValueError, KeyError, TypeError) as exc:
@@ -62,13 +65,22 @@ def create_minor_character_router(provider):
         data = await payload(request)
         return {"character": await run_in_threadpool(call, lambda s: s.update_character(sid, data))}
 
+    @router.post("/{sid}/delete-preview")
+    def preview_delete_character(sid: str):
+        return call(lambda s: s.preview_delete_character(sid))
+
     @router.delete("/{sid}")
-    def delete(sid: str):
-        return call(lambda s: s.delete_character(sid))
+    def delete(sid: str, data: dict = Body(default={})):
+        return call(lambda s: s.delete_character(sid, data))
 
     @router.post("/{sid}/delete-draft-images")
     def delete_draft_images(sid: str, data: dict = Body(default={})):
-        return {"character": call(lambda s: s.delete_draft_images(sid, str(data.get("view") or "")))}
+        return {"character": call(lambda s: s.delete_draft_images(sid, str(data.get("view") or ""),
+            confirmation_token=str(data.get("confirmation_token") or ""), approved_effects=data.get("approved_effects")))}
+
+    @router.post("/{sid}/delete-draft-images/preview")
+    def preview_draft_delete(sid: str, data: dict = Body(default={})):
+        return call(lambda s: s.preview_draft_delete(sid, str(data.get("view") or "")))
 
     @router.post("/{sid}/generate")
     def generate(sid: str, data: dict = Body(...)):
@@ -76,6 +88,10 @@ def create_minor_character_router(provider):
             str(data.get("instructions", "")), str(data.get("candidate_id", "")), data.get("item_ids", []), expected=data["revision"],
             render_mode=data.get("render_mode", "draft"), aspect_ratio=data.get("aspect_ratio"),
             seed_candidate_id=data.get("seed_candidate_id", "")))}
+
+    @router.post("/{sid}/boards/{view}/restart-preview")
+    def restart_preview(sid: str, view: str, data: dict = Body(default={})):
+        return call(lambda s: s.preview_restart(sid, view, data.get("render_mode", "draft")))
 
     @router.post("/{sid}/boards/{view}/{action}")
     def board_action(sid: str, view: str, action: str, data: dict = Body(...)):

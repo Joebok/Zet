@@ -78,7 +78,7 @@ def compile_with_revision(root: Path, compile_function, *args, **kwargs):
     # Explicit trial contexts also cover analysis compilation and nested readers.
     if _SOURCES.get() is not None:
         return compile_function(*args, **kwargs)
-    revision = active_revision(root)
+    revision = {}
     with template_sources(revision.get("sources", [])):
         result = compile_function(*args, **kwargs)
         from zet.services.local_prompt_improvement_service import record_compiler_sources

@@ -1,5 +1,13 @@
 # Data, configuration, and ownership
 
+Character render inputs now include the frozen prompt, ordered references, and
+captured template-source hashes when available. Candidate state and local lock
+records may contain permanent `source_change_fyi`; older records omit it. New
+local Draft locks and Final Inventory publications copy the candidate prompt into
+the lock record. Minor Character candidates and Narrative candidates use the same
+optional FYI field after an observed saved authoring change. No migration is
+required for historical images. See [ADR 0045](DECISIONS/0045-finished-image-source-policy.md).
+
 Character Run available and slot/view regeneration operations use versioned JSON records under the configured
 fixed-local storage recovery root's `LocalPipelineOperations/records`. Records own
 request identity, preparation status, progress and outcome; the universe batch
@@ -246,6 +254,8 @@ Candidates retain their mode/snapshot and complete dimension-validated output.
 
 ## Render slot ownership (2026-10-12)
 Character `spec.json` retains initial candidate definitions and initial `slots_by_view`. `state.json` can override slot maps and owns `slot_version=1`, `added_candidates` definitions, mutable `candidates` updates, `detached_candidates`, and persisted supplemental target IDs. New independent slot submissions use `slot_render_ids`, `slot_review_views`, and per-candidate `slot_managed`; older `target_candidate_ids` remain supported for interrupted batch-runner work. Shared merging excludes detached identities from execution/review and active counts. Slots refer to stable candidate IDs, independently of ranking. Existing >8-candidate views remain legacy galleries; compatibility never truncates them. Per-candidate `render_input` freezes prompt text, ordered copied reference paths/hashes and preset for new render attempts.
+
+New mode-scoped local character locks copy the selected candidate's prompt into the local asset record; Final pipeline Inventory publication saves that prompt in the catalog. Existing locks without a recorded prompt remain usable. Narrative candidates may carry additive `source_change_fyi: true` after a saved prompt change; the marker is advisory and persistent.
 
 Image Generation jobs remain under universe `_state/ImageGeneration/<request_id>/job.json`. New jobs use `image_slots_version=1`, child-index image arrays, per-child status/error/seed, and persisted `render_payload` for replay. Historical completion-order jobs retain their original result indices. `_state/ImageGeneration/workspace.json` (version 1) owns eight nullable `{requestId,index}` assignments, `selected_slot` (zero-based or null), and one-time browser import state. A persistent workspace lock serializes allocation; reservations are saved before dispatch. Missing jobs display interruption rather than binding another result. Clear removes board bindings, not historical job files. See [ADR 0007](DECISIONS/0007-stable-render-slots.md).
 

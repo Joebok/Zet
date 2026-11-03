@@ -42,6 +42,14 @@
       return await bridge.fetchJson("/api/minor-characters" + path, {method, bindToPage:false,
         ...(body === undefined ? {} : {headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})});
     } catch (error) {
+      if (error.detail?.preview) {
+        const inspection = error.detail.preview;
+        const approved = await confirmProtectedEffects("Image state changed", error.detail.message,
+          inspection.protected_effects || [], "Continue");
+        if (approved === null) return null;
+        return api(path, method, {...body, confirmation_token: inspection.confirmation_token,
+          approved_effects: approved});
+      }
       if (method !== "GET" && id && character?.character_id === id && current === generation) {
         try {
           const result = await api(`/${id}`);
@@ -129,9 +137,16 @@
     show(character); message("");
   }
   async function deleteCharacter(id, name) {
-    if (!(await confirmAction("Delete Minor Character?", `Delete “${name}”? Published Inventory images will be kept.`, "Delete"))) return;
-    await flush();generation++;clearTimeout(pollTimer);
-    await api(`/${id}`,"DELETE");
+    await flush();
+    const inspection = await api(`/${id}/delete-preview`, "POST", {});
+    const approved = await confirmProtectedEffects("Delete Minor Character?",
+      `Delete “${name}”? Published Inventory images will be kept. Approve each affected selection or lock.`,
+      inspection.protected_effects || [], "Delete");
+    if (approved === null) return;
+    generation++;clearTimeout(pollTimer);
+    const result = await api(`/${id}`,"DELETE", {confirmation_token: inspection.confirmation_token,
+      approved_effects: approved});
+    if (!result) return;
     $("mc-review").close();character=null;patch={};entryAsset=null;
     await list();message(`Deleted ${name}.`);
   }
@@ -390,7 +405,7 @@
       else if (selections()[view] !== candidate.candidate_id) select.classList.add("primary-action");
       card.classList.toggle("is-selected", Boolean(candidate && selections()[view] === candidate.candidate_id));
       card.dataset.state = !candidate ? "empty" : locks()[view]?.candidate_id === candidate.candidate_id ? "locked" : selections()[view] === candidate.candidate_id ? "selected" : candidate.status === "FAILED" ? "failed" : candidate.image_url ? "available" : "pending";
-      if (candidate) card.append(element("p", `${renderMode === "final" ? "Final" : "Draft"}${candidate.render_sizing ? ` · requested ${candidate.render_sizing.width} × ${candidate.render_sizing.height}` : ""} · ${candidate.status.toLowerCase()}${selections()[view] === candidate.candidate_id ? " · Selected" : ""}${locks()[view]?.candidate_id === candidate.candidate_id ? " · Locked" : ""}`, "muted image-card-state"));
+      if (candidate) card.append(element("p", `${renderMode === "final" ? "Final" : "Draft"}${candidate.render_sizing ? ` · requested ${candidate.render_sizing.width} × ${candidate.render_sizing.height}` : ""} · ${candidate.status.toLowerCase()}${selections()[view] === candidate.candidate_id ? " · Selected" : ""}${locks()[view]?.candidate_id === candidate.candidate_id ? " · Locked" : ""}${candidate.source_change_fyi ? " · Source changed · FYI" : ""}`, "muted image-card-state"));
       if (regen.disabled) card.append(element("p", pending || submitting ? "An operation is in progress." : "Select an alignment image to enable rendering.", "slot-action-reason muted"));
       controls.append(select);
       if(candidate?.can_lock) {
@@ -484,11 +499,16 @@
   }
   async function restartCurrentOperation() {
     const target=view, confirmViews=target==="STYLE" && viewWorkStarted();
-    if (confirmViews && !(await confirmAction("Restart Style alignment?",
-      `Restarting ${renderMode} Style alignment will discard that mode's view images and revisions.`, "Restart"))) return;
     await flush();
+    const inspection = await api(`/${character.character_id}/boards/${target}/restart-preview`, "POST", {render_mode:renderMode});
+    const approved = await confirmProtectedEffects(`Restart ${label(target)}?`,
+      `Restarting ${renderMode} ${label(target)} will clear its working board${confirmViews ? " and that mode's view boards" : ""}. Approve each affected selection or lock.`,
+      inspection.protected_effects || [], "Restart");
+    if (approved === null) return;
     const result=await api(`/${character.character_id}/boards/${target}/restart`,"POST",{
-      revision:board().revision, confirm_views_discarded:confirmViews,render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value});
+      revision:board().revision, confirm_views_discarded:confirmViews,render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value,
+      confirmation_token:inspection.confirmation_token,approved_effects:approved});
+    if (!result) return;
     patch={}; feedback=""; feedbackDirty=false; suggestions.clear(); comparisonId="";
     view=target; preview=target==="STYLE" ? "" : boardsOf(result.character)[target].template_candidate_id;
     show(result.character);
@@ -531,9 +551,16 @@
   for (const [id, all] of [["mc-delete-draft-view", false], ["mc-delete-draft-all", true]]) {
     $(id).addEventListener("click",()=>act(async()=>{
       const scope = all ? "this character" : label(view);
-      if (!(await confirmAction("Delete Draft images?", `Delete all Draft images for ${scope}, including selected and locked images? Matching renders will be cancelled. Final images and Inventory copies remain.`, "Delete Draft images"))) return;
       await flush();
-      const result = await api(`/${character.character_id}/delete-draft-images`, "POST", all ? {} : {view});
+      const body = all ? {} : {view};
+      const inspection = await api(`/${character.character_id}/delete-draft-images/preview`, "POST", body);
+      const approved = await confirmProtectedEffects("Delete Draft images?",
+        `Delete Draft images for ${scope}? Matching renders will be cancelled. Final images and Inventory copies remain. Approve each affected selection or lock.`,
+        inspection.protected_effects || [], "Delete Draft images");
+      if (approved === null) return;
+      const result = await api(`/${character.character_id}/delete-draft-images`, "POST",
+        {...body, confirmation_token: inspection.confirmation_token, approved_effects: approved});
+      if (!result) return;
       preview=""; comparisonId=""; feedback=""; feedbackDirty=false;
       show(result.character); message("Draft images deleted.");
     }));

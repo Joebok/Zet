@@ -127,6 +127,10 @@ class LocalImagePipelineWorkflowService:
         from zet.services.local_current_masters_service import LocalCurrentMastersService
         return LocalCurrentMastersService(self).use(run_id, render_mode=render_mode, costume=costume)
 
+    def preview_view_prompt(self, run_id: str, view: str, *, render_mode: str = "draft", costume: str = "") -> str:
+        from zet.services.local_current_masters_service import LocalCurrentMastersService
+        return LocalCurrentMastersService(self).preview_view(run_id, view, render_mode=render_mode, costume=costume)
+
     def reference_image_path(self, run_id: str, view: str, index: int, *,
                              candidate_id: str = "", render_mode: str = "draft", costume: str = "") -> Path:
         """Resolve saved reference bytes by candidate identity and ordered input index."""
@@ -238,6 +242,13 @@ class LocalImagePipelineWorkflowService:
         if name == "rename_batch":
             return self.adapter.rename_run(run_id, str(payload.get("batch_name") or ""), costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.rename_run(run_id, str(payload.get("batch_name") or ""))
         if name == "delete_batch":
+            preview = self.delete_batch_preview(run_id, costume)
+            if payload.get("confirmation_token") != preview["confirmation_token"]:
+                from zet.services.protected_effect_preview import ProtectedEffectsChanged
+                raise ProtectedEffectsChanged(preview)
+            approved = payload.get("approved_effects")
+            if not isinstance(approved, list) or set(approved) != {effect["id"] for effect in preview["protected_effects"]}:
+                raise ValueError("Approve each selected or locked image affected by batch deletion.")
             return self.adapter.delete_run(run_id, costume) if self.pipeline in {"character-assembly", "costume-dressing"} else self.adapter.delete_run(run_id)
         if name == "start":
             current = self.action("detail", run_id=run_id, costume=costume)
@@ -501,6 +512,22 @@ class LocalImagePipelineWorkflowService:
                 except (ValueError, OSError) as exc:
                     errors[view] = str(exc)
             return {"completed_views": completed, "errors": errors}
+
+    def delete_batch_preview(self, run_id: str, costume: str = "") -> dict[str, Any]:
+        import hashlib
+        run = self.prompt_improvement.detail(run_id, costume)
+        effects = []
+        for mode, field in (("draft", "selected_views"), ("final", "final_selected_views")):
+            for view, candidate_id in sorted((run.get(field) or {}).items()):
+                effects.append({"id": f"remove:{mode}:{view}:{candidate_id}",
+                                "label": f"Remove {mode.title()} {view} selection ({candidate_id})"})
+        for key, record in sorted((run.get("local_assets") or {}).items()):
+            if record.get("locked") and record.get("batch_id") == run_id:
+                effects.append({"id": f"locked-source:{key}:{record.get('candidate_id')}",
+                                "label": f"Delete batch source of locked {key} ({record.get('candidate_id')}); locked copy remains"})
+        state = Path(run["root"]) / "state.json"
+        token = hashlib.sha256(state.read_bytes() + json.dumps(effects, sort_keys=True).encode()).hexdigest()
+        return {"protected_effects": effects, "confirmation_token": token}
 
     def _present_run(self, run: dict[str, Any]) -> dict[str, Any]:
         """Return loaded workflow state in the same shape for detail and mutation routes."""

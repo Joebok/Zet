@@ -108,7 +108,7 @@ class LocalAssetStoreService:
 
     def record_mode_selection(self, character: str, phase: str, pipeline: str, view: str, *,
                               candidate_id: str, image_path: str | Path, batch_id: str,
-                              qualifier: str = "", render_mode: str = "draft") -> dict[str, Any]:
+                              qualifier: str = "", render_mode: str = "draft", prompt: str = "") -> dict[str, Any]:
         """Store a mode-specific working selection without publishing an image."""
         key = self.mode_key(pipeline, view, qualifier, render_mode=render_mode)
         image = Path(image_path).resolve()
@@ -124,7 +124,9 @@ class LocalAssetStoreService:
             record = {**current, "pipeline": str(pipeline), "view": str(view).upper(), "qualifier": str(qualifier or ""),
                       "render_mode": render_mode, "candidate_id": str(candidate_id), "batch_id": str(batch_id),
                       "image_path": str(image), "image_sha256": self._image_hash(image),
-                      "selected": True, "stale": False, "locked": False,
+                      "prompt": prompt,
+                      "source_change_fyi": bool(current.get("source_change_fyi")) if current.get("candidate_id") == candidate_id else False,
+                      "selected": True, "stale": False, "stale_reason": "", "locked": False,
                       "updated_at": datetime.now().astimezone().isoformat(timespec="seconds")}
             assets[key] = record
             write_library_json(path, value, self.library_root)
@@ -170,8 +172,7 @@ class LocalAssetStoreService:
                 raise LocalAssetStoreError("The selected Draft image is unavailable.")
             contents = source.read_bytes()
             digest = hashlib.sha256(contents).hexdigest()
-            if digest != record.get("image_sha256"):
-                raise LocalAssetStoreError("The selected Draft image changed. Select it again before locking.")
+            record["image_sha256"] = digest
             identity = hashlib.sha256(f"{key}\0{record.get('batch_id')}\0{record.get('candidate_id')}".encode()).hexdigest()[:16]
             destination = (path.parent / "draft-locks" / f"draft-{identity}-{digest}{source.suffix.lower()}").resolve()
             if not destination.is_relative_to(self.library_root):
@@ -284,7 +285,7 @@ class LocalAssetStoreService:
         )
 
     def assert_change_allowed(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> None:
-        # Upstream edits are allowed. Batch lineage warnings explain downstream drift.
+        # Finished downstream images keep their captured inputs independently.
         return None
 
     def assert_batch_change_allowed(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> None:
@@ -314,6 +315,7 @@ class LocalAssetStoreService:
         candidate_id: str, image_path: str | Path, batch_id: str,
         dependencies: list[dict[str, str]] | None = None, qualifier: str = "",
         prompt_generator: dict[str, Any] | None = None,
+        prompt: str = "",
     ) -> dict[str, Any]:
         """Publish a reviewed batch selection only when its view can be locked."""
         self.assert_change_allowed(character, phase, pipeline, view, qualifier)
@@ -321,8 +323,21 @@ class LocalAssetStoreService:
             character, phase, pipeline, view, candidate_id=candidate_id,
             image_path=image_path, batch_id=batch_id,
             dependencies=dependencies, qualifier=qualifier, prompt_generator=prompt_generator,
+            prompt=prompt,
         )
         return self.lock(character, phase, pipeline, view, qualifier)
+
+    def mark_source_change_fyi(self, character: str, phase: str, key: str,
+                               batch_id: str, candidate_id: str) -> None:
+        path = self.workspace_path(character, phase)
+        with file_lock(path.with_suffix(".lock")):
+            value = self._read(character, phase)
+            record = (value.get("assets") or {}).get(key) or {}
+            if (record.get("locked") and record.get("batch_id") == batch_id
+                    and record.get("candidate_id") == candidate_id
+                    and not record.get("source_change_fyi")):
+                record["source_change_fyi"] = True
+                write_library_json(path, value, self.library_root)
 
     def clear_batch_selection(self, character: str, phase: str, pipeline: str, view: str,
                               batch_id: str, qualifier: str = "") -> None:
@@ -337,6 +352,7 @@ class LocalAssetStoreService:
         candidate_id: str, image_path: str | Path, batch_id: str,
         dependencies: list[dict[str, str]] | None = None,
         qualifier: str = "", prompt_generator: dict[str, Any] | None = None,
+        prompt: str = "",
     ) -> dict[str, Any]:
         image = Path(image_path).resolve()
         if not image.is_file():
@@ -347,21 +363,21 @@ class LocalAssetStoreService:
             value = self._read(character, phase)
             assets = value.setdefault("assets", {})
             current = assets.get(key, {})
+            if current.get("locked"):
+                if current.get("batch_id") != batch_id or current.get("candidate_id") != candidate_id:
+                    raise LocalAssetStoreError(f"Unlock {key} before changing its selection.")
+                return dict(current)
             digest = self._image_hash(image)
-            changed = current.get("candidate_id") != candidate_id or current.get("image_sha256") != digest
-            if changed:
-                for child in assets.values():
-                    if any(dep.get("key") == key for dep in child.get("dependencies", [])) and not child.get("locked"):
-                        child["stale"] = True
-                        child["stale_reason"] = f"Upstream selection {key} changed."
             record = {
                 **current,
                 "pipeline": str(pipeline), "view": str(view).upper(),
                 "qualifier": str(qualifier or ""),
                 "candidate_id": str(candidate_id), "batch_id": str(batch_id),
                 "image_path": str(image), "image_sha256": digest,
+                "prompt": prompt,
+                "source_change_fyi": bool(current.get("source_change_fyi")) if current.get("candidate_id") == candidate_id else False,
                 "dependencies": list(dependencies or []),
-                "selected": True, "stale": False,
+                "selected": True, "stale": False, "stale_reason": "",
                 **({"prompt_generator": copy.deepcopy(prompt_generator)} if prompt_generator else {}),
                 "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             }
@@ -378,18 +394,16 @@ class LocalAssetStoreService:
             current = assets.get(key)
             if not current:
                 return value
+            if current.get("locked"):
+                raise LocalAssetStoreError(f"Unlock {key} before clearing its selection.")
             assets.pop(key)
-            for child in assets.values():
-                if any(dep.get("key") == key for dep in child.get("dependencies", [])) and not child.get("locked"):
-                    child["stale"] = True
-                    child["stale_reason"] = f"Upstream selection {key} was cleared."
             write_library_json(path, value, self.library_root)
             return value
 
     def lock(self, character: str, phase: str, pipeline: str, view: str, qualifier: str = "") -> dict[str, Any]:
         key = self.key(pipeline, view, qualifier)
         record = self.detail(character, phase)["assets"].get(key)
-        if not record or not record.get("selected") or record.get("stale"):
+        if not record or not record.get("selected"):
             raise LocalAssetStoreError(f"Select a reviewed {key} candidate before locking it.")
         return self.promote_chain(character, phase, [{
             **record, "pipeline": pipeline, "view": view.upper(), "qualifier": qualifier,
@@ -402,7 +416,7 @@ class LocalAssetStoreService:
         path = self.workspace_path(character, phase)
         with file_lock(path.with_suffix(".lock")):
             record = self._read(character, phase)["assets"].get(key)
-            if not record or not record.get("selected") or record.get("stale"):
+            if not record or not record.get("selected"):
                 raise LocalAssetStoreError(f"Select a Final candidate for {key} before locking it.")
             if record.get("locked"):
                 existing = next((item for item in self.locked_assets(character, phase, pipeline, qualifier, render_mode="final")
@@ -437,12 +451,10 @@ class LocalAssetStoreService:
                 key = self.mode_key(pipeline, view, qualifier, render_mode=mode) if mode else self.key(pipeline, view, qualifier)
                 if item.get("_require_current_selection"):
                     current = assets.get(key) or {}
-                    if (not current.get("selected") or current.get("stale")
+                    if (not current.get("selected")
                             or current.get("candidate_id") != item.get("candidate_id")
                             or current.get("batch_id") != item.get("batch_id")):
                         raise LocalAssetStoreError(f"Selection for {key} changed before it could be locked.")
-                    if mode == "final" and current.get("image_sha256") != digest:
-                        raise LocalAssetStoreError(f"The selected Final image for {key} changed before it could be locked.")
                 if not item.get("candidate_id") or not item.get("batch_id"):
                     raise LocalAssetStoreError(f"Selected local image for {key} has no candidate or batch identity.")
                 prepared.append({**item, "character": character, "phase": phase,
@@ -478,7 +490,9 @@ class LocalAssetStoreService:
                         "candidate_id": str(item["candidate_id"]), "batch_id": str(item["batch_id"]),
                         "batch_name": str(item.get("batch_name") or ""),
                         "image_path": str(image), "image_sha256": digest,
-                        "dependencies": list(item.get("dependencies") or []), "selected": True, "stale": False,
+                        "prompt": str(item.get("prompt") or current.get("prompt") or ""),
+                        "source_change_fyi": bool(item.get("source_change_fyi")) if item.get("candidate_id") != current.get("candidate_id") else bool(current.get("source_change_fyi") or item.get("source_change_fyi")),
+                        "dependencies": list(item.get("dependencies") or []), "selected": True, "stale": False, "stale_reason": "",
                         "locked": True, "locked_image_path": str(published["image_path"]),
                         "entity_library_asset_id": published["asset_id"],
                         "reference_key": (reference.get("reference_key") or item.get("reference_key")

@@ -210,7 +210,7 @@ class LocalTemplateRevisionService:
         from zet.services.local_character_progression_service import enroll
         enroll(Path(run["root"]), run.get("views"))
         with file_lock(directory / "revisions.lock"):
-            from_master = payload.get("from_master", False)
+            from_master = payload.get("from_master", True)
             skip_analysis = payload.get("skip_analysis", False)
             if not isinstance(from_master, bool) or not isinstance(skip_analysis, bool):
                 raise ValueError("Master restart and skip choices must be boolean.")
@@ -390,13 +390,31 @@ class LocalTemplateRevisionService:
                 if ids != record.get("selected_ids", []):
                     raise ValueError("This review was accepted with different choices. Create a child review.")
                 return self.detail(pipeline, run_id, costume, record["accepted_revision_id"])
+            pending_id = record.get("pending_accepted_revision_id")
+            if pending_id:
+                if ids != record.get("selected_ids", []):
+                    raise ValueError("Finish or retry the pending master save before changing corrections.")
+                child = self._record(directory, pending_id)
+                if any(source["text"] != source["master_text"] for source in child["sources"]):
+                    self.promote(pipeline, run_id, pending_id, {"confirm": True}, costume)
+                from zet.services.local_character_progression_service import accept_prompts
+                accept_prompts(Path(run["root"]), pending_id)
+                self._write(directory / "active.json", {"revision_id": pending_id, "updated_at": _now()})
+                record.pop("pending_accepted_revision_id", None)
+                record["accepted_revision_id"] = pending_id
+                self._write(directory / "revisions" / f"{revision_id}.json", record)
+                return self.detail(pipeline, run_id, costume, pending_id)
             if record["status"] != "REVIEW_READY" or not isinstance(ids, list) or set(ids) - {f["id"] for f in record["findings"]}:
                 raise ValueError("Complete prompt analysis before accepting its corrections.")
             live = {s["source_id"]: s for s in self._sources(workflow, run)}
             sources = deepcopy(record["sources"])
             for source in sources:
                 if live.get(source["source_id"], {}).get("master_sha256") != source["master_sha256"]:
-                    raise ValueError("Governing source changed since analysis; analyze again before accepting.")
+                    current_text = live.get(source["source_id"], {}).get("text", "")
+                    diff = "".join(list(difflib.unified_diff(
+                        source["master_text"].splitlines(True), current_text.splitlines(True),
+                        fromfile=f"{source['label']} at review", tofile=f"{source['label']} now"))[:80])
+                    raise ValueError(f"Governing source changed since analysis; review the diff and analyze again.\n{diff}")
                 original = source["text"]
                 edits = []
                 for finding in record["findings"]:
@@ -420,11 +438,16 @@ class LocalTemplateRevisionService:
                 "selected_ids": ids, "accepted_at": _now(), "findings": []}
             child["owner"] = {**record["owner"], "revision_id": child_id}
             self._write(directory / "revisions" / f"{child_id}.json", child)
-            self._write(directory / "active.json", {"revision_id": child_id, "updated_at": _now()})
-            record.update(accepted_revision_id=child_id, selected_ids=ids)
+            record.update(pending_accepted_revision_id=child_id, selected_ids=ids)
             self._write(directory / "revisions" / f"{revision_id}.json", record)
+            if any(source["text"] != source["master_text"] for source in child["sources"]):
+                self.promote(pipeline, run_id, child_id, {"confirm": True}, costume)
             from zet.services.local_character_progression_service import accept_prompts
             accept_prompts(Path(run["root"]), child_id)
+            self._write(directory / "active.json", {"revision_id": child_id, "updated_at": _now()})
+            record.pop("pending_accepted_revision_id", None)
+            record["accepted_revision_id"] = child_id
+            self._write(directory / "revisions" / f"{revision_id}.json", record)
         return self.detail(pipeline, run_id, costume, child_id)
 
     @staticmethod

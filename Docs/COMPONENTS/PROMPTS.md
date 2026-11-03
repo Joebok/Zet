@@ -304,3 +304,13 @@ and the [workflow handoff](LOCAL_CHARACTERS.md#long-hair-framing-and-assembly-ha
 ## Environmental universe style (2026-10-30)
 
 The shared universe style reader accepts canonical/environmental variants. Character compilers read the batch-owned `Universe_Style.json` using the declared output directory; subsequent view compilation retains that batch snapshot. Source attribution points to the selected descriptor field.
+
+# Current character master policy (2026-11-02)
+
+Accepted character template improvements save the reviewed governing master
+before acceptance completes. New character asks compile from those masters at
+preparation and freeze prompt and ordered reference inputs per request. Prompt
+improvement remains optional. The per-batch revision record remains readable as
+review history, not a render source. Current-master previews have no activation
+step. Existing queued asks and retries retain their frozen prompts. See
+[ADR 0045](../DECISIONS/0045-finished-image-source-policy.md).

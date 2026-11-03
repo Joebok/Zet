@@ -104,7 +104,7 @@
       if (current === generation) {
         loading = false;
         clearTimeout(timer);
-        if (context) timer = setTimeout(refresh, activeWork || pending.size ? 2500 : 30000);
+        if (context && (activeWork || pending.size)) timer = setTimeout(refresh, 2500);
       }
     }
   }

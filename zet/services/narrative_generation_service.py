@@ -342,8 +342,10 @@ class NarrativeGenerationService:
                             job["result"] = prompt
                             if (record["active_llm_job"] == job["id"] and record["prompt"] == job.get("baseline", job["detail"])["prompt"]
                                     and self._same_mode(record, job["detail"])):
+                                previous_prompt = record["prompt"]
                                 record["prompt"] = prompt
                                 record["prompt_provenance"] = {**job.get("provenance", {}), "job_id": job["id"], "edited": False}
+                                self.author.mark_prompt_change(record, previous_prompt)
                             if job["kind"] == "generate":
                                 job["status"] = "DISPATCHING"
                                 self.repository.write(record, story, scene, target)
@@ -394,12 +396,38 @@ class NarrativeGenerationService:
             if candidate and candidate["status"] in ACTIVE:
                 candidate.update(status="FAILED", error=error)
 
-    def delete_draft_images(self, story, scene, target):
+    @staticmethod
+    def _draft_delete_preview(record):
+        ids = {cid for cid, candidate in record["candidates"].items()
+               if candidate.get("render_mode", "draft") == "draft"}
+        effects = []
+        selected = record.get("selected_id")
+        if selected in ids:
+            effects.append({"id": f"unselect:draft:{selected}", "label": f"Unselect Draft image {selected}"})
+        for candidate_id in sorted(ids):
+            if record["candidates"][candidate_id].get("locked"):
+                effects.append({"id": f"unlock:draft:{candidate_id}", "label": f"Unlock Draft image {candidate_id}"})
+        token = hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()
+        return {"protected_effects": effects, "confirmation_token": token}
+
+    def preview_draft_delete(self, story, scene, target):
+        with self.repository.lock():
+            return self._draft_delete_preview(self.repository.read(story, scene, target))
+
+    def delete_draft_images(self, story, scene, target, data=None):
         """Cancel and remove this target's Draft candidates, including locks."""
         from zet.services.workflow_storage import supersede_task
 
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
+            preview = self._draft_delete_preview(record)
+            data = data or {}
+            if data.get("confirmation_token") != preview["confirmation_token"]:
+                from zet.services.protected_effect_preview import ProtectedEffectsChanged
+                raise ProtectedEffectsChanged(preview)
+            approved = data.get("approved_effects")
+            if not isinstance(approved, list) or set(approved) != {effect["id"] for effect in preview["protected_effects"]}:
+                raise ValueError("Approve each selected or locked Draft image affected by deletion.")
             ids = {cid for cid, candidate in record["candidates"].items()
                    if candidate.get("render_mode", "draft") == "draft"}
             paths = self.author.app.ai_proxy_service.ai_proxy_path_service

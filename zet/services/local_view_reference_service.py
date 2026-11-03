@@ -108,7 +108,7 @@ def save_reference_recipe(run: dict, view: str, payload: dict) -> dict:
         if recipe["mode"] != "selected_view" or not valid:
             raise ValueError("Staged batches use their selected predecessor; Body BACK uses FRONT, other BACK views use either rear quarter.")
     render_mode = payload.get("render_mode")
-    reference_run = selected_run_for_mode(run, render_mode, allow_fallback=render_mode != "final") if render_mode else run
+    reference_run = selected_run_for_mode(run, render_mode, allow_fallback=False) if render_mode else run
     selected_reference(reference_run, view, recipe)
     def update(state):
         from zet.services.local_pipeline_operation_reservation import active_preparation

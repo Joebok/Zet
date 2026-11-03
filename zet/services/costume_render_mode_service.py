@@ -104,7 +104,6 @@ class CostumeRenderModeService:
 
     def prepare(self, run, view, directory, *, settings=None, output_dir=None, reuse_saved_prompt=False):
         from zet.services.render_slot_service import frozen_input, _rebind_mode_references
-        from zet.services.template_source_service import active_revision
         import json
         settings = settings or render_settings(run, view)
         reason = self.reason(run, view, settings, include_review=False)
@@ -114,7 +113,7 @@ class CostumeRenderModeService:
         output = Path(output_dir or Path(directory) / "prompt")
         prompt = output / "Final_Image_Prompt.md"
         manifest = output / "dependency_manifest.json"
-        revision = active_revision(Path(run["root"])).get("revision_id", "")
+        revision = ""
         provenance_path = output / "Costume_Prompt_Provenance.json"
         try:
             provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
@@ -141,6 +140,9 @@ class CostumeRenderModeService:
             write_json_atomic(provenance_path, {"version": 1, "template_revision_id": revision,
                                                 "rendering_mode": settings["mode"]})
         saved = frozen_input(Path(directory) / "inputs", prompt.read_text(encoding="utf-8"), refs, self.workflow.adapter.definition["preset"])
+        source_hashes = output / "Prompt_Source_Hashes.json"
+        if source_hashes.is_file():
+            saved["template_sources"] = json.loads(source_hashes.read_text(encoding="utf-8")).get("sources", [])
         from zet.services.local_render_backend_service import LocalRenderBackendService
         saved["render_profile"] = LocalRenderBackendService(self.workflow.app.config.state_file(self.workflow.project_root, "Local_Render_Presets.json"),
             config=self.workflow.app.config).preset(saved["preset"])

@@ -1,5 +1,4 @@
 """Mode-scoped character selections and explicit image locks."""
-import hashlib
 from pathlib import Path
 
 from zet.services.library_reference_service import pipeline_library_root_for_path, read_library_json, write_library_json
@@ -52,7 +51,7 @@ class LocalModeSelectionService:
             field = "selected_views" if mode == "draft" else "final_selected_views"
             selected = state.setdefault(field, {})
             record = self.store.mode_record(run["character"], run["phase"], self._pipeline(), view, qualifier, render_mode=mode)
-            if record and record.get("locked") and record.get("batch_id") == run_id and record.get("candidate_id") != candidate_id:
+            if record and record.get("locked") and (record.get("batch_id") != run_id or record.get("candidate_id") != candidate_id):
                 raise ValueError("Unlock this mode's image before changing its selection.")
             if candidate_id:
                 if not self._available_candidate(run, view, candidate_id, mode):
@@ -61,11 +60,7 @@ class LocalModeSelectionService:
             else:
                 selected.pop(view, None)
             if view == "FRONT":
-                previous = state.get("front_anchor" if mode == "draft" else "final_front_anchor")
                 state["front_anchor" if mode == "draft" else "final_front_anchor"] = candidate_id or None
-                if mode == "draft" and self.workflow.pipeline == "character-assembly" and previous != (candidate_id or None):
-                    from zet.services.local_character_progression_service import invalidate_assembly_rankings
-                    invalidate_assembly_rankings(state)
             write_library_json(state_path, state, pipeline_library_root_for_path(root))
         return self.workflow._present_run(self.workflow.prompt_improvement.detail(run_id, costume))
 
@@ -82,28 +77,12 @@ class LocalModeSelectionService:
             candidate = next((c for c in run.get("candidates", []) if c.get("candidate_id") == candidate_id), None)
             if not self._available_candidate(run, view, candidate_id, mode):
                 raise ValueError("Select an available image in this view and mode before locking.")
-            if mode == "final":
-                image = Path(candidate["image_path"])
-                digest = str(candidate.get("image_sha256") or "")
-                if not digest or hashlib.sha256(image.read_bytes()).hexdigest() != digest:
-                    raise ValueError("The selected Final image changed; choose an image with verified saved bytes before locking.")
-            if mode == "final" and self.workflow.pipeline in {"head-image-edit", "character-assembly", "costume-dressing"}:
-                frozen = candidate.get("render_input") or {}
-                if not frozen and self.workflow.pipeline in {"character-assembly", "costume-dressing"}:
-                    raise ValueError("This image has no provable saved render inputs for Final publication.")
-                if self.workflow.pipeline in {"character-assembly", "costume-dressing"} and not frozen.get("references"):
-                    raise ValueError("Required saved render references are unavailable for Final publication.")
-                from zet.services.render_slot_service import verify_input
-                for reference in frozen.get("references") or []:
-                    path = Path(str(reference.get("path") or "")).resolve()
-                    if not path.is_relative_to(root.resolve()):
-                        raise ValueError("Saved render reference is outside this batch; its provenance cannot be verified.")
-                verify_input(frozen)
+            prompt = str((candidate.get("render_input") or {}).get("prompt") or candidate.get("prompt") or "")
             record = self.store.mode_record(run["character"], run["phase"], self._pipeline(), view, qualifier, render_mode=mode)
             if not (record and record.get("locked") and record.get("batch_id") == run_id and record.get("candidate_id") == candidate_id):
                 self.store.record_mode_selection(run["character"], run["phase"], self._pipeline(), view,
                     qualifier=qualifier, render_mode=mode, candidate_id=candidate_id,
-                    image_path=candidate["image_path"], batch_id=run_id)
+                    image_path=candidate["image_path"], batch_id=run_id, prompt=prompt)
             if mode == "draft":
                 return self.store.lock_private_draft(run["character"], run["phase"], self._pipeline(), view, qualifier)
             return self.store.lock_final(run["character"], run["phase"], self._pipeline(), view, qualifier)

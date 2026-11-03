@@ -14,9 +14,13 @@ preparation reservations.
 
 Queue waiting time alone never invalidates a character render. Historical timeout recovery retains original request and candidate identities, and terminal worker outcomes remain distinct from collection problems.
 
-New local character Final render inputs require Final same-batch selections and
-Final upstream pipeline locks. Explicit external images and existing frozen
-requests remain valid. Draft mode retains its existing preference and fallback.
+New local character render inputs use same-mode selections within a batch and
+same-mode locks across pipelines (or an explicitly configured source batch where
+allowed). Final still requires the appropriate lock. Both modes compile current
+governing masters. Existing queued asks and retries retain frozen inputs. Once
+harvested, a finished image is judged by ownership, slot membership, availability
+and publication integrity, not equality with current source choices. Source-change
+markers are advisory. See [ADR 0045](DECISIONS/0045-finished-image-source-policy.md).
 
 These are supported by implementation and repository instructions, with earlier test evidence retained in Git history. [Testing](Testing.md) owns the current S1–S4 baseline and coverage approval. A scenario verifies only its named assertions; many contracts below require source inspection because dedicated tests were retired. Do not add coverage without explicit approval. See [DEVELOPMENT](DEVELOPMENT.md) for observed results.
 

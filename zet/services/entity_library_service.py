@@ -525,6 +525,9 @@ class EntityLibraryService:
                             if current["status"] == "archived":
                                 connection.execute("UPDATE assets SET status='approved',updated_at=? WHERE asset_id=?", (stamp, asset_id))
                                 connection.execute("UPDATE logical_references SET status='active',updated_at=? WHERE asset_id=? AND status='inactive'", (stamp, asset_id))
+                            if not current["prompt"] and row.get("prompt"):
+                                connection.execute("UPDATE assets SET prompt=?,updated_at=? WHERE asset_id=?",
+                                                   (str(row["prompt"]), stamp, asset_id))
                         else:
                             asset_id = row["asset_id"]
                             target = Path(row["target_path"])
@@ -534,7 +537,7 @@ class EntityLibraryService:
                                 "INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,status,notes,prompt,negative_prompt,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                                 (asset_id, str(row.get("label") or ""), row["checksum"], target.name,
                                  row["mime_type"], row["width"], row["height"], "pipeline", row["origin_key"],
-                                 "approved", "Locked local pipeline image", "", "", stamp, stamp),
+                                 "approved", "Locked local pipeline image", str(row.get("prompt") or ""), "", stamp, stamp),
                             )
                         if str(row["pipeline"]).casefold() == "costume-dressing" and row.get("costume") and row.get("view"):
                             self._classify_costume_image_in_transaction(

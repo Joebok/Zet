@@ -63,7 +63,11 @@ class LocalCharacterBatchRestartService:
             if preview["issues"]:
                 raise ValueError(" ".join(preview["issues"]))
             if payload.get("confirmation_token") != preview["confirmation_token"]:
-                raise ValueError("Batch state or inputs changed; review the restart again.")
+                from zet.services.protected_effect_preview import ProtectedEffectsChanged
+                raise ProtectedEffectsChanged(preview)
+            approved = payload.get("approved_effects")
+            if not isinstance(approved, list) or set(approved) != {effect["id"] for effect in preview["protected_effects"]}:
+                raise ValueError("Approve each selected or locked image affected by restart.")
             spec = read_library_json(root / "spec.json", library)
             # Head phase-change sources are mode-specific snapshots. Prepare a
             # new immutable copy before touching any selections or candidates.
@@ -228,10 +232,22 @@ class LocalCharacterBatchRestartService:
                        for source in revisions._sources(self.workflow, run)]
         candidates = [candidate for candidate in run.get("candidates") or []
                       if candidate.get("render_mode", "draft") == mode]
+        selected = run.get("selected_views" if mode == "draft" else "final_selected_views") or {}
+        protected_effects = []
+        for view in views:
+            candidate_id = selected.get(view)
+            if candidate_id:
+                protected_effects.append({"id": f"unselect:{mode}:{view}:{candidate_id}",
+                                          "label": f"Unselect {mode.title()} {view} ({candidate_id})"})
+            record = records.get(view) or {}
+            if record.get("locked"):
+                protected_effects.append({"id": f"unlock:{mode}:{view}:{record.get('candidate_id')}",
+                                          "label": f"Unlock {mode.title()} {view} ({record.get('candidate_id')})"})
         evidence = {"mode": mode, "recompile": recompile, "run_id": run["run_id"],
                     "state": self._digest(root / "state.json"), "spec": self._digest(root / "spec.json"),
                     "records": records, "sources": sources, "masters": masters, "issues": issues}
         token = hashlib.sha256(json.dumps(evidence, sort_keys=True, default=str).encode()).hexdigest()
         return {"render_mode": mode, "recompile": recompile, "candidate_count": len(candidates),
                 "image_count": sum(bool(item.get("image_path")) for item in candidates),
-                "locked_views": locked, "issues": issues, "confirmation_token": token}
+                "locked_views": locked, "protected_effects": protected_effects,
+                "issues": issues, "confirmation_token": token}

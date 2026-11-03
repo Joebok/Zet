@@ -8,13 +8,20 @@ to existing callers. Candidate, selected-card, reference and source thumbnails
 come from verified source bytes through a machine-local derived cache; review
 opens the original. `LocalPipelineComparisonService` provides explicit Draft,
 master and frozen-reference reports without changing ranking or selection.
-`LocalCurrentMastersService` selects a batch master revision and compiles each
-eligible requested view into a one-time prompt/reference report. New render
-preparation checks whether its selected master baseline changed, then freezes
-the exact prompt and ordered references. A blocked view is reported individually.
-Final locking checks captured reference bytes for edited head, Assembly and
-Dressing images. Historical differences remain inspectable; a later upstream
-selection alone does not change the frozen render inputs.
+`LocalCurrentMastersService` previews current masters and resolved inputs without
+changing a batch revision. New render preparation compiles current governing
+masters and eligible same-mode references, then freezes the exact prompt and
+ordered bytes. Retry keeps its original frozen inputs. A missing required current
+source blocks that new ask with a view-specific reason. Finished images can be
+selected and locked from their available current bytes without revalidating old
+references or master text. New locks preserve the candidate prompt independently.
+Opened views persist a subtle `source_change_fyi` when captured template hashes or
+reference identities differ from saved current sources; the marker is permanent
+and advisory. A locked view checks only its locked candidate. Restart and Draft
+cleanup require a state-bound preview and explicit approval for every affected
+selection or lock. [ADR 0045](../DECISIONS/0045-finished-image-source-policy.md)
+supersedes the older batch-overlay and lineage rules described in historical
+sections below.
 
 Batch summaries also carry compact selected/locked image identities for cards
 and review comparisons. Cards open the shared original-image review pane and
@@ -89,6 +96,9 @@ Identity Keys offer one source per available pipeline, costume and view. Preview
 
 `LocalAssetStoreService` has internal mode-specific selection records, private
 Draft snapshots, and Final publication through the existing catalog transaction.
+New locks also retain the selected candidate's prompt in the local record; Final
+publication stores it with the Inventory image. Draft locks capture the currently
+selected image bytes even if the candidate file was manually adjusted.
 Legacy lock records are read as Draft. Individual selection/lock APIs accept an
 explicit mode through `LocalModeSelectionService`; mode-scoped bulk lock APIs
 and completion checks are also available internally. Assembly/Dressing source
@@ -140,19 +150,19 @@ format changes are required.
 
 ## Editing character and costume masters (2026-10-26)
 
-Character setup exposes **Edit character template**; Costumes retains its **Open** action. Both open the complete canonical file in Template Editor, with view/search highlighting, a current-master diff and validation before saving. Every dimmed line remains editable. Saving a master does not replace existing batches' accepted template versions or frozen inputs. Batch proposals and post-render adjustments retain their existing trial/acceptance/promotion boundaries. [Dashboard UI](DASHBOARD_UI.md#character-and-costume-template-editor-2026-10-26) owns the controls; [Prompts](PROMPTS.md#character-and-costume-source-editing-2026-10-26) owns validation.
+Character setup exposes **Edit character template**; Costumes retains its **Open** action. Both open the complete canonical file in Template Editor, with view/search highlighting, a current-master diff and validation before saving. Every dimmed line remains editable. Saving a master leaves existing frozen asks and finished images intact; new asks use the saved master. Batch proposals and post-render adjustments retain their review boundaries. [Dashboard UI](DASHBOARD_UI.md#character-and-costume-template-editor-2026-10-26) owns the controls; [Prompts](PROMPTS.md#character-and-costume-source-editing-2026-10-26) owns validation.
 
 ## Costume-Dressing modes and adjustments (2026-10-26)
 
 `CostumeRenderModeService` owns per-view settings, availability and ordered input preparation for slots, previews and Image Generator staging. FRONT retains its Assembly-based Doll-dressing behavior. Other views choose Doll-dressing (w/ Ref), Doll-dressing (no Ref), or Rotate. The first edits the matching Assembly with a selected same-batch costume view as design guidance; no Ref omits prior dressed views but retains authored resource images; Rotate edits the selected dressed view with Assembly second for target orientation, stance and framing. Sources are explicit: an unavailable chosen source blocks new work without nearest-view fallback. Rotation wording includes source, target, angular distance and direction.
 
-After governing prompts are accepted, Costume-Dressing views run independently when their mode inputs exist. **Run ready views** queues remaining eligible candidates without Continue/predecessor stages. Per-view mode/reference settings persist; Retry uses frozen prompts, references, settings and seeds. Publication follows captured lineage rather than an unused FRONT prerequisite. Mode/reference changes do not rewrite existing candidates or locks.
+Costume-Dressing views run independently when their mode inputs exist; prompt improvement is optional. **Run ready views** queues remaining eligible candidates without Continue/predecessor stages. Per-view mode/reference settings persist; Retry uses frozen prompts, references, settings and seeds. Publication follows captured lineage rather than an unused FRONT prerequisite. Mode/reference changes do not rewrite existing candidates or locks.
 
 Each view has a **Stage…** menu: **Stage in Image Generator** uses saved settings; **Stage no Costume ref** and **Stage Rotation** prepare alternatives without changing them. FRONT rejects the unsupported alternatives.
 
 **Post Render Adjustments** opens `LocalCostumePostRenderService` through the existing post-render URL. `CostumeAdjustmentCriteriaService` saves stable criterion IDs/text and in_progress/accomplished status in the costume workspace, independently of batches and modes. Accomplished criteria remain visible and must be reopened and saved before text editing. Only unfinished criteria enter analysis.
 
-Analysis proposes independently selectable costume prose-line changes with criterion links and view/mode scopes. Target and symmetric mirror are favored; other selected views, including a selected mirror, default unchecked. Intentional asymmetry suppresses mirror defaults. The operator adjusts scopes and accepts a cumulative source diff before four private target-view renders. Session seeds, render profile and ordered inputs are frozen; advisory AI assessment never changes human accomplishment statuses. Further rounds use the private trials and unfinished criteria. Earlier rounds remain inspectable. Explicit save promotes only the reviewed costume source, activates a batch revision and recompiles available views; unavailable views compile later. Partial progress may be saved while criteria remain unfinished. Other batches keep their own accepted versions.
+Analysis proposes independently selectable costume prose-line changes with criterion links and view/mode scopes. Target and symmetric mirror are favored; other selected views, including a selected mirror, default unchecked. Intentional asymmetry suppresses mirror defaults. The operator adjusts scopes and accepts a cumulative source diff before four private target-view renders. Session seeds, render profile and ordered inputs are frozen; advisory AI assessment never changes human accomplishment statuses. Further rounds use the private trials and unfinished criteria. Earlier rounds remain inspectable. Explicit save promotes only the reviewed costume source to the governing master. New asks in any batch compile it; existing frozen asks and images remain unchanged. Partial progress may be saved while criteria remain unfinished.
 
 Suggestions now address an eligible-line catalog by section, line number and original-line digest, so repeated prose can be edited independently. Models replace prose only; Zet preserves spatial annotations and generates view/mode tags. The review shows each source section and line. Protected scene-only/head-domain/resource content is excluded. Invalid findings receive specific diagnostics and at most one repair request; valid findings remain reviewable when repair fails, with omissions explained in the summary. Side-specific visibility and occlusion require asymmetric treatment even for fixed equipment. Existing saved suggestions remain readable. See [ADR 0035](../DECISIONS/0035-costume-suggestion-source-binding.md).
 
@@ -328,7 +338,7 @@ Inputs include character/phase, normalized requested views, costume qualifier wh
 1. Preview validates inputs and dependencies. Assembly uses body/head references; dressing uses an assembled character and costume source. Read the service's source resolution before assuming every input must already be locked: selected-batch workflows also exist.
 2. Creation snapshots source material and records the run. Rendering queues work through the shared File Proxy; answer harvesting and view-specific evaluation progress persisted state.
 3. Rendered candidates are available for Luna ranking and human review immediately. Front-anchor/order requirements differ by pipeline; use the owning service rather than a universal view loop.
-4. Current ranking, human decisions, image validity, and selection determine eligibility. Selection and locking are separate operations; promotion may collect a source chain.
+4. Current human selection and image availability determine whether a finished image can be locked. Selection and locking are separate operations; publication captures the selected image and its prompt.
 5. Lock publication preserves approved image bytes/checksum and a stable logical reference. Available published locks feed identity keys, turnarounds, costumes, phase comparison and scene references. Phase Comparison lists Head-Image-Edit when a locked edit exists in either selected phase and matches its views across those phases.
 
 The shared review page skips unchanged human decisions. Review, selection, and rank

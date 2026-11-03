@@ -1,7 +1,7 @@
 # 0041 — Local Final reference gates
 
 Date: 2026-10-31
-Status: accepted
+Status: superseded where conflicting by [ADR 0045](0045-finished-image-source-policy.md)
 
 Local character Final render inputs use Final same-batch selections and locked
 Final upstream pipeline images. Bulk generation queues currently eligible views

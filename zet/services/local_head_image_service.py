@@ -349,11 +349,8 @@ class LocalHeadImageService:
         by_id = {item["candidate_id"]: item for item in value["candidates"]}
         for view, candidate_id in value["selected_views"].items():
             candidate = by_id.get(candidate_id)
-            ranking = (value.get("rankings") or {}).get(view) or {}
             image = Path(str((candidate or {}).get("image_path") or ""))
-            if (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
-                    or candidate_id not in (ranking.get("ordered_candidate_ids") or [])
-                    or ranking.get("input_hashes", {}).get(candidate_id) != str((candidate or {}).get("image_sha256") or "")):
+            if not candidate or not image.is_file():
                 stale_selected.append(view)
         value["stale_selections"] = sorted(set(value["stale_selections"]) | set(stale_selected))
         if value["stale_selections"] and value["status"] not in ACTIVE_RUN_STATUSES | {"ERROR", "CANCELLED", "INTERRUPTED"}:
@@ -1060,7 +1057,6 @@ class LocalHeadImageService:
             state.setdefault("selected_views", {}).pop(view, None)
             if view == FRONT:
                 state["front_anchor"] = None
-                self._mark_downstream_review_stale(run, state)
             if state.get("status") not in ACTIVE_RUN_STATUSES and view != FRONT:
                 state["status"] = "AWAITING_HUMAN_SELECTION" if state.get("front_anchor") else "AWAITING_FRONT_ANCHOR"
             elif state.get("status") not in ACTIVE_RUN_STATUSES:
@@ -1103,7 +1099,6 @@ class LocalHeadImageService:
             old_anchor_id = state.get("front_anchor")
             state["front_anchor"] = candidate_id
             if old_anchor_id != candidate_id:
-                self._mark_downstream_review_stale(run, state)
                 if state.get("status") not in ACTIVE_RUN_STATUSES:
                     state["status"] = "READY_FOR_VIEWS"
         self.asset_store.record_batch_selection(run["character"], run["phase"], self.asset_pipeline, view,
@@ -1146,18 +1141,10 @@ class LocalHeadImageService:
         image = Path(str((candidate or {}).get("image_path") or ""))
         if not candidate or not image.is_file():
             raise LocalHeadImageError("The selected candidate image is missing.")
-        dependencies = []
-        if view != FRONT:
-            anchor = next((item for item in run["candidates"]
-                           if item["candidate_id"] == run.get("front_anchor")), None)
-            anchor_image = Path(str((anchor or {}).get("image_path") or ""))
-            if anchor_image.is_file():
-                dependencies.append({"key": self.asset_store.key(self.asset_pipeline, FRONT),
-                                     "image_sha256": self._hash(anchor_image)})
         return self.asset_store.lock_batch_selection(
             run["character"], run["phase"], self.asset_pipeline, view,
             candidate_id=candidate_id, image_path=image, batch_id=run_id,
-            dependencies=dependencies,
+            dependencies=[], prompt=str((candidate.get("render_input") or {}).get("prompt") or candidate.get("prompt") or ""),
         )
 
     def unlock_view(self, character: str, phase: str, view: str) -> dict[str, Any]:
@@ -1217,10 +1204,6 @@ class LocalHeadImageService:
                 retry_count=int(candidate.get("retry_count") or 0) + (1 if candidate.get("image_path") else 0),
             )
 
-    def _mark_downstream_review_stale(self, run: dict[str, Any], state: dict[str, Any]) -> None:
-        """Preserve downstream renders when a human changes the FRONT choice."""
-        from zet.services.local_image_evaluation_service import supersede_evaluations
-        supersede_evaluations(state, set(VIEWS) - {FRONT}, "The selected FRONT anchor changed.")
     def rerun(self, run_id: str) -> dict[str, Any]:
         """Clear the current batch's candidates and reviews, then restart FRONT."""
         return self.rerun_view(run_id, FRONT)

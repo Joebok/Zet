@@ -132,7 +132,7 @@
   window.ZetLocalOperations = {submit, refresh, rows: allRows};
   setInterval(() => {
     const fast = allRows().some(row => active.has(row.status) || row.status === "UNKNOWN");
-    if (fast || !panel.hidden || Date.now() - lastRefresh >= 30000) void refresh();
+    if (fast || (!panel.hidden && Date.now() - lastRefresh >= 30000)) void refresh();
   }, 2000);
   void recoverPending();
 })();

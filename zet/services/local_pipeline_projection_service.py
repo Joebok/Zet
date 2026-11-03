@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 from typing import Any
 
-from zet.services.library_reference_service import read_library_json
+from zet.services.library_reference_service import read_library_json, write_library_json
 from zet.services.local_pipeline_operation_context import (
     candidate_retry_context, evaluation_context, operation_context,
 )
 from zet.services.local_view_reference_service import reference_recipes
 from zet.services.render_slot_service import merge_candidates, slot_maps
-from zet.services.template_source_service import active_revision
 from zet.services.workflow_storage import file_lock
 
 
@@ -48,7 +48,7 @@ class LocalPipelineProjectionService:
         run["slots_by_mode"] = {mode: slot_maps(run, mode) for mode in ("draft", "final")}
         run["selected_views_by_mode"] = {"draft": run["selected_views"], "final": run["final_selected_views"]}
         run["view_reference_recipes"] = reference_recipes(root, pipeline, state=run)
-        run["active_template_revision_id"] = active_revision(root).get("revision_id", "")
+        run["active_template_revision_id"] = (state.get("character_progression") or {}).get("accepted_revision_id", "")
         if pipeline == "costume-dressing":
             from zet.services.costume_render_mode_service import render_settings
             run["render_settings"] = {view: render_settings(run, view) for view in run.get("views") or []}
@@ -84,6 +84,31 @@ class LocalPipelineProjectionService:
     def _candidate_available(run: dict, candidate: dict) -> bool:
         path = Path(str(candidate.get("image_path") or "")).resolve()
         return path.is_file() and path.is_relative_to(Path(run["root"])) and path.stat().st_size > 0
+
+    @staticmethod
+    def _saved_source_changed(candidate: dict, current_refs: dict) -> bool:
+        frozen = candidate.get("render_input") or {}
+        sources = frozen.get("template_sources") or []
+        for source in sources:
+            path = Path(str(source.get("path") or ""))
+            if not path.is_file():
+                return True
+            if hashlib.sha256(path.read_bytes()).hexdigest() != source.get("sha256"):
+                return True
+        if not current_refs or not frozen.get("references"):
+            return False
+        if current_refs.get("error"):
+            return True
+        for ref in frozen["references"]:
+            current = current_refs.get(ref.get("role"))
+            if not current:
+                continue
+            if ref.get("candidate_id") and current.get("candidate_id"):
+                if ref["candidate_id"] != current["candidate_id"]:
+                    return True
+            if ref.get("sha256") and current.get("sha256") and ref["sha256"] != current["sha256"]:
+                return True
+        return False
 
     def summary(self, run_id: str, mode: str = "draft", costume: str = "") -> dict:
         mode = self._mode(mode)
@@ -129,8 +154,7 @@ class LocalPipelineProjectionService:
         progression = {"stage": flow.get("stage", -1), "next_views": next_views,
                        "current_views": [], "can_continue": bool(next_views),
                        "complete": not bool(next_views), "reason": "",
-                       "prompt_review_required": bool(flow and self.workflow.pipeline != "character-assembly"
-                                                      and not flow.get("accepted_revision_id"))}
+                       "prompt_review_required": False}
         return {"run_id": run_id, "character": run.get("character", ""), "phase": run.get("phase", ""),
                 "costume": run.get("costume", ""), "batch_name": run.get("batch_name", ""),
                 "status": run.get("status", ""), "error": run.get("error", ""), "render_mode": mode,
@@ -198,6 +222,27 @@ class LocalPipelineProjectionService:
             except (ValueError, OSError) as exc:
                 preview = {"error": str(exc)}
         pipeline_key = self._asset_key(run, view, mode)
+        locked_id = str(record.get("candidate_id") or "") if record.get("locked") else ""
+        eligible = [item for item in candidates if item["candidate_id"] == locked_id] if locked_id else candidates
+        if locked_id and record.get("source_change_fyi"):
+            for item in eligible:
+                item["source_change_fyi"] = True
+        newly_marked = [item for item in eligible if (item["image_available"] or item["candidate_id"] == locked_id)
+                        and not item.get("source_change_fyi")
+                        and self._saved_source_changed(item, preview)]
+        if newly_marked:
+            with file_lock(Path(run["root"]) / "state.lock"):
+                fresh = read_library_json(Path(run["root"]) / "state.json", self.adapter.library_root)
+                for item in newly_marked:
+                    saved = (fresh.get("candidates") or {}).get(item["candidate_id"])
+                    if saved is not None:
+                        saved["source_change_fyi"] = True
+                        item["source_change_fyi"] = True
+                write_library_json(Path(run["root"]) / "state.json", fresh, self.adapter.library_root)
+        if locked_id and any(item["candidate_id"] == locked_id and item.get("source_change_fyi") for item in eligible):
+            self.adapter.asset_store.mark_source_change_fyi(run["character"], run["phase"], pipeline_key,
+                                                            run_id, locked_id)
+            record["source_change_fyi"] = True
         return {"run_id": run_id, "view": view, "render_mode": mode, "status": run.get("status", ""),
                 "character": run.get("character", ""), "phase": run.get("phase", ""),
                 "costume": run.get("costume", ""), "batch_name": run.get("batch_name", ""),

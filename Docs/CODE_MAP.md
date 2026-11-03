@@ -1,5 +1,15 @@
 # Capability code map
 
+Current source/guard policy (2026-11-02):
+`LocalTemplateRevisionService.accept` commits reviewed masters;
+`render_slot_service.prepare_input` freezes current master and same-mode inputs
+for each new ask. `LocalModeSelectionService` and `LocalAssetStoreService` retain
+finished selected bytes and prompt; `LocalPipelineProjectionService.view`
+observes permanent advisory source differences. Character restart/Draft cleanup,
+Minor board restart/Draft cleanup, and Narrative Draft cleanup use state-bound
+protected-effect previews. `zet.js` renders the shared approval dialog. See
+[ADR 0045](DECISIONS/0045-finished-image-source-policy.md).
+
 Character batch/view pages: `LocalPipelineProjectionService` owns scoped summary
 and single-view reads; `LocalPipelineThumbnailService` owns verified bounded image
 derivatives; `LocalPipelineComparisonService` owns requested difference reports;

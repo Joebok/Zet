@@ -4384,6 +4384,36 @@ async function confirmAction(title, message, confirmLabel = "Confirm", { tone = 
   return (await dialogResult(confirmationDialog)) === "confirm";
 }
 
+async function confirmProtectedEffects(title, message, effects, confirmLabel = "Confirm") {
+  if (!effects.length) return await confirmAction(title, message, confirmLabel) ? [] : null;
+  const dialog = document.createElement("dialog");
+  dialog.className = "protected-effects-dialog";
+  const heading = document.createElement("h2"); heading.textContent = title;
+  const description = document.createElement("p"); description.textContent = message;
+  const form = document.createElement("form"); form.method = "dialog";
+  const list = document.createElement("div"); list.className = "protected-effect-list";
+  const checks = effects.map(effect => {
+    const label = document.createElement("label");
+    const check = document.createElement("input"); check.type = "checkbox";
+    label.append(check, document.createTextNode(effect.label)); list.append(label);
+    return check;
+  });
+  const actions = document.createElement("div"); actions.className = "button-row";
+  const all = document.createElement("button"); all.type = "button"; all.textContent = "Approve all";
+  const cancel = document.createElement("button"); cancel.value = "cancel"; cancel.textContent = "Cancel";
+  const confirm = document.createElement("button"); confirm.value = "confirm"; confirm.textContent = confirmLabel;
+  confirm.className = "danger-action"; confirm.disabled = true;
+  const update = () => { confirm.disabled = checks.some(check => !check.checked); };
+  checks.forEach(check => check.addEventListener("change", update));
+  all.addEventListener("click", () => { checks.forEach(check => { check.checked = true; }); update(); });
+  actions.append(cancel, all, confirm); form.append(list, actions); dialog.append(heading, description, form);
+  document.body.append(dialog);
+  try {
+    const accepted = (await dialogResult(dialog)) === "confirm";
+    return accepted ? effects.map(effect => effect.id) : null;
+  } finally { dialog.remove(); }
+}
+
 async function guardCurrentEditor() {
   if (activePageName() === "auxiliary-resources" && entityLibraryCurrentView === "detail" && entityLibrarySavePromise) {
     return Boolean(await entityLibrarySavePromise);

@@ -12,7 +12,6 @@ from zet.services.costume_mode_conditioning_service import MODES, condition_mode
 from zet.services.costume_render_mode_service import CostumeRenderModeService, render_settings
 from zet.services.local_post_render_prompt_service import LocalPostRenderPromptService, _hash
 from zet.services.llm_role_service import resolve_role_model
-from zet.services.template_source_service import active_revision
 from zet.services.view_conditioning_service import VIEW_ORDER
 from zet.services.workflow_storage import file_lock
 
@@ -71,8 +70,6 @@ class LocalCostumePostRenderService(LocalPostRenderPromptService):
     def _validate_round(self, record, workflow, run, operation, payload=None):
         if self._contract(workflow, run, record["view"], record.get("render_mode")) != record["render_contract"]:
             raise ValueError("Rendering mode or reference inputs changed. Cancel this session and open a new review.")
-        if active_revision(Path(run["root"])).get("revision_id", "") not in {record["base_revision_id"], record.get("final_revision_id")}:
-            raise ValueError("The active batch revision changed. Start a new review.")
         source = Path(self._character_source(record["sources"])["source_path"])
         if operation != "keep" and _hash(source.read_bytes()) != record["master_sha256"]:
             raise ValueError("The costume master changed. Start a new review.")

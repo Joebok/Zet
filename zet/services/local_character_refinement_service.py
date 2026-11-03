@@ -467,9 +467,6 @@ class LocalCharacterRefinementService:
                 state.setdefault(selection_key, {})[record["view"]] = cid
                 if record["view"] == "FRONT":
                     state["final_front_anchor" if mode == "final" else "front_anchor"] = cid
-                    if mode == "draft" and pipeline == "character-assembly":
-                        from zet.services.local_character_progression_service import invalidate_assembly_rankings
-                        invalidate_assembly_rankings(state)
             mutate_local_run_state(root, update)
             if "render_mode" not in record:
                 from zet.services.local_character_progression_service import select

@@ -137,7 +137,7 @@ class LocalPostRenderPromptService:
         if not representatives:
             raise ValueError("Render this view before starting Post Render Adjustments.")
         active = active_revision(Path(run["root"]))
-        sources = deepcopy(active.get("sources") or self.revisions._sources(workflow, run))
+        sources = deepcopy(self.revisions._sources(workflow, run))
         character = self._character_source(sources)
         master = Path(character["source_path"])
         master_bytes = master.read_bytes()
@@ -580,8 +580,6 @@ class LocalPostRenderPromptService:
             if not master_is_original and master.read_text(encoding="utf-8") != new_text:
                 raise ValueError(f"{self.source_label} changed since this review. Start a new session.")
             revision_id = record.get("final_revision_id") or uuid4().hex
-            if active_revision(Path(run["root"])).get("revision_id", "") not in {record["base_revision_id"], revision_id}:
-                raise ValueError("The batch prompt version changed. Start a new session.")
             sources = record["trial"]["sources"]
             from zet.services.local_prompt_preview_service import LocalPromptPreviewService
             LocalPromptPreviewService(workflow).compile(run, sources, path.parent / "compiled" / record["trial"]["id"] / "final-preview", all_orientations=True)

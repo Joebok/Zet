@@ -5,8 +5,6 @@ import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from zet.services.local_template_revision_service import LocalTemplateRevisionService
-from zet.services.template_source_service import active_revision
 
 
 class LocalCurrentMastersService:
@@ -17,14 +15,9 @@ class LocalCurrentMastersService:
         if render_mode not in {"draft", "final"}:
             raise ValueError("Render mode must be draft or final.")
         workflow = self.workflow
-        revision_service = LocalTemplateRevisionService(workflow.app, workflow.project_root)
         run = workflow.prompt_improvement.detail(run_id, costume)
         root = Path(run["root"])
-        before = active_revision(root).get("revision_id", "")
-        revision_service.start(workflow.pipeline, run_id,
-            {"from_master": True, "skip_analysis": True, "expected_active": before}, costume)
-        revision_id = active_revision(root)["revision_id"]
-        run = workflow.prompt_improvement.detail(run_id, costume)
+        revision_id = ""
         views = (run.get("character_progression") or {}).get("requested_views") or run.get("views") or []
         rows = []
         with TemporaryDirectory(prefix="current-masters-", dir=root) as directory:
@@ -47,3 +40,19 @@ class LocalCurrentMastersService:
                                  "reason": str(exc)})
         return {"run_id": run_id, "render_mode": render_mode, "revision_id": revision_id,
                 "all_ready": all(row["status"] == "ready" for row in rows), "views": rows}
+
+    def preview_view(self, run_id: str, view: str, *, render_mode: str = "draft", costume: str = "") -> str:
+        if render_mode not in {"draft", "final"}:
+            raise ValueError("Render mode must be draft or final.")
+        run = self.workflow.prompt_improvement.detail(run_id, costume)
+        view = view.upper()
+        if view not in run.get("views", []):
+            raise ValueError("Unknown character view.")
+        reason = self.workflow.slots._prerequisite(run, view, render_mode)
+        if reason:
+            raise ValueError(reason)
+        with TemporaryDirectory(prefix="current-view-prompt-", dir=Path(run["root"])) as directory:
+            output = Path(directory) / view
+            saved = self.workflow.slots.prepare_input(run, view, output / "inputs", output_dir=output,
+                                                      render_mode=render_mode)
+            return saved["prompt"]

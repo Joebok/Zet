@@ -74,13 +74,52 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 locked["image_url"] = f"/api/minor-characters/{value['session_id']}/locked/{view}?render_mode={mode}"
         return value
 
-    def delete_character(self, sid):
+    @staticmethod
+    def _delete_character_preview(records):
+        effects = []
+        for record in records:
+            for mode, selected_key, lock_key in (("draft", "selected", "locked"),
+                                                  ("final", "final_selected", "final_locked")):
+                for view, candidate_id in (record.get(selected_key) or {}).items():
+                    effects.append({"id": f"unselect:{record['session_id']}:{mode}:{view}:{candidate_id}",
+                                    "label": f"Unselect {mode.title()} {view} ({candidate_id})"})
+                for view, locked in (record.get(lock_key) or {}).items():
+                    if locked.get("candidate_id"):
+                        effects.append({"id": f"unlock:{record['session_id']}:{mode}:{view}:{locked['candidate_id']}",
+                                        "label": f"Hide locked {mode.title()} {view} ({locked['candidate_id']})"})
+        token = hashlib.sha256(json.dumps(records, sort_keys=True, default=str).encode()).hexdigest()
+        return {"protected_effects": effects, "confirmation_token": token}
+
+    def preview_delete_character(self, sid):
+        with file_lock(self.root / "names.lock"):
+            record = self._canonical(sid)
+            ids = sorted(r["session_id"] for r in self._records()
+                         if self.name_key(r["name"]) == self.name_key(record["name"]))
+            from contextlib import ExitStack
+            with ExitStack() as locks:
+                for target in ids:
+                    locks.enter_context(self._lock(target))
+                return self._delete_character_preview([self._read(target) for target in ids])
+
+    def delete_character(self, sid, data=None):
         with file_lock(self.root / "names.lock"):
             record = self._canonical(sid)
             records = self._records()
-            ids = {r["session_id"] for r in records if self.name_key(r["name"]) == self.name_key(record["name"])}
-            for target in sorted(ids):
-                with self._lock(target):
+            ids = sorted(r["session_id"] for r in records if self.name_key(r["name"]) == self.name_key(record["name"]))
+            from contextlib import ExitStack
+            with ExitStack() as locks:
+                for target in ids:
+                    locks.enter_context(self._lock(target))
+                current_records = [self._read(target) for target in ids]
+                preview = self._delete_character_preview(current_records)
+                data = data or {}
+                if data.get("confirmation_token") != preview["confirmation_token"]:
+                    from zet.services.protected_effect_preview import ProtectedEffectsChanged
+                    raise ProtectedEffectsChanged(preview)
+                approved = data.get("approved_effects")
+                if not isinstance(approved, list) or set(approved) != {effect["id"] for effect in preview["protected_effects"]}:
+                    raise QuickCharacterWizardError("Approve each selected or locked image affected by deletion.")
+                for target in ids:
                     current = self._read(target)
                     current.update(deleted_at=self._now(), status="ABANDONED",
                         job={"kind": "delete", "status": "COMPLETE", "error": ""})
@@ -304,6 +343,15 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 board["revision"] += 1
             if before != self._signature(session):
                 session["needs_analysis"] = True
+                for candidate in session.get("candidates") or []:
+                    locks = session.get("final_locked" if candidate.get("render_mode") == "final" else "locked") or {}
+                    locked_id = (locks.get(candidate.get("view")) or {}).get("candidate_id")
+                    inputs = candidate.get("inputs") or {}
+                    if ((not locked_id or locked_id == candidate.get("candidate_id"))
+                            and candidate.get("filename") and not candidate.get("source_change_fyi")
+                            and any(key in inputs and inputs[key] != session.get(key)
+                                    for key in self.ANALYSIS_INPUTS)):
+                        candidate["source_change_fyi"] = True
             if self._busy(session) and session["job"]["kind"] == "draft" and any(k in payload for k in ("description", "identity", "proposals")):
                 session["description_override"] = {k: session[k] for k in ("description", "identity", "proposals")}
             elif session.get("reconstruction_id") and not session["needs_analysis"] and any(k in payload for k in ("description", "identity", "proposals")):
@@ -382,7 +430,50 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         if candidate:
             self._render_job(sid, candidate["candidate_id"], pending["item_ids"])
 
-    def delete_draft_images(self, sid, view=""):
+    def _draft_delete_preview(self, session, views):
+        effects = []
+        for item in views:
+            selected = (session.get("selected") or {}).get(item)
+            if selected:
+                effects.append({"id": f"unselect:draft:{item}:{selected}",
+                                "label": f"Unselect Draft {item} ({selected})"})
+            locked = (session.get("locked") or {}).get(item) or {}
+            if locked.get("candidate_id"):
+                effects.append({"id": f"unlock:draft:{item}:{locked['candidate_id']}",
+                                "label": f"Unlock Draft {item} ({locked['candidate_id']})"})
+        token = hashlib.sha256(json.dumps(session, sort_keys=True, default=str).encode()).hexdigest()
+        return {"protected_effects": effects, "confirmation_token": token}
+
+    def preview_draft_delete(self, sid, view=""):
+        sid = self._canonical(sid)["session_id"]
+        with self._lock(sid):
+            session = self._read(sid)
+            views = [view] if view else self._views(session)
+            if any(item not in self._views(session) for item in views):
+                raise QuickCharacterWizardError("Choose a character stage or view.")
+            return self._draft_delete_preview(session, views)
+
+    def _restart_preview(self, session, view, render_mode):
+        if render_mode not in {"draft", "final"} or view not in self._views(session):
+            raise QuickCharacterWizardError("Choose a character stage, view, and render mode.")
+        selections = session.get("final_selected" if render_mode == "final" else "selected") or {}
+        locks = session.get("final_locked" if render_mode == "final" else "locked") or {}
+        views = self._views(session) if view == "STYLE" else [view]
+        effects = [{"id": f"unselect:{render_mode}:{item}:{selections[item]}",
+                    "label": f"Unselect {render_mode.title()} {item} ({selections[item]})"}
+                   for item in views if selections.get(item)]
+        effects.extend({"id": f"unlock:{render_mode}:{item}:{locks[item]['candidate_id']}",
+                        "label": f"Unlock {render_mode.title()} {item} ({locks[item]['candidate_id']})"}
+                       for item in views if (locks.get(item) or {}).get("candidate_id"))
+        token = hashlib.sha256(json.dumps(session, sort_keys=True, default=str).encode()).hexdigest()
+        return {"protected_effects": effects, "confirmation_token": token}
+
+    def preview_restart(self, sid, view, render_mode="draft"):
+        sid = self._canonical(sid)["session_id"]
+        with self._lock(sid):
+            return self._restart_preview(self._read(sid), view, render_mode)
+
+    def delete_draft_images(self, sid, view="", *, confirmation_token="", approved_effects=None):
         """Remove Draft outputs and cancel their work for one view or the workspace."""
         from datetime import datetime, timezone
         from zet.services.ai_workflow_service import AIWorkflowService
@@ -392,6 +483,12 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             views = [view] if view else self._views(session)
             if any(item not in self._views(session) for item in views):
                 raise QuickCharacterWizardError("Choose a character stage or view.")
+            preview = self._draft_delete_preview(session, views)
+            if confirmation_token != preview["confirmation_token"]:
+                from zet.services.protected_effect_preview import ProtectedEffectsChanged
+                raise ProtectedEffectsChanged(preview)
+            if not isinstance(approved_effects, list) or set(approved_effects) != {effect["id"] for effect in preview["protected_effects"]}:
+                raise QuickCharacterWizardError("Approve each selected or locked Draft image affected by deletion.")
             root = self._directory(sid).resolve()
             candidates = [c for c in session["candidates"] if c.get("view") in views
                           and c.get("render_mode", "draft") == "draft"]

@@ -1,6 +1,6 @@
 # 0044 — Character batch review freshness and frozen publication inputs
 
-Status: accepted (2026-11-02). Implementation validation is recorded in the
+Status: superseded where conflicting by [ADR 0045](0045-finished-image-source-policy.md). Implementation validation is recorded in the
 [completed plan](../../plans/completed/character-pipeline-batch-and-view-pages.md).
 
 ## Decision

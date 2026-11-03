@@ -10,6 +10,12 @@ the requested selection with fallback, while already pinned assembly layers stay
 unchanged. Backdrop reuse/crop and scene-text confirmation affect the chosen
 candidate's mode. The [completed plan](../../plans/completed/draft-final-rendering.md) records validation.
 
+Saved prompt changes set a permanent, advisory `source_change_fyi` on affected
+finished candidates. Target polling requests detail only while generation or
+collection is active. Draft cleanup requires a state-bound preview and approval
+for each selection or lock it would clear; protected target deletion uses the
+same in-page dialog. See [ADR 0045](../DECISIONS/0045-finished-image-source-policy.md).
+
 ## Implementation and interfaces
 
 | Module | Responsibility |
@@ -161,9 +167,9 @@ review proposals. Superseded attempts cannot expose an applicable review.
 Local overrides include Save inputs for all dirty target fields and a collapsed active-field
 summary. Shared/effective visual values update after saves, polling and review application.
 
-Completed image tiles and image reviews show a muted Different prompt label when their recorded
-prompt differs from the current editor text, including unsaved edits. Only line endings are
-normalized. Reverting text removes the label. Missing prompts show Prompt not recorded;
+Completed image tiles and image reviews show a muted Earlier prompt FYI after a saved
+prompt change differs from their recorded prompt. This marker persists if the text later
+reverts; unsaved typing does not set it. Missing prompts show Prompt not recorded;
 local crop/reuse is labeled separately. This is text comparison, not a reference, input or
 render-quality check. See [ADR 0009](../DECISIONS/0009-narrative-interview-review.md).
 

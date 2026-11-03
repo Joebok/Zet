@@ -232,14 +232,8 @@ class LocalCharacterAssetPipelineService:
             raise LocalCharacterAssetPipelineError(
                 f"Selected {pipeline} image for {view} is missing from batch {self._batch_label(run)}.")
         digest = self._hash(image)
-        if candidate.get("image_sha256") and candidate["image_sha256"] != digest:
-            raise LocalCharacterAssetPipelineError(f"Selected {pipeline} image for {view} has changed.")
         local_pipeline = "Character-Assembly" if pipeline == "Character-Assembly" else pipeline
         key = self.asset_store.mode_key(local_pipeline, view, render_mode=selected_mode)
-        selected_asset = (run.get("local_assets") or {}).get(key) or {}
-        if (selected_asset.get("batch_id") == run_id and selected_asset.get("candidate_id") == candidate_id
-                and selected_asset.get("image_sha256") and selected_asset["image_sha256"] != digest):
-            raise LocalCharacterAssetPipelineError(f"Selected {pipeline} image for {view} has changed since selection.")
         return {"pipeline": local_pipeline, "view": view, "qualifier": "", "key": key,
                 "candidate_id": candidate_id, "batch_id": run_id, "batch_name": self._batch_label(run),
                 "image_path": str(image), "image_sha256": digest, "sha256": digest,
@@ -461,19 +455,12 @@ class LocalCharacterAssetPipelineService:
                 if result["interrupted"]:
                     result["status"] = "INTERRUPTED"
         result["local_assets"] = self.asset_store.detail(result["character"], result["phase"])["assets"]
-        result["lineage_warnings"] = self._lineage_warnings(result)
         by_id = {item["candidate_id"]: item for item in result["candidates"]}
         result["stale_selections"] = []
         for view, candidate_id in result["selected_views"].items():
             candidate = by_id.get(candidate_id) or {}
             image = Path(str(candidate.get("image_path") or ""))
-            ranking = (result.get("rankings", {}).get(view) or {})
-            key = self.asset_store.key(self.definition["asset_pipeline"], view, self._qualifier(str(result.get("costume") or "")))
-            local_asset = result["local_assets"].get(key) or {}
-            stale = (not candidate or not image.is_file() or ranking.get("status") != "COMPLETE"
-                     or candidate_id not in (ranking.get("ordered_candidate_ids") or [])
-                     or ranking.get("input_hashes", {}).get(candidate_id) != str(candidate.get("image_sha256") or "")
-                     or bool(local_asset.get("locked") and local_asset.get("candidate_id") != candidate_id))
+            stale = not candidate or not image.is_file()
             if stale:
                 result["stale_selections"].append(view)
         if (result["status"] in {"AWAITING_HUMAN_SELECTION", "REVIEW_REQUIRED", "COMPLETE"}
@@ -563,66 +550,6 @@ class LocalCharacterAssetPipelineService:
     def _locked_view_inputs(self, run: dict[str, Any], view: str, *, render_mode: str = "draft") -> dict[str, dict[str, Any]]:
         return self._resolve_view_inputs(run["character"], run["phase"], str(run.get("costume") or ""),
                                          view, run.get("source_batches") or {}, run.get("head_pipeline", "head-image"), render_mode=render_mode)
-
-    def _lineage_warnings(self, run: dict[str, Any]) -> dict[str, list[str]]:
-        warnings: dict[str, list[str]] = {}
-        source_runs: dict[tuple[str, str], dict[str, Any]] = {}
-        for view, sources in (run.get("sources") or {}).items():
-            entries = []
-            for role, source in sources.items():
-                if role.startswith("front_"):
-                    continue
-                pipeline = str(source.get("pipeline") or {
-                    "body_reference": "Body-Reference", "head_image": "Head-Image",
-                    "character_assembly": "Character-Assembly",
-                }.get(role, ""))
-                qualifier = str(source.get("qualifier") or "")
-                key = str(source.get("key") or self.asset_store.key(pipeline, view, qualifier))
-                current = (run.get("local_assets") or {}).get(key) or {}
-                source_hash = str(source.get("managed_checksum") or source.get("image_sha256") or source.get("sha256") or "")
-                source_batch = str(source.get("batch_id") or "")
-                source_candidate = str(source.get("candidate_id") or "")
-                source_label = str(source.get("batch_name") or "")
-                if not source_label and source_batch:
-                    try:
-                        source_key = (pipeline, source_batch)
-                        if source_key not in source_runs:
-                            source_runs[source_key] = self._source_adapter(pipeline).detail(source_batch)
-                        source_label = self._batch_label(source_runs[source_key])
-                    except Exception:
-                        source_label = "a previous batch"
-                source_label = source_label or "a previous batch"
-                current_path = Path(str(current.get("locked_image_path") or ""))
-                current_valid = current_path.is_file()
-                if not current.get("locked") or not current_valid:
-                    entries.append(f"{role.replace('_', ' ')} came from {source_label}; no current locked image exists.")
-                elif current.get("image_sha256") != source_hash:
-                    entries.append(f"{role.replace('_', ' ')} came from {source_label}, not the current locked image.")
-                source_mode = str(source.get("source_mode") or
-                                  (run.get("source_batches") or {}).get(role) or "locked")
-                if source_mode != "locked" and source_batch and source_candidate:
-                    try:
-                        source_key = (pipeline, source_batch)
-                        if source_key not in source_runs:
-                            source_runs[source_key] = self._source_adapter(pipeline).detail(source_batch)
-                        source_run = source_runs[source_key]
-                        selection_field = "final_selected_views" if source.get("render_mode") == "final" else "selected_views"
-                        selected = str((source_run.get(selection_field) or {}).get(view) or "")
-                        candidate = next((item for item in source_run.get("candidates", [])
-                                          if item.get("candidate_id") == source_candidate), None)
-                        selected_path = Path(str((candidate or {}).get("image_path") or ""))
-                        if (selected != source_candidate or not selected_path.is_file()
-                                or (candidate or {}).get("image_sha256", "") != source_hash):
-                            entries.append(f"The {role.replace('_', ' ')} image is no longer the selected {view} image in its source batch.")
-                        if pipeline == "Character-Assembly":
-                            for ancestor_view, messages in (source_run.get("lineage_warnings") or {}).items():
-                                if ancestor_view == view:
-                                    entries.extend(f"Character-Assembly lineage: {message}" for message in messages)
-                    except Exception:
-                        entries.append(f"The {role.replace('_', ' ')} source batch is unavailable for lineage verification.")
-            if entries:
-                warnings[view] = list(dict.fromkeys(entries))
-        return warnings
 
     def _snapshot_view_inputs(self, run: dict[str, Any], view: str,
                               locked: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -1318,11 +1245,7 @@ class LocalCharacterAssetPipelineService:
         if view == "FRONT":
             old_anchor = state.get("front_anchor")
             state["front_anchor"] = candidate_id
-            if old_anchor != candidate_id and self.pipeline == "character-assembly":
-                invalidate_assembly_rankings(state)
             if old_anchor != candidate_id and self._requires_front_anchor(run):
-                from zet.services.local_image_evaluation_service import supersede_evaluations
-                supersede_evaluations(state, set(VIEWS[1:]), "The selected FRONT anchor changed.")
                 state["views_started"] = True
         update = {"selected_at": self._now()}
         if auto_approved:
@@ -1350,11 +1273,6 @@ class LocalCharacterAssetPipelineService:
                 self.definition["asset_pipeline"], target, run_id, qualifier)
         if view == "FRONT":
             state["front_anchor"] = None
-            if self.pipeline == "character-assembly":
-                invalidate_assembly_rankings(state)
-            if self._requires_front_anchor(run):
-                from zet.services.local_image_evaluation_service import supersede_evaluations
-                supersede_evaluations(state, set(VIEWS[1:]), "The selected FRONT anchor changed.")
         if state.get("status") not in ACTIVE_RUN_STATUSES:
             state["status"] = "AWAITING_FRONT_ANCHOR" if view == "FRONT" and self._requires_front_anchor(run) else "AWAITING_HUMAN_SELECTION"
         self._write(root / "state.json", state)
@@ -1363,152 +1281,26 @@ class LocalCharacterAssetPipelineService:
     def _collect_promotion_selection(self, run: dict[str, Any], pipeline: str, view: str,
                                      qualifier: str, records: dict[str, dict[str, Any]],
                                      visiting: set[tuple[str, str, str]]) -> None:
-        marker = (pipeline, qualifier, view)
-        if marker in visiting:
-            if pipeline == "Costume-Dressing":
-                raise LocalCharacterAssetPipelineError("Costume reference lineage is circular. Render a view independently before publishing this chain.")
-            return
-        visiting.add(marker)
+        """Capture only the selected finished image for publication.
+
+        Frozen render inputs describe its history; their current availability does
+        not determine whether this already harvested image may be locked.
+        """
         candidate_id = str((run.get("selected_views") or {}).get(view) or "")
         candidate = next((item for item in run.get("candidates", [])
                           if item.get("candidate_id") == candidate_id and item.get("view") == view), None)
         image = Path(str((candidate or {}).get("image_path") or "")).resolve()
         if not candidate_id or not candidate or not image.is_file():
-            raise LocalCharacterAssetPipelineError(f"Select a readable {pipeline} image for {view} before promoting its lineage.")
-        prompt_pilot = bool(candidate.get("prompt_generator"))
-        # Locking captures the selected image; review freshness is tracked separately.
-        digest = self._hash(image)
-        if not candidate.get("image_sha256") or candidate["image_sha256"] != digest:
-            raise LocalCharacterAssetPipelineError(f"The selected {pipeline} image for {view} changed; its saved bytes cannot be verified.")
-
-        dependencies = []
-        if pipeline == "Character-Assembly":
-            for role, source in (run.get("sources", {}).get(view) or {}).items():
-                if role in {"body_reference", "head_image"}:
-                    self._collect_promotion_source(run, view, source, records, visiting)
-                    dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
-        elif pipeline == "Costume-Dressing":
-            source = (run.get("sources", {}).get(view) or {}).get("character_assembly")
-            if source:
-                self._collect_promotion_source(run, view, source, records, visiting)
-                dependencies.append({"key": source["key"], "image_sha256": source["sha256"]})
-
-        if pipeline in {"Body-Reference", "Head-Image", "Head-Image-Edit"} and view != "FRONT" and not prompt_pilot:
-            front_id = str(run.get("front_anchor") or "")
-            if not front_id or str((run.get("selected_views") or {}).get("FRONT") or "") != front_id:
-                raise LocalCharacterAssetPipelineError(f"A selected FRONT {pipeline} anchor is required before promoting {view}.")
-            self._collect_promotion_selection(run, pipeline, "FRONT", qualifier, records, visiting)
-            front = next(item for item in run["candidates"] if item.get("candidate_id") == front_id)
-            dependencies.append({"key": self.asset_store.key(pipeline, "FRONT", qualifier),
-                                 "image_sha256": self._hash(Path(str(front["image_path"])))})
-
-        if pipeline == "Head-Image-Edit" and not prompt_pilot:
-            refs = (candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", [])
-            for ref in refs:
-                source_view = ref.get("view")
-                if ref.get("candidate_id") and source_view and source_view != view:
-                    self._verify_frozen_promotion_reference(run, ref, "head finishing guide")
-                    if source_view == "FRONT":
-                        continue
-                    if (run.get("selected_views") or {}).get(source_view) == ref["candidate_id"]:
-                        self._collect_promotion_selection(run, pipeline, source_view, qualifier, records, visiting)
-                    dependencies.append({"key": self.asset_store.key(pipeline, source_view), "image_sha256": ref.get("sha256", "")})
-
-        if pipeline == "Costume-Dressing" and view != "FRONT" and self._requires_front_anchor(run) and not prompt_pilot:
-            frozen_front = next((ref for ref in (candidate.get("render_input") or {}).get("references") or []
-                                 if ref.get("role") == "front_costume"), None)
-            if frozen_front:
-                self._verify_frozen_promotion_reference(run, frozen_front, "FRONT costume reference")
-                front_id = frozen_front.get("candidate_id")
-                if front_id and (run.get("selected_views") or {}).get("FRONT") == front_id:
-                    self._collect_promotion_selection(run, pipeline, "FRONT", qualifier, records, visiting)
-                dependencies.append({"key": self.asset_store.key(pipeline, "FRONT", qualifier),
-                                     "image_sha256": frozen_front["sha256"]})
-            elif not candidate.get("render_input"):
-                front_id = str(run.get("front_anchor") or "")
-                if not front_id:
-                    raise LocalCharacterAssetPipelineError("The legacy FRONT costume reference cannot be verified for publication.")
-                self._collect_promotion_selection(run, pipeline, "FRONT", qualifier, records, visiting)
-                front = next(item for item in run["candidates"] if item.get("candidate_id") == front_id)
-                dependencies.append({"key": self.asset_store.key(pipeline, "FRONT", qualifier),
-                                     "image_sha256": self._hash(Path(str(front["image_path"])))})
-
-        if pipeline == "Costume-Dressing" and not prompt_pilot:
-            references = (candidate.get("render_input") or {}).get("references", [])
-            if not candidate.get("render_input") and run.get("use_front_anchor") and view != "FRONT":
-                references = [{"role": "front_costume", "view": "FRONT"}]
-            for ref in references:
-                source_view, source_id = ref.get("view"), ref.get("candidate_id")
-                if ref.get("role") == "front_costume" and not source_id and not candidate.get("render_input"):
-                    source_id = (run.get("selected_views") or {}).get("FRONT")
-                    if not source_id:
-                        raise LocalCharacterAssetPipelineError("Select the FRONT image used by this legacy render before publishing its lineage.")
-                if not source_id or not source_view or source_view == view or ref.get("role") == "front_costume":
-                    continue
-                source = next((c for c in run["candidates"] if c["candidate_id"] == source_id and c["view"] == source_view), None)
-                self._verify_frozen_promotion_reference(run, ref, "costume reference")
-                if source and (run.get("selected_views") or {}).get(source_view) == source_id:
-                    self._collect_promotion_selection(run, pipeline, source_view, qualifier, records, visiting)
-                dependencies.append({"key": self.asset_store.key(pipeline, source_view, qualifier), "image_sha256": ref["sha256"]})
+            raise LocalCharacterAssetPipelineError(f"Select an available {pipeline} image for {view} before locking it.")
         key = self.asset_store.key(pipeline, view, qualifier)
         records[key] = {"pipeline": pipeline, "view": view, "qualifier": qualifier,
                         "candidate_id": candidate_id, "batch_id": run["run_id"],
                         "batch_name": self._batch_label(run),
-                        "image_path": str(image), "image_sha256": digest, "dependencies": dependencies,
-                        **({"prompt_generator": deepcopy(candidate["prompt_generator"])} if prompt_pilot else {})}
-        visiting.remove(marker)
-
-    def _verify_frozen_promotion_reference(self, run: dict[str, Any], ref: dict[str, Any], label: str) -> None:
-        image = Path(str(ref.get("path") or "")).resolve()
-        digest = str(ref.get("sha256") or "")
-        if (not digest or not image.is_relative_to(Path(run["root"]).resolve())
-                or not image.is_file() or self._hash(image) != digest):
-            raise LocalCharacterAssetPipelineError(f"The saved {label} is missing or changed; its render provenance cannot be verified.")
-
-    def _collect_promotion_source(self, owner: dict[str, Any], view: str, source: dict[str, Any],
-                                  records: dict[str, dict[str, Any]],
-                                  visiting: set[tuple[str, str, str]]) -> None:
-        key = str(source.get("key") or "")
-        pipeline = str(source.get("pipeline") or "")
-        if not pipeline:
-            pipeline = {"body_reference": "Body-Reference", "head_image": "Head-Image",
-                        "character_assembly": "Character-Assembly"}.get(key.split(":", 1)[0], "")
-        if not pipeline:
-            raise LocalCharacterAssetPipelineError(f"Cannot identify the source pipeline for {view}.")
-        qualifier = str(source.get("qualifier") or "")
-        digest = str(source.get("managed_checksum") or source.get("image_sha256") or source.get("sha256") or "")
-        snapshot = Path(str(source.get("image_path") or "")).resolve()
-        snapshot_digest = str(source.get("sha256") or "")
-        if (not snapshot_digest or not snapshot.is_relative_to(Path(owner["root"]).resolve())
-                or not snapshot.is_file() or self._hash(snapshot) != snapshot_digest):
-            raise LocalCharacterAssetPipelineError(f"The saved {pipeline} source for {view} is missing or changed; its provenance cannot be verified.")
-        if (pipeline, qualifier, view) in visiting:
-            raise LocalCharacterAssetPipelineError("Source lineage is circular; publish this view from independent inputs.")
-        current = (owner.get("local_assets") or {}).get(key) or {}
-        if current.get("locked") and current.get("image_sha256") == digest:
-            return
-        source_run_id = str(source.get("batch_id") or "")
-        source_candidate_id = str(source.get("candidate_id") or "")
-        if not source_run_id or not source_candidate_id:
-            raise LocalCharacterAssetPipelineError(f"The {pipeline} source for {view} is no longer locked or selected in a source batch.")
-        adapter = self._source_adapter(pipeline)
-        source_run = adapter.detail(source_run_id)
-        if str((source_run.get("selected_views") or {}).get(view) or "") != source_candidate_id:
-            # The captured source bytes remain the render input even after another
-            # image becomes current in the source batch.
-            return
-        if pipeline in {"Character-Assembly", "Costume-Dressing", "Body-Reference", "Head-Image", "Head-Image-Edit"}:
-            self._collect_promotion_selection(source_run, pipeline, view, qualifier, records, visiting)
-        else:
-            candidate = next((item for item in source_run.get("candidates", [])
-                              if item.get("candidate_id") == source_candidate_id), None)
-            image = Path(str((candidate or {}).get("image_path") or "")).resolve()
-            if not image.is_file():
-                raise LocalCharacterAssetPipelineError(f"The selected {pipeline} image for {view} is missing or changed.")
-            records[key] = {"pipeline": pipeline, "view": view, "qualifier": qualifier,
-                            "candidate_id": source_candidate_id, "batch_id": source_run_id,
-                            "batch_name": self._batch_label(source_run),
-                            "image_path": str(image), "image_sha256": digest, "dependencies": []}
+                        "image_path": str(image), "image_sha256": self._hash(image),
+                        "prompt": str(candidate.get("prompt") or (candidate.get("render_input") or {}).get("prompt") or ""),
+                        "dependencies": [],
+                        **({"prompt_generator": deepcopy(candidate["prompt_generator"])}
+                           if candidate.get("prompt_generator") else {})}
 
     def lock_preview(self, run_id: str, view: str, costume: str = "") -> dict[str, Any]:
         run = self.detail(run_id, costume)
@@ -1705,12 +1497,7 @@ class LocalCharacterAssetPipelineService:
         for view in VIEWS:
             key = self.asset_store.key(self.definition["asset_pipeline"], view, self._qualifier(costume))
             record = run["local_assets"].get(key) or {}
-            if record.get("selected") and record.get("batch_id") == run_id and record.get("locked"):
-                raise LocalCharacterAssetPipelineError(f"Unlock {key} before deleting its batch.")
-        for view in VIEWS:
-            key = self.asset_store.key(self.definition["asset_pipeline"], view, self._qualifier(costume))
-            record = run["local_assets"].get(key) or {}
-            if record.get("selected") and record.get("batch_id") == run_id:
+            if record.get("selected") and record.get("batch_id") == run_id and not record.get("locked"):
                 self.asset_store.clear_selection(run["character"], run["phase"], self.definition["asset_pipeline"], view, self._qualifier(costume))
         self._withdraw_queued_asks(run_id, costume)
         root = Path(run["root"]).resolve()

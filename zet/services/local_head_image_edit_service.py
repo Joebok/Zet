@@ -35,11 +35,9 @@ class LocalHeadImageEditService(LocalHeadImageService):
 
     def _ranking_guidance(self, run, view):
         from Scripts.Compile_Character_Template import load_template_sections
-        from zet.services.template_source_service import active_revision, template_sources
         from zet.services.view_conditioning_service import ViewContext, condition_section
         path = Path(self.app.config.base_character_path) / run["character"] / run["phase"] / "Character.md"
-        with template_sources(active_revision(Path(run["root"])).get("sources", [])):
-            sections = load_template_sections(path)
+        sections = load_template_sections(path)
         return "\n\n" + "\n\n".join(condition_section(sections.get(name, ""), name, {}, ViewContext(head_view=view))[0]
                            for name in ("HEAD_EDIT_VIEW_OVERRIDES", "HEAD_EDIT_REVIEW_CRITERIA"))
 
@@ -102,20 +100,7 @@ class LocalHeadImageEditService(LocalHeadImageService):
         image = Path(str(candidate.get("image_path") or ""))
         if not image.is_file():
             raise LocalHeadImageError("Select an available image before locking.")
-        if not candidate.get("image_sha256") or self._hash(image) != candidate["image_sha256"]:
-            raise LocalHeadImageError("The selected head image changed; its saved bytes cannot be verified.")
-        prompt_pilot = bool(candidate.get("prompt_generator"))
-        refs = [] if prompt_pilot else ((candidate.get("render_input") or {}).get("references") or (candidate.get("refinement") or {}).get("reference_inputs", []))
-        dependencies = []
-        for ref in refs:
-            source_view = ref.get("view")
-            if ref.get("candidate_id") and source_view and source_view != view:
-                source = Path(str(ref.get("path") or "")).resolve()
-                if (not ref.get("sha256") or not source.is_file()
-                        or not source.is_relative_to(Path(run["root"]).resolve())
-                        or self._hash(source) != ref["sha256"]):
-                    raise LocalHeadImageError("The saved finishing guide is missing or changed; its render provenance cannot be verified.")
-                dependencies.append({"key": self.asset_store.key(self.asset_pipeline, source_view), "image_sha256": ref["sha256"]})
         return self.asset_store.lock_batch_selection(run["character"], run["phase"], self.asset_pipeline, view,
-            candidate_id=cid, image_path=image, batch_id=run_id, dependencies=dependencies,
-            prompt_generator=candidate.get("prompt_generator"))
+            candidate_id=cid, image_path=image, batch_id=run_id, dependencies=[],
+            prompt_generator=candidate.get("prompt_generator"),
+            prompt=str((candidate.get("render_input") or {}).get("prompt") or candidate.get("prompt") or ""))

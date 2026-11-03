@@ -36,6 +36,19 @@ class NarrativeSceneService:
     def persist(self, record, story: str, scene: str = "", target: str = "") -> dict:
         return self.repository.write(record, story, scene, target)
 
+    @staticmethod
+    def mark_prompt_change(record: dict, previous_prompt: str) -> None:
+        normalize = lambda value: value.replace("\r\n", "\n").replace("\r", "\n")
+        if normalize(record["prompt"]) == normalize(previous_prompt):
+            return
+        selected = {item for item in (record.get("selected_id"), record.get("final_selected_id")) if item}
+        locked = {item["id"] for item in record["candidates"].values() if item.get("locked")}
+        observed = locked or selected or set(record["candidates"])
+        for candidate_id in observed:
+            candidate = record["candidates"].get(candidate_id)
+            if candidate and candidate.get("image") and candidate.get("prompt") and normalize(candidate["prompt"]) != normalize(record["prompt"]):
+                candidate["source_change_fyi"] = True
+
     def save_subscene_image_to_inventory(self, story: str, scene: str, target: str,
                                         candidate_id: str, data: dict) -> dict:
         """Copy an approved working image without binding Inventory to its source."""
@@ -265,6 +278,7 @@ class NarrativeSceneService:
                     record["assembly_mode"] = job["detail"].get("assembly_mode", "finish_composite")
                     record["prompt_provenance"]["assembly_mode"] = record["assembly_mode"]
                 record["active_llm_job"] = None
+            self.mark_prompt_change(record, previous_prompt)
             return self.persist(record, story, scene, target)
 
     @staticmethod

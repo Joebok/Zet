@@ -1,5 +1,9 @@
 # Zet agent knowledge index
 
+Current character source and completed-image policy is in
+[ADR 0045](DECISIONS/0045-finished-image-source-policy.md). It supersedes
+conflicting batch-overlay and historical-lineage descriptions in older notes.
+
 Read [AGENTS.md](../AGENTS.md) first. Select only the documents relevant to the task, then verify their source and tests. This knowledge base describes implementation inspected on **2026-10-11**; newer code and observed tests may expose drift.
 
 The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and retired the former Python/browser suites and CI gates; S4 was added to the baseline on 2026-10-16. [Testing](Testing.md) owns the four scenarios, isolated fixture/reset behavior, optional live check, and coverage policy. Component/code-map verification now refers to that baseline and names uncovered contracts. Earlier results in completed plans and Git snapshots remain historical evidence, not current commands or outstanding failures.

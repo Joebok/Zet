@@ -13,6 +13,7 @@ from zet.services.local_character_overview_service import submit_local_pipeline_
 from zet.services.local_batch_status_service import LocalBatchStatusService
 from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
 from zet.services.render_slot_service import RenderSlotConflict
+from zet.services.protected_effect_preview import ProtectedEffectsChanged
 from zet.services.storage_health_service import StorageUnavailable
 from zet.services.storage_bootstrap_service import RETRY_AFTER_SECONDS
 
@@ -41,6 +42,8 @@ def create_local_character_asset_pipeline_router(
             return function()
         except HTTPException:
             raise
+        except ProtectedEffectsChanged as exc:
+            raise HTTPException(status_code=409, detail={"message": str(exc), "preview": exc.preview}) from exc
         except RenderSlotConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except TimeoutError as exc:
@@ -318,8 +321,9 @@ def create_local_character_asset_pipeline_router(
                 return call(lambda: service(_pipeline).prompt_improvement.detail(run_id))
 
         @router.get(f"{prefix}/runs/{{run_id}}/image-prompt/{{view}}", response_class=PlainTextResponse)
-        def image_prompt(run_id: str, view: str, costume: str = Query(""), _pipeline: str = pipeline):
-            return PlainTextResponse(call(lambda: service(_pipeline).adapter.image_prompt(run_id, view, **({"costume": costume} if _pipeline == "costume-dressing" else {})), missing=404), media_type="text/markdown")
+        def image_prompt(run_id: str, view: str, costume: str = Query(""), render_mode: str = Query("draft"), _pipeline: str = pipeline):
+            return PlainTextResponse(call(lambda: service(_pipeline).preview_view_prompt(
+                run_id, view, render_mode=render_mode, costume=costume if _pipeline == "costume-dressing" else ""), missing=404), media_type="text/markdown")
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/select")
         def select(run_id: str, view: str, payload: dict[str, Any] = Body(...), costume: str = Query(""), compact: bool = Query(False), _pipeline: str = pipeline):
             return acknowledgement(call(lambda: action(_pipeline, "select_view", run_id=run_id, view=view, candidate_id=str(payload.get("candidate_id") or ""), payload=payload, costume=costume if _pipeline == "costume-dressing" else "")), compact)
@@ -430,6 +434,14 @@ def create_local_character_asset_pipeline_router(
         def delete_draft_images(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
             instance = service(_pipeline)
             return call(lambda: instance.slots.delete_draft_images(run_id, str(payload.get("view") or ""),
+                        costume if _pipeline == "costume-dressing" else "",
+                        confirmation_token=str(payload.get("confirmation_token") or ""),
+                        approved_effects=payload.get("approved_effects")))
+
+        @router.post(f"{prefix}/runs/{{run_id}}/delete-draft-images/preview")
+        def preview_draft_delete(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+            instance = service(_pipeline)
+            return call(lambda: instance.slots.preview_draft_delete(run_id, str(payload.get("view") or ""),
                         costume if _pipeline == "costume-dressing" else ""))
 
         @router.post(f"{prefix}/runs/{{run_id}}/views/{{view}}/lock")
@@ -486,9 +498,15 @@ def create_local_character_asset_pipeline_router(
             submit_local_pipeline_task(instance.execute, run_id, views={view.upper()}, costume=costume if _pipeline == "costume-dressing" else "")
             return result
 
+        @router.post(f"{prefix}/runs/{{run_id}}/delete-preview")
+        def preview_delete_run(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: service(_pipeline).delete_batch_preview(
+                run_id, costume if _pipeline == "costume-dressing" else ""))
+
         @router.delete(f"{prefix}/runs/{{run_id}}")
-        def delete_run(run_id: str, costume: str = Query(""), _pipeline: str = pipeline):
-            return call(lambda: action(_pipeline, "delete_batch", run_id=run_id, costume=costume if _pipeline == "costume-dressing" else ""))
+        def delete_run(run_id: str, payload: dict[str, Any] = Body(default={}), costume: str = Query(""), _pipeline: str = pipeline):
+            return call(lambda: action(_pipeline, "delete_batch", run_id=run_id,
+                costume=costume if _pipeline == "costume-dressing" else "", payload=payload))
 
         @router.post(f"{prefix}/runs/{{run_id}}/resume")
         def resume(run_id: str, background_tasks: BackgroundTasks, costume: str = Query(""), _pipeline: str = pipeline):
