@@ -4825,10 +4825,10 @@ function renderIdentityKeySources(selected = identityKeySource.value) {
   const options = [option("", "Select a locked local image")];
   for (const item of state.localAssetSources) {
     const label = [window.ZetPipelineLabel(item.pipeline), item.view, item.costume].filter(Boolean).join(" · ");
-    options.push(option(item.source_key, label));
+    options.push(option(item.category_key, label));
   }
   identityKeySource.replaceChildren(...options);
-  identityKeySource.value = state.localAssetSources.some((item) => item.source_key === selected) ? selected : "";
+  identityKeySource.value = state.localAssetSources.some((item) => item.category_key === selected) ? selected : "";
   state.identityKeySourceLocalKey = identityKeySource.value || null;
   state.identityKeySourceAssetId = null;
 }
@@ -4842,6 +4842,7 @@ function renderIdentityKeyTable() {
   for (const item of state.identityKeys) {
     const row = document.createElement("tr");
     row.dataset.identityKeyId = item.identity_key_id;
+    row.dataset.sourceRenderMode = item.source_render_mode || "draft";
     row.classList.toggle("selected", item.identity_key_id === state.selectedIdentityKeyId);
     const labelCell = document.createElement("td");
     labelCell.textContent = item.label || "";
@@ -4896,9 +4897,9 @@ function clearIdentityKeyUpdate() {
 
 function renderIdentityKeyUpdate(item) {
   state.identityKeyMode = "update";
-  state.identityKeySourceLocalKey = item.source_local_key || null;
-  const source = state.localAssetSources.find((candidate) => candidate.source_key === state.identityKeySourceLocalKey);
-  identityKeySource.value = source?.source_key || "";
+  state.identityKeySourceLocalKey = item.source_local_key?.replace(/^final:/, "") || null;
+  const source = state.localAssetSources.find((candidate) => candidate.category_key === state.identityKeySourceLocalKey);
+  identityKeySource.value = source?.category_key || "";
   identityKeyTitle.textContent = item.identity_key_id ? `Identity Key | ${item.label}` : `New Identity Key | ${item.label || "Local source"}`;
   identityKeyLabel.value = item.label || "";
   identityKeyPercent.value = item.crop_percent || 100;
@@ -4930,7 +4931,7 @@ async function selectIdentityKey(identityKeyId) {
   }
   state.selectedIdentityKeyId = identityKeyId;
   state.identityKeySourceAssetId = item.source_asset_id;
-  state.identityKeySourceLocalKey = item.source_local_key || null;
+  state.identityKeySourceLocalKey = item.source_local_key?.replace(/^final:/, "") || null;
   identityKeySource.value = state.identityKeySourceLocalKey || "";
   state.identityKeyPreview = null;
   renderIdentityKeyTable();
@@ -4957,7 +4958,7 @@ async function createIdentityKeyPreview() {
     });
     state.identityKeyPreview = payload.preview;
     const item = state.selectedIdentityKeyId
-      ? state.identityKeys.find((key) => key.identity_key_id === state.selectedIdentityKeyId)
+      ? { ...state.identityKeys.find((key) => key.identity_key_id === state.selectedIdentityKeyId), source_local_key: sourceLocalKey, source_image_path: payload.preview?.source_image_path }
       : {
           source_local_key: sourceLocalKey,
           source_image_path: payload.preview?.source_image_path,

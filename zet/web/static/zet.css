@@ -1875,6 +1875,19 @@ tbody tr.selected {
   outline-offset: -2px;
 }
 
+#identity-key-table tbody tr[data-source-render-mode="draft"],
+#identity-key-table tbody tr[data-source-render-mode="draft"]:hover,
+#identity-key-table tbody tr[data-source-render-mode="draft"].selected {
+  background: #dff3e4;
+}
+
+#identity-key-table tbody tr[data-source-render-mode="final"],
+#identity-key-table tbody tr[data-source-render-mode="final"]:hover,
+#identity-key-table tbody tr[data-source-render-mode="final"].selected {
+  background: #20593f;
+  color: #fff;
+}
+
 .row-selection-button {
   background: transparent;
   border: 0;

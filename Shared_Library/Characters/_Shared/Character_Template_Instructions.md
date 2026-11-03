@@ -134,7 +134,11 @@ Used by head-image. List likely character-specific head or hair failure modes as
 
 Used by character-assembly. Include only character-specific join or preservation exceptions. For lower-hair completion, explicitly name the endpoint on the assembled body (for example, mid-back below the shoulder blades), arrangement and silhouette. Assembly may extend cropped or prematurely terminated source hair to that endpoint with natural overlap over shoulders, back and clothing; it preserves underlying body geometry and clothing design. Without an explicitly authored endpoint, it preserves the supplied length, including short hairstyles. Do not author view names or orientation rules; assembly orientation comes exclusively from Zet's view configuration.
 
-### `NEGATIVE_GUIDANCE_EXPRESSION` — required
+  ### `CHARACTER_ASSEMBLY_GENERAL_INSTRUCTIONS` and `CHARACTER_ASSEMBLY_VIEW_INSTRUCTIONS` — optional
+
+  Use these only for assembly changes extending beyond the head reference, especially long hair. Keep general instructions limited to the authored lower-hair silhouette and body landmark. In view instructions use `<!-- ZET:VIEW_DOMAIN body -->` and tagged bullets such as `[f]`, `[fl,fr]`, `[pl,pr]`, `[bl,br]`, and `[b]`. State visible results directly. The head image supplies face and hairstyle identity; the body image supplies pose, anatomy, and clothing.
+
+  ### `NEGATIVE_GUIDANCE_EXPRESSION` — required
 
 Used by expression generation. List character- or phase-specific identity drift to prevent while changing expression. Keep costume rules in the costume template.
 

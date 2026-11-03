@@ -51,7 +51,9 @@ class IdentityKeyRepository:
     def _identity_from_dict(self, record: dict) -> IdentityKey:
         """Convert a JSON record into an identity key model."""
         try:
-            return dataclass_from_record(IdentityKey, record)
+            compatible = dict(record)
+            compatible.setdefault("source_render_mode", "final" if str(record.get("source_local_key") or "").startswith("final:") else "draft")
+            return dataclass_from_record(IdentityKey, compatible)
         except MissingDataclassFieldsError as exc:
             raise IdentityKeyRepositoryError(
                 f"Identity key record is missing required fields: {', '.join(exc.missing_fields)}"

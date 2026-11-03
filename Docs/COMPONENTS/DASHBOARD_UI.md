@@ -1,5 +1,7 @@
 # Dashboard presentation and image input
 
+Identity Key source choices combine Draft and Final locks by pipeline, costume and view without mode labels. Saved rows use light green for Draft-derived crops and dark green for Final-derived crops, driven by `source_render_mode` on the record.
+
 Character Run available, slot generation/retry, view regeneration, Re-evaluate,
 batch Start/Resume and candidate-review retry show immediate submission feedback and expose preparation
 status in the shared Activity menu across navigation. An unconfirmed browser request

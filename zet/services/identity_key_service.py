@@ -92,6 +92,12 @@ class IdentityKeyService:
         """Return one identity key by id."""
         return self.identity_key_repository.get_identity_key(character, phase, identity_key_id)
 
+    def _current_source(self, character: str, phase: str, source_local_key: str) -> dict:
+        if self.local_sources is None:
+            raise IdentityKeyServiceError("Local Identity Key sources are unavailable.")
+        category_key = source_local_key.removeprefix("final:")
+        return self.local_sources.get_category_source(character, phase, category_key)
+
     def preview_identity_key(
         self,
         character: str,
@@ -108,9 +114,7 @@ class IdentityKeyService:
         asset = None
         local_source = None
         if source_local_key:
-            if self.local_sources is None:
-                raise IdentityKeyServiceError("Local Identity Key sources are unavailable.")
-            local_source = self.local_sources.get_source(character, phase, source_local_key)
+            local_source = self._current_source(character, phase, source_local_key)
             source_path = Path(local_source["image_path"])
         else:
             raise IdentityKeyServiceError("Traditional pipeline assets are retired. Select a locked local image source.")
@@ -144,9 +148,7 @@ class IdentityKeyService:
         asset = None
         local_source = None
         if source_local_key:
-            if self.local_sources is None:
-                raise IdentityKeyServiceError("Local Identity Key sources are unavailable.")
-            local_source = self.local_sources.get_source(character, phase, source_local_key)
+            local_source = self._current_source(character, phase, source_local_key)
             source_path = Path(local_source["image_path"])
         else:
             raise IdentityKeyServiceError("Traditional pipeline assets are retired. Select a locked local image source.")
@@ -167,6 +169,7 @@ class IdentityKeyService:
             source_costume=asset.costume if asset else (local_source["costume"] or None),
             source_expression=asset.expression if asset else None,
             source_local_key=local_source["source_key"] if local_source else None,
+            source_render_mode=local_source["render_mode"] if local_source else "draft",
             source_sha256=local_source["image_sha256"] if local_source else None,
             image_path=str(result.image_path),
             source_image_path=str(source_path),

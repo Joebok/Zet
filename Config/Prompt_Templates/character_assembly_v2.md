@@ -34,13 +34,17 @@ Put the head in Image 2 on the body in Image 1.
 - Keep the supplied face, ears, apparent age, expression, and gaze unchanged. Preserve the hairstyle's color, texture, parting, volume and asymmetry.
 - Keep the body's proportions, pose, stance, clothing design, framing, background, and orientation unchanged.
 - Preserve the head's identity and natural scale relative to the body.
-- Join the head and neck naturally, with local blending at the junction. If Subject Details explicitly specifies a hair endpoint at a body landmark, complete cropped or prematurely terminated lower hair below the neckline to that landmark on the assembled body. That authored endpoint controls lower-hair length; the head reference's crop or accidental short hem does not.
-- Continue the established hairstyle naturally across the necessary shoulders, back and clothing, with correct overlap and perspective. Hair may cover those surfaces without changing underlying body geometry or clothing design. Without an explicitly authored endpoint, preserve the supplied hair length rather than inventing an extension. Keep short hairstyles short.
+- Join the head and neck naturally, with local blending at the junction. Follow the lower-hair silhouette and endpoint authored in Subject Details while preserving the supplied hairstyle above it.
+- Continue the established hairstyle naturally across the necessary shoulders, back and clothing, with correct overlap and perspective. Hair may cover those surfaces without changing underlying body geometry or clothing design. Preserve the supplied hair length outside the authored lower-hair completion. Keep short hairstyles short.
 - Preserve the supplied rendering style and detail; do not broadly repaint or reinterpret either source.
 
 # Subject Details
 
 {{CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS}}
+
+{{CHARACTER_ASSEMBLY_GENERAL_INSTRUCTIONS}}
+
+{{CHARACTER_ASSEMBLY_VIEW_INSTRUCTIONS}}
 
 {{VIEW_INSTRUCTION}}
 

@@ -381,12 +381,23 @@ Rendering priorities:
 
 <!-- ZET:BEGIN CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
 
-<!-- Optional: for hair that needs completion below the neckline, explicitly name
-its endpoint on the assembled body (for example, mid-back below the shoulder
-blades), arrangement and silhouette. Without an authored endpoint, Assembly
-preserves the supplied length. Do not add view/orientation instructions here. -->
+<!-- Optional legacy assembly requirements. Keep authored changes limited to the
+head/body join. Use the dedicated sections below for lower-hair completion and
+view-specific silhouette. -->
 
 <!-- ZET:END CHARACTER_ASSEMBLY_CHARACTER_REQUIREMENTS -->
+
+## General Instructions
+
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_GENERAL_INSTRUCTIONS -->
+
+<!-- ZET:END CHARACTER_ASSEMBLY_GENERAL_INSTRUCTIONS -->
+
+## View Instructions
+
+<!-- ZET:BEGIN CHARACTER_ASSEMBLY_VIEW_INSTRUCTIONS -->
+
+<!-- ZET:END CHARACTER_ASSEMBLY_VIEW_INSTRUCTIONS -->
 
 ---
 

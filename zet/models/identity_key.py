@@ -14,6 +14,7 @@ class IdentityKey:
     source_pipeline: str
     source_body_view: str
     source_local_key: Optional[str] = None
+    source_render_mode: str = "draft"
     source_sha256: Optional[str] = None
     source_head_view: Optional[str] = None
     source_costume: Optional[str] = None

@@ -85,6 +85,8 @@ deterministic.
 
 ## Draft and Final rendering
 
+Identity Keys offer one source per available pipeline, costume and view. Preview, Create and Update resolve the current locked Final for that category, falling back to Draft. Update re-crops from the current preferred lock, and the saved record identifies the mode actually used.
+
 `LocalAssetStoreService` has internal mode-specific selection records, private
 Draft snapshots, and Final publication through the existing catalog transaction.
 Legacy lock records are read as Draft. Individual selection/lock APIs accept an

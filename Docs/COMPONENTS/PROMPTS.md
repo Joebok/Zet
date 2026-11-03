@@ -1,5 +1,7 @@
 # Prompt compilation and reference contracts
 
+Character Assembly accepts optional `CHARACTER_ASSEMBLY_GENERAL_INSTRUCTIONS` and `CHARACTER_ASSEMBLY_VIEW_INSTRUCTIONS` in `Character.md`. The latter uses body-view tags. Both compile under Subject Details after legacy assembly requirements; blank sections add no prose. Youth Tsaeytte uses these for the lower-hair silhouette, leaving head and body images authoritative for the rest of assembly.
+
 ## Character and costume source editing (2026-10-26)
 
 [TemplateValidationService](../../zet/services/template_validation_service.py) validates unsaved canonical phase templates. The shared section parser, existing character/costume schema and required-content checks, and concrete eight-view conditioning provide diagnostics and original-line applicability. It rejects malformed reserved controls, controls outside marked sections, invalid resource syntax and unresolved task-template placeholders in emitted prose. Optional legacy character sections remain optional. Validation is deterministic and does not require a batch, prerequisite images or AI services; resource existence and pipeline-specific runtime inputs remain compilation concerns.

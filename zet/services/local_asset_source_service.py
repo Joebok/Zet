@@ -17,8 +17,12 @@ class LocalAssetSourceService:
         sources = []
         for record in self.store.locked_assets(character, phase, pipeline=pipeline, render_mode=None):
             image = Path(record["image_path"])
+            category_key = LocalAssetStoreService.key(
+                record.get("pipeline", ""), record.get("view", ""), record.get("qualifier", "")
+            )
             sources.append({
                 "source_key": record["key"],
+                "category_key": category_key,
                 "pipeline": record.get("pipeline", ""),
                 "view": record.get("view", ""),
                 "costume": record.get("qualifier", ""),
@@ -45,3 +49,10 @@ class LocalAssetSourceService:
             if source["source_key"] == source_key:
                 return source
         raise LocalAssetStoreError(f"Local source is missing, unlocked, or stale: {source_key}")
+
+    def get_category_source(self, character: str, phase: str, category_key: str) -> dict[str, Any]:
+        """Resolve the latest available lock for one pipeline/qualifier/view category."""
+        for source in self.list_sources(character, phase):
+            if source["category_key"] == category_key:
+                return source
+        raise LocalAssetStoreError(f"No locked image is available for source: {category_key}")
