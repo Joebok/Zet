@@ -84,7 +84,8 @@
 .narrative-slot .placeholder { height:180px; background:var(--surface-subtle); display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
 .narrative-slot button, .narrative-slot a { font-size:.8rem; padding:.3rem .4rem; }
 .narrative-slot .error { color:var(--danger); font-size:.85rem; overflow-wrap:anywhere; }
-.narrative-prompt-indicator { color:var(--text-muted); font-size:.72rem; font-weight:normal; margin-left:.3rem; }
+.narrative-prompt-indicator { margin-left:.3rem; }
+.narrative-prompt-indicator:not(.status-badge) { color:var(--text-muted); font-size:.72rem; font-weight:normal; }
 .narrative-field-role, .narrative-field-help { display:block; color:var(--text-muted); font-size:.78rem; font-weight:normal; }
 #narrative-interview-review { width:calc(100vw - 3rem); max-width:1200px; }
 .narrative-proposal { border-top:1px solid var(--border); padding:1rem 0; }

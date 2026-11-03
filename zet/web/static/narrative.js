@@ -806,7 +806,7 @@ function promptIndicator(candidate) {
   const operation = candidate.backdrop_adaptation?.operation;
   if (candidate.source_snapshot && ['crop','unchanged'].includes(operation)) return `<span class="narrative-prompt-indicator">${operation === 'crop' ? 'Local crop' : 'Local reuse'}</span>`;
   if (typeof candidate.prompt !== 'string' || !candidate.prompt) return '<span class="narrative-prompt-indicator">Prompt not recorded</span>';
-  return candidate.source_change_fyi ? '<span class="narrative-prompt-indicator" title="The saved prompt changed after this image was made.">Earlier prompt · FYI</span>' : '';
+  return candidate.source_change_fyi ? '<span class="status-badge review narrative-prompt-indicator" title="The saved prompt changed after this image was made.">Earlier prompt</span>' : '';
 }
 
 function updatePromptIndicators() {

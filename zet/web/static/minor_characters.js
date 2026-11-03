@@ -405,7 +405,10 @@
       else if (selections()[view] !== candidate.candidate_id) select.classList.add("primary-action");
       card.classList.toggle("is-selected", Boolean(candidate && selections()[view] === candidate.candidate_id));
       card.dataset.state = !candidate ? "empty" : locks()[view]?.candidate_id === candidate.candidate_id ? "locked" : selections()[view] === candidate.candidate_id ? "selected" : candidate.status === "FAILED" ? "failed" : candidate.image_url ? "available" : "pending";
-      if (candidate) card.append(element("p", `${renderMode === "final" ? "Final" : "Draft"}${candidate.render_sizing ? ` · requested ${candidate.render_sizing.width} × ${candidate.render_sizing.height}` : ""} · ${candidate.status.toLowerCase()}${selections()[view] === candidate.candidate_id ? " · Selected" : ""}${locks()[view]?.candidate_id === candidate.candidate_id ? " · Locked" : ""}${candidate.source_change_fyi ? " · Source changed · FYI" : ""}`, "muted image-card-state"));
+      if (candidate) {
+        card.append(element("p", `${renderMode === "final" ? "Final" : "Draft"}${candidate.render_sizing ? ` · requested ${candidate.render_sizing.width} × ${candidate.render_sizing.height}` : ""} · ${candidate.status.toLowerCase()}${selections()[view] === candidate.candidate_id ? " · Selected" : ""}${locks()[view]?.candidate_id === candidate.candidate_id ? " · Locked" : ""}`, "muted image-card-state"));
+        if (candidate.source_change_fyi) card.append(element("span", "Source changed", "status-badge review"));
+      }
       if (regen.disabled) card.append(element("p", pending || submitting ? "An operation is in progress." : "Select an alignment image to enable rendering.", "slot-action-reason muted"));
       controls.append(select);
       if(candidate?.can_lock) {

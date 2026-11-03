@@ -997,8 +997,8 @@
     card.append(status);
     if (candidate.source_change_fyi) {
       const fyi = document.createElement("span");
-      fyi.className = "muted";
-      fyi.textContent = "Source changed · FYI";
+      fyi.className = "status-badge review";
+      fyi.textContent = "Source changed";
       fyi.title = "A saved source changed after this image was made.";
       card.append(fyi);
     }
@@ -1376,7 +1376,7 @@
     const previousToolsOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-render-tools"), (details) => [details.dataset.view, details.open]));
     const previousOverrideOpen = new Map(Array.from(host.querySelectorAll("details.local-pipeline-view"), (details) => [details.dataset.view, details.querySelector(".local-pipeline-override")?.open]));
     host.replaceChildren();
-    for (const view of orderedViews(run)) {
+    for (const view of orderedViews(run).filter(view => !state.view || view === state.view)) {
       const candidates = (run.candidates || []).filter((candidate) => candidate.view === view);
       const slots = run.slots_by_view?.[view] || [...candidates.map(item => item.candidate_id), ...Array(Math.max(0, 8 - candidates.length)).fill(null)];
       const details = document.createElement("details");
