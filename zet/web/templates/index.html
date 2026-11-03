@@ -152,6 +152,33 @@
 
   <main>
     <p id="task-context-notice" class="action-message" role="status" aria-live="polite" hidden></p>
+    <section id="placeholder-page" class="page active">
+      <h1 id="placeholder-title">Overview</h1>
+    </section>
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        const aliases = { assets: "local-batch-status", manifest: "local-batch-status",
+          stories: "narrative", scenes: "narrative", "scene-builder": "narrative",
+          "scene-batches": "narrative", "render-console": "narrative", "render-review": "narrative" };
+        let requested = params.get("page");
+        if (!requested) {
+          try {
+            const saved = JSON.parse(localStorage.getItem("zet:workspace-preferences") || "null");
+            requested = saved?.pages?.[saved.workspace] || "local-overview";
+          } catch { requested = "local-overview"; }
+        }
+        const page = aliases[requested] || requested;
+        const button = Array.from(document.querySelectorAll(".tab[data-page]"))
+          .find(item => item.dataset.page === page);
+        const headings = { "local-batch-status": "Batch Status", zine: "Zine Maker",
+          "scene-candidates": "Scene Candidates" };
+        document.querySelector("#placeholder-title").textContent = headings[page] || button?.textContent.trim() || "Loading";
+        if (params.get("render_mode") === "final") {
+          document.querySelector("#placeholder-page").dataset.renderMode = "final";
+        }
+      })();
+    </script>
     <section id="universes-page" class="page">
       <div class="page-title-row"><h1>Universes</h1><button class="primary-action tab" type="button" data-page="universe-create">New Universe</button></div>
       <div id="universes-message" class="action-message" hidden></div>
@@ -411,7 +438,7 @@
       <div class="control-panel"><p class="muted">This Local workflow is coming soon.</p></div>
     </section>
 
-    <section id="assets-page" class="page active">
+    <section id="assets-page" class="page">
       <div class="page-title-row">
         <h1>Assets</h1>
         <div id="asset-status" class="status-text"></div>
@@ -2091,11 +2118,6 @@ Add prompt language here.
       </div>
     </section>
 
-    <section id="placeholder-page" class="page">
-      <h1 id="placeholder-title">Coming Soon</h1>
-      <p>The FastAPI dashboard shell is in place. This page will be migrated in a later milestone.</p>
-    </section>
-
     <dialog id="condensed-dialog">
       <form method="dialog">
         <h2>Condensed Prompt</h2>
@@ -2218,7 +2240,7 @@ Add prompt language here.
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/local_character_overview.js?v=20261102-batch-pages"></script>
-  <script src="/static/zet.js?v=20261031-final-mode-cues"></script>
+  <script src="/static/zet.js?v=20261103-loading-shell"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>
@@ -2226,8 +2248,8 @@ Add prompt language here.
   </dialog>
   <script src="/static/minor_characters.js?v=20261031-final-mode-cues"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
-  <script src="/static/local_pipeline_operations.js?v=20261102-batch-pages"></script>
-  <script src="/static/local_asset_pipeline.js?v=20261102-batch-pages"></script>
+  <script src="/static/local_pipeline_operations.js?v=20261103-rerun-rejected"></script>
+  <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
   <script src="/static/local_batch_status.js?v=20261102-batch-pages"></script>
 
 </body>

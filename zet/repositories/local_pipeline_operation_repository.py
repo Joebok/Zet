@@ -13,7 +13,7 @@ from zet.services.workflow_storage import file_lock
 
 # Activity records report progress and errors; execution checkpoints own guards.
 ACTIVE = frozenset({"QUEUED", "PREPARING", "WAITING"})
-ACTIVITY_ERRORS = frozenset({"FAILED", "RECOVERY_REQUIRED", "UNKNOWN"})
+ACTIVITY_ERRORS = frozenset({"FAILED", "RECOVERY_REQUIRED", "UNKNOWN", "BLOCKED", "PARTIAL"})
 
 
 class OperationConflict(ValueError):

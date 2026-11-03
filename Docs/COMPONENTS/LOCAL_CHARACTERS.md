@@ -36,6 +36,10 @@ now submit durable local preparation operations. Their batch
 reservation freezes candidate IDs and seeds, commits targets individually, and
 hands them to the existing slot collector. Batch and view Re-evaluate also use
 durable operation admission, as do batch Start, Resume and candidate-review retry.
+Re-run failed includes renderer failures and human-rejected completed images in
+the selected view and mode. Renderer failures reuse frozen inputs; rejected images
+receive new seeds and current governing inputs. Preparation rechecks eligibility
+and selection/lock protection before replacing each slot.
 Retry checkpoints generated-artifact detachment and the candidate state reset,
 then reattaches the existing runner. See the [completed plan](../../plans/completed/character-pipeline-operations.md)
 for recovery and validation limits.

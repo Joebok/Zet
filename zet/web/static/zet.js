@@ -13042,8 +13042,6 @@ async function main() {
     await loadContext();
     if (!pageLoadIsCurrent(startupLoad)) return;
     const initialRouteParams = new URLSearchParams(window.location.search);
-    const isLocalBatchRoute = Boolean(initialRouteParams.get("local_batch"))
-      && LOCAL_ASSET_PAGES.has(initialRouteParams.get("page"));
     const routeCharacter = initialRouteParams.get("character");
     const routePhase = initialRouteParams.get("phase");
     if (initialRouteParams.get("task_context") === "1") {
@@ -13061,15 +13059,6 @@ async function main() {
       updatePhaseSelect();
       saveStoredContext();
     }
-    if (!isLocalBatchRoute && initialRouteParams.get("page") !== "minor-characters") {
-      try {
-        await loadAssets();
-      } catch (error) {
-        if (isRequestCancellation(error)) throw error;
-        assetStatus.textContent = error.message;
-      }
-    }
-    if (!pageLoadIsCurrent(startupLoad)) return;
     await loadStories(state.selectedStorySlug);
     if (!pageLoadIsCurrent(startupLoad)) return;
     const params = new URLSearchParams(window.location.search);

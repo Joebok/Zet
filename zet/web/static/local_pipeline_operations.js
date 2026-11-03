@@ -4,7 +4,7 @@
   const message = document.getElementById("local-operations-message");
   const list = document.getElementById("local-operations-list");
   const active = new Set(["SUBMITTING", "QUEUED", "PREPARING", "WAITING"]);
-  const errors = new Set(["FAILED", "RECOVERY_REQUIRED", "UNKNOWN"]);
+  const errors = new Set(["FAILED", "RECOVERY_REQUIRED", "UNKNOWN", "BLOCKED", "PARTIAL"]);
   const pages = {"body-reference": "local-body-reference", "head-image": "local-head-image",
     "head-image-edit": "local-head-image-edit", "character-assembly": "local-character-assembly",
     "costume-dressing": "local-costume-dressing"};
@@ -46,14 +46,15 @@
     const visibleRows = allRows();
     const activeCount = visibleRows.filter(row => active.has(row.status)).length;
     const errorCount = visibleRows.filter(row => errors.has(row.status)).length;
-    button.textContent = `Activity${activeCount || errorCount ? ` (${activeCount} running${errorCount ? ` · ${errorCount} error${errorCount === 1 ? "" : "s"}` : ""})` : ""}`;
-    message.textContent = visibleRows.length ? "Character preparation in progress or failed" : "No active or failed character preparation.";
+    button.textContent = `Activity${activeCount || errorCount ? ` (${activeCount} running${errorCount ? ` · ${errorCount} attention` : ""})` : ""}`;
+    message.textContent = visibleRows.length ? "Character preparation and actions needing attention" : "No active character preparation or actions needing attention.";
     list.replaceChildren();
     for (const row of visibleRows) {
       const item = document.createElement("div"); item.className = "local-operation-item";
       const title = document.createElement("strong");
       const request = row.request || {};
-      title.textContent = [request.universe_id, request.character, request.phase, request.batch_name || request.run_id, request.pipeline, request.render_mode].filter(Boolean).join(" · ");
+      title.textContent = [request.universe_id, request.character, request.phase, request.batch_name || request.run_id,
+        request.pipeline, request.render_mode, String(request.action || "").replaceAll("_", " "), request.view].filter(Boolean).join(" · ");
       const status = document.createElement("div"); status.textContent = row.stage || row.status;
       const error = row.error || row.result?.error;
       if (error) status.textContent += `: ${error}`;

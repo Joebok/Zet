@@ -70,21 +70,25 @@ def plan_view_targets(run: dict, spec: dict, state: dict, request: dict, protect
     candidates = {item["candidate_id"]: item for item in run.get("candidates") or []}
     failed_only = request["action"] == "rerun_failed"
     occupied = [(index + 1, candidates[cid]) for index, cid in enumerate(maps[view]) if cid in candidates
-                and (not failed_only or candidates[cid].get("render_status") == "FAILED")]
+                and (not failed_only or candidates[cid].get("render_status") == "FAILED"
+                     or (candidates[cid].get("render_status") == "COMPLETE"
+                         and (candidates[cid].get("human_review") or {}).get("decision") == "reject"))]
     if not occupied:
-        raise OperationBlocked("No failed renders in this view and mode." if failed_only else "No occupied slots in this view and mode.")
+        raise OperationBlocked("No failed or rejected renders in this view and mode." if failed_only else "No occupied slots in this view and mode.")
     all_candidates = merge_candidates(spec, state, include_detached=True)
     ordinal = max((int(item.get("ordinal") or item["candidate_id"].rsplit("-", 1)[1])
                    for item in all_candidates.values() if item.get("view") == view), default=0)
     targets, errors = [], {}
     for slot, candidate in occupied:
-        single = {**request, "action": "retry_render_slot" if failed_only else "regenerate_slot",
+        retry = failed_only and candidate.get("render_status") == "FAILED"
+        single = {**request, "action": "retry_render_slot" if retry else "regenerate_slot",
                   "slot": slot, "expected_candidate_id": candidate["candidate_id"]}
         try:
             target = plan_slot_targets(run, spec, state, single, protected, prerequisite)["targets"][0]
             ordinal += 1
             target.update(candidate_id=view_candidate_id(view, ordinal), ordinal=ordinal,
-                          recompile=bool(request.get("recompile", False)))
+                          recompile=not retry if failed_only else bool(request.get("recompile", False)),
+                          rerun_eligibility=("failed" if retry else "rejected") if failed_only else "")
             targets.append(target)
         except (OperationBlocked, ValueError, OSError) as exc:
             errors[candidate["candidate_id"]] = str(exc)

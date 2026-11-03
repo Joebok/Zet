@@ -106,6 +106,12 @@ class LocalPipelineAvailablePreparationService:
                 previous = candidates.get(previous_id) if previous_id else None
                 if previous_id and (not previous or self.workflow.slots._protected(run, previous)):
                     raise ReservationConflict("The previous candidate is no longer available for replacement.")
+                if target.get("rerun_eligibility") == "rejected" and not (
+                    previous.get("render_status") == "COMPLETE"
+                    and (previous.get("human_review") or {}).get("decision") == "reject"
+                    and Path(str(previous.get("image_path") or "")).is_file()
+                ):
+                    raise ReservationConflict("The rejected image changed. Review this slot before re-running it.")
                 if target.get("retry") and (not previous or previous.get("render_status") != "FAILED"
                         or Path(str(previous.get("image_path") or "")).is_file()):
                     raise ReservationConflict("The previous render is no longer eligible for retry.")

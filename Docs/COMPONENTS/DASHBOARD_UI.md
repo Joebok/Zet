@@ -1,11 +1,17 @@
 # Dashboard presentation and image input
 
+The dashboard shell initially shows a blank page with the requested route's
+heading while context loads. A Final route applies the Final canvas color
+immediately. The retired legacy Assets section is never the initial page, and
+startup no longer reads legacy assets before activating the requested route.
+
 Identity Key source choices combine Draft and Final locks by pipeline, costume and view without mode labels. Saved rows use light green for Draft-derived crops and dark green for Final-derived crops, driven by `source_render_mode` on the record.
 
 Character Run available, slot generation/retry, view regeneration, Re-evaluate,
 batch Start/Resume and candidate-review retry show immediate submission feedback.
-The shared Activity menu lists in-progress preparation and undismissed errors;
-completed and expected blocked/partial actions leave Activity. Errors can be
+The shared Activity menu lists in-progress preparation and undismissed actions
+needing attention, including blocked and partial outcomes. Entries name the action
+and view; active work and recent attention appear first. Attention items can be
 dismissed without changing their operation checkpoint. Activity refreshes on
 navigation, menu open, tab return, submission or explicit request, with no timer.
 An unconfirmed browser request retains its operation ID. Activity tracks preparation

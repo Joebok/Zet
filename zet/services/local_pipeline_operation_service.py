@@ -141,8 +141,8 @@ class LocalPipelineOperationService:
         rows = [record for record in self.repository.list_activity()
                 if (not universe_id or record["request"].get("universe_id") == universe_id)
                 and (not run_id or record["request"].get("run_id") == run_id)]
-        rows.sort(key=lambda record: (record.get("status") not in {"QUEUED", "PREPARING", "WAITING"},
-                                      record.get("created_at", "")), reverse=False)
+        rows.sort(key=lambda record: record.get("created_at", ""), reverse=True)
+        rows.sort(key=lambda record: record.get("status") not in {"QUEUED", "PREPARING", "WAITING"})
         return {"operations": rows[offset:offset + limit], "next_offset": offset + limit if offset + limit < len(rows) else None}
 
     def dismiss(self, operation_id: str) -> dict:

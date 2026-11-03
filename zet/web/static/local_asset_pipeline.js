@@ -1409,7 +1409,7 @@
           title: controls.rotation_reason || `Rotate selected ${controls.rotation_source_view} into ${view}.` });
       }
       addButton(viewActions, "Regen view", "rerun-view", { disabled: !actionTime && (!viewReady || !candidates.length), view });
-      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: !actionTime && (busy(run) || Boolean(run?.slot_render_ids?.length) || !candidates.some((item) => item.render_status === "FAILED")), view });
+      addButton(viewActions, "Re-run failed", "rerun-failed", { disabled: !actionTime && (busy(run) || Boolean(run?.slot_render_ids?.length) || !candidates.some((item) => item.render_status === "FAILED" || (item.render_status === "COMPLETE" && item.human_review?.decision === "reject"))), view });
       addButton(viewActions, "Re-evaluate", "reevaluate-view", { view });
       addButton(viewActions, "Delete Draft images", "delete-drafts", { disabled: state.bulkActionPending, view });
       viewActions.append(stageMenu);
