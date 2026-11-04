@@ -88,12 +88,16 @@ class LocalPipelineProjectionService:
         path = Path(str(candidate.get("image_path") or "")).resolve()
         return path.is_file() and path.is_relative_to(Path(run["root"])) and path.stat().st_size > 0
 
-    @staticmethod
-    def _saved_source_changed(candidate: dict, current_refs: dict) -> bool:
+    def _saved_source_changed(self, candidate: dict, current_refs: dict) -> bool:
         frozen = candidate.get("render_input") or {}
         sources = frozen.get("template_sources") or []
         for source in sources:
             path = Path(str(source.get("path") or ""))
+            if not path.is_absolute():
+                owner = Path(self.adapter.library_root).resolve()
+                path = (owner / path).resolve()
+                if not path.is_relative_to(owner):
+                    return True
             if not path.is_file():
                 return True
             if hashlib.sha256(path.read_bytes()).hexdigest() != source.get("sha256"):

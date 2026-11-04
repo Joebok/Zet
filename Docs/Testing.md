@@ -1,5 +1,16 @@
 # Local testing
 
+## Source-changed badge path correction (2026-11-03)
+
+The approved fast suite passed 4/4. A disposable read-only check classified
+Tsaeytte RockStar FRONT F-031 as changed and F-032/F-038 as current after
+resolving library-relative template paths from the owning universe. Saved Head
+Image Edit, Assembly, and Dressing records contained relative template paths.
+Python compilation and `git diff --check` passed. No live render ran.
+Before the approved cleanup of saved flags, the RockStar costume master changed
+again; all F-032 through F-039 captured hashes then differed from the current
+master, so no flags were cleared.
+
 ## Aspect ratio sizing (2026-11-03)
 
 The approved fast suite passed 4/4 (43.1s) after the Narrative prepared image

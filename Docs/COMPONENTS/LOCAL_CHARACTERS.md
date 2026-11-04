@@ -39,8 +39,9 @@ selected and locked from their available current bytes without revalidating old
 references or master text. New locks preserve the candidate prompt independently.
 Opened views persist a subtle `source_change_fyi` when captured template hashes or
 reference identities differ from saved current sources; the marker is permanent
-and advisory. A locked view checks only its locked candidate. Restart and Draft
-cleanup require a state-bound preview and explicit approval for every affected
+and advisory. Library-relative template source paths resolve from the owning
+universe before comparison. A locked view checks only its locked candidate.
+Restart and Draft cleanup require a state-bound preview and explicit approval for every affected
 selection or lock. [ADR 0045](../DECISIONS/0045-finished-image-source-policy.md)
 supersedes the older batch-overlay and lineage rules described in historical
 sections below.
