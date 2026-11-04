@@ -384,6 +384,14 @@ maintained regressions. See [Narrative](COMPONENTS/NARRATIVE.md#save-a-subscene-
 
 NarrativeAssemblyService owns manual backdrop composition and reference geometry; narrative_prompt_service.py describes it for reference assembly. narrative.js and narrative.css own active-layer placement and output-size canvas presentation. See [Narrative](COMPONENTS/NARRATIVE.md#final-assembly-output-canvas-2026-10-30).
 
+New Narrative renders resolve Draft/Final pixels from subscene `aspect_ratio` or
+the current scene `canvas` for backdrops and assemblies. NarrativeGenerationService
+freezes those pixels in each job; NarrativeAssemblyService uses them for composite
+and placement snapshots. Failed-image Retry retains frozen sizing. The target UI
+shows inherited scene ratio and mode-sized previews. Ad hoc generation and
+reconstruction accept ratio plus mode for new requests; historical job dimensions
+remain transport and recovery data.
+
 ## Draft and Final rendering
 
 `image_sizing_service.py` owns configured mode sizing. `CharacterRenderSlots`,

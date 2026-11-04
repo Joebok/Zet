@@ -304,18 +304,17 @@ class LocalCharacterRefinementService:
                 reference_inputs = [ref for ref in reference_inputs if ref.get("view") != guide_view] + [guide]
                 render_refs.append({"label": guide["notes"], "image": base64.b64encode(snapshot.read_bytes()).decode("ascii")})
                 render_references.append({**guide, "image_index": 2})
-            spec = {"mode": "img2img", "prompt": prompt, "count": 1, "width": width, "height": height,
+            spec = {"mode": "img2img", "prompt": prompt, "count": 1,
                 "reference_images": render_refs,
                 "ai_owner": {"character_refinement_pipeline_id": pipeline, "run_id": run_id,
                     "character_refinement_session_id": session_id, "attempt_id": aid, "view": record["view"],
                     "costume": costume, "character": run["character"], "phase": run["phase"]},
                 "ai_workflow": "Character image refinement"}
-            sizing = None
-            if "render_mode" in record:
-                from zet.services.image_sizing_service import resolve_image_sizing
-                ratio = f"{width}:{height}"
-                sizing = resolve_image_sizing(self.app.config, record["render_mode"], ratio)
-                spec.update(render_mode=record["render_mode"], aspect_ratio=ratio)
+            from zet.services.image_sizing_service import resolve_image_sizing
+            ratio = f"{width}:{height}"
+            render_mode = record.get("render_mode", "draft")
+            sizing = resolve_image_sizing(self.app.config, render_mode, ratio)
+            spec.update(render_mode=render_mode, aspect_ratio=ratio)
             if pipeline == "head-image-edit":
                 from zet.services.local_render_backend_service import LocalRenderBackendService
                 profile = LocalRenderBackendService(self.app.config.state_file(self.project_root, "Local_Render_Presets.json"), config=self.app.config).preset("comfyui-qwen-head-image-edit-v1")

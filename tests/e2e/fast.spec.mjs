@@ -121,7 +121,7 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
       await page.locator("#narrative-prompt").fill("A quiet forest path, soft daylight.");
       await page.getByRole("button", { name: "Save inputs" }).click();
       await page.getByRole("button", { name: "Render 1" }).click();
-      await answerRender(page, scene, targetId, image(1344, 768));
+      await answerRender(page, scene, targetId, image(1184, 896));
     } else {
       await page.locator("#narrative-prompt").fill("The traveler reaches the forest gate.");
       await page.getByRole("button", { name: "Save inputs" }).click();
@@ -129,7 +129,7 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
       await answerRender(page, scene, targetId, null, true);
       await expect(page.locator(".narrative-slot").first()).toContainText("failed");
       await page.locator(".narrative-slot").first().getByRole("button", { name: "Retry" }).click();
-      await answerRender(page, scene, targetId, image(1216, 832));
+      await answerRender(page, scene, targetId, image(1184, 896));
     }
     await page.locator(".narrative-slot").first().getByRole("button", { name: "Select" }).click();
     await page.locator(".narrative-slot").first().getByRole("button", { name: "Lock" }).click();
@@ -148,7 +148,7 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
   await page.getByRole("button", { name: "Render 1" }).click();
   const renderResponse = await renderReply;
   expect(renderResponse.ok(), await renderResponse.text()).toBeTruthy();
-  await answerRender(page, scene, assembly, image(1344, 768));
+  await answerRender(page, scene, assembly, image(1184, 896));
   await page.locator(".narrative-slot").first().getByRole("button", { name: "Select" }).click();
   await page.locator(".narrative-slot").first().getByRole("button", { name: "Lock" }).click();
   await page.reload();
@@ -161,7 +161,7 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
   await page.goto("/narrative");
   await page.waitForFunction(() => document.body.dataset.narrativeReady === "true");
   await expect(page.locator(".narrative-story-scene img")).toHaveCount(1);
-  await expect(page.locator(".narrative-story-scene img")).toHaveJSProperty("naturalWidth", 1344);
+  await expect(page.locator(".narrative-story-scene img")).toHaveJSProperty("naturalWidth", 1184);
   expect(details[1].kind).toBe("subscene");
 });
 

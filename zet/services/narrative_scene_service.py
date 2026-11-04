@@ -14,7 +14,7 @@ from zet.services.narrative_interview_service import FIELD_PURPOSES, MOMENT_FIEL
 from zet.services.universe_style_service import universe_style
 
 
-TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing", "width", "height",
+TARGET_FIELDS = ("title", "narrative", "staging", "physical_context", "framing",
                  "use_transparent_background", "universe_style_variant",
                  "element_ids", "visual_overrides", "prompt", "interview_model", "prompt_model", "layers", "assembly_mode",
                  "backdrop_adaptation", "backdrop_link_mode")
@@ -217,6 +217,8 @@ class NarrativeSceneService:
             self.persist(record, story, scene)
 
     def create_target(self, story: str, scene: str, data: dict) -> dict:
+        if "width" in data or "height" in data or ("aspect_ratio" in data and data.get("kind", "subscene") != "subscene"):
+            raise ValueError("Set a subscene aspect ratio or the scene canvas instead of image dimensions.")
         with self.repository.lock():
             parent = self.repository.read(story, scene)
             kind = data.get("kind", "subscene")
@@ -253,6 +255,8 @@ class NarrativeSceneService:
             return record
 
     def update_target(self, story: str, scene: str, target: str, data: dict) -> dict:
+        if "width" in data or "height" in data:
+            raise ValueError("Set a subscene aspect ratio or the scene canvas instead of image dimensions.")
         if "scene_text_style" in data or "scene_text_style_override" in data: raise ValueError("Scene text appearance belongs to the universe or story.")
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
@@ -290,8 +294,6 @@ class NarrativeSceneService:
             width, height = canvas_dimensions(ratio)
             record["aspect_ratio"] = ratio
             record["width"], record["height"] = width, height
-        elif record["kind"] == "subscene" and ("width" in data or "height" in data):
-            record["aspect_ratio"] = ""
 
     @staticmethod
     def _validate_target(record, parent):
@@ -357,6 +359,11 @@ class NarrativeSceneService:
         if record["kind"] == "subscene" and not detail["aspect_ratio"]:
             detail["aspect_ratio"] = (parent["canvas"] if canvas_dimensions(parent["canvas"]) == (record["width"], record["height"])
                                       else f"{record['width']}:{record['height']}")
+        detail["scene_canvas"] = parent["canvas"]
+        from zet.services.image_sizing_service import resolve_image_sizing
+        ratio = detail["aspect_ratio"] if record["kind"] == "subscene" else parent["canvas"]
+        sizing = resolve_image_sizing(self.app.config, "draft", ratio)
+        detail["width"], detail["height"] = sizing["width"], sizing["height"]
         if record["kind"] == "assembly":
             for candidate_id, candidate in detail["candidates"].items():
                 if candidate.get("image") and (record.get("scene_text") or candidate.get("scene_text_final")):

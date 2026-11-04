@@ -16,7 +16,7 @@ from zet.services.narrative_canvas_service import canvas_dimensions
 from zet.services.narrative_scene_service import VISUAL_FIELDS
 from zet.services.workflow_storage import validate_image
 
-INPUT_FIELDS = ("narrative", "staging", "physical_context", "framing", "width", "height", "use_transparent_background")
+INPUT_FIELDS = ("narrative", "staging", "physical_context", "framing", "use_transparent_background")
 
 
 def normalize_backdrop(record):
@@ -152,6 +152,9 @@ class NarrativeReferenceService:
             source = self.preview(data.get("source", {}))
             kind = source["kind"]
             record = asdict(NarrativeTarget(self.author._title({"title": data.get("title") or source["title"]}), kind))
+            record["width"], record["height"] = canvas_dimensions(parent["canvas"])
+            if kind == "subscene":
+                record["aspect_ratio"] = parent["canvas"]
             for key in (INPUT_FIELDS if kind != "backdrop" else ()):
                 record[key] = deepcopy(source["current_inputs"][key])
             if kind != "backdrop" and data.get("copy_visual_context", False):

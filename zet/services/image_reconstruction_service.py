@@ -376,7 +376,9 @@ class ImageReconstructionService:
         if not isinstance(item_ids, list) or any(not isinstance(i, str) for i in item_ids):
             raise ValueError("Choose current correction item IDs.")
         correction_items(report, item_ids, instructions)
-        sizing = self.generator.sizing(payload["render_mode"], payload.get("aspect_ratio", "1:1")) if "render_mode" in payload else None
+        if "width" in payload or "height" in payload:
+            raise ValueError("Set aspect_ratio and render_mode instead of image dimensions.")
+        sizing = self.generator.sizing(payload["render_mode"], payload["aspect_ratio"])
         key = fingerprint([report_id, sorted(item_ids), instructions, *([sizing] if sizing else [])])
         directory = self._report_path(job_id, report_id).parent
         with file_lock(directory / "corrections.lock"):
@@ -396,8 +398,7 @@ class ImageReconstructionService:
                 new["prompt"] = self.compose(new)
             new.update(status="RUNNING", count=1, selected_result=expected, render_sizing=sizing,
                        source_render_mode=source.get("render_mode"),
-                       width=self.generator._dimension(sizing["width"] if sizing else payload.get("width", 1024), "Width"),
-                       height=self.generator._dimension(sizing["height"] if sizing else payload.get("height", 1024), "Height"))
+                       width=sizing["width"], height=sizing["height"])
             self._save(new)
             try:
                 self.generator.slot_workspace.reserve_reconstruction(new["id"], 1, sizing["render_mode"] if sizing else "draft")
@@ -485,9 +486,10 @@ class ImageReconstructionService:
 
     def start(self, payload):
         count = render_count(payload.get("count"), 4)
-        sizing = self.generator.sizing(payload["render_mode"], payload.get("aspect_ratio", "1:1")) if "render_mode" in payload else None
-        width = self.generator._dimension(sizing["width"] if sizing else payload.get("width", 1024), "Width")
-        height = self.generator._dimension(sizing["height"] if sizing else payload.get("height", 1024), "Height")
+        if "width" in payload or "height" in payload:
+            raise ValueError("Set aspect_ratio and render_mode instead of image dimensions.")
+        sizing = self.generator.sizing(payload["render_mode"], payload["aspect_ratio"])
+        width, height = sizing["width"], sizing["height"]
         job = self.prepare(payload)
         source_mode = None
         if payload.get("selected_result") is not None:

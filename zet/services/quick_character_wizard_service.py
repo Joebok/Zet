@@ -560,6 +560,12 @@ class QuickCharacterWizardService:
             payload = {**payload, "ai_owner": {"session_id": sid, "candidate_id": candidate["candidate_id"]},
                        "ai_workflow": "Minor Characters"}
             sizing = candidate.get("render_sizing")
+            if not sizing:
+                from zet.services.image_sizing_service import resolve_image_sizing
+                sizing = resolve_image_sizing(self.app.config, candidate.get("render_mode", "draft"),
+                                              f"{payload['width']}:{payload['height']}")
+            payload.pop("width", None)
+            payload.pop("height", None)
             if sizing:
                 payload.update(render_mode=sizing["render_mode"], aspect_ratio=sizing["aspect_ratio"])
                 target["render_sizing"] = dict(sizing)

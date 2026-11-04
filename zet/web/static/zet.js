@@ -233,8 +233,6 @@ const imageGenerationAddUniverseArtStyle = document.querySelector("#image-genera
 let imageGenerationUniverseStyle = null;
 const imageGenerationStyleVariant = document.querySelector("#image-generation-style-variant");
 const imageGenerationNegative = document.querySelector("#image-generation-negative");
-const imageGenerationWidth = document.querySelector("#image-generation-width");
-const imageGenerationHeight = document.querySelector("#image-generation-height");
 const imageGenerationRenderMode = document.querySelector("#image-generation-render-mode");
 const imageGenerationAspectRatio = document.querySelector("#image-generation-aspect-ratio");
 const imageGenerationSize = document.querySelector("#image-generation-size");
@@ -248,7 +246,6 @@ async function updateImageGenerationSizing() {
   try {
     const sizing = await fetchJson(`/api/image-generation/sizing?${params}`);
     if (revision !== imageGenerationSizingRevision) return;
-    imageGenerationWidth.value = sizing.width; imageGenerationHeight.value = sizing.height;
     imageGenerationAspectRatio.setCustomValidity("");
     imageGenerationSize.textContent = `Output: ${sizing.width} × ${sizing.height}`;
   } catch (error) {
@@ -1378,8 +1375,6 @@ function saveImageGenerationState() {
       universeStyleSnapshot: imageGenerationUniverseStyle,
       prompt: imageGenerationPrompt.value,
       negativePrompt: imageGenerationNegative.value,
-      width: imageGenerationWidth.value,
-      height: imageGenerationHeight.value,
       renderMode: imageGenerationRenderMode.value,
       aspectRatio: imageGenerationAspectRatio.value,
       referenceLabels: imageGenerationReferenceSlots.map((reference) => reference.label),
@@ -1448,8 +1443,6 @@ async function restoreImageGenerationInputs() {
     imageGenerationUniverseStyle = saved.universeStyleSnapshot || null;
     imageGenerationReconstruction = saved.reconstruction || null;
     imageGenerationNegative.value = saved.negativePrompt || "";
-    if (saved.width) imageGenerationWidth.value = saved.width;
-    if (saved.height) imageGenerationHeight.value = saved.height;
     imageGenerationRenderMode.value = saved.renderMode === "final" ? "final" : "draft";
     imageGenerationAspectRatio.value = saved.aspectRatio || (saved.width && saved.height ? `${saved.width}:${saved.height}` : "1:1");
     if (Array.isArray(saved.referenceLabels)) {
@@ -1671,7 +1664,7 @@ async function startImageReconstruction() {
     const job = await fetchJson("/api/image-generation/reconstructions", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify({...source, model,
         count: Number(document.querySelector("#image-generation-count").value),
-        width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value), render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value,
+        render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value,
         notes: reconstructionField("notes").value, preserve: reconstructionField("preserve").value,
         changes: reconstructionField("changes").value,
         universe_style_variant: imageGenerationStyleVariant.value})});
@@ -1785,8 +1778,6 @@ async function modifyEntityLibraryImageWithGenerator() {
       imageGenerationNegative.value = asset.negative_prompt || "";
       const sourceWidth = imageGenerationDimensionFromSource(asset.width);
       const sourceHeight = imageGenerationDimensionFromSource(asset.height);
-      if (sourceWidth) imageGenerationWidth.value = sourceWidth;
-      if (sourceHeight) imageGenerationHeight.value = sourceHeight;
       if (sourceWidth && sourceHeight) imageGenerationAspectRatio.value = `${sourceWidth}:${sourceHeight}`;
       await updateImageGenerationSizing();
       setImageGenerationMode("img2img");
@@ -2072,7 +2063,7 @@ document.querySelector("#image-true-up-apply").addEventListener("click", async (
     const job = await fetchJson("/api/image-generation/corrections", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({selected_result: imageGenerationSlots[imageGenerationSelectedSlot], task_id: imageTrueUpReport.task_id,
         report_id: imageTrueUpReport.id, item_ids: [...imageTrueUpItems], instructions: document.querySelector("#image-true-up-instructions").value,
-        width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value), render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value})});
+        render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value})});
     if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
     imageReconstructionJob = {...job, fieldBaseline: reconstructionBaseline()};
     window.localStorage.setItem(`zet:reconstruction-job:${state.universeId}`, job.id);
@@ -2209,7 +2200,7 @@ function currentImageGenerationInputs() {
     universe_style_variant: imageGenerationStyleVariant.value,
     ...(imageGenerationUniverseStyle ? {universe_style: imageGenerationUniverseStyle} : {}),
     mode: imageGenerationMode, prompt: imageGenerationPrompt.value, negative_prompt: imageGenerationNegative.value,
-    width: Number(imageGenerationWidth.value), height: Number(imageGenerationHeight.value), render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value,
+    render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value,
     reference_images: references.map(({label, data, metadata}) => ({label: label.trim(), image: data, ...(metadata ? {metadata} : {})})),
     source_asset_id: imageGenerationSource.dataset.assetId || "", source_checksum: imageGenerationSource.dataset.checksum || "",
     ...(imageGenerationReconstruction ? {reconstruction: imageGenerationReconstruction} : {}),
@@ -2276,8 +2267,6 @@ window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent,
       imageGenerationUniverseStyle = inputs.universe_style || null;
       imageGenerationPrompt.value = inputs.prompt;
       imageGenerationNegative.value = inputs.negative_prompt;
-      imageGenerationWidth.value = inputs.width;
-      imageGenerationHeight.value = inputs.height;
       imageGenerationAspectRatio.value = inputs.aspect_ratio || `${inputs.width}:${inputs.height}`;
       await updateImageGenerationSizing();
       imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, (_, index) => {
@@ -2307,8 +2296,6 @@ async function loadImageGenerationOptions() {
       if (universe !== state.universeId) return;
       imageGenerationDefaultModel = `${payload.model} · ${payload.checkpoint}`;
       imageGenerationModel.textContent = imageGenerationDefaultModel;
-      imageGenerationWidth.value = payload.default_width || 1024;
-      imageGenerationHeight.value = payload.default_height || 1024;
       imageGenerationOptionsLoaded = true;
       await restoreImageGenerationInputs();
       await updateImageGenerationSizing();
@@ -12931,7 +12918,7 @@ imageGenerationRenderMode.addEventListener("change", async () => {
   }
   finally { imageGenerationPending = false; renderImageGenerationStatus(); }
 });
-for (const input of [imageGenerationPrompt, imageGenerationNegative, imageGenerationWidth, imageGenerationHeight]) {
+for (const input of [imageGenerationPrompt, imageGenerationNegative]) {
   input.addEventListener("input", saveImageGenerationState);
   input.addEventListener("change", saveImageGenerationState);
 }

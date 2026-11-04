@@ -258,10 +258,13 @@ class NarrativeAssemblyService:
         weights[occupied] = 0
         return canvas.convert("RGB"), Image.fromarray(weights), protected
 
-    def preview(self, story, scene, target):
+    def preview(self, story, scene, target, render_mode="draft"):
         with self.repository.lock():
+            from zet.services.image_sizing_service import resolve_image_sizing
             record = self.repository.read(story, scene, target)
-            canvas, _, _ = self.compose(story, scene, record)
+            ratio = self.repository.read(story, scene)["canvas"]
+            sizing = resolve_image_sizing(self.author.app.config, render_mode, ratio)
+            canvas, _, _ = self.compose(story, scene, {**record, "width": sizing["width"], "height": sizing["height"]})
             return png_bytes(canvas)
 
     def snapshot(self, story, scene, detail, job_id, *, include_composite=True):

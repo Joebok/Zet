@@ -116,12 +116,15 @@ class NarrativeGenerationService:
                    "provenance": {"model": model, "provider": "codex" if model.startswith("codex:") else "ollama"}}
             if kind in {"generate", "render"}:
                 sizing = deepcopy(replay.get("render_sizing")) if replay else None
-                if sizing is None and "render_mode" in data:
+                if sizing is None and not replay:
                     from zet.services.image_sizing_service import resolve_image_sizing
-                    ratio = data.get("aspect_ratio") or f"{detail['width']}:{detail['height']}"
-                    sizing = resolve_image_sizing(self.author.app.config, data["render_mode"], ratio)
+                    ratio = detail["aspect_ratio"] if detail["kind"] == "subscene" else detail["scene_canvas"]
+                    if "aspect_ratio" in data and data["aspect_ratio"] != ratio:
+                        raise ValueError("Render aspect ratio must match the target canvas.")
+                    sizing = resolve_image_sizing(self.author.app.config, data.get("render_mode", "draft"), ratio)
                 if sizing:
                     job["render_sizing"] = sizing
+                    job["detail"].update(width=sizing["width"], height=sizing["height"])
             if evidence:
                 evidence["file"] = f"snapshots/{job['id']}/interview-image{evidence.get('suffix', '.png')}"
                 write_bytes_atomic(self.repository.folder(story, scene, target) / evidence["file"], payload)
@@ -135,7 +138,7 @@ class NarrativeGenerationService:
             if detail["kind"] == "assembly":
                 mode = detail.get("assembly_mode", "finish_composite")
                 job["assembly_mode"] = job["provenance"]["assembly_mode"] = mode
-                snapshot, refs = self.assembly.snapshot(story, scene, detail, job["id"],
+                snapshot, refs = self.assembly.snapshot(story, scene, job["detail"], job["id"],
                                                         include_composite=kind in {"generate", "render"})
                 job["assembly_snapshot"], job["references"] = snapshot, refs
                 job["detail"]["layers"] = snapshot["layers"]

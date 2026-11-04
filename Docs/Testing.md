@@ -1,5 +1,14 @@
 # Local testing
 
+## Aspect ratio sizing (2026-11-03)
+
+The approved fast suite passed 4/4 (43.1s) after the Narrative prepared image
+fixture was updated to its Draft scene ratio. Isolated API checks changed a
+scene to 16:9 and verified a new Final backdrop request and assembly composite,
+snapshot, and job detail used 2720 × 1536 while an older selected backdrop
+remained selected. Python compilation, JavaScript syntax, and diff checks passed.
+No live AI render or permanent scenario was added.
+
 ## Captured-input regeneration correction (2026-11-03)
 
 A disposable real Dressing journey changed the costume master, submitted durable

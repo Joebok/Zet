@@ -468,7 +468,6 @@ class LocalPostRenderPromptService:
                      "image": base64.b64encode(Path(ref["path"]).read_bytes()).decode("ascii")}
                     for index, ref in enumerate(saved["references"], 1)]
             spec = {"mode": "img2img" if refs else "txt2img", "prompt": saved["prompt"], "count": 1,
-                    "width": profile.get("width", 832), "height": profile.get("height", 1216),
                     "render_config": {"preset": saved["preset"], "checkpoint": profile.get("diffusion_model", ""),
                         "disable_prompt_globals": True, "append_reference_labels": False},
                     "ai_owner": {**self._owner(record), "attempt_id": attempt_id}, "ai_workflow": f"{self.source_label} template trial"}
@@ -478,8 +477,11 @@ class LocalPostRenderPromptService:
             if refs:
                 spec["reference_images"] = refs
             sizing = saved.get("render_sizing")
-            if sizing:
-                spec.update(render_mode=sizing["render_mode"], aspect_ratio=sizing["aspect_ratio"])
+            if not sizing:
+                from zet.services.image_sizing_service import resolve_image_sizing
+                sizing = resolve_image_sizing(self.app.config, record.get("render_mode", "draft"),
+                                              f"{profile.get('width', 832)}:{profile.get('height', 1216)}")
+            spec.update(render_mode=sizing["render_mode"], aspect_ratio=sizing["aspect_ratio"])
             try:
                 result = generation.status(attempt["request_id"])
             except KeyError:

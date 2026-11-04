@@ -212,12 +212,12 @@ editable generation state. `NARRATIVE` tags bind story/scene/target/candidate ID
 legacy `SCENE`/`SCENE_RENDER` tags are read-only image compatibility.
 
 New Narrative scenes default `canvas` to `4:3`; legacy scenes missing it still
-read as `16:9`. Scene ratios seed dimensions only when creating targets, using
-the [Narrative canvas policy](COMPONENTS/NARRATIVE.md#initial-canvas-dimensions).
-Persisted target dimensions and historical snapshots are not migrated. New
-subscenes save `aspect_ratio` from the scene canvas; older subscenes with no
-ratio retain their saved dimensions until edited. The service derives their
-display ratio from matching scene canvas dimensions or saved width:height.
+read as `16:9`. New backdrop and assembly render requests use the current scene
+ratio with Draft/Final target pixels. New and imported subscenes save editable
+`aspect_ratio` from their destination scene. Persisted target dimensions and
+historical snapshots are not migrated; old subscenes without a ratio display the
+scene ratio when saved dimensions match its former canvas size, or saved
+width:height otherwise. Existing images and frozen retries retain their sizes.
 
 `Render.DraftTargetPixels` and `Render.FinalTargetPixels` default to 1,048,576
 and 4,194,304. Config persists both; the shared sizing policy and explicit Image

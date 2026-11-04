@@ -79,8 +79,6 @@ class ImageGeneratorStagingService:
                 **({"universe_style": run["universe_style"]} if run.get("universe_style") else {}),
                 "mode": "img2img" if saved["references"] else "txt2img",
                 "prompt": saved["prompt"], "negative_prompt": "",
-                "width": self.generator._dimension(sizing["width"], "Width"),
-                "height": self.generator._dimension(sizing["height"], "Height"),
                 "render_mode": render_mode, "aspect_ratio": ratio,
                 "reference_images": [],
                 "render_config": {"preset": saved["preset"],

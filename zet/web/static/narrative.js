@@ -35,6 +35,7 @@ let brush = null;
 let reviewCandidate = null;
 let renderMode = 'draft';
 let renderRatio = '';
+let previewSizing = null;
 let ratioTarget = '';
 let seedCandidate = '';
 let inventorySaved = null;
@@ -44,7 +45,7 @@ let contextLabels = {};
 let candidateRestorePending = params.get('task_context') === '1';
 const active = new Set(['SUBMITTING', 'QUEUED', 'RUNNING', 'DISPATCHING']);
 const visualFields = ['setting', 'camera', 'perspective', 'lighting', 'style'];
-const targetFields = ['universe_style_variant', 'title', 'narrative', 'staging', 'physical_context', 'use_transparent_background', 'framing', 'width', 'height', 'aspect_ratio', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
+const targetFields = ['universe_style_variant', 'title', 'narrative', 'staging', 'physical_context', 'use_transparent_background', 'framing', 'aspect_ratio', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
 const assemblyModeName = mode => ({assemble_references:'Assemble from references', harmonize_composite:'Harmonize placed composite'}[mode] || 'Finish placed composite');
 const fieldValue = field => field.type === 'checkbox' ? field.checked : field.value;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
@@ -59,10 +60,10 @@ const preferredSource = source => {
 const label = (key, value, textarea = true, name = title(key)) => {
   const helpKey = key.startsWith('override_') || visualFields.includes(key) ? 'visual_context' : key;
   const help = detail?.field_purposes?.[helpKey];
-  const inputOnly = route.target && ['title','width','height'].includes(key);
+  const inputOnly = route.target && key === 'title';
   return `<label class="narrative-field">${esc(name)}${help ? '<small class="narrative-field-role">Interview input · Interview may propose changes</small>' : inputOnly ? '<small class="narrative-field-role">Interview input · Edited here only</small>' : key === 'prompt' ? '<small class="narrative-field-role">Prompt output · Editable before rendering</small>' : ''}${textarea
   ? `<textarea data-field="${key}" id="narrative-${key}">${esc(value)}</textarea>`
-  : `<input data-field="${key}" id="narrative-${key}" ${['width','height'].includes(key) ? 'type="number" step="32" min="256" max="4096"' : ''} value="${esc(value)}">`}${help ? `<small class="narrative-field-help">${esc(help)}</small>` : ''}</label>`;
+  : `<input data-field="${key}" id="narrative-${key}" value="${esc(value)}">`}${help ? `<small class="narrative-field-help">${esc(help)}</small>` : ''}</label>`;
 };
 
 function status(text, error = false) { if (disposed) return; message.textContent = text; message.classList.toggle('error', error); }
@@ -155,16 +156,16 @@ async function api(url, method = 'GET', data) {
 }
 
 async function updateRenderSize() {
-  const input = host.querySelector('#narrative-aspect_ratio') || host.querySelector('#narrative-render-ratio'), output = host.querySelector('#narrative-size-preview');
-  if (!input || !output) return;
-  const mode = renderMode, ratio = input.value;
+  const input = host.querySelector('#narrative-aspect_ratio'), output = host.querySelector('#narrative-size-preview');
+  if (!output) return;
+  const mode = renderMode, ratio = input?.value || detail.scene_canvas;
   try {
     const sizing = await api(`/api/image-generation/sizing?${new URLSearchParams({render_mode:mode,aspect_ratio:ratio})}`);
-    if (mode !== renderMode || ratio !== input.value) return;
-    input.setCustomValidity(''); output.textContent = `${sizing.width} × ${sizing.height}`;
+    if (mode !== renderMode || ratio !== (input?.value || detail.scene_canvas)) return;
+    if(input) input.setCustomValidity(''); previewSizing=sizing; output.textContent = `${sizing.width} × ${sizing.height}`; renderPlacement();
   } catch (error) {
-    if (mode !== renderMode || ratio !== input.value) return;
-    input.setCustomValidity(error.message); output.textContent = error.message;
+    if (mode !== renderMode || ratio !== (input?.value || detail.scene_canvas)) return;
+    if(input) input.setCustomValidity(error.message); previewSizing=null; output.textContent = error.message;
   }
 }
 
@@ -463,7 +464,7 @@ function elementsHtml(elements, target) {
 function assemblyHtml() {
   return `<section class="narrative-card"><h2>Sources and placement</h2><label class="narrative-field">Add source<select id="assembly-source">${detail.assembly_sources.map(source=>`<option value="${source.id}">${esc(source.title)} · ${source.kind}</option>`).join('')}</select></label>
     <button data-action="add-layer">Add selected image</button><label class="narrative-field">Scene element<select id="assembly-element"><option value="">Choose an element</option>${detail.assembly_element_sources.map(item=>`<option value="${esc(item.id)}" ${item.available?'':'disabled'}>${esc(item.name)}${item.reason ? ` · ${esc(item.reason)}` : ''}</option>`).join('')}</select></label><button data-action="add-element-layer">Add element</button><p class="narrative-muted">Choose a completed image below if the source has no selection. Select a layer, then drag it or use the corner handle to resize.</p>
-    <div id="assembly-layers"></div><label class="narrative-field">Active layer<select id="assembly-active-layer"></select></label><p id="assembly-size"></p><div id="assembly-canvas" style="aspect-ratio:${detail.width}/${detail.height}"></div>
+    <div id="assembly-layers"></div><label class="narrative-field">Active layer<select id="assembly-active-layer"></select></label><p id="assembly-size"></p><div id="assembly-canvas" style="aspect-ratio:${esc(detail.scene_canvas.replace(':','/'))}"></div>
     <div class="narrative-actions"><button data-action="preview-composite">Refresh raw composite</button><button id="assembly-download" data-action="download-composite">Download raw composite</button></div>
     <img id="assembly-raw" alt="Raw composite preview" hidden></section>`;
 }
@@ -494,7 +495,8 @@ function renderLayers() {
 function hideRaw() { const raw=host.querySelector('#assembly-raw'); if(raw) raw.hidden=true; }
 function manualBackdrop(layer, image) {
   if (!image?.naturalWidth || !image.naturalHeight) return false;
-  const cw=detail.width, ch=detail.height, iw=image.naturalWidth, ih=image.naturalHeight;
+  const size=previewSizing?.aspect_ratio===detail.scene_canvas && previewSizing.render_mode===renderMode ? previewSizing : detail;
+  const cw=size.width, ch=size.height, iw=image.naturalWidth, ih=image.naturalHeight;
   const factor=layer.fit==='cover' ? Math.max(cw/iw,ch/ih) : Math.min(cw/iw,ch/ih);
   layer.x=(cw-iw*factor)/2/cw; layer.y=(ch-ih*factor)/2/ch; layer.scale=iw*factor/cw; layer.fit='manual'; return true;
 }
@@ -503,7 +505,8 @@ function renderPlacement() {
   const layers=detail.layers.filter(layer=>layer.visible).sort((a,b)=>a.role==='base'?-1:b.role==='base'?1:a.z-b.z);
   if(!layers.some(layer=>layer.id===activeLayer)) activeLayer=layers[0]?.id || null;
   const picker=host.querySelector('#assembly-active-layer'); picker.innerHTML=layers.map(layer=>`<option value="${esc(layer.id)}">${esc(layer.label)}</option>`).join(''); picker.value=activeLayer || '';
-  canvas.style.aspectRatio=`${detail.width}/${detail.height}`; host.querySelector('#assembly-size').textContent=`Output: ${detail.width} x ${detail.height}`;
+  const size=previewSizing?.aspect_ratio===detail.scene_canvas && previewSizing.render_mode===renderMode ? previewSizing : detail;
+  canvas.style.aspectRatio=`${detail.scene_canvas.replace(':','/')}`; host.querySelector('#assembly-size').textContent=`Output: ${size.width} x ${size.height}`;
   canvas.innerHTML=layers.map(layer=>{ const selected=layer.id===activeLayer, preset=layer.role==='base' && layer.fit!=='manual';
     const style=preset?'left:0;top:0;width:100%;height:100%':`left:${layer.x*100}%;top:${layer.y*100}%;width:${layer.scale*100}%`;
     return `<div class="assembly-placement ${selected?'selected':''}" ${selected?`data-drag-layer="${layer.id}"`:''} style="${style}"><img draggable="false" src="${esc(layerUrl(layer,layer.role==='base'?'source':'cutout'))}" style="${preset?`height:100%;object-fit:${layer.fit};`:''}opacity:${layer.role==='base'?1:(layer.opacity ?? 1)}" alt="${esc(layer.label)}">${selected?`<span class="assembly-resize" data-resize-layer="${layer.id}" aria-label="Resize ${esc(layer.label)}"></span>`:''}</div>`;
@@ -709,7 +712,7 @@ function adaptationChanged() {
 }
 
 function renderTarget(targets) {
-  if (ratioTarget !== route.target) { ratioTarget = route.target; renderRatio = detail.kind === 'subscene' ? detail.aspect_ratio : `${detail.width}:${detail.height}`; seedCandidate = ''; }
+  if (ratioTarget !== route.target) { ratioTarget = route.target; renderRatio = detail.kind === 'subscene' ? detail.aspect_ratio : detail.scene_canvas; previewSizing=null; seedCandidate = ''; }
   const backdrop = detail.kind === 'backdrop';
   const assembly = detail.kind === 'assembly';
   const viewingImages = window.matchMedia("(max-width: 1360px)").matches && modeSlots().some(id => id && detail.candidates[id]?.image);
@@ -719,7 +722,7 @@ function renderTarget(targets) {
       ${label('title',detail.title,false)}${label('narrative',detail.narrative,true,backdrop ? 'Describe the environment' : 'Describe what is happening')}
       ${label('staging',detail.staging,true,backdrop ? 'Environment composition' : 'Interaction and staging')}${label('physical_context',detail.physical_context)}
       ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
-      ${label('framing',detail.framing,false)}${detail.kind === 'subscene' ? `<label class="narrative-field">Aspect ratio<input data-field="aspect_ratio" id="narrative-aspect_ratio" value="${esc(renderRatio)}" required></label>` : `<div class="narrative-grid">${label('width',detail.width,false)}${label('height',detail.height,false)}</div>`}
+      ${label('framing',detail.framing,false)}${detail.kind === 'subscene' ? `<label class="narrative-field">Canvas size aspect ratio<input data-field="aspect_ratio" id="narrative-aspect_ratio" value="${esc(renderRatio)}" required></label>` : `<p class="narrative-muted">Canvas size aspect ratio: ${esc(detail.scene_canvas)} (from scene)</p>`}
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
     ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button><button data-action="scene-text" ${modeSelected()?"":"disabled"}>Edit selected image text</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
@@ -739,7 +742,7 @@ function renderTarget(targets) {
       <div class="narrative-actions"><button class="primary" data-action="render" data-count="1">Render 1</button><button class="primary" data-action="render" data-count="4">Render 4</button><button data-action="refresh">Refresh</button></div>
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
-    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div class="narrative-actions"><label>Render quality <select id="narrative-render-mode"><option value="draft" ${renderMode==='draft'?'selected':''}>Draft</option><option value="final" ${renderMode==='final'?'selected':''}>Final</option></select></label>${detail.kind === 'subscene' ? '' : `<label>Aspect ratio <input id="narrative-render-ratio" value="${esc(renderRatio)}" required></label>`}<span id="narrative-size-preview" role="status"></span><label>Seed <select id="narrative-seed-source"><option value="">New seed</option></select></label></div><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete all Draft images</button><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div class="narrative-actions"><label>Render quality <select id="narrative-render-mode"><option value="draft" ${renderMode==='draft'?'selected':''}>Draft</option><option value="final" ${renderMode==='final'?'selected':''}>Final</option></select></label><span id="narrative-size-preview" role="status"></span><label>Seed <select id="narrative-seed-source"><option value="">New seed</option></select></label></div><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete all Draft images</button><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
   sourceVisibility();
   enableModelPickers();
   updateLive();
@@ -1026,7 +1029,7 @@ async function save() {
     if (key === 'backdrop_adaptation') { payload.backdrop_adaptation = structuredClone(detail.backdrop_adaptation); continue; }
     if (key.startsWith('override_')) continue;
     const field = root.querySelector(`[data-field="${key}"]`);
-    if (field) payload[key] = ['width','height'].includes(key) ? Number(field.value) : fieldValue(field);
+    if (field) payload[key] = fieldValue(field);
   }
   if (changed.some(key=>key.startsWith('override_'))) {
     payload.visual_overrides = Object.fromEntries(visualFields.map(key=>[key,root.querySelector(`[data-field="override_${key}"]`).value]));
@@ -1071,7 +1074,7 @@ async function poll() {
 }
 
 async function start(actionName, count = 1, slot, retryJobId) {
-  if (['generate','render'].includes(actionName) && !(host.querySelector('#narrative-aspect_ratio') || host.querySelector('#narrative-render-ratio')).reportValidity()) return;
+  if (['generate','render'].includes(actionName) && host.querySelector('#narrative-aspect_ratio') && !host.querySelector('#narrative-aspect_ratio').reportValidity()) return;
   await save();
   status(actionName === 'render' ? 'Queueing images…' : 'Queueing illustrator…');
   const direction = host.querySelector('#narrative-direction');
@@ -1081,7 +1084,7 @@ async function start(actionName, count = 1, slot, retryJobId) {
   updateLive();
   let result;
   try {
-    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,aspect_ratio:renderRatio,...(seedCandidate ? {seed_candidate_id:seedCandidate} : {})} : {}), ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
+    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,...(detail.kind==='subscene' ? {aspect_ratio:renderRatio} : {}),...(seedCandidate ? {seed_candidate_id:seedCandidate} : {})} : {}), ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
   } finally { llmSubmitting = false; updateLive(); }
   if (['interview','restart_interview'].includes(actionName)) interviewImage = '';
   mergeTarget(result);
@@ -1121,7 +1124,6 @@ async function assignElements() {
 }
 
 listen(host,'input',event=>{
-  if (event.target.id==='narrative-render-ratio') {renderRatio=event.target.value;void updateRenderSize();return;}
   if (event.target.id==='narrative-aspect_ratio') {renderRatio=event.target.value;event.target.setCustomValidity('');void updateRenderSize();}
   if (event.target.id==='backdrop-link-mode') return;
   if (event.target.dataset.adaptation || event.target.dataset.crop) { adaptationChanged();updateLive();return; }
@@ -1136,7 +1138,6 @@ listen(host,'input',event=>{
   status('Saving changes…'); clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>save().catch(error=>status(error.message,true)),700);
   if(route.target) updateLive();
-  if (['width','height'].includes(event.target.dataset.field)) { drawCropBox(); hideRaw(); const value=Number(event.target.value); if(route.target && detail.kind==='assembly' && value>=256 && value<=4096) { detail[event.target.dataset.field]=value; renderPlacement(); } }
 });
 
 listen(host,'change',event=>{
@@ -1346,7 +1347,7 @@ listen(host,'click',event=>{
           layersChanged();await save();renderLayers();break;
         }
         case 'download-composite': case 'preview-composite': {
-          await save();const response=await fetch(artifactUrl('composite'));if(!response.ok){const value=await response.json();throw new Error(value.detail);}
+          await save();const response=await fetch(artifactUrl('composite')+`&render_mode=${renderMode}`);if(!response.ok){const value=await response.json();throw new Error(value.detail);}
           const blob=await response.blob();
           if(button.dataset.action==='download-composite') {
             const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='composite.png';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);

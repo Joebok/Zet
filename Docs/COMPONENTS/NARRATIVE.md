@@ -365,26 +365,23 @@ The placement editor uses the saved final assembly dimensions. The active layer 
 
 ### Initial canvas dimensions
 
-New scenes default to **4:3**. `narrative_canvas_service.canvas_dimensions` derives
-initial subscene, backdrop (including newly linked backdrops), and final assembly
-dimensions from the scene's `canvas` ratio. Standard ratios use
+New scenes default to **4:3**. `narrative_canvas_service.canvas_dimensions` retains
+legacy initial target dimensions and compatibility behavior. Standard ratios use
 [Qwen Image 2.1's recommended presets](https://github.com/QwenLM/Qwen-Image-2.1#supported-aspect-ratios):
 4:3 is 2400 × 1792, 1:1 is 2048 × 2048, and 16:9 is 2752 × 1536.
 Other ratios aim for 2048² pixels, round each side to the nearest multiple of 32,
 and reduce area when needed to fit the existing 256–4096 dimension limits.
 Ratios must be positive width:height values between 1:16 and 16:1.
 
-Saved subscenes edit a persistent aspect ratio in the direction card, initialized
-from the scene canvas. Changing it recalculates saved target dimensions using the
-same canvas policy; Draft and Final render dimensions are previewed in Images
-from the selected quality and ratio. Existing subscenes without a saved ratio
-retain their dimensions and display the scene ratio when those dimensions match
-its canvas size, or their saved width:height otherwise. Backdrop and assembly
-dimensions remain editable and do not follow later scene-canvas changes. Explicit
-target-creation dimensions override the initial size. Imported
-subscenes retain copied dimensions; linked backdrop local reuse retains source/crop
-bytes. Existing scenes retain their saved ratio; older records missing `canvas`
-continue to read as 16:9. Frozen job and assembly snapshots remain unchanged.
+Saved subscenes edit a persistent canvas size aspect ratio, initialized from the
+destination scene canvas, including imported subscenes. Backdrops and final
+assemblies inherit the current scene ratio for each new render. Draft and Final
+pixel dimensions come from the shared image sizing policy; the selected mode
+also sizes raw assembly composites. Existing subscenes without a saved ratio
+display the scene ratio when their saved dimensions match its former canvas size,
+or their saved width:height otherwise. Existing images and frozen failed-job
+retries keep their dimensions. Linked backdrop local reuse retains source/crop
+bytes. Older scenes missing `canvas` continue to read as 16:9.
 
 Narrative finished-source discovery prefers a selected Final assembly and falls
 back to a selected Draft assembly when no finished Final image is available.

@@ -86,8 +86,6 @@ class AdHocImageGenerationService:
             "checkpoint": configured or presets["comfyui-qwen-head-image-text"]["diffusion_model"],
             "default_count": IMAGE_GENERATION_DEFAULT_COUNT,
             "max_count": IMAGE_GENERATION_MAX_COUNT,
-            "default_width": IMAGE_GENERATION_DEFAULT_WIDTH,
-            "default_height": IMAGE_GENERATION_DEFAULT_HEIGHT,
             "draft_target_pixels": self.zet_app.config.draft_target_pixels,
             "final_target_pixels": self.zet_app.config.final_target_pixels,
             "max_references": IMAGE_GENERATION_MAX_REFERENCES,
@@ -99,11 +97,13 @@ class AdHocImageGenerationService:
         except ValueError as exc:
             raise AdHocImageGenerationError(str(exc)) from exc
 
-    def submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None, frozen_sizing: dict | None = None) -> dict[str, Any]:
+    def submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None,
+               frozen_sizing: dict | None = None, legacy_dimensions: bool = False) -> dict[str, Any]:
         request_id = request_id or uuid4().hex
         self.proxy_paths.jobs.validate_id(request_id)
         with self._lock, file_lock(self.results_root / request_id / ".collect.lock"):
-            return self._submit(payload, request_id=request_id, seeds=seeds, frozen_sizing=frozen_sizing)
+            return self._submit(payload, request_id=request_id, seeds=seeds, frozen_sizing=frozen_sizing,
+                                legacy_dimensions=legacy_dimensions)
 
     def render_configuration(self, payload: dict[str, Any], mode: str) -> dict[str, Any]:
         """Resolve optional character settings while keeping ordinary ad hoc defaults."""
@@ -140,7 +140,8 @@ class AdHocImageGenerationService:
                 "disable_prompt_globals": supplied.get("disable_prompt_globals", True),
                 "append_reference_labels": supplied.get("append_reference_labels", True)}
 
-    def _submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None, frozen_sizing: dict | None = None) -> dict[str, Any]:
+    def _submit(self, payload: dict[str, Any], *, request_id: str | None = None, seeds: list[int] | None = None,
+                frozen_sizing: dict | None = None, legacy_dimensions: bool = False) -> dict[str, Any]:
         mode = str(payload.get("mode") or "txt2img").strip().lower()
         if mode not in {"txt2img", "img2img"}:
             raise AdHocImageGenerationError("Choose txt2img or img2img.")
@@ -174,11 +175,13 @@ class AdHocImageGenerationService:
             raise AdHocImageGenerationError("Image count must be between 1 and 16.") from exc
         if not 1 <= count <= IMAGE_GENERATION_MAX_COUNT:
             raise AdHocImageGenerationError("Image count must be between 1 and 16.")
-        sizing = frozen_sizing
-        if sizing is None and "render_mode" in payload:
-            sizing = self.sizing(payload["render_mode"], payload.get("aspect_ratio", "1:1"))
-        width = self._dimension(sizing["width"] if sizing else payload.get("width", IMAGE_GENERATION_DEFAULT_WIDTH), "Width")
-        height = self._dimension(sizing["height"] if sizing else payload.get("height", IMAGE_GENERATION_DEFAULT_HEIGHT), "Height")
+        if frozen_sizing is None and not legacy_dimensions and ("width" in payload or "height" in payload):
+            raise AdHocImageGenerationError("Set aspect_ratio and render_mode instead of image dimensions.")
+        if frozen_sizing is None and not legacy_dimensions and ("render_mode" not in payload or "aspect_ratio" not in payload):
+            raise AdHocImageGenerationError("Choose an aspect ratio and Draft or Final render mode.")
+        sizing = frozen_sizing or (None if legacy_dimensions else self.sizing(payload["render_mode"], payload["aspect_ratio"]))
+        width = self._dimension(sizing["width"] if sizing else payload.get("width"), "Width")
+        height = self._dimension(sizing["height"] if sizing else payload.get("height"), "Height")
 
         reference_images: list[dict[str, Any]] = []
         if mode == "img2img":

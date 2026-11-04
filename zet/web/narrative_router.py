@@ -243,8 +243,8 @@ def create_narrative_router(app_provider):
                         headers={} if preview else {"Content-Disposition": 'attachment; filename="story-animation.html"'})
 
     @router.get(target_path + "/composite")
-    def composite(story: str, scene: str, target: str, download: bool = Query(False)):
-        return Response(call(assembly().preview, story, scene, target), media_type="image/png",
+    def composite(story: str, scene: str, target: str, download: bool = Query(False), render_mode: str = Query("draft")):
+        return Response(call(assembly().preview, story, scene, target, render_mode), media_type="image/png",
                         headers={"Content-Disposition": 'attachment; filename="composite.png"'} if download else {},
                         )
 

@@ -16,6 +16,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 import uvicorn
+from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SEED = PROJECT_ROOT / "tests" / "library"
@@ -158,6 +159,8 @@ def prepare(mode: str) -> Path:
     )
     shutil.copy2(library / "Test" / "responses" / "render-1344x768.png", root / "render-1344x768.png")
     shutil.copy2(library / "Test" / "responses" / "render-1216x832.png", root / "render-1216x832.png")
+    with Image.open(root / "render-1344x768.png") as prepared:
+        prepared.resize((1184, 896)).save(root / "render-1184x896.png")
     return config
 
 
@@ -237,19 +240,15 @@ def seed_narrative(author, asset_id: str) -> dict[str, str]:
         "name": "Traveler", "kind": "subject", "asset_id": asset_id,
         "appearance": "Adult traveler in a blue coat and brown boots", "reference_role": "appearance",
     })
-    # Keep the prepared response images independent of production canvas defaults.
     backdrop = author.create_target(story["id"], scene["id"], {
         "title": "Forest backdrop", "kind": "backdrop", "narrative": "A quiet forest path.",
-        "width": 1344, "height": 768,
     })
     subscene = author.create_target(story["id"], scene["id"], {
         "title": "Traveler at the gate", "kind": "subscene", "narrative": "The traveler arrives.",
-        "width": 1216, "height": 832,
         "element_ids": [element["id"]],
     })
     assembly = author.create_target(story["id"], scene["id"], {
         "title": "Final assembly", "kind": "assembly", "narrative": "The traveler arrives at the gate.",
-        "width": 1344, "height": 768,
         "assembly_mode": "finish_composite",
     })
     return {"story": story["id"], "scene": scene["id"], "backdrop": backdrop["id"],

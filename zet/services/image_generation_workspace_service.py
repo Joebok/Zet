@@ -147,6 +147,8 @@ class ImageGenerationWorkspace:
             options = {"request_id": request_id}
             if frozen_sizing:
                 options["frozen_sizing"] = frozen_sizing
+            if not frozen_sizing and "render_mode" not in inputs and "width" in inputs and "height" in inputs:
+                options["legacy_dimensions"] = True
             self.generator.submit(inputs, **options)
 
     def import_browser(self, payload):
@@ -214,6 +216,9 @@ class ImageGenerationWorkspace:
                             raise RenderSlotConflict("Retry requires a failed render.")
                         indices = [index]
                         inputs = deepcopy(payload.get("inputs") or job["render_payload"]) if operation == "regenerate" else deepcopy(job["render_payload"])
+                        if operation == "regenerate" and not job.get("render_sizing") and "width" in inputs and "height" in inputs:
+                            inputs.setdefault("aspect_ratio", f"{inputs.pop('width')}:{inputs.pop('height')}")
+                            inputs.setdefault("render_mode", render_mode)
                         if job.get("reconstruction") and "reconstruction" not in inputs:
                             inputs["reconstruction"] = deepcopy(job["reconstruction"])
                         seeds = [child["seed"]] if operation == "retry" and child and "seed" in child else None
@@ -232,6 +237,8 @@ class ImageGenerationWorkspace:
                         submit_options = {"request_id": request_id, "seeds": seeds}
                         if operation == "retry" and job.get("render_sizing"):
                             submit_options["frozen_sizing"] = job["render_sizing"]
+                        if operation == "retry" and not job.get("render_sizing"):
+                            submit_options["legacy_dimensions"] = True
                         self.generator.submit(inputs, **submit_options)
                     except Exception:
                         if request_id not in self.generator._jobs:
