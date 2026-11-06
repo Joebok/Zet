@@ -4439,7 +4439,12 @@ async function runGuardedTransition(action) {
   try {
     const allowed = await current;
     if (!allowed) return false;
-    return (await action()) !== false;
+    try {
+      return (await action()) !== false;
+    } catch (error) {
+      if (isRequestCancellation(error)) return false;
+      throw error;
+    }
   } finally {
     if (state.transitionPromise === current) {
       state.transitionPromise = null;
