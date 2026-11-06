@@ -730,7 +730,7 @@ function renderTarget(targets) {
     <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
       <label class="narrative-field">Answer or direct a revision<textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea></label>
       ${detail.kind === 'subscene' ? `<label class="narrative-field">Image for this interview<select id="narrative-interview-image"><option value="">None</option></select><small>Used for this turn only. Requires a vision-capable interview model.</small></label><div id="narrative-interview-image-preview"></div><p class="narrative-muted" id="narrative-interview-replay-image"></p>` : ''}
-      <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
+      <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button>${detail.kind === 'subscene' ? `<button class="primary narrative-interview-write-prompt" data-action="synthesize" ${acceptedInterviewChanges() ? '' : 'hidden'}>Write Prompt</button>` : ''}</div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
     </details><div class="narrative-output"><details class="narrative-card narrative-generation-settings" ${viewingImages ? '' : 'open'}><summary><span>Prompt and generation</span><span class="narrative-summary-render-actions">${['draft','final'].map(mode=>[1,4].map(count=>`<button type="button" class="${mode==='draft'?'narrative-summary-render-draft':'narrative-summary-render-final'}" data-action="render" data-mode="${mode}" data-count="${count}">${mode==='draft'?'Draft':'Final'} ${count}</button>`).join('')).join('')}</span></summary>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option><option value="harmonize_composite" ${detail.assembly_mode==='harmonize_composite'?'selected':''}>Harmonize placed composite</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
       <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
@@ -753,6 +753,11 @@ function renderTarget(targets) {
 
 function pendingInterviews() {
   return Object.values(detail.jobs).filter(job=>job.status === 'COMPLETE' && job.review?.status === 'pending');
+}
+
+function acceptedInterviewChanges() {
+  return Object.values(detail.jobs).some(job=>job.review?.status === 'applied' &&
+    Object.values(job.review.choices || {}).some(choice=>choice !== 'reject'));
 }
 
 function reviewChoices(job) {
@@ -844,6 +849,8 @@ function updateLive() {
   refreshVisualContext();
   const pending = pendingInterviews();
   host.querySelector('#narrative-pending-reviews').innerHTML = pending.map(job=>`<button data-interview-review="${job.id}">Review interview proposals · ${job.review.proposals.length} changes</button>`).join('');
+  const writePromptShortcut = host.querySelector('.narrative-interview-write-prompt');
+  if (writePromptShortcut) writePromptShortcut.hidden = !acceptedInterviewChanges();
   host.querySelector('#narrative-prompt-pending').textContent = pending.length ? `${pending.length} interview review${pending.length === 1 ? '' : 's'} pending. Write Prompt uses saved, applied inputs.` : '';
   const signatureHistory = JSON.stringify([detail.interview, jobs.filter(job=>job.kind!=='image').map(job=>[job.id,job.status,job.result,job.review?.status])]);
   if (signatureHistory !== historySignature) {

@@ -38,16 +38,21 @@ class NarrativeSceneService:
 
     @staticmethod
     def mark_prompt_change(record: dict, previous_prompt: str) -> None:
-        normalize = lambda value: value.replace("\r\n", "\n").replace("\r", "\n")
-        if normalize(record["prompt"]) == normalize(previous_prompt):
+        if NarrativeSceneService._normalize_prompt(record["prompt"]) == NarrativeSceneService._normalize_prompt(previous_prompt):
             return
-        selected = {record.get("selected_id")}
-        locked = {item["id"] for item in record["candidates"].values() if item.get("locked")}
-        observed = locked or selected or set(record["candidates"])
-        for candidate_id in observed:
-            candidate = record["candidates"].get(candidate_id)
-            if candidate and candidate.get("image") and candidate.get("prompt") and normalize(candidate["prompt"]) != normalize(record["prompt"]):
+        NarrativeSceneService.mark_candidate_prompt_differences(record)
+
+    @staticmethod
+    def mark_candidate_prompt_differences(record: dict) -> None:
+        current_prompt = NarrativeSceneService._normalize_prompt(record.get("prompt") or "")
+        for candidate in record.get("candidates", {}).values():
+            candidate_prompt = NarrativeSceneService._normalize_prompt(candidate.get("prompt") or "")
+            if (candidate.get("image") and candidate_prompt and candidate_prompt != current_prompt):
                 candidate["source_change_fyi"] = True
+
+    @staticmethod
+    def _normalize_prompt(value: str) -> str:
+        return value.replace("\r\n", "\n").replace("\r", "\n")
 
     def save_subscene_image_to_inventory(self, story: str, scene: str, target: str,
                                         candidate_id: str, data: dict) -> dict:
@@ -331,6 +336,9 @@ class NarrativeSceneService:
 
     def target(self, story: str, scene: str, target: str) -> dict:
         record = self.repository.read(story, scene, target)
+        # Recheck on detail reads so existing candidates keep showing the advisory
+        # even when their prompt difference was not observed during a save.
+        self.mark_candidate_prompt_differences(record)
         parent = self.repository.read(story, scene)
         by_id = {item["id"]: item for item in parent["elements"]}
         elements = []
