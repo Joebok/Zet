@@ -917,7 +917,7 @@ function updateLive() {
       ${candidate.status === 'FAILED' ? `<button data-candidate="${id}" data-candidate-action="retry">Retry</button>` : ''}
       ${!candidate.locked && id !== selected ? `<button class="narrative-regen-draft" data-render-slot="${index+1}" data-mode="draft">Regen Draft</button><button class="narrative-regen-final" data-render-slot="${index+1}" data-mode="final">Regen Final</button>` : ''}
       <button data-candidate="${id}" data-candidate-action="clear" class="danger-text-action">Clear slot</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
-      : `<div class="narrative-actions"><button class="primary" data-render-slot="${index+1}" data-mode="draft">Draft</button><button class="primary" data-render-slot="${index+1}" data-mode="final">Final</button></div>`}</article>`;
+      : `<div class="narrative-actions"><button class="narrative-regen-draft" data-render-slot="${index+1}" data-mode="draft">Regen Draft</button><button class="narrative-regen-final" data-render-slot="${index+1}" data-mode="final">Regen Final</button></div>`}</article>`;
   }).join('');
   renderImageReview();
 }

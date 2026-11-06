@@ -85,7 +85,7 @@
 .narrative-slot button, .narrative-slot a { font-size:.8rem; padding:.3rem .4rem; }
 .narrative-slot button.narrative-regen-draft { color:#175cd3; border-color:#175cd3; }
 .narrative-slot button.narrative-regen-final { color:#15803d; border-color:#15803d; }
-.narrative-direction-settings .narrative-actions button.narrative-render-draft { background:#175cd3; border-color:#175cd3; color:white; }
+.narrative-app button.narrative-render-draft { background:#175cd3; border-color:#175cd3; color:white; }
 .narrative-slot .error { color:var(--danger); font-size:.85rem; overflow-wrap:anywhere; }
 .narrative-prompt-indicator { margin-left:.3rem; }
 .narrative-prompt-indicator:not(.status-badge) { color:var(--text-muted); font-size:.72rem; font-weight:normal; }
