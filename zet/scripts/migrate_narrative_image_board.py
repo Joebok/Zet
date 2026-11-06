@@ -33,9 +33,12 @@ def plan(record, references):
     if any(job.get("status") in ACTIVE for job in record.get("jobs", {}).values()):
         raise ValueError("Active work must settle before conversion.")
     selected = next((cid for cid in (record.get("final_selected_id"), record.get("selected_id")) if cid in kept), None)
-    locked = next((cid for cid in (record.get("final_selected_id"), record.get("selected_id")) if cid in kept and candidates[cid].get("locked")), None)
+    locked = next((cid for cid in (record.get("final_selected_id"), record.get("selected_id"))
+                   if cid in kept and candidates[cid].get("locked")
+                   and candidates[cid].get("render_mode", "draft") == "final"), None)
     if locked is None:
-        locked = next((cid for cid in kept if candidates[cid].get("locked")), None)
+        locked = next((cid for cid in kept if candidates[cid].get("locked")
+                       and candidates[cid].get("render_mode", "draft") == "final"), None)
     return kept, selected, locked
 
 

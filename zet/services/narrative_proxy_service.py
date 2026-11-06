@@ -39,6 +39,8 @@ class NarrativeProxyService:
             "task_type": "narrative_" + job["kind"], "queue_priority": 100,
             "workflow": "Narrative",
         }
+        if job.get("candidate_id"):
+            manifest["narrative_candidate_id"] = job["candidate_id"]
         if schema:
             detail = job["detail"]
             role = "narrative_interview" if job["kind"] == "interview" else "narrative_prompt"
@@ -57,15 +59,26 @@ class NarrativeProxyService:
                             ollama_request_options={"system": "You are an illustration assistant. Keep reasoning minimal. "
                                                     "Return only the requested JSON, without explaining your process."})
         else:
-            if job.get("render_sizing"):
-                from zet.services.image_sizing_service import validate_frozen_image_sizing
-                sizing = validate_frozen_image_sizing(job["render_sizing"])
-                width, height = sizing["width"], sizing["height"]
-                manifest["render_sizing"] = sizing
+            request = job.get("render_request") or {}
+            settings = request.get("settings", {})
+            if request:
+                if request.get("universe_id") != self.config.universe_id or request.get("target_id") != target:
+                    raise ValueError("Frozen render request belongs to another Narrative target.")
+                prompt = request["prompt"]
+                references = request.get("inputs", [])
+                seed = request["seed"]
+                width = settings.get("width", width)
+                height = settings.get("height", height)
+                manifest["render_request"] = request
+                manifest["checkpoint"] = settings.get("checkpoint", "")
+                manifest["render_sizing"] = {key: settings[key] for key in
+                    ("render_mode", "aspect_ratio", "target_pixels", "width", "height") if key in settings}
             manifest.update(ollama_model="", image_generation="comfyui", render_preset=RENDER_PRESET,
-                            workflow_kind="qwen_narrative_prompt", checkpoint=self.config.comfyui_checkpoint,
+                            workflow_kind="qwen_narrative_prompt", checkpoint=manifest.get("checkpoint", self.config.comfyui_checkpoint),
                             seed=seed, reference_files=references or [],
-                            render_overrides={"width": width, "height": height, "disable_prompt_globals": True})
+                            render_overrides={key: settings[key] for key in
+                                ("width", "height", "steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae", "disable_prompt_globals") if key in settings}
+                                if request else {"width": width, "height": height, "disable_prompt_globals": True})
         try:
             if schema and job.get("interview_evidence"):
                 folder = self.app.narrative_scene_service.repository.folder(story, scene, target).resolve()
@@ -103,6 +116,8 @@ class NarrativeProxyService:
                 ask = json.loads((answer / "ask_manifest.json").read_text(encoding="utf-8"))
                 expected = {"ask_id": job["id"], "consumer": CONSUMER, "narrative_story_id": story,
                             "narrative_scene_id": scene, "narrative_target_id": target, "universe_id": self.config.universe_id}
+                if job.get("candidate_id"):
+                    expected["narrative_candidate_id"] = job["candidate_id"]
                 if job.get("model") and job["kind"] != "image":
                     expected["ollama_model"] = job["model"]
                 if any(ask.get(key) != value for key, value in expected.items()):

@@ -123,3 +123,4 @@ explicitly authored body landmark, with frozen requests preserved.
 [0042 - Character batch restart is mode-scoped](0042-character-mode-restart.md) records confirmed clearing and idle preparation.
 
 [0043 - Scene text scales with pixel area](0043-scene-text-pixel-area-scaling.md) records backdrop anchored sizing and line-preserving box shrinking.
+\r\n\r\n[0047 Narrative Candidate Board handoff](0047-narrative-candidate-board-handoff.md) records the Narrative mapping and frozen render request boundary.\r\n

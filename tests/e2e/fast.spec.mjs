@@ -112,7 +112,10 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
   await expect(page.locator("#narrative-narrative")).toHaveValue(details[1].narrative);
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(page.locator("#narrative-narrative")).toHaveValue("The traveler reaches a forest gate.");
-  await page.getByRole("button", { name: "Write Prompt" }).click();
+  const writePromptButtons = page.locator('button[data-action="synthesize"]');
+  await expect(writePromptButtons).toHaveCount(2);
+  expect(await writePromptButtons.evaluateAll(buttons => buttons.every(button => button.dataset.action === "synthesize"))).toBeTruthy();
+  await page.locator('button[data-action="synthesize"]').first().click();
   await answerJob(page, scene, ids.subscene, "synthesize", { scene: "A traveler reaches a forest gate.", rendering: "Soft daylight." });
 
   for (const [index, targetId] of targets.entries()) {

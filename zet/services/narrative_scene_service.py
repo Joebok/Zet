@@ -56,34 +56,45 @@ class NarrativeSceneService:
 
     def save_subscene_image_to_inventory(self, story: str, scene: str, target: str,
                                         candidate_id: str, data: dict) -> dict:
-        """Copy an approved working image without binding Inventory to its source."""
+        """Publish a locked Narrative target image as an independent Inventory asset."""
         from zet.services.narrative_scene_text_service import finished_path
 
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
-            if record["kind"] != "subscene":
-                raise ValueError("Choose a subscene image to save to inventory.")
             candidate = record["candidates"].get(candidate_id)
             if not candidate or not candidate.get("image"):
-                raise KeyError("Subscene image not found.")
-            if candidate_id != record["selected_id"] and not candidate.get("locked"):
-                raise ValueError("Select or lock this image before saving it to inventory.")
+                raise KeyError("Candidate image not found.")
+            if not candidate.get("locked"):
+                raise ValueError("Lock this image before publishing it to Inventory.")
+            if candidate.get("published_asset_id"):
+                return {"asset": self.app.entity_library_service.get_asset(candidate["published_asset_id"])}
             label = str(data.get("label", record["title"]) or "").strip()
             if not label:
                 raise ValueError("Image name is required.")
             notes = (f"Saved from Narrative story: {self.repository.read(story)['title']}\n"
                      f"Scene: {self.repository.read(story, scene)['title']}\n"
-                     f"Subscene: {record['title']}")
+                     f"Target: {record['title']}")
             contents = finished_path(self.repository, story, scene, target, candidate_id).read_bytes()
             prompt = candidate.get("prompt") or ""
+            origin_key = f"narrative:{self.app.config.universe_id}:{story}:{scene}:{target}:{candidate_id}"
 
         with Image.open(BytesIO(contents)) as image:
             mime_type = Image.MIME.get(image.format, "")
         try:
-            # No origin key: each explicit save creates its own independent item.
-            asset = self.app.entity_library_import(label, mime_type, contents, notes=notes, prompt=prompt)
+            asset = self.app.entity_library_import(label, mime_type, contents, notes=notes, prompt=prompt,
+                origin="narrative", origin_key=origin_key, preserve_prompt_whitespace=True,
+                provenance_details={"source": "narrative_candidate", "story_id": story,
+                                    "scene_id": scene, "target_id": target,
+                                    "candidate_id": candidate_id})
         except EntityLibraryServiceError as exc:
             raise ValueError(str(exc)) from exc
+        with self.repository.lock():
+            record = self.repository.read(story, scene, target)
+            candidate = record["candidates"].get(candidate_id)
+            if not candidate or not candidate.get("locked"):
+                raise ValueError("The image was unlocked while Inventory publication was completing.")
+            candidate["published_asset_id"] = asset["asset_id"]
+            self.repository.write(record, story, scene, target)
         return {"asset": asset}
 
     def stories(self) -> list[dict]:
@@ -336,6 +347,12 @@ class NarrativeSceneService:
 
     def target(self, story: str, scene: str, target: str) -> dict:
         record = self.repository.read(story, scene, target)
+        locked = [cid for cid in record["slots"] if cid and record["candidates"].get(cid, {}).get("locked")]
+        if len(locked) == 1 and record.get("selected_id") != locked[0]:
+            record["selected_id"] = locked[0]
+            self.repository.write(record, story, scene, target)
+        elif len(locked) > 1:
+            raise ValueError("This board has multiple locked images. Review its lock state before continuing.")
         # Recheck on detail reads so existing candidates keep showing the advisory
         # even when their prompt difference was not observed during a save.
         self.mark_candidate_prompt_differences(record)
@@ -558,6 +575,7 @@ class NarrativeSceneService:
                     if path.is_file():
                         result.append({"story_id": parent["id"], "scene_id": scene_id, "target_id": target_id,
                             "candidate_id": candidate["id"], "title": scene["title"], "image_path": str(path),
+                            "published_asset_id": candidate.get("published_asset_id", ""),
                             "locked": candidate.get("locked", False), "render_mode": candidate.get("render_mode", "draft"),
                             "tag": f"{{{{NARRATIVE:{parent['id']}:{scene_id}:{target_id}:{candidate['id']}}}}}"})
         return result

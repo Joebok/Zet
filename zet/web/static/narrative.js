@@ -1,4 +1,5 @@
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
+import {renderCandidateBoard} from './candidate_board.js';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;
 let pollTimer = null;
@@ -19,6 +20,7 @@ let saveTimer = null;
 let saveChain = Promise.resolve();
 let busy = false;
 let pollBusy = false;
+let progressSignature = '';
 let slotSignature = '';
 let elementDraft = null;
 let modelOptions = {model:'general:latest', codex_models:[]};
@@ -276,6 +278,7 @@ async function loadPageContent() {
     host.querySelector('#narrative-breadcrumb').textContent = 'Stories';
   } else if (!route.scene) {
     detail = await api(base());
+    progressSignature = JSON.stringify(detail.jobs);
     contextLabels.story = detail.title;
     root.innerHTML = `<h1>${esc(detail.title)}</h1><section class="narrative-card">${label('title',detail.title,false)}${label('brief',detail.brief)}<button type="button" id="scene-text-story-style">Scene text style</button>
       <div class="narrative-actions"><button data-action="save">Save story</button><button class="danger" data-action="delete">Delete story</button></div></section>
@@ -641,7 +644,7 @@ listen(host,'pointerup',()=>{cropDrag=null;});listen(host,'pointercancel',()=>{c
 
 async function chooseNarrativeSource(kind, attach = false) {
   await save();
-  const sources = await api('/api/narrative/sources?kind='+kind);
+  const sources = await api('/api/narrative/sources?kind='+kind+'&story_id='+encodeURIComponent(route.story || ''));
   const destination = await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}`);
   sourcePicker = {kind,attach,sources:sources.filter(source=>source.scene_id!==route.scene || source.story_id!==route.story),elements:destination.elements};
   const stories = [...new Map(sourcePicker.sources.map(source=>[source.story_id,source.story_title])).entries()];
@@ -667,7 +670,7 @@ async function populateSourceTargets() {
 
 function chosenSource() {
   const source = sourcePicker.sources.find(source=>source.target_id===host.querySelector('#source-target').value);
-  return source ? {story_id:source.story_id,scene_id:source.scene_id,target_id:source.target_id,candidate_id:host.querySelector('#source-candidate').value || null} : null;
+  return source ? {story_id:source.story_id,scene_id:source.scene_id,target_id:source.target_id,candidate_id:host.querySelector('#source-candidate').value || null,destination_story_id:route.story} : null;
 }
 
 async function populateSourceCandidates() {
@@ -736,7 +739,7 @@ function renderTarget(targets) {
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
       <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
       <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div><p id="narrative-prompt-pending" class="narrative-muted"></p>
-      <div class="narrative-actions">${['draft','final'].map(mode=>[1,4].map(count=>`<button class="primary ${mode==='draft'?'narrative-render-draft':''}" data-action="render" data-mode="${mode}" data-count="${count}">${mode==='draft'?'Draft':'Final'} ${count}</button>`).join('')).join('')}<button data-action="refresh">Refresh</button></div>
+      <div class="narrative-actions"><label>Generate count <input id="narrative-render-count" type="number" min="1" max="${Math.max(1,detail.slots.filter(id=>!id).length)}" value="1"></label>${['draft','final'].map(mode=>`<button class="primary ${mode==='draft'?'narrative-render-draft':''}" data-action="render" data-mode="${mode}" data-count-control="true">Generate ${mode==='draft'?'Draft':'Final'}</button>`).join('')}${['draft','final'].map(mode=>[1,4].map(count=>`<button class="primary ${mode==='draft'?'narrative-render-draft':''}" data-action="render" data-mode="${mode}" data-count="${count}">${mode==='draft'?'Draft':'Final'} ${count}</button>`).join('')).join('')}<button data-action="refresh">Refresh</button></div>
       <div class="narrative-actions"><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete Drafts</button></div>
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
@@ -914,18 +917,10 @@ function updateLive() {
   const signature = JSON.stringify([slots,detail.candidates,selected]);
   if (signature === slotSignature) return;
   slotSignature = signature;
-  host.querySelector('#narrative-slots').innerHTML = slots.map((id,index)=>{
-    const candidate = id ? detail.candidates[id] : null;
-    return `<article class="narrative-slot ${id && id === selected ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === selected ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3 class="render-mode-heading">Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
-      ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${candidate ? '' : 'Empty'}</div>`}
-      ${candidate ? `<p class="narrative-muted image-card-state"><span class="narrative-render-mode-pill ${candidate.render_mode === 'final' ? 'final' : 'draft'}">${candidate.render_mode === 'final' ? 'Final' : 'Draft'}</span> · ${esc(candidate.status.toLowerCase())}${id === selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
-      ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
-      <div class="narrative-actions narrative-review-actions"><button data-review="${id}" aria-label="Review slot ${index+1}">Review</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== selected ? 'primary' : ''}" ${id === selected ? 'disabled' : ''}>${id === selected ? 'Selected' : 'Select'}</button>` : ''}
-      ${candidate.status === 'FAILED' ? `<button data-candidate="${id}" data-candidate-action="retry">Retry</button>` : ''}
-      ${!candidate.locked && id !== selected ? `<button class="narrative-regen-draft" data-render-slot="${index+1}" data-mode="draft">Regen Draft</button><button class="narrative-regen-final" data-render-slot="${index+1}" data-mode="final">Regen Final</button>` : ''}
-      <button data-candidate="${id}" data-candidate-action="clear" class="danger-text-action">Clear slot</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
-      : `<div class="narrative-actions"><button class="narrative-regen-draft" data-render-slot="${index+1}" data-mode="draft">Regen Draft</button><button class="narrative-regen-final" data-render-slot="${index+1}" data-mode="final">Regen Final</button></div>`}</article>`;
-  }).join('');
+  renderCandidateBoard({host: host.querySelector('#narrative-slots'), slots, candidates: detail.candidates,
+    selectedId: selected, escape: esc, imageUrl, promptIndicator,
+    renderSlotActions: (candidate, index) => candidate && (candidate.locked || slots[index] === selected) ? '' :
+      `<button class="narrative-regen-draft" data-render-slot="${index + 1}" data-mode="draft">Regen Draft</button><button class="narrative-regen-final" data-render-slot="${index + 1}" data-mode="final">Regen Final</button>`});
   renderImageReview();
 }
 
@@ -975,7 +970,7 @@ function renderImageReview() {
       ${candidate.status === 'FAILED' ? `<button data-candidate="${reviewCandidate}" data-candidate-action="retry" ${busy?'disabled':''}>Retry</button>` : ''}<button data-render-slot="${candidate.slot}" data-mode="draft" ${busy || selected || candidate.locked ? 'disabled' : ''}>Draft</button><button data-render-slot="${candidate.slot}" data-mode="final" ${busy || selected || candidate.locked ? 'disabled' : ''}>Final</button>
       <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
       <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy || !candidate.image ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
-      ${detail.kind === 'subscene' ? `<button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !(selected || candidate.locked) ? 'disabled' : ''} title="Select or lock this image before saving it to inventory">Save to inventory</button>` : ''}
+      <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image before publishing it to Inventory">Publish to Inventory</button>
     </div>
     ${inventorySaved?.candidate === reviewCandidate ? `<p role="status">Saved “${esc(inventorySaved.label)}” to inventory.</p>` : ''}
     <p class="error" role="status" id="narrative-review-error"></p>
@@ -992,6 +987,7 @@ function renderImageReview() {
 }
 
 function mergeTarget(updated) {
+  progressSignature = JSON.stringify(updated.jobs);
   if (dirty.has('layers') || layerDrag || brush) updated.layers = detail.layers;
   if (dirty.has('backdrop_adaptation') || cropDrag) updated.backdrop_adaptation = detail.backdrop_adaptation;
   for (const key of targetFields) {
@@ -1066,14 +1062,20 @@ async function poll() {
   pollBusy = true;
   const url = base();
   try {
-    const updated = await api(url);
+    const progress = await api(url + '/progress');
     if (base() !== url) return;
-    mergeTarget(updated);
+    const signature = JSON.stringify(progress.jobs);
+    if (signature !== progressSignature) {
+      progressSignature = signature;
+      const updated = await api(url);
+      if (base() !== url) return;
+      mergeTarget(updated);
+    }
   } catch (error) { status(error.message,true); }
   finally { pollBusy = false; }
 }
 
-async function start(actionName, count = 1, slot, retryJobId, renderMode = 'draft') {
+async function start(actionName, count = 1, slot, retryJobId, renderMode = 'draft', expectedCandidateId) {
   if (['generate','render'].includes(actionName) && host.querySelector('#narrative-aspect_ratio') && !host.querySelector('#narrative-aspect_ratio').reportValidity()) return;
   await save();
   status(actionName === 'render' ? 'Queueing images…' : 'Queueing illustrator…');
@@ -1084,7 +1086,7 @@ async function start(actionName, count = 1, slot, retryJobId, renderMode = 'draf
   updateLive();
   let result;
   try {
-    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,...(detail.kind==='subscene' ? {aspect_ratio:renderRatio} : {})} : {}), ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
+    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,...(detail.kind==='subscene' ? {aspect_ratio:renderRatio} : {})} : {}), ...(slot ? {slot, expected_candidate_id:expectedCandidateId ?? null} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
   } finally { llmSubmitting = false; updateLive(); }
   if (['interview','restart_interview'].includes(actionName)) interviewImage = '';
   mergeTarget(result);
@@ -1301,7 +1303,7 @@ listen(host,'click',event=>{
       if (result) { detail=result; updateLive(); status('Updated'); }
     } else if (button.dataset.renderSlot) {
       const slot=Number(button.dataset.renderSlot);
-      await start('render',1,slot,undefined,button.dataset.mode);
+      await start('render',1,slot,undefined,button.dataset.mode,detail.slots[slot - 1]);
     }
     else if (button.dataset.retryJob) {
       const job = detail.jobs[button.dataset.retryJob]; await start(job.kind,job.candidate_ids?.length === 4 ? 4 : 1,undefined,job.detail.kind==='assembly' || job.detail.source_snapshot?.image_file ? job.id : undefined);
@@ -1361,7 +1363,12 @@ listen(host,'click',event=>{
         }
         case 'new-element': await editElement(); break;
         case 'assign-elements': await assignElements(); break;
-        case 'interview': case 'restart_interview': case 'synthesize': case 'generate': case 'render': case 'rerun_interview': case 'rerun_prompt': await start(button.dataset.action,Number(button.dataset.count || 1),undefined,undefined,button.dataset.mode || 'draft'); break;
+        case 'interview': case 'restart_interview': case 'synthesize': case 'generate': case 'render': case 'rerun_interview': case 'rerun_prompt': {
+          const countInput = button.dataset.countControl ? host.querySelector('#narrative-render-count') : null;
+          if (countInput && !countInput.reportValidity()) break;
+          await start(button.dataset.action, Number(countInput?.value || button.dataset.count || 1), undefined, undefined, button.dataset.mode || 'draft');
+          break;
+        }
         case 'refresh': await save(); mergeTarget(await api(base())); status('Updated'); break;
       }
     }

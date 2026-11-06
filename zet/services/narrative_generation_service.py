@@ -13,7 +13,7 @@ from zet.services.narrative_prompt_service import assemble_prompt, llm_request
 from zet.services.narrative_interview_service import interview_review
 from zet.services.narrative_proxy_service import NarrativeProxyService
 from zet.services.workflow_storage import validate_image
-from zet.services.image_candidate_board_service import allocate
+from zet.services.image_candidate_board_service import allocate, lock as lock_candidate, select as select_candidate, unlock as unlock_candidate, validate_membership
 
 
 ACTIVE = {"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"}
@@ -30,6 +30,16 @@ class NarrativeGenerationService:
             record = self.repository.read(story, scene, target)
             self._refresh(story, scene, target, record)
             return self.author.target(story, scene, target)
+
+    def progress(self, story: str, scene: str, target: str) -> dict:
+        """Refresh queue state while returning only the fields needed for polling."""
+        with self.repository.lock():
+            record = self.repository.read(story, scene, target)
+            self._refresh(story, scene, target, record)
+            jobs = [{"id": job["id"], "status": job["status"], "candidate_id": job.get("candidate_id"),
+                     "candidate_ids": job.get("candidate_ids", [])}
+                    for job in record["jobs"].values()]
+            return {"jobs": jobs}
 
     def start(self, story: str, scene: str, target: str, data: dict) -> dict:
         with self.repository.lock():
@@ -160,8 +170,8 @@ class NarrativeGenerationService:
                 mode = (job.get("render_sizing") or {}).get("render_mode", "draft")
                 board = record["slots"]
                 count = data.get("count", 1)
-                if isinstance(count, bool) or not isinstance(count, int) or count not in (1, 4):
-                    raise ValueError("Generate one or four images.")
+                if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= len(board):
+                    raise ValueError("Generate between one and eight images.")
                 if data.get("seed_candidate_id"):
                     raise ValueError("Seed selection is no longer available.")
                 replay_seeds = {}
@@ -179,6 +189,8 @@ class NarrativeGenerationService:
                 elif slot is not None:
                     if isinstance(slot, bool) or not isinstance(slot, int) or not 1 <= slot <= 8:
                         raise ValueError("Choose a slot from 1 to 8.")
+                    if "expected_candidate_id" in data and board[slot - 1] != data.get("expected_candidate_id"):
+                        raise ValueError("This slot changed. Refresh the board and choose the replacement again.")
                     slots = allocate(board, record["candidates"], record["selected_id"], count, slot, ACTIVE)
                 else:
                     slots = allocate(board, record["candidates"], record["selected_id"], count, active=ACTIVE)
@@ -206,6 +218,7 @@ class NarrativeGenerationService:
             if kind != "render":
                 record["active_llm_job"] = job["id"]
             self.repository.write(record, story, scene, target)
+            self._cleanup_pending(story, scene, target, record)
             try:
                 if kind == "render":
                     job["result"] = record["prompt"]
@@ -254,6 +267,11 @@ class NarrativeGenerationService:
                 candidate["backdrop_adaptation"] = deepcopy(parent["detail"].get("backdrop_adaptation", {}))
             candidate["prompt_provenance"] = deepcopy(parent["detail"].get("prompt_provenance", {}) if parent["kind"] == "render" else
                                                         {**parent.get("provenance", {}), "job_id": parent["id"], "edited": False})
+            request = candidate.get("render_request")
+            if not request:
+                request = self._render_request(target, candidate, parent, prompt)
+                candidate["render_request"] = request
+            job["render_request"] = deepcopy(request)
             if parent.get("assembly_snapshot"):
                 candidate["assembly_snapshot"] = parent["assembly_snapshot"]
                 candidate["assembly_mode"] = job["assembly_mode"] = parent.get("assembly_mode", "finish_composite")
@@ -269,6 +287,26 @@ class NarrativeGenerationService:
                 job["error"] = candidate["error"] = str(exc)
             self.repository.write(record, story, scene, target)
 
+    def _render_request(self, target, candidate, parent, prompt):
+        from zet.services.image_render_request import ImageRenderRequest
+
+        project = Path(__file__).resolve().parents[2]
+        profiles = json.loads(self.author.app.config.state_file(project, "Local_Render_Presets.json").read_text(encoding="utf-8"))
+        profile = profiles.get("comfyui-qwen-narrative")
+        if not isinstance(profile, dict):
+            raise ValueError("The Narrative render profile is unavailable.")
+        settings = {key: profile[key] for key in (
+            "diffusion_model", "text_encoder", "vae", "steps", "cfg", "sampler_name",
+            "scheduler", "denoise", "disable_prompt_globals", "reference_max_pixels",
+            "reference_total_max_pixels") if key in profile}
+        settings.update(deepcopy(parent.get("render_sizing", {})))
+        settings["profile"] = "comfyui-qwen-narrative"
+        settings["checkpoint"] = self.author.app.config.comfyui_checkpoint or profile.get("diffusion_model", "")
+        request = ImageRenderRequest(self.author.app.config.universe_id, target, candidate["id"], prompt,
+            tuple(deepcopy(parent.get("references", []))), settings, candidate["seed"],
+            deepcopy(candidate.get("prompt_provenance", {})))
+        return request.to_dict()
+
     def _refresh(self, story, scene, target, record):
         release = []
         for job in list(record["jobs"].values()):
@@ -280,12 +318,20 @@ class NarrativeGenerationService:
                         continue
                     parent = next((item for item in record["jobs"].values()
                                    if candidate["id"] in item.get("candidate_ids", [])), None)
-                    if not parent:
+                    request = job.get("render_request") or candidate.get("render_request")
+                    if not parent and not request:
                         self._fail(record, job, "Recovery requires the saved parent request and frozen references.")
                         continue
-                    self.proxy.publish(story, scene, target, job, candidate["prompt"],
-                        references=parent["references"], width=parent["detail"]["width"],
-                        height=parent["detail"]["height"], seed=candidate["seed"])
+                    if request:
+                        job["render_request"] = deepcopy(request)
+                        settings = request.get("settings", {})
+                        self.proxy.publish(story, scene, target, job, request["prompt"],
+                            references=request.get("inputs", []), width=settings.get("width", 1216),
+                            height=settings.get("height", 832), seed=request["seed"])
+                    else:
+                        self.proxy.publish(story, scene, target, job, candidate["prompt"],
+                            references=parent["references"], width=parent["detail"]["width"],
+                            height=parent["detail"]["height"], seed=candidate["seed"])
                 elif job.get("request") and job.get("schema") is not None:
                     self.proxy.publish(story, scene, target, job, job["request"], schema=job["schema"])
                 else:
@@ -344,6 +390,7 @@ class NarrativeGenerationService:
             if state in {"COMPLETE", "FAILED"}:
                 release.append(job)
         self.repository.write(record, story, scene, target)
+        self._cleanup_pending(story, scene, target, record)
         for job in release:
             self.proxy.release(story, scene, target, job)
 
@@ -434,6 +481,7 @@ class NarrativeGenerationService:
             for candidate_id in ids:
                 self._remove_candidate(story, scene, target, record, candidate_id)
             self.repository.write(record, story, scene, target)
+            self._cleanup_pending(story, scene, target, record)
             return self.author.target(story, scene, target)
 
     def candidate_action(self, story, scene, target, candidate_id, data):
@@ -442,8 +490,7 @@ class NarrativeGenerationService:
             candidate = record["candidates"].get(candidate_id)
             if candidate is None:
                 raise KeyError("Candidate not found.")
-            if candidate_id not in record["slots"]:
-                raise ValueError("Candidate is no longer in a slot.")
+            candidate = validate_membership(record["slots"], record["candidates"], candidate_id)
             action = data.get("action")
             mode = candidate.get("render_mode", "draft")
             if "render_mode" in data and data["render_mode"] != mode:
@@ -456,12 +503,11 @@ class NarrativeGenerationService:
                 if candidate.get("scene_text_final", {}).get("token") != state["token"]:
                     raise ValueError("Confirm scene text on this image before selecting or locking.")
             if action == "select":
-                record[selection_key] = candidate_id
+                select_candidate(record, candidate_id)
             elif action == "lock":
-                for other_id, other in record["candidates"].items():
-                    other["locked"] = other_id == candidate_id
+                lock_candidate(record, candidate_id)
             elif action == "unlock":
-                candidate["locked"] = False
+                unlock_candidate(record, candidate_id)
             elif action == "retry":
                 if candidate["status"] != "FAILED":
                     raise ValueError("Choose a failed image candidate to retry.")
@@ -480,23 +526,18 @@ class NarrativeGenerationService:
             else:
                 raise ValueError("Unknown candidate action.")
             self.repository.write(record, story, scene, target)
+            self._cleanup_pending(story, scene, target, record)
             return self.author.target(story, scene, target)
 
     def _remove_candidate(self, story, scene, target, record, candidate_id):
         candidate = record["candidates"].pop(candidate_id)
-        import shutil
-        lettering_root = (self.repository.folder(story, scene, target) / "lettering").resolve()
-        lettering = (lettering_root / candidate_id).resolve()
-        if lettering.parent != lettering_root:
-            raise ValueError("Invalid lettering artifact identity.")
-        if lettering.is_dir():
-            shutil.rmtree(lettering)
+        pending = record.setdefault("cleanup_pending", [])
         if candidate["image"]:
-            root = self.repository.folder(story, scene, target).resolve()
-            image = (root / candidate["image"]).resolve()
-            if not image.is_relative_to(root):
-                raise ValueError("Invalid candidate image path.")
-            image.unlink(missing_ok=True)
+            pending.append(candidate["image"])
+        finished = candidate.get("scene_text_final", {}).get("image")
+        if finished:
+            pending.append(finished)
+        pending.append(f"lettering/{candidate_id}")
         mode = candidate.get("render_mode", "draft")
         slot_key = "slots"
         selection_key = "selected_id"
@@ -505,6 +546,24 @@ class NarrativeGenerationService:
             record[slot_key][index] = None
         if record[selection_key] == candidate_id:
             record[selection_key] = None
+
+    def _cleanup_pending(self, story, scene, target, record):
+        pending = record.get("cleanup_pending", [])
+        if not pending:
+            return
+        import shutil
+        root = self.repository.folder(story, scene, target).resolve()
+        remaining = []
+        for relative in pending:
+            path = (root / relative).resolve()
+            if not path.is_relative_to(root) or path == root:
+                raise ValueError("Invalid pending candidate cleanup path.")
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
+        record["cleanup_pending"] = remaining
+        self.repository.write(record, story, scene, target)
 
     def image(self, story, scene, target, candidate_id) -> Path:
         record = self.repository.read(story, scene, target)

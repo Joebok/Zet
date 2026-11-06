@@ -17,6 +17,24 @@ finished candidates. Target polling requests detail only while generation or
 collection is active. Draft cleanup requires a state-bound preview and approval
 for each selection or lock it would clear; protected target deletion uses the
 same in-page dialog. See [ADR 0045](../DECISIONS/0045-finished-image-source-policy.md).
+Candidate deletion records owned image and lettering paths before cleanup, so a
+later target refresh can finish filesystem cleanup after an interrupted delete.
+
+Candidate Board rules are shared through `image_candidate_board_service.py` for
+allocation, membership, selection and lock transitions. Narrative retains target
+ownership and persistence. Each new image candidate stores an `ImageRenderRequest`
+with its prompt, ordered captured inputs, seed, sizing, effective Narrative render
+profile settings and provenance. Retries dispatch that saved request. Older jobs
+continue to recover from their parent job records. The `/progress` endpoint refreshes
+queue state and returns compact job statuses. The browser polls it only during
+visible active work and fetches target detail when job state changes.
+
+Locked Narrative candidates can be published to Inventory with a stable candidate
+origin key. The candidate records the resulting Inventory asset ID, and publication
+preserves prompt whitespace. New cross-Story source choices require that publication
+and a current lock. Existing pinned inputs and saved `NARRATIVE` tags continue to
+resolve from their captured records. Image Catalog discovery exposes only locked,
+published Narrative assemblies and emits their `LIB:ASSET` reference tag.
 
 ## Implementation and interfaces
 

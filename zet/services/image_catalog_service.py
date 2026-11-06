@@ -306,11 +306,27 @@ class ImageCatalogService:
         author = getattr(self, "narrative", None)
         if author is None:
             return []
-        return [self._base_record("narrative:" + source["candidate_id"], source_type="scene", tag=source["tag"],
-            label=source["title"], image_path=source["image_path"], thumbnail_path=source["image_path"],
-            semantic_category="Composite/Scene", pipeline="Narrative final assembly", story_slug=source["story_id"],
-            scene_slug=source["scene_id"], candidate_pending=False, image_review_key="")
-            for source in author.finished_sources()]
+        library = author.app.entity_library_service
+        rows = []
+        for source in author.finished_sources():
+            asset_id = source.get("published_asset_id")
+            if not source.get("locked") or not asset_id:
+                continue
+            try:
+                asset = library.get_asset(asset_id)
+            except Exception:
+                continue
+            if asset.get("status") != "approved":
+                continue
+            path = asset.get("image_path", "")
+            if not path or not Path(path).is_file():
+                continue
+            rows.append(self._base_record("narrative:" + source["candidate_id"], source_type="scene",
+                tag=f"{{{{LIB:ASSET:{asset_id}}}}}", label=source["title"], image_path=path,
+                thumbnail_path=path, semantic_category="Composite/Scene",
+                pipeline="Narrative final assembly", story_slug=source["story_id"],
+                scene_slug=source["scene_id"], candidate_pending=False, image_review_key=""))
+        return rows
 
     def _discover_scenes_from_context(self, context) -> list[dict]:
         return self._discover_scenes()

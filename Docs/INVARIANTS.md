@@ -117,6 +117,13 @@ hashes before resuming. Configuration changes apply only to new submissions.
 - **Implementation/impact:** [NarrativeRepository](../zet/repositories/narrative_repository.py), [NarrativeGenerationService](../zet/services/narrative_generation_service.py), [NarrativeAssemblyService](../zet/services/narrative_assembly_service.py), [NarrativeSceneService](../zet/services/narrative_scene_service.py), router.
 - **Verify:** S1/S3 operate exclusively through Narrative UI/API/storage and verify persisted assembly publication/display. Inspect source freezing, layer binding, protected deletion and attempt checks directly; the fast suite does not assert every protection/provenance case.
 
+Narrative Candidate Boards share allocation, membership, selection and lock rules
+through `image_candidate_board_service.py`; Narrative retains target ownership and
+storage. New image candidates freeze their prompt, ordered input snapshots, seed,
+size and effective render profile in an `ImageRenderRequest`. New cross-Story
+working-image references require a locked candidate published to Inventory.
+Published catalog images remain independent after the working candidate changes.
+
 ## 12. Production local renders use supported profiles
 
 - **Rule/why:** [require_qwen_profile](../zet/services/local_render_policy.py) accepts ComfyUI profiles with `model_family=qwen-image-2.1` and registered diffusion models. Historical Stable Matrix files are not production-policy exceptions. AGENTS says ComfyUI normally runs through AI Proxy; direct operation requires asking for ComfyUI Desktop.

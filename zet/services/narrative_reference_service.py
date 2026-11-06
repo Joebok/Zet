@@ -4,6 +4,7 @@
 import hashlib
 import math
 import shutil
+from pathlib import Path
 from copy import deepcopy
 from dataclasses import asdict
 from io import BytesIO
@@ -48,7 +49,7 @@ class NarrativeReferenceService:
         self.author = author
         self.repository = author.repository
 
-    def sources(self, kind):
+    def sources(self, kind, destination_story=""):
         if kind not in {"backdrop", "subscene"}:
             raise ValueError("Choose backdrop or subscene sources.")
         with self.repository.lock():
@@ -63,15 +64,30 @@ class NarrativeReferenceService:
                         candidates = []
                         for candidate in target["candidates"].values():
                             if candidate["status"] == "COMPLETE" and candidate["image"]:
+                                if (destination_story and story["id"] != destination_story and
+                                        (not candidate.get("locked") or not candidate.get("published_asset_id"))):
+                                    continue
                                 path = self._file(story["id"], scene_id, target_id, candidate["image"])
                                 if path.is_file():
                                     candidates.append({"id": candidate["id"], "slot": candidate["slot"],
-                                                       "render_mode": candidate.get("render_mode", "draft")})
+                                                       "render_mode": candidate.get("render_mode", "draft"),
+                                                       "published": bool(candidate.get("published_asset_id"))})
                         result.append({"story_id": story["id"], "story_title": story["title"],
                                        "scene_id": scene_id, "scene_title": scene["title"],
                                        "target_id": target_id, "title": target["title"], "kind": kind,
                                        "selected_id": target["selected_id"], "candidates": candidates})
             return result
+
+    def _validate_cross_story_candidate(self, source, destination_story):
+        if source["story_id"] == destination_story or not source.get("candidate_id"):
+            return
+        record = self.repository.read(source["story_id"], source["scene_id"], source["target_id"])
+        candidate = record.get("candidates", {}).get(source["candidate_id"])
+        if not candidate or not candidate.get("locked") or not candidate.get("published_asset_id"):
+            raise ValueError("Lock and publish this image to Inventory before using it in another Story.")
+        asset = self.author.app.entity_library_service.image_binding(candidate["published_asset_id"])
+        if not Path(asset["image_path"]).is_file():
+            raise ValueError("Published Inventory image is unavailable.")
 
     def _file(self, story, scene, target, relative):
         folder = self.repository.folder(story, scene, target).resolve()
@@ -108,6 +124,10 @@ class NarrativeReferenceService:
             candidate = detail["candidates"].get(candidate_id, {})
             if candidate_id and (not candidate or candidate["status"] != "COMPLETE" or not candidate["image"]):
                 raise ValueError("Choose a completed source candidate.")
+            destination_story = source.get("destination_story_id")
+            if destination_story and story != destination_story and (
+                    not candidate.get("locked") or not candidate.get("published_asset_id")):
+                raise ValueError("Lock and publish this image to Inventory before using it in another Story.")
             parent = next((job for job in reversed(list(detail["jobs"].values()))
                            if candidate_id and candidate_id in job.get("candidate_ids", [])), {})
             inputs = parent.get("detail")
@@ -133,7 +153,16 @@ class NarrativeReferenceService:
             raise ValueError("Choose a different source backdrop.")
         original = self.repository.read(snapshot["story_id"], snapshot["scene_id"], snapshot["target_id"])
         candidate = original["candidates"][snapshot["candidate_id"]]
-        payload = self._file(snapshot["story_id"], snapshot["scene_id"], snapshot["target_id"], candidate["image"]).read_bytes()
+        if snapshot["story_id"] != story:
+            if not candidate.get("locked") or not candidate.get("published_asset_id"):
+                raise ValueError("Lock and publish this image to Inventory before using it in another Story.")
+            asset = self.author.app.entity_library_service.image_binding(candidate["published_asset_id"])
+            published_path = Path(asset["image_path"])
+            if not published_path.is_file():
+                raise ValueError("Published Inventory image is unavailable.")
+            payload = published_path.read_bytes()
+        else:
+            payload = self._file(snapshot["story_id"], snapshot["scene_id"], snapshot["target_id"], candidate["image"]).read_bytes()
         validate_image(payload)
         with Image.open(BytesIO(payload)) as image:
             image = ImageOps.exif_transpose(image)
@@ -150,6 +179,7 @@ class NarrativeReferenceService:
         with self.repository.lock():
             parent = self.repository.read(story, scene)
             source = self.preview(data.get("source", {}))
+            self._validate_cross_story_candidate(data["source"], story)
             kind = source["kind"]
             record = asdict(NarrativeTarget(self.author._title({"title": data.get("title") or source["title"]}), kind))
             record["width"], record["height"] = canvas_dimensions(parent["canvas"])
@@ -311,4 +341,5 @@ class NarrativeReferenceService:
         record["candidates"][candidate["id"]] = candidate
         slots[index] = candidate["id"]
         if not record[selection_key]:
-            record[selection_key] = candidate["id"]
+            from zet.services.image_candidate_board_service import select
+            select(record, candidate["id"])

@@ -369,7 +369,7 @@ class EntityLibraryService:
         item["usages"] = self.usage_for_asset(asset_id)
         return item
 
-    def import_asset(self, label: str, mime_type: str, data: bytes, *, notes: str = "", prompt: str = "", negative_prompt: str = "", entity_ids: list[str] | None = None, set_ids: list[str] | None = None, origin: str = "import", origin_key: str | None = None, entity_role: str = "depicted_subject", provenance_details: dict | None = None) -> dict:
+    def import_asset(self, label: str, mime_type: str, data: bytes, *, notes: str = "", prompt: str = "", negative_prompt: str = "", entity_ids: list[str] | None = None, set_ids: list[str] | None = None, origin: str = "import", origin_key: str | None = None, entity_role: str = "depicted_subject", provenance_details: dict | None = None, preserve_prompt_whitespace: bool = False) -> dict:
         label = self._require(label, "Image label")
         mime_type = str(mime_type or "").split(";")[0].strip().lower()
         if mime_type not in IMAGE_TYPES or not data:
@@ -390,7 +390,7 @@ class EntityLibraryService:
             with self.repository.transaction() as connection:
                 connection.execute(
                     "INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,status,notes,prompt,negative_prompt,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (asset_id, label, checksum, path.name, mime_type, width, height, origin, origin_key, "approved", notes.strip(), str(prompt or "").strip(), str(negative_prompt or "").strip(), stamp, stamp),
+                    (asset_id, label, checksum, path.name, mime_type, width, height, origin, origin_key, "approved", notes.strip(), str(prompt or "") if preserve_prompt_whitespace else str(prompt or "").strip(), str(negative_prompt or "").strip(), stamp, stamp),
                 )
                 self._link_assets(connection, asset_id, entity_ids or [], set_ids or [], entity_role=entity_role)
                 if provenance_details is not None:

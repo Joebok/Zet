@@ -52,7 +52,7 @@ Mode-aware local batches: `CharacterRenderSlots.run_available` reserves configur
 
 Character image ranking keeps Draft and Final evaluations separate. The shared ranking service resolves matching Draft locks as comparison-only evidence; character adapters fence results and the slot collector recovers each mode independently. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md).
 
-Draft/Final rendering: `image_sizing_service.py` owns target-pixel sizing; `LocalModeSelectionService` and `LocalAssetStoreService` own mode-scoped character selection and locks. Narrative uses `image_candidate_board_service.py` for shared eight-slot allocation and `migrate_narrative_image_board.py` for backed-up legacy conversion. The workflow and dashboard expose individual and bulk mode actions. See the [completed plan](../plans/completed/draft-final-rendering.md).
+Draft/Final rendering: `image_sizing_service.py` owns target-pixel sizing; `LocalModeSelectionService` and `LocalAssetStoreService` own mode-scoped character selection and locks. Narrative uses `image_candidate_board_service.py` for shared board rules and `image_render_request.py` for frozen candidate handoffs. `NarrativeSceneService` owns locked Inventory publication; `migrate_narrative_image_board.py` performs backed-up legacy conversion. The workflow and dashboard expose individual and bulk mode actions. See the [completed plan](../plans/completed/draft-final-rendering.md).
 
 Dashboard Overview (2026-10-27): `local_character_overview.js` mounts the
 character/phase/costume grid through `zet.js` and `index.html`; the former standalone

@@ -54,8 +54,8 @@ def create_narrative_router(app_provider):
         return app_provider().narrative_reference_service
 
     @router.get("/sources")
-    def source_options(kind: str = Query("backdrop")):
-        return call(references().sources, kind)
+    def source_options(kind: str = Query("backdrop"), story_id: str = Query("")):
+        return call(references().sources, kind, story_id)
 
     @router.post("/sources/preview")
     def source_preview(data: dict = Body(...)):
@@ -260,6 +260,10 @@ def create_narrative_router(app_provider):
     def target_detail(story: str, scene: str, target: str):
         return call(generation().detail, story, scene, target)
 
+    @router.get(target_path + "/progress")
+    def target_progress(story: str, scene: str, target: str):
+        return call(generation().progress, story, scene, target)
+
     @router.patch(target_path)
     def update_target(story: str, scene: str, target: str, data: dict = Body(...)):
         call(author().update_target, story, scene, target, data)
@@ -291,7 +295,7 @@ def create_narrative_router(app_provider):
         return call(generation().candidate_action, story, scene, target, candidate, data)
 
     @router.post(target_path + "/candidates/{candidate}/inventory")
-    def save_subscene_image(story: str, scene: str, target: str, candidate: str, data: dict = Body(...)):
+    def publish_candidate(story: str, scene: str, target: str, candidate: str, data: dict = Body(...)):
         return call(author().save_subscene_image_to_inventory, story, scene, target, candidate, data)
 
     @router.get(target_path + "/candidates/{candidate}/image")
