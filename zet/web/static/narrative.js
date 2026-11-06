@@ -33,11 +33,9 @@ let layerDrag = null;
 let activeLayer = null;
 let brush = null;
 let reviewCandidate = null;
-let renderMode = 'draft';
 let renderRatio = '';
 let previewSizing = null;
 let ratioTarget = '';
-let seedCandidate = '';
 let inventorySaved = null;
 let sourcePicker = null;
 let contextState = 'loading';
@@ -51,10 +49,10 @@ const fieldValue = field => field.type === 'checkbox' ? field.checked : field.va
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 const title = key => key.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
 const targetsWithAssemblyLast = targets => [...targets.filter(target => target.kind !== 'assembly'), ...targets.filter(target => target.kind === 'assembly')];
-const modeSlots = () => renderMode === 'final' ? (detail?.final_slots || Array(8).fill(null)) : (detail?.slots || []);
-const modeSelected = () => renderMode === 'final' ? detail?.final_selected_id : detail?.selected_id;
+const modeSlots = () => detail?.slots || [];
+const modeSelected = () => detail?.selected_id;
 const preferredSource = source => {
-  const ids = renderMode === 'final' ? [source.final_selected_id, source.selected_id] : [source.selected_id, source.final_selected_id];
+  const ids = [source.selected_id];
   return ids.find(id => id && (source.candidates || []).some(candidate => candidate.id === id)) || '';
 };
 const label = (key, value, textarea = true, name = title(key)) => {
@@ -158,13 +156,13 @@ async function api(url, method = 'GET', data) {
 async function updateRenderSize() {
   const input = host.querySelector('#narrative-aspect_ratio'), output = host.querySelector('#narrative-size-preview');
   if (!output) return;
-  const mode = renderMode, ratio = input?.value || detail.scene_canvas;
+  const mode = 'draft', ratio = input?.value || detail.scene_canvas;
   try {
     const sizing = await api(`/api/image-generation/sizing?${new URLSearchParams({render_mode:mode,aspect_ratio:ratio})}`);
-    if (mode !== renderMode || ratio !== (input?.value || detail.scene_canvas)) return;
-    if(input) input.setCustomValidity(''); previewSizing=sizing; output.textContent = `${sizing.width} × ${sizing.height}`; renderPlacement();
+    if (ratio !== (input?.value || detail.scene_canvas)) return;
+    if(input) input.setCustomValidity(''); previewSizing=sizing; output.textContent = `Draft preview ${sizing.width} × ${sizing.height}`; renderPlacement();
   } catch (error) {
-    if (mode !== renderMode || ratio !== (input?.value || detail.scene_canvas)) return;
+    if (ratio !== (input?.value || detail.scene_canvas)) return;
     if(input) input.setCustomValidity(error.message); previewSizing=null; output.textContent = error.message;
   }
 }
@@ -437,7 +435,7 @@ async function loadPageContent() {
         <input aria-label="Target title" name="title" required placeholder="Title"><select name="kind" aria-label="Target kind"><option value="subscene">Subscene</option><option value="backdrop">Backdrop</option></select><button class="primary">Create and edit</button></form>
         ${detail.targets.some(target=>target.kind==='assembly') ? '' : '<button data-action="create-assembly">Create final assembly</button>'}
         <div class="narrative-actions"><button data-action="reference-backdrop">Reference backdrop from another scene</button><button data-action="import-subscene">Import subscene from another scene</button></div>
-        ${targetsWithAssemblyLast(detail.targets).map(target=>{const selected=target.final_selected_id || target.selected_id;return `<article class="narrative-card narrative-target-card" data-target-id="${target.id}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${selected ? ' · Image selected' : ''}</p>
+        ${targetsWithAssemblyLast(detail.targets).map(target=>{const selected=target.selected_id;return `<article class="narrative-card narrative-target-card" data-target-id="${target.id}"><h3>${link(target.title,{...route,target:target.id})}</h3><p class="narrative-muted">${esc(target.kind)}${selected ? ' · Image selected' : ''}</p>
           ${selected ? `<a href="${esc(href({...route,target:target.id}))}" data-navigate><img class="narrative-target-preview" src="${esc(imageUrl(selected,target.id))}" alt="Selected image for ${esc(target.title)}"></a>` : ''}${target.kind==='subscene' ? `<button class="danger" data-delete-subscene="${target.id}">Delete subscene</button>` : ''}</article>`;}).join('')}</section>
       <section class="narrative-card"><h2>Scene elements</h2><button data-action="new-element">Add element</button><div id="narrative-elements">${elementsHtml(detail.elements,false)}</div></section></div></div>`;
     host.querySelector('#narrative-breadcrumb').innerHTML = link('Stories',{})+' / '+link(story.title,{story:route.story});
@@ -495,7 +493,7 @@ function renderLayers() {
 function hideRaw() { const raw=host.querySelector('#assembly-raw'); if(raw) raw.hidden=true; }
 function manualBackdrop(layer, image) {
   if (!image?.naturalWidth || !image.naturalHeight) return false;
-  const size=previewSizing?.aspect_ratio===detail.scene_canvas && previewSizing.render_mode===renderMode ? previewSizing : detail;
+  const size=previewSizing?.aspect_ratio===detail.scene_canvas ? previewSizing : detail;
   const cw=size.width, ch=size.height, iw=image.naturalWidth, ih=image.naturalHeight;
   const factor=layer.fit==='cover' ? Math.max(cw/iw,ch/ih) : Math.min(cw/iw,ch/ih);
   layer.x=(cw-iw*factor)/2/cw; layer.y=(ch-ih*factor)/2/ch; layer.scale=iw*factor/cw; layer.fit='manual'; return true;
@@ -505,7 +503,7 @@ function renderPlacement() {
   const layers=detail.layers.filter(layer=>layer.visible).sort((a,b)=>a.role==='base'?-1:b.role==='base'?1:a.z-b.z);
   if(!layers.some(layer=>layer.id===activeLayer)) activeLayer=layers[0]?.id || null;
   const picker=host.querySelector('#assembly-active-layer'); picker.innerHTML=layers.map(layer=>`<option value="${esc(layer.id)}">${esc(layer.label)}</option>`).join(''); picker.value=activeLayer || '';
-  const size=previewSizing?.aspect_ratio===detail.scene_canvas && previewSizing.render_mode===renderMode ? previewSizing : detail;
+  const size=previewSizing?.aspect_ratio===detail.scene_canvas ? previewSizing : detail;
   canvas.style.aspectRatio=`${detail.scene_canvas.replace(':','/')}`; host.querySelector('#assembly-size').textContent=`Output: ${size.width} x ${size.height}`;
   canvas.innerHTML=layers.map(layer=>{ const selected=layer.id===activeLayer, preset=layer.role==='base' && layer.fit!=='manual';
     const style=preset?'left:0;top:0;width:100%;height:100%':`left:${layer.x*100}%;top:${layer.y*100}%;width:${layer.scale*100}%`;
@@ -602,7 +600,7 @@ function sourcePanelHtml() {
     <label class="narrative-field">Backdrop operation<select id="backdrop-operation" data-adaptation="operation">${[['edit','Other edits'],['expand','Expand'],['viewpoint','Change viewpoint']].map(([v,n])=>`<option value="${v}" ${(settings.operation||'edit')===v?'selected':''}>${n}</option>`).join('')}</select></label>
     <label class="narrative-field">Adaptation direction<textarea id="backdrop-direction" data-adaptation="direction">${esc(settings.direction||'')}</textarea></label>
     <label class="narrative-field" id="backdrop-expand-control">Expand toward<select data-adaptation="expand_side" id="backdrop-expand-side">${['left','right','top','bottom','all'].map(side=>`<option ${(settings.expand_side||'right')===side?'selected':''}>${side}</option>`).join('')}</select></label>
-    <button class="primary" data-action="apply-backdrop-operation">Apply operation</button><p>Writes a fresh prompt and generates one image from the ${settings.crop_enabled?'crop':'full source'}. Scene settings and applied interview edits supply the changes. Generated edits may reinterpret pixels.</p></div>
+    <button class="primary" data-action="apply-backdrop-operation" data-mode="draft">Apply Draft</button><button class="primary" data-action="apply-backdrop-operation" data-mode="final">Apply Final</button><p>Writes a fresh prompt and generates one image from the ${settings.crop_enabled?'crop':'full source'}. Scene settings and applied interview edits supply the changes. Generated edits may reinterpret pixels.</p></div>
     <p>After changing the mode, crop or operation, use Write Prompt to update existing prompt text. Render sends the entered prompt.</p>` : '<p>No source attached.</p>'}</section>`;
 }
 
@@ -670,7 +668,7 @@ async function populateSourceTargets() {
 
 function chosenSource() {
   const source = sourcePicker.sources.find(source=>source.target_id===host.querySelector('#source-target').value);
-  return source ? {story_id:source.story_id,scene_id:source.scene_id,target_id:source.target_id,candidate_id:host.querySelector('#source-candidate').value || null,render_mode:renderMode} : null;
+  return source ? {story_id:source.story_id,scene_id:source.scene_id,target_id:source.target_id,candidate_id:host.querySelector('#source-candidate').value || null} : null;
 }
 
 async function populateSourceCandidates() {
@@ -712,7 +710,7 @@ function adaptationChanged() {
 }
 
 function renderTarget(targets) {
-  if (ratioTarget !== route.target) { ratioTarget = route.target; renderRatio = detail.kind === 'subscene' ? detail.aspect_ratio : detail.scene_canvas; previewSizing=null; seedCandidate = ''; }
+  if (ratioTarget !== route.target) { ratioTarget = route.target; renderRatio = detail.kind === 'subscene' ? detail.aspect_ratio : detail.scene_canvas; previewSizing=null; }
   const backdrop = detail.kind === 'backdrop';
   const assembly = detail.kind === 'assembly';
   const viewingImages = window.matchMedia("(max-width: 1360px)").matches && modeSlots().some(id => id && detail.candidates[id]?.image);
@@ -739,10 +737,10 @@ function renderTarget(targets) {
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
       <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
       <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div><p id="narrative-prompt-pending" class="narrative-muted"></p>
-      <div class="narrative-actions"><button class="primary" data-action="render" data-count="1">Render 1</button><button class="primary" data-action="render" data-count="4">Render 4</button><button data-action="refresh">Refresh</button></div>
+      <div class="narrative-actions">${['draft','final'].map(mode=>[1,4].map(count=>`<button class="primary" data-action="render" data-mode="${mode}" data-count="${count}">${mode==='draft'?'Draft':'Final'} ${count}</button>`).join('')).join('')}<button data-action="refresh">Refresh</button></div>
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
-    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div class="narrative-actions"><label>Render quality <select id="narrative-render-mode"><option value="draft" ${renderMode==='draft'?'selected':''}>Draft</option><option value="final" ${renderMode==='final'?'selected':''}>Final</option></select></label><span id="narrative-size-preview" role="status"></span><label>Seed <select id="narrative-seed-source"><option value="">New seed</option></select></label></div><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete all Draft images</button><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div class="narrative-actions"><span id="narrative-size-preview" role="status"></span></div><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete all Draft images</button><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
   sourceVisibility();
   enableModelPickers();
   updateLive();
@@ -823,7 +821,6 @@ function updateLive() {
   if (disposed) return;
   const imagesCard = host.querySelector('#narrative-images-card');
   if (imagesCard) {
-    imagesCard.dataset.renderMode = renderMode;
     imagesCard.querySelector('h2').classList.add('render-mode-heading');
   }
   const history = host.querySelector('#narrative-interview');
@@ -907,24 +904,20 @@ function updateLive() {
     failures.filter(job=>job.kind !== 'image').map(job=>`<div class="narrative-failure">${esc(modelName(job.provenance))} · ${esc(job.error)}${job.kind === 'interview' ? ` <button data-retry-job="${job.id}">Retry</button>` : ''}</div>`).join('');
   updatePromptIndicators();
   const slots = modeSlots(), selected = modeSelected();
-  const seedSelect=host.querySelector('#narrative-seed-source');
-  if(seedSelect){const sources=Object.values(detail.candidates).filter(candidate=>(candidate.render_mode || 'draft')!==renderMode && Number.isInteger(candidate.seed));
-    const options='<option value="">New seed</option>'+sources.map(candidate=>`<option value="${esc(candidate.id)}">Reuse ${candidate.render_mode==='final'?'Final':'Draft'} slot ${candidate.slot}</option>`).join('');
-    if(seedSelect.innerHTML!==options)seedSelect.innerHTML=options;
-    seedSelect.value=seedCandidate;if(seedSelect.value!==seedCandidate)seedCandidate='';}
-  const signature = JSON.stringify([renderMode,slots,detail.candidates,selected]);
+  const signature = JSON.stringify([slots,detail.candidates,selected]);
   if (signature === slotSignature) return;
   slotSignature = signature;
   host.querySelector('#narrative-slots').innerHTML = slots.map((id,index)=>{
     const candidate = id ? detail.candidates[id] : null;
     return `<article class="narrative-slot ${id && id === selected ? 'selected' : ''}" data-state="${candidate?.locked ? 'locked' : id && id === selected ? 'selected' : candidate?.status === 'FAILED' ? 'failed' : candidate?.image ? 'available' : candidate ? 'pending' : 'empty'}"><h3 class="render-mode-heading">Slot ${index+1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>
       ${candidate?.image ? `<img src="${esc(imageUrl(id))}" alt="Slot ${index+1} candidate" data-review="${id}">` : `<div class="placeholder">${candidate ? '' : 'Empty'}</div>`}
-      ${candidate ? `<p class="narrative-muted image-card-state">${renderMode === 'final' ? 'Final' : 'Draft'}${candidate.width && candidate.height ? ` · requested ${candidate.width} × ${candidate.height}` : ''} · ${esc(candidate.status.toLowerCase())}${id === selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
+      ${candidate ? `<p class="narrative-muted image-card-state">${candidate.render_mode === 'final' ? 'Final' : 'Draft'}${candidate.width && candidate.height ? ` · requested ${candidate.width} × ${candidate.height}` : ''} · ${esc(candidate.status.toLowerCase())}${id === selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
       ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
       <div class="narrative-actions narrative-review-actions"><button data-review="${id}" aria-label="Review slot ${index+1}">Review</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== selected ? 'primary' : ''}" ${id === selected ? 'disabled' : ''}>${id === selected ? 'Selected' : 'Select'}</button>` : ''}
-      ${!candidate.locked && id !== selected ? `<button data-render-slot="${index+1}">${candidate.status === 'FAILED' ? 'Retry' : 'Regenerate'}</button>` : ''}
+      ${candidate.status === 'FAILED' ? `<button data-candidate="${id}" data-candidate-action="retry">Retry</button>` : ''}
+      ${!candidate.locked && id !== selected ? `<button data-render-slot="${index+1}" data-mode="draft">Draft</button><button data-render-slot="${index+1}" data-mode="final">Final</button>` : ''}
       <button data-candidate="${id}" data-candidate-action="clear" class="danger-text-action">Clear slot</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
-      : `<div class="narrative-actions"><button class="primary" data-render-slot="${index+1}">Generate</button></div>`}</article>`;
+      : `<div class="narrative-actions"><button class="primary" data-render-slot="${index+1}" data-mode="draft">Draft</button><button class="primary" data-render-slot="${index+1}" data-mode="final">Final</button></div>`}</article>`;
   }).join('');
   renderImageReview();
 }
@@ -969,10 +962,10 @@ function renderImageReview() {
   const detailsScroll = sameCandidate ? panel.scrollTop : 0;
   panel.dataset.candidate = reviewCandidate;
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
-    <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
+    <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${candidate.render_mode === 'final' ? 'Final' : 'Draft'} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
       ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked?"disabled":""}>Edit text</button>` : ''}<button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected || !candidate.image ? 'disabled' : ''}>Select</button>
-      <button data-render-slot="${candidate.slot}" ${busy || selected || candidate.locked ? 'disabled' : ''}>${candidate.status === 'FAILED' ? 'Retry' : 'Regenerate'}</button>
+      ${candidate.status === 'FAILED' ? `<button data-candidate="${reviewCandidate}" data-candidate-action="retry" ${busy?'disabled':''}>Retry</button>` : ''}<button data-render-slot="${candidate.slot}" data-mode="draft" ${busy || selected || candidate.locked ? 'disabled' : ''}>Draft</button><button data-render-slot="${candidate.slot}" data-mode="final" ${busy || selected || candidate.locked ? 'disabled' : ''}>Final</button>
       <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
       <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy || !candidate.image ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
       ${detail.kind === 'subscene' ? `<button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !(selected || candidate.locked) ? 'disabled' : ''} title="Select or lock this image before saving it to inventory">Save to inventory</button>` : ''}
@@ -1073,7 +1066,7 @@ async function poll() {
   finally { pollBusy = false; }
 }
 
-async function start(actionName, count = 1, slot, retryJobId) {
+async function start(actionName, count = 1, slot, retryJobId, renderMode = 'draft') {
   if (['generate','render'].includes(actionName) && host.querySelector('#narrative-aspect_ratio') && !host.querySelector('#narrative-aspect_ratio').reportValidity()) return;
   await save();
   status(actionName === 'render' ? 'Queueing images…' : 'Queueing illustrator…');
@@ -1084,7 +1077,7 @@ async function start(actionName, count = 1, slot, retryJobId) {
   updateLive();
   let result;
   try {
-    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,...(detail.kind==='subscene' ? {aspect_ratio:renderRatio} : {}),...(seedCandidate ? {seed_candidate_id:seedCandidate} : {})} : {}), ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
+    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,...(detail.kind==='subscene' ? {aspect_ratio:renderRatio} : {})} : {}), ...(slot ? {slot} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
   } finally { llmSubmitting = false; updateLive(); }
   if (['interview','restart_interview'].includes(actionName)) interviewImage = '';
   mergeTarget(result);
@@ -1141,8 +1134,6 @@ listen(host,'input',event=>{
 });
 
 listen(host,'change',event=>{
-  if (event.target.id==='narrative-render-mode') {renderMode=event.target.value;seedCandidate='';slotSignature='';reviewCandidate=null;host.querySelector('#image-dialog')?.close();updateLive();void updateRenderSize();const button=host.querySelector('[data-action="scene-text"]');if(button)button.disabled=!modeSelected();return;}
-  if (event.target.id==='narrative-seed-source') {seedCandidate=event.target.value;return;}
   if (event.target.id==='assembly-active-layer') { activeLayer=event.target.value; renderPlacement(); return; }
   if (event.target.id==='narrative-interview-image') {interviewImage=event.target.value;updateLive();return;}
   if (event.target.id==='backdrop-link-mode') {const mode=event.target.value;action(async()=>{await save();await api(base(),'PATCH',{backdrop_link_mode:mode});await loadPage();});return;}
@@ -1279,7 +1270,7 @@ listen(host,'click',event=>{
       const layerId=button.dataset.currentSelection;
       const sourceId=detail.layers.find(item=>item.id===layerId).target_id;
       const scene=await api(`/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${sourceId}`);
-      const selected = renderMode === 'final' ? scene.final_selected_id || scene.selected_id : scene.selected_id || scene.final_selected_id;
+      const selected = scene.selected_id;
       if(!selected) throw new Error('Select a source image first.');
       const layer=detail.layers.find(item=>item.id===layerId);
       layer.candidate_id=selected;layer.strokes=[];layersChanged();await save();renderLayers();
@@ -1295,16 +1286,15 @@ listen(host,'click',event=>{
       await api(`${base()}/elements/${button.dataset.deleteElement}`,'DELETE'); await loadPage();
     } else if (button.dataset.candidate) {
       await save();
-      if (button.dataset.candidateAction === 'lock' && Object.entries(detail.candidates).some(([id, candidate]) => id !== button.dataset.candidate && candidate.locked && (candidate.render_mode || 'draft') === renderMode)) {
-        if (!confirm(`An image is already locked in ${renderMode}. Lock this image and unlock the other ${renderMode} image?`)) return;
+      if (button.dataset.candidateAction === 'lock' && Object.entries(detail.candidates).some(([id, candidate]) => id !== button.dataset.candidate && candidate.locked)) {
+        if (!confirm('An image is already locked. Lock this image and unlock the other image?')) return;
       }
       if(detail.kind==='assembly' && (detail.scene_text?.length || detail.candidates[button.dataset.candidate]?.scene_text_final) && !(detail.candidates[button.dataset.candidate]?.locked && !detail.candidates[button.dataset.candidate]?.scene_text_pending) && button.dataset.candidateAction==='select'){await window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.candidate,done:async result=>{detail=result;updateLive();}});return;}
-      const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction,render_mode:renderMode});
+      const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction});
       if (result) { detail=result; updateLive(); status('Updated'); }
     } else if (button.dataset.renderSlot) {
-      const slot=Number(button.dataset.renderSlot), id=modeSlots()[slot-1], candidate=id && detail.candidates[id];
-      if (candidate?.status === 'FAILED') {const result=await api(base()+`/candidates/${id}`,'POST',{action:'retry',render_mode:renderMode});if(result){detail=result;updateLive();status('Retry queued.');}}
-      else await start('render',1,slot);
+      const slot=Number(button.dataset.renderSlot);
+      await start('render',1,slot,undefined,button.dataset.mode);
     }
     else if (button.dataset.retryJob) {
       const job = detail.jobs[button.dataset.retryJob]; await start(job.kind,job.candidate_ids?.length === 4 ? 4 : 1,undefined,job.detail.kind==='assembly' || job.detail.source_snapshot?.image_file ? job.id : undefined);
@@ -1314,10 +1304,10 @@ listen(host,'click',event=>{
         case 'import-subscene': await chooseNarrativeSource('subscene');break;
         case 'refresh-backdrop': case 'copy-source-current': case 'copy-source-generation': case 'reuse-backdrop': case 'crop-backdrop': {
           await save();
-          const request = {'refresh-backdrop':{action:'refresh',render_mode:renderMode},'copy-source-current':{action:'copy_inputs',basis:'current'},'copy-source-generation':{action:'copy_inputs',basis:'generation'},'reuse-backdrop':{action:'reuse',render_mode:renderMode},'crop-backdrop':{action:'crop',render_mode:renderMode}}[button.dataset.action];
+          const request = {'refresh-backdrop':{action:'refresh'},'copy-source-current':{action:'copy_inputs',basis:'current'},'copy-source-generation':{action:'copy_inputs',basis:'generation'},'reuse-backdrop':{action:'reuse'},'crop-backdrop':{action:'crop'}}[button.dataset.action];
           await api(base()+'/backdrop-source','POST',request);await loadPage();break;
         }
-        case 'apply-backdrop-operation': await start('generate',1);break;
+        case 'apply-backdrop-operation': await start('generate',1,undefined,undefined,button.dataset.mode);break;
         case 'preview-crop': {await save();const image=host.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
         case 'delete-draft-images': {
           await save();
@@ -1347,7 +1337,7 @@ listen(host,'click',event=>{
           layersChanged();await save();renderLayers();break;
         }
         case 'download-composite': case 'preview-composite': {
-          await save();const response=await fetch(artifactUrl('composite')+`&render_mode=${renderMode}`);if(!response.ok){const value=await response.json();throw new Error(value.detail);}
+          await save();const response=await fetch(artifactUrl('composite')+'&render_mode=draft');if(!response.ok){const value=await response.json();throw new Error(value.detail);}
           const blob=await response.blob();
           if(button.dataset.action==='download-composite') {
             const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='composite.png';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
@@ -1364,7 +1354,7 @@ listen(host,'click',event=>{
         }
         case 'new-element': await editElement(); break;
         case 'assign-elements': await assignElements(); break;
-        case 'interview': case 'restart_interview': case 'synthesize': case 'generate': case 'render': case 'rerun_interview': case 'rerun_prompt': await start(button.dataset.action,Number(button.dataset.count || 1)); break;
+        case 'interview': case 'restart_interview': case 'synthesize': case 'generate': case 'render': case 'rerun_interview': case 'rerun_prompt': await start(button.dataset.action,Number(button.dataset.count || 1),undefined,undefined,button.dataset.mode || 'draft'); break;
         case 'refresh': await save(); mergeTarget(await api(base())); status('Updated'); break;
       }
     }

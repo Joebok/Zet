@@ -37,6 +37,8 @@ class NarrativeRepository:
                 raise KeyError("Narrative record not found.")
             record = read_library_json(path, self.library_root)
         if target:
+            if record.get("board_version") != 2:
+                raise ValueError("Legacy Narrative image board requires migration; run zet.scripts.migrate_narrative_image_board.")
             from zet.models.narrative import NarrativeTarget
             from zet.services.narrative_reference_service import normalize_backdrop
             normalize_backdrop(record)

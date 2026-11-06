@@ -52,7 +52,7 @@ Mode-aware local batches: `CharacterRenderSlots.run_available` reserves configur
 
 Character image ranking keeps Draft and Final evaluations separate. The shared ranking service resolves matching Draft locks as comparison-only evidence; character adapters fence results and the slot collector recovers each mode independently. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md).
 
-Draft/Final rendering: `image_sizing_service.py` owns target-pixel sizing; `LocalModeSelectionService` and `LocalAssetStoreService` own mode-scoped character selection and locks. The workflow and dashboard expose individual and bulk mode actions. See the [completed plan](../plans/completed/draft-final-rendering.md).
+Draft/Final rendering: `image_sizing_service.py` owns target-pixel sizing; `LocalModeSelectionService` and `LocalAssetStoreService` own mode-scoped character selection and locks. Narrative uses `image_candidate_board_service.py` for shared eight-slot allocation and `migrate_narrative_image_board.py` for backed-up legacy conversion. The workflow and dashboard expose individual and bulk mode actions. See the [completed plan](../plans/completed/draft-final-rendering.md).
 
 Dashboard Overview (2026-10-27): `local_character_overview.js` mounts the
 character/phase/costume grid through `zet.js` and `index.html`; the former standalone
@@ -388,7 +388,7 @@ New Narrative renders resolve Draft/Final pixels from subscene `aspect_ratio` or
 the current scene `canvas` for backdrops and assemblies. NarrativeGenerationService
 freezes those pixels in each job; NarrativeAssemblyService uses them for composite
 and placement snapshots. Failed-image Retry retains frozen sizing. The target UI
-shows inherited scene ratio and mode-sized previews. Ad hoc generation and
+shows inherited scene ratio and a Draft composite preview. Ad hoc generation and
 reconstruction accept ratio plus mode for new requests; historical job dimensions
 remain transport and recovery data.
 
@@ -396,8 +396,8 @@ remain transport and recovery data.
 
 `image_sizing_service.py` owns configured mode sizing. `CharacterRenderSlots`,
 `LocalModeSelectionService` and `LocalAssetStoreService` own character mode
-slots, selections and locks. Narrative and Minor Character services retain
-independent mode boards and resolve references with mode preference. Image
+slots, selections and locks. Narrative uses one eight-slot mixed-quality board;
+Minor Character services retain independent mode boards. Image
 Generator workspace validates reconstruction sources on their original board,
 independently of the destination board. Refinement and private post-render
 trials retain their session mode and frozen sizing. See the

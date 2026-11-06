@@ -92,7 +92,7 @@ class NarrativeSceneTextService:
             relative=f'lettering/{candidate}/{uuid4().hex}.png'
             write_bytes_atomic(root/relative,output.getvalue())
             item['scene_text_final']={**state,'image':relative}
-            record['final_selected_id' if item.get('render_mode', 'draft') == 'final' else 'selected_id']=candidate
+            record['selected_id']=candidate
             self.repository.write(record,story,scene,target)
             return self.author.target(story,scene,target)
 

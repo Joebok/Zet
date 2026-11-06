@@ -259,7 +259,7 @@ class StoryAnimationService:
             scene_id,target_id,candidate_id=old["source_id"].split(":")
             target=self.repository.read(story,scene_id,target_id)
             mode=old.get("render_mode") or "draft"
-            selected=target.get("final_selected_id" if mode=="final" else "selected_id")
+            selected=target.get("selected_id")
             candidates=target.get("candidates",{})
             def eligible(key):
                 c=candidates.get(key,{})

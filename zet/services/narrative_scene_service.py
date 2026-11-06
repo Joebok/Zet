@@ -41,7 +41,7 @@ class NarrativeSceneService:
         normalize = lambda value: value.replace("\r\n", "\n").replace("\r", "\n")
         if normalize(record["prompt"]) == normalize(previous_prompt):
             return
-        selected = {item for item in (record.get("selected_id"), record.get("final_selected_id")) if item}
+        selected = {record.get("selected_id")}
         locked = {item["id"] for item in record["candidates"].values() if item.get("locked")}
         observed = locked or selected or set(record["candidates"])
         for candidate_id in observed:
@@ -61,7 +61,7 @@ class NarrativeSceneService:
             candidate = record["candidates"].get(candidate_id)
             if not candidate or not candidate.get("image"):
                 raise KeyError("Subscene image not found.")
-            if candidate_id not in (record["selected_id"], record.get("final_selected_id")) and not candidate.get("locked"):
+            if candidate_id != record["selected_id"] and not candidate.get("locked"):
                 raise ValueError("Select or lock this image before saving it to inventory.")
             label = str(data.get("label", record["title"]) or "").strip()
             if not label:
@@ -94,7 +94,7 @@ class NarrativeSceneService:
     def _scene_summary(self, story: str, scene_id: str, scene: dict) -> dict:
         assembly = next((target for target in self.list_targets(story, scene_id)
                          if target["kind"] == "assembly"), None)
-        selected = (assembly.get("final_selected_id") or assembly.get("selected_id")) if assembly else None
+        selected = assembly.get("selected_id") if assembly else None
         return {"id": scene_id, "title": scene["title"],
                 "final_assembly": {"target_id": assembly["id"], "candidate_id": selected}
                 if selected else None}
@@ -170,7 +170,7 @@ class NarrativeSceneService:
         record = self.repository.read(story, scene)
         targets = [self.repository.read(story, scene, item) for item in record["target_ids"]]
         targets.sort(key=lambda item: item["kind"] != "backdrop")
-        return [{key: item[key] for key in ("id", "title", "kind", "selected_id", "final_selected_id")} for item in targets]
+        return [{key: item[key] for key in ("id", "title", "kind", "selected_id")} for item in targets]
 
     def update_scene(self, story: str, scene: str, data: dict) -> dict:
         if "scene_text_style" in data or "scene_text_style_override" in data: raise ValueError("Scene text appearance belongs to the universe or story.")
@@ -486,7 +486,7 @@ class NarrativeSceneService:
         record = self.repository.read(story, scene, target)
         return [{"id": candidate["id"], "label": f"{record['title']} · slot {candidate['slot']}"}
                 for candidate in record["candidates"].values()
-                if candidate["locked"] or candidate["id"] in (record["selected_id"], record.get("final_selected_id"))]
+                if candidate["locked"] or candidate["id"] == record["selected_id"]]
 
     @staticmethod
     def confirm(images: list[dict], confirmed: list[str]) -> None:
@@ -540,20 +540,18 @@ class NarrativeSceneService:
                     if target["kind"] != "assembly":
                         continue
                     from zet.services.narrative_scene_text_service import finished_path
-                    for mode, field in (("final", "final_selected_id"), ("draft", "selected_id")):
-                        candidate = target.get("candidates", {}).get(target.get(field))
-                        if not candidate or not candidate.get("image"):
-                            continue
-                        try:
-                            path = finished_path(self.repository, parent["id"], scene_id, target_id, candidate["id"])
-                        except FileNotFoundError:
-                            continue
-                        if path.is_file():
-                            result.append({"story_id": parent["id"], "scene_id": scene_id, "target_id": target_id,
-                                "candidate_id": candidate["id"], "title": scene["title"], "image_path": str(path),
-                                "locked": candidate.get("locked", False), "render_mode": mode,
-                                "tag": f"{{{{NARRATIVE:{parent['id']}:{scene_id}:{target_id}:{candidate['id']}}}}}"})
-                            break
+                    candidate = target.get("candidates", {}).get(target.get("selected_id"))
+                    if not candidate or not candidate.get("image"):
+                        continue
+                    try:
+                        path = finished_path(self.repository, parent["id"], scene_id, target_id, candidate["id"])
+                    except FileNotFoundError:
+                        continue
+                    if path.is_file():
+                        result.append({"story_id": parent["id"], "scene_id": scene_id, "target_id": target_id,
+                            "candidate_id": candidate["id"], "title": scene["title"], "image_path": str(path),
+                            "locked": candidate.get("locked", False), "render_mode": candidate.get("render_mode", "draft"),
+                            "tag": f"{{{{NARRATIVE:{parent['id']}:{scene_id}:{target_id}:{candidate['id']}}}}}"})
         return result
 
     @staticmethod

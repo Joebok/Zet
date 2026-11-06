@@ -120,12 +120,12 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
     if (index === 0) {
       await page.locator("#narrative-prompt").fill("A quiet forest path, soft daylight.");
       await page.getByRole("button", { name: "Save inputs" }).click();
-      await page.getByRole("button", { name: "Render 1" }).click();
+      await page.getByRole("button", { name: "Draft 1" }).click();
       await answerRender(page, scene, targetId, image(1184, 896));
     } else {
       await page.locator("#narrative-prompt").fill("The traveler reaches the forest gate.");
       await page.getByRole("button", { name: "Save inputs" }).click();
-      await page.getByRole("button", { name: "Render 1" }).click();
+      await page.getByRole("button", { name: "Draft 1" }).click();
       await answerRender(page, scene, targetId, null, true);
       await expect(page.locator(".narrative-slot").first()).toContainText("failed");
       await page.locator(".narrative-slot").first().getByRole("button", { name: "Retry" }).click();
@@ -145,7 +145,7 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
   await page.getByRole("button", { name: "Write Prompt" }).click();
   await answerJob(page, scene, assembly, "synthesize", { scene: "Blend the placed scene into a finished illustration.", rendering: "Keep the subjects and setting unchanged." });
   const renderReply = page.waitForResponse(response => response.request().method() === "POST" && response.url().includes(`/targets/${assembly}/jobs`));
-  await page.getByRole("button", { name: "Render 1" }).click();
+  await page.getByRole("button", { name: "Draft 1" }).click();
   const renderResponse = await renderReply;
   expect(renderResponse.ok(), await renderResponse.text()).toBeTruthy();
   await answerRender(page, scene, assembly, image(1184, 896));

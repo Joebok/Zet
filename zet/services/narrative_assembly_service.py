@@ -33,7 +33,7 @@ class NarrativeAssemblyService:
             record = self.repository.read(story, scene, target)
             if record["kind"] == "assembly":
                 continue
-            result.append({key: record[key] for key in ("id", "title", "kind", "selected_id", "final_selected_id")} | {
+            result.append({key: record[key] for key in ("id", "title", "kind", "selected_id")} | {
                 "candidates": [{"id": item["id"], "slot": item["slot"], "render_mode": item.get("render_mode", "draft")} for item in record["candidates"].values()
                                if item["status"] == "COMPLETE" and item["image"]]})
         return result

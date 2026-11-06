@@ -70,7 +70,7 @@ class NarrativeReferenceService:
                         result.append({"story_id": story["id"], "story_title": story["title"],
                                        "scene_id": scene_id, "scene_title": scene["title"],
                                        "target_id": target_id, "title": target["title"], "kind": kind,
-                                       "selected_id": target["selected_id"], "final_selected_id": target.get("final_selected_id"), "candidates": candidates})
+                                       "selected_id": target["selected_id"], "candidates": candidates})
             return result
 
     def _file(self, story, scene, target, relative):
@@ -101,7 +101,7 @@ class NarrativeReferenceService:
             mode = source.get("render_mode", "draft")
             if mode not in ("draft", "final"):
                 raise ValueError("Render mode must be draft or final.")
-            preferred = (detail.get("final_selected_id"), detail.get("selected_id")) if mode == "final" else (detail.get("selected_id"), detail.get("final_selected_id"))
+            preferred = (detail.get("selected_id"),)
             candidate_id = source.get("candidate_id") or next((cid for cid in preferred if cid and
                 (item := detail["candidates"].get(cid)) and item.get("status") == "COMPLETE" and item.get("image")
                 and self._file(story, scene, target, item["image"]).is_file()), None)
@@ -292,8 +292,8 @@ class NarrativeReferenceService:
     def _local_candidate(self, story, scene, target, record, action, render_mode="draft"):
         if render_mode not in ("draft", "final"):
             raise ValueError("Render mode must be draft or final.")
-        slot_key = "final_slots" if render_mode == "final" else "slots"
-        selection_key = "final_selected_id" if render_mode == "final" else "selected_id"
+        slot_key = "slots"
+        selection_key = "selected_id"
         slots = record[slot_key]
         if None not in slots:
             raise ValueError("Clear a slot before adding a reused or cropped backdrop.")
@@ -302,6 +302,7 @@ class NarrativeReferenceService:
         validate_image(payload)
         index = slots.index(None)
         candidate = asdict(NarrativeCandidate(target, index + 1, 0, status="COMPLETE"))
+        render_mode = record["source_snapshot"].get("render_mode", render_mode)
         candidate.update(image=f"images/{render_mode}_{candidate['id']}.png", render_mode=render_mode, prompt=record["source_snapshot"].get("prompt", ""),
                          prompt_provenance=deepcopy(record["source_snapshot"].get("prompt_provenance", {})),
                          source_snapshot=deepcopy(record["source_snapshot"]),

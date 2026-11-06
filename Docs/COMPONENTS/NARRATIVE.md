@@ -2,13 +2,15 @@
 
 Narrative provides prose-oriented authoring and generation independent of Scene Builder's templates, schemas, and pipeline records. It shares universe configuration, the image library, and infrastructure, not the structured-scene authoring lifecycle. [ADR 0002](../DECISIONS/0002-independent-narrative-workflow.md) records this boundary.
 
-Draft and Final have separate candidate slots, selections and locks. The target
-board exposes a mode and aspect ratio with a configured-size preview; new render
-jobs freeze sizing, and failed-image Retry reuses the saved request and seed.
-Existing candidates remain Draft. Source pickers identify each mode and prefer
-the requested selection with fallback, while already pinned assembly layers stay
-unchanged. Backdrop reuse/crop and scene-text confirmation affect the chosen
-candidate's mode. The [completed plan](../../plans/completed/draft-final-rendering.md) records validation.
+Narrative targets use one eight-slot board, one selection and one lock across
+Draft and Final candidates. Quality belongs to each image. Draft and Final
+toolbar actions fill empty positions; slot actions can replace an unprotected
+image in either quality. Every new render freezes sizing, prompt, seed and
+references; failed-image Retry reuses its saved request. Draft images may be
+selected, locked and used downstream. Backdrop reuse/crop retains its source
+image's quality, and scene-text confirmation selects the affected image.
+Older two-board targets require the versioned dry-run migration before opening.
+See the Narrative-specific decision following ADR 0039.
 
 Saved prompt changes set a permanent, advisory `source_change_fyi` on affected
 finished candidates. Target polling requests detail only while generation or
@@ -376,17 +378,17 @@ Ratios must be positive width:height values between 1:16 and 16:1.
 Saved subscenes edit a persistent canvas size aspect ratio, initialized from the
 destination scene canvas, including imported subscenes. Backdrops and final
 assemblies inherit the current scene ratio for each new render. Draft and Final
-pixel dimensions come from the shared image sizing policy; the selected mode
-also sizes raw assembly composites. Existing subscenes without a saved ratio
+pixel dimensions come from the shared image sizing policy; raw assembly
+composite previews use Draft sizing while rendered snapshots use the request's
+quality. Existing subscenes without a saved ratio
 display the scene ratio when their saved dimensions match its former canvas size,
 or their saved width:height otherwise. Existing images and frozen failed-job
 retries keep their dimensions. Linked backdrop local reuse retains source/crop
 bytes. Older scenes missing `canvas` continue to read as 16:9.
 
-Narrative finished-source discovery prefers a selected Final assembly and falls
-back to a selected Draft assembly when no finished Final image is available.
+Narrative finished-source discovery uses the one selected assembly image, in
+either quality.
 
 A target's **Delete all Draft images** action confirms once, fences matching
-active render/prompt jobs, and removes its Draft candidates, selections, locks
-and lettering artifacts. Final candidates and independent Inventory copies
-remain.
+active render jobs, and removes its Draft candidates, selection or lock, and
+lettering artifacts. Final candidates and independent Inventory copies remain.

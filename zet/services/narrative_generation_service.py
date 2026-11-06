@@ -13,6 +13,7 @@ from zet.services.narrative_prompt_service import assemble_prompt, llm_request
 from zet.services.narrative_interview_service import interview_review
 from zet.services.narrative_proxy_service import NarrativeProxyService
 from zet.services.workflow_storage import validate_image
+from zet.services.image_candidate_board_service import allocate
 
 
 ACTIVE = {"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"}
@@ -157,25 +158,17 @@ class NarrativeGenerationService:
                 job["references"] = frozen
             if kind in {"generate", "render"}:
                 mode = (job.get("render_sizing") or {}).get("render_mode", "draft")
-                slot_key = "final_slots" if mode == "final" else "slots"
-                selection_key = "final_selected_id" if mode == "final" else "selected_id"
-                board = record[slot_key]
+                board = record["slots"]
                 count = data.get("count", 1)
                 if isinstance(count, bool) or not isinstance(count, int) or count not in (1, 4):
                     raise ValueError("Generate one or four images.")
-                seed_source_id = data.get("seed_candidate_id")
-                if seed_source_id and not isinstance(seed_source_id, str):
-                    raise ValueError("Choose a candidate ID for seed reuse.")
-                seed_source = record["candidates"].get(seed_source_id) if seed_source_id else None
-                if seed_source_id and (count != 1 or not seed_source
-                        or seed_source.get("render_mode", "draft") == mode
-                        or type(seed_source.get("seed")) is not int):
-                    raise ValueError("Choose a candidate from the other mode with a saved seed for one image.")
+                if data.get("seed_candidate_id"):
+                    raise ValueError("Seed selection is no longer available.")
                 replay_seeds = {}
                 if replay and replay.get("candidate_ids"):
                     originals = [record["candidates"].get(cid) for cid in replay["candidate_ids"]]
-                    if (seed_source_id or len(originals) != count or any(not item or type(item.get("seed")) is not int
-                            or item.get("render_mode", "draft") != mode or type(item.get("slot")) is not int
+                    if (len(originals) != count or any(not item or type(item.get("seed")) is not int
+                            or type(item.get("slot")) is not int
                             or not 1 <= item["slot"] <= len(board) or board[item["slot"] - 1] != item["id"]
                             for item in originals)):
                         raise ValueError("The saved retry candidates or their seeds are unavailable.")
@@ -186,17 +179,9 @@ class NarrativeGenerationService:
                 elif slot is not None:
                     if isinstance(slot, bool) or not isinstance(slot, int) or not 1 <= slot <= 8:
                         raise ValueError("Choose a slot from 1 to 8.")
-                    slots = [slot - 1]
+                    slots = allocate(board, record["candidates"], record["selected_id"], count, slot, ACTIVE)
                 else:
-                    available = [index for index, item in enumerate(board)
-                                 if item is None or (not record["candidates"][item]["locked"] and item != record[selection_key]
-                                                     and record["candidates"][item]["status"] not in ACTIVE)]
-                    def priority(index):
-                        candidate = record["candidates"].get(board[index])
-                        return 0 if candidate is None or candidate["status"] == "FAILED" else 2 if candidate["status"] in ACTIVE else 1
-                    slots = sorted(available, key=priority)[:count]
-                if len(slots) != count:
-                    raise ValueError("Not enough unprotected slots. Clear a protected slot with confirmation to make room.")
+                    slots = allocate(board, record["candidates"], record["selected_id"], count, active=ACTIVE)
                 if kind == "render" and not record["prompt"].strip():
                     raise ValueError("Enter a prompt before rendering.")
                 for index in slots:
@@ -205,13 +190,11 @@ class NarrativeGenerationService:
                         old = record["candidates"][previous]
                         if old["status"] in ACTIVE:
                             raise ValueError("Wait for this image to finish before replacing it.")
-                        if old["locked"] or record[selection_key] == previous:
+                        if old["locked"] or record["selected_id"] == previous:
                             raise ValueError("Clear the protected image with confirmation before replacing it.")
                         self._remove_candidate(story, scene, target, record, previous)
-                    seed = replay_seeds[index] if index in replay_seeds else seed_source["seed"] if seed_source else random.SystemRandom().randrange(0, 2**63 - 1)
+                    seed = replay_seeds[index] if index in replay_seeds else random.SystemRandom().randrange(0, 2**63 - 1)
                     candidate = asdict(NarrativeCandidate(target, index + 1, seed))
-                    if seed_source_id:
-                        candidate["seed_source_candidate_id"] = seed_source_id
                     if job.get("render_sizing"):
                         candidate.update(job["render_sizing"])
                     if detail["kind"] == "assembly":
@@ -459,11 +442,13 @@ class NarrativeGenerationService:
             candidate = record["candidates"].get(candidate_id)
             if candidate is None:
                 raise KeyError("Candidate not found.")
+            if candidate_id not in record["slots"]:
+                raise ValueError("Candidate is no longer in a slot.")
             action = data.get("action")
             mode = candidate.get("render_mode", "draft")
             if "render_mode" in data and data["render_mode"] != mode:
                 raise ValueError("Candidate belongs to a different render mode.")
-            selection_key = "final_selected_id" if mode == "final" else "selected_id"
+            selection_key = "selected_id"
             if action in {"select", "lock"} and not candidate["image"]:
                 raise ValueError("Wait for an image before selecting or locking it.")
             if action in {"select", "lock"} and (record.get("scene_text") or candidate.get("scene_text_final")):
@@ -474,8 +459,7 @@ class NarrativeGenerationService:
                 record[selection_key] = candidate_id
             elif action == "lock":
                 for other_id, other in record["candidates"].items():
-                    if other.get("render_mode", "draft") == mode:
-                        other["locked"] = other_id == candidate_id
+                    other["locked"] = other_id == candidate_id
             elif action == "unlock":
                 candidate["locked"] = False
             elif action == "retry":
@@ -514,8 +498,8 @@ class NarrativeGenerationService:
                 raise ValueError("Invalid candidate image path.")
             image.unlink(missing_ok=True)
         mode = candidate.get("render_mode", "draft")
-        slot_key = "final_slots" if mode == "final" else "slots"
-        selection_key = "final_selected_id" if mode == "final" else "selected_id"
+        slot_key = "slots"
+        selection_key = "selected_id"
         index = candidate["slot"] - 1
         if 0 <= index < len(record[slot_key]) and record[slot_key][index] == candidate_id:
             record[slot_key][index] = None
@@ -531,4 +515,4 @@ class NarrativeGenerationService:
 
 
 def detail_without_jobs(detail):
-    return {key: deepcopy(value) for key, value in detail.items() if key not in {"jobs", "candidates", "slots", "final_slots", "assembly_sources"}}
+    return {key: deepcopy(value) for key, value in detail.items() if key not in {"jobs", "candidates", "slots", "assembly_sources"}}

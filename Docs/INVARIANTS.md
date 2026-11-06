@@ -233,7 +233,8 @@ Backdrop references use an optional exact source-pixel crop before freezing orde
 
 ## Draft and Final ownership
 
-Draft and Final selections and locks are independent. New submitted renders
+Character and Minor Character Draft and Final selections and locks remain independent;
+Narrative uses one eight-slot board, one selection and one lock across qualities. New submitted renders
 retain their mode, dimensions, prompt, seed and ordered reference snapshots for
 retry. Confirmed Draft cleanup fences matching work and only removes owned Draft
 outputs and locks; Final work, completed downstream outputs and independent
