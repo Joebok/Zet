@@ -154,16 +154,15 @@ async function api(url, method = 'GET', data) {
 }
 
 async function updateRenderSize() {
-  const input = host.querySelector('#narrative-aspect_ratio'), output = host.querySelector('#narrative-size-preview');
-  if (!output) return;
+  const input = host.querySelector('#narrative-aspect_ratio');
   const mode = 'draft', ratio = input?.value || detail.scene_canvas;
   try {
     const sizing = await api(`/api/image-generation/sizing?${new URLSearchParams({render_mode:mode,aspect_ratio:ratio})}`);
     if (ratio !== (input?.value || detail.scene_canvas)) return;
-    if(input) input.setCustomValidity(''); previewSizing=sizing; output.textContent = `Draft preview ${sizing.width} × ${sizing.height}`; renderPlacement();
+    if(input) input.setCustomValidity(''); previewSizing=sizing; renderPlacement();
   } catch (error) {
     if (ratio !== (input?.value || detail.scene_canvas)) return;
-    if(input) input.setCustomValidity(error.message); previewSizing=null; output.textContent = error.message;
+    if(input) input.setCustomValidity(error.message); previewSizing=null;
   }
 }
 
@@ -737,10 +736,11 @@ function renderTarget(targets) {
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
       <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
       <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div><p id="narrative-prompt-pending" class="narrative-muted"></p>
-      <div class="narrative-actions">${['draft','final'].map(mode=>[1,4].map(count=>`<button class="primary" data-action="render" data-mode="${mode}" data-count="${count}">${mode==='draft'?'Draft':'Final'} ${count}</button>`).join('')).join('')}<button data-action="refresh">Refresh</button></div>
+      <div class="narrative-actions">${['draft','final'].map(mode=>[1,4].map(count=>`<button class="primary ${mode==='draft'?'narrative-render-draft':''}" data-action="render" data-mode="${mode}" data-count="${count}">${mode==='draft'?'Draft':'Final'} ${count}</button>`).join('')).join('')}<button data-action="refresh">Refresh</button></div>
+      <div class="narrative-actions"><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete Drafts</button></div>
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
-    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div class="narrative-actions"><span id="narrative-size-preview" role="status"></span></div><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete all Draft images</button><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
   sourceVisibility();
   enableModelPickers();
   updateLive();
@@ -915,7 +915,7 @@ function updateLive() {
       ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
       <div class="narrative-actions narrative-review-actions"><button data-review="${id}" aria-label="Review slot ${index+1}">Review</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== selected ? 'primary' : ''}" ${id === selected ? 'disabled' : ''}>${id === selected ? 'Selected' : 'Select'}</button>` : ''}
       ${candidate.status === 'FAILED' ? `<button data-candidate="${id}" data-candidate-action="retry">Retry</button>` : ''}
-      ${!candidate.locked && id !== selected ? `<button data-render-slot="${index+1}" data-mode="draft">Draft</button><button data-render-slot="${index+1}" data-mode="final">Final</button>` : ''}
+      ${!candidate.locked && id !== selected ? `<button class="narrative-regen-draft" data-render-slot="${index+1}" data-mode="draft">Regen Draft</button><button class="narrative-regen-final" data-render-slot="${index+1}" data-mode="final">Regen Final</button>` : ''}
       <button data-candidate="${id}" data-candidate-action="clear" class="danger-text-action">Clear slot</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
       : `<div class="narrative-actions"><button class="primary" data-render-slot="${index+1}" data-mode="draft">Draft</button><button class="primary" data-render-slot="${index+1}" data-mode="final">Final</button></div>`}</article>`;
   }).join('');
