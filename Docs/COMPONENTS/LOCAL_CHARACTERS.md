@@ -46,14 +46,12 @@ frozen request and owner, publishes the render ask, recovers matching Character
 attempts, and validates/collects completed images. Character container storage
 still persists candidate status and places the collected image in its board slot.
 
-Head containers can save phase-change FRONT sources separately for Draft and Final
-requests. A source can be a managed upload or a locked, published candidate in
-another phase; the quality selected for a new candidate determines which saved
-choice is used. This is source configuration on one board, not separate quality
-boards. Migration maps a locked-phase choice only when the referenced image is
-among the imported current Final locks, and copies a still-available upload into
-the container. Other saved choices remain in migration metadata with a reason for
-operator re-selection.
+Head containers use one phase-change source setting for Draft and Final requests.
+Choose another phase and either Head Image pipeline; each new FRONT request uses
+the current locked, published FRONT there, independent of its quality. A managed
+upload is also supported. Existing prepared candidates retain their frozen
+inputs. Migration retains old per-quality choices as provenance and prefers the
+saved Final choice, falling back to Draft only when Final was not saved.
 The container also opens the governing `Character.md` in the shared source editor;
 new prompt compilation always uses the current master.
 
@@ -154,7 +152,7 @@ references when preparing renders. Restart does not dispatch rendering. The
 [completed plan](../../plans/completed/character-pipeline-ui.md) records validation.
 The durable behavior is recorded in [ADR 0042](../DECISIONS/0042-character-mode-restart.md).
 
-Head Image and Head Image Edit phase changes use independent Draft and Final sources. Each mode can use an upload or a matching-mode locked FRONT from either head pipeline in another phase. Legacy sources are Draft. The hosted Tsaeytte Youth batch has been configured with the corresponding Adult locks; see the [active plan](../../plans/active/phase-change-mode-sources.md) for remaining validation.
+Head Image and Head Image Edit phase changes use one source setting across Draft and Final. A phase/pipeline choice follows the current locked FRONT, without pinning a candidate or matching its quality; a managed upload is an alternative. Legacy mode-specific records prefer Final when present. See the [active phase-source plan](../../plans/active/phase-change-mode-sources.md) for implementation and validation status.
 
 Shared slot recovery reattaches current candidates affected by the historical render-wait timeout to their original queued requests, or restores successful harvested images to review eligibility. It checks slot membership, request identity and receipts before changing state.
 

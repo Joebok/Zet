@@ -1,20 +1,79 @@
-# Phase-change mode sources
+# Unified head-container phase-change source
 Status: active
 
 ## Goal
-Support separate Draft and Final phase-change sources for Head Image and Head Image Edit, and configure the existing Tsaeytte Youth batch without rerunning Draft.
+Use one phase-change source for Head Image Construct and Head Image Edit across
+Draft and Final requests. A phase/pipeline setting follows the current locked,
+published FRONT; a managed upload remains an alternative. Preserve frozen inputs
+and migrate older per-quality choices with Final precedence.
 
-## Work packets
-- WP1: Implement mode-scoped snapshots, provenance, and cross-pipeline locked-source resolution. Validate with isolated temporary-library checks. Status: pending.
-- WP2: Route source selection through mode-aware API, render preparation, review, and staging; preserve existing frozen work. Validate legacy and mode isolation. Status: pending.
-- WP3: Add creation and existing-batch source controls with mode-specific previews. Validate both pipelines in a disposable browser. Status: pending.
-- WP4: Recheck Adult locks, retain matching Draft provenance, and configure the Youth batch's Final source. Verify unchanged Draft state and prepared Final references. Status: pending.
-- WP5: Update affected documentation, run approved E2E and syntax checks, review the diff, and archive this plan. Status: pending.
+## Current behavior
+`CharacterAssetContainerService.resolve_references` selected a separate saved
+choice by candidate quality and pinned locked references to candidate IDs.
+The container settings exposed quality and candidate selectors. Migration stored
+both mode choices. Relevant owners are the container service, migration service,
+container router/controller/template, and this plan's linked component and
+invariant documentation.
+
+## Implementation packets
+### WP1 — Shared source resolution and storage
+- Dependencies: none.
+- Files/interfaces: `character_asset_container_service.py`.
+- Work: Resolve unified `sources.phase_change`; use legacy Final if present,
+  otherwise Draft. Follow the current lock without candidate ID pinning. Save
+  phase/pipeline or verified upload; reject legacy mode-scoped writes. Preserve
+  frozen candidate request inputs.
+- Acceptance: Both qualities resolve the same current locked FRONT. A saved
+  phase/pipeline is allowed before a lock exists; preparation then reports the
+  missing or unavailable source. Existing managed upload paths still resolve.
+- Validation: Disposable isolated service check for both pipelines, lock change,
+  missing lock, upload, legacy precedence, and frozen requests.
+- Status: in progress.
+
+### WP2 — Migration and dashboard source controls
+- Dependencies: WP1.
+- Files/interfaces: `character_container_migration_service.py`, container router,
+  `character_asset_container.js`, and `index.html`.
+- Work: Store one effective migrated choice while retaining old per-quality
+  provenance. Remove Source quality and candidate selection. Show the current
+  locked FRONT for selected phase/pipeline; keep upload and clear actions. Remove
+  quality from new save/upload requests and reject obsolete quality-specific UI
+  writes with a refresh message.
+- Acceptance: Save, clear, upload, and reload work for both head containers;
+  locked source status tracks the current upstream lock.
+- Validation: Disposable browser/API check against an isolated library.
+- Status: in progress.
+
+### WP3 — Documentation and regression verification
+- Dependencies: WP1 and WP2.
+- Files/interfaces: `DATA_MODEL.md`, `INVARIANTS.md`, `LOCAL_CHARACTERS.md`,
+  ADR 0048, and this plan.
+- Work: Describe shared source resolution and migration behavior. Preserve the
+  prior migration/production configuration notes below as historical progress.
+- Acceptance: Documentation agrees with implementation and records validation.
+- Validation: Approved `npm run test:e2e`, focused Python/JavaScript syntax
+  checks, `git diff --check`, and final diff review. No permanent tests or live
+  rendering/library actions.
+- Status: in progress.
 
 ## Constraints
-Preserve existing workspace changes, Draft selections and locks, and frozen requests. Do not start renders or add permanent tests. The existing source update resets Draft work and cannot be used for the requested Final configuration.
+Preserve universe ownership and publication checks. New requests must use the
+current locked/published image and freeze its bytes; later lock changes affect
+only new requests. Do not add permanent test scenarios or run live renders.
 
-## Progress
-Local implementation is in progress. Mode-aware source storage, rendering, source API, and dashboard controls have been added. A disposable isolated check verified Final source assignment leaves Draft state unchanged and is idempotent. The first approved fast suite passed four scenarios; a final suite is in progress after further edits. The hosted server is reachable but is serving the previous dashboard controller, so the production batch has not been configured. Source-picker browser validation, runtime availability, and production batch configuration remain outstanding.
+## Historical progress
+The prior mode-specific implementation included isolated checks and configuration
+of Youth batch `20261023_070525_864928` from the corresponding Adult locks. That
+work preserved Draft state and submitted no render. This plan supersedes its
+quality-specific source behavior while retaining the configured source phase and
+pipeline intent where the current lock remains available.
 
-After the user updated Zet, the hosted controller was confirmed updated. The Adult Draft and Final FRONT lock keys, candidates, batches and hashes were rechecked, then assigned through the mode-aware source API to Youth batch `20261023_070525_864928`. Before/after comparison preserved Draft selections, candidate paths, hashes, request identities and locks. The served Final snapshot checksum matched the Adult Final lock, and the Final FRONT slot control reported `can_generate: true`. No render was submitted. Browser validation and inspection of a prepared render request remain outstanding.
+## Progress and validation
+Implementation is in progress. The disposable service check confirmed that Draft
+and Final requests resolve the same locked source and that newly prepared requests
+follow a changed upstream lock. `npm run test:e2e` passed all four approved
+scenarios. Python compilation for the changed services/router, `node --check` for
+the container controller, and `git diff --check` passed. The disposable check did
+not exercise upload validation, unavailable legacy Final migration, or the browser
+source controls/API journey; those remain unverified. No live library or renderer
+was used. Keep this plan active until those focused checks are completed.

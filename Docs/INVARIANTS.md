@@ -252,10 +252,12 @@ Character Asset Container boards use one mixed-quality board per view. Their Dra
 and Final locks both publish through the recoverable Inventory transaction so a
 locked output can serve as a source outside its container. Existing batch-based
 Draft locks remain private until they are explicitly re-locked through a container.
-Head phase-change source choices may differ by requested quality, but both resolve
-to a current locked/published FRONT on the same source-phase container or to an
-image stored inside the owning container's managed phase-source directory. Uploaded
-source bytes are checksum-verified and copied into each prepared request.
+Head phase change uses one source setting for both request qualities. A saved
+source phase and pipeline resolve to whichever FRONT is currently locked and
+published in that container; quality and prior candidate identity do not pin the
+source. Managed uploads remain checksum-verified and copied into each prepared
+request. Each prepared request freezes its chosen bytes, so later source changes
+affect only new requests.
 Current-source readers prefer a locked container output for its pipeline/costume/view
 over a legacy LocalAssets lock. Saved container-source references use the stable
 Inventory asset ID and remain resolvable after board unlock or candidate clearing;

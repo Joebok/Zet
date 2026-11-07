@@ -223,9 +223,8 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const detail = state.detail;
     if (!detail) return;
     const sources = detail.sources || {};
-    const sourceMode = $("source-quality").value || "draft";
-    const modeSource = (sources.phase_change_by_mode || {})[sourceMode];
-    const phaseSource = modeSource === undefined ? (sources.phase_change || {}) : modeSource;
+    const byMode = sources.phase_change_by_mode || {};
+    const phaseSource = sources.phase_change ?? byMode.final ?? byMode.draft ?? {};
     const authoring = $("authoring");
     authoring.hidden = Boolean(state.view);
     $("apply-wrap").hidden = !isHead() || state.view !== "FRONT";
@@ -254,26 +253,22 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const sequence = ++state.sourceRequest;
     const phase = $("source-phase").value;
     const pipeline = $("source-pipeline").value;
-    const select = $("source-candidate");
     if (!phase) {
-      select.replaceChildren(new Option("Choose another phase first", ""));
+      $("source-status").textContent = "Choose a source phase.";
       return;
     }
-    select.replaceChildren(new Option("Loading locked FRONT images…", ""));
+    $("source-status").textContent = "Checking the current locked FRONT…";
     try {
       const data = await request(apiAt(pipeline, phase));
       if (sequence !== state.sourceRequest) return;
       const board = data.boards.FRONT;
-      const candidates = board.slots.map((id) => id && board.candidates[id])
-        .filter((candidate) => candidate?.locked && candidate.inventory_asset_id);
-      select.replaceChildren(new Option(candidates.length ? "Choose a published FRONT" : "No locked, published FRONT available", ""),
-        ...candidates.map((candidate) => new Option(`Slot ${candidate.slot} · ${candidate.render_mode}`, candidate.candidate_id)));
-      const sourceMode = $("source-quality").value || "draft";
-      const modeSource = (state.detail.sources?.phase_change_by_mode || {})[sourceMode];
-      const saved = modeSource === undefined ? (state.detail.sources?.phase_change || {}) : modeSource;
-      if (saved.phase === phase && saved.pipeline === pipeline) select.value = saved.candidate_id || "";
+      const candidate = board.slots.map((id) => id && board.candidates[id])
+        .find((item) => item?.locked && item.inventory_asset_id);
+      $("source-status").textContent = candidate
+        ? `Current source: locked FRONT · ${candidate.render_mode} · slot ${candidate.slot}`
+        : "No locked, published FRONT yet. Save this phase and pipeline; new FRONT requests will wait until one is locked.";
     } catch (error) {
-      if (sequence === state.sourceRequest) select.replaceChildren(new Option(error.message, ""));
+      if (sequence === state.sourceRequest) $("source-status").textContent = error.message;
     }
   }
 
@@ -652,18 +647,16 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   $("source-phase").addEventListener("change", () => void loadPhaseSourceCandidates());
   $("source-pipeline").addEventListener("change", () => void loadPhaseSourceCandidates());
   $("save-phase-source").addEventListener("click", () => {
-    const source = {phase: $("source-phase").value, pipeline: $("source-pipeline").value,
-      candidate_id: $("source-candidate").value};
-    if (!source.phase || !source.candidate_id) { $("source-status").textContent = "Choose a locked, published FRONT first."; return; }
-    void saveSource("phase_change_by_mode", source, $("source-quality").value);
+    const source = {phase: $("source-phase").value, pipeline: $("source-pipeline").value};
+    if (!source.phase) { $("source-status").textContent = "Choose a source phase first."; return; }
+    void saveSource("phase_change", source);
   });
   $("clear-phase-source").addEventListener("click", () =>
-    void saveSource("phase_change_by_mode", {}, $("source-quality").value));
+    void saveSource("phase_change", {}));
   $("upload-phase-source").addEventListener("click", async () => {
     const file = $("phase-source-file").files?.[0];
     if (!file) { $("source-status").textContent = "Choose a PNG, JPEG, or WebP image first."; return; }
     const params = query();
-    params.set("render_mode", $("source-quality").value);
     params.set("filename", file.name);
     params.set("expected_revision", state.detail.revision);
     try {
@@ -672,15 +665,8 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       });
       $("phase-source-file").value = "";
       render();
-      $("source-candidate").replaceChildren(new Option("Managed upload selected", ""));
-      $("source-status").textContent = "Managed upload saved for new requests at this quality.";
+      $("source-status").textContent = "Managed upload saved for new FRONT requests.";
     } catch (error) { if (error.name !== "AbortError") $("source-status").textContent = error.message; }
-  });
-  $("source-quality").addEventListener("change", () => {
-    if (["head-image", "head-image-edit"].includes(state.pipeline)) {
-      renderAuthoring();
-      void loadPhaseSourceCandidates();
-    }
   });
   $("save-head-pipeline").addEventListener("click", () => void saveSource("head_pipeline", $("head-pipeline").value));
   $("save-view-source").addEventListener("click", () => {

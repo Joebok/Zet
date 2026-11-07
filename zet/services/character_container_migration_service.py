@@ -394,7 +394,7 @@ class CharacterContainerMigrationService:
                     if (not source.is_file() or not source.is_relative_to(self.library_root)
                             or hashlib.sha256(source.read_bytes()).hexdigest() != expected_hash):
                         raise CharacterContainerMigrationError("The reviewed uploaded phase source is unavailable or changed.")
-                    destination_dir = path.parent / "inputs" / "phase-change" / choice["mode"]
+                    destination_dir = path.parent / "inputs" / "phase-change"
                     destination_dir.mkdir(parents=True, exist_ok=True)
                     suffix = source.suffix.lower()
                     destination = destination_dir / f"{expected_hash}{suffix}"
@@ -411,7 +411,7 @@ class CharacterContainerMigrationService:
                             temporary.unlink(missing_ok=True)
                     source_value = {"kind": "upload", "path": str(destination),
                         "sha256": expected_hash, "filename": choice.get("upload_filename") or source.name}
-                    value.setdefault("sources", {}).setdefault("phase_change_by_mode", {}).setdefault(choice["mode"], source_value)
+                    value.setdefault("sources", {})["phase_change"] = source_value
                 elif choice.get("status") == "import":
                     source_decision = next((item for item in report["decisions"]
                         if item.get("character", "").casefold() == choice["character"].casefold()
@@ -423,9 +423,12 @@ class CharacterContainerMigrationService:
                     if (not source_decision
                             or self._import_candidate_id(source_decision) != choice.get("candidate_id")):
                         raise CharacterContainerMigrationError("The reviewed phase-change source identity is inconsistent.")
-                    value.setdefault("sources", {}).setdefault("phase_change_by_mode", {}).setdefault(choice["mode"], {
-                        "phase": choice["source_phase"], "pipeline": choice["source_pipeline"],
-                        "candidate_id": choice["candidate_id"]})
+                    value.setdefault("sources", {})["phase_change"] = {
+                        "phase": choice["source_phase"], "pipeline": choice["source_pipeline"]}
+                else:
+                    # Choices are applied Draft then Final, so an unavailable saved
+                    # Final source intentionally prevents fallback to Draft.
+                    value.setdefault("sources", {}).pop("phase_change", None)
                 value.setdefault("legacy_migration", {}).setdefault("phase_source_choices", {})[choice["mode"]] = {
                     key: choice.get(key, "") for key in (
                         "legacy_source_key", "source_phase", "source_pipeline",

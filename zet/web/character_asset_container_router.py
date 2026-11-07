@@ -169,16 +169,18 @@ def create_character_asset_container_router(resolve_app):
     async def upload_phase_source(pipeline: str, request: Request,
                     character: str = Query(...), phase: str = Query(...),
                     costume: str = Query(""), universe_id: str = Query(""),
-                    render_mode: str = Query(...), filename: str = Query(...),
+                    filename: str = Query(...),
                     expected_revision: int = Query(...)):
         try:
+            if "render_mode" in request.query_params:
+                raise HTTPException(status_code=409, detail="Phase-change uploads are shared across qualities. Refresh the container.")
             chunks = bytearray()
             async for chunk in request.stream():
                 if len(chunks) + len(chunk) > 32 * 1024 * 1024:
                     raise HTTPException(status_code=413, detail="The source must be under 32 MB.")
                 chunks.extend(chunk)
             return service(universe_id).upload_phase_source(character, phase, pipeline,
-                costume, render_mode, filename, bytes(chunks), expected_revision=expected_revision)
+                costume, filename, bytes(chunks), expected_revision=expected_revision)
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

@@ -54,14 +54,12 @@ and rollback; the migration CLI is dry-run by default and never applies to the
 live library without a reviewed report, verified backup, quiescence and explicit
 approval.
 
-Head containers can retain distinct Draft and Final phase-change source choices
-inside the container's shared source settings. A new candidate uses the choice for
-its requested quality. Sources can be managed uploads or current locked/published
-FRONT candidates from another phase. Migration copies an available upload into
-the target container and imports a locked-phase choice only when its source maps
-to an imported current Final FRONT; otherwise the choice and reason remain in
-migration metadata for review. This preserves source intent without restoring
-quality-specific boards or accepting an unlocked legacy image as a source.
+Head containers use one phase-change source for both request qualities. A locked
+source stores phase and pipeline, then resolves whichever FRONT is currently
+locked and published when preparing a new request. Managed uploads remain
+available. Legacy Draft/Final settings are retained as migration provenance, with
+Final preferred when present; a saved but unavailable Final choice does not
+silently fall back to Draft. Prepared requests retain frozen source bytes.
 
 Template improvement is an optional container authoring action grounded in one
 finished board candidate. Store the copied evidence and proposal under that

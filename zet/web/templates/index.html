@@ -396,11 +396,10 @@
           <div id="character-container-template-proposal" hidden></div>
         </section>
         <div id="character-container-phase-source" class="button-row compact" hidden>
-          <p class="muted">Phase-change source is saved separately for Draft and Final. The board quality selects which choice applies to new FRONT requests.</p>
-          <label>Source quality<select id="character-container-source-quality"><option value="draft">Draft</option><option value="final">Final</option></select></label>
+          <p class="muted">One source applies to new FRONT requests at both qualities. A locked source follows the current locked FRONT in the chosen phase and pipeline.</p>
           <label>Source phase<select id="character-container-source-phase"></select></label>
           <label>Source pipeline<select id="character-container-source-pipeline"><option value="head-image">Head Image Construct</option><option value="head-image-edit">Head Image Edit</option></select></label>
-          <label>Locked FRONT<select id="character-container-source-candidate"></select></label>
+          <p id="character-container-source-status" class="muted"></p>
           <button id="character-container-save-phase-source" type="button">Save source</button>
           <button id="character-container-clear-phase-source" type="button">Clear source</button>
           <label>Upload FRONT<input id="character-container-phase-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>

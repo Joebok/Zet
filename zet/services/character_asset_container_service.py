@@ -207,8 +207,14 @@ class CharacterAssetContainerService:
         if pipeline in {"body-reference", "head-image", "head-image-edit"}:
             if view == "FRONT":
                 if pipeline in {"head-image", "head-image-edit"}:
-                    by_mode = value["sources"].get("phase_change_by_mode") or {}
-                    source = by_mode.get(render_mode, value["sources"].get("phase_change") or {})
+                    sources = value["sources"]
+                    if "phase_change" in sources:
+                        source = sources.get("phase_change") or {}
+                    else:
+                        by_mode = sources.get("phase_change_by_mode") or {}
+                        source = by_mode.get("final", by_mode.get("draft", {}))
+                        if source is None:
+                            source = by_mode.get("draft", {})
                     source_phase = str(source.get("phase") or "")
                     if source.get("kind") == "upload":
                         source_path = Path(str(source.get("path") or "")).resolve()
@@ -223,8 +229,6 @@ class CharacterAssetContainerService:
                         source_pipeline = str(source.get("pipeline") or pipeline)
                         source_value = self.detail(character, source_phase, source_pipeline)
                         candidate_ref = self._selected_reference(source_value, "FRONT", "head_image_source", published=True)
-                        if source.get("candidate_id") and source.get("candidate_id") != candidate_ref["candidate_id"]:
-                            raise CharacterAssetContainerError("The saved phase-change source changed. Select it again.")
                         return [candidate_ref]
                 return []
             source_view = (value["sources"].get("views") or {}).get(view)
@@ -595,8 +599,8 @@ class CharacterAssetContainerService:
         if source_name not in {"phase_change", "phase_change_by_mode", "head_pipeline", "views"}:
             raise CharacterAssetContainerError("Choose a supported container source setting.")
         value = self.detail(character, phase, pipeline, costume)
-        if source_name == "phase_change_by_mode" and render_mode not in {"draft", "final"}:
-            raise CharacterAssetContainerError("Choose Draft or Final for this phase-change source.")
+        if source_name == "phase_change_by_mode":
+            raise CharacterAssetContainerError("Phase-change sources are shared across qualities. Refresh the container and choose one source.")
         if source_name == "head_pipeline":
             if pipeline != "character-assembly" or source not in {"head-image", "head-image-edit"}:
                 raise CharacterAssetContainerError("Choose Head Image Construct or Head Image Edit for Assembly.")
@@ -620,30 +624,23 @@ class CharacterAssetContainerService:
                 source_pipeline = str(source.get("pipeline") or "")
                 if not source_phase or source_phase == phase or source_pipeline not in {"head-image", "head-image-edit"}:
                     raise CharacterAssetContainerError("Choose a Head FRONT from another phase of this character.")
-                upstream = self.detail(character, source_phase, source_pipeline)
-                current = self._selected_reference(upstream, "FRONT", "head_image_source", published=True)
-                if source.get("candidate_id") and source["candidate_id"] != current["candidate_id"]:
-                    raise CharacterAssetContainerError("Choose the currently selected and locked source image.")
-                source["candidate_id"] = current["candidate_id"]
+                source = {"phase": source_phase, "pipeline": source_pipeline}
         if source_name == "views":
             allowed = set(value["boards"])
             if not isinstance(source, dict) or any(view not in allowed or source_view not in (allowed | {""}) or view == source_view
                                                    for view, source_view in source.items()):
                 raise CharacterAssetContainerError("Choose a different view in this container for each reference.")
-        if source_name == "phase_change_by_mode":
-            value["sources"].setdefault(source_name, {})[render_mode] = copy.deepcopy(source)
-        else:
-            value["sources"][source_name] = copy.deepcopy(source)
+        value["sources"][source_name] = copy.deepcopy(source)
+        if source_name == "phase_change":
+            value["sources"].pop("phase_change_by_mode", None)
         return self.save(character, phase, pipeline, costume, value,
                          expected_revision=expected_revision)
 
     def upload_phase_source(self, character: str, phase: str, pipeline: str, costume: str,
-                            render_mode: str, filename: str, contents: bytes,
+                            filename: str, contents: bytes,
                             *, expected_revision: int) -> dict:
         if pipeline not in {"head-image", "head-image-edit"}:
             raise CharacterAssetContainerError("Managed phase-change uploads belong to a Head container.")
-        if render_mode not in {"draft", "final"}:
-            raise CharacterAssetContainerError("Choose Draft or Final for this phase-change source.")
         if not contents or len(contents) > 32 * 1024 * 1024:
             raise CharacterAssetContainerError("The source must be a nonempty image under 32 MB.")
         suffix = Path(filename or "").suffix.lower()
@@ -660,7 +657,7 @@ class CharacterAssetContainerService:
         except Exception as exc:
             raise CharacterAssetContainerError("The uploaded phase-change source is not a valid image.") from exc
         digest = hashlib.sha256(contents).hexdigest()
-        input_root = self._path(value["scope"]).parent / "inputs" / "phase-change" / render_mode
+        input_root = self._path(value["scope"]).parent / "inputs" / "phase-change"
         input_root.mkdir(parents=True, exist_ok=True)
         destination = input_root / f"{digest}{suffix}"
         if destination.exists():
@@ -674,9 +671,9 @@ class CharacterAssetContainerService:
             finally:
                 temporary.unlink(missing_ok=True)
         clean_name = Path(filename or "phase-change-source").name
-        return self.save_source(character, phase, pipeline, costume, "phase_change_by_mode",
+        return self.save_source(character, phase, pipeline, costume, "phase_change",
             {"kind": "upload", "path": str(destination), "sha256": digest, "filename": clean_name},
-            expected_revision=expected_revision, render_mode=render_mode)
+            expected_revision=expected_revision)
 
     def board_action(self, character: str, phase: str, pipeline: str, costume: str,
                      view: str, candidate_id: str, action: str, **options) -> dict:

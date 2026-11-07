@@ -12,15 +12,14 @@ The locked candidate retains its Inventory asset ID and publication image path
 after unlock, so a saved Inventory source remains addressable after board removal.
 The current record format is owned by
 [CharacterAssetContainerService](../zet/services/character_asset_container_service.py).
-Head containers may store `sources.phase_change_by_mode.draft` and `.final` as
-separate choices while sharing the same physical board. Preparation resolves the
-choice matching the requested candidate quality, then falls back to the shared
-`sources.phase_change` setting for older records. Migration maps recoverable
-locked-phase choices to imported current Final candidates; unavailable legacy
-choices remain recorded in migration metadata with their skip reason. Uploaded
-phase sources are copied beneath the container's `inputs/phase-change/<quality>`
-directory and verified by checksum before use; reviewed migration can copy a
-still-available legacy run upload into the same managed area.
+Head containers use one `sources.phase_change` setting for both request
+qualities. A locked source records its phase and head pipeline; preparation
+resolves the current locked and published FRONT there. Older
+`sources.phase_change_by_mode` records prefer Final when present, otherwise
+Draft; an explicit unavailable Final choice does not fall back. Upload bytes are
+checksum-verified beneath the container's `inputs/phase-change` directory.
+Reviewed migration retains per-quality provenance in `legacy_migration` while
+choosing the Final entry when available.
 
 Character render inputs now include the frozen prompt, ordered references, and
 captured template-source hashes when available. Candidate state and local lock
