@@ -326,6 +326,9 @@ actions remain in the dialog with their error visible, rather than closing silen
   the shell. Navigation must not silently move an action to a different context.
 - Keep field labels visible; placeholders are examples, not labels. Group related
   fields and put help, units, validation, and prerequisites beside the relevant field.
+- Put field-description checkboxes inline with their captions and keep the checkbox
+  compact. Review choices that select multi-line proposed text may use a larger,
+  dedicated layout.
 - Use explicit Save by default. If a workflow autosaves, show Unsaved/Saving/Saved/
   Save failed locally. A failed save retains the draft; a response to an older save
   cannot mark newer edits saved. Protect unsaved edits during navigation or reload.
