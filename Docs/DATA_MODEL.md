@@ -1,5 +1,27 @@
 # Data, configuration, and ownership
 
+## Character Asset Containers (2026-11-06)
+
+Character candidate state lives under the selected universe library at
+`_state/CharacterAssetContainers/<character>/<phase>/<pipeline>/<costume>/container.json`;
+path components are URL-encoded, and Dressing uses its canonical costume slug
+(`_` for non-costume pipelines). The record scope repeats universe, character,
+phase, pipeline, costume, and ordered views and is checked against the path. Each
+view has one eight-slot board, one selection and one lock across Draft and Final.
+The locked candidate retains its Inventory asset ID and publication image path
+after unlock, so a saved Inventory source remains addressable after board removal.
+The current record format is owned by
+[CharacterAssetContainerService](../zet/services/character_asset_container_service.py).
+Head containers may store `sources.phase_change_by_mode.draft` and `.final` as
+separate choices while sharing the same physical board. Preparation resolves the
+choice matching the requested candidate quality, then falls back to the shared
+`sources.phase_change` setting for older records. Migration maps recoverable
+locked-phase choices to imported current Final candidates; unavailable legacy
+choices remain recorded in migration metadata with their skip reason. Uploaded
+phase sources are copied beneath the container's `inputs/phase-change/<quality>`
+directory and verified by checksum before use; reviewed migration can copy a
+still-available legacy run upload into the same managed area.
+
 Character render inputs now include the frozen prompt, ordered references, and
 captured template-source hashes when available. Candidate state and local lock
 records may contain permanent `source_change_fyi`; older records omit it. New

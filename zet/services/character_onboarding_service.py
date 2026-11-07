@@ -163,6 +163,9 @@ class CharacterOnboardingService:
 
     def upload_template(self, character: str, phase: str, contents: str, create_only: bool = False) -> CharacterOnboardingStatus:
         """Validate and install an uploaded character image template."""
+        # Uploads can arrive with CRLF already present. Normalize before text-mode
+        # writing so Windows does not expand each existing CR into CRCRLF.
+        contents = contents.replace("\r\r\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
         if not contents.strip():
             raise CharacterOnboardingError("Uploaded template is empty.")
         character = self._clean_folder_name(character, "Character")

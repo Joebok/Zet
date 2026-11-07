@@ -1001,7 +1001,7 @@ class CharacterRenderSlots:
 
     def start(self, run_id: str, costume: str = "", *, wake: bool = True) -> None:
         """Deduplicate collectors and close the last-action/worker-exit race."""
-        from zet.services.local_character_overview_service import submit_local_pipeline_task
+        from zet.services.local_task_executor_service import submit_local_pipeline_task
         run = self.workflow.prompt_improvement.detail(run_id, costume)
         root = Path(run["root"])
         key = str(root.resolve())

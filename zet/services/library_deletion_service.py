@@ -5,6 +5,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from zet.services.atomic_file_service import write_json_atomic
 
@@ -77,6 +78,49 @@ class LibraryDeletionService:
         connection.execute(f"UPDATE assets SET replacement_for_asset_id=NULL WHERE replacement_for_asset_id IN ({placeholders})", tuple(ids))
         connection.execute(f"DELETE FROM assets WHERE asset_id IN ({placeholders})", tuple(ids))
 
+    def _costume_container_dir(self, character: str, phase: str, costume_slug: str) -> Path:
+        return self.paths.state_path(
+            "CharacterAssetContainers", quote(character, safe="-_."), quote(phase, safe="-_."),
+            "costume-dressing", quote(costume_slug, safe="-_."),
+        )
+
+    def _costume_container_inventory_ids(self, character: str, phase: str,
+                                         costume_slug: str) -> tuple[Path, set[str]]:
+        container_dir = self._costume_container_dir(character, phase, costume_slug)
+        container_path = container_dir / "container.json"
+        if not container_dir.exists():
+            return container_dir, set()
+        if not container_path.is_file():
+            raise LibraryDeletionServiceError("The Costume Dressing Asset Container is incomplete; resolve it before deleting the costume.")
+        try:
+            container = json.loads(container_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise LibraryDeletionServiceError("The Costume Dressing Asset Container is unreadable; resolve it before deleting the costume.") from exc
+        scope = container.get("scope") or {}
+        if (scope.get("universe_id") != self.paths.config.universe_id
+                or scope.get("character") != character or scope.get("phase") != phase
+                or scope.get("pipeline") != "costume-dressing" or scope.get("costume") != costume_slug):
+            raise LibraryDeletionServiceError("The Costume Dressing Asset Container scope does not match its path.")
+        active_states = {"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"}
+        inventory_ids = set()
+        boards = container.get("boards")
+        if not isinstance(boards, dict):
+            raise LibraryDeletionServiceError("The Costume Dressing Asset Container has invalid board state.")
+        for board in boards.values():
+            candidates = board.get("candidates") if isinstance(board, dict) else None
+            if not isinstance(candidates, dict) or any(not isinstance(candidate, dict) for candidate in candidates.values()):
+                raise LibraryDeletionServiceError("The Costume Dressing Asset Container has invalid candidate state.")
+            for candidate in candidates.values():
+                if candidate.get("status") in active_states:
+                    raise LibraryDeletionServiceError("Wait for Costume Dressing renders to settle before deleting the costume.")
+                asset_id = str(candidate.get("inventory_asset_id") or "").strip()
+                if asset_id:
+                    inventory_ids.add(asset_id)
+        journal_root = container_dir / "publications"
+        if journal_root.is_dir() and any(journal_root.glob("*.json")):
+            raise LibraryDeletionServiceError("Recover the Costume Dressing publication before deleting the costume.")
+        return container_dir, inventory_ids
+
     def delete_phase(self, character, phase, *, confirm_ids=None, expected_versions=None):
         from zet.services.image_usage_service import usage_mutation
         with usage_mutation(self.paths, self.paths.character_path(self._name(character, "character"), self._name(phase, "phase")), tree=True):
@@ -85,9 +129,14 @@ class LibraryDeletionService:
 
     def delete_costume(self, character, phase, costume_slug, *, confirm_ids=None, expected_versions=None):
         from zet.services.image_usage_service import usage_mutation
-        with usage_mutation(self.paths, self.paths.character_path(self._name(character, "character"), self._name(phase, "phase")), tree=True):
-            with self.entity_repository.transaction() as connection:
-                return self._delete_costume(character, phase, costume_slug, connection, confirm_ids, expected_versions)
+        from zet.services.workflow_storage import file_lock
+        character, phase = self._name(character, "character"), self._name(phase, "phase")
+        costume_slug = self._name(costume_slug, "costume")
+        container = self._costume_container_dir(character, phase, costume_slug)
+        with usage_mutation(self.paths, self.paths.character_path(character, phase), tree=True):
+            with file_lock((container / "container.json").with_suffix(".lock")):
+                with self.entity_repository.transaction() as connection:
+                    return self._delete_costume(character, phase, costume_slug, connection, confirm_ids, expected_versions)
 
     def _delete_phase(self, character: str, phase: str, connection, confirm_ids, expected_versions) -> str:
         character, phase = self._name(character, "character"), self._name(phase, "phase")
@@ -128,6 +177,7 @@ class LibraryDeletionService:
         if match is None:
             raise LibraryDeletionServiceError(f"Costume not found: {costume_slug}")
         costume_name = self.paths_costume_name(costume_slug)
+        container_dir, container_asset_ids = self._costume_container_inventory_ids(character, phase, costume_slug)
         # Modern origins identify the costume; legacy checksum-only origins must
         # be attributed by their exact catalog classification below.
         origin_prefix = f"local:Costume-Dressing:{character}:{phase}:"
@@ -149,10 +199,16 @@ class LibraryDeletionService:
                   ))""",
             (slug_prefix, slug_prefix, name_prefix, name_prefix, costume_name, character, phase),
         )
+        asset_ids = {row["asset_id"] for row in entity_assets}
+        if container_asset_ids:
+            placeholders = ",".join("?" for _ in container_asset_ids)
+            asset_ids.update(row["asset_id"] for row in self.entity_repository.fetchall(
+                f"SELECT asset_id FROM assets WHERE asset_id IN ({placeholders})", tuple(container_asset_ids)))
         from zet.services.image_deletion_service import confirm_image_deletion
-        confirm_image_deletion(connection, [row["asset_id"] for row in entity_assets], confirm_ids, expected_versions)
+        confirm_image_deletion(connection, sorted(asset_ids), confirm_ids, expected_versions)
         archive = self._archive(character, phase, f"costume_{costume_slug}")
         self._move(match, archive / "Templates" / match.name)
+        self._move(container_dir, archive / "CharacterAssetContainers" / character / phase / costume_slug)
 
         slug_dir = re.sub(r"[^A-Za-z0-9_-]+", "_", costume_name).strip("_") or "Costume"
         candidate_root = self.paths.pipeline_candidates_path("Character-Pipeline", character, phase)
@@ -193,7 +249,7 @@ class LibraryDeletionService:
                                        if not isinstance(dep, dict) or dep.get("key") not in removed_set]
             write_json_atomic(store_path, data)
 
-        self._purge_assets([row["asset_id"] for row in entity_assets], archive, connection)
+        self._purge_assets(sorted(asset_ids), archive, connection)
         return str(archive)
 
     @staticmethod

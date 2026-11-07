@@ -1,5 +1,69 @@
 # Local character assets
 
+## Character Asset Container current outputs (2026-11-06)
+
+`CharacterAssetContainerService` owns the current per-view board lock. A locked
+candidate is published to Inventory at either quality. `LocalAssetSourceService`
+projects only current container locks to Phase Comparison, Turnarounds, Identity
+Keys, Costume counts and new story references. Its source key is
+`inventory:<asset_id>`, so a saved story reference can still resolve the immutable
+Inventory image after board unlock or candidate clearing. `include_all=True` is a
+compatibility reader for legacy keys; it does not participate in new source
+choices. Legacy batch routes are no longer mounted, legacy batches are not resumed
+at startup, and late legacy writes are excluded from current-output listings.
+Disposable checks cover source precedence and saved Inventory resolution after
+unlock. The accepted boundary is recorded in [ADR 0048](../DECISIONS/0048-character-asset-container-workflow.md).
+
+## Character Asset Container workflow (2026-11-06)
+
+The replacement workflow is manual: Assets opens one container for Body Reference,
+Head Image Construct, Head Image Edit, Assembly, or a selected Dressing costume.
+Each view has one mixed-quality eight-slot Candidate Board. The operator prepares,
+generates, reviews, selects and locks on that board; no Overview auto-run or batch
+runner participates. The Overview page is read-only. The active implementation and
+cutover status are tracked in the [migration plan](../../plans/active/character-image-production-workflow.md).
+Legacy batch contracts documented below are retained only as migration history and
+are not part of the container path.
+
+Render actions are explicit: Draft 1, Draft 4, Final 1, or Final 4. The pipeline
+prepares the prompt and ordered references; the common image-production path queues
+on demand and returns harvested results to the owning slots. Candidate review uses
+the shared board actions. Its Character-specific comparison dialog lets the operator
+choose multiple selected-view images, typically FRONT or the selected opposite-side
+view. Selected or locked Draft images are not offered as comparisons.
+
+`ImageProductionService` is the shared AI_Proxy image boundary. It validates the
+frozen request and owner, publishes the render ask, recovers matching Character
+attempts, and validates/collects completed images. Character container storage
+still persists candidate status and places the collected image in its board slot.
+
+Head containers can save phase-change FRONT sources separately for Draft and Final
+requests. A source can be a managed upload or a locked, published candidate in
+another phase; the quality selected for a new candidate determines which saved
+choice is used. This is source configuration on one board, not separate quality
+boards. Migration maps a locked-phase choice only when the referenced image is
+among the imported current Final locks, and copies a still-available upload into
+the container. Other saved choices remain in migration metadata with a reason for
+operator re-selection.
+The container also opens the governing `Character.md` in the shared source editor;
+new prompt compilation always uses the current master.
+
+Template improvement is an optional, explicit action on a finished board
+candidate. `CharacterContainerTemplateService` captures the candidate image,
+submitted prompt, and frozen ordered inputs, proposes and validates a complete
+master edit, then compiles a preview for the same view using those captured
+inputs. The operator reviews the diff and prompt before accepting through
+`SourceEditorService`; a master revision check prevents overwriting intervening
+edits. Acceptance changes future compilation only. The latest proposal restores
+when its container opens. This path has no run ownership, trial render, or
+background authoring poller.
+
+Costume rename retains the same Dressing container ID and candidate board under
+the new canonical slug, updating saved paths inside its records. It refuses
+active renders or pending publication journals. Costume deletion includes
+retained board Inventory IDs in the confirmation preview and archives the
+container and its candidate evidence with the costume.
+
 ## Render preparation contexts (2026-11-03)
 
 Render actions compare a target-slot context at admission and reservation. New
@@ -144,7 +208,10 @@ and preserve saved reference order. Dressing input preparation resolves its
 Assembly source per request and can reuse the saved prompt and bindings. The dashboard exposes separate mode controls and slots. See the
 [completed plan](../../plans/completed/draft-final-rendering.md) for validation.
 
-## Overview autogenerate with edited heads (2026-10-27)
+## Retired Overview autogenerate with edited heads (historical, 2026-10-27)
+
+This automatic pipeline sequencing and batch reuse has been retired. The remaining
+records below describe its former behavior for migration and rollback context only.
 
 Dashboard Overview uses `LocalCharacterOverviewService` to sequence FRONT through
 Body-Reference, Head-Image Edit, Character-Assembly and Costume-Dressing. New jobs
@@ -349,7 +416,10 @@ proceeded. Ear orientation and the deferred lower-bob mismatch remain open.
 See the [active pilot plan](../../plans/active/head-reference-quality.md) for its
 32-render ceiling, yes/no acceptance gates and conditional integration boundary.
 
-The active character workflow produces and reviews **batches of candidates** for Body-Reference, Head-Image, Character-Assembly, and Costume-Dressing. It reuses prompt compilers while keeping its own run/selection state. Traditional stage-driven generation is retired via [pipeline_retirement.py](../../zet/services/pipeline_retirement.py); retained traditional assets are not local batch IDs.
+The new character workflow uses persistent Asset Containers and manual per-view
+Candidate Boards. It reuses the existing prompt compilers while keeping board,
+selection and lock state independent of legacy runs. Traditional stage-driven
+generation remains retired via [pipeline_retirement.py](../../zet/services/pipeline_retirement.py).
 
 ## Interfaces and workflow
 
@@ -369,7 +439,7 @@ decisions. Same-candidate polling preserves drafts, disclosure state and focus.
 | Shared review/run semantics | [local_image_pipeline_policy.py](../../zet/services/local_image_pipeline_policy.py), [candidate_review_contract.py](../../zet/services/candidate_review_contract.py), [local_candidate_review_contract.py](../../zet/services/local_candidate_review_contract.py), [local_image_ranking_service.py](../../zet/services/local_image_ranking_service.py) |
 | Candidate image delivery | [local_candidate_image_service.py](../../zet/services/local_candidate_image_service.py) resolves current candidate membership and contained image paths from the owning run's spec/state without building full run detail |
 | Selection, lock and publication | [LocalAssetStoreService](../../zet/services/local_asset_store_service.py), file-available [LocalAssetSourceService](../../zet/services/local_asset_source_service.py), entity image library |
-| Overview and sequenced automation/recovery | [LocalCharacterOverviewService](../../zet/services/local_character_overview_service.py), [LocalRunAllRemainingService](../../zet/services/local_run_all_remaining_service.py), [local router](../../zet/web/local_character_asset_pipeline_router.py), app startup recovery |
+| Current costume Overview | [LocalCharacterOverviewService](../../zet/services/local_character_overview_service.py) reads `LocalAssetSourceService`; no generation, automatic pipeline selection, batch linking or recurring poller |
 
 Inputs include character/phase, normalized requested views, costume qualifier when applicable, source batch/candidate selections, source templates, profile and seed controls. Runs retain specs, snapshots, candidate state, ranking jobs, human decisions, and selections. Outputs include candidate image artifacts and, after locking, approved library image/reference bindings.
 

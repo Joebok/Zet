@@ -50,7 +50,7 @@ These are supported by implementation and repository instructions, with earlier 
 
 ## 5. Approved local sources are available publications
 
-- **Rule/why:** `locked_assets` requires a recorded lock and an existing universe-owned permanent image. Original batch/candidate files, saved hashes and advisory upstream drift do not invalidate publication. Manual file replacement is trusted. Explicit catalog archival revokes availability; explicit relocking can restore it. A published chain commits catalog rows/references together and uses a receipt plus journal to recover its separate local JSON state.
+- **Rule/why:** Character Asset Container source listings use the selected candidate's current board lock and approved Inventory record. The legacy `LocalAssets` store remains available only to migration and narrow saved-key compatibility reads; new source choices and current-output consumers do not fall back to an unimported legacy lock. `locked_assets` still requires a recorded lock and an existing universe-owned permanent image for legacy compatibility. Original candidate files, saved hashes and advisory upstream drift do not invalidate publication. Manual file replacement is trusted. Explicit catalog archival revokes availability; explicit relocking can restore it. A published chain commits catalog rows/references together and uses a receipt plus journal to recover its separate local JSON state. Character board journal replay must preserve any board state newer than the journal's publication snapshot, including a later unlock or selection.
 - **Finished character inputs:** Final publication verifies the selected output identity and bytes. Edited-head, Assembly and Dressing renders with saved references also verify their frozen reference bytes at lock time. An upstream selection change is historical context; missing or altered required snapshots still block the attempt.
 - **Implementation/impact:** [LocalAssetStoreService](../zet/services/local_asset_store_service.py), [LocalAssetPublicationRecoveryService](../zet/services/local_asset_publication_recovery_service.py), [StorageRecoveryService](../zet/services/storage_recovery_service.py), [LocalAssetSourceService](../zet/services/local_asset_source_service.py) and entity publication.
 - **Verify:** S2 covers publication and downstream prerequisites; disposable checks cover catalog rollback, committed/uncommitted journal recovery, manual replacement, absent history/files and archive/relock. See [ADR 0023](DECISIONS/0023-streamlined-image-integrity.md) and [ADR 0029](DECISIONS/0029-recoverable-local-asset-publication.md).
@@ -247,3 +247,18 @@ retry. Confirmed Draft cleanup fences matching work and only removes owned Draft
 outputs and locks; Final work, completed downstream outputs and independent
 Inventory copies remain. The selective image copy uses Inventory and workflow
 lock metadata rather than image filenames. See [ADR 0039](DECISIONS/0039-draft-final-images.md).
+
+Character Asset Container boards use one mixed-quality board per view. Their Draft
+and Final locks both publish through the recoverable Inventory transaction so a
+locked output can serve as a source outside its container. Existing batch-based
+Draft locks remain private until they are explicitly re-locked through a container.
+Head phase-change source choices may differ by requested quality, but both resolve
+to a current locked/published FRONT on the same source-phase container or to an
+image stored inside the owning container's managed phase-source directory. Uploaded
+source bytes are checksum-verified and copied into each prepared request.
+Current-source readers prefer a locked container output for its pipeline/costume/view
+over a legacy LocalAssets lock. Saved container-source references use the stable
+Inventory asset ID and remain resolvable after board unlock or candidate clearing;
+this does not make an unlocked candidate a current source.
+
+Character board progress can reconcile an existing attempt and apply its verified result. An interrupted attempt becomes available for explicit retry. Container lock publication holds the container lock through the catalog receipt and board finalization.

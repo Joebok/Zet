@@ -1,5 +1,31 @@
 # Local testing
 
+## Character Asset Container current-source continuity (2026-11-06)
+
+A disposable browser/API check verified that a published Draft lock appears in
+current local source choices, disappears after unlock, and remains resolvable by
+its saved Inventory key to the permanent image bytes. It used the isolated fast
+fixture library; no live library or permanent scenario was changed.
+
+A second isolated API check verified Phase Comparison and Turnarounds include
+the Draft lock while it is current and stop listing it after unlock.
+
+A third isolated API check created an Identity Key preview from the current
+Draft source, then confirmed preview rejects that source category after unlock.
+
+A temporary assertion in the isolated Assembly-to-Dressing browser journey
+verified the Costume's `asset_count` changes from one published FRONT to zero
+after unlock, while the Inventory record remains available. The assertion was
+removed after the check; the four approved scenarios passed (35.3s).
+
+A disposable browser check opened a finished Dressing candidate's
+template-improvement control, answered the structured request with an unchanged
+Character.md, displayed the proposal, and restored it after reload. The full
+ordered suite initially exposed that the earlier onboarding upload produced
+CRCRLF when writing an already-CRLF template on Windows. Template uploads now
+normalize CRCRLF/CRLF/CR before writing. The temporary proposal interaction then
+passed with the full four-scenario suite (36.3s); the assertion was removed.
+
 ## Source-changed badge path correction (2026-11-03)
 
 The approved fast suite passed 4/4. A disposable read-only check classified
@@ -775,7 +801,7 @@ All four are implemented in [fast.spec.mjs](../tests/e2e/fast.spec.mjs). The S1�
 | Label / exact test title | User task and assertions | Scope limit |
 | --- | --- | --- |
 | S1 — `library and narrative authoring save and reload through the dashboard` | Upload/restore the Traveler character template; edit/restore costume name; save story title, scene setting, and element appearance; reload and display the reference image; inspect persisted source files | Uses seeded library images/records. Does not cover every catalog operation, merge, migration or universe lifecycle |
-| S2 — `character-to-costume workflow previews prerequisites and creates a real run` | API preview/create/start a front-only Character-Assembly run; deliver a prepared image response; wait for ranking; select/lock; repeat for Costume-Dressing using the assembly prerequisite and verify costume availability | Seeds Body/Head locks and uses one front candidate. Does not generate Body/Head batches or test all views, ranking comparisons, cancellation or recovery |
+| S2 — `character-to-costume workflow uses manual container boards and publishes outputs` | Seed locked Body/Head outputs. Generate Draft and Final Assembly FRONT candidates in Chromium, inspect frozen inputs in Review, select and lock Final, and check its approved Inventory record. Choose a costume and generate and lock Dressing using the published Assembly input. Verify the Dressing deep link and retired endpoints. | Prepared image responses. Browser polling applies Character results. Recovery and wider view coverage use isolated disposable checks |
 | S3 — `narrative interview, prompt, render, retry, and final assembly persist` | Dashboard interview proposals, review/Apply and synthesis; render backdrop/subscene; fail and retry a subscene render; select/lock sources; add assembly layers, synthesize/render/select/lock final assembly; reload and verify story summary/image availability | Prepared text/image answers exercise persisted job/application flow, not actual LLM synthesis, image quality, or every provenance/protection case |
 
 S4 — `unified AI queue collects all universes in the background and shares model selection`
@@ -786,7 +812,7 @@ popup mutual exclusion/vision filtering plus server-side capability rejection.
 No real AI execution occurs. Fixture envelopes preserve original request bytes and
 include terminal output inventories.
 
-The suite mixes browser actions, API calls, and filesystem assertions. In particular S2 is primarily API-driven; do not describe it as a complete browser journey through every character control. [CODE_MAP.md](CODE_MAP.md) maps capabilities to these scenarios and their gaps.
+The suite mixes browser actions, API calls, and filesystem assertions. S2 uses browser actions for generation, review, selection, and locking. It uses the API to observe queued candidates and verify persisted state. [CODE_MAP.md](CODE_MAP.md) maps capabilities to these scenarios and their gaps.
 
 ## Commands and prerequisites
 
@@ -827,9 +853,9 @@ Use an existing verified Python 3.11+ runtime, project packages, Node, Playwrigh
 
 ## Fixture and response boundaries
 
-[server.py](../tests/e2e/server.py) copies [tests/library](../tests/library/README.md) into the selected results root's `narrative-e2e/<mode>/` at process startup. The seed owns `Test/universe.json`, `seed.json`, Traveler character/costume sources, reference images, and prepared response images. It is never written back from a run. App construction seeds Narrative records through real services and creates valid Body/Head batch specs and locks; fixture-only `/__test/*` routes are added by this server, not production routes.
+[server.py](../tests/e2e/server.py) copies [tests/library](../tests/library/README.md) into the selected results root's `narrative-e2e/<mode>/` at process startup. The seed owns `Test/universe.json`, `seed.json`, Traveler character/costume sources, reference images, and prepared response images. It is never written back from a run. App construction seeds Narrative records through real services; S2 seeds available Body/Head container candidates and locks them through the container board service. Fixture-only `/__test/*` routes are added by this server, not production routes.
 
-Before each fast scenario, `/__test/reset` replaces the Narrative story and resets the Traveler local lock/batch state and File Proxy folders, then reseeds prerequisites. The app, Test universe, and entity catalog persist within the run; this is **not a full database rebuild per scenario**. S1 restores the source template/costume edits it makes. Library/queue paths are disposable; the derived index uses a separate temporary directory outside Git with exit cleanup. Producer-local queue routes/receipts are keyed by the disposable queue path, distinct from the normal queue.
+Before each fast scenario, `/__test/reset` replaces the Narrative story and resets the Traveler container/legacy fixture state and File Proxy folders, then reseeds S2 prerequisites. The app, Test universe, and entity catalog persist within the run; this is **not a full database rebuild per scenario**. S1 restores the source template/costume edits it makes. Library/queue paths are disposable; the derived index uses a separate temporary directory outside Git with exit cleanup. Producer-local queue routes/receipts are keyed by the disposable queue path, distinct from the normal queue.
 
 The server suppresses Ollama catalog refresh and supplies prepared local-prompt observations. Fast helper functions deliver prepared envelopes and images into the private File Proxy folders. Narrative envelopes include proxy-result inventory and an external-consumer harvest marker; local-pipeline answers use their own reconciliation path. This exercises packaging, persistence and supported result application without running the external dispatcher, Ollama, Codex, or ComfyUI. It does not independently prove all readiness, ownership or stale-result rejection branches.
 
@@ -977,5 +1003,99 @@ The four approved fast scenarios passed (43.8s) after correcting an initially in
 
 Final scene-text integration rerun: all four approved scenarios passed (42.2s); final disposable Chromium journey passed (7.8s including startup). Changed Python/JavaScript syntax and diff checks passed. See plans/completed/narrative-scene-text.md for earlier corrected failures and verification limits.
 
+## Character container workflow cutover (2026-11-06)
+
+The approved `npm run test:e2e` baseline passed all four scenarios (35.4 seconds)
+after S2 moved Assembly and Dressing to manual container boards. S2 now checks
+container preparation/dispatch, selection, immediate Inventory publication,
+ordered downstream references, costume source availability, the Assets deep link,
+and that legacy batch and Overview automation API/UI actions are unavailable. It uses one FRONT candidate
+per board with prepared responses; it does not cover polling network lifecycle,
+template improvement, cancellation, or recovery. No live render services were used.
+
+A separate disposable Playwright trace, removed after execution, verified Character
+container polling while idle, while a candidate was queued, on settlement, and on
+idle tab return. Idle generated no progress calls; active work used compact progress
+without repeated detail reads; settlement and tab return each refreshed detail once;
+settled work stopped polling. Two additional disposable scenarios confirmed compact
+progress continues while the review dialog is open and stops after navigation away
+from the active container. A separate disposable scenario passed Assets entry to all
+five pipelines through both the compact Character Development selector and desktop
+Assets menu, including explicit costume selection for Dressing. A prepared-response
+browser attempt for template proposal review did not settle and is inconclusive; the
+proposal's service/compiler and shared editor paths were checked separately in
+isolated fixtures. A separate disposable API/browser scenario verified that an
+AI_Proxy error answer settles the candidate as failed, retry preserves candidate
+identity, slot, seed and frozen request, a prepared retry can be harvested, and the
+eight-slot capacity is enforced. That check exposed and verified the fix for error
+answers remaining queued. These traces added no permanent tests; process-restart
+recovery after service reconstruction and stale prior-attempt results were also
+verified in a separate disposable scenario: the matching recovered ask harvested,
+and a late answer from attempt one left attempt two queued and unchanged. Full process
+termination and stale clear-confirmation checks remain unverified. A final disposable
+browser check verified the manual Draft 1, Draft 4, Final 1 and Final 4 controls each
+submitted exactly its requested quality and count. Those temporary browser tests were
+removed; the controls invoke the existing AI_Proxy staging and AIJobService result APIs.
+A disposable review check selected multiple Final comparison images from other views
+and verified the selected/locked Draft FRONT image was omitted. Its temporary test was
+also removed.
+
 ## Finished scene-text editing and universe settings (2026-10-29)
 All four approved fast scenarios passed (38.8s). Disposable service checks passed persistence, stale confirmation, original-byte preservation, locked mutation rejection and all available four-face fonts. Disposable Chromium passed draft/final saving, lock/unlock/re-edit, overflow recovery, clean view and combined universe-settings save/reload with Comic Sans MS (9.5s). Python AST, JavaScript syntax and diff checks passed. No permanent tests, live AI calls or production data writes were added. See plans/completed/scene-text-finish-settings.md for limitations.
+# Character Asset Container authoring preparation (2026-11-06)
+
+A disposable isolated browser/API fixture prepared requests through Body
+Reference, Head Image Construct, Head Image Edit, Character Assembly, and
+Costume Dressing compilers. It checked non-FRONT Head and Body source binding,
+Assembly's ordered Body/Head inputs, and Costume Dressing's Assembly input and
+costume provenance. The first Head non-FRONT request exposed missing source-view
+metadata in the resolved reference; after correction the fixture passed. The
+temporary fixture and config were removed. `npm run test:e2e` passed all four
+approved scenarios; Python AST parsing, JavaScript syntax checks, and
+`git diff --check` passed. Costume-specific reference recipes were not covered
+by this fixture. No live library or renderer was used.
+
+## Character phase-change source mapping (2026-11-06)
+
+A disposable isolated browser/API fixture created a second character phase,
+locked and published an Adult Head Construct FRONT and a separate Adult Head
+Edit FRONT, then saved them as the Youth container's Draft and Final phase-change
+sources. Prepared Youth Head Construct requests captured the matching source
+candidate in each quality and retained phase-change provenance. Required Head
+Edit sections were added only to the disposable master. The fixture/config were
+removed after passing; no live library or renderer was used.
+
+## Character saved view reference recipe (2026-11-06)
+
+A disposable browser/API fixture changed the Body Reference `BACK_LEFT_3_4`
+recipe to its selected same-container FRONT, then prepared a request. Its frozen
+input retained the selected candidate identity, source view, and
+`body_reference_front_anchor` role. The fixture/config were removed after
+passing. No live library or renderer was used.
+
+## Character Costume master reference (2026-11-06)
+
+A disposable browser/API fixture added a logical image reference inside the
+Costume Description section, then prepared Dressing from a locked Assembly
+FRONT. The frozen request ordered the matching Assembly input before the
+Costume master's entity-library reference and retained its logical key and
+Costume provenance. A tag outside the selected prompt sections was ignored, as
+expected; the active Costume Description tag was captured. Temporary fixture
+and config were removed. No live library or renderer was used.
+
+## Shared image production transport (2026-11-06)
+
+The approved `npm run test:e2e` suite passed all four scenarios after Character
+and Narrative image requests were routed through `ImageProductionService`. A
+disposable isolated recovery fixture dropped the persisted Character ask ID,
+recovered the matching attempt by its source identity and owner manifest, then
+harvested a prepared image into the candidate. Python AST parsing and
+`git diff --check` passed. A separate disposable fence follow-up verified stale
+clear confirmation and ignored a late success from a prior failed attempt after
+retry. A separate disposable fixture initialized a fresh Zet process from the
+same isolated config and recovered a SUBMITTING candidate with a lost ask ID;
+the first server then harvested the prepared answer. A final disposable harness
+terminated and restarted the isolated HTTP server using the same library and
+queue, recovered the ask, and harvested the prepared result after restart. The
+generated harness/config and isolated output root were removed. No live renderer
+was used.

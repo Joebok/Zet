@@ -17,3 +17,22 @@ export function renderCandidateBoard({host, slots, candidates, selectedId, escap
     return `<article class="narrative-slot ${id && id === selectedId ? 'selected' : ''}" data-state="${state}"><h3 class="render-mode-heading">Slot ${index + 1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>${image}${metadata}${candidate?.error ? `<p class="error">${escape(candidate.error)}</p>` : ''}${review}</article>`;
   }).join('');
 }
+
+
+export function reviewDecisions({id, candidate, selected, busy = false, escape}) {
+  const action = (name, label, disabled = false) =>
+    `<button type="button" data-candidate="${escape(id)}" data-candidate-action="${name}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+  return action('select', 'Select', busy || selected || !candidate.image) +
+    action(candidate.locked ? 'unlock' : 'lock', candidate.locked ? 'Unlock' : 'Lock', busy || !candidate.image) +
+    (candidate.status === 'FAILED' ? action('retry', 'Retry', busy) : '');
+}
+
+export function reviewPosition(candidate, index, count, selected) {
+  return `${index + 1} of ${count} · ${candidate.render_mode === 'final' ? 'Final' : 'Draft'} · ${candidate.status.toLowerCase()}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}`;
+}
+
+
+export function reviewInputs(inputs, url, escape) {
+  if (!inputs?.length) return "";
+  return `<ol>${inputs.map((input, index) => `<li><a href="${escape(url(index + 1))}" target="_blank" rel="noopener">${escape(input.role || input.label || "Reference")}</a></li>`).join("")}</ol>`;
+}

@@ -1,8 +1,17 @@
 # Capability code map
 
-Character render operation contexts distinguish target slots from fresh source
-resolution in `local_pipeline_operation_context.py`; preparation and captured-input
-commit checks are owned by `local_pipeline_available_preparation_service.py`.
+Character Asset Container template improvement is owned by
+`CharacterContainerTemplateService`: it stores finished-candidate-backed
+Character.md proposals, validates and compiles captured-input previews, and
+promotes only after explicit acceptance and a current-master revision check.
+The container router and `character_asset_container.js` expose proposal review
+on the Assets container page. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#character-asset-container-workflow-2026-11-06)
+and the [active migration plan](../plans/active/character-image-production-workflow.md).
+
+Legacy Character batch operation contexts and preparation services are retained
+for migration/reference only; their router is not mounted and startup no longer
+recovers or resumes those batches. The active character pipeline boundary is
+`CharacterAssetContainerService` plus `/api/character-containers`.
 
 Current source/guard policy (2026-11-02):
 `LocalTemplateRevisionService.accept` commits reviewed masters;
@@ -14,7 +23,7 @@ Minor board restart/Draft cleanup, and Narrative Draft cleanup use state-bound
 protected-effect previews. `zet.js` renders the shared approval dialog. See
 [ADR 0045](DECISIONS/0045-finished-image-source-policy.md).
 
-Character batch/view pages: `LocalPipelineProjectionService` owns scoped summary
+Retired Character batch/view pages: `LocalPipelineProjectionService` owns scoped summary
 and single-view reads; `LocalPipelineThumbnailService` owns verified bounded image
 derivatives; `LocalPipelineComparisonService` owns requested difference reports;
 `LocalCurrentMastersService` owns explicit master preparation and its per-view
@@ -27,10 +36,11 @@ asset store own Final publication integrity.
 FRONT-to-BACK view order, opens Batch actions in a dialog, and builds summary image
 review navigation from `selected_cards`; its reports remain in the summary page.
 
-Character Run available and slot/view regeneration preparation: `LocalPipelineOperationService`,
+Retired Character Run available and slot/view regeneration preparation: `LocalPipelineOperationService`,
 `LocalPipelineAvailableOperationHandler` and `LocalPipelineOperationReservation`
-own local admission, preparation and candidate checkpoints; the operation router
-and `local_pipeline_operations.js` expose status and Activity. Activity is an
+own local admission, preparation and candidate checkpoints; the now-unmounted
+operation router and `local_pipeline_operations.js` formerly exposed status and
+Activity. Activity was an
 active/error projection with explicit error dismissal and navigation refresh;
 terminal records remain for request identity recovery. Batch/view Re-evaluate uses
 `LocalPipelineEvaluationOperationHandler`; Start and Resume use
@@ -46,7 +56,7 @@ preview and mode-scoped clearing transition. The local router and shared pipelin
 controller expose Re-start without dispatching renders. The completed plan records
 validation and limits: [character pipeline UI](../plans/completed/character-pipeline-ui.md).
 
-Long-running local renders: CharacterRenderSlots.recover_timeouts reattaches historically timed-out slots; StorageRecoveryService discovers them. LocalImagePipelineWorkflowService projects queue and proxy health; AI_Proxy publishes the execution heartbeat.
+Retired batch render recovery: historical CharacterRenderSlots timeout recovery and `StorageRecoveryService` batch discovery are not active. The container service owns its own per-candidate attempt fence and visible-view recovery; AI_Proxy publishes the execution heartbeat.
 
 Mode-aware local batches: `CharacterRenderSlots.run_available` reserves configured candidates for the slot collector. `local_mode_progress_service.py` projects Draft/Final progress for workflow detail and batch summaries. The shared local pipeline and batch-status controllers expose the mode actions.
 
@@ -54,13 +64,14 @@ Character image ranking keeps Draft and Final evaluations separate. The shared r
 
 Draft/Final rendering: `image_sizing_service.py` owns target-pixel sizing; `LocalModeSelectionService` and `LocalAssetStoreService` own mode-scoped character selection and locks. Narrative uses `image_candidate_board_service.py` for shared board rules and `image_render_request.py` for frozen candidate handoffs. `NarrativeSceneService` owns locked Inventory publication; `migrate_narrative_image_board.py` performs backed-up legacy conversion. The workflow and dashboard expose individual and bulk mode actions. See the [completed plan](../plans/completed/draft-final-rendering.md).
 
-Dashboard Overview (2026-10-27): `local_character_overview.js` mounts the
-character/phase/costume grid through `zet.js` and `index.html`; the former standalone
-route redirects into the shell. Assets → Character Overview retains onboarding.
-`LocalCharacterOverviewService` owns edited-head FRONT sequencing, explicit Assembly
-source selection, compatible downstream batch reuse and legacy-job recovery.
-See [Dashboard UI](COMPONENTS/DASHBOARD_UI.md#dashboard-overview-2026-10-27) and
-[Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#overview-autogenerate-with-edited-heads-2026-10-27).
+Dashboard Overview (2026-11-06): `local_character_overview.js` renders a read-only
+character/phase/costume grid from the current published-source reader. It refreshes
+on entry, tab return or explicit request. Per-costume autogenerate/stop/status routes,
+automatic pipeline selection, batch reuse and startup recovery were retired;
+operators generate and review on the Costume Dressing Asset Container board. The
+former standalone route still redirects into the shell. Assets → Character Overview
+retains onboarding. See [Dashboard UI](COMPONENTS/DASHBOARD_UI.md#dashboard-overview-2026-10-27)
+and [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#character-asset-container-current-outputs-2026-11-06).
 
 Character pipeline bulk locks (2026-10-27): `LocalImagePipelineWorkflowService._bulk_asset_action`
 owns selected-view lock targeting, aggregate lineage previews, selection fencing,
@@ -161,9 +172,11 @@ Use this map to select a narrow search, inspect the named entry point and caller
 | Record image catalog and derived dashboard discovery | [image_catalog_service.py](../zet/services/image_catalog_service.py), [image_catalog_repository.py](../zet/repositories/image_catalog_repository.py); [library_index_service.py](../zet/services/library_index_service.py): `LibraryIndexService`, `LibraryIndexReconciler`; [library_index_repository.py](../zet/repositories/library_index_repository.py); `ZetApp.refresh_library_index`, `_indexed_list_rows` | Fixture initialization is incidental; no catalog/index migration, pagination, freshness or corruption scenario | Catalog callbacks, paging/generation freshness, reference picker, index error reporting |
 | Machine-local storage, bounded retention and cutover inventory | [config_service.py](../zet/services/config_service.py), [storage_path_service.py](../zet/services/storage_path_service.py), [storage_maintenance_service.py](../zet/services/storage_maintenance_service.py), [manage_storage.py](../zet/scripts/manage_storage.py); queue/index/task workflow consumers | S4 runs on isolated configured storage; no maintained storage-migration scenario | `Storage.Root` containment, index publication/pruning, seven-day successful queue retention, read-only manifest and explicit offline compaction |
 | Character onboarding and source editing | [character_onboarding_service.py](../zet/services/character_onboarding_service.py), [character_source_service.py](../zet/services/character_source_service.py), [quick_character_wizard_service.py](../zet/services/quick_character_wizard_service.py), [quick_character_publication_service.py](../zet/services/quick_character_publication_service.py), [source_editor_service.py](../zet/services/source_editor_service.py); wizard router and app | S1 uploads/restores the character template; no wizard/source-edit permutations | Shared templates, measurements, derived prompts, initial image publication |
-| Costume authoring | [costume_service.py](../zet/services/costume_service.py), [costume_wizard_service.py](../zet/services/costume_wizard_service.py), shared costume templates; app/wizard HTTP. Wizard FRONT tests use a private `PipelineCandidates` tree and the universe's locked source store | S1 edits/restores a costume name; S2 consumes it for Dressing. Disposable prepared check covers wizard test staging; live render quality not covered | Costume qualifiers, view-conditioned text, references, dressing batches |
-| Local character candidates and progression | [local_body_reference_service.py](../zet/services/local_body_reference_service.py): `LocalBodyReferenceService`; [local_head_image_service.py](../zet/services/local_head_image_service.py); [local_character_asset_pipeline_service.py](../zet/services/local_character_asset_pipeline_service.py): `preview`, `create_run`, `execute_run`, `select_view`, `lock_selected_view`; [local_candidate_image_service.py](../zet/services/local_candidate_image_service.py): focused current-candidate image lookup; [local_image_workflow_service.py](../zet/services/local_image_workflow_service.py): `reference_image_path` resolves candidate/mode/index-bound thumbnails for all five pipelines; [local_character_overview_service.py](../zet/services/local_character_overview_service.py), [local_run_all_remaining_service.py](../zet/services/local_run_all_remaining_service.py); [local router](../zet/web/local_character_asset_pipeline_router.py) | S2 creates/starts front Assembly and Dressing; seeded Body/Head prerequisites. Other views/recovery not covered | Render queues, snapshots, per-view dependencies, restart recovery |
-| Local ranking, human review and approved sources | [local_candidate_review_contract.py](../zet/services/local_candidate_review_contract.py), [local_image_pipeline_policy.py](../zet/services/local_image_pipeline_policy.py), [local_image_evaluation_service.py](../zet/services/local_image_evaluation_service.py), [local_image_ranking_service.py](../zet/services/local_image_ranking_service.py): `supplied_ranking_references`, `rank_images_with_luna`; [local_asset_store_service.py](../zet/services/local_asset_store_service.py): `locked_assets`, `promote_chain`; [local_asset_source_service.py](../zet/services/local_asset_source_service.py); conversion-only retirement tooling [retire_local_gates.py](../zet/scripts/retire_local_gates.py) | S2 prepared render, one-candidate ranking, selection/lock. Disposable checks cover supplied-reference payload mapping; comparative model quality, stale jobs and cancellation lack maintained coverage | Candidate-specific supplied-reference attachments and labels, human decisions, ranking eligibility, immutable locks, entity publication, source consumers |
+| Costume authoring and lifecycle | [costume_service.py](../zet/services/costume_service.py) moves Dressing Asset Containers on rename; [library_deletion_service.py](../zet/services/library_deletion_service.py) previews container Inventory locks and archives its board/evidence on deletion; [costume_wizard_service.py](../zet/services/costume_wizard_service.py), shared costume templates; app/wizard HTTP | S1 edits/restores a costume name; S2 consumes it for Dressing. Disposable checks cover container rename/path continuity and deletion preview/archive | Costume qualifiers, view-conditioned text, references, dressing containers |
+| Shared image production | [image_production_service.py](../zet/services/image_production_service.py), used by [CharacterAssetContainerService](../zet/services/character_asset_container_service.py) and [NarrativeProxyService](../zet/services/narrative_proxy_service.py) | Approved E2E image journeys and disposable ask-recovery/ownership fixture; full process termination remains unverified | Common AI_Proxy image publication, frozen-request/owner validation and result collection; candidate persistence and slot transitions remain pipeline-owned |
+| Character Asset Containers | [character_asset_container_service.py](../zet/services/character_asset_container_service.py), [character_container_prompt_service.py](../zet/services/character_container_prompt_service.py), [character_container_template_service.py](../zet/services/character_container_template_service.py), [character_asset_container_router.py](../zet/web/character_asset_container_router.py), [character_asset_container.js](../zet/web/static/character_asset_container.js); [character_container_migration_service.py](../zet/services/character_container_migration_service.py) and [migration CLI](../zet/scripts/migrate_character_asset_containers.py) | Disposable import, managed-upload, quality-specific phase-source, compiler, template proposal/preview/conflict and publication-recovery fixtures; approved E2E baseline passed, S2 exercises browser generation, mixed-quality review, publication, and downstream Dressing | One mixed-quality board per view, manual candidate actions, quality-keyed Head phase sources, captured-input template proposals, scoped references and Inventory publication; migration apply requires reviewed report, verified backup, quiescence and approval |
+| Retired local character batches | [local_body_reference_service.py](../zet/services/local_body_reference_service.py), [local_head_image_service.py](../zet/services/local_head_image_service.py), [local_character_asset_pipeline_service.py](../zet/services/local_character_asset_pipeline_service.py), [local router](../zet/web/local_character_asset_pipeline_router.py) (not mounted); legacy files retained for migration evidence | Historical S2 covers the former Assembly/Dressing flow; not a current workflow validation | Batch routes, Run All Remaining, Activity staging and startup batch recovery are retired |
+| Local ranking, human review and approved sources | [local_candidate_review_contract.py](../zet/services/local_candidate_review_contract.py), [local_image_pipeline_policy.py](../zet/services/local_image_pipeline_policy.py), [local_image_evaluation_service.py](../zet/services/local_image_evaluation_service.py), [local_image_ranking_service.py](../zet/services/local_image_ranking_service.py): legacy ranking; [local_asset_store_service.py](../zet/services/local_asset_store_service.py): legacy `locked_assets`, `promote_chain`; [local_asset_source_service.py](../zet/services/local_asset_source_service.py): current container lock projection and Inventory-keyed saved references; [character_asset_container_service.py](../zet/services/character_asset_container_service.py): one board lock per view; conversion-only retirement tooling [retire_local_gates.py](../zet/scripts/retire_local_gates.py) | S2 covers legacy prepared render and publication. Disposable checks cover container-source precedence, saved Inventory resolution after unlock, and publication recovery; browser and queue lifecycle remain unverified | Legacy candidate attachments and rankings, current mixed-quality container locks, immutable Inventory outputs, source consumers |
 | Character prompt review, stages, Image Generator handoff and image refinement | [local_prompt_preview_service.py](../zet/services/local_prompt_preview_service.py), [local_template_revision_service.py](../zet/services/local_template_revision_service.py), [local_character_progression_service.py](../zet/services/local_character_progression_service.py), [local_character_refinement_service.py](../zet/services/local_character_refinement_service.py), [costume_no_reference_service.py](../zet/services/costume_no_reference_service.py), [image_generator_staging_service.py](../zet/services/image_generator_staging_service.py); shared workflow/router, local template UI and dedicated refinement page | S2 retains its front Assembly/Dressing purpose; disposable all-view no-costume-reference compilation and Image Generator handoff checks cover the new action | New-batch review gate, batch overlays, explicit stage advancement, same-side references, costume-free view staging, image-only edits, same-slot adoption and advisory drift |
 | Character Re-evaluate action | [local_image_workflow_service.py](../zet/services/local_image_workflow_service.py): `reevaluate`, `reevaluation_reason` and mode/view eligibility projection; [local_image_evaluation_service.py](../zet/services/local_image_evaluation_service.py): replacement staging vs. fenced updates; [local_prompt_improvement_service.py](../zet/services/local_prompt_improvement_service.py); shared local router/dashboard | S2 covers initial ranking/publication; disposable checks cover repeated/view/batch reevaluation, unrelated slot work and missing/queued advice | Refresh existing-image ranking without rendering or human-choice resets; AI Observations remain opt-in |
 | Identity keys, turnarounds, phase comparison | [identity_key_service.py](../zet/services/identity_key_service.py), [turnaround_service.py](../zet/services/turnaround_service.py), [phase_comparison_service.py](../zet/services/phase_comparison_service.py), [image_sheet_service.py](../zet/services/image_sheet_service.py); app/reference consumers | No dedicated maintained scenario | Local provenance, view mapping, crop/composite outputs. Identity Key locks use [entity_library_service.py](../zet/services/entity_library_service.py) for Inventory publication. Phase comparison includes locked Head-Image-Edit sources. |
@@ -281,7 +294,7 @@ inspects and removes only the selected identity under a bounded shared lock dead
   browser handoff preserves labels/settings. See [prompt contracts](COMPONENTS/PROMPTS.md)
   and [local character staging](COMPONENTS/LOCAL_CHARACTERS.md#fixed-render-slots-2026-10-12).
 
-- Character allocation/protection: [render_slot_service.py](../zet/services/render_slot_service.py), called by [local_image_workflow_service.py](../zet/services/local_image_workflow_service.py). The local router exposes view `/slots` generation and `/slots/{slot}/{operation}` actions. Adapter details/summaries use the shared active-candidate merger; Run All Remaining startup recovery reattaches persisted supplemental targets and independent slot collectors. Slot collection uses its own runner lock; ordinary batch runners exclude slot-managed additions.
+- Retired Character allocation/protection: [render_slot_service.py](../zet/services/render_slot_service.py), called by the unmounted [local router](../zet/web/local_character_asset_pipeline_router.py). The historical router exposed view `/slots` generation and `/slots/{slot}/{operation}` actions; its batch recovery and Run All Remaining startup path are no longer active. The new container board uses [image_candidate_board_service.py](../zet/services/image_candidate_board_service.py).
 - Image Generation board and prompt controls: [image_generation_workspace_service.py](../zet/services/image_generation_workspace_service.py), via `/api/image-generation/workspace` detail/import/actions; [ad_hoc_image_generation_service.py](../zet/services/ad_hoc_image_generation_service.py) retains job APIs and child-index result application. The prompt form in `zet.js` can prepend the selected universe's canonical art style.
 - Shared controls: [render_slots.js](../zet/web/static/render_slots.js); character live updates in [local_asset_pipeline.js](../zet/web/static/local_asset_pipeline.js), ad hoc board updates in `zet.js`. S2/S3 protect existing publication/Narrative behavior. Separately approved disposable checks verify the reported deep-link, containment, prompt and overlapping-action issues; full Body/Head generation and general recovery remain coverage gaps.
 

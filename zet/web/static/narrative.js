@@ -1,5 +1,5 @@
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
-import {renderCandidateBoard} from './candidate_board.js';
+import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} from './candidate_board.js';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;
 let pollTimer = null;
@@ -964,12 +964,12 @@ function renderImageReview() {
   const detailsScroll = sameCandidate ? panel.scrollTop : 0;
   panel.dataset.candidate = reviewCandidate;
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
-    <p class="local-pipeline-review-position">${index+1} of ${images.length} · ${candidate.render_mode === 'final' ? 'Final' : 'Draft'} · ${esc(candidate.status.toLowerCase())}${selected ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
+    <p class="local-pipeline-review-position">${esc(reviewPosition(candidate, index, images.length, selected))}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
-      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked?"disabled":""}>Edit text</button>` : ''}<button class="primary" data-candidate="${reviewCandidate}" data-candidate-action="select" ${busy || selected || !candidate.image ? 'disabled' : ''}>Select</button>
-      ${candidate.status === 'FAILED' ? `<button data-candidate="${reviewCandidate}" data-candidate-action="retry" ${busy?'disabled':''}>Retry</button>` : ''}<button data-render-slot="${candidate.slot}" data-mode="draft" ${busy || selected || candidate.locked ? 'disabled' : ''}>Draft</button><button data-render-slot="${candidate.slot}" data-mode="final" ${busy || selected || candidate.locked ? 'disabled' : ''}>Final</button>
+      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked?"disabled":""}>Edit text</button>` : ''}${reviewDecisions({id: reviewCandidate, candidate, selected, busy, escape: esc})}
+      <button data-render-slot="${candidate.slot}" data-mode="draft" ${busy || selected || candidate.locked ? 'disabled' : ''}>Draft</button><button data-render-slot="${candidate.slot}" data-mode="final" ${busy || selected || candidate.locked ? 'disabled' : ''}>Final</button>
       <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
-      <button data-candidate="${reviewCandidate}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}" ${busy || !candidate.image ? 'disabled' : ''}>${candidate.locked ? 'Unlock' : 'Lock'}</button>
+
       <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image before publishing it to Inventory">Publish to Inventory</button>
     </div>
     ${inventorySaved?.candidate === reviewCandidate ? `<p role="status">Saved “${esc(inventorySaved.label)}” to inventory.</p>` : ''}
@@ -977,6 +977,7 @@ function renderImageReview() {
     ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
     <details ${detailsOpen ? 'open' : ''}><summary>Prompt and source ${copyPromptButton(reviewCandidate)}</summary><p class="narrative-muted">${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}${candidate.assembly_snapshot ? ' · '+assemblyModeName(candidate.assembly_mode) : ''}</p>
     <pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre>
+    ${reviewInputs(candidate.render_request?.inputs, index => artifactUrl(`candidates/${reviewCandidate}/inputs/${index}`), esc)}
     ${candidate.source_snapshot ? `<p class="narrative-muted">Source: ${esc(candidate.source_snapshot.scene_title)} · ${esc(candidate.source_snapshot.title)} · ${esc(candidate.backdrop_adaptation?.operation || 'edit')}</p>` : ''}
     ${candidate.assembly_snapshot ? `${(candidate.assembly_snapshot.has_composite ?? (candidate.assembly_snapshot.assembly_mode || 'finish_composite')==='finish_composite') ? `<a href="${esc(artifactUrl(`candidates/${reviewCandidate}/composite`))}" target="_blank">Compare raw composite</a>` : ''}<p>${candidate.assembly_snapshot.layers.filter(layer=>layer.visible).map(layer=>esc(layer.label)).join(' · ')}</p>` : ''}
     </details>`;

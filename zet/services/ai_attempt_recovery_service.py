@@ -44,6 +44,9 @@ class AIAttemptRecoveryService:
         with file_lock(self._path(job_id).with_suffix(".lock")):
             state = self.read(job_id)
             original = jobs._ready_answer_physical(job_id)
+            record = jobs.repository.get(job_id) or {}
+            if record.get("consumer") == "zet-character-containers":
+                return original  # The board exposes interrupted executions as explicit retries.
             if original and not self.retryable(original):
                 return original
             if not state and original is None:

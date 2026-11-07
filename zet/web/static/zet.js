@@ -14,8 +14,6 @@ const state = {
   productionWorkRefreshPending: false,
   pageGeneration: 0,
   pageController: null,
-  localRunAllCampaignId: "",
-  localRunAllTimer: null,
   selectionGenerations: {},
   selectionControllers: {},
   workspaceSummary: { character: null, story: null },
@@ -198,7 +196,8 @@ const IMAGE_GENERATION_STORAGE_KEY = "zet:image-generation";
 const CHARACTER_PAGES = new Set(["onboarding", "minor-characters", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
 const STORY_PAGES = new Set(["narrative", "scene-candidates", "zine"]);
 const LOCAL_PAGES = new Set([
-  "local-overview", "local-batch-status", "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly",
+  "character-asset-container",
+  "local-overview", "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly",
   "local-costume-dressing", "local-identity-keys", "local-turnarounds", "local-costumes",
   "local-scene-appearances", "local-expressions", "local-comparison",
 ]);
@@ -3135,7 +3134,6 @@ function saveWorkspacePreferences() {
 }
 
 function pageWorkspace(page) {
-  if (page === "local-batch-status") return null;
   if (["universes", "universe-create", "universe-settings"].includes(page)) return null;
   if (CHARACTER_PAGES.has(page)) return "character";
   if (LOCAL_PAGES.has(page)) return "character";
@@ -3144,13 +3142,19 @@ function pageWorkspace(page) {
 }
 
 function canonicalDashboardPage(page) {
+  const legacyCharacterPipelines = {
+    "local-body-reference": "body-reference", "local-head-image": "head-image",
+    "local-head-image-edit": "head-image-edit", "local-character-assembly": "character-assembly",
+    "local-costume-dressing": "costume-dressing",
+  };
+  if (legacyCharacterPipelines[page]) return "character-asset-container";
   return ({
-    "local-character-overview": "local-overview", assets: "local-batch-status", manifest: "local-batch-status",
-    "scene-appearances": "local-batch-status", expressions: "local-batch-status",
+    "local-character-overview": "local-overview", assets: "local-overview", manifest: "local-overview",
+    "scene-appearances": "narrative", expressions: "narrative",
     "local-identity-keys": "identity-keys", "local-turnarounds": "turnarounds",
     "local-costumes": "costumes", "local-comparison": "phase-comparison",
-    "local-scene-appearances": "local-batch-status", "local-expressions": "local-batch-status",
-    "local-image-review": "local-batch-status",
+    "local-scene-appearances": "narrative", "local-expressions": "narrative",
+    "local-image-review": "narrative",
     "render-console": "narrative", "render-review": "narrative",
     stories: "narrative", scenes: "narrative", "scene-builder": "narrative", "scene-batches": "narrative",
   })[page] || page;
@@ -3168,9 +3172,13 @@ function renderHeaderStoryContext() {
 }
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["local-overview", "Overview"], ["onboarding", "Character Overview"], ["local-body-reference", "Body-Reference"],
-    ["local-head-image-edit", "Head-Image (Edit)"], ["local-head-image", "Head-Image (Construct)"], ["local-character-assembly", "Character-Assembly"],
-    ["local-costume-dressing", "Costume-Dressing"], ["identity-keys", "Identity Keys"],
+    ["local-overview", "Overview"], ["onboarding", "Character Overview"],
+    ["character-asset-container:body-reference", "Assets · Body Reference"],
+    ["character-asset-container:head-image-edit", "Assets · Head Image Edit"],
+    ["character-asset-container:head-image", "Assets · Head Image Construct"],
+    ["character-asset-container:character-assembly", "Assets · Character Assembly"],
+    ["character-asset-container:costume-dressing", "Assets · Costume Dressing"],
+    ["identity-keys", "Identity Keys"],
     ["turnarounds", "Turnarounds"], ["costumes", "Costumes"], ["phase-comparison", "Phase Comparison"],
     ["minor-characters", "Minor Characters"],
   ],
@@ -3180,7 +3188,6 @@ const RESPONSIVE_WORKSPACE_PAGES = {
 };
 
 const RESPONSIVE_TOOL_PAGES = [
-  ["local-batch-status", "Batches"],
   ["image-generation", "Image Generation"],
   ["minor-characters", "Minor Characters"],
   ["auxiliary-resources", "Image Inventory"], ["template-editor", "Template Editor"], ["ai-controls", "AI Queue"],
@@ -3201,13 +3208,18 @@ function renderResponsiveSectionMenu(selectedPage = activePageName() || state.la
   toolsGroup.label = "Tools";
   for (const [value, label] of RESPONSIVE_TOOL_PAGES) toolsGroup.append(option(value, label));
   responsiveSectionMenu.append(sectionGroup, toolsGroup);
-  responsiveSectionMenu.value = Array.from(responsiveSectionMenu.options).some((item) => item.value === selectedPage) ? selectedPage : "";
+  const currentPipeline = window.ZetCharacterAssetContainer?.pipeline?.()
+    || new URLSearchParams(window.location.search).get("pipeline") || "body-reference";
+  const selectedValue = selectedPage === "character-asset-container"
+    ? `character-asset-container:${currentPipeline}` : selectedPage;
+  responsiveSectionMenu.value = Array.from(responsiveSectionMenu.options).some((item) => item.value === selectedValue)
+    ? selectedValue : "";
 }
 
 const compactShell = window.matchMedia("(max-width: 1360px)");
 const compactUtilityHomes = new Map();
 function syncResponsiveChrome() {
-  for (const id of ["toolbar-create-task", "toolbar-github-issues", "toolbar-restart-zet", "toolbar-batches", "delete-phase"]) {
+  for (const id of ["toolbar-create-task", "toolbar-github-issues", "toolbar-restart-zet", "delete-phase"]) {
     const item = document.getElementById(id);
     if (!compactUtilityHomes.has(item)) {
       const marker = document.createComment(id);
@@ -3833,10 +3845,21 @@ function browserRouteUrl() {
     const batch = new URLSearchParams(window.location.search).get("batch");
     if (batch) params.set("batch", batch);
   }
-  if (LOCAL_ASSET_PAGES.has(page)) {
+  if (LOCAL_ASSET_PAGES.has(page) || page === "character-asset-container") {
     const currentParams = new URLSearchParams(window.location.search);
-    for (const key of ["character", "phase", "local_batch", "local_costume", "local_view", "render_mode"]) {
-      const value = currentParams.get(key);
+    const keys = page === "character-asset-container"
+      ? ["character", "phase", "universe_id", "pipeline", "costume", "view"]
+      : ["character", "phase", "local_batch", "local_costume", "local_view", "render_mode"];
+    const containerContext = window.ZetCharacterAssetContainer?.context?.() || {};
+    for (const key of keys) {
+      const value = key === "pipeline" ? containerContext.pipeline || currentParams.get(key)
+        : key === "character" ? characterSelect.value || currentParams.get(key)
+        : key === "phase" ? phaseSelect.value || currentParams.get(key)
+        : key === "universe_id" ? universeSelect.value || currentParams.get(key)
+        : key === "costume" ? containerContext.pipeline === "costume-dressing"
+          ? containerContext.costume || currentParams.get(key) : ""
+        : key === "view" ? containerContext.view || currentParams.get(key)
+        : currentParams.get(key);
       if (value) params.set(key, value);
     }
   }
@@ -4501,6 +4524,20 @@ async function activatePage(page, options = {}) {
   if (activePageName() === "minor-characters" && page !== "minor-characters") await window.zetMinorCharacters?.flush();
   const retiredPage = ["render-console", "render-review"].includes(page);
   const retiredRoute = new URLSearchParams(window.location.search);
+  const legacyPipeline = ({
+    "local-body-reference": "body-reference", "local-head-image": "head-image",
+    "local-head-image-edit": "head-image-edit", "local-character-assembly": "character-assembly",
+    "local-costume-dressing": "costume-dressing",
+  })[page];
+  if (legacyPipeline) {
+    retiredRoute.set("page", "character-asset-container");
+    retiredRoute.set("pipeline", legacyPipeline);
+    const legacyCostume = retiredRoute.get("local_costume");
+    if (legacyCostume && legacyPipeline === "costume-dressing") retiredRoute.set("costume", legacyCostume);
+    const legacyView = retiredRoute.get("local_view");
+    if (legacyView && !retiredRoute.has("view")) retiredRoute.set("view", legacyView);
+    history.replaceState({}, "", `/?${retiredRoute}`);
+  }
   page = canonicalDashboardPage(page);
   if (PRODUCTION_PAGES.has(page) && state.workspace !== "story") {
     state.workspace = "story";
@@ -4573,9 +4610,9 @@ async function activatePage(page, options = {}) {
   document.querySelector("#template-editor-page").classList.toggle("active", page === "template-editor");
   document.querySelector("#help-page").classList.toggle("active", page === "help");
   document.querySelector("#local-pipeline-page").classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
-  document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview" && page !== "local-batch-status");
-  document.querySelector("#local-batch-status-page").classList.toggle("active", page === "local-batch-status");
-  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page) || page === "onboarding");
+  document.querySelector("#character-asset-container-page").classList.toggle("active", page === "character-asset-container");
+  document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "character-asset-container" && page !== "local-overview");
+  localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page) || page === "character-asset-container" || page === "onboarding");
   if (LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
       "local-body-reference": "Body-Reference",
@@ -4603,10 +4640,12 @@ async function activatePage(page, options = {}) {
   );
   if (LOCAL_ASSET_PAGES.has(page)) window.ZetLocalAssetPipeline?.activate(page);
   else window.ZetLocalAssetPipeline?.deactivate();
+  if (page === "character-asset-container") {
+    window.ZetCharacterAssetContainer?.activate(window.ZetCharacterAssetContainer?.pipeline()
+      || new URLSearchParams(window.location.search).get("pipeline"));
+  } else window.ZetCharacterAssetContainer?.deactivate();
   if (page === "local-overview") window.ZetLocalCharacterOverview?.activate({fetchJson, universeId: state.universeId});
   else window.ZetLocalCharacterOverview?.deactivate();
-  if (page === "local-batch-status") window.ZetLocalBatchStatus?.activate();
-  else window.ZetLocalBatchStatus?.deactivate();
   renderResponsiveSectionMenu(page);
   if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -4763,11 +4802,14 @@ function setupTabs() {
       closeHelpMenu();
       try {
         if (button.dataset.page === "minor-characters") await window.zetMinorCharacters?.navigateList();
+        if (button.dataset.page === "character-asset-container") {
+          window.ZetCharacterAssetContainer?.setPipeline(button.dataset.containerPipeline);
+        }
         const changed = await runGuardedTransition(() => activatePage(button.dataset.page, {
           skipAutosave: true,
           universeId: button.dataset.universeId || "",
         }));
-        if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || ["onboarding", "local-batch-status"].includes(button.dataset.page))) {
+        if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || button.dataset.page === "character-asset-container" || button.dataset.page === "onboarding")) {
           localAssetsMenu.hidden = true;
           localAssetsButton.setAttribute("aria-expanded", "false");
         }
@@ -12243,59 +12285,6 @@ for (const button of actionButtons) {
 workspaceCharacter.addEventListener("click", () => switchWorkspace("character"));
 workspaceLocal?.addEventListener("click", () => switchWorkspace("local"));
 workspaceStory.addEventListener("click", () => switchWorkspace("story"));
-const localRunAllButton = document.querySelector("#local-run-all-remaining");
-const localRunAllStatus = document.querySelector("#local-run-all-status");
-
-function renderLocalRunAllStatus(campaign) {
-  const progress = campaign.progress || {};
-  const running = Number(progress.RUNNING || 0);
-  const waiting = Number(progress.WAITING_FOR_SELECTION || 0);
-  const waitingReferences = Number(progress.WAITING_FOR_REFERENCE || 0);
-  const reviewPending = Number(progress.REVIEW_PENDING || 0);
-  const failed = Number(progress.FAILED || 0);
-  const complete = Number(progress.COMPLETE || 0);
-  const total = Number(campaign.batch_count || (campaign.batches || []).length);
-  const imageCounts = `${campaign.images_complete || 0} images ready · ${campaign.images_remaining || 0} remaining`;
-  const batchCounts = `${running} running · ${waiting} waiting for selection · ${reviewPending} need review · ${waitingReferences} waiting for references · ${failed} failed · ${complete}/${total} complete`;
-  const details = (campaign.batches || []).filter((item) => ["FAILED", "WAITING_FOR_SELECTION", "WAITING_FOR_REFERENCE", "REVIEW_PENDING"].includes(item.result)
-    || item.review_error)
-    .slice(0, 4).map((item) => `${item.character} ${item.phase}${item.costume ? ` · ${item.costume}` : ""}: ${item.review_error
-      ? `Advisory review: ${item.review_error}` : item.message || item.error || item.result.replaceAll("_", " ").toLowerCase()}`);
-  const campaignLabel = campaign.status === "COMPLETE" ? "Run all Remaining finished."
-    : campaign.status === "FAILED" ? `Run all Remaining failed: ${campaign.error || "see campaign details."}`
-      : "Run all Remaining is active.";
-  localRunAllStatus.textContent = [campaignLabel, imageCounts, batchCounts, ...details].join("\n");
-  for (const item of (campaign.batches || []).filter(item => item.result === "REVIEW_PENDING")) {
-    const params = new URLSearchParams({ page: `local-${item.pipeline}`, local_batch: item.run_id,
-      character: item.character, phase: item.phase });
-    if (item.costume) params.set("local_costume", item.costume);
-    const link = document.createElement("a"); link.href = `/?${params}`;
-    link.textContent = `Review ${item.character} ${window.ZetPipelineLabel(item.pipeline)} batch`;
-    localRunAllStatus.append(document.createElement("br"), link);
-  }
-  localRunAllStatus.hidden = false;
-}
-
-async function pollLocalRunAll(campaignId) {
-  try {
-    const campaign = await fetchJson(`/api/local/run-all-remaining/${encodeURIComponent(campaignId)}`, { bindToPage: false });
-    if (state.localRunAllCampaignId !== campaignId) return;
-    renderLocalRunAllStatus(campaign);
-    if (["QUEUED", "RUNNING", "RECOVERING"].includes(campaign.status)) {
-      state.localRunAllTimer = window.setTimeout(() => void pollLocalRunAll(campaignId), 3000);
-    } else {
-      state.localRunAllTimer = null;
-      localRunAllButton.disabled = false;
-    }
-  } catch (error) {
-    localRunAllStatus.textContent = `Could not read run-all progress: ${error.message}`;
-    localRunAllStatus.hidden = false;
-    state.localRunAllTimer = window.setTimeout(() => void pollLocalRunAll(campaignId), 6000);
-  }
-}
-
-
-
 localAssetsButton.addEventListener("click", (event) => {
   event.stopPropagation();
   localAssetsMenu.hidden = !localAssetsMenu.hidden;
@@ -12320,8 +12309,12 @@ document.addEventListener("click", (event) => {
   }
 });
 responsiveSectionMenu.addEventListener("change", async () => {
-  const page = responsiveSectionMenu.value;
-  if (!page) return;
+  const value = responsiveSectionMenu.value;
+  if (!value) return;
+  const containerPrefix = "character-asset-container:";
+  const isContainer = value.startsWith(containerPrefix);
+  const page = isContainer ? "character-asset-container" : value;
+  if (isContainer) window.ZetCharacterAssetContainer?.setPipeline(value.slice(containerPrefix.length));
   if (page === "minor-characters") await window.zetMinorCharacters?.navigateList();
   if (!(await runGuardedTransition(() => activatePage(page, { skipAutosave: true })))) {
     renderResponsiveSectionMenu();
@@ -13459,23 +13452,6 @@ deletePhaseButton.addEventListener("click", async () => {
     deletePhaseButton.disabled = false;
   }
 });
-localRunAllButton.addEventListener("click", async () => {
-  localRunAllButton.disabled = true;
-  localRunAllStatus.textContent = "Starting or reconnecting to the library-wide run…";
-  localRunAllStatus.hidden = false;
-  try {
-    const campaign = await fetchJson("/api/local/run-all-remaining", { method: "POST", bindToPage: false });
-    state.localRunAllCampaignId = campaign.campaign_id;
-    if (state.localRunAllTimer) window.clearTimeout(state.localRunAllTimer);
-    renderLocalRunAllStatus(campaign);
-    localRunAllButton.disabled = false;
-    void pollLocalRunAll(campaign.campaign_id);
-  } catch (error) {
-    localRunAllStatus.textContent = `Could not start run-all: ${error.message}`;
-    localRunAllStatus.hidden = false;
-    localRunAllButton.disabled = false;
-  }
-});
 headerStorySelect.addEventListener('change',async()=>{
   const params=new URLSearchParams({page:'narrative',workspace:'story',universe_id:state.universeId});
   if(headerStorySelect.value)params.set('story',headerStorySelect.value);
@@ -13856,8 +13832,7 @@ window.ZetTaskCapture.registerProvider(() => {
     if (state.character) source.searchParams.set("character", state.character);
     if (state.phase) source.searchParams.set("phase", state.phase);
   }
-  const local = LOCAL_ASSET_PAGES.has(page) ? window.ZetLocalAssetPipeline?.taskContext(page)
-    : page === "local-batch-status" ? window.ZetLocalBatchStatus?.taskContext() : null;
+  const local = LOCAL_ASSET_PAGES.has(page) ? window.ZetLocalAssetPipeline?.taskContext(page) : null;
   if (local) {
     Object.assign(selections, local.selections);
     for (const [key, value] of Object.entries(local.parameters)) source.searchParams.set(key, value);

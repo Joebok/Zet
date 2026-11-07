@@ -205,16 +205,9 @@ def build_app(config: Path, index_root: Path):
     from zet.web.app import create_app
 
     zet_app = ZetApp.from_config(config, validate_catalog=False, universe_id="Test")
-    from zet.services.local_asset_store_service import LocalAssetStoreService
-    store = LocalAssetStoreService(config.parent / "Library" / "Test")
     prerequisite_image = config.parent / "Library" / "Test" / "images" / "traveler-reference.png"
-    for pipeline, batch_id in (("Body-Reference", "a" * 32), ("Head-Image", "b" * 32)):
-        batch = config.parent / "Library" / "Test" / "PipelineCandidates" / "Character-Pipeline" / "Traveler" / "Adult"
-        batch = batch / ("Head-Image" if pipeline == "Head-Image" else "") / batch_id
-        batch.mkdir(parents=True, exist_ok=True)
-        (batch / "spec.json").write_text(json.dumps({"kind": pipeline, "run_id": batch_id}), encoding="utf-8")
-        store.lock_batch_selection("Traveler", "Adult", pipeline, "FRONT", candidate_id=f"seed-{pipeline.lower()}",
-                                   image_path=prerequisite_image, batch_id=batch_id)
+    for pipeline in ("body-reference", "head-image"):
+        seed_character_container(zet_app, pipeline, "", prerequisite_image)
     author = zet_app.narrative_scene_service
     asset = zet_app.entity_library_service.import_asset(
         "Traveler reference", "image/png", (config.parent / "Library" / "Test" / "images" / "traveler-reference.png").read_bytes(),
@@ -230,6 +223,29 @@ def build_app(config: Path, index_root: Path):
         "local_asset_state": str(config.parent / "Library" / "_state" / "LocalAssets"),
     }
     return application
+
+
+def seed_character_container(app, pipeline: str, costume: str, image_path: Path) -> dict:
+    from uuid import uuid4
+    from zet.services.character_asset_container_service import CharacterAssetContainerService
+
+    service = CharacterAssetContainerService(app)
+    detail = service.detail("Traveler", "Adult", pipeline, costume)
+    candidate_id = uuid4().hex
+    board = detail["boards"]["FRONT"]
+    board["slots"][0] = candidate_id
+    board["candidates"][candidate_id] = {
+        "candidate_id": candidate_id, "slot": 1, "status": "COMPLETE",
+        "render_mode": "draft", "image_path": str(image_path.resolve()),
+        "prompt": f"Prepared {pipeline} FRONT fixture.", "locked": False,
+    }
+    board["revision"] += 1
+    detail = service.save("Traveler", "Adult", pipeline, costume, detail,
+                          expected_revision=detail["revision"])
+    detail = service.board_action("Traveler", "Adult", pipeline, costume, "FRONT", candidate_id,
+                                  "select", expected_revision=detail["revision"])
+    return service.board_action("Traveler", "Adult", pipeline, costume, "FRONT", candidate_id,
+                                "lock", expected_revision=detail["revision"])
 
 
 def seed_narrative(author, asset_id: str) -> dict[str, str]:
@@ -343,6 +359,7 @@ def main() -> int:
         if not test_root.is_relative_to(RUN_ROOT.resolve()):
             raise RuntimeError(f"Refusing to reset unexpected test library: {test_root}")
         for relative in ("_state/LocalAssets/Traveler/Adult",
+                         "_state/CharacterAssetContainers/Traveler/Adult",
                          "PipelineCandidates/Character-Pipeline/Traveler/Adult"):
             target = (test_root / relative).resolve()
             if not target.is_relative_to(test_root):
@@ -355,15 +372,8 @@ def main() -> int:
         scenario_number += 1
         ids = seed_narrative(runtime.narrative_scene_service, previous["asset"])
         app.state.test_ids = {**previous, **ids}
-        from zet.services.local_asset_store_service import LocalAssetStoreService
-        store = LocalAssetStoreService(test_root)
-        for pipeline, batch_id in (("Body-Reference", "a" * 32), ("Head-Image", "b" * 32)):
-            batch = test_root / "PipelineCandidates" / "Character-Pipeline" / "Traveler" / "Adult"
-            batch = batch / ("Head-Image" if pipeline == "Head-Image" else "") / batch_id
-            batch.mkdir(parents=True, exist_ok=True)
-            (batch / "spec.json").write_text(json.dumps({"kind": pipeline, "run_id": batch_id}), encoding="utf-8")
-            store.lock_batch_selection("Traveler", "Adult", pipeline, "FRONT", candidate_id=f"seed-{pipeline.lower()}",
-                                       image_path=test_root / "images" / "traveler-reference.png", batch_id=batch_id)
+        for pipeline in ("body-reference", "head-image"):
+            seed_character_container(runtime, pipeline, "", test_root / "images" / "traveler-reference.png")
         app.state.ai_job_coordinator.start()
         return {"reset": True, "scenario": scenario_number}
 

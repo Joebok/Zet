@@ -1,5 +1,7 @@
 # Architectural decision records
 
+[0048 - Character Asset Container workflow](0048-character-asset-container-workflow.md) records the shared mixed-quality board, manual production flow and legacy cutover boundary.
+
 [0046 - Character Activity lifecycle](0046-character-activity-lifecycle.md) records the active/error projection, dismissal behavior and event-driven refresh.
 
 [0044 - Character batch review freshness and frozen publication inputs](0044-character-batch-review-freshness.md) records the in-progress ranking, explicit preparation and action-time publication policy.

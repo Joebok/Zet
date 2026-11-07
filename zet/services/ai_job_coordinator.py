@@ -315,6 +315,8 @@ class AIJobCoordinator:
                 continue
             ask = record.get("manifest", {})
             consumer = record.get("consumer", "zet")
+            if consumer == "zet-character-containers":
+                continue  # The visible board owns result application.
             if consumer == "zet-image-generation":
                 key = (app.universe_id, ask.get("ad_hoc_request_id") or job_id)
                 now = time.monotonic()

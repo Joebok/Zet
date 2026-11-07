@@ -168,48 +168,59 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
   expect(details[1].kind).toBe("subscene");
 });
 
-test("character-to-costume workflow previews prerequisites and creates a real run", async ({ page }) => {
+test("character-to-costume workflow uses manual container boards and publishes outputs", async ({ page }) => {
   const context = await (await page.request.get("/__test/context")).json();
-  const preview = await page.request.post("/api/local/character-assembly/preview?universe_id=Test", {
-    data: { character: "Traveler", phase: "Adult", costume: "", front_only: true, front_count: 1, other_count: 1 },
-  });
-  expect(preview.ok(), await preview.text()).toBeTruthy();
-  const plan = await preview.json();
-  expect(plan.can_create, JSON.stringify(plan.blocking_reasons)).toBeTruthy();
-  const runResponse = await page.request.post("/api/local/character-assembly/runs?universe_id=Test", { data: {
-    character: "Traveler", phase: "Adult", costume: "", front_only: true,
-    front_count: 1, other_count: 1, seeds: [11],
-  }});
-  expect(runResponse.ok(), await runResponse.text()).toBeTruthy();
-  const run = await runResponse.json();
-  expect(run.status).toBe("QUEUED");
-  expect(run.candidates.filter(candidate => candidate.view === "FRONT")).toHaveLength(1);
-  const assemblyCandidate = await processLocalFront(page, "character-assembly", run.run_id, "", image(1344, 768));
-  const assemblyLock = await page.request.post(`/api/local/character-assembly/runs/${run.run_id}/views/FRONT/lock?universe_id=Test`);
-  expect(assemblyLock.ok(), await assemblyLock.text()).toBeTruthy();
-  expect((await assemblyLock.json()).locked).toBeTruthy();
-  const dressingPreview = await page.request.post("/api/local/costume-dressing/preview?universe_id=Test", { data: {
-    character: "Traveler", phase: "Adult", costume: "Test Travel Outfit", front_only: true,
-    front_count: 1, other_count: 1,
-  }});
-  expect(dressingPreview.ok(), await dressingPreview.text()).toBeTruthy();
-  const dressingPlan = await dressingPreview.json();
-  expect(dressingPlan.can_create, JSON.stringify(dressingPlan.blocking_reasons)).toBeTruthy();
-  const dressingResponse = await page.request.post("/api/local/costume-dressing/runs?universe_id=Test", { data: {
-    character: "Traveler", phase: "Adult", costume: "Test Travel Outfit", front_only: true,
-    front_count: 1, other_count: 1, seeds: [21],
-  }});
-  expect(dressingResponse.ok(), await dressingResponse.text()).toBeTruthy();
-  const dressing = await dressingResponse.json();
-  await processLocalFront(page, "costume-dressing", dressing.run_id, "Test Travel Outfit", image(1344, 768));
-  const dressingLock = await page.request.post(`/api/local/costume-dressing/runs/${dressing.run_id}/views/FRONT/lock?costume=Test%20Travel%20Outfit&universe_id=Test`);
-  expect(dressingLock.ok(), await dressingLock.text()).toBeTruthy();
-  expect((await dressingLock.json()).locked).toBeTruthy();
-  expect(assemblyCandidate.image_available).toBeTruthy();
+  const root = "/?page=character-asset-container&character=Traveler&phase=Adult&universe_id=Test";
+  await page.goto(root + "&pipeline=character-assembly");
+  const draft = await generateCharacterImage(page, "character-assembly", "", "draft", 1, image(1344, 768));
+  const final = await generateCharacterImage(page, "character-assembly", "", "final", 2, image(1216, 832));
+  expect(draft.candidate_id).not.toBe(final.candidate_id);
+
+  await page.getByRole("button", {name: "Review slot 1"}).click();
+  const review = page.getByRole("dialog", {name: "Review candidate"});
+  await expect(review).toContainText("1 of 2 · Draft");
+  await review.getByRole("button", {name: "Next candidate"}).click();
+  await expect(review).toContainText("2 of 2 · Final");
+  await review.locator("summary").first().click();
+  const references = review.locator("ol a");
+  await expect(references).toHaveText(["body_reference", "head_image"]);
+  expect((await page.request.get(await references.first().getAttribute("href"))).ok()).toBeTruthy();
+  await expect(review.locator("pre").first()).toHaveText(final.prompt);
+  await review.getByRole("button", {name: "Select", exact: true}).click();
+  await expect(review).toContainText("Selected");
+  await review.getByRole("button", {name: "Lock", exact: true}).click();
+  await expect(review).toContainText("Locked and published");
+  const assembly = (await characterBoard(page, "character-assembly")).boards.FRONT;
+  const locked = assembly.candidates[final.candidate_id];
+  const inventory = await page.request.get(`/api/entity-library/assets/${locked.inventory_asset_id}?universe_id=Test`);
+  expect(inventory.ok()).toBeTruthy();
+  expect((await inventory.json()).asset.status).toBe("approved");
+
+  await page.goto(root + "&pipeline=costume-dressing");
+  await page.locator("#character-container-costume").selectOption("Test_Travel_Outfit");
+  const dressing = await generateCharacterImage(page, "costume-dressing", "Test_Travel_Outfit", "draft", 1, image(1344, 768));
+  expect(dressing.render_request.inputs.map(input => input.role)).toEqual(["character_assembly"]);
+  expect(dressing.render_request.inputs[0].candidate_id).toBe(locked.candidate_id);
+  expect(dressing.render_request.inputs[0].sha256).toBe(locked.image_sha256);
+  expect(dressing.render_request.provenance.costume).toBe("Test_Travel_Outfit");
+  await page.getByRole("button", {name: "Review slot 1"}).click();
+  await review.getByRole("button", {name: "Lock", exact: true}).click();
+  await expect(review).toContainText("Locked and published");
+
   const costume = await page.request.get("/api/costumes?character=Traveler&phase=Adult&universe_id=Test");
   expect(costume.ok()).toBeTruthy();
   expect((await costume.json()).costumes.map(item => item.name)).toContain("Test Travel Outfit");
-  await expect(page.locator("body")).toContainText("Narrative Scenes");
+  expect((await page.request.get("/api/local/character-assembly/runs?universe_id=Test")).status()).toBe(404);
+  expect((await page.request.get("/api/local/batch-status?universe_id=Test")).status()).toBe(404);
+  expect((await page.request.get("/api/local/character-overview/Traveler/Adult/Test_Travel_Outfit/autogenerate?universe_id=Test")).status()).toBe(404);
+
+  await page.goto("/?page=character-asset-container&pipeline=costume-dressing&costume=Test%20Travel%20Outfit&character=Traveler&phase=Adult&universe_id=Test");
+  await expect(page.locator("#character-asset-container-page")).toHaveClass(/active/);
+  await expect(page.locator("#character-container-board")).toContainText("Locked");
+  await expect(page.locator("#character-container-board article").first().locator("img")).toBeVisible();
+  await expect(page.locator("#toolbar-batches")).toHaveCount(0);
+  await expect(page.locator("#local-operations-button")).toHaveCount(0);
+  expect(context.ids.story).toMatch(/^[a-f0-9]{32}$/);
 });
 
 async function answerJob(page, scene, target, kind, output) {
@@ -260,52 +271,30 @@ async function deliverEnvelope(page, id, output, failed = false) {
   await writeFile(path.join(answer, "harvest_manifest.json"), JSON.stringify({ status: "HARVESTED_FOR_EXTERNAL_CONSUMER" }));
 }
 
-async function processLocalFront(page, pipeline, runId, costume, pngPath) {
-  const base = `/api/local/${pipeline}/runs/${runId}`;
-  const query = `?universe_id=Test${costume ? `&costume=${encodeURIComponent(costume)}` : ""}`;
-  if (pipeline !== "character-assembly") {
-    const reviewResponse = await page.request.post(`${base}/template-revisions${query}`, { data: { model: "codex:gpt-6-luna" } });
-    expect(reviewResponse.ok(), await reviewResponse.text()).toBeTruthy();
-    const reviewId = (await reviewResponse.json()).revision.revision_id;
-    const reviewAnswered = new Set();
-    await expect.poll(async () => {
-      const review = (await (await page.request.get(`${base}/template-revisions${query}&revision_id=${reviewId}`)).json()).revision;
-      if (review.status === "FAILED") throw new Error(review.error);
-      const queue = await (await page.request.get("/api/ai/jobs")).json();
-      for (const job of queue.items || []) {
-        if (job.task_type === "character_prompt_review" && job.status === "QUEUED" && !reviewAnswered.has(job.ask_id)) {
-          await deliverEnvelope(page, job.ask_id, { summary: "Prepared prompt review: no corrections needed.", findings: [] });
-          reviewAnswered.add(job.ask_id);
-        }
-      }
-      return review.status;
-    }, { timeout: 20000 }).toBe("REVIEW_READY");
-    const accepted = await page.request.post(`${base}/template-revisions/${reviewId}/accept${query}`, { data: { selected_ids: [] } });
-    expect(accepted.ok(), await accepted.text()).toBeTruthy();
-  }
-  const started = await page.request.post(`${base}/views/FRONT/proceed${query}`, { data: { expected_stage: -1 } });
-  expect(started.ok(), await started.text()).toBeTruthy();
+async function characterBoard(page, pipeline, costume = "") {
+  const params = new URLSearchParams({character: "Traveler", phase: "Adult", universe_id: "Test"});
+  if (costume) params.set("costume", costume);
+  const result = await page.request.get(`/api/character-containers/${pipeline}?${params}`);
+  expect(result.ok()).toBeTruthy();
+  return result.json();
+}
+
+async function generateCharacterImage(page, pipeline, costume, quality, slot, pngPath) {
   const context = await (await page.request.get("/__test/context")).json();
-  const answered = new Set();
+  await expect(page.locator("#character-container-board article")).toHaveCount(8);
+  const label = quality === "draft" ? "Draft 1" : "Final 1";
+  await page.getByRole("button", {name: label, exact: true}).click();
   let candidate;
   await expect.poll(async () => {
-    const response = await page.request.get(`${base}${query}`);
-    const run = await response.json();
-    if (["ERROR", "CANCELLED"].includes(run.status)) throw new Error(run.error || run.status);
-    candidate = run.candidates.find(item => item.view === "FRONT");
-    if (candidate?.ask_id && !answered.has(candidate.ask_id)) {
-      await answerLocalEnvelope(context.queue, candidate.ask_id, await readFile(pngPath));
-      answered.add(candidate.ask_id);
-    }
-    if (run.rankings?.FRONT?.status === "FAILED") {
-      throw new Error(`Luna ranking failed: ${run.rankings.FRONT.error || "unknown error"}`);
-    }
-    return candidate?.image_available && run.rankings?.FRONT?.status === "COMPLETE" ? "READY" : candidate?.status;
-  }, { timeout: 70_000 }).toBe("READY");
-  const selected = await page.request.post(`${base}/views/FRONT/select${query}`, { data: { candidate_id: candidate.candidate_id } });
-  expect(selected.ok(), await selected.text()).toBeTruthy();
-  const imageResponse = await page.request.get(`${base}/images/${candidate.candidate_id}${query}`);
-  expect(imageResponse.ok()).toBeTruthy();
+    const board = (await characterBoard(page, pipeline, costume)).boards.FRONT;
+    candidate = board.candidates[board.slots[slot - 1]];
+    return candidate?.status;
+  }).toBe("QUEUED");
+  expect(candidate.render_mode).toBe(quality);
+  await answerLocalEnvelope(context.queue, candidate.ask_id, await readFile(pngPath));
+  const card = page.locator("#character-container-board article").nth(slot - 1);
+  await expect(card.locator("img")).toBeVisible();
+  await expect(card).toContainText(quality === "draft" ? "Draft" : "Final");
   return candidate;
 }
 

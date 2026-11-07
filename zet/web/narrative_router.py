@@ -303,6 +303,10 @@ def create_narrative_router(app_provider):
         path = call(generation().image, story, scene, target, candidate)
         return FileResponse(path, filename=path.name if download else None)
 
+    @router.get(target_path + "/candidates/{candidate}/inputs/{index}")
+    def candidate_input(story: str, scene: str, target: str, candidate: str, index: int):
+        return FileResponse(call(generation().candidate_input, story, scene, target, candidate, index))
+
     @router.get(target_path + "/scene-text")
     def text_state(story: str, scene: str, target: str, candidate: str = ""):
         return call(app_provider().narrative_scene_text_service.state, story, scene, target, candidate or None)

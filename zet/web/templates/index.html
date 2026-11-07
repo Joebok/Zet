@@ -85,11 +85,11 @@
         <button id="local-assets-button" class="tab workflow-tab" type="button" aria-expanded="false" aria-controls="local-assets-menu">Assets ▾</button>
         <div id="local-assets-menu" class="toolbar-settings-menu" hidden>
           <button class="tab workflow-tab" data-page="onboarding">Character Overview</button>
-          <button class="tab workflow-tab" data-page="local-body-reference">Body-Reference</button>
-          <button class="tab workflow-tab" data-page="local-head-image-edit">Head-Image (Edit)</button>
-          <button class="tab workflow-tab" data-page="local-head-image">Head-Image (Construct)</button>
-          <button class="tab workflow-tab" data-page="local-character-assembly">Character-Assembly</button>
-          <button class="tab workflow-tab" data-page="local-costume-dressing">Costume-Dressing</button>
+          <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="body-reference">Body-Reference</button>
+          <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="head-image-edit">Head-Image (Edit)</button>
+          <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="head-image">Head-Image (Construct)</button>
+          <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="character-assembly">Character-Assembly</button>
+          <button class="tab workflow-tab" data-page="character-asset-container" data-container-pipeline="costume-dressing">Costume-Dressing</button>
         </div>
       </div>
       <button class="tab workflow-tab" data-page="minor-characters">Minor Characters</button>
@@ -116,16 +116,6 @@
       <a id="toolbar-github-issues" class="tab navigation-action" target="_blank" rel="noopener" hidden>GitHub issues</a>
       <button id="toolbar-restart-zet" class="toolbar-restart-button navigation-action" type="button" aria-label="Restart Zet" title="Restart Zet">♻</button>
       <button id="toolbar-task-attention" class="navigation-action" type="button" aria-haspopup="dialog">Tasks</button>
-      <button id="toolbar-batches" class="tab navigation-action" data-page="local-batch-status" type="button">Batches</button>
-      <div class="toolbar-menu">
-        <button id="local-operations-button" class="navigation-action" type="button" aria-expanded="false" aria-controls="local-operations-panel">Activity</button>
-        <div id="local-operations-panel" class="toolbar-settings-menu local-operations-panel" hidden>
-          <strong>Character preparation</strong>
-          <button id="local-operations-refresh" type="button">Check status</button>
-          <p id="local-operations-message" role="status">Loading activity…</p>
-          <div id="local-operations-list"></div>
-        </div>
-      </div>
       <div class="toolbar-menu">
         <button id="toolbar-settings-button" class="toolbar-settings-button navigation-action" type="button" aria-expanded="false" aria-controls="toolbar-settings-menu">Tools ▾</button>
         <div id="toolbar-settings-menu" class="toolbar-settings-menu" hidden>
@@ -158,7 +148,7 @@
     <script>
       (() => {
         const params = new URLSearchParams(location.search);
-        const aliases = { assets: "local-batch-status", manifest: "local-batch-status",
+        const aliases = { assets: "local-overview", manifest: "local-overview",
           stories: "narrative", scenes: "narrative", "scene-builder": "narrative",
           "scene-batches": "narrative", "render-console": "narrative", "render-review": "narrative" };
         let requested = params.get("page");
@@ -171,7 +161,7 @@
         const page = aliases[requested] || requested;
         const button = Array.from(document.querySelectorAll(".tab[data-page]"))
           .find(item => item.dataset.page === page);
-        const headings = { "local-batch-status": "Batch Status", zine: "Zine Maker",
+        const headings = { zine: "Zine Maker",
           "scene-candidates": "Scene Candidates" };
         document.querySelector("#placeholder-title").textContent = headings[page] || button?.textContent.trim() || "Loading";
         if (params.get("render_mode") === "final") {
@@ -204,8 +194,8 @@
       </form>
     </section>
     <section id="local-overview-page" class="page">
-      <div class="page-header"><h1>Overview</h1></div>
-      <p class="muted">Locked Costume-Dressing front images by character, phase, and costume.</p>
+      <div class="page-title-row"><h1>Overview</h1><button id="local-overview-refresh" type="button">Refresh</button></div>
+      <p class="muted">Current locked Costume-Dressing FRONT images. Generate and review candidates from Assets → Costume Dressing.</p>
       <p id="local-overview-status" class="status-text" role="status" aria-live="polite">Loading…</p>
       <div id="local-overview-groups"></div>
     </section>
@@ -392,20 +382,76 @@
         <section id="local-pipeline-views" class="local-pipeline-views"></section>
       </div>
     </section>
-    <section id="local-batch-status-page" class="page">
-      <div class="page-title-row"><h1>Batch Status</h1></div>
-      <section class="control-panel batch-status-run-all">
-        <button id="local-run-all-remaining" class="primary-action" type="button">Run All Remaining</button>
-        <p id="local-run-all-status" class="muted" role="status" aria-live="polite" hidden></p>
-      </section>
-      <section class="control-panel batch-status-panel" aria-labelledby="local-batch-status-heading">
-        <div class="page-title-row batch-status-heading-row">
-          <h2 id="local-batch-status-heading">Active and actionable batches</h2>
-          <button id="local-batch-status-refresh" type="button">Refresh</button>
+    <section id="character-asset-container-page" class="page">
+      <div class="page-title-row"><h1 id="character-container-title">Character Asset Container</h1></div>
+      <p id="character-container-context" class="muted"></p>
+      <label id="character-container-costume-wrap" hidden>Costume<select id="character-container-costume"></select></label>
+      <details id="character-container-authoring" class="control-panel" hidden>
+        <summary>Reference choices</summary>
+        <button id="character-container-edit-template" type="button">Edit governing Character.md</button>
+        <section class="control-panel">
+          <h2>Optional template improvement</h2>
+          <p class="muted">Use a finished board candidate as evidence for a proposed Character.md edit. Review and accept it to update the master for future prompts.</p>
+          <label>Improvement direction<textarea id="character-container-template-guidance" rows="2" maxlength="20000"></textarea></label>
+          <div id="character-container-template-proposal" hidden></div>
+        </section>
+        <div id="character-container-phase-source" class="button-row compact" hidden>
+          <p class="muted">Phase-change source is saved separately for Draft and Final. The board quality selects which choice applies to new FRONT requests.</p>
+          <label>Source phase<select id="character-container-source-phase"></select></label>
+          <label>Source pipeline<select id="character-container-source-pipeline"><option value="head-image">Head Image Construct</option><option value="head-image-edit">Head Image Edit</option></select></label>
+          <label>Locked FRONT<select id="character-container-source-candidate"></select></label>
+          <button id="character-container-save-phase-source" type="button">Save source</button>
+          <button id="character-container-clear-phase-source" type="button">Clear source</button>
+          <label>Upload FRONT<input id="character-container-phase-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <button id="character-container-upload-phase-source" type="button">Upload and save</button>
+          <label><input id="character-container-apply-phase-change" type="checkbox"> Apply phase change to new FRONT requests</label>
         </div>
-        <p id="local-batch-status-message" class="muted" role="status" aria-live="polite"></p>
-        <div id="local-batch-status-groups" aria-live="polite"></div>
+        <div id="character-container-assembly-source" class="button-row compact" hidden>
+          <label>Head family<select id="character-container-head-pipeline"><option value="head-image">Head Image Construct</option><option value="head-image-edit">Head Image Edit</option></select></label>
+          <button id="character-container-save-head-pipeline" type="button">Save head family</button>
+        </div>
+        <div id="character-container-view-source" class="button-row compact" hidden>
+          <label>Reference view for this board<select id="character-container-source-view"></select></label>
+          <button id="character-container-save-view-source" type="button">Save view recipe</button>
+        </div>
+        <p id="character-container-source-status" class="muted" role="status"></p>
+      </details>
+      <nav id="character-container-views" class="button-row compact" aria-label="Asset views"></nav>
+      <section class="control-panel">
+        <div class="button-row compact">
+          <label>Quality<select id="character-container-quality"><option value="draft">Draft</option><option value="final">Final</option></select></label>
+          <label>Aspect ratio<input id="character-container-aspect" value="2:3"></label>
+          <button id="character-container-prompt-preview-button" type="button">Preview prompt</button>
+          <button class="primary-action character-container-render-action" data-quality="draft" data-count="1" type="button">Draft 1</button>
+          <button class="character-container-render-action" data-quality="draft" data-count="4" type="button">Draft 4</button>
+          <button class="primary-action character-container-render-action" data-quality="final" data-count="1" type="button">Final 1</button>
+          <button class="character-container-render-action" data-quality="final" data-count="4" type="button">Final 4</button>
+          <button id="character-container-refresh" type="button">Refresh</button>
+        </div>
+        <p id="character-container-status" class="muted" role="status" aria-live="polite"></p>
       </section>
+      <details id="character-container-prompt-preview" class="control-panel" hidden>
+        <summary>Current prompt and ordered references</summary>
+        <pre id="character-container-prompt-text"></pre>
+        <ol id="character-container-prompt-references"></ol>
+      </details>
+      <section id="character-container-board" class="narrative-slot-grid" aria-label="Candidate board"></section>
+      <dialog id="character-container-review" class="mc-review" aria-labelledby="character-container-review-title">
+        <h2 id="character-container-review-title">Review candidate</h2>
+        <p id="character-container-review-position"></p>
+        <div class="button-row">
+          <button id="character-container-review-prev" type="button">Previous candidate</button>
+          <button id="character-container-review-next" type="button">Next candidate</button>
+          <button id="character-container-review-copy" type="button">Copy prompt</button>
+        </div>
+        <div id="character-container-review-actions" class="button-row"></div>
+        <p id="character-container-review-status" role="status"></p>
+        <div class="button-row mc-review-close-row"><button id="character-container-review-close" type="button">Close review</button></div>
+        <label class="character-container-review-choices">Compare with (select one or more)
+          <select id="character-container-review-compare" multiple aria-label="Comparison images"></select>
+        </label>
+        <div id="character-container-review-pair" class="qc-comparison-pair"></div>
+      </dialog>
     </section>
     <dialog id="local-pipeline-review-dialog" class="local-pipeline-review-dialog" aria-label="Review local image candidate">
       <button id="local-pipeline-review-close" class="review-close" type="button">Close</button>
@@ -2247,9 +2293,8 @@ Add prompt language here.
   </dialog>
   <script src="/static/minor_characters.js?v=20261031-final-mode-cues"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
-  <script src="/static/local_pipeline_operations.js?v=20261103-rerun-rejected"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
-  <script src="/static/local_batch_status.js?v=20261102-batch-pages"></script>
+  <script type="module" src="/static/character_asset_container.js?v=20261106-container-board"></script>
 
 </body>
 </html>

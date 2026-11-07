@@ -649,8 +649,13 @@ class AIProxyService:
         image_generation: str | None = None,
         reference_files: list[dict] | None = None,
         consumer: str = "zet",
+        profile_snapshot: dict | None = None,
     ) -> dict:
-        require_qwen_profile(Path(__file__).resolve().parents[2], render_preset or self._local_render_preset(),
+        if profile_snapshot and (image_generation != "comfyui" or profile_snapshot.get("backend") != "comfyui"
+                                 or profile_snapshot.get("model_family") != "qwen-image-2.1"):
+            raise ValueError("The frozen render profile must use ComfyUI with Qwen Image 2.1.")
+        if not profile_snapshot:
+            require_qwen_profile(Path(__file__).resolve().parents[2], render_preset or self._local_render_preset(),
                              image_generation or self.path_service.config.local_render_backend,
                              presets_path=self.path_service.config.state_file(self.path_service.project_root, "Local_Render_Presets.json"))
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -701,10 +706,11 @@ class AIProxyService:
                 "",
             )
         )
-        require_qwen_profile(Path(__file__).resolve().parents[2], ask_manifest["render_preset"],
+        if not profile_snapshot:
+            require_qwen_profile(Path(__file__).resolve().parents[2], ask_manifest["render_preset"],
                              ask_manifest["image_generation"], ask_manifest["checkpoint"],
                              presets_path=self.path_service.config.state_file(self.path_service.project_root, "Local_Render_Presets.json"))
-        workflow_kind = self._workflow_kind_for_preset(str(ask_manifest["render_preset"]))
+        workflow_kind = (profile_snapshot or {}).get("workflow_kind") or self._workflow_kind_for_preset(str(ask_manifest["render_preset"]))
         if not workflow_kind and ask_manifest["image_generation"] == "comfyui":
             workflow_kind = self._local_render_workflow_kind()
         if workflow_kind:
@@ -781,6 +787,9 @@ class AIProxyService:
             reference_files,
             consumer,
         )
+        image_production = manifest.get("image_production")
+        if isinstance(image_production, dict):
+            ask_manifest["image_production"] = dict(image_production)
         reserved = manifest.get("transport_job_id")
         if reserved:
             self.ai_proxy_path_service.jobs.validate_id(reserved)

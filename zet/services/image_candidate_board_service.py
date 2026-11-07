@@ -59,3 +59,35 @@ def unlock(record, candidate_id):
     candidate["locked"] = False
     record["selected_id"] = candidate_id
     return candidate
+
+
+def remove(record, candidate_id):
+    candidate = validate_membership(record["slots"], record["candidates"], candidate_id)
+    record["slots"][record["slots"].index(candidate_id)] = None
+    del record["candidates"][candidate_id]
+    if record["selected_id"] == candidate_id:
+        record["selected_id"] = None
+    return candidate
+
+
+def cleanup(root, pending):
+    from pathlib import Path
+    import shutil
+
+    root = Path(root).resolve()
+    for relative in pending:
+        path = (root / relative).resolve()
+        if path == root or not path.is_relative_to(root):
+            raise ValueError("Invalid pending candidate cleanup path.")
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+
+
+def retry_request(record, candidate_id, *, allow_legacy=False):
+    candidate = validate_membership(record["slots"], record["candidates"], candidate_id)
+    if candidate["status"] != "FAILED" or not (candidate.get("render_request") or
+                                                 (allow_legacy and candidate.get("prompt"))):
+        raise ValueError("Retry requires a failed candidate with its frozen request.")
+    return candidate

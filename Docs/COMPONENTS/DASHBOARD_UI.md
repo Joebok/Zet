@@ -1,5 +1,26 @@
 # Dashboard presentation and image input
 
+## Current Character image production workflow (2026-11-06)
+
+The Assets menu opens Body Reference, Head Image Construct, Head Image Edit,
+Character Assembly or a selected Costume Dressing container. Each view has one
+mixed-quality eight-slot Candidate Board. Operators prepare and run images from
+that board; the Batches page, Run All Remaining, Activity staging and legacy
+character batch endpoints are retired. Old pipeline page links redirect to the
+matching container when their pipeline can be identified. Overview is read-only.
+Legacy batches are neither resumed on startup nor included in current-output
+source listings. While the visible board has active renders, the page polls only
+compact progress and refreshes full detail after the work settles. Idle views
+refresh on entry, tab return, relevant actions or explicit refresh. Finished
+candidates can open the optional template-proposal action; accepting a reviewed
+proposal updates the governing Character.md for future requests. See the
+[active migration plan](../../plans/active/character-image-production-workflow.md).
+
+## Retired batch-era presentation notes
+
+The following notes describe the former character batch UI and are retained as
+historical behavior only.
+
 The dashboard shell initially shows a blank page with the requested route's
 heading while context loads. A Final route applies the Final canvas color
 immediately. The retired legacy Assets section is never the initial page, and
@@ -99,20 +120,18 @@ The compact section selector exposes both destinations. The former standalone
 `/local-character-overview` URL redirects to `/?page=local-overview`, retaining
 query context. Its template and header links are retired.
 
-`local_character_overview.js` owns scoped card rendering, universe-bound requests
-and image URLs, per-card generation/stop feedback, duplicate submission fencing,
-and polling only while mounted. Unchanged snapshots retain focus; late responses
-cannot update another activation. Cards have no Create task button; the dashboard
-task control remains available. `zet.css` owns the responsive grid and image wells.
-Disposable Chromium checks cover desktop/390px navigation, action feedback,
-request universe and the redirect; no physical-device or live-render check was run.
+`local_character_overview.js` owns scoped, read-only card rendering and
+universe-bound requests for current published FRONT images. It refreshes on entry,
+tab return and explicit request. Generation, stop, automatic pipeline selection,
+batch links and recurring polling are retired; operators generate and review from
+the Costume Dressing Asset Container. `zet.css` owns the responsive grid and image
+wells. Browser validation of the read-only change remains pending.
 
 The dashboard uses the existing palette in [zet.css](../../zet/web/static/zet.css).
 The [2026-10-27 compliance register](../UI_COMPLIANCE_REVIEW.md) records current
 page reachability, bounded alignment changes and unverified states. Local Character
-Overview now uses the shared light tokens and per-slot action outcomes, fences
-duplicate slot submissions, and avoids rebuilding unchanged snapshots during polling.
-Refinement shows request acknowledgement and errors beside each action group.
+Overview uses the shared light tokens and current-output cards. Refinement shows
+request acknowledgement and errors beside each action group.
 Shared preview wells use subtle-surface tokens. These changes do not establish
 complete style-guide or physical-device compliance.
 Primary teal identifies the main action and selected images. Selection also has a
@@ -298,3 +317,5 @@ Narrative places source linking before authoring. Linking mode selectively expos
 Universe settings and creation expose Environmental style. Image Generation persists a canonical/environmental choice with its form; Add Universe art style uses that choice. Minor Characters and character batch creation expose independent universe-style selectors.
 
 Character pipeline candidate reviews offer available selected FRONT, opposite-side, and matching locked Draft comparisons. The comparison choice follows view navigation and polling. Minor Character review includes the matching private Draft lock in its comparison carousel.
+
+Character and Narrative Candidate Boards share review position, decisions, and captured input links. Character keeps its view comparisons alongside those controls and refreshes active cards from compact slot progress.

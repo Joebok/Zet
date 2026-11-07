@@ -9,7 +9,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
-from zet.services.local_character_overview_service import submit_local_pipeline_task
+from zet.services.local_task_executor_service import submit_local_pipeline_task
 from zet.services.local_batch_status_service import LocalBatchStatusService
 from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
 from zet.services.render_slot_service import RenderSlotConflict

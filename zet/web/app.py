@@ -36,12 +36,10 @@ from zet.services.image_deletion_service import ImageDeletionConfirmation
 from zet.services.performance_instrumentation import PerformanceInstrumentation
 from zet.services.ollama_model_service import OllamaModelService
 from zet.services.pipeline_control_service import AutomationSettings
-from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
 from zet.services.local_asset_store_service import LocalAssetStoreService
 from zet.services.pipeline_retirement import require_active_pipeline
 from zet.services.local_character_overview_service import LocalCharacterOverviewService
-from zet.services.local_run_all_remaining_service import LocalRunAllRemainingService
-from zet.web.local_character_asset_pipeline_router import create_local_character_asset_pipeline_router
+from zet.web.character_asset_container_router import create_character_asset_container_router
 from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
 from zet.web.quick_character_wizard_router import create_quick_character_wizard_router
 from zet.web.minor_character_router import create_minor_character_router
@@ -989,11 +987,8 @@ def _create_available_app(
                 zet_app.library_index_reconciler.start()
                 _schedule_recovery(zet_app)
             application.state.ai_job_coordinator.start()
-            application.state.local_pipeline_operation_service.start()
             yield
         finally:
-            application.state.local_pipeline_operation_service.stop()
-            application.state.local_pipeline_operation_control.shutdown(wait=True)
             application.state.ai_job_coordinator.stop()
             application.state.image_generation_service.stop()
             application.state.task_status_service.stop()
@@ -1101,30 +1096,6 @@ def _create_available_app(
 
     from zet.services.ai_job_coordinator import AIJobCoordinator, image_services
     app.state.ai_job_coordinator = AIJobCoordinator(app.state.zet_app, resolve_job_app)
-    from concurrent.futures import ThreadPoolExecutor
-    from zet.repositories.local_pipeline_operation_repository import LocalPipelineOperationRepository
-    from zet.services.local_image_workflow_service import LocalImagePipelineWorkflowService
-    from zet.services.local_pipeline_available_operation_handler import LocalPipelineAvailableOperationHandler
-    from zet.services.local_pipeline_batch_operation_handler import LocalPipelineBatchOperationHandler
-    from zet.services.local_pipeline_candidate_retry_operation_handler import LocalPipelineCandidateRetryOperationHandler
-    from zet.services.local_pipeline_evaluation_operation_handler import LocalPipelineEvaluationOperationHandler
-    from zet.services.local_pipeline_operation_service import LocalPipelineOperationDispatcher, LocalPipelineOperationService
-    from zet.services.storage_health_service import recovery_root
-    from zet.web.local_pipeline_operation_router import create_local_pipeline_operation_router
-
-    operation_repository = LocalPipelineOperationRepository(recovery_root(config) / "LocalPipelineOperations")
-    resolve_operation_workflow = lambda universe, pipeline: LocalImagePipelineWorkflowService(resolve_job_app(universe), PROJECT_ROOT, pipeline)
-    operation_handler = LocalPipelineOperationDispatcher(
-        LocalPipelineAvailableOperationHandler(operation_repository, resolve_operation_workflow),
-        LocalPipelineEvaluationOperationHandler(operation_repository, resolve_operation_workflow),
-        LocalPipelineBatchOperationHandler(operation_repository, resolve_operation_workflow),
-        LocalPipelineCandidateRetryOperationHandler(operation_repository, resolve_operation_workflow))
-    app.state.local_pipeline_operation_service = LocalPipelineOperationService(
-        operation_repository, operation_handler, supported_actions={"run_available", "generate_slots", "regenerate_slot", "retry_render_slot", "rerun_view", "rerun_failed", "reevaluate", "start", "resume", "retry_candidate"})
-    app.state.local_pipeline_operation_control = ThreadPoolExecutor(max_workers=2, thread_name_prefix="zet-operation-control")
-    app.include_router(create_local_pipeline_operation_router(app.state.local_pipeline_operation_service,
-        app.state.local_pipeline_operation_control, lambda: current_universe.get() or app.state.zet_app.universe_id))
-
     @app.middleware("http")
     async def bind_universe(request: Request, call_next):
         universe_id = request.headers.get("x-zet-universe") or request.query_params.get("universe_id")
@@ -1240,9 +1211,7 @@ def _create_available_app(
         with app.state.universe_lock:
             return image_services(selected)[1]
 
-    app.include_router(create_local_character_asset_pipeline_router(
-        lambda: _app(app.state.config_path), PROJECT_ROOT, _image_generation_service,
-        lambda: app.state.local_pipeline_operation_service))
+    app.include_router(create_character_asset_container_router(lambda: _app(app.state.config_path)))
     app.include_router(create_ad_hoc_image_generation_router(_image_generation_service))
 
     def quick_character_wizard_service():
@@ -1332,34 +1301,12 @@ def _create_available_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/local/character-overview/image/{character}/{phase}/{costume}")
-    def local_character_overview_image(character: str, phase: str, costume: str, render_mode: str = "draft") -> FileResponse:
+    def local_character_overview_image(character: str, phase: str, costume: str) -> FileResponse:
         try:
-            path = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).image_path(character, phase, costume, render_mode)
+            path = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).image_path(character, phase, costume)
             return FileResponse(path)
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    @app.post("/api/local/character-overview/{character}/{phase}/{costume}/autogenerate")
-    def local_character_overview_start(character: str, phase: str, costume: str) -> dict[str, Any]:
-        try:
-            return LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).start(character, phase, costume)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/api/local/character-overview/{character}/{phase}/{costume}/autogenerate")
-    def local_character_overview_status(character: str, phase: str, costume: str) -> dict[str, Any]:
-        try:
-            result = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).slot_status(character, phase, costume)
-            return result or {"status": "IDLE", "pipeline": "", "message": "", "job_id": ""}
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/api/local/character-overview/{character}/{phase}/{costume}/stop")
-    def local_character_overview_stop(character: str, phase: str, costume: str) -> dict[str, Any]:
-        try:
-            return LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).stop(character, phase, costume)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 

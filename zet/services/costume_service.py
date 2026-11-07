@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from zet.models.asset import Asset
 from zet.models.costume import Costume
@@ -144,6 +145,84 @@ class CostumeService:
         if old_locked.exists() and old_locked != new_locked:
             old_locked.rename(new_locked)
 
+    def _container_costume_dir(self, character: str, phase: str, costume_slug: str) -> Path:
+        return self.path_service.state_path(
+            "CharacterAssetContainers", quote(character, safe="-_."), quote(phase, safe="-_."),
+            "costume-dressing", quote(costume_slug, safe="-_."),
+        )
+
+    def _check_character_container_rename(self, character: str, phase: str,
+                                          old_slug: str, new_slug: str) -> None:
+        old_dir = self._container_costume_dir(character, phase, old_slug)
+        new_dir = self._container_costume_dir(character, phase, new_slug)
+        if old_dir == new_dir or not old_dir.exists():
+            return
+        if new_dir.exists():
+            raise CostumeServiceError(f"Character Asset Container already exists for the renamed costume: {new_slug}")
+        container_path = old_dir / "container.json"
+        if not container_path.is_file():
+            raise CostumeServiceError("The Costume Dressing Asset Container is incomplete; resolve it before renaming.")
+        try:
+            container = json.loads(container_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise CostumeServiceError("The Costume Dressing Asset Container is unreadable; resolve it before renaming.") from exc
+        scope = container.get("scope") or {}
+        if (scope.get("universe_id") != self.path_service.config.universe_id
+                or scope.get("character") != character or scope.get("phase") != phase
+                or scope.get("pipeline") != "costume-dressing" or scope.get("costume") != old_slug):
+            raise CostumeServiceError("The Costume Dressing Asset Container scope does not match its path.")
+        active_states = {"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"}
+        boards = container.get("boards")
+        if not isinstance(boards, dict):
+            raise CostumeServiceError("The Costume Dressing Asset Container has invalid board state.")
+        for board in boards.values():
+            candidates = board.get("candidates") if isinstance(board, dict) else None
+            if not isinstance(candidates, dict) or any(not isinstance(candidate, dict) for candidate in candidates.values()):
+                raise CostumeServiceError("The Costume Dressing Asset Container has invalid candidate state.")
+            if any(candidate.get("status") in active_states for candidate in candidates.values()):
+                raise CostumeServiceError("Wait for Costume Dressing renders to settle before renaming the costume.")
+        journal_root = old_dir / "publications"
+        if journal_root.is_dir() and any(journal_root.glob("*.json")):
+            raise CostumeServiceError("Recover the Costume Dressing publication before renaming the costume.")
+        for metadata_path in old_dir.rglob("*.json"):
+            try:
+                json.loads(metadata_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise CostumeServiceError(f"Costume Dressing metadata is unreadable: {metadata_path}") from exc
+
+    def _rename_character_container(self, character: str, phase: str,
+                                    old_slug: str, new_slug: str) -> None:
+        old_dir = self._container_costume_dir(character, phase, old_slug)
+        new_dir = self._container_costume_dir(character, phase, new_slug)
+        if old_dir == new_dir or not old_dir.exists():
+            return
+        if new_dir.exists():
+            raise CostumeServiceError(f"Character Asset Container already exists for the renamed costume: {new_slug}")
+        old_text, new_text = str(old_dir.resolve()), str(new_dir.resolve())
+        old_posix, new_posix = old_dir.resolve().as_posix(), new_dir.resolve().as_posix()
+        old_dir.rename(new_dir)
+
+        def update(value):
+            if isinstance(value, dict):
+                for key, item in list(value.items()):
+                    if key == "scope" and isinstance(item, dict) and item.get("costume") == old_slug:
+                        item["costume"] = new_slug
+                    else:
+                        value[key] = update(item)
+                return value
+            if isinstance(value, list):
+                return [update(item) for item in value]
+            if isinstance(value, str):
+                return value.replace(old_text, new_text).replace(old_posix, new_posix)
+            return value
+
+        for metadata_path in new_dir.rglob("*.json"):
+            try:
+                payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise CostumeServiceError(f"Cannot update Costume Dressing metadata after rename: {metadata_path}") from exc
+            write_json_atomic(metadata_path, update(payload))
+
     def _rename_turnaround_data(self, character: str, phase: str, old_name: str, new_name: str) -> None:
         """Keep tracked Costume-Dressing turnaround metadata and files aligned."""
         if old_name == new_name:
@@ -223,6 +302,8 @@ class CostumeService:
         """Reject a rename before edits when its local target is busy or occupied."""
         if old_name == new_name:
             return
+        self._check_character_container_rename(
+            character, phase, self.safe_costume_slug(old_name), self.safe_costume_slug(new_name))
         experiment_root = self.path_service.pipeline_candidates_path("Character-Pipeline", character, phase)
         old_folder = re.sub(r"[^A-Za-z0-9_-]+", "_", old_name).strip("_") or "Costume"
         new_folder = re.sub(r"[^A-Za-z0-9_-]+", "_", new_name).strip("_") or "Costume"
@@ -311,7 +392,8 @@ class CostumeService:
                 if updated != data:
                     write_json_atomic(metadata_path, updated)
 
-    def safe_costume_slug(self, costume_name: str) -> str:
+    @staticmethod
+    def safe_costume_slug(costume_name: str) -> str:
         """Return the canonical costume filename slug."""
         text = str(costume_name or "").strip()
         safe = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in text)
@@ -338,9 +420,10 @@ class CostumeService:
         contents = path.read_text(encoding="utf-8")
         name = self.costume_name_from_slug(path.stem.removeprefix("Costume_"))
         role = self._extract_template_field(contents, ["Costume Role", "Role"]) or None
-        assets = self.local_sources.store.locked_assets(
-            character, phase, pipeline="costume-dressing", qualifier=name, render_mode=None
-        ) if self.local_sources else []
+        assets = [item for item in self.local_sources.list_sources(
+            character, phase, pipeline="costume-dressing"
+        ) if str(item.get("costume") or "").casefold() in {name.casefold(),
+            self.safe_costume_slug(name).replace("_", " ").casefold()}] if self.local_sources else []
         return Costume(
             name=name,
             slug=self.safe_costume_slug(name),
@@ -490,6 +573,7 @@ class CostumeService:
             else:
                 self._write_text_atomic(old_path, updated_contents)
         self._rename_local_costume_data(character, phase, existing.name, display_name)
+        self._rename_character_container(character, phase, existing.slug, new_slug)
         self._rename_turnaround_data(character, phase, existing.name, display_name)
 
         return CostumeUpdateResult(

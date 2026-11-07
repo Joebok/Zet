@@ -45,8 +45,11 @@ def prepare_render(staging, ask, config):
     from zet.services.qwen_reference_preparation_service import QwenReferencePolicy, prepare_qwen_references
     from Scripts.Local_Render_Adapters.stable_matrix_adapter import split_labeled_prompt
     project = Path(__file__).resolve().parents[2]
-    profiles = json.loads(config.state_file(project, "Local_Render_Presets.json").read_text(encoding="utf-8"))
-    profile = dict(profiles[ask["render_preset"]])
+    snapshot = ask.get("profile_snapshot")
+    if snapshot is None:
+        profiles = json.loads(config.state_file(project, "Local_Render_Presets.json").read_text(encoding="utf-8"))
+        snapshot = profiles[ask["render_preset"]]
+    profile = dict(snapshot)
     allowed = {"width", "height", "steps", "cfg", "sampler_name", "scheduler", "denoise",
                "text_encoder", "vae", "disable_prompt_globals"}
     overrides = {key: value for key, value in ask.get("render_overrides", {}).items() if key in allowed}
