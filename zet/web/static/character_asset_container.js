@@ -1,4 +1,4 @@
-import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} from "./candidate_board.js";
+import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} from "./candidate_board.js";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -7,24 +7,24 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
     "head-image-edit": "Head Image Edit", "character-assembly": "Character Assembly",
     "costume-dressing": "Costume Dressing",
   };
-  const state = {pipeline: "", costume: "", view: "FRONT", detail: null,
+  const state = {pipeline: "", costume: "", view: "", detail: null,
     timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null,
-    reviewCandidateId: "", mutation: false, originSlot: null};
+    reviewCandidateId: "", mutation: false, originSlot: null, scope: null, controller: null};
   const activeCandidateStates = new Set(["SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"]);
   const escape = (value) => String(value ?? "").replace(/[&<>"']/g,
     (char) => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[char]));
 
   function query() {
-    const params = new URLSearchParams({character: document.querySelector("#character-select").value,
-      phase: document.querySelector("#phase-select").value,
-      universe_id: document.querySelector("#universe-select").value});
+    const params = new URLSearchParams(state.scope || {});
     if (state.pipeline === "costume-dressing" && state.costume) params.set("costume", state.costume);
     return params;
   }
 
   async function request(path, options = {}) {
-    const response = await fetch(path, {headers: {"Content-Type": "application/json"}, ...options});
+    const signal = state.controller.signal;
+    const response = await fetch(path, {headers: {"Content-Type": "application/json"}, ...options, signal});
     const data = await response.json().catch(() => ({}));
+    signal.throwIfAborted();
     if (!response.ok) throw new Error(data.detail || `Request failed (${response.status}).`);
     return data;
   }
@@ -60,7 +60,7 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
   function startPolling() {
     stopPolling();
     if (!pageVisible()) return;
-    if (state.active && state.detail?.boards?.[state.view]?.slots.some((id) => id &&
+    if (state.active && state.view && state.detail?.boards?.[state.view]?.slots.some((id) => id &&
       activeCandidateStates.has(state.detail.boards[state.view].candidates[id]?.status))) {
       state.timer = setInterval(() => { if (activeOnScreen()) void pollProgress(); }, 1500);
     }
@@ -69,21 +69,22 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
   async function loadDetail() {
     const sequence = ++state.request;
     const data = await request(api());
-    if (sequence !== state.request || !pageVisible()) return;
+    if (sequence !== state.request || data.revision < (state.detail?.revision ?? -1)) return;
     state.detail = data;
-    if (!data.boards[state.view]) state.view = data.scope.views[0];
+    if (state.view && !data.boards[state.view]) state.view = data.scope.views[0];
     render();
     if ($("review").open) {
-      if (data.boards[state.view].candidates[state.reviewCandidateId]) renderReviewComparison();
+      if (data.boards[state.view]?.candidates[state.reviewCandidateId]) renderReviewComparison();
       else $("review").close();
     }
-    if (["head-image", "head-image-edit"].includes(state.pipeline)) void loadPhaseSourceCandidates();
+    if (!state.view && isHead()) void loadPhaseSourceCandidates();
   }
 
   async function pollProgress() {
-    if (!activeOnScreen() || state.pollInFlight || state.mutation) return;
+    if (!activeOnScreen() || !state.view || !state.detail || state.pollInFlight || state.mutation || !state.timer) return;
     const url = api(`/views/${encodeURIComponent(state.view)}/progress`);
     const sequence = state.request;
+    const signal = state.controller.signal;
     state.pollInFlight = true;
     try {
       const progress = await request(url);
@@ -91,7 +92,6 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
           url !== api(`/views/${encodeURIComponent(state.view)}/progress`) ||
           progress.container_id !== state.detail?.container_id || progress.revision < state.detail.revision) return;
       if (!progress.active.length) {
-        state.active = false;
         stopPolling();
         await loadDetail();
         return;
@@ -119,7 +119,7 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
     } catch (error) {
       if (sequence === state.request && pageVisible()) show(error.message, true);
     } finally {
-      state.pollInFlight = false;
+      if (!signal.aborted) state.pollInFlight = false;
     }
   }
 
@@ -131,40 +131,52 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
     return api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(candidateId)}/image`);
   }
 
-  function saveRouteContext() {
-    const params = new URLSearchParams(location.search);
+  function route(view = state.view) {
+    const params = query();
     params.set("page", "character-asset-container");
     params.set("pipeline", state.pipeline);
-    params.set("character", document.querySelector("#character-select").value);
-    params.set("phase", document.querySelector("#phase-select").value);
-    params.set("universe_id", document.querySelector("#universe-select").value);
-    if (state.costume) params.set("costume", state.costume);
-    else params.delete("costume");
-    params.set("view", state.view);
-    history.replaceState({}, "", `/?${params}`);
+    if (view) params.set("view", view);
+    return `/?${params}`;
   }
 
+  function syncRoute() {
+    if (new URLSearchParams(location.search).get("page") === "character-asset-container") {
+      history.replaceState({}, "", route());
+    }
+  }
+
+  function navigate(view) {
+    history.pushState({}, "", route(view));
+    return activate(state.pipeline, {view, costume: state.costume, guidance: $("template-guidance").value});
+  }
+
+  function isHead() { return ["head-image", "head-image-edit"].includes(state.pipeline); }
+
   function render() {
-    const detail = state.detail;
-    if (!detail) return;
-    const scope = detail.scope;
+    const {scope, boards} = state.detail;
     $("title").textContent = `${pipelineLabels[state.pipeline]} · ${scope.character} · ${scope.phase}`;
-    $("context").textContent = scope.costume ? `Costume · ${scope.costume}` : "";
+    $("context").textContent = [scope.costume, state.view.replaceAll("_", " ")].filter(Boolean).join(" · ");
+    $("workspace").hidden = !state.view;
+    $("costume-wrap").hidden = state.pipeline !== "costume-dressing" || Boolean(state.view);
+    $("outputs").hidden = Boolean(state.view);
+    $("refresh").hidden = false;
+    $("back").href = route("");
     renderAuthoring();
-    const views = $("views");
-    views.replaceChildren(...scope.views.map((view) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = view.replaceAll("_", " ");
-      button.className = view === state.view ? "primary-action" : "";
-      button.addEventListener("click", () => { state.view = view; stopPolling(); $("board").replaceChildren(); saveRouteContext(); void loadDetail().catch((error) => show(error.message, true)); });
-      return button;
-    }));
-    const board = detail.boards[state.view];
-    state.active = board.slots.some((id) => id &&
-      activeCandidateStates.has(board.candidates[id]?.status));
-    renderBoard();
-    $("costume-wrap").hidden = state.pipeline !== "costume-dressing";
+    if (state.view) renderBoard();
+    else {
+      $("outputs").innerHTML = scope.views.map(view => {
+        const board = boards[view];
+        const candidate = board.candidates[board.selected_id];
+        const label = view.replaceAll("_", " ");
+        const href = escape(route(view));
+        const image = candidate?.image_path
+          ? `<a href="${href}" data-container-view="${view}"><img loading="lazy" src="${escape(comparisonImageUrl(view, board.selected_id))}" alt="${escape(label)}"></a>`
+          : '<div class="placeholder">No selected image</div>';
+        return `<article class="narrative-slot character-container-output"><h3>${escape(label)}</h3>${image}
+          ${candidate?.image_path ? `<p><span class="narrative-render-mode-pill ${candidate.render_mode === "final" ? "final" : "draft"}">${candidate.render_mode === "final" ? "Final" : "Draft"}</span> · ${candidate.locked ? "Locked" : "Selected"}</p>` : ""}
+          <a href="${href}" data-container-view="${view}" class="image-card-text-control">Open ${escape(label)} Candidate Board</a></article>`;
+      }).join("");
+    }
     startPolling();
   }
 
@@ -177,9 +189,9 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
     }]));
     renderCandidateBoard({host: staging, slots: board.slots, candidates,
       selectedId: board.selected_id, escape, imageUrl,
-      renderSlotActions: (candidate) => candidate
-        ? `<details class="candidate-request-details"><summary>Submitted prompt and references</summary><pre>${escape(candidate.prompt || "")}</pre><ul>${(candidate.render_request?.inputs || []).map((item) => `<li>${escape(item.role || "Reference")}${item.render_mode ? ` · ${escape(item.render_mode)}` : ""}</li>`).join("")}</ul>${candidate.status === "PREPARED" ? `<button data-board-action="submit" data-candidate-id="${escape(candidate.candidate_id)}">Generate</button>` : ""} ${!candidate.locked && board.selected_id !== candidate.candidate_id && !activeCandidateStates.has(candidate.status)
-          ? ["draft", "final"].map((mode) => `<button type="button" data-replace="${escape(candidate.candidate_id)}" data-quality="${mode}">Replace with ${mode === "draft" ? "Draft" : "Final"}</button>`).join("") : ""}${candidate.status === "COMPLETE" && candidate.image_path ? `<button data-template-improve="${escape(candidate.candidate_id)}">Suggest Character.md edit from this image</button>` : ""}</details>`
+      renderActions: (candidate, index) => renderActions(candidate, index + 1),
+      renderDetails: (candidate) => candidate
+        ? `<details class="candidate-request-details"><summary>Submitted prompt and references</summary><pre>${escape(candidate.prompt || "")}</pre><ul>${(candidate.render_request?.inputs || []).map(item => `<li>${escape(item.role || "Reference")}${item.render_mode ? ` · ${escape(item.render_mode)}` : ""}</li>`).join("")}</ul>${candidate.status === "PREPARED" ? `<button data-board-action="submit" data-candidate-id="${escape(candidate.candidate_id)}">Generate</button>` : ""} ${candidate.status === "COMPLETE" && candidate.image_path ? `<button data-template-improve="${escape(candidate.candidate_id)}">Suggest Character.md edit from this image</button>` : ""}</details>`
         : ""});
     const host = $("board");
     const focused = document.activeElement;
@@ -189,26 +201,36 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
       const previous = host.children[index];
       if (!previous) host.append(card);
       else if (previous.dataset.signature !== card.dataset.signature) {
-        const action = previous.contains(focused) ? focused.dataset.candidateAction : "";
+        const action = previous.contains(focused) ? focused.dataset.actionKey : "";
         previous.replaceWith(card);
         if (action) [...card.querySelectorAll("button")].find((button) =>
-          button.dataset.candidateAction === action)?.focus();
+          button.dataset.actionKey === action)?.focus();
       }
     });
+  }
+
+  function renderActions(candidate, slot, review = false) {
+    const id = candidate?.candidate_id;
+    const selected = Boolean(id) && state.detail.boards[state.view].selected_id === id;
+    const active = activeCandidateStates.has(candidate?.status);
+    return candidateActions({id, candidate, slot, selected, escape, review, busy: review && state.mutation,
+      canReplace: !active && !selected && !candidate?.locked,
+      canClear: !active && !candidate?.locked, showProtectedRegen: review});
   }
 
   function renderAuthoring() {
     const detail = state.detail;
     if (!detail) return;
     const sources = detail.sources || {};
-    const sourceMode = $("quality").value || "draft";
+    const sourceMode = $("source-quality").value || "draft";
     const modeSource = (sources.phase_change_by_mode || {})[sourceMode];
     const phaseSource = modeSource === undefined ? (sources.phase_change || {}) : modeSource;
     const authoring = $("authoring");
-    authoring.hidden = false;
+    authoring.hidden = Boolean(state.view);
+    $("apply-wrap").hidden = !isHead() || state.view !== "FRONT";
     $("phase-source").hidden = !["head-image", "head-image-edit"].includes(state.pipeline);
     $("assembly-source").hidden = state.pipeline !== "character-assembly";
-    $("view-source").hidden = !["body-reference", "head-image", "head-image-edit"].includes(state.pipeline) || state.view === "FRONT";
+    $("view-source").hidden = !["body-reference", "head-image", "head-image-edit"].includes(state.pipeline) || !state.view || state.view === "FRONT";
     const phaseSelect = $("source-phase");
     const phases = Array.from(document.querySelector("#phase-select").options)
       .filter((option) => option.value && option.value !== detail.scope.phase);
@@ -245,7 +267,7 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
         .filter((candidate) => candidate?.locked && candidate.inventory_asset_id);
       select.replaceChildren(new Option(candidates.length ? "Choose a published FRONT" : "No locked, published FRONT available", ""),
         ...candidates.map((candidate) => new Option(`Slot ${candidate.slot} · ${candidate.render_mode}`, candidate.candidate_id)));
-      const sourceMode = $("quality").value || "draft";
+      const sourceMode = $("source-quality").value || "draft";
       const modeSource = (state.detail.sources?.phase_change_by_mode || {})[sourceMode];
       const saved = modeSource === undefined ? (state.detail.sources?.phase_change || {}) : modeSource;
       if (saved.phase === phase && saved.pipeline === pipeline) select.value = saved.candidate_id || "";
@@ -261,9 +283,9 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
           expected_revision: state.detail.revision}),
       });
       render();
-      if (["head-image", "head-image-edit"].includes(state.pipeline)) void loadPhaseSourceCandidates();
+      if (!state.view && isHead()) void loadPhaseSourceCandidates();
       $("source-status").textContent = "Reference choice saved for new requests.";
-    } catch (error) { $("source-status").textContent = error.message; }
+    } catch (error) { if (error.name !== "AbortError") $("source-status").textContent = error.message; }
   }
 
   function review(candidateId) {
@@ -313,17 +335,15 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
     const candidate = board?.candidates?.[state.reviewCandidateId];
     if (!candidate) return;
     const focused = document.activeElement;
-    const focusedAction = $("review-actions").contains(focused) ? focused.dataset.candidateAction : "";
-    const focusedInput = $("review-pair").contains(focused) ? focused.getAttribute("href") : "";
+    const focusedAction = $("review-actions").contains(focused) ? focused.dataset.actionKey : "";
+    const focusedInput = $("review-prompt").contains(focused) ? focused.getAttribute("href") : "";
     const ids = board.slots.filter(Boolean);
     const index = ids.indexOf(state.reviewCandidateId);
     $("review-position").textContent = reviewPosition(candidate, index, ids.length, board.selected_id === state.reviewCandidateId);
-    $("review-prev").disabled = index === 0;
-    $("review-next").disabled = index === ids.length - 1;
+    $("review-prev").disabled = state.mutation || index === 0;
+    $("review-next").disabled = state.mutation || index === ids.length - 1;
     $("review-copy").disabled = !candidate.prompt;
-    $("review-actions").innerHTML = reviewDecisions({id: state.reviewCandidateId,
-      candidate: {...candidate, image: Boolean(candidate.image_path)}, selected: board.selected_id === state.reviewCandidateId,
-      busy: state.mutation, escape});
+    $("review-actions").innerHTML = renderActions({...candidate, image: Boolean(candidate.image_path)}, candidate.slot, true);
 
     const choices = [...$("review-compare").selectedOptions].map((option) => {
       const [view, id] = option.value.split(":");
@@ -331,17 +351,26 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
       return item?.image_path ? {view, id, item} : null;
     }).filter(Boolean);
     const pair = $("review-pair");
-    pair.style.gridTemplateColumns = choices.length ? "" : "minmax(0, 1fr)";
-    const card = (title, image, item) => `<figure><header><strong>${escape(title)}</strong></header>${item.image_path ? `<img src="${escape(image)}" alt="${escape(title)}">` : `<p>${item.status === "FAILED" ? escape(item.error || "Render failed.") : "Image pending"}</p>`}<details><summary>Prompt and ordered inputs</summary><pre>${escape(item.prompt || "")}</pre>${item === candidate ? reviewInputs(item.render_request?.inputs,
-      index => api(`/views/${state.view}/candidates/${state.reviewCandidateId}/inputs/${index}`), escape) : ""}</details></figure>`;
-    const open = [...pair.querySelectorAll("details")].map((details) => details.open);
-    pair.innerHTML = `${card(`Candidate · Slot ${candidate.slot} · ${candidate.render_mode}`, imageUrl(state.reviewCandidateId), candidate)}${choices.map(({view, id, item}) => card(`${view.replaceAll("_", " ")} · Slot ${item.slot} · ${item.render_mode}`, comparisonImageUrl(view, id), item)).join("")}`;
-    [...pair.querySelectorAll("details")].forEach((details, index) => { details.open = open[index] || false; });
+    pair.classList.toggle("single-image", !choices.length);
+    const images = [{view: state.view, id: state.reviewCandidateId, item: candidate}, ...choices];
+    const title = ({view, item}) => `${item === candidate ? "Candidate" : view.replaceAll("_", " ")} · Slot ${item.slot} · ${item.render_mode}`;
+    pair.innerHTML = images.map(image => `<figure><header><strong>${escape(title(image))}</strong></header>
+      ${image.item.image_path ? `<img src="${escape(comparisonImageUrl(image.view, image.id))}" alt="${escape(title(image))}">`
+        : `<p>${escape(image.item.status === "FAILED" ? image.item.error || "Render failed." : "No image available yet.")}</p>`}</figure>`).join("");
+    const prompt = $("review-prompt");
+    const open = new Set([...prompt.querySelectorAll("details[open]")].map(details => details.dataset.promptKey));
+    prompt.innerHTML = images.map(({view, id, item}) => {
+      const key = `${view}:${id}`;
+      return `<details data-prompt-key="${escape(key)}" ${open.has(key) ? "open" : ""}><summary>${item === candidate ? "Prompt and ordered inputs" : escape(title({view, item}))}</summary>
+        <pre>${escape(item.prompt || "")}</pre>${reviewInputs(item.render_request?.inputs,
+        index => api(`/views/${view}/candidates/${id}/inputs/${index}`), escape)}</details>`;
+    }).join("");
+    window.ZetImageCardUI.scan($("review"));
     if (focusedAction) {
       const buttons = [...$("review-actions").querySelectorAll("button:not(:disabled)")];
-      (buttons.find(button => button.dataset.candidateAction === focusedAction) || $("review-close")).focus();
+      (buttons.find(button => button.dataset.actionKey === focusedAction) || $("review-close")).focus();
     } else if (focusedInput) {
-      [...pair.querySelectorAll("a")].find(link => link.getAttribute("href") === focusedInput)?.focus();
+      [...$("review-prompt").querySelectorAll("a")].find(link => link.getAttribute("href") === focusedInput)?.focus();
     }
   }
 
@@ -373,90 +402,141 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
           });
           renderTemplateProposal();
           show("Character.md updated. Existing candidates keep their captured prompts and inputs.");
-        } catch (error) { show(error.message, true); accept.disabled = false; }
+        } catch (error) { reportError(error); accept.disabled = false; }
       });
       host.append(accept);
     }
   }
 
   async function costumeOptions() {
-    if (state.pipeline !== "costume-dressing") return;
-    const params = query();
-    const data = await request(`/api/costumes?${params}`);
+    const data = await request(`/api/costumes?${query()}`);
     const select = $("costume");
-    select.replaceChildren(...data.costumes.map((costume) => {
-      const option = document.createElement("option");
-      option.value = costume.slug;
-      option.textContent = costume.name;
-      return option;
-    }));
-    if (!data.costumes.some((costume) => costume.slug === state.costume)) state.costume = "";
+    select.replaceChildren(new Option("Choose a costume", ""),
+      ...data.costumes.map(costume => new Option(costume.name, costume.slug)));
+    state.costume = data.costumes.find(costume =>
+      costume.slug === state.costume || costume.name === state.costume)?.slug || "";
     select.value = state.costume;
   }
 
-  async function activate(pipeline) {
-    state.pipeline = pipeline || state.pipeline || new URLSearchParams(location.search).get("pipeline") || "body-reference";
-    state.templateProposal = null;
-    $("apply-phase-change").checked = false;
+  function deactivate() {
+    state.controller?.abort();
     state.request += 1;
-    state.detail = null;
-    $("board").replaceChildren();
-    if ($("review").open) $("review").close();
-    state.costume = state.pipeline === "costume-dressing"
-      ? new URLSearchParams(location.search).get("costume") || state.costume : "";
-    state.view = new URLSearchParams(location.search).get("view") || state.view;
-    state.active = true;
+    state.sourceRequest += 1;
+    state.active = false;
     stopPolling();
+    if ($("review").open) $("review").close();
+  }
+
+  async function activate(pipeline, options = {}) {
+    const params = new URLSearchParams(location.search);
+    deactivate();
+    const controller = new AbortController();
+    state.controller = controller;
+    state.scope = options.scope || {
+      character: document.querySelector("#character-select").value,
+      phase: document.querySelector("#phase-select").value,
+      universe_id: document.querySelector("#universe-select").value,
+    };
+    state.pipeline = pipeline || params.get("pipeline") || "body-reference";
+    state.view = options.view ?? params.get("view") ?? "";
+    state.costume = state.pipeline === "costume-dressing"
+      ? options.costume ?? params.get("costume") ?? "" : "";
+    state.active = true;
+    state.pollInFlight = false;
+    state.mutation = false;
+    state.detail = null;
+    state.templateProposal = options.proposal || null;
+    state.originSlot = null;
+    state.reviewCandidateId = "";
+    for (const id of ["board", "outputs", "review-pair", "review-prompt", "prompt-references", "source-status", "prompt-text"]) $(id).replaceChildren();
+    for (const id of ["workspace", "outputs", "authoring", "prompt-preview", "refresh", "costume-wrap"]) $(id).hidden = true;
+    $("authoring").open = Boolean(options.proposal);
+    $("apply-phase-change").checked = false;
+    $("phase-source-file").value = "";
+    $("template-guidance").value = options.guidance ?? "";
+    $("prompt-preview-button").disabled = false;
+    document.querySelectorAll(".character-container-render-action").forEach(button => { button.disabled = false; });
+    $("title").textContent = pipelineLabels[state.pipeline] || "Character Asset Container";
+    $("context").textContent = "";
+    renderTemplateProposal();
+    show("Loading Asset Container…");
+    if (options.sync !== false) syncRoute();
+    if (!state.scope.character || !state.scope.phase) {
+      show("Choose a character and phase to open its Asset Container.");
+      return;
+    }
     try {
-      if (state.pipeline === "costume-dressing" && !state.costume) {
-        $("costume-wrap").hidden = false;
+      if (state.pipeline === "costume-dressing") {
+        $("costume").disabled = true;
         await costumeOptions();
+        $("costume").disabled = false;
         if (!state.costume) {
+          $("costume-wrap").hidden = false;
+          syncRoute();
           show("Choose a costume to open its Asset Container.");
           return;
         }
       }
       await loadDetail();
-      const savedProposal = await request(api("/template-proposals"));
-      state.templateProposal = savedProposal.proposal;
-      renderTemplateProposal();
+      controller.signal.throwIfAborted();
+      syncRoute();
+      if (!state.view && !options.proposal) {
+        const savedProposal = await request(api("/template-proposals"));
+        state.templateProposal = savedProposal.proposal;
+        renderTemplateProposal();
+      }
       show("Container ready.");
     } catch (error) {
-      show(error.message, true);
+      if (!controller.signal.aborted) {
+        $("costume").disabled = false;
+        $("costume-wrap").hidden = state.pipeline !== "costume-dressing";
+        show(error.message, true);
+      }
     }
   }
 
   async function generate(count, renderMode, replacement = {}) {
     if (state.mutation || !state.detail) return;
     const scope = api();
-    const sequence = state.request;
     const view = state.view;
+    const signal = state.controller.signal;
+    const modal = $("review").open;
     const buttons = [...document.querySelectorAll(".character-container-render-action")];
     state.mutation = true;
     buttons.forEach((button) => { button.disabled = true; });
-    show("Preparing render…");
+    const feedback = (message, error = false) => modal && $("review").open
+      ? $("review-status").textContent = message : show(message, error);
+    feedback("Preparing render…");
+    if (modal) renderReviewComparison();
     try {
       const result = await request(api(`/views/${encodeURIComponent(view)}/generate`), {
         method: "POST", body: JSON.stringify({count, render_mode: renderMode,
           aspect_ratio: $("aspect").value, expected_revision: state.detail.revision,
           apply_phase_change: $("apply-phase-change").checked, ...replacement}),
       });
-      if (!pageVisible() || sequence !== state.request || scope !== api() || view !== state.view) return;
+      if (signal.aborted || scope !== api() || view !== state.view || result.revision < state.detail.revision) return;
       state.detail = result;
       render();
-      show("Render slots updated.");
+      if (modal && $("review").open && replacement.slot) {
+        review(result.boards[view].slots[replacement.slot - 1]);
+      }
+      feedback("Render slots updated.");
     } catch (error) {
-      if (sequence === state.request && scope === api() && view === state.view && pageVisible()) {
-        show(error.message, true);
+      if (!signal.aborted && scope === api() && view === state.view) {
+        feedback(error.message, true);
         await loadDetail().catch(() => {});
       }
     } finally {
-      state.mutation = false;
-      buttons.forEach((button) => { button.disabled = false; });
+      if (!signal.aborted) {
+        state.mutation = false;
+        buttons.forEach((button) => { button.disabled = false; });
+        if ($("review").open) renderReviewComparison();
+      }
     }
   }
 
   async function previewPrompt() {
+    const signal = state.controller.signal;
     const button = $("prompt-preview-button");
     button.disabled = true;
     try {
@@ -473,8 +553,8 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
       $("prompt-preview").hidden = false;
       $("prompt-preview").open = true;
       show("Prompt compiled from current masters and selected references.");
-    } catch (error) { show(error.message, true); }
-    finally { button.disabled = false; }
+    } catch (error) { reportError(error); }
+    finally { if (!signal.aborted) button.disabled = false; }
   }
 
   document.querySelectorAll(".character-container-render-action").forEach((button) => {
@@ -482,30 +562,47 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
   });
   $("prompt-preview-button").addEventListener("click", () => void previewPrompt());
   $("edit-template").addEventListener("click", async () => {
+    const signal = state.controller.signal;
     try {
       const master = await request(api("/template"));
       await window.ZetSourceEditor.open({source_path: master.source_path,
         source_label: `Character.md · ${master.character} · ${master.phase}`, editable: true},
-        (message) => show(message, true));
-    } catch (error) { show(error.message, true); }
+        (message) => show(message, true), signal);
+    } catch (error) { reportError(error); }
   });
-  $("refresh").addEventListener("click", () => void loadDetail().then(pollProgress));
-  $("costume").addEventListener("change", () => { state.costume = $("costume").value; saveRouteContext(); void activate(state.pipeline); });
+  function refresh() {
+    void loadDetail().then(pollProgress).catch(reportError);
+  }
+  function reportError(error) {
+    if (error.name !== "AbortError") show(error.message, true);
+  }
+  $("refresh").addEventListener("click", refresh);
+  $("costume").addEventListener("change", () => void activate(state.pipeline, {costume: $("costume").value, view: state.view}));
+  function followViewLink(event, link, view) {
+    if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    void navigate(view);
+  }
+  $("back").addEventListener("click", event => followViewLink(event, $("back"), ""));
+  $("outputs").addEventListener("click", event => {
+    const link = event.target.closest("a[data-container-view]");
+    followViewLink(event, link, link?.dataset.containerView);
+  });
   $("source-phase").addEventListener("change", () => void loadPhaseSourceCandidates());
   $("source-pipeline").addEventListener("change", () => void loadPhaseSourceCandidates());
   $("save-phase-source").addEventListener("click", () => {
     const source = {phase: $("source-phase").value, pipeline: $("source-pipeline").value,
       candidate_id: $("source-candidate").value};
     if (!source.phase || !source.candidate_id) { $("source-status").textContent = "Choose a locked, published FRONT first."; return; }
-    void saveSource("phase_change_by_mode", source, $("quality").value);
+    void saveSource("phase_change_by_mode", source, $("source-quality").value);
   });
   $("clear-phase-source").addEventListener("click", () =>
-    void saveSource("phase_change_by_mode", {}, $("quality").value));
+    void saveSource("phase_change_by_mode", {}, $("source-quality").value));
   $("upload-phase-source").addEventListener("click", async () => {
     const file = $("phase-source-file").files?.[0];
     if (!file) { $("source-status").textContent = "Choose a PNG, JPEG, or WebP image first."; return; }
     const params = query();
-    params.set("render_mode", $("quality").value);
+    params.set("render_mode", $("source-quality").value);
     params.set("filename", file.name);
     params.set("expected_revision", state.detail.revision);
     try {
@@ -516,9 +613,9 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
       render();
       $("source-candidate").replaceChildren(new Option("Managed upload selected", ""));
       $("source-status").textContent = "Managed upload saved for new requests at this quality.";
-    } catch (error) { $("source-status").textContent = error.message; }
+    } catch (error) { if (error.name !== "AbortError") $("source-status").textContent = error.message; }
   });
-  $("quality").addEventListener("change", () => {
+  $("source-quality").addEventListener("change", () => {
     if (["head-image", "head-image-edit"].includes(state.pipeline)) {
       renderAuthoring();
       void loadPhaseSourceCandidates();
@@ -532,18 +629,9 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
   $("board").addEventListener("click", async (event) => {
     const reviewButton = event.target.closest("[data-review]");
     if (reviewButton) {
-      state.originSlot = reviewButton.dataset.review;
+      state.originSlot = state.detail.boards[state.view].candidates[reviewButton.dataset.review].slot;
       $("review-status").textContent = "";
       review(reviewButton.dataset.review);
-      return;
-    }
-    const replacement = event.target.closest("[data-replace]");
-    if (replacement) {
-      const id = replacement.dataset.replace;
-      const candidate = state.detail.boards[state.view].candidates[id];
-      if (confirm(`Replace slot ${candidate.slot} and delete its current candidate?`)) {
-        void generate(1, replacement.dataset.quality, {slot: candidate.slot, expected_candidate_id: id});
-      }
       return;
     }
     const improve = event.target.closest("[data-template-improve]");
@@ -551,15 +639,13 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
       improve.disabled = true;
       const originalLabel = improve.textContent;
       improve.textContent = "Preparing proposal…";
-      $("authoring").open = true;
       try {
-        state.templateProposal = await request(api("/template-proposals"), {method: "POST",
+        const proposal = await request(api("/template-proposals"), {method: "POST",
           body: JSON.stringify({view: state.view, candidate_id: improve.dataset.templateImprove,
             direction: $("template-guidance").value, expected_revision: state.detail.revision})});
-        renderTemplateProposal();
-        $("template-proposal").scrollIntoView({block: "nearest", behavior: "smooth"});
-        show("Proposal ready. Review the diff and compiled prompt before accepting it.");
-      } catch (error) { show(error.message, true); }
+        history.pushState({}, "", route(""));
+        await activate(state.pipeline, {view: "", costume: state.costume, proposal});
+      } catch (error) { reportError(error); }
       finally { improve.disabled = false; improve.textContent = originalLabel; }
       return;
     }
@@ -567,11 +653,22 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
   });
 
   async function boardAction(event) {
-    const button = event.target.closest("[data-candidate-action], [data-board-action]");
-    if (!button || state.mutation) return;
+    const button = event.target.closest("[data-candidate-action], [data-board-action], [data-render-slot]");
+    if (!button || state.mutation || !state.detail) return;
+    const board = state.detail.boards[state.view];
+    if (button.dataset.renderSlot) {
+      const slot = Number(button.dataset.renderSlot);
+      const id = board.slots[slot - 1];
+      if (!id || confirm(`Replace slot ${slot} and delete its current candidate?`)) {
+        await generate(1, button.dataset.mode, {slot, expected_candidate_id: id});
+      }
+      return;
+    }
     const id = button.dataset.candidate || button.dataset.candidateId;
     const action = button.dataset.candidateAction || button.dataset.boardAction;
-    const candidate = state.detail.boards[state.view].candidates[id];
+    const candidate = board.candidates[id];
+    if (!candidate) return;
+    const signal = state.controller.signal;
     const payload = {expected_revision: state.detail.revision};
     if (action === "clear") {
       payload.expected_candidate_id = id;
@@ -580,7 +677,6 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
       if (candidate.locked) { show("Unlock the candidate before clearing its slot.", true); return; }
     }
     const scope = api();
-    const sequence = state.request;
     const view = state.view;
     const modal = $("review").open;
     const feedback = modal ? $("review-status") : document.createElement("p");
@@ -596,7 +692,7 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
     try {
       const result = await request(api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(id)}/${action}`),
         {method: "POST", body: JSON.stringify(payload)});
-      if (!pageVisible() || sequence !== state.request || scope !== api() || view !== state.view) return;
+      if (signal.aborted || scope !== api() || view !== state.view || result.revision < state.detail.revision) return;
       state.detail = result;
       state.mutation = false;
       render();
@@ -608,21 +704,35 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
           control.dataset.candidateAction === action || control.dataset.review === id);
         next?.focus();
       }
-      if (modal) {
-        renderReviewComparison();
+      if (modal && $("review").open) {
+        if (action === "clear") {
+          const slots = result.boards[view].slots;
+          const next = slots.slice(candidate.slot).find(Boolean) || slots.slice(0, candidate.slot - 1).reverse().find(Boolean);
+          if (next) review(next);
+          else {
+            state.originSlot = candidate.slot;
+            $("review").close();
+          }
+        } else renderReviewComparison();
         feedback.textContent = action === "lock" ? "Locked and published." : "Candidate updated.";
       }
     } catch (error) {
-      if (sequence === state.request && scope === api() && view === state.view) feedback.textContent = error.message;
+      if (!signal.aborted) {
+        feedback.textContent = error.message;
+        await loadDetail().catch(() => {});
+      }
     } finally {
-      state.mutation = false;
-      button.disabled = false;
-
+      if (!signal.aborted && state.mutation) {
+        state.mutation = false;
+        button.disabled = false;
+        if (modal && $("review").open) renderReviewComparison();
+      }
     }
   }
 
   $("review-actions").addEventListener("click", boardAction);
   function moveReview(offset) {
+    if (state.mutation) return;
     const ids = state.detail.boards[state.view].slots.filter(Boolean);
     const id = ids[ids.indexOf(state.reviewCandidateId) + offset];
     if (id) review(id);
@@ -635,30 +745,29 @@ import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} fro
     if (event.key === "ArrowRight") moveReview(1);
   });
   $("review").addEventListener("close", () => {
-    [...$("board").querySelectorAll("button[data-review]")].find((button) =>
-      button.dataset.review === state.originSlot)?.focus();
+    if ($("review").open || !state.originSlot) return;
+    const card = $("board").children[state.originSlot - 1];
+    (card?.querySelector("button:not(:disabled)") || $("back")).focus();
   });
   $("review-copy").onclick = async () => {
     const candidate = state.detail.boards[state.view].candidates[state.reviewCandidateId];
+    const signal = state.controller.signal;
     try {
       await navigator.clipboard.writeText(candidate.prompt);
-      $("review-status").textContent = "Prompt copied.";
-    } catch (error) { $("review-status").textContent = error.message; }
+      if (!signal.aborted) $("review-status").textContent = "Prompt copied.";
+    } catch (error) { if (!signal.aborted) $("review-status").textContent = error.message; }
   };
   $("review-close").addEventListener("click", () => $("review").close());
   document.addEventListener("visibilitychange", () => {
     if (!pageVisible()) { stopPolling(); return; }
-    if (state.active) { startPolling(); void pollProgress(); }
-    else void loadDetail().catch((error) => show(error.message, true));
+    if (state.active && state.scope?.phase && (state.pipeline !== "costume-dressing" || state.costume)) refresh();
   });
-  window.addEventListener("zet-character-container-activate", (event) => void activate(event.detail?.pipeline));
-  window.addEventListener("zet-character-container-deactivate", () => { state.active = false; stopPolling(); });
   window.ZetCharacterAssetContainer = {
-    setPipeline(pipeline) { state.pipeline = pipeline || ""; },
     pipeline() { return state.pipeline; },
     context() { return {pipeline: state.pipeline, costume: state.costume, view: state.view}; },
     activate,
-    deactivate() { state.active = false; stopPolling(); },
+    deactivate,
+    refreshScope() { return activate(state.pipeline, {view: state.view, costume: state.costume}); },
   };
   if (document.querySelector("#character-asset-container-page")?.classList.contains("active")) {
     void activate(new URLSearchParams(location.search).get("pipeline"));

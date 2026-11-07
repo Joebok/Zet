@@ -1,5 +1,5 @@
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
-import {renderCandidateBoard, reviewDecisions, reviewPosition, reviewInputs} from './candidate_board.js';
+import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} from './candidate_board.js';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;
 let pollTimer = null;
@@ -919,8 +919,8 @@ function updateLive() {
   slotSignature = signature;
   renderCandidateBoard({host: host.querySelector('#narrative-slots'), slots, candidates: detail.candidates,
     selectedId: selected, escape: esc, imageUrl, promptIndicator,
-    renderSlotActions: (candidate, index) => candidate && (candidate.locked || slots[index] === selected) ? '' :
-      `<button class="narrative-regen-draft" data-render-slot="${index + 1}" data-mode="draft">Regen Draft</button><button class="narrative-regen-final" data-render-slot="${index + 1}" data-mode="final">Regen Final</button>`});
+    renderActions: (candidate, index) => candidateActions({id: slots[index], candidate,
+      selected: Boolean(candidate) && slots[index] === selected, slot: index + 1, escape: esc})});
   renderImageReview();
 }
 
@@ -958,7 +958,7 @@ function renderImageReview() {
   if(!dialog.querySelector('[data-clean-view]')){const toggle=document.createElement('button');toggle.dataset.cleanView='';toggle.textContent='Hide review controls';toggle.onclick=()=>{const clean=dialog.classList.toggle('narrative-clean-view');toggle.textContent=clean?'Show review controls':'Hide review controls';};dialog.append(toggle);}
   const panel = host.querySelector('#narrative-review-panel');
   const sameCandidate = panel.dataset.candidate === reviewCandidate;
-  const focusedAction = panel.contains(document.activeElement) ? document.activeElement.dataset.imageAction : "";
+  const focusedAction = panel.contains(document.activeElement) ? (document.activeElement.dataset.actionKey || document.activeElement.dataset.imageAction) : "";
   const previousDetails = panel.querySelector('details');
   const detailsOpen = sameCandidate && previousDetails?.open;
   const detailsScroll = sameCandidate ? panel.scrollTop : 0;
@@ -966,10 +966,8 @@ function renderImageReview() {
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
     <p class="local-pipeline-review-position">${esc(reviewPosition(candidate, index, images.length, selected))}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
-      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked?"disabled":""}>Edit text</button>` : ''}${reviewDecisions({id: reviewCandidate, candidate, selected, busy, escape: esc})}
-      <button data-render-slot="${candidate.slot}" data-mode="draft" ${busy || selected || candidate.locked ? 'disabled' : ''}>Draft</button><button data-render-slot="${candidate.slot}" data-mode="final" ${busy || selected || candidate.locked ? 'disabled' : ''}>Final</button>
-      <button class="danger" data-candidate="${reviewCandidate}" data-candidate-action="clear" ${busy ? 'disabled' : ''}>Clear slot</button>
-
+      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked?"disabled":""}>Edit text</button>` : ''}${candidateActions({id: reviewCandidate, candidate, selected, slot: candidate.slot,
+        busy, escape: esc, review: true, showProtectedRegen: true})}
       <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image before publishing it to Inventory">Publish to Inventory</button>
     </div>
     ${inventorySaved?.candidate === reviewCandidate ? `<p role="status">Saved “${esc(inventorySaved.label)}” to inventory.</p>` : ''}
@@ -983,7 +981,7 @@ function renderImageReview() {
     </details>`;
   window.ZetImageCardUI.scan(panel);
   if (sameCandidate && focusedAction) [...panel.querySelectorAll("button,a")]
-    .find(button => button.dataset.imageAction === focusedAction)?.focus({ preventScroll: true });
+    .find(button => (button.dataset.actionKey || button.dataset.imageAction) === focusedAction)?.focus({ preventScroll: true });
   panel.scrollTop = detailsScroll;
 }
 
@@ -1090,6 +1088,9 @@ async function start(actionName, count = 1, slot, retryJobId, renderMode = 'draf
     result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,...(detail.kind==='subscene' ? {aspect_ratio:renderRatio} : {})} : {}), ...(slot ? {slot, expected_candidate_id:expectedCandidateId ?? null} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
   } finally { llmSubmitting = false; updateLive(); }
   if (['interview','restart_interview'].includes(actionName)) interviewImage = '';
+  if (slot && host.querySelector('#image-dialog').open && reviewCandidate === expectedCandidateId) {
+    reviewCandidate = result.slots[slot - 1] || reviewCandidate;
+  }
   mergeTarget(result);
   if (['interview','restart_interview'].includes(actionName) && direction) direction.value = '';
   const lastJob = Object.values(result.jobs).at(-1);
@@ -1300,8 +1301,22 @@ listen(host,'click',event=>{
         if (!confirm('An image is already locked. Lock this image and unlock the other image?')) return;
       }
       if(detail.kind==='assembly' && (detail.scene_text?.length || detail.candidates[button.dataset.candidate]?.scene_text_final) && !(detail.candidates[button.dataset.candidate]?.locked && !detail.candidates[button.dataset.candidate]?.scene_text_pending) && button.dataset.candidateAction==='select'){await window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.candidate,done:async result=>{detail=result;updateLive();}});return;}
+      const clearedReviewSlot = button.dataset.candidateAction === 'clear' &&
+        button.dataset.candidate === reviewCandidate && host.querySelector('#image-dialog').open
+        ? detail.slots.indexOf(reviewCandidate) : -1;
       const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction});
-      if (result) { detail=result; updateLive(); status('Updated'); }
+      if (result) {
+        detail = result;
+        if (clearedReviewSlot >= 0) {
+          reviewCandidate = detail.slots.slice(clearedReviewSlot + 1).find(Boolean) ||
+            detail.slots.slice(0, clearedReviewSlot).reverse().find(Boolean) || null;
+        }
+        updateLive();
+        if (clearedReviewSlot >= 0 && !reviewCandidate) {
+          host.querySelector('#narrative-slots').children[clearedReviewSlot]?.querySelector('button')?.focus();
+        }
+        status('Updated');
+      }
     } else if (button.dataset.renderSlot) {
       const slot=Number(button.dataset.renderSlot);
       await start('render',1,slot,undefined,button.dataset.mode,detail.slots[slot - 1]);

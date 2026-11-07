@@ -6,7 +6,12 @@ Character.md proposals, validates and compiles captured-input previews, and
 promotes only after explicit acceptance and a current-master revision check.
 The container router and `character_asset_container.js` expose proposal review
 on the Assets container page. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#character-asset-container-workflow-2026-11-06)
-and the [active migration plan](../plans/active/character-image-production-workflow.md).
+and the [completed migration plan](../plans/completed/character-image-production-workflow.md).
+
+The character container controller renders a pipeline overview or a Candidate
+Board according to the optional route view. The dashboard shell owns header
+scope changes. `candidate_board.js` and the shared styles in `narrative.css`
+own card and review actions and layout for Character and Narrative.
 
 Legacy Character batch operation contexts and preparation services are retained
 for migration/reference only; their router is not mounted and startup no longer

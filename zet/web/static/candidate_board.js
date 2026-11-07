@@ -1,6 +1,6 @@
 /** Shared Candidate Board card presentation. Pipelines inject their slot actions. */
 export function renderCandidateBoard({host, slots, candidates, selectedId, escape, imageUrl,
-  promptIndicator = () => '', renderSlotActions = () => ''}) {
+  promptIndicator = () => '', renderActions, renderDetails = () => ''}) {
   host.innerHTML = slots.map((id, index) => {
     const candidate = id ? candidates[id] : null;
     const state = candidate?.locked ? 'locked' : id && id === selectedId ? 'selected' :
@@ -11,20 +11,24 @@ export function renderCandidateBoard({host, slots, candidates, selectedId, escap
     const metadata = candidate
       ? `<p class="narrative-muted image-card-state"><span class="narrative-render-mode-pill ${candidate.render_mode === 'final' ? 'final' : 'draft'}">${candidate.render_mode === 'final' ? 'Final' : 'Draft'}</span> · ${escape(candidate.status.toLowerCase())}${id === selectedId ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>`
       : '';
-    const review = candidate
-      ? `<div class="narrative-actions narrative-review-actions"><button data-review="${id}" aria-label="Review slot ${index + 1}">Review</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="select" class="${id !== selectedId ? 'primary' : ''}" ${id === selectedId ? 'disabled' : ''}>${id === selectedId ? 'Selected' : 'Select'}</button>` : ''}${candidate.status === 'FAILED' ? `<button data-candidate="${id}" data-candidate-action="retry">Retry</button>` : ''}${renderSlotActions(candidate, index)}<button data-candidate="${id}" data-candidate-action="clear" class="danger-text-action">Clear slot</button>${candidate.image ? `<button data-candidate="${id}" data-candidate-action="${candidate.locked ? 'unlock' : 'lock'}">${candidate.locked ? 'Unlock' : 'Lock'}</button>` : ''}</div>`
-      : `<div class="narrative-actions">${renderSlotActions(null, index)}</div>`;
-    return `<article class="narrative-slot ${id && id === selectedId ? 'selected' : ''}" data-state="${state}"><h3 class="render-mode-heading">Slot ${index + 1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>${image}${metadata}${candidate?.error ? `<p class="error">${escape(candidate.error)}</p>` : ''}${review}</article>`;
+    const review = `<div class="narrative-actions narrative-review-actions">${candidate ? `<button type="button" data-review="${id}" aria-label="Review slot ${index + 1}">Review</button>` : ''}${renderActions(candidate, index)}</div>`;
+    return `<article class="narrative-slot ${id && id === selectedId ? 'selected' : ''}" data-state="${state}"><h3 class="render-mode-heading">Slot ${index + 1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>${image}${metadata}${candidate?.error ? `<p class="error">${escape(candidate.error)}</p>` : ''}${review}${renderDetails(candidate)}</article>`;
   }).join('');
 }
 
 
-export function reviewDecisions({id, candidate, selected, busy = false, escape}) {
-  const action = (name, label, disabled = false) =>
-    `<button type="button" data-candidate="${escape(id)}" data-candidate-action="${name}" ${disabled ? 'disabled' : ''}>${label}</button>`;
-  return action('select', 'Select', busy || selected || !candidate.image) +
-    action(candidate.locked ? 'unlock' : 'lock', candidate.locked ? 'Unlock' : 'Lock', busy || !candidate.image) +
-    (candidate.status === 'FAILED' ? action('retry', 'Retry', busy) : '');
+export function candidateActions({id, candidate, selected, slot, busy = false, escape,
+  canReplace = !candidate || (!selected && !candidate.locked), canClear = true,
+  showProtectedRegen = false, review = false}) {
+  const action = (name, label, disabled = false, style = '') =>
+    `<button type="button" class="${style}" data-action-key="${name}" data-candidate="${escape(id)}" data-candidate-action="${name}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+  const regen = canReplace || showProtectedRegen ? ['draft', 'final'].map(mode =>
+    `<button type="button" class="candidate-regen-${mode}" data-action-key="regen-${mode}" data-render-slot="${slot}" data-mode="${mode}" ${busy || !canReplace ? 'disabled' : ''}>Regen ${mode === 'draft' ? 'Draft' : 'Final'}</button>`).join('') : '';
+  if (!candidate) return regen;
+  return ((review || candidate.image) ? action('select', selected && !review ? 'Selected' : 'Select', busy || selected || !candidate.image, !review && !selected ? 'primary' : '') : '') +
+    ((review || candidate.image) ? action(candidate.locked ? 'unlock' : 'lock', candidate.locked ? 'Unlock' : 'Lock', busy || !candidate.image) : '') +
+    (candidate.status === 'FAILED' ? action('retry', 'Retry', busy) : '') + regen +
+    action('clear', 'Clear slot', busy || !canClear, 'danger-text-action');
 }
 
 export function reviewPosition(candidate, index, count, selected) {

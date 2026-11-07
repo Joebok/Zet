@@ -3857,8 +3857,8 @@ function browserRouteUrl() {
         : key === "phase" ? phaseSelect.value || currentParams.get(key)
         : key === "universe_id" ? universeSelect.value || currentParams.get(key)
         : key === "costume" ? containerContext.pipeline === "costume-dressing"
-          ? containerContext.costume || currentParams.get(key) : ""
-        : key === "view" ? containerContext.view || currentParams.get(key)
+          ? containerContext.costume ?? currentParams.get(key) : ""
+        : key === "view" ? containerContext.view ?? currentParams.get(key)
         : currentParams.get(key);
       if (value) params.set(key, value);
     }
@@ -4641,8 +4641,9 @@ async function activatePage(page, options = {}) {
   if (LOCAL_ASSET_PAGES.has(page)) window.ZetLocalAssetPipeline?.activate(page);
   else window.ZetLocalAssetPipeline?.deactivate();
   if (page === "character-asset-container") {
-    window.ZetCharacterAssetContainer?.activate(window.ZetCharacterAssetContainer?.pipeline()
-      || new URLSearchParams(window.location.search).get("pipeline"));
+    const pipeline = options.containerPipeline || retiredRoute.get("pipeline");
+    const entry = options.containerPipeline ? {view: "", costume: ""} : {};
+    window.ZetCharacterAssetContainer?.activate(pipeline, {...entry, sync: false});
   } else window.ZetCharacterAssetContainer?.deactivate();
   if (page === "local-overview") window.ZetLocalCharacterOverview?.activate({fetchJson, universeId: state.universeId});
   else window.ZetLocalCharacterOverview?.deactivate();
@@ -4710,7 +4711,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261106-regen-empty-slots');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261107-candidate-board');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;
@@ -4802,12 +4803,10 @@ function setupTabs() {
       closeHelpMenu();
       try {
         if (button.dataset.page === "minor-characters") await window.zetMinorCharacters?.navigateList();
-        if (button.dataset.page === "character-asset-container") {
-          window.ZetCharacterAssetContainer?.setPipeline(button.dataset.containerPipeline);
-        }
         const changed = await runGuardedTransition(() => activatePage(button.dataset.page, {
           skipAutosave: true,
           universeId: button.dataset.universeId || "",
+          containerPipeline: button.dataset.containerPipeline,
         }));
         if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || button.dataset.page === "character-asset-container" || button.dataset.page === "onboarding")) {
           localAssetsMenu.hidden = true;
@@ -9752,11 +9751,11 @@ async function openSelectedSourceEditor() {
   await openSourceEditorForSource(state.selectedSource, showPromptMessage);
 }
 
-async function openSourceEditorForSource(source, errorHandler = showSourceEditorMessage) {
+async function openSourceEditorForSource(source, errorHandler = showSourceEditorMessage, signal) {
   if (!source) {
     return;
   }
-  if (!(await guardCurrentEditor())) return;
+  if (!(await guardCurrentEditor()) || signal?.aborted) return;
   const selection = beginSelection("sourceEditor");
   const before = sourceEditorSnapshot();
   showSourceEditorMessage("Loading source...");
@@ -9765,14 +9764,15 @@ async function openSourceEditorForSource(source, errorHandler = showSourceEditor
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(source),
+      signal,
     });
-    if (!selectionIsCurrent(selection)) return;
+    if (!selectionIsCurrent(selection) || signal?.aborted) return;
     if (sourceEditorSnapshot() !== before && !(await guardCurrentEditor())) return;
-    if (!selectionIsCurrent(selection)) return;
+    if (!selectionIsCurrent(selection) || signal?.aborted) return;
     await activatePage("template-editor", {skipAutosave: true});
     renderSourceEditor(detail);
   } catch (error) {
-    errorHandler(error.message, "error");
+    if (!signal?.aborted) errorHandler(error.message, "error");
   }
 }
 
@@ -12314,9 +12314,9 @@ responsiveSectionMenu.addEventListener("change", async () => {
   const containerPrefix = "character-asset-container:";
   const isContainer = value.startsWith(containerPrefix);
   const page = isContainer ? "character-asset-container" : value;
-  if (isContainer) window.ZetCharacterAssetContainer?.setPipeline(value.slice(containerPrefix.length));
   if (page === "minor-characters") await window.zetMinorCharacters?.navigateList();
-  if (!(await runGuardedTransition(() => activatePage(page, { skipAutosave: true })))) {
+  if (!(await runGuardedTransition(() => activatePage(page, { skipAutosave: true,
+    containerPipeline: isContainer ? value.slice(containerPrefix.length) : undefined })))) {
     renderResponsiveSectionMenu();
   }
 });
@@ -13319,6 +13319,7 @@ characterSelect.addEventListener("change", async () => {
   state.selectedCostumeSlug = null;
   state.selectedExpressionAssetId = null;
   updatePhaseSelect();
+  if (activePageName() === "character-asset-container") void window.ZetCharacterAssetContainer?.refreshScope();
   renderOnboarding();
   await loadAssets();
   if (document.querySelector("#prompt-review-page").classList.contains("active")) {
@@ -13378,6 +13379,7 @@ phaseSelect.addEventListener("change", async () => {
   state.phase = requestedPhase;
   saveStoredContext();
   updateHeaderFitmentPreview();
+  if (activePageName() === "character-asset-container") void window.ZetCharacterAssetContainer?.refreshScope();
   state.selectedAssetId = null;
   state.selectedPromptReviewAskId = null;
   state.selectedRenderReviewKey = null;
@@ -13803,7 +13805,18 @@ universeSelect.addEventListener("change", async () => {
   }
 });
 window.addEventListener('popstate',()=>{
-  const page=new URLSearchParams(location.search).get('page') || 'onboarding';
+  const params = new URLSearchParams(location.search);
+  const page = params.get('page') || 'onboarding';
+  if (canonicalDashboardPage(page) === 'character-asset-container') {
+    const character = params.get('character');
+    if ((!params.get('universe_id') || params.get('universe_id') === state.universeId) &&
+        state.characters.includes(character)) {
+      state.character = character;
+      state.phase = params.get('phase');
+      characterSelect.value = character;
+      updatePhaseSelect();
+    }
+  }
   void activatePage(page,{skipAutosave:true,fromHistory:true,updateHistory:false}).catch(error=>showActionMessage(error.message,'error'));
 });
 document.addEventListener("visibilitychange", () => {

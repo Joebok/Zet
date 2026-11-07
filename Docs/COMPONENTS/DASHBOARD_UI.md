@@ -3,18 +3,26 @@
 ## Current Character image production workflow (2026-11-06)
 
 The Assets menu opens Body Reference, Head Image Construct, Head Image Edit,
-Character Assembly or a selected Costume Dressing container. Each view has one
-mixed-quality eight-slot Candidate Board. Operators prepare and run images from
-that board; the Batches page, Run All Remaining, Activity staging and legacy
-character batch endpoints are retired. Old pipeline page links redirect to the
-matching container when their pipeline can be identified. Overview is read-only.
+Character Assembly or a selected Costume Dressing container. Its overview has
+shared settings and one selected or locked output card per view, each linking
+to a mixed-quality eight-slot Candidate Board. Header changes reload the same
+pipeline and valid view for the committed character and phase. Operators prepare
+and run images from that board. The Batches page, Run All Remaining, Activity
+staging, and legacy character batch endpoints are retired. Old pipeline page
+links redirect to the matching container when their pipeline can be identified.
+Character Overview remains a separate read-only page.
 Legacy batches are neither resumed on startup nor included in current-output
 source listings. While the visible board has active renders, the page polls only
 compact progress and refreshes full detail after the work settles. Idle views
 refresh on entry, tab return, relevant actions or explicit refresh. Finished
 candidates can open the optional template-proposal action; accepting a reviewed
 proposal updates the governing Character.md for future requests. See the
-[active migration plan](../../plans/active/character-image-production-workflow.md).
+[completed migration plan](../../plans/completed/character-image-production-workflow.md).
+
+Character and Narrative use the same responsive Candidate Board grid, action
+glyphs, and desktop review layout with controls on the right. Character review
+adds side-by-side comparisons and uses its existing slot and publication guards
+for select, lock, retry, regen, and clear.
 
 ## Retired batch-era presentation notes
 

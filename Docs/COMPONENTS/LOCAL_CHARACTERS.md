@@ -18,19 +18,21 @@ unlock. The accepted boundary is recorded in [ADR 0048](../DECISIONS/0048-charac
 
 The replacement workflow is manual: Assets opens one container for Body Reference,
 Head Image Construct, Head Image Edit, Assembly, or a selected Dressing costume.
-Each view has one mixed-quality eight-slot Candidate Board. The operator prepares,
-generates, reviews, selects and locks on that board; no Overview auto-run or batch
-runner participates. The Overview page is read-only. The active implementation and
-cutover status are tracked in the [migration plan](../../plans/active/character-image-production-workflow.md).
+Its overview shows the current selected or locked image for each view and holds
+container-wide authoring and source settings. Open a view card to reach its
+mixed-quality eight-slot Candidate Board. The operator prepares, generates,
+reviews, selects and locks on that board. Character Overview remains a separate
+read-only page. The active implementation and
+cutover status are recorded in the [completed migration plan](../../plans/completed/character-image-production-workflow.md).
 Legacy batch contracts documented below are retained only as migration history and
 are not part of the container path.
 
 Render actions are explicit: Draft 1, Draft 4, Final 1, or Final 4. The pipeline
 prepares the prompt and ordered references; the common image-production path queues
 on demand and returns harvested results to the owning slots. Candidate review uses
-the shared board actions. Its Character-specific comparison dialog lets the operator
-choose multiple selected-view images, typically FRONT or the selected opposite-side
-view. Selected or locked Draft images are not offered as comparisons.
+the shared board actions for selection, locking, retry, regeneration, and clearing.
+Its Character comparison area lets the operator choose multiple selected-view
+images, typically FRONT or the selected opposite-side view. Selected or locked Draft images are not offered as comparisons.
 
 `ImageProductionService` is the shared AI_Proxy image boundary. It validates the
 frozen request and owner, publishes the render ask, recovers matching Character

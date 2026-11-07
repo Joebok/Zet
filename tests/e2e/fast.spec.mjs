@@ -172,6 +172,7 @@ test("character-to-costume workflow uses manual container boards and publishes o
   const context = await (await page.request.get("/__test/context")).json();
   const root = "/?page=character-asset-container&character=Traveler&phase=Adult&universe_id=Test";
   await page.goto(root + "&pipeline=character-assembly");
+  await page.getByRole("link", {name: "Open FRONT Candidate Board", exact: true}).click();
   const draft = await generateCharacterImage(page, "character-assembly", "", "draft", 1, image(1344, 768));
   const final = await generateCharacterImage(page, "character-assembly", "", "final", 2, image(1216, 832));
   expect(draft.candidate_id).not.toBe(final.candidate_id);
@@ -198,6 +199,7 @@ test("character-to-costume workflow uses manual container boards and publishes o
 
   await page.goto(root + "&pipeline=costume-dressing");
   await page.locator("#character-container-costume").selectOption("Test_Travel_Outfit");
+  await page.getByRole("link", {name: "Open FRONT Candidate Board", exact: true}).click();
   const dressing = await generateCharacterImage(page, "costume-dressing", "Test_Travel_Outfit", "draft", 1, image(1344, 768));
   expect(dressing.render_request.inputs.map(input => input.role)).toEqual(["character_assembly"]);
   expect(dressing.render_request.inputs[0].candidate_id).toBe(locked.candidate_id);
@@ -214,7 +216,7 @@ test("character-to-costume workflow uses manual container boards and publishes o
   expect((await page.request.get("/api/local/batch-status?universe_id=Test")).status()).toBe(404);
   expect((await page.request.get("/api/local/character-overview/Traveler/Adult/Test_Travel_Outfit/autogenerate?universe_id=Test")).status()).toBe(404);
 
-  await page.goto("/?page=character-asset-container&pipeline=costume-dressing&costume=Test%20Travel%20Outfit&character=Traveler&phase=Adult&universe_id=Test");
+  await page.goto("/?page=character-asset-container&pipeline=costume-dressing&costume=Test%20Travel%20Outfit&view=FRONT&character=Traveler&phase=Adult&universe_id=Test");
   await expect(page.locator("#character-asset-container-page")).toHaveClass(/active/);
   await expect(page.locator("#character-container-board")).toContainText("Locked");
   await expect(page.locator("#character-container-board article").first().locator("img")).toBeVisible();

@@ -87,13 +87,13 @@ current Final publications; Draft-only history does not seed a board.
   `include_all=True` remains a compatibility read for saved legacy keys.
 - Legacy batches are not automatically migrated or deleted. Applying a reviewed
   report is a separate live-library operation.
-- Narrative and character browser lifecycle validation remains in the active
-  migration plan.
+- Disposable Narrative and Character browser lifecycle checks are recorded in
+  the completed migration plan.
 
 ## Related code and documentation
 
 - [Character Asset Container service](../../zet/services/character_asset_container_service.py)
 - [Character migration service](../../zet/services/character_container_migration_service.py)
-- [Character pipeline migration plan](../../plans/active/character-image-production-workflow.md)
+- [Completed character pipeline migration plan](../../plans/completed/character-image-production-workflow.md)
 - [Local Characters](../COMPONENTS/LOCAL_CHARACTERS.md)
 - [Dashboard UI](../COMPONENTS/DASHBOARD_UI.md)
