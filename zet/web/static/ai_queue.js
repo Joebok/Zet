@@ -4,18 +4,43 @@
   let deleting = false, actionError = "";
   const filters = { universe_filter: "ai-filter-universe", provider: "ai-filter-provider", workflow: "ai-filter-workflow", status: "ai-filter-status" };
   const active = () => document.querySelector("#ai-controls-page")?.classList.contains("active");
+  function workflowTarget(item) {
+    const owner = item.owner || {}, titles = item.queue_titles || {};
+    if (item.workflow === "Narrative" || owner.narrative_story_id) {
+      const parts = [titles.story, titles.scene, titles.target].filter(Boolean);
+      return parts.length ? ["Narrative", ...parts].join(" / ") : "Narrative / Target via status link";
+    }
+    const pipeline = owner.pipeline || item.workflow;
+    const labels = { "costume-dressing": "Costume Dressing", "character-assembly": "Character Assembly", "body-reference": "Body Reference", "head-image": "Head Image", "head-image-edit": "Head Image Edit" };
+    const costume = String(owner.costume || "").replace(/[_-]+/g, " ");
+    return [labels[pipeline] || window.ZetPipelineLabel(pipeline), owner.character, owner.phase, costume, owner.view].filter(Boolean).join(" / ") || item.target || "";
+  }
+  function createdAt(value) {
+    const date = value ? new Date(value) : null;
+    return date && Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" }).format(date) : "\u2014";
+  }
+  async function copyId(item) {
+    const status = document.querySelector("#ai-job-copy-status");
+    try { await window.writeClipboardText(item.ask_id); status.textContent = "Job ID copied to clipboard."; }
+    catch { status.textContent = "Could not copy job ID. Check clipboard permissions."; }
+  }
   function render() {
     const body = document.querySelector("#ai-jobs-table tbody");
     body.replaceChildren();
     for (const item of rows) {
       const row = document.createElement("tr");
       row.dataset.jobId = item.ask_id;
-      for (const value of [item.universe_id, ({ PAUSED_STORAGE: "Paused — storage unavailable", RECOVERING: "Recovering" })[item.status] || item.status, [window.ZetPipelineLabel(item.workflow), item.target].filter(Boolean).join(" / "), item.task_type || item.ask_id,
-        `${item.provider || ""} Â· ${item.model || ""}`, item.created_at,
+      for (const value of [item.universe_id, ({ PAUSED_STORAGE: "Paused — storage unavailable", RECOVERING: "Recovering" })[item.status] || item.status, workflowTarget(item),
+        ({ draft: "Draft", final: "Final" })[item.render_mode] || "\u2014", `${item.provider || ""} · ${item.model || ""}`, createdAt(item.created_at),
         [item.failure_stage && `Stage: ${item.failure_stage}`, window.ZetPipelineMessage(item.details),
           item.age_seconds != null && `Age: ${Math.floor(item.age_seconds / 60)} min`, item.recovery_action].filter(Boolean).join(" Â· ")]) {
         const cell = document.createElement("td"); cell.textContent = value || ""; row.append(cell);
       }
+      const idCell = document.createElement("td");
+      const idLink = document.createElement("a"); idLink.href = "#"; idLink.textContent = "ID";
+      idLink.setAttribute("aria-label", `Copy job ID ${item.ask_id}`);
+      idLink.addEventListener("click", event => { event.preventDefault(); void copyId(item); });
+      idCell.append(idLink); row.append(idCell);
       if (item.workflow_url) {
         const link = document.createElement("a"); link.href = item.workflow_url; link.textContent = row.children[1].textContent;
         row.children[1].replaceChildren(link);

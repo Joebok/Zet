@@ -82,6 +82,7 @@ class AIQueueQueryService:
                            "task_type": ask.get("task_type", ""), "worker_type": ask.get("worker_type", ""),
                            "created_at": envelope.get("created_at", rows.get(path.name, {}).get("created_at", "")),
                            "owner": {key: value for key, value in ask.items() if key.endswith("_id") or key in {"character", "phase", "view", "costume"}}, "details": ""}
+                    row.update(self.metadata.display_metadata(ask))
                     if status == "QUEUED" and provider in {"ollama", "comfyui"} and execution.get("local_execution_blocked") and execution.get("health") != "busy":
                         row.update(status="HELD", details=execution.get("reason", "Local execution is blocked"))
                     if root == self.paths.manual_ask_root():
@@ -150,6 +151,8 @@ class AIQueueQueryService:
             owner = row.get("owner") or {}
             row["workflow"] = row.get("workflow") or row.get("task_type") or row.get("consumer") or row.get("worker_type", "")
             row["target"] = " / ".join(str(owner[key]) for key in ("character", "phase", "session_id", "run_id", "narrative_story_id", "narrative_scene_id", "narrative_target_id", "candidate_id", "view") if owner.get(key))
+            row.setdefault("queue_titles", {})
+            row.setdefault("render_mode", "")
             row["workflow_url"] = self.workflow_url(row, owner)
             for internal in ("request", "manifest", "input_inventory", "envelope"):
                 row.pop(internal, None)

@@ -80,7 +80,7 @@ class AIJobRepository:
         guard_path(self.root)
         keep = {"ask_id", "created_at", "updated_at", "producer_id", "logical_job_id", "universe_id",
                 "task_type", "consumer", "model", "provider", "workflow", "worker_type", "asset_id",
-                "owner", "harvest_state", "error", "failure_stage", "exception_type",
+                "owner", "queue_titles", "render_mode", "harvest_state", "error", "failure_stage", "exception_type",
                 "affected_path", "failed_at", "collection_failures", "collection_retry_at",
                 "recovery_stage", "current_attempt_id", "last_recovered_at", "status"}
         for value in self.metadata.snapshot(self.root, projector=lambda row: {key: row[key] for key in keep if key in row}):
@@ -95,12 +95,13 @@ class AIJobRepository:
         model = str(manifest.get("model") or manifest.get("ollama_model") or manifest.get("checkpoint") or "")
         provider = str(manifest.get("provider") or ("manual" if manifest.get("worker_type") == "manual_chatgpt_render" else "codex" if model.startswith("codex:") else
                        "comfyui" if manifest.get("worker_type") == "local_image_render" else "ollama"))
+        display = self.metadata.display_metadata(manifest)
         self.put(job_id, {"version": 1, "created_at": envelope["created_at"], "producer_id": envelope["producer_id"],
                          "logical_job_id": manifest.get("logical_job_id", ""),
                          "universe_id": manifest.get("universe_id", ""), "task_type": manifest.get("task_type", ""),
                          "consumer": manifest.get("consumer", "zet"), "model": model, "provider": provider,
                          "workflow": manifest.get("workflow") or manifest.get("pipeline") or manifest.get("task_type", ""),
-                         "worker_type": manifest.get("worker_type", ""), "asset_id": manifest.get("asset_id"),
+                         "worker_type": manifest.get("worker_type", ""), "asset_id": manifest.get("asset_id"), **display,
                          "owner": {key: manifest[key] for key in manifest if key.endswith("_id") or key in {"story_slug", "scene_slug", "character", "phase", "view", "costume"}},
                          "manifest": manifest, "request": request or {}, "input_inventory": envelope.get("files", []),
                          "envelope": envelope,

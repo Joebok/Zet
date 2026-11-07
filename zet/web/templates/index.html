@@ -1781,7 +1781,8 @@
             <label>Status<select id="ai-filter-status"><option value="">All states</option><option>QUEUED</option><option>HELD</option><option>RUNNING</option><option>AWAITING_HARVEST</option><option>HARVESTING</option><option>TRANSFERRING</option><option>HARVEST_FAILED</option><option>RECOVERY_REQUIRED</option><option>RECONCILING</option><option>COMPLETE</option><option>FAILED</option><option>SUPERSEDED</option><option>MANUAL</option></select></label>
           </div>
           <p id="ai-jobs-status" role="status"></p>
-          <div class="table-scroll"><table id="ai-jobs-table"><thead><tr><th>Universe</th><th>Status</th><th>Workflow / target</th><th>Task</th><th>Model</th><th>Created</th><th>Details</th></tr></thead><tbody></tbody></table></div>
+          <div class="table-scroll"><table id="ai-jobs-table"><thead><tr><th>Universe</th><th>Status</th><th>Workflow / target</th><th>Mode</th><th>Model</th><th>Created</th><th>Details</th><th>ID</th></tr></thead><tbody></tbody></table></div>
+          <p id="ai-job-copy-status" class="status-text" role="status" aria-live="polite"></p>
           <button id="ai-jobs-more" type="button" hidden>Load more</button>
         </section>
         <section class="control-panel recent-harvests-panel">

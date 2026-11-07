@@ -128,6 +128,7 @@ class NarrativeGenerationService:
             refs = [] if detail["kind"] == "assembly" else (deepcopy(replay["references"]) if replay else self.author.references(detail))
             job = {"id": new_id(), "kind": kind, "status": "SUBMITTING", "error": "", "detail": detail_without_jobs(detail),
                    "references": refs, "candidate_ids": [], "result": None, "baseline": baseline,
+                   "queue_titles": self._queue_titles(story, scene, target, detail),
                    "model": model, "provider": "codex" if model.startswith("codex:") else "ollama",
                    "provenance": {"model": model, "provider": "codex" if model.startswith("codex:") else "ollama"}}
             if kind in {"generate", "render"}:
@@ -261,7 +262,8 @@ class NarrativeGenerationService:
             if candidate["job_id"]:
                 continue
             job = {"id": new_id(), "kind": "image", "status": "SUBMITTING", "error": "",
-                   "candidate_id": candidate_id, "slot": candidate["slot"], "result": None}
+                   "candidate_id": candidate_id, "slot": candidate["slot"], "result": None,
+                   "queue_titles": deepcopy(parent.get("queue_titles") or self._queue_titles(story, scene, target))}
             if parent.get("render_sizing"):
                 job["render_sizing"] = deepcopy(parent["render_sizing"])
             record["jobs"][job["id"]] = job
@@ -596,7 +598,8 @@ class NarrativeGenerationService:
                                                 source, folder / "upscale" / job_id)
                 job = {"id": job_id, "kind": "image", "candidate_id": candidate_id,
                        "slot": candidate["slot"], "status": "SUBMITTING", "error": "",
-                       "upscale": True, "render_request": request}
+                       "upscale": True, "render_request": request,
+                       "queue_titles": self._queue_titles(story, scene, target)}
                 record["jobs"][job_id] = job
                 candidate.update(job_id=job_id, status="SUBMITTING", error="")
                 self.repository.write(record, story, scene, target)
@@ -652,6 +655,17 @@ class NarrativeGenerationService:
             cleanup(self.repository.folder(story, scene, target), pending)
             record["cleanup_pending"] = []
             self.repository.write(record, story, scene, target)
+
+    def _queue_titles(self, story, scene, target, detail=None):
+        if detail is None:
+            detail = self.repository.read(story, scene, target)
+            detail["scene_title"] = self.repository.read(story, scene).get("title", "")
+            scene_title = detail["scene_title"]
+            story_title = self.repository.read(story).get("title", "")
+        else:
+            scene_title = detail.get("scene_title", "")
+            story_title = self.repository.read(story).get("title", "")
+        return {"story": story_title, "scene": scene_title, "target": detail.get("title", "")}
 
     def candidate_input(self, story, scene, target, candidate_id, index) -> Path:
         record = self.repository.read(story, scene, target)

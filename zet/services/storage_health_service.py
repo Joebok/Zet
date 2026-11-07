@@ -338,6 +338,8 @@ def remember_request(config, job_id, manifest=None, envelope=None, **changes):
         row["provider"] = manifest.get("provider") or ("codex" if str(row["model"]).startswith("codex:") else
                           "comfyui" if manifest.get("worker_type") == "local_image_render" else "ollama")
         row["owner"] = {key: value for key, value in manifest.items() if key.endswith("_id") or key in {"character", "phase", "view", "costume"}}
+        from zet.services.ai_queue_metadata_service import AIQueueMetadataService
+        row.update(AIQueueMetadataService.display_metadata(manifest))
     if envelope:
         row["created_at"] = envelope.get("created_at", "")
     row.update(changes, updated_at=stamp())

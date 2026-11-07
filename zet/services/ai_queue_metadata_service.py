@@ -33,6 +33,17 @@ class AIQueueMetadataService:
         return (getattr(info, "st_dev", 0), getattr(info, "st_ino", 0), info.st_size,
                 info.st_mtime_ns, info.st_ctime_ns, info.st_mode)
 
+    @staticmethod
+    def display_metadata(manifest: dict) -> dict:
+        request = manifest.get("render_request") or {}
+        settings = request.get("settings") or {}
+        sizing = manifest.get("render_sizing") or {}
+        mode = sizing.get("render_mode") or settings.get("render_mode")
+        titles = manifest.get("queue_titles")
+        return {"queue_titles": {key: titles.get(key, "") for key in ("story", "scene", "target")}
+                if isinstance(titles, dict) else {},
+                "render_mode": str(mode or "").strip().lower()}
+
     def invalidate(self, path: Path | None = None) -> None:
         with self._lock:
             if path is None:

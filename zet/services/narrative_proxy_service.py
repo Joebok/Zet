@@ -39,6 +39,9 @@ class NarrativeProxyService:
             "task_type": "narrative_" + job["kind"], "queue_priority": 100,
             "workflow": "Narrative",
         }
+        titles = job.get("queue_titles") or {}
+        if any(titles.get(key) for key in ("story", "scene", "target")):
+            manifest["queue_titles"] = {key: titles.get(key, "") for key in ("story", "scene", "target")}
         if job.get("candidate_id"):
             manifest["narrative_candidate_id"] = job["candidate_id"]
         if "slot" in job:

@@ -134,9 +134,14 @@ and recent harvests use the same durable feed, independent of index reconciliati
 The legacy queue/history fetch and renderers are removed from this page; process
 controls remain on their existing endpoint. During startup the UI distinguishes a
 refresh in progress from storage being unavailable.
-The activity table displays Universe, Status, Workflow / target, Task, Model,
-Created and Details, in that order. The former Body-Reference-only Codex panel is
-removed.
+The activity table displays Universe, Status, Workflow / target, Mode, Model,
+Created, Details and ID, in that order. Character rows use saved character,
+phase, costume and view metadata. Narrative rows use the title snapshot captured
+when the job was submitted, with a status-link fallback for older rows. Mode is
+projected from saved render sizing. Created uses the browser's local date and
+time to the minute. ID copies the queue identifier to the clipboard. These are
+compact projections of metadata already read by queue discovery. The former
+Body-Reference-only Codex panel is removed.
 
 ### Deleting retained failures
 
