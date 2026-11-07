@@ -35,7 +35,7 @@
       const artworkWidth = img.naturalWidth * fit, artworkHeight = img.naturalHeight * fit;
       const scale = state.scale * Math.exp(-event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? r.height : 1) / 500);
       const next = Math.max(1, Math.min(4, scale));
-      if (next === 1 && state.scale === 1) return;
+      if (next === state.scale) return;
       const x = (baseX - (r.width - artworkWidth) / 2) / artworkWidth;
       const y = (baseY - (r.height - artworkHeight) / 2) / artworkHeight;
       if (x < 0 || x > 1 || y < 0 || y > 1) return;

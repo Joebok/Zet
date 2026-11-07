@@ -61,3 +61,5 @@ The shared helper wraps current review images in clipped viewports and uses fitt
 
 ## Final results
 All four approved E2E scenarios passed (`npm.cmd run test:e2e`, 43.3s). Disposable Chromium verified synchronized zoom across different aspect ratios, the 4× ceiling, and reset after dialog close. Changed JavaScript passed `node --check`; `git diff --check` passed. No permanent tests or dependencies were added, and no live AI/render check ran.
+
+Follow-up: at a zoom boundary, wheel input no longer changes the stored focal point. Disposable Chromium confirmed additional upward wheel input at 4× leaves both scale and transform origin unchanged.
