@@ -443,6 +443,111 @@ class EntityLibraryService:
             "SELECT * FROM catalog_publication_receipts WHERE operation_id=?", (operation_id,)
         )
 
+    @staticmethod
+    def _local_pipeline_origin_key(pipeline: str, character: str, phase: str, checksum: str,
+                                   costume: str = "", view: str = "") -> str:
+        prefix = f"local:{pipeline}:{character}:{phase}:"
+        if pipeline.casefold() == "costume-dressing":
+            prefix += f"{costume.casefold()}:{view.upper()}:"
+        return prefix + checksum
+
+    def identity_key_publication(self, reference_key: str) -> str | None:
+        row = self.repository.fetchone(
+            "SELECT asset_id FROM assets WHERE origin='pipeline' AND origin_key=? AND status='approved'",
+            (reference_key,),
+        )
+        return row["asset_id"] if row else None
+
+    def publish_identity_key(self, key, source: Path, reference_key: str, *,
+                             operation_id: str, before_commit) -> str:
+        """Commit the current crop, its source evidence and its stable Inventory binding."""
+        from zet.services.atomic_file_service import write_bytes_atomic
+        from zet.services.workflow_storage import validate_image
+
+        source = self.path_service.resolve_served_path(source)
+        library_root = Path(self.path_service.config.base_library_path).resolve()
+        if not source.is_relative_to(library_root) or not source.is_file():
+            raise EntityLibraryServiceError("The saved Identity Key image is unavailable in this universe.")
+        data = source.read_bytes()
+        validate_image(data)
+        width, height = self._dimensions(data, "image/png")
+        if not width or not height:
+            raise EntityLibraryServiceError("The saved Identity Key must be a PNG image.")
+        checksum = hashlib.sha256(data).hexdigest()
+        label = f"{key.character} {key.phase} IDKEY {key.label}"
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            current = connection.execute(
+                "SELECT asset_id,status FROM assets WHERE origin='pipeline' AND origin_key=?", (reference_key,)
+            ).fetchone()
+            if before_commit is not None and (not current or current["status"] != "approved"):
+                raise EntityLibraryServiceError("The Identity Key's Inventory lock changed. Reload and try again.")
+            asset_id = current["asset_id"] if current else str(uuid4())
+            target = self._image_path(asset_id, f"{asset_id}-{checksum}.png")
+            if not target.is_file() or target.read_bytes() != data:
+                write_bytes_atomic(target, data)
+            connection.execute(
+                """INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,
+                   status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pipeline',?,'approved',?,?,?)
+                   ON CONFLICT(asset_id) DO UPDATE SET label=excluded.label,checksum=excluded.checksum,
+                   file_name=excluded.file_name,mime_type=excluded.mime_type,width=excluded.width,
+                   height=excluded.height,status='approved',updated_at=excluded.updated_at""",
+                (asset_id, label, checksum, target.name, "image/png", width, height, reference_key,
+                 "Locked Identity Key", stamp, stamp),
+            )
+            self._link_locked_character_in_transaction(connection, asset_id, key.character, key.phase, stamp)
+            self._save_logical_reference(
+                connection, key=reference_key, label=label, asset_id=asset_id, set_id=None, stamp=stamp,
+            )
+            source_asset = connection.execute(
+                "SELECT asset_id FROM assets WHERE asset_id=?", (key.source_inventory_asset_id,)
+            ).fetchone()
+            if not key.source_inventory_asset_id and key.source_local_key and key.source_sha256:
+                source_origin = self._local_pipeline_origin_key(
+                    key.source_pipeline, key.character, key.phase, key.source_sha256,
+                    key.source_costume or "", key.source_body_view or "",
+                )
+                source_asset = connection.execute(
+                    "SELECT asset_id FROM assets WHERE origin='pipeline' AND origin_key=?", (source_origin,)
+                ).fetchone()
+            source_id = source_asset["asset_id"] if source_asset else None
+            details = {
+                "identity_key_id": key.identity_key_id, "character": key.character, "phase": key.phase,
+                "source_asset_id": key.source_asset_id, "source_local_key": key.source_local_key,
+                "source_inventory_asset_id": source_id or key.source_inventory_asset_id,
+                "source_sha256": key.source_sha256,
+                "source_render_mode": key.source_render_mode, "crop_percent": key.crop_percent,
+                "crop_box": key.crop_box,
+            }
+            connection.execute(
+                "DELETE FROM provenance WHERE asset_id=? AND relation_type='identity_key_crop'", (asset_id,)
+            )
+            connection.execute(
+                """INSERT INTO provenance(provenance_id,asset_id,relation_type,source_asset_id,details_json,created_at)
+                   VALUES(?,?,?,?,?,?)""",
+                (str(uuid4()), asset_id, "identity_key_crop", source_id, json.dumps(details), stamp),
+            )
+            if before_commit is not None:
+                before_commit()
+                connection.execute(
+                    "INSERT INTO catalog_publication_receipts(operation_id,asset_ids_json,created_at) VALUES(?,?,?)",
+                    (operation_id, json.dumps([asset_id]), stamp),
+                )
+        return asset_id
+
+    def unpublish_identity_key(self, reference_key: str) -> None:
+        """Archive only the item owned by this Identity Key."""
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            row = connection.execute(
+                "SELECT asset_id FROM assets WHERE origin='pipeline' AND origin_key=? AND status='approved'",
+                (reference_key,),
+            ).fetchone()
+            if row:
+                asset_id = row["asset_id"]
+                connection.execute("UPDATE assets SET status='archived',updated_at=? WHERE asset_id=?", (stamp, asset_id))
+                self._deactivate_asset_references(connection, [asset_id], stamp)
+
     def register_locked_pipeline_images(self, items: list[dict], *, operation_id: str,
                                        before_commit=None) -> list[dict]:
         """Stage image bytes, then publish all related metadata and a durable receipt atomically."""
@@ -465,11 +570,10 @@ class EntityLibraryService:
             mime_type = guess_type(source.name)[0] or "image/png"
             if mime_type not in IMAGE_TYPES:
                 raise EntityLibraryServiceError(f"Unsupported pipeline image type: {mime_type}")
-            pipeline = str(item["pipeline"])
-            origin_key = f"local:{pipeline}:{item['character']}:{item['phase']}:"
-            if pipeline.casefold() == "costume-dressing":
-                origin_key += f"{str(item.get('costume') or '').casefold()}:{str(item.get('view') or '').upper()}:"
-            origin_key += checksum
+            origin_key = self._local_pipeline_origin_key(
+                str(item["pipeline"]), item["character"], item["phase"], checksum,
+                str(item.get("costume") or ""), str(item.get("view") or ""),
+            )
             existing = self.repository.fetchone("SELECT * FROM assets WHERE origin='pipeline' AND origin_key=?", (origin_key,))
             asset_id = existing["asset_id"] if existing else str(uuid4())
             extension = IMAGE_TYPES[mime_type]

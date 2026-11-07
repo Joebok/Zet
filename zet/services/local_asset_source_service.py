@@ -28,6 +28,7 @@ class LocalAssetSourceService:
                 "costume": record.get("qualifier", ""),
                 "image_path": str(image),
                 "image_sha256": record.get("image_sha256", ""),
+                "inventory_asset_id": record.get("entity_library_asset_id"),
                 "batch_id": record.get("batch_id", ""),
                 "candidate_id": record.get("candidate_id", ""),
                 "render_mode": record.get("render_mode", "draft"),

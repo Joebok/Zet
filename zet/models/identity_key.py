@@ -24,3 +24,5 @@ class IdentityKey:
     analysis_path: str = ""
     crop_box: list[int] | None = None
     updated_at: Optional[str] = None
+    source_inventory_asset_id: Optional[str] = None
+    inventory_asset_id: Optional[str] = None

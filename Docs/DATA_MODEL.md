@@ -368,6 +368,8 @@ from catalog metadata, checked under the catalog transaction.
 
 Identity Key records include `source_render_mode` (`draft` or `final`) alongside the actual mode-specific `source_local_key`. Older records derive this field from that stored key on load; no source-image inspection is needed. Source picker category keys omit the mode and resolve at action time.
 
+New saves also capture the source Inventory asset ID when available. `IdentityKeys.json` may hold a pending crop revision with a catalog publication receipt ID. Readers select that revision when the receipt exists and use the preceding record otherwise. The Identity Keys API derives `inventory_asset_id` from the approved catalog publication. See [ADR 0048](DECISIONS/0048-identity-key-publication.md).
+
 ## Simplified Assembly preparation (2026-10-20)
 
 Fresh local Assembly frozen inputs add `assembly_input_version: 1`; view prompt directories carry `Assembly_Input_Version.json` with `version: 1`. Missing/older markers trigger compilation before Generate/Regenerate or Image Generator staging. Historical frozen inputs remain valid for Retry. Existing anchor/recipe/revision fields remain readable but do not add inputs to new Assembly rendering. Multi-candidate non-front Assembly rankings require `comparison_references`, containing the selected FRONT candidate ID, view, portable path and SHA-256 actually supplied to Luna. FRONT rankings and the deterministic single-survivor shortcut retain an empty comparison list. These references are advisory evidence and create no publication dependency; existing document/schema versions remain unchanged.

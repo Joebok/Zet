@@ -4889,15 +4889,25 @@ function renderIdentityKeyTable() {
       event.stopPropagation();
       selectIdentityKey(item.identity_key_id);
     });
+    const lockButton = document.createElement("button");
+    lockButton.type = "button";
+    lockButton.className = "update-action";
+    lockButton.textContent = item.inventory_asset_id ? "Unlock" : "Lock";
+    lockButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setIdentityKeyLocked(item, lockButton);
+    });
     const deleteButton = document.createElement("button");
     deleteButton.type = "button";
     deleteButton.className = "danger-action";
     deleteButton.textContent = "Delete";
+    deleteButton.disabled = Boolean(item.inventory_asset_id);
+    deleteButton.title = item.inventory_asset_id ? "Unlock this Identity Key before deleting it." : "";
     deleteButton.addEventListener("click", (event) => {
       event.stopPropagation();
       deleteIdentityKey(item.identity_key_id);
     });
-    actionCell.append(updateButton, deleteButton);
+    actionCell.append(updateButton, lockButton, deleteButton);
     row.append(labelCell, viewCell, imageCell, actionCell);
     makeSelectableRow(row, item.label || item.identity_key_id, item.identity_key_id === state.selectedIdentityKeyId, () => selectIdentityKey(item.identity_key_id));
     identityKeyTableBody.append(row);
@@ -5025,6 +5035,39 @@ async function saveIdentityKey() {
     showIdentityKeyMessage(error.message, "error");
   } finally {
     identityKeySave.disabled = !state.identityKeySourceLocalKey;
+  }
+}
+
+async function setIdentityKeyLocked(item, button) {
+  const locked = !item.inventory_asset_id;
+  if (!locked && !window.confirm(`Unlock "${item.label}" and archive its Inventory image?`)) {
+    return;
+  }
+  const scope = currentQuery().toString();
+  button.disabled = true;
+  showIdentityKeyMessage(locked ? "Publishing Identity Key..." : "Unlocking Identity Key...");
+  try {
+    const { identity_key: updated } = await fetchJson(
+      `/api/identity-keys/${encodeURIComponent(item.identity_key_id)}/lock?${scope}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locked }),
+      },
+    );
+    if (currentQuery().toString() === scope) {
+      state.identityKeys = state.identityKeys.map((key) =>
+        key.identity_key_id === updated.identity_key_id ? updated : key
+      );
+      renderIdentityKeyTable();
+      showIdentityKeyMessage(locked ? "Identity Key published to Inventory." : "Identity Key unlocked and Inventory image archived.");
+    }
+  } catch (error) {
+    if (currentQuery().toString() === scope) {
+      showIdentityKeyMessage(error.message, "error");
+    }
+  } finally {
+    button.disabled = false;
   }
 }
 

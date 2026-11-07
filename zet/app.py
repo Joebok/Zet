@@ -349,10 +349,14 @@ class ZetApp:
             path_service,
             local_sources=local_asset_sources,
         )
+        entity_library_repository = EntityLibraryRepository(path_service.entity_library_database_path())
+        entity_library_repository.initialize()
+        entity_library_service = EntityLibraryService(path_service, entity_library_repository)
         identity_key_service = IdentityKeyService(
             asset_repository,
             identity_key_repository,
             path_service,
+            entity_library_service,
             local_asset_sources,
         )
         costume_service = CostumeService(asset_repository, path_service, local_asset_sources)
@@ -374,8 +378,6 @@ class ZetApp:
             turnaround_repository,
         )
         image_catalog_repository = ImageCatalogRepository(path_service)
-        entity_library_repository = EntityLibraryRepository(path_service.entity_library_database_path())
-        entity_library_repository.initialize()
         if validate_catalog:
             image_catalog_repository.load()
         image_catalog_service = ImageCatalogService(
@@ -413,7 +415,6 @@ class ZetApp:
         app.ai_proxy_service.manual_render_publication_service = app.manual_render_publication_service
         app.image_catalog_service = image_catalog_service
         image_catalog_service.narrative = app.narrative_scene_service
-        entity_library_service = EntityLibraryService(path_service, entity_library_repository)
         entity_library_service.pipeline_provider = lambda: image_catalog_service.list_items(include_base=True)
         app.entity_library_service = entity_library_service
         app.library_deletion_service = LibraryDeletionService(
@@ -1383,6 +1384,11 @@ class ZetApp:
         """Return one saved identity key."""
         return self.identity_key_service.get_identity_key(character, phase, identity_key_id)
 
+    def set_identity_key_locked(self, character: str, phase: str, identity_key_id: str, locked: bool):
+        return self._indexed_write(
+            lambda: self.identity_key_service.set_locked(character, phase, identity_key_id, locked)
+        )
+
     def preview_identity_key(
         self,
         character: str,
@@ -1415,7 +1421,7 @@ class ZetApp:
         source_local_key: str | None = None,
     ):
         """Save or update an identity key crop."""
-        return self.identity_key_service.save_identity_key(
+        return self._indexed_write(lambda: self.identity_key_service.save_identity_key(
             character,
             phase,
             source_asset_id,
@@ -1423,7 +1429,7 @@ class ZetApp:
             crop_percent,
             identity_key_id,
             source_local_key,
-        )
+        ))
 
     def delete_identity_key(self, character: str, phase: str, identity_key_id: str):
         """Delete an identity key."""

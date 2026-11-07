@@ -2334,6 +2334,19 @@ def _create_available_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.put("/api/identity-keys/{identity_key_id}/lock")
+    def identity_key_lock(
+        identity_key_id: str, locked: bool = Body(..., embed=True),
+        character: str = Query(...), phase: str = Query(...),
+    ) -> dict[str, Any]:
+        """Publish or unlock a saved Identity Key."""
+        zet_app = _app(app.state.config_path)
+        try:
+            item = zet_app.set_identity_key_locked(character, phase, identity_key_id, locked)
+            return {"identity_key": _identity_key_payload(zet_app, item)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.delete("/api/identity-keys/{identity_key_id}")
     def identity_key_delete(identity_key_id: str, character: str = Query(...), phase: str = Query(...)) -> dict[str, Any]:
         """Delete an identity key."""

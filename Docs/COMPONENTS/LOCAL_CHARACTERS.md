@@ -126,6 +126,8 @@ deterministic.
 
 Identity Keys offer one source per available pipeline, costume and view. Preview, Create and Update resolve the current locked Final for that category, falling back to Draft. Update re-crops from the current preferred lock, and the saved record identifies the mode actually used.
 
+In the Identity Keys table, **Lock** publishes the saved crop to Image Inventory as `<Character> <Phase> IDKEY <Identity Key label>`. Updating a locked key refreshes the image, label and crop provenance on the same Inventory item. **Unlock** archives that item and keeps the saved crop available in the Identity Keys workflow. Unlock the key before deleting it. See [ADR 0048](../DECISIONS/0048-identity-key-publication.md).
+
 `LocalAssetStoreService` has internal mode-specific selection records, private
 Draft snapshots, and Final publication through the existing catalog transaction.
 New locks also retain the selected candidate's prompt in the local record; Final

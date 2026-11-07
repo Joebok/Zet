@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from zet.models.identity_key import IdentityKey
+from zet.repositories.entity_library_repository import EntityLibraryRepository
 from zet.repositories.json_storage import (
     MissingDataclassFieldsError,
     dataclass_from_record,
@@ -50,6 +51,14 @@ class IdentityKeyRepository:
 
     def _identity_from_dict(self, record: dict) -> IdentityKey:
         """Convert a JSON record into an identity key model."""
+        pending = record.get("pending_publication")
+        if pending:
+            # The catalog receipt selects the crop even if a process stops at commit.
+            catalog = EntityLibraryRepository(self.path_service.entity_library_database_path())
+            if catalog.fetchone(
+                "SELECT 1 FROM catalog_publication_receipts WHERE operation_id=?", (pending["operation_id"],)
+            ):
+                record = pending["record"]
         try:
             compatible = dict(record)
             compatible.setdefault("source_render_mode", "final" if str(record.get("source_local_key") or "").startswith("final:") else "draft")
@@ -86,18 +95,27 @@ class IdentityKeyRepository:
                 return identity_key
         raise IdentityKeyRepositoryError(f"Identity key {identity_key_id} not found for {character}/{phase}")
 
-    def save_identity_key(self, identity_key: IdentityKey) -> None:
+    def save_identity_key(self, identity_key: IdentityKey, *, publication_id: str | None = None) -> None:
         """Insert or replace one identity key record."""
         payload = self._load_payload(identity_key.character, identity_key.phase)
         records = []
         found = False
         for record in payload["identity_keys"]:
             if isinstance(record, dict) and record.get("identity_key_id") == identity_key.identity_key_id:
-                records.append(self._serialize_identity(identity_key))
+                replacement = self._serialize_identity(identity_key)
+                if publication_id:
+                    replacement = self._serialize_identity(self._identity_from_dict(record))
+                    replacement["pending_publication"] = {
+                        "operation_id": publication_id,
+                        "record": self._serialize_identity(identity_key),
+                    }
+                records.append(replacement)
                 found = True
             else:
                 records.append(record)
         if not found:
+            if publication_id:
+                raise IdentityKeyRepositoryError("The Identity Key must be saved before publication.")
             records.append(self._serialize_identity(identity_key))
         payload["identity_keys"] = records
         self._write_payload(identity_key.character, identity_key.phase, payload)
