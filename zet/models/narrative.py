@@ -95,4 +95,6 @@ class NarrativeCandidate:
     image: str = ""
     error: str = ""
     locked: bool = False
+    render_started_at: str = ""
+    render_duration_seconds: int | None = None
 

@@ -1,4 +1,4 @@
-import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from "./candidate_board.js?v=20261107-board-actions";
+import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from "./candidate_board.js?v=20261107-render-time";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);

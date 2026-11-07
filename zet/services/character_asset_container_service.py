@@ -13,6 +13,7 @@ from zet.services.local_image_pipeline_policy import local_image_pipeline_config
 from zet.services.workflow_storage import file_lock
 from zet.services.image_candidate_board_service import select as select_candidate, lock as lock_candidate, unlock as unlock_candidate
 from zet.services.image_candidate_board_service import allocate as allocate_candidates, cleanup, remove, retry_request
+from zet.services.image_candidate_board_service import record_render_start, record_render_completion
 from zet.services.image_production_service import ImageProductionService
 from zet.services.image_render_request import draft_upscale_request, verify_upscale_output
 
@@ -419,6 +420,8 @@ class CharacterAssetContainerService:
         if upscale_request:
             candidate["upscale_request"] = upscale_request
             candidate.update(ask_id="", output_path="", error="")
+        if not upscale_request:
+            record_render_start(candidate)
         candidate.update(status="SUBMITTING", attempt_id=attempt_id, reserved_ask_id=attempt_id,
                          attempt_number=int(candidate.get("attempt_number") or 0) + 1)
         board["revision"] += 1
@@ -515,6 +518,8 @@ class CharacterAssetContainerService:
             if (self._settle_upscale(value, candidate, updates)
                     or any(candidate.get(key) != item for key, item in updates.items())):
                 candidate.update(updates)
+                if candidate.get("status") == "COMPLETE":
+                    record_render_completion(candidate)
                 changed = True
         if changed:
             board["revision"] += 1

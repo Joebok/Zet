@@ -1,6 +1,32 @@
 """Mode-independent, eight-position working image board rules."""
 
+from datetime import datetime, timezone
+
 SLOT_COUNT = 8
+
+
+def record_render_start(candidate, started_at=None):
+    """Begin timing the current render attempt on a persisted candidate."""
+    candidate["render_started_at"] = started_at or datetime.now(timezone.utc).isoformat()
+    candidate.pop("render_duration_seconds", None)
+
+
+def record_render_completion(candidate, completed_at=None):
+    """Persist whole elapsed seconds when a candidate render completes."""
+    started_at = candidate.get("render_started_at")
+    if not started_at:
+        return
+    try:
+        started = datetime.fromisoformat(started_at)
+        completed = datetime.fromisoformat(completed_at) if completed_at else datetime.now(timezone.utc)
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        if completed.tzinfo is None:
+            completed = completed.replace(tzinfo=timezone.utc)
+        candidate["render_duration_seconds"] = max(0, int((completed - started).total_seconds()))
+        candidate.pop("render_started_at", None)
+    except (TypeError, ValueError):
+        return
 
 
 def allocate(slots, candidates, selected_id, count=1, slot=None, active=()):

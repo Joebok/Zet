@@ -1,5 +1,5 @@
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
-import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from './candidate_board.js?v=20261107-board-actions';
+import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from './candidate_board.js?v=20261107-render-time';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;
 let pollTimer = null;

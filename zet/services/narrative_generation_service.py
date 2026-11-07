@@ -1,5 +1,6 @@
 """Durable interview, synthesis and candidate lifecycle; no legacy scene orchestration."""
 from zet.services.image_candidate_board_service import cleanup, remove, retry_request
+from zet.services.image_candidate_board_service import record_render_start, record_render_completion
 from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
 from copy import deepcopy
@@ -279,6 +280,7 @@ class NarrativeGenerationService:
             if parent.get("assembly_snapshot"):
                 candidate["assembly_snapshot"] = parent["assembly_snapshot"]
                 candidate["assembly_mode"] = job["assembly_mode"] = parent.get("assembly_mode", "finish_composite")
+            record_render_start(candidate)
             self.repository.write(record, story, scene, target)
             try:
                 self.proxy.publish(story, scene, target, job, prompt, references=parent["references"],
@@ -381,6 +383,7 @@ class NarrativeGenerationService:
                                 finish=(lambda contents: self.assembly.finish(story, scene, target, snapshot, contents))
                                 if snapshot else None)
                             candidate["image"] = relative
+                            record_render_completion(candidate)
                     else:
                         value = json.loads(result.decode("utf-8"))
                         if job["kind"] == "interview":

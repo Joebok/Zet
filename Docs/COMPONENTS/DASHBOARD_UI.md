@@ -23,6 +23,10 @@ Character and Narrative use the same responsive Candidate Board grid, action
 glyphs, and desktop review layout with controls on the right. Character review
 adds side-by-side comparisons and uses its existing slot and publication guards
 for select, lock, retry, regen, and clear.
+Completed candidate cards show the elapsed render time in whole seconds after
+their status. Timing begins when Zet submits the render and ends when the image
+is collected and placed; older completed candidates without saved timing retain
+their existing status display.
 
 ## Retired batch-era presentation notes
 
