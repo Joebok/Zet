@@ -15,6 +15,7 @@
     previous: '<path d="m15 5-7 7 7 7"/>',
     next: '<path d="m9 5 7 7-7 7"/>',
     up: '<path d="m5 15 7-7 7 7"/>',
+    upscale: '<path d="M12 21V3m-7 7 7-7 7 7"/>',
     down: '<path d="m5 9 7 7 7-7"/>',
     close: '<path d="m6 6 12 12M6 18 18 6"/>',
     generate: '<path d="M12 3v18M3 12h18"/>',
@@ -52,6 +53,7 @@
     if (/save/.test(value)) return 'save';
     if (/close|cancel/.test(value)) return 'close';
     if (/rank up/.test(value)) return 'up';
+    if (/^upscale/.test(value)) return 'upscale';
     if (/rank down/.test(value)) return 'down';
     if (/prev|^‹$|^<$/.test(value)) return 'previous';
     if (/next|^›$|^>$/.test(value)) return 'next';

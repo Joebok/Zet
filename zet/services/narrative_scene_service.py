@@ -1,6 +1,7 @@
 """Authoring and image ownership for narrative scenes, independent of Scene Builder."""
 from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
+import hashlib
 from io import BytesIO
 from pathlib import Path
 
@@ -74,9 +75,11 @@ class NarrativeSceneService:
             notes = (f"Saved from Narrative story: {self.repository.read(story)['title']}\n"
                      f"Scene: {self.repository.read(story, scene)['title']}\n"
                      f"Target: {record['title']}")
-            contents = finished_path(self.repository, story, scene, target, candidate_id).read_bytes()
+            image_path = finished_path(self.repository, story, scene, target, candidate_id)
+            contents = image_path.read_bytes()
             prompt = candidate.get("prompt") or ""
-            origin_key = f"narrative:{self.app.config.universe_id}:{story}:{scene}:{target}:{candidate_id}"
+            digest = hashlib.sha256(contents).hexdigest()
+            origin_key = f"narrative:{self.app.config.universe_id}:{story}:{scene}:{target}:{candidate_id}:{digest}"
 
         with Image.open(BytesIO(contents)) as image:
             mime_type = Image.MIME.get(image.format, "")
@@ -91,8 +94,9 @@ class NarrativeSceneService:
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
             candidate = record["candidates"].get(candidate_id)
-            if not candidate or not candidate.get("locked"):
-                raise ValueError("The image was unlocked while Inventory publication was completing.")
+            if (not candidate or not candidate.get("locked")
+                    or finished_path(self.repository, story, scene, target, candidate_id) != image_path):
+                raise ValueError("The locked image changed while Inventory publication was completing.")
             candidate["published_asset_id"] = asset["asset_id"]
             self.repository.write(record, story, scene, target)
         return {"asset": asset}

@@ -27,6 +27,14 @@ publishes AI_Proxy image asks, recovers matching Character attempts, and validat
 and collects completed images. Pipeline services continue to persist their own
 candidate and job state and place returned images in their slots.
 
+Draft upscale is an edit of an existing working candidate on either board.
+It reserves a distinct attempt and snapshots the Draft as the sole Qwen input.
+The board commits the replacement only after ownership, image, and exact output
+dimensions pass validation. The candidate keeps its slot, identity, original
+prompt, and original captured inputs. The edit request lives in active transport
+state and the ordinary queue lifecycle. Locked images must be unlocked first,
+and independently published Inventory copies retain their own identity.
+
 The board side of Inventory publication is journaled beside the container.
 Recovery uses the catalog receipt to distinguish commit from rollback, and it
 must preserve a board revision newer than the journal's committed snapshot. A

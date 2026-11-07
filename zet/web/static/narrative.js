@@ -80,7 +80,8 @@ function base() {
   return value;
 }
 function imageUrl(id, target = route.target) {
-  return `/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${target}/candidates/${id}/finished-image?universe_id=${encodeURIComponent(universe)}&revision=${encodeURIComponent(detail?.candidates?.[id]?.scene_text_final?.image || "original")}`;
+  const candidate = detail?.candidates?.[id];
+  return `/api/narrative/stories/${route.story}/scenes/${route.scene}/targets/${target}/candidates/${id}/finished-image?universe_id=${encodeURIComponent(universe)}&revision=${encodeURIComponent(candidate?.scene_text_final?.image || candidate?.image || "original")}`;
 }
 function assetUrl(id) { return `/api/narrative/library/${encodeURIComponent(id)}/image?universe_id=${encodeURIComponent(universe)}`; }
 function artifactUrl(suffix) { return `${base()}/${suffix}?universe_id=${encodeURIComponent(universe)}`; }
@@ -966,7 +967,7 @@ function renderImageReview() {
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
     <p class="local-pipeline-review-position">${esc(reviewPosition(candidate, index, images.length, selected))}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
-      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked?"disabled":""}>Edit text</button>` : ''}${candidateActions({id: reviewCandidate, candidate, selected, slot: candidate.slot,
+      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked || candidate.status !== 'COMPLETE' ? "disabled" : ""}>Edit text</button>` : ''}${candidateActions({id: reviewCandidate, candidate, selected, slot: candidate.slot,
         busy, escape: esc, review: true, showProtectedRegen: true})}
       <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image before publishing it to Inventory">Publish to Inventory</button>
     </div>
@@ -1315,7 +1316,9 @@ listen(host,'click',event=>{
         if (clearedReviewSlot >= 0 && !reviewCandidate) {
           host.querySelector('#narrative-slots').children[clearedReviewSlot]?.querySelector('button')?.focus();
         }
-        status('Updated');
+        const upscale = button.dataset.candidateAction === 'upscale';
+        const error = upscale && detail.candidates[button.dataset.candidate]?.error;
+        status(error || (upscale ? 'Upscale submitted.' : 'Updated'), Boolean(error));
       }
     } else if (button.dataset.renderSlot) {
       const slot=Number(button.dataset.renderSlot);

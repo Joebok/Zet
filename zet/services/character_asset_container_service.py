@@ -14,6 +14,7 @@ from zet.services.workflow_storage import file_lock
 from zet.services.image_candidate_board_service import select as select_candidate, lock as lock_candidate, unlock as unlock_candidate
 from zet.services.image_candidate_board_service import allocate as allocate_candidates, cleanup, remove, retry_request
 from zet.services.image_production_service import ImageProductionService
+from zet.services.image_render_request import draft_upscale_request, verify_upscale_output
 
 
 class CharacterAssetContainerError(ValueError):
@@ -388,7 +389,8 @@ class CharacterAssetContainerService:
                                             expected_revision=expected_revision)
 
     def _dispatch_candidate(self, character: str, phase: str, pipeline: str, costume: str,
-                           view: str, candidate_id: str, *, expected_revision: int) -> dict:
+                           view: str, candidate_id: str, *, expected_revision: int,
+                           upscale_request: dict | None = None) -> dict:
         value = self.detail(character, phase, pipeline, costume)
         board = value["boards"].get(view)
         candidate = (board or {}).get("candidates", {}).get(candidate_id)
@@ -396,9 +398,9 @@ class CharacterAssetContainerService:
             raise CharacterAssetContainerError("The container changed. Refresh before submitting this render.")
         if not candidate or candidate_id not in board["slots"]:
             raise CharacterAssetContainerError("Candidate is no longer in this view's board.")
-        if candidate.get("status") != "PREPARED":
+        if candidate.get("status") != ("COMPLETE" if upscale_request else "PREPARED"):
             raise CharacterAssetContainerError("Only a prepared candidate can be submitted.")
-        request = candidate.get("render_request") or {}
+        request = upscale_request or candidate.get("render_request") or {}
         if (request.get("universe_id") != value["scope"]["universe_id"]
                 or request.get("target_id") != f"{value['container_id']}:{view}"
                 or request.get("candidate_id") != candidate_id):
@@ -410,14 +412,15 @@ class CharacterAssetContainerService:
         except (ValueError, OSError) as exc:
             raise CharacterAssetContainerError(str(exc)) from exc
         attempt_id = uuid4().hex
+        if upscale_request:
+            candidate["upscale_request"] = upscale_request
+            candidate.update(ask_id="", output_path="", error="")
         candidate.update(status="SUBMITTING", attempt_id=attempt_id, reserved_ask_id=attempt_id,
                          attempt_number=int(candidate.get("attempt_number") or 0) + 1)
         board["revision"] += 1
         self.save(character, phase, pipeline, costume, value, expected_revision=expected_revision)
         candidate_root = self._path(value["scope"]).parent / "renders" / candidate_id / "attempts" / attempt_id
         prompt_path = candidate_root / "prompt.md"
-        prompt_path.parent.mkdir(parents=True, exist_ok=True)
-        prompt_path.write_text(request["prompt"], encoding="utf-8")
         owner = self._render_owner(value, candidate_id, view, attempt_id)
         owner["slot"] = candidate["slot"]
         settings = request["settings"]
@@ -431,6 +434,9 @@ class CharacterAssetContainerService:
                                  "character": character, "phase": phase,
                                  "costume": value["scope"]["costume"]}}
         try:
+            prompt_path.parent.mkdir(parents=True, exist_ok=True)
+            saved_prompt = candidate.get("prompt", "") if upscale_request else request["prompt"]
+            prompt_path.write_text(saved_prompt, encoding="utf-8", newline="")
             staged = self.image_production.submit(request, manifest=manifest,
                 prompt_path=prompt_path, output_directory=candidate_root,
                 consumer="zet-character-containers")
@@ -447,7 +453,9 @@ class CharacterAssetContainerService:
             live = current["boards"][view]["candidates"].get(candidate_id)
             if (live and live.get("attempt_id") == attempt_id
                     and not self.image_production.find_attempt(manifest["ask_id"], owner, attempt_id)):
-                live.update(status="FAILED", error=str(exc))
+                updates = {"status": "FAILED", "error": str(exc)}
+                self._settle_upscale(current, live, updates)
+                live.update(updates)
                 current["boards"][view]["revision"] += 1
                 self.save(character, phase, pipeline, costume, current,
                           expected_revision=current["revision"])
@@ -500,13 +508,46 @@ class CharacterAssetContainerService:
             root = self._path(value["scope"]).parent / "renders" / candidate_id / "attempts" / str(attempt_id)
             updates = self.image_production.reconcile(candidate, owner, root,
                 f"container_{value['container_id']}_{candidate_id}_{attempt_id}")
-            if any(candidate.get(key) != item for key, item in updates.items()):
+            if (self._settle_upscale(value, candidate, updates)
+                    or any(candidate.get(key) != item for key, item in updates.items())):
                 candidate.update(updates)
                 changed = True
         if changed:
             board["revision"] += 1
             self.save(character, phase, pipeline, costume, value, expected_revision=value["revision"])
         return self.progress(character, phase, pipeline, costume, view)
+
+    def _settle_upscale(self, value: dict, candidate: dict, updates: dict) -> bool:
+        request = candidate.get("upscale_request")
+        if not request or updates["status"] not in {"COMPLETE", "FAILED"}:
+            return False
+        from PIL import Image
+
+        root = self._path(value["scope"]).parent.resolve()
+        pending = value.setdefault("cleanup_pending", [])
+        if updates["status"] == "COMPLETE":
+            try:
+                with Image.open(updates["image_path"]) as image:
+                    verify_upscale_output(image, request)
+            except (OSError, ValueError) as exc:
+                updates.update(status="FAILED", error=str(exc))
+                rejected = Path(updates.pop("image_path")).resolve()
+                if rejected.is_relative_to(root):
+                    pending.append(str(rejected.relative_to(root)))
+            else:
+                updates["render_mode"] = "final"
+                for key in ("locked_image_path", "inventory_asset_id", "image_sha256"):
+                    candidate.pop(key, None)
+                old_image = Path(candidate["image_path"]).resolve()
+                candidate_id = request["candidate_id"]
+                if (old_image.is_relative_to(root / "renders" / candidate_id / "attempts")
+                        or (old_image.parent == root / "images" and old_image.stem == candidate_id)):
+                    pending.append(str(old_image.relative_to(root)))
+        pending.append(str(Path(request["inputs"][0]["path"]).parent.relative_to(root)))
+        candidate.pop("upscale_request")
+        if updates["status"] == "FAILED":
+            updates.update(status="COMPLETE", error=f"Upscale failed. {updates['error']}")
+        return True
 
     @staticmethod
     def _render_owner(value: dict, candidate_id: str, view: str, attempt_id: str) -> dict:
@@ -656,6 +697,19 @@ class CharacterAssetContainerService:
         candidate = board["candidates"].get(candidate_id)
         if candidate is None or candidate_id not in board["slots"]:
             raise CharacterAssetContainerError("Candidate is no longer in this view's board.")
+        if action == "upscale":
+            try:
+                source = self.candidate_image(character, phase, pipeline, costume, view, candidate_id)
+                root = self._path(value["scope"]).parent.resolve()
+                directory = root / "renders" / candidate_id / f"upscale-{uuid4().hex}"
+                request = draft_upscale_request(self.app.config, f"{value['container_id']}:{view}",
+                                                candidate_id, candidate, source, directory)
+            except (ValueError, OSError) as exc:
+                raise CharacterAssetContainerError(str(exc)) from exc
+            return self._dispatch_candidate(character, phase, pipeline, costume, view, candidate_id,
+                expected_revision=expected_revision, upscale_request=request)
+        if candidate.get("upscale_request") and action in {"select", "lock"}:
+            raise CharacterAssetContainerError("Wait for the upscale to finish.")
         if action == "clear":
             if expected_candidate_id != candidate_id:
                 raise CharacterAssetContainerError("This slot changed. Refresh and review it before clearing.")

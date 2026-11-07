@@ -3,16 +3,20 @@ from zet.services.image_candidate_board_service import cleanup, remove, retry_re
 from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
 from copy import deepcopy
+from io import BytesIO
 import json
 import hashlib
 from pathlib import Path
 import random
+from PIL import Image
 
 from zet.models.narrative import NarrativeCandidate, new_id
 from zet.services.atomic_file_service import write_bytes_atomic
 from zet.services.narrative_prompt_service import assemble_prompt, llm_request
 from zet.services.narrative_interview_service import interview_review
 from zet.services.narrative_proxy_service import NarrativeProxyService
+from zet.services.image_render_request import draft_upscale_request, verify_upscale_output
+from zet.services.render_slot_service import verify_input
 from zet.services.image_candidate_board_service import allocate, lock as lock_candidate, select as select_candidate, unlock as unlock_candidate, validate_membership
 
 
@@ -318,6 +322,12 @@ class NarrativeGenerationService:
                         or job.get("slot", slot) != slot or not 1 <= slot <= len(record["slots"])
                         or record["slots"][slot - 1] != job["candidate_id"]):
                     job.update(status="SUPERSEDED", error="")
+                    self._cleanup_upscale(record, job)
+                    continue
+                if job.get("upscale"):
+                    self._refresh_upscale(story, scene, target, record, candidate, job)
+                    if job["status"] not in ACTIVE:
+                        release.append(job)
                     continue
             if job["status"] == "SUBMITTING":
                 if job["kind"] == "image":
@@ -401,6 +411,45 @@ class NarrativeGenerationService:
         for job in release:
             self.proxy.release(story, scene, target, job)
 
+    def _refresh_upscale(self, story, scene, target, record, candidate, job):
+        request = job["render_request"]
+        folder = self.repository.folder(story, scene, target).resolve()
+        try:
+            if job["status"] == "SUBMITTING":
+                verify_input({"references": request["inputs"]})
+                self.proxy.publish(story, scene, target, job, request["prompt"])
+            status, result = self.proxy.poll(story, scene, target, job)
+            job["status"] = status
+            candidate["status"] = status
+            if status in ACTIVE:
+                return
+            if status == "FAILED":
+                raise ValueError(str(result))
+            with Image.open(BytesIO(result)) as image:
+                verify_upscale_output(image, request)
+            relative = f"images/final_{job['id']}.png"
+            self.proxy.image_production.place(folder / relative, result)
+        except (ValueError, OSError) as exc:
+            job.update(status="FAILED", error=str(exc))
+            candidate.update(status="COMPLETE", error=f"Upscale failed. {exc}")
+        else:
+            pending = record.setdefault("cleanup_pending", [])
+            pending.append(candidate["image"])
+            finished = candidate.pop("scene_text_final", {}).get("image")
+            if finished:
+                pending.append(finished)
+            candidate.pop("published_asset_id", None)
+            candidate.update(image=relative, render_mode="final", error="")
+            if record.get("scene_text") and record["selected_id"] == candidate["id"]:
+                record["selected_id"] = None
+        self._cleanup_upscale(record, job)
+
+    @staticmethod
+    def _cleanup_upscale(record, job):
+        if job.pop("upscale", False):
+            record.setdefault("cleanup_pending", []).append(f"upscale/{job['id']}")
+            job.pop("render_request", None)
+
     @staticmethod
     def _same_mode(record, frozen):
         return (record.get("backdrop_link_mode", "reference") == frozen.get("backdrop_link_mode", "reference")
@@ -483,6 +532,7 @@ class NarrativeGenerationService:
                 supersede_task(Path(paths.config.base_ai_queue_path), task,
                                "Narrative Draft images were deleted.", state_root=paths.lifecycle.storage_root)
                 job.update(status="CANCELLED", error="Deleted with Draft images.")
+                self._cleanup_upscale(record, job)
                 if record.get("active_llm_job") == job["id"]:
                     record["active_llm_job"] = None
             for candidate_id in ids:
@@ -502,6 +552,24 @@ class NarrativeGenerationService:
             mode = candidate.get("render_mode", "draft")
             if "render_mode" in data and data["render_mode"] != mode:
                 raise ValueError("Candidate belongs to a different render mode.")
+            if action == "upscale":
+                folder = self.repository.folder(story, scene, target).resolve()
+                source = (folder / candidate["image"]).resolve()
+                if not source.is_relative_to(folder) or not source.is_file():
+                    raise ValueError("The candidate image is unavailable.")
+                job_id = new_id()
+                request = draft_upscale_request(self.author.app.config, target, candidate_id, candidate,
+                                                source, folder / "upscale" / job_id)
+                job = {"id": job_id, "kind": "image", "candidate_id": candidate_id,
+                       "slot": candidate["slot"], "status": "SUBMITTING", "error": "",
+                       "upscale": True, "render_request": request}
+                record["jobs"][job_id] = job
+                candidate.update(job_id=job_id, status="SUBMITTING", error="")
+                self.repository.write(record, story, scene, target)
+                self._refresh(story, scene, target, record)
+                return self.author.target(story, scene, target)
+            if action in {"select", "lock"} and record["jobs"].get(candidate.get("job_id"), {}).get("upscale"):
+                raise ValueError("Wait for the upscale to finish.")
             selection_key = "selected_id"
             if action in {"select", "lock"} and not candidate["image"]:
                 raise ValueError("Wait for an image before selecting or locking it.")

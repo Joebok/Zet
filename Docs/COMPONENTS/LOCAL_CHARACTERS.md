@@ -31,6 +31,9 @@ Render actions are explicit: Draft 1, Draft 4, Final 1, or Final 4. The pipeline
 prepares the prompt and ordered references; the common image-production path queues
 on demand and returns harvested results to the owning slots. Candidate review uses
 the shared board actions for selection, locking, retry, regeneration, and clearing.
+The up arrow on a completed, unlocked Draft queues a Qwen upscale. The Draft
+stays visible until the validated Final replaces it in the same slot, with the
+original generation prompt and captured inputs.
 Its Character comparison area lets the operator choose multiple selected-view
 images, typically FRONT or the selected opposite-side view. Selected or locked Draft images are not offered as comparisons.
 

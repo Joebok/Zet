@@ -124,11 +124,12 @@ import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} fr
   }
 
   function imageUrl(candidateId) {
-    return api(`/views/${encodeURIComponent(state.view)}/candidates/${encodeURIComponent(candidateId)}/image`);
+    return comparisonImageUrl(state.view, candidateId);
   }
 
   function comparisonImageUrl(view, candidateId) {
-    return api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(candidateId)}/image`);
+    const quality = state.detail?.boards[view]?.candidates[candidateId]?.render_mode || "draft";
+    return api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(candidateId)}/image`) + `&quality=${encodeURIComponent(quality)}`;
   }
 
   function route(view = state.view) {
@@ -696,10 +697,12 @@ import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} fr
       state.detail = result;
       state.mutation = false;
       render();
+      const updated = result.boards[view].candidates[id];
+      const upscaleFeedback = updated?.error || "Upscale queued.";
       if (!modal) {
         const card = $("board").children[candidate.slot - 1];
         card.append(feedback);
-        feedback.textContent = action === "lock" ? "Locked and published." : "Slot updated.";
+        feedback.textContent = action === "upscale" ? upscaleFeedback : action === "lock" ? "Locked and published." : "Slot updated.";
         const next = [...card.querySelectorAll("button:not(:disabled)")].find(control =>
           control.dataset.candidateAction === action || control.dataset.review === id);
         next?.focus();
@@ -714,7 +717,7 @@ import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} fr
             $("review").close();
           }
         } else renderReviewComparison();
-        feedback.textContent = action === "lock" ? "Locked and published." : "Candidate updated.";
+        feedback.textContent = action === "upscale" ? upscaleFeedback : action === "lock" ? "Locked and published." : "Candidate updated.";
       }
     } catch (error) {
       if (!signal.aborted) {

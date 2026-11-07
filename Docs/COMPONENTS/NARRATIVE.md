@@ -29,8 +29,13 @@ continue to recover from their parent job records. The `/progress` endpoint refr
 queue state and returns compact job statuses. The browser polls it only during
 visible active work and fetches target detail when job state changes.
 
-Locked Narrative candidates can be published to Inventory with a stable candidate
-origin key. The candidate records the resulting Inventory asset ID, and publication
+The up arrow queues a Qwen upscale for a completed, unlocked Draft. Its sole
+input is the raw Draft artwork. A successful render replaces the image in its
+existing slot and retains the original generation prompt. Assembly lettering
+placements carry forward and require confirmation on the Final before selection.
+
+Locked Narrative candidates can be published to Inventory with an origin key
+scoped to the candidate and the published image's digest. The candidate records the resulting Inventory asset ID, and publication
 preserves prompt whitespace. New cross-Story source choices require that publication
 and a current lock. Existing pinned inputs and saved `NARRATIVE` tags continue to
 resolve from their captured records. Image Catalog discovery exposes only locked,

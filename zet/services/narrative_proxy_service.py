@@ -77,8 +77,10 @@ class NarrativeProxyService:
                 manifest["checkpoint"] = settings.get("checkpoint", "")
                 manifest["render_sizing"] = {key: settings[key] for key in
                     ("render_mode", "aspect_ratio", "target_pixels", "width", "height") if key in settings}
-            manifest.update(ollama_model="", image_generation="comfyui", render_preset=RENDER_PRESET,
-                            workflow_kind="qwen_narrative_prompt", checkpoint=manifest.get("checkpoint", self.config.comfyui_checkpoint),
+            manifest.update(ollama_model="", image_generation="comfyui",
+                            render_preset=settings.get("profile", RENDER_PRESET),
+                            workflow_kind=settings.get("profile_snapshot", {}).get("workflow_kind", "qwen_narrative_prompt"),
+                            checkpoint=manifest.get("checkpoint", self.config.comfyui_checkpoint),
                             seed=seed, reference_files=references or [],
                             render_overrides={key: settings[key] for key in
                                 ("width", "height", "steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae", "disable_prompt_globals") if key in settings}

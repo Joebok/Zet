@@ -113,6 +113,7 @@ The names below describe shapes, not Unicode characters to paste into buttons.
 | Add renders / Generate | `generate`: plus | Primary for generation; label/count must explain what is created |
 | Add item | **target***: plus, reusing the shared shape | Primary or secondary by hierarchy; always name the object |
 | Regenerate | `regenerate`: paired circular arrows | Secondary, or primary if the main task; creates a fresh result |
+| Upscale draft | `upscale`: upward arrow | Secondary; re-renders a completed, unlocked Draft as Final |
 | Retry | `retry`: return arrow around a circle | Secondary, or primary on a failed item; retries the named failed step |
 | Refresh | **target***: single circular arrow | Secondary; rereads state without requesting new creative output |
 | Clear slot / Delete / Remove | `clear`: trash | Destructive; label and confirmation must describe the actual scope |

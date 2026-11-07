@@ -25,8 +25,11 @@ export function candidateActions({id, candidate, selected, slot, busy = false, e
   const regen = canReplace || showProtectedRegen ? ['draft', 'final'].map(mode =>
     `<button type="button" class="candidate-regen-${mode}" data-action-key="regen-${mode}" data-render-slot="${slot}" data-mode="${mode}" ${busy || !canReplace ? 'disabled' : ''}>Regen ${mode === 'draft' ? 'Draft' : 'Final'}</button>`).join('') : '';
   if (!candidate) return regen;
-  return ((review || candidate.image) ? action('select', selected && !review ? 'Selected' : 'Select', busy || selected || !candidate.image, !review && !selected ? 'primary' : '') : '') +
-    ((review || candidate.image) ? action(candidate.locked ? 'unlock' : 'lock', candidate.locked ? 'Unlock' : 'Lock', busy || !candidate.image) : '') +
+  const completed = candidate.status === 'COMPLETE' && candidate.image;
+  const upscale = completed && candidate.render_mode !== 'final' && !candidate.locked
+    ? action('upscale', 'Upscale draft', busy) : '';
+  return ((review || candidate.image) ? action('select', selected && !review ? 'Selected' : 'Select', busy || selected || !completed, !review && !selected ? 'primary' : '') : '') +
+    ((review || candidate.image) ? action(candidate.locked ? 'unlock' : 'lock', candidate.locked ? 'Unlock' : 'Lock', busy || !completed) : '') + upscale +
     (candidate.status === 'FAILED' ? action('retry', 'Retry', busy) : '') + regen +
     action('clear', 'Clear slot', busy || !canClear, 'danger-text-action');
 }
