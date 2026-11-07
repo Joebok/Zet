@@ -17,7 +17,7 @@ const state = {
   selectionGenerations: {},
   selectionControllers: {},
   workspaceSummary: { character: null, story: null },
-  lastWorkspacePages: { character: "onboarding", local: "local-overview", story: "scenes" },
+  lastWorkspacePages: { character: "onboarding", local: "onboarding", story: "scenes" },
   characters: [],
   phasesByCharacter: {},
   onboardingStatuses: {},
@@ -197,7 +197,7 @@ const CHARACTER_PAGES = new Set(["onboarding", "minor-characters", "identity-key
 const STORY_PAGES = new Set(["narrative", "scene-candidates", "zine"]);
 const LOCAL_PAGES = new Set([
   "character-asset-container",
-  "local-overview", "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly",
+  "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly",
   "local-costume-dressing", "local-identity-keys", "local-turnarounds", "local-costumes",
   "local-scene-appearances", "local-expressions", "local-comparison",
 ]);
@@ -334,12 +334,7 @@ const onboardingAddHeadImages = document.querySelector("#onboarding-add-head-ima
 const onboardingTitle = document.querySelector("#onboarding-title");
 const onboardingStatusList = document.querySelector("#onboarding-status-list");
 const onboardingValidation = document.querySelector("#onboarding-validation");
-const characterWorkflow = document.querySelector("#character-workflow");
-const characterOverviewMetrics = document.querySelector("#character-overview-metrics");
-const characterRecommendedLabel = document.querySelector("#character-recommended-label");
-const characterRecommendedAction = document.querySelector("#character-recommended-action");
 const characterSetupDetails = document.querySelector("#character-setup-details");
-const characterPhoneViewer = document.querySelector("#character-phone-viewer");
 const assetFilterTodo = document.querySelector("#asset-filter-todo");
 const assetFilterHideBase = document.querySelector("#asset-filter-hide-base");
 const assetFilterPipeline = document.querySelector("#asset-filter-pipeline");
@@ -3149,7 +3144,7 @@ function canonicalDashboardPage(page) {
   };
   if (legacyCharacterPipelines[page]) return "character-asset-container";
   return ({
-    "local-character-overview": "local-overview", assets: "local-overview", manifest: "local-overview",
+    "local-character-overview": "onboarding", "local-overview": "onboarding", assets: "onboarding", manifest: "onboarding",
     "scene-appearances": "narrative", expressions: "narrative",
     "local-identity-keys": "identity-keys", "local-turnarounds": "turnarounds",
     "local-costumes": "costumes", "local-comparison": "phase-comparison",
@@ -3172,7 +3167,7 @@ function renderHeaderStoryContext() {
 }
 const RESPONSIVE_WORKSPACE_PAGES = {
   character: [
-    ["local-overview", "Overview"], ["onboarding", "Character Overview"],
+    ["onboarding", "Character Overview"],
     ["character-asset-container:body-reference", "Assets · Body Reference"],
     ["character-asset-container:head-image-edit", "Assets · Head Image Edit"],
     ["character-asset-container:head-image", "Assets · Head Image Construct"],
@@ -3284,7 +3279,7 @@ async function switchWorkspace(workspace) {
       await loadStories();
       if (navigationRequest !== state.navigationRequest || workspaceTransitionGeneration !== state.pageGeneration) return false;
     }
-    const fallback = workspace === "character" ? "onboarding" : workspace === "local" ? "local-overview" : (state.selectedStorySlug ? "scenes" : "stories");
+    const fallback = workspace === "character" ? "onboarding" : workspace === "local" ? "onboarding" : (state.selectedStorySlug ? "scenes" : "stories");
     const target = state.lastWorkspacePages[workspace] || fallback;
     await activatePage(target, { skipAutosave: true });
   });
@@ -3414,7 +3409,7 @@ async function loadWorkspaceSummary(options = {}) {
   if (state.selectedStorySlug) params.set('story_slug', state.selectedStorySlug);
   const payload = await fetchJson(`/api/workspace-summary?${params}`, options);
   state.workspaceSummary = {character:payload.character || null,story:payload.story || null};
-  renderCharacterOverview(); renderHeaderStoryContext();
+  renderHeaderStoryContext();
 }
 function loadStoredAssetFilters() {
   // Keep the base-image visibility preference across browser sessions.
@@ -3654,7 +3649,7 @@ function renderOnboarding() {
   } else {
     onboardingValidation.textContent = "Create a new character or phase to begin.";
   }
-  renderCharacterOverview();
+  void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId});
 }
 
 async function refreshCurrentContext() {
@@ -4585,7 +4580,6 @@ async function activatePage(page, options = {}) {
   storyProductionMenu?.classList.toggle("active", PRODUCTION_PAGES.has(page) && state.workspace === "story");
   if (characterProductionMenu) characterProductionMenu.value = "";
   if (storyProductionMenu) storyProductionMenu.value = PRODUCTION_PAGES.has(page) && state.workspace === "story" ? page : "";
-  document.querySelector("#local-overview-page").classList.toggle("active", page === "local-overview");
   document.querySelector("#onboarding-page").classList.toggle("active", page === "onboarding");
   document.querySelector("#universes-page").classList.toggle("active", page === "universes");
   document.querySelector("#universe-create-page").classList.toggle("active", page === "universe-create");
@@ -4616,7 +4610,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#help-page").classList.toggle("active", page === "help");
   document.querySelector("#local-pipeline-page").classList.toggle("active", LOCAL_ASSET_PAGES.has(page));
   document.querySelector("#character-asset-container-page").classList.toggle("active", page === "character-asset-container");
-  document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "character-asset-container" && page !== "local-overview");
+  document.querySelector("#local-stub-page").classList.toggle("active", LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "character-asset-container");
   localAssetsButton.classList.toggle("active", LOCAL_ASSET_PAGES.has(page) || page === "character-asset-container" || page === "onboarding");
   if (LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
@@ -4628,7 +4622,7 @@ async function activatePage(page, options = {}) {
     };
     document.querySelector("#local-pipeline-title").textContent = labels[page];
   }
-  if (LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page) && page !== "local-overview") {
+  if (LOCAL_PAGES.has(page) && !LOCAL_ASSET_PAGES.has(page)) {
     const labels = {
       "local-identity-keys": "Identity Keys",
       "local-turnarounds": "Turnarounds",
@@ -4650,8 +4644,7 @@ async function activatePage(page, options = {}) {
     const entry = options.containerPipeline ? {view: "", costume: ""} : {};
     window.ZetCharacterAssetContainer?.activate(pipeline, {...entry, sync: false});
   } else window.ZetCharacterAssetContainer?.deactivate();
-  if (page === "local-overview") window.ZetLocalCharacterOverview?.activate({fetchJson, universeId: state.universeId});
-  else window.ZetLocalCharacterOverview?.deactivate();
+  if (page === "onboarding") void window.ZetCharacterHub?.activate({fetchJson, character: state.character, phase: state.phase, universeId: state.universeId});
   renderResponsiveSectionMenu(page);
   if (options.updateHistory !== false && !options.fromHistory) syncBrowserRoute();
   const activeButton = Array.from(document.querySelectorAll(".tab")).find((button) => button.dataset.page === page);
@@ -12325,11 +12318,6 @@ responsiveSectionMenu.addEventListener("change", async () => {
     renderResponsiveSectionMenu();
   }
 });
-characterPhoneViewer.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-character-view-page]");
-  if (!button) return;
-  await runGuardedTransition(() => activatePage(button.dataset.characterViewPage, { skipAutosave: true }));
-});
 
 
 window.matchMedia("(max-width: 600px)").addEventListener("change", syncResponsiveChrome);
@@ -12363,11 +12351,6 @@ newSceneButton.addEventListener('click',async()=>{
 });
 
 
-characterRecommendedAction.addEventListener("click", () => runGuardedTransition(async () => {
-  const destination = characterRecommendedAction.dataset.destination || "onboarding";
-  await activatePage(destination, { skipAutosave: true });
-  if (destination === "onboarding") characterSetupDetails.open = true;
-}));
 toolbarRestartZet.addEventListener("click", restartZetFromToolbar);
 
 toolbarSettingsButton.addEventListener("click", (event) => {

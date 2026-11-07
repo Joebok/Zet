@@ -1,13 +1,9 @@
 """Derived, bounded previews for current character pipeline images."""
 from __future__ import annotations
 
-from io import BytesIO
-import hashlib
 import os
 from pathlib import Path
-from uuid import uuid4
-
-from PIL import Image, ImageOps, UnidentifiedImageError
+from zet.services.image_thumbnail_service import ImageThumbnailService
 
 
 class LocalPipelineThumbnailService:
@@ -43,31 +39,4 @@ class LocalPipelineThumbnailService:
         return self._thumbnail(source, version)
 
     def _thumbnail(self, source: Path, expected_version: str) -> Path:
-        source = Path(source).resolve()
-        try:
-            contents = source.read_bytes()
-        except OSError as exc:
-            raise FileNotFoundError("Preview image is unavailable.") from exc
-        digest = hashlib.sha256(contents).hexdigest()
-        if expected_version and expected_version != digest:
-            raise FileNotFoundError("Preview image changed. Refresh the batch.")
-        key = hashlib.sha256(f"{source}\0{digest}\0{self.MAX_SIDE}\0jpeg".encode()).hexdigest()
-        destination = self.cache / f"{key}.jpg"
-        if destination.is_file():
-            return destination
-        try:
-            with Image.open(BytesIO(contents)) as opened:
-                image = ImageOps.exif_transpose(opened).convert("RGB")
-                image.thumbnail((self.MAX_SIDE, self.MAX_SIDE), Image.Resampling.LANCZOS)
-                output = BytesIO()
-                image.save(output, format="JPEG", quality=82, optimize=True)
-        except (OSError, ValueError, UnidentifiedImageError) as exc:
-            raise FileNotFoundError("Preview image cannot be decoded.") from exc
-        self.cache.mkdir(parents=True, exist_ok=True)
-        temporary = self.cache / f".{key}.{uuid4().hex}.tmp"
-        try:
-            temporary.write_bytes(output.getvalue())
-            temporary.replace(destination)
-        finally:
-            temporary.unlink(missing_ok=True)
-        return destination
+        return ImageThumbnailService(self.cache, max_side=self.MAX_SIDE).create(source, expected_version)

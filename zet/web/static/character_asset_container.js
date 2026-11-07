@@ -667,8 +667,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     button.disabled = true;
     try {
       const preview = await request(api(`/views/${encodeURIComponent(state.view)}/prompt`), {
-        method: "POST", body: JSON.stringify({render_mode: $("quality").value,
-          apply_phase_change: $("apply-phase-change").checked}),
+        method: "POST", body: JSON.stringify({apply_phase_change: $("apply-phase-change").checked}),
       });
       $("prompt-text").textContent = preview.prompt;
       $("prompt-references").replaceChildren(...preview.reference_inputs.map((input) => {

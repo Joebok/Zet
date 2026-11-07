@@ -692,10 +692,6 @@ class ZetApp:
     def list_assets(self, character: str, phase: str) -> list[Asset]:
         return sorted(self.asset_repository.list_assets(character, phase), key=asset_sort_key)
 
-    def character_workspace_summary(self, character: str, phase: str):
-        """Return Character Development readiness for one phase."""
-        return self.workspace_summary_service.character_summary(character, phase)
-
     def story_workspace_summary(self, story_slug: str):
         """Return Story Telling progress for one story."""
         return self.workspace_summary_service.story_summary(story_slug)

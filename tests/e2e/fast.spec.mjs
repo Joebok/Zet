@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { resultsRoot } from "./results-path.mjs";
@@ -38,18 +38,18 @@ test("library and narrative authoring save and reload through the dashboard", as
   await expect(phase).toHaveValue("Adult");
   const characterPath = path.join(context.library, "Test", "Characters", "Traveler", "Adult", "Character.md");
   const originalCharacter = await readFile(characterPath, "utf8");
+  const backupCharacterPath = `${characterPath}.e2e-backup`;
+  await rename(characterPath, backupCharacterPath);
+  await page.reload();
+  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
   const editedCharacter = originalCharacter.replace("Canonical Art Style: `Simple graphic illustration`", "Canonical Art Style: `Warm watercolor illustration`");
   await page.locator("#onboarding-template-file").setInputFiles({ name: "Character.md", mimeType: "text/markdown", buffer: Buffer.from(editedCharacter) });
   await page.getByRole("button", { name: "Upload Template" }).click();
   await expect.poll(async () => readFile(path.join(context.library, "Test", "Characters", "Traveler", "Adult", "Character.md"), "utf8"))
     .toContain("Warm watercolor illustration");
-  // A successful upload can leave setup; reopen it before restoring the template.
-  await page.goto("/?page=onboarding&workspace=character");
-  await page.waitForFunction(() => document.body.dataset.dashboardReady === "true");
-  await page.locator("#character-setup-details > summary").click();
-  await page.locator("#onboarding-template-file").setInputFiles({ name: "Character.md", mimeType: "text/markdown", buffer: Buffer.from(originalCharacter) });
-  await page.getByRole("button", { name: "Upload Template" }).click();
-  await expect.poll(async () => readFile(characterPath, "utf8")).toContain("Simple graphic illustration");
+  // Restore the valid fixture directly after exercising the incomplete-phase upload.
+  await writeFile(characterPath, originalCharacter, "utf8");
+  await unlink(backupCharacterPath);
 
   if (await sections.isVisible()) {
     await expect(sections.locator('option[value="costumes"]')).toBeEnabled();

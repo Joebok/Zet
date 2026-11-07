@@ -14,6 +14,14 @@ at startup, and late legacy writes are excluded from current-output listings.
 Disposable checks cover source precedence and saved Inventory resolution after
 unlock. The accepted boundary is recorded in [ADR 0048](../DECISIONS/0048-character-asset-container-workflow.md).
 
+## Character Overview Hub
+
+`LocalCharacterOverviewService` returns the selected phase's current published
+Body, Head Edit, Head Construct, Assembly and Costume Dressing locks in view order.
+The dashboard links each view card to its owning Asset Container and uses bounded
+cached previews. Setup creation/upload controls are visible until Character.md is
+valid. The page refreshes on entry/context change and has no active polling.
+
 ## Character Asset Container workflow (2026-11-06)
 
 The replacement workflow is manual: Assets opens one container for Body Reference,
@@ -21,8 +29,9 @@ Head Image Construct, Head Image Edit, Assembly, or a selected Dressing costume.
 Its overview shows the current selected or locked image for each view and holds
 container-wide authoring and source settings. Open a view card to reach its
 mixed-quality eight-slot Candidate Board. The operator prepares, generates,
-reviews, selects and locks on that board. Character Overview remains a separate
-read-only page. The active implementation and
+reviews, selects and locks on that board. Character Overview is the selected-phase
+hub for Setup, published base images and costume locks. Its bounded lazy thumbnails
+link to their owning container view; the hub does not poll. The active implementation and
 cutover status are recorded in the [completed migration plan](../../plans/completed/character-image-production-workflow.md).
 Legacy batch contracts documented below are retained only as migration history and
 are not part of the container path.

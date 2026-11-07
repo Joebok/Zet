@@ -80,14 +80,12 @@ Character image ranking keeps Draft and Final evaluations separate. The shared r
 
 Draft/Final rendering: `image_sizing_service.py` owns target-pixel sizing; `LocalModeSelectionService` and `LocalAssetStoreService` own mode-scoped character selection and locks. Narrative uses `image_candidate_board_service.py` for shared board rules and `image_render_request.py` for frozen candidate handoffs. `NarrativeSceneService` owns locked Inventory publication; `migrate_narrative_image_board.py` performs backed-up legacy conversion. The workflow and dashboard expose individual and bulk mode actions. See the [completed plan](../plans/completed/draft-final-rendering.md).
 
-Dashboard Overview (2026-11-06): `local_character_overview.js` renders a read-only
-character/phase/costume grid from the current published-source reader. It refreshes
-on entry, tab return or explicit request. Per-costume autogenerate/stop/status routes,
-automatic pipeline selection, batch reuse and startup recovery were retired;
-operators generate and review on the Costume Dressing Asset Container board. The
-former standalone route still redirects into the shell. Assets → Character Overview
-retains onboarding. See [Dashboard UI](COMPONENTS/DASHBOARD_UI.md#dashboard-overview-2026-10-27)
-and [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#character-asset-container-current-outputs-2026-11-06).
+Character Overview Hub: `LocalCharacterOverviewService` returns selected-phase
+published locks and cached bounded thumbnails; `character_hub.js` renders Setup,
+Base Images and Costumes and links cards to their owning Asset Container view.
+Disclosure preferences are scoped by universe, character and phase. It performs no
+polling. Old `local-overview` routes map into the hub. See [Dashboard UI](COMPONENTS/DASHBOARD_UI.md#character-overview-hub)
+and [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#character-overview-hub).
 
 Character pipeline bulk locks (2026-10-27): `LocalImagePipelineWorkflowService._bulk_asset_action`
 owns selected-view lock targeting, aggregate lineage previews, selection fencing,

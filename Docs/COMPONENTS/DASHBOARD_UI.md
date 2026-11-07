@@ -125,19 +125,16 @@ These checks used isolated storage and no live AI calls.
 
 ## Dashboard Overview (2026-10-27)
 
-The Character Development **Overview** button mounts the character/phase/costume
-grid in the shared dashboard shell. **Assets → Character Overview**, above
-Body-Reference, retains the existing character setup page (`page=onboarding`).
-The compact section selector exposes both destinations. The former standalone
-`/local-character-overview` URL redirects to `/?page=local-overview`, retaining
-query context. Its template and header links are retired.
+## Character Overview Hub
 
-`local_character_overview.js` owns scoped, read-only card rendering and
-universe-bound requests for current published FRONT images. It refreshes on entry,
-tab return and explicit request. Generation, stop, automatic pipeline selection,
-batch links and recurring polling are retired; operators generate and review from
-the Costume Dressing Asset Container. `zet.css` owns the responsive grid and image
-wells. Browser validation of the read-only change remains pending.
+Character Overview is the selected character/phase hub. Setup retains draft,
+upload and validation controls until Character.md is valid, then exposes the
+character template editor. Base Images and each costume show eight view cards for
+current published locks; cards link directly to their Asset Container view and
+show an empty state when no lock exists. Thumbnails are bounded cached JPEGs.
+Disclosure preferences are stored per universe, character and phase. Data refreshes
+on entry/context change without recurring or tab visibility polling. The former
+`local-overview` page and `/local-character-overview` URL map to this hub.
 
 The dashboard uses the existing palette in [zet.css](../../zet/web/static/zet.css).
 The [2026-10-27 compliance register](../UI_COMPLIANCE_REVIEW.md) records current

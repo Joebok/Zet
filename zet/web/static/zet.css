@@ -6088,6 +6088,13 @@ button:enabled:active, .button-link:active { filter: brightness(.92); }
 #local-overview-page .error { color: var(--danger); }
 #local-overview-page .navigation-action { display: inline-flex; align-items: center; }
 #local-overview-page .button-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.character-overview-section { margin: 20px 0; }
+.character-hub-group { margin: 18px 0; }
+.character-hub-group-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.character-hub-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(125px,1fr)); gap:10px; }
+.character-hub-card { display:grid; gap:7px; padding:8px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); text-decoration:none; }
+.character-hub-card img,.character-hub-card span { width:100%; aspect-ratio:3/4; object-fit:contain; background:var(--surface-subtle); display:grid; place-items:center; text-align:center; color:var(--text-muted); }
+.character-overview-setup-actions { display:flex; justify-content:flex-end; }
 
 .local-operations-panel { width: min(32rem, 90vw); padding: 12px; overflow-wrap: anywhere; }
 .local-operation-item { padding: 8px 0; border-top: 1px solid var(--border); }

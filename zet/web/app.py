@@ -1289,22 +1289,26 @@ def _create_available_app(
     @app.get("/local-character-overview")
     def local_character_overview_page(request: Request) -> RedirectResponse:
         params = dict(request.query_params)
-        params["page"] = "local-overview"
+        params["page"] = "onboarding"
         from urllib.parse import urlencode
         return RedirectResponse("/?" + urlencode(params), status_code=307)
 
     @app.get("/api/local/character-overview")
-    def local_character_overview() -> dict[str, Any]:
+    def local_character_overview(character: str = Query(...), phase: str = Query(...),
+                                 universe_id: str = Query("")) -> dict[str, Any]:
         try:
-            return LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).overview()
+            return LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).overview(character, phase, universe_id)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @app.get("/api/local/character-overview/image/{character}/{phase}/{costume}")
-    def local_character_overview_image(character: str, phase: str, costume: str) -> FileResponse:
+    @app.get("/api/local/character-overview/thumbnail/{pipeline}")
+    def local_character_overview_image(pipeline: str, character: str = Query(...), phase: str = Query(...),
+                                       view: str = Query(...), costume: str = Query(""),
+                                       universe_id: str = Query(""), v: str = Query("")) -> FileResponse:
         try:
-            path = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT).image_path(character, phase, costume)
-            return FileResponse(path)
+            service = LocalCharacterOverviewService(_app(app.state.config_path), PROJECT_ROOT)
+            path = service.thumbnail(character, phase, pipeline, view, costume, universe_id, v)
+            return FileResponse(path, media_type="image/jpeg")
         except Exception as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1370,12 +1374,7 @@ def _create_available_app(
         """Return overview data for the active dashboard workspaces."""
         zet_app = _app(app.state.config_path)
         try:
-            return {
-                "character": asdict(zet_app.character_workspace_summary(character, phase))
-                if character and phase
-                else None,
-                "story": asdict(zet_app.story_workspace_summary(story_slug)),
-            }
+            return {"story": asdict(zet_app.story_workspace_summary(story_slug))}
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
