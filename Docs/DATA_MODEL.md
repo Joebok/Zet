@@ -21,6 +21,12 @@ checksum-verified beneath the container's `inputs/phase-change` directory.
 Reviewed migration retains per-quality provenance in `legacy_migration` while
 choosing the Final entry when available.
 
+Costume Dressing containers store `sources.dressing_settings` by target view.
+Each setting records the selected rendering mode and, when required, a different
+costume view as reference. Existing records default to Doll-dressing without
+reference. Candidate render requests capture the selected settings and ordered
+image inputs, preserving them for retry and review.
+
 Character render inputs now include the frozen prompt, ordered references, and
 captured template-source hashes when available. Candidate state and local lock
 records may contain permanent `source_change_fyi`; older records omit it. New

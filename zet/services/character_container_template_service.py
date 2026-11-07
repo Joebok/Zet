@@ -333,7 +333,8 @@ class CharacterContainerTemplateService:
                     container["scope"], view, preview_dir, request.get("inputs", []),
                     apply_phase_change=provenance.get("apply_phase_change") is True,
                     assembly_style_mode=str(provenance.get("assembly_style_mode") or ""),
-                    render_mode=str(candidate.get("render_mode") or "draft"))
+                    render_mode=str(candidate.get("render_mode") or "draft"),
+                    costume_settings=provenance.get("costume_settings"))
         except Exception as exc:
             shutil.rmtree(directory, ignore_errors=True)
             raise CharacterContainerTemplateError(str(exc)) from exc
@@ -431,7 +432,8 @@ class CharacterContainerTemplateService:
                         scope, record["view"], path.parent / proposal_id / "selected" / record["view"],
                         request.get("inputs", []), render_mode=record["render_mode"],
                         apply_phase_change=(request.get("provenance") or {}).get("apply_phase_change") is True,
-                        assembly_style_mode=str((request.get("provenance") or {}).get("assembly_style_mode") or ""))
+                        assembly_style_mode=str((request.get("provenance") or {}).get("assembly_style_mode") or ""),
+                        costume_settings=(request.get("provenance") or {}).get("costume_settings"))
                 previews = [compiled]
             record["selected_ids"] = ids
             record["previews"] = previews

@@ -8,7 +8,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     "costume-dressing": "Costume Dressing",
   };
   const state = {pipeline: "", costume: "", view: "", detail: null,
-    timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null,
+    timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null, dressingDrafts: {},
     reviewCandidateId: "", mutation: false, originSlot: null, scope: null, controller: null, templateTimer: null};
   const reviewZoom = window.ZetReviewImageZoom.attach($("review"), () => [...$("review-pair").querySelectorAll("img")]);
   const activeCandidateStates = new Set(["SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"]);
@@ -39,6 +39,10 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     params.set("phase", phase);
     params.delete("costume");
     return `/api/character-containers/${encodeURIComponent(pipeline)}?${params}`;
+  }
+
+  function savedDressingSettings() {
+    return state.detail?.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-no-ref", costume_reference_view: ""};
   }
 
   function show(message, error = false) {
@@ -184,6 +188,31 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
 
   function renderBoard() {
     const board = state.detail.boards[state.view];
+    const dressing = state.pipeline === "costume-dressing";
+    const headFront = isHead() && state.view === "FRONT";
+    $("dressing-settings").hidden = !dressing || state.view === "FRONT";
+    $("head-reference-summary").hidden = !headFront;
+    if (dressing && state.view !== "FRONT") {
+      const saved = state.detail.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-no-ref", costume_reference_view: ""};
+      const draft = state.dressingDrafts[state.view] || saved;
+      const mode = $("dressing-mode"), reference = $("dressing-reference");
+      mode.value = draft.mode;
+      reference.replaceChildren(new Option("Choose a different view", ""), ...state.detail.scope.views.filter(view => view !== state.view).map(view => {
+        const item = state.detail.boards[view].candidates[state.detail.boards[view].selected_id];
+        return new Option(`${view.replaceAll("_", " ")} · ${item?.image_path ? "selected" : "image not selected"}`, view);
+      }));
+      reference.value = draft.costume_reference_view || "";
+      reference.disabled = mode.value === "doll-dressing-no-ref";
+      $("save-dressing-settings").disabled = false;
+      $("dressing-status").textContent = state.dressingDrafts[state.view]
+        ? "Unsaved changes. Preview and Generate use saved settings."
+        : `Saved mode: ${saved.mode}.`;
+    }
+    if (headFront) {
+      const source = state.detail.sources?.phase_change ?? state.detail.sources?.phase_change_by_mode?.final ?? state.detail.sources?.phase_change_by_mode?.draft ?? {};
+      $("head-reference-summary").textContent = source.kind === "upload" ? `Saved FRONT reference: ${source.filename || "uploaded image"}.` : source.phase ? `Saved FRONT reference: ${source.phase} · ${source.pipeline}.` : "No FRONT reference saved. FRONT will use the prompt directly.";
+      $("apply-phase-change").disabled = !source.phase && source.kind !== "upload";
+    }
     const staging = document.createElement("div");
     const candidates = Object.fromEntries(Object.entries(board.candidates).map(([id, candidate]) => [id, {
       ...candidate,
@@ -231,7 +260,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     $("template-improvement").hidden = Boolean(state.view);
     $("edit-costume-template").hidden = state.pipeline !== "costume-dressing";
     renderTemplateChoices();
-    $("apply-wrap").hidden = !isHead() || state.view !== "FRONT";
+    $("apply-wrap").hidden = !isHead() || Boolean(state.view && state.view !== "FRONT");
     $("phase-source").hidden = !["head-image", "head-image-edit"].includes(state.pipeline);
     $("assembly-source").hidden = state.pipeline !== "character-assembly";
     $("view-source").hidden = !["body-reference", "head-image", "head-image-edit"].includes(state.pipeline) || !state.view || state.view === "FRONT";
@@ -556,6 +585,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     state.pipeline = pipeline || params.get("pipeline") || "body-reference";
     $("board-actions").innerHTML = renderBoardActions();
     state.view = options.view ?? params.get("view") ?? "";
+    state.dressingDrafts = {};
     state.costume = state.pipeline === "costume-dressing"
       ? options.costume ?? params.get("costume") ?? "" : "";
     state.active = true;
@@ -640,7 +670,8 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       const result = await request(api(`/views/${encodeURIComponent(view)}/generate`), {
         method: "POST", body: JSON.stringify({count, render_mode: renderMode,
           aspect_ratio: $("aspect").value, expected_revision: state.detail.revision,
-          apply_phase_change: $("apply-phase-change").checked, ...replacement}),
+          apply_phase_change: $("apply-phase-change").checked,
+          costume_settings: savedDressingSettings(), ...replacement}),
       });
       if (signal.aborted || scope !== api() || view !== state.view || result.revision < state.detail.revision) return;
       state.detail = result;
@@ -669,7 +700,8 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     button.disabled = true;
     try {
       const preview = await request(api(`/views/${encodeURIComponent(state.view)}/prompt`), {
-        method: "POST", body: JSON.stringify({apply_phase_change: $("apply-phase-change").checked}),
+        method: "POST", body: JSON.stringify({apply_phase_change: $("apply-phase-change").checked,
+          costume_settings: savedDressingSettings()}),
       });
       $("prompt-text").textContent = preview.prompt;
       $("prompt-references").replaceChildren(...preview.reference_inputs.map((input) => {
@@ -810,6 +842,26 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   });
   $("source-phase").addEventListener("change", () => void loadPhaseSourceCandidates());
   $("source-pipeline").addEventListener("change", () => void loadPhaseSourceCandidates());
+  $("dressing-mode").addEventListener("change", () => {
+    state.dressingDrafts[state.view] = {mode: $("dressing-mode").value, costume_reference_view: $("dressing-reference").value};
+    $("dressing-reference").disabled = $("dressing-mode").value === "doll-dressing-no-ref";
+    $("dressing-status").textContent = "Unsaved changes. Preview and Generate use saved settings.";
+  });
+  $("dressing-reference").addEventListener("change", () => {
+    state.dressingDrafts[state.view] = {mode: $("dressing-mode").value, costume_reference_view: $("dressing-reference").value};
+    $("dressing-status").textContent = "Unsaved changes. Preview and Generate use saved settings.";
+  });
+  $("save-dressing-settings").addEventListener("click", async () => {
+    const source = {view: state.view, mode: $("dressing-mode").value,
+      costume_reference_view: $("dressing-reference").value};
+    try {
+      state.detail = await request(api("/sources/dressing_settings"), {method: "PUT",
+        body: JSON.stringify({source, expected_revision: state.detail.revision})});
+      delete state.dressingDrafts[state.view];
+      render();
+      $("dressing-status").textContent = `Saved ${source.mode} settings for ${state.view.replaceAll("_", " ")}.`;
+    } catch (error) { if (error.name !== "AbortError") $("dressing-status").textContent = error.message; }
+  });
   $("save-phase-source").addEventListener("click", () => {
     const source = {phase: $("source-phase").value, pipeline: $("source-pipeline").value};
     if (!source.phase) { $("source-status").textContent = "Choose a source phase first."; return; }

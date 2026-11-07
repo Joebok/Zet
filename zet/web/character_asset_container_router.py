@@ -134,7 +134,8 @@ def create_character_asset_container_router(resolve_app):
             return service(universe_id).compile_prompt(character, phase, pipeline, costume,
                 view, apply_phase_change=payload.get("apply_phase_change") is True,
                 assembly_style_mode=str(payload.get("assembly_style_mode") or ""),
-                render_mode=str(payload.get("render_mode") or "draft"))
+                render_mode=str(payload.get("render_mode") or "draft"),
+                costume_settings=payload.get("costume_settings"))
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -149,6 +150,7 @@ def create_character_asset_container_router(resolve_app):
                 aspect_ratio=str(payload.get("aspect_ratio") or "2:3"),
                 expected_revision=payload.get("expected_revision", -1),
                 apply_phase_change=payload.get("apply_phase_change") is True,
+                costume_settings=payload.get("costume_settings"),
                 assembly_style_mode=str(payload.get("assembly_style_mode") or ""))
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -163,6 +165,7 @@ def create_character_asset_container_router(resolve_app):
                 aspect_ratio=payload.get("aspect_ratio", "2:3"),
                 expected_revision=payload.get("expected_revision", -1),
                 apply_phase_change=payload.get("apply_phase_change") is True,
+                costume_settings=payload.get("costume_settings"),
                 slot=payload.get("slot"), expected_candidate_id=payload.get("expected_candidate_id"))
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

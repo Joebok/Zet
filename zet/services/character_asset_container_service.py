@@ -201,7 +201,8 @@ class CharacterAssetContainerService:
                 "sha256": hashlib.sha256(image.read_bytes()).hexdigest()}
 
     def resolve_references(self, character: str, phase: str, pipeline: str, costume: str,
-                           view: str, *, render_mode: str = "draft") -> list[dict]:
+                           view: str, *, render_mode: str = "draft",
+                           costume_settings: dict | None = None) -> list[dict]:
         value = self.detail(character, phase, pipeline, costume)
         if view not in value["boards"]:
             raise CharacterAssetContainerError("Choose a view in this container.")
@@ -252,22 +253,47 @@ class CharacterAssetContainerService:
             assembly = self.detail(character, phase, "character-assembly")
             reference = self._selected_reference(assembly, view, "character_assembly", published=True)
             reference.update(body_view=view, head_view=view)
-            return [reference]
+            if view == "FRONT":
+                return [reference]
+            from zet.services.costume_mode_conditioning_service import MODES
+            saved = (value.get("sources", {}).get("dressing_settings") or {}).get(view) or {}
+            settings = costume_settings or saved
+            mode = settings.get("mode", "doll-dressing-no-ref")
+            source_view = str(settings.get("costume_reference_view") or "").upper()
+            if mode not in MODES:
+                raise CharacterAssetContainerError("Choose a supported Costume Dressing mode.")
+            if mode == "doll-dressing-no-ref":
+                return [reference]
+            if source_view not in value["boards"] or source_view == view:
+                raise CharacterAssetContainerError("Choose a different view in this costume container as the costume reference.")
+            dressed = self._selected_reference(value, source_view, "batch_view_reference", published=False)
+            dressed.update(body_view=source_view, head_view=source_view,
+                           prompt_role="edit_base" if mode == "rotate" else "subject_reference")
+            if mode == "rotate":
+                from zet.services.costume_rotation_service import rotation_instruction
+                dressed.update(role="costume_rotation_source", source_view=source_view,
+                               notes=rotation_instruction(source_view, view))
+                reference.update(prompt_role="layout_reference", ignore=["fitment clothing", "bare feet", "rendering details"])
+                return [dressed, reference]
+            dressed.update(notes=f"Design reference from {source_view}; output must show {view}.")
+            return [reference, dressed]
         raise CharacterAssetContainerError("This pipeline does not support image references.")
 
     def compile_prompt(self, character: str, phase: str, pipeline: str, costume: str,
                        view: str, *, apply_phase_change: bool = False,
-                       assembly_style_mode: str = "", render_mode: str = "draft") -> dict:
+                       assembly_style_mode: str = "", render_mode: str = "draft",
+                       costume_settings: dict | None = None) -> dict:
         scope = self._scope(character, phase, pipeline, costume)
         references = self.resolve_references(character, phase, pipeline, scope["costume"], view,
-                                             render_mode=render_mode)
+                                             render_mode=render_mode, costume_settings=costume_settings)
         target = self._path(scope).parent / "prompt-previews" / quote(view, safe="-_.")
         from zet.services.character_container_prompt_service import CharacterContainerPromptService
         project_root = Path(__file__).resolve().parents[2]
         try:
             return CharacterContainerPromptService(self.app, project_root).compile(
                 scope, view, target, references, apply_phase_change=apply_phase_change,
-                assembly_style_mode=assembly_style_mode, render_mode=render_mode)
+                assembly_style_mode=assembly_style_mode, render_mode=render_mode,
+                costume_settings=costume_settings)
         except Exception as exc:
             raise CharacterAssetContainerError(f"Could not compile this view's prompt: {exc}") from exc
 
@@ -275,7 +301,8 @@ class CharacterAssetContainerService:
                            view: str, *, count: int, render_mode: str,
                            aspect_ratio: str, expected_revision: int,
                            apply_phase_change: bool = False,
-                           assembly_style_mode: str = "", slot: int | None = None,
+                           assembly_style_mode: str = "", costume_settings: dict | None = None,
+                           slot: int | None = None,
                            expected_candidate_id: str | None = None) -> dict:
         if type(count) is not int or not 1 <= count <= 8:
             raise CharacterAssetContainerError("Generate between one and eight images.")
@@ -295,7 +322,8 @@ class CharacterAssetContainerService:
                 board["selected_id"], count, slot, active={"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"})
             compiled = self.compile_prompt(character, phase, pipeline, costume, view,
                 apply_phase_change=apply_phase_change,
-                assembly_style_mode=assembly_style_mode, render_mode=render_mode)
+                assembly_style_mode=assembly_style_mode, render_mode=render_mode,
+                costume_settings=costume_settings)
             preset_name = self._preset(pipeline, bool(compiled["reference_inputs"]),
                                        view, assembly_style_mode)
             preset_path = self.app.config.state_file(Path(__file__).resolve().parents[2], "Local_Render_Presets.json")
@@ -330,6 +358,7 @@ class CharacterAssetContainerService:
                      "costume": value["scope"]["costume"], "view": view,
                      "template_revision_id": compiled.get("template_revision_id", ""),
                      "apply_phase_change": bool(apply_phase_change),
+                     "costume_settings": costume_settings or {},
                      "assembly_style_mode": assembly_style_mode}).to_dict()
                 candidate = {"id": candidate_id, "candidate_id": candidate_id,
                     "slot": slot + 1, "render_mode": render_mode, "status": "PREPARED",
@@ -573,7 +602,8 @@ class CharacterAssetContainerService:
         if pipeline == "head-image":
             return "comfyui-qwen-head-image-edit" if has_references else "comfyui-qwen-head-image-text"
         if pipeline == "head-image-edit":
-            return "comfyui-qwen-head-image-edit-front-v1" if view == "FRONT" else "comfyui-qwen-head-image-edit-v1"
+            return ("comfyui-qwen-head-image-edit-v1" if has_references
+                    else "comfyui-qwen-head-image-edit-front-v1") if view == "FRONT" else "comfyui-qwen-head-image-edit-v1"
         return "comfyui-qwen-local-character-edit"
 
     @staticmethod
@@ -601,7 +631,7 @@ class CharacterAssetContainerService:
     def save_source(self, character: str, phase: str, pipeline: str, costume: str,
                     source_name: str, source: dict, *, expected_revision: int,
                     render_mode: str = "") -> dict:
-        if source_name not in {"phase_change", "phase_change_by_mode", "head_pipeline", "views"}:
+        if source_name not in {"phase_change", "phase_change_by_mode", "head_pipeline", "views", "dressing_settings"}:
             raise CharacterAssetContainerError("Choose a supported container source setting.")
         value = self.detail(character, phase, pipeline, costume)
         if source_name == "phase_change_by_mode":
@@ -630,6 +660,23 @@ class CharacterAssetContainerService:
                 if not source_phase or source_phase == phase or source_pipeline not in {"head-image", "head-image-edit"}:
                     raise CharacterAssetContainerError("Choose a Head FRONT from another phase of this character.")
                 source = {"phase": source_phase, "pipeline": source_pipeline}
+        if source_name == "dressing_settings":
+            if pipeline != "costume-dressing" or not isinstance(source, dict):
+                raise CharacterAssetContainerError("Dressing settings belong to a Costume Dressing container.")
+            view = str(source.get("view") or "").upper()
+            mode = source.get("mode")
+            source_view = str(source.get("costume_reference_view") or "").upper()
+            from zet.services.costume_mode_conditioning_service import MODES
+            if view == "FRONT" or view not in value["boards"] or mode not in MODES:
+                raise CharacterAssetContainerError("Choose a supported Costume Dressing view and mode.")
+            if mode != "doll-dressing-no-ref" and (source_view not in value["boards"] or source_view == view):
+                raise CharacterAssetContainerError("Choose a different view in this costume container as the costume reference.")
+            value["sources"].setdefault("dressing_settings", {})[view] = {
+                "mode": mode,
+                "costume_reference_view": source_view if mode != "doll-dressing-no-ref" else "",
+            }
+            return self.save(character, phase, pipeline, costume, value,
+                             expected_revision=expected_revision)
         if source_name == "views":
             allowed = set(value["boards"])
             if not isinstance(source, dict) or any(view not in allowed or source_view not in (allowed | {""}) or view == source_view

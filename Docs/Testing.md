@@ -496,6 +496,14 @@ tests, dependencies, live inference or production-library writes were added.
 These checks establish software contracts, not live model/image quality or
 production deployment. See [ADR 0035](DECISIONS/0035-costume-suggestion-source-binding.md).
 
+## Character Asset Container render options (2026-11-07)
+
+The approved `npm.cmd run test:e2e` suite passed all four scenarios (42.8s),
+including the character-to-costume workflow. Python AST parsing, JavaScript
+syntax validation, and `git diff --check` passed. The suite exercises default
+container Dressing behavior. Alternate Dressing modes and Head phase-change
+combinations were not exercised through a live renderer.
+
 ## Costume-Dressing modes and source adjustments (2026-10-26)
 
 `npm.cmd run test:e2e` passed all four approved scenarios after integration (37.8s and 39.6s). A final focused invocation of the approved character-to-costume scenario passed (13.0s) after the staging provenance and pre-normalization mode-filter fixes. Changed Python AST checks, three JavaScript syntax checks and `git diff --check` passed. No permanent test, scenario or dependency was added.

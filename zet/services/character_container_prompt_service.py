@@ -18,7 +18,8 @@ class CharacterContainerPromptService:
 
     def compile(self, scope: dict, view: str, output_dir: str | Path,
                 references: list[dict], *, apply_phase_change: bool = False,
-                assembly_style_mode: str = "", render_mode: str = "draft") -> dict:
+                assembly_style_mode: str = "", render_mode: str = "draft",
+                costume_settings: dict | None = None) -> dict:
         pipeline = scope["pipeline"]
         if view not in scope["views"]:
             raise ValueError("Choose a view in this Asset Container.")
@@ -55,6 +56,10 @@ class CharacterContainerPromptService:
             "Assembly Style Mode": assembly_style_mode,
         }
         if pipeline == "costume-dressing":
+            settings = costume_settings or {}
+            job["Rendering Mode"] = settings.get("mode", "doll-dressing-no-ref") if view != "FRONT" else "doll-dressing-ref"
+            if job["Rendering Mode"] == "rotate":
+                job["Rotation"] = True
             costume = next(item for item in self.app.costume_service.list_costumes(
                 scope["character"], scope["phase"]) if item.slug == scope["costume"])
             job.update(Costume=costume.name, **{"Costume Path": costume.path})
@@ -68,8 +73,11 @@ class CharacterContainerPromptService:
             prompt = adapter._qwen_prompt(prompt, view, anchor=bool(normalized_references), 
                 anchor_view=normalized_references[0]["view"] if normalized_references else "FRONT")
         else:
-            compiled = compiler(job, self.project_root, pipeline_mode="local",
-                universe_root=self.app.config.base_library_path)
+            compile_options = {"pipeline_mode": "local", "universe_root": self.app.config.base_library_path}
+            if pipeline == "costume-dressing":
+                compile_options["render_mode"] = job["Rendering Mode"]
+                compile_options["rotation"] = job["Rendering Mode"] == "rotate"
+            compiled = compiler(job, self.project_root, **compile_options)
             prompt = Path(compiled["final_prompt"]).read_text(encoding="utf-8")
         compiled_references = [dict(item) for item in compiled.get("reference_files", normalized_references)]
         return {"view": view, "prompt": prompt,
