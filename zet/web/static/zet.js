@@ -262,6 +262,7 @@ const imageGenerationModel = document.querySelector("#image-generation-model");
 const imageGenerationResultsGrid = document.querySelector("#image-generation-results-grid");
 const imageGenerationReview = document.querySelector("#image-generation-review");
 const imageGenerationReviewImage = document.querySelector("#image-generation-review-image");
+const imageGenerationReviewZoom = window.ZetReviewImageZoom?.attach(imageGenerationReview, () => [imageGenerationReviewImage]);
 const imageGenerationReviewCount = document.querySelector("#image-generation-review-count");
 const imageGenerationReviewPrompt = document.querySelector("#image-generation-review-prompt");
 const imageGenerationReviewNegative = document.querySelector("#image-generation-review-negative");
@@ -1811,6 +1812,7 @@ function renderImageGenerationReview() {
   if (imageGenerationReview.dataset.slot !== String(imageGenerationReviewIndex)) promptDetails.open = false;
   imageGenerationReview.dataset.slot = String(imageGenerationReviewIndex);
   imageGenerationReviewImage.src = image.url;
+  imageGenerationReviewZoom?.sync(`${imageGenerationReviewIndex}:${image.url}`);
   imageGenerationReviewImage.alt = `Generated image in slot ${imageGenerationReviewIndex + 1}`;
   imageGenerationReviewCount.textContent = `Slot ${imageGenerationReviewIndex + 1} · ${position + 1} of ${slots.length} · ${imageGenerationSizeLabel(job)}`;
   imageGenerationReviewPrompt.textContent = job.prompt || "";

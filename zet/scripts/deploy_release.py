@@ -142,7 +142,7 @@ def library_reference_version(container):
     return max(versions, default=0)
 
 
-def healthy(url, revision, old_boot, timeout=120):
+def healthy(url, revision, old_boot, timeout=300):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:

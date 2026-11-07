@@ -10,6 +10,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   const state = {pipeline: "", costume: "", view: "", detail: null,
     timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null,
     reviewCandidateId: "", mutation: false, originSlot: null, scope: null, controller: null, templateTimer: null};
+  const reviewZoom = window.ZetReviewImageZoom.attach($("review"), () => [...$("review-pair").querySelectorAll("img")]);
   const activeCandidateStates = new Set(["SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"]);
   const escape = (value) => String(value ?? "").replace(/[&<>"']/g,
     (char) => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[char]));
@@ -356,6 +357,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     pair.innerHTML = images.map(image => `<figure><header><strong>${escape(title(image))}</strong></header>
       ${image.item.image_path ? `<img src="${escape(comparisonImageUrl(image.view, image.id))}" alt="${escape(title(image))}">`
         : `<p>${escape(image.item.status === "FAILED" ? image.item.error || "Render failed." : "No image available yet.")}</p>`}</figure>`).join("");
+    reviewZoom.sync(`${state.view}:${state.reviewCandidateId}:${candidate.image_path || candidate.status}`);
     const prompt = $("review-prompt");
     const open = new Set([...prompt.querySelectorAll("details[open]")].map(details => details.dataset.promptKey));
     prompt.innerHTML = images.map(({view, id, item}) => {

@@ -1142,6 +1142,11 @@ main {
   object-fit: contain;
   width: 100%;
 }
+.review-zoom-viewport { display: block; position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.review-zoom-viewport img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; will-change: transform; }
+.local-pipeline-review-comparison .review-zoom-viewport { width: 100%; height: 0; }
+.mc-review .review-zoom-viewport { width: 100%; flex: 0 1 auto; max-height: 76vh; }
+.image-generation-review .review-zoom-viewport { width: 100%; height: 100%; }
 
 .local-pipeline-review-comparison p {
   align-items: center;

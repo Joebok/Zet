@@ -186,6 +186,12 @@ offers reference/candidate comparison, and removes the empty reference column
 when no comparison exists. Decisions, selection, close, and navigation stay outside
 scrolling details. Polling preserves the current candidate, unsaved decision,
 comparison choice, details expansion/scroll, and focus.
+Character Asset Container, Minor Character, Narrative Scene, and Image Generation
+candidate review dialogs support cursor-centered wheel zoom from the fitted image
+size to 4×. Visible comparisons share scale and normalized image focus. Letterbox
+space and modified or horizontal wheel gestures do not start zoom; closing a
+dialog or changing its main candidate resets the view. Zoom is transient and uses
+the existing review image bytes.
 [local_asset_pipeline.js](../../zet/web/static/local_asset_pipeline.js) owns this
 interaction; [narrative.js](../../zet/web/static/narrative.js) adapts shared styles
 to Narrative's independent records. Minor Characters retains its own comparison

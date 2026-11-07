@@ -124,10 +124,11 @@ were published and merged. Development fixtures cannot deploy.
 
 Health includes revision, boot_id and role/config identity. Process matching uses
 exact config identity; deployment rechecks Windows command lines before stopping
-captured PIDs. Completion requires the expected revision and a new boot. Failed
-startup restores the previous release/environment, or the original exact command
-on first adoption. Creative data is not rolled back. Logs/records remain in state;
-an interrupted operation is inspected rather than starting a duplicate update.
+captured PIDs. Completion requires the expected revision and a new boot, with up
+to five minutes allowed for the new release to become ready. Failed startup
+restores the previous release/environment, or the original exact command on first
+adoption. Creative data is not rolled back. Logs/records remain in state; an
+interrupted operation is inspected rather than starting a duplicate update.
 
 Config/Runtime_Contract.json declares deployment compatibility; it is NOT a library
 schema version. Missing/changed contracts, manual-migration releases and tracked

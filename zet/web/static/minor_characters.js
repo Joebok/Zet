@@ -14,6 +14,7 @@
   let feedback = "", feedbackDirty = false;
   const suggestions = new Map();
   let comparisonId = "";
+  const reviewZoom = window.ZetReviewImageZoom.attach($("mc-review"), () => [...$("mc-review-pair").querySelectorAll("img")]);
   const slotPending = new Set();
   let pollFailures = 0, pollError = "", pollVersion = 0;
   const element = (tag, text = "", cls = "") => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
@@ -331,6 +332,7 @@
       actions.append(next);figure.append(actions);$("mc-review-pair").append(figure);
     }
     previous.disabled=index<=0;next.disabled=index<0 || index>=list.length-1;
+    reviewZoom.sync(`${view}:${preview}`);
   }
   function navigateReview(direction) {
     const list=occupied(), index=list.findIndex(c=>c.candidate_id===preview), next=list[index+direction];

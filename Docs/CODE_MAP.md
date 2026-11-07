@@ -327,6 +327,11 @@ inspects and removes only the selected identity under a bounded shared lock dead
 
 ## Minor Characters alignment workspace (2026-10-15)
 
+Candidate review wheel zoom is shared by `review_image_zoom.js`, loaded from
+`index.html` and attached by `character_asset_container.js`,
+`minor_characters.js`, `narrative.js`, and `zet.js`. `zet.css` bounds transformed
+images to their review viewports; comparison candidates share the focal position.
+
 - `minor_character_service.py` owns fresh named workspaces, reference inputs, analysis and publication. `minor_character_workflow_service.py:MinorCharacterWorkflow` owns stage render/review, short prompts, four-slot boards, revisions, selection gates, carry and one-level recipe-only undo. Retired workspaces are excluded without migration.
 - `MinorCharacterWorkflow._views` exposes STYLE followed by front, front left/right three-quarter and left/right profile for every current workspace. `MinorCharacterService._read` supplies missing boards without resetting existing work. `minor_characters.js` labels each view explicitly; the dashboard has no side selector.
 - `minor_character_router.py` exposes `/api/minor-characters`, stage board actions and revision-fenced lock/unlock. `MinorCharacterWorkflow.board_action` atomically selects an explicit rendered current-view `candidate_id` when continuing to true-ups, preserving matching saved feedback/suggestions; omitted IDs use the existing selection. `minor_characters.js` enables Continue for a rendered preview and explains the refinement gate inline. `MinorCharacterService` allows all current rendered stage candidates to lock, retaining STYLE privately and publishing official views; unlock retains Inventory images. Cards and review dialogs share an accessible icon toggle. `quick_character_publication_service.py` independently rejects style publication and retains immutable candidate-based assets.

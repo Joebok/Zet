@@ -35,6 +35,7 @@ let layerDrag = null;
 let activeLayer = null;
 let brush = null;
 let reviewCandidate = null;
+const reviewZoom = window.ZetReviewImageZoom?.attach(host.querySelector('#image-dialog'), () => [host.querySelector('#review-image')]);
 let renderRatio = '';
 let previewSizing = null;
 let ratioTarget = '';
@@ -952,6 +953,7 @@ function renderImageReview() {
     placeholder.textContent = 'No image available yet.'; image.after(placeholder);
   }
   placeholder.hidden = Boolean(candidate.image);
+  reviewZoom?.sync(candidate.image ? `${reviewCandidate}:${image.src}` : `${reviewCandidate}:empty`);
   host.querySelector('#review-image').alt = `Slot ${candidate.slot} candidate`;
   host.querySelector('#narrative-review-prev').disabled = busy || index === 0;
   host.querySelector('#narrative-review-next').disabled = busy || index === images.length - 1;
