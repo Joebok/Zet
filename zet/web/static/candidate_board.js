@@ -1,4 +1,15 @@
 /** Shared Candidate Board card presentation. Pipelines inject their slot actions. */
+export function renderBoardActions() {
+  return `<div class="candidate-board-actions" role="group" aria-label="Candidate board actions">
+    <button type="button" class="candidate-board-render-draft" data-board-action="render" data-mode="draft" data-count="1">Draft 1</button>
+    <button type="button" class="candidate-board-render-draft" data-board-action="render" data-mode="draft" data-count="4">Draft 4</button>
+    <button type="button" class="candidate-board-render-final" data-board-action="render" data-mode="final" data-count="1">Final 1</button>
+    <button type="button" class="candidate-board-render-final" data-board-action="render" data-mode="final" data-count="4">Final 4</button>
+    <button type="button" class="danger-text-action" data-board-action="delete-drafts">Delete Drafts</button>
+    <button type="button" class="danger-action" data-board-action="delete-non-selected">Delete Non-Selected</button>
+  </div>`;
+}
+
 export function renderCandidateBoard({host, slots, candidates, selectedId, escape, imageUrl,
   promptIndicator = () => '', renderActions, renderDetails = () => ''}) {
   host.innerHTML = slots.map((id, index) => {

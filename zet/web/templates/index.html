@@ -9,9 +9,9 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261101-operations">
+  <link rel="stylesheet" href="/static/zet.css?v=20261107-board-actions">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
-  <link rel="stylesheet" href="/static/narrative.css?v=20261107-candidate-board">
+  <link rel="stylesheet" href="/static/narrative.css?v=20261107-board-actions">
 <link rel="stylesheet" href="/static/scene_text.css"><script src="/static/scene_text.js" defer></script>
 </head>
 <body>
@@ -428,11 +428,8 @@
             <label id="character-container-apply-wrap" hidden><input id="character-container-apply-phase-change" type="checkbox"> Apply phase change to new FRONT requests</label>
             <label>Aspect ratio<input id="character-container-aspect" value="2:3"></label>
             <button id="character-container-prompt-preview-button" type="button">Preview prompt</button>
-            <button class="primary-action character-container-render-action" data-quality="draft" data-count="1" type="button">Draft 1</button>
-            <button class="character-container-render-action" data-quality="draft" data-count="4" type="button">Draft 4</button>
-            <button class="primary-action character-container-render-action" data-quality="final" data-count="1" type="button">Final 1</button>
-            <button class="character-container-render-action" data-quality="final" data-count="4" type="button">Final 4</button>
           </div>
+          <div id="character-container-board-actions"></div>
         </section>
         <details id="character-container-prompt-preview" class="control-panel" hidden>
           <summary>Current prompt and ordered references</summary>
@@ -2306,7 +2303,7 @@ Add prompt language here.
   <script src="/static/minor_characters.js?v=20261031-final-mode-cues"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
-  <script type="module" src="/static/character_asset_container.js?v=20261107-container-overview"></script>
+  <script type="module" src="/static/character_asset_container.js?v=20261107-board-actions"></script>
 
 </body>
 </html>

@@ -492,10 +492,12 @@ class NarrativeGenerationService:
         effects = []
         selected = record.get("selected_id")
         if selected in ids:
-            effects.append({"id": f"unselect:draft:{selected}", "label": f"Unselect Draft image {selected}"})
+            effects.append({"id": f"unselect:draft:{selected}", "candidate_id": selected,
+                            "label": f"Unselect Draft image in slot {record['candidates'][selected]['slot']}"})
         for candidate_id in sorted(ids):
             if record["candidates"][candidate_id].get("locked"):
-                effects.append({"id": f"unlock:draft:{candidate_id}", "label": f"Unlock Draft image {candidate_id}"})
+                effects.append({"id": f"unlock:draft:{candidate_id}", "candidate_id": candidate_id,
+                                "label": f"Unlock Draft image in slot {record['candidates'][candidate_id]['slot']}"})
         token = hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()
         return {"protected_effects": effects, "confirmation_token": token}
 
@@ -537,6 +539,35 @@ class NarrativeGenerationService:
                     record["active_llm_job"] = None
             for candidate_id in ids:
                 self._remove_candidate(story, scene, target, record, candidate_id)
+            self.repository.write(record, story, scene, target)
+            self._cleanup_pending(story, scene, target, record)
+            return self.author.target(story, scene, target)
+
+    @staticmethod
+    def _non_selected_delete_preview(record):
+        selected = record.get("selected_id")
+        ids = {cid for cid, candidate in record["candidates"].items()
+               if cid != selected and not candidate.get("locked")}
+        candidates = [{"candidate_id": cid, "slot": record["candidates"][cid]["slot"]}
+                      for cid in sorted(ids)]
+        if any(record["candidates"][cid].get("status") in ACTIVE for cid in ids):
+            raise ValueError("Wait for active renders to finish before deleting non-selected candidates.")
+        token = hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()
+        return {"candidates": candidates, "confirmation_token": token}
+
+    def preview_delete_non_selected(self, story, scene, target):
+        with self.repository.lock():
+            return self._non_selected_delete_preview(self.repository.read(story, scene, target))
+
+    def delete_non_selected(self, story, scene, target, data=None):
+        with self.repository.lock():
+            record = self.repository.read(story, scene, target)
+            preview = self._non_selected_delete_preview(record)
+            if (data or {}).get("confirmation_token") != preview["confirmation_token"]:
+                from zet.services.protected_effect_preview import ProtectedEffectsChanged
+                raise ProtectedEffectsChanged(preview)
+            for item in preview["candidates"]:
+                self._remove_candidate(story, scene, target, record, item["candidate_id"])
             self.repository.write(record, story, scene, target)
             self._cleanup_pending(story, scene, target, record)
             return self.author.target(story, scene, target)

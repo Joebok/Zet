@@ -209,6 +209,46 @@ def create_character_asset_container_router(resolve_app):
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @router.post("/api/character-containers/{pipeline}/views/{view}/delete-non-selected/preview")
+    def preview_delete_non_selected(pipeline: str, view: str, character: str = Query(...),
+                                    phase: str = Query(...), costume: str = Query(""),
+                                    universe_id: str = Query("")):
+        try:
+            return service(universe_id).preview_delete_non_selected(
+                character, phase, pipeline, costume, view)
+        except CharacterAssetContainerError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/api/character-containers/{pipeline}/views/{view}/delete-drafts/preview")
+    def preview_delete_drafts(pipeline: str, view: str, character: str = Query(...),
+                              phase: str = Query(...), costume: str = Query(""),
+                              universe_id: str = Query("")):
+        try:
+            return service(universe_id).preview_delete_drafts(
+                character, phase, pipeline, costume, view)
+        except CharacterAssetContainerError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/api/character-containers/{pipeline}/views/{view}/delete-non-selected")
+    def delete_non_selected(pipeline: str, view: str, data: dict = Body(...),
+                            character: str = Query(...), phase: str = Query(...),
+                            costume: str = Query(""), universe_id: str = Query("")):
+        try:
+            return service(universe_id).delete_non_selected(
+                character, phase, pipeline, costume, view, data)
+        except CharacterAssetContainerError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/api/character-containers/{pipeline}/views/{view}/delete-drafts")
+    def delete_drafts(pipeline: str, view: str, data: dict = Body(...),
+                      character: str = Query(...), phase: str = Query(...),
+                      costume: str = Query(""), universe_id: str = Query("")):
+        try:
+            return service(universe_id).delete_drafts(
+                character, phase, pipeline, costume, view, data)
+        except CharacterAssetContainerError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @router.get("/api/character-containers/{pipeline}/views/{view}/candidates/{candidate_id}/image")
     def candidate_image(pipeline: str, view: str, candidate_id: str,
                         character: str = Query(...), phase: str = Query(...),

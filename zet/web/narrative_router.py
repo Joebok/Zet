@@ -290,6 +290,14 @@ def create_narrative_router(app_provider):
     def preview_draft_delete(story: str, scene: str, target: str):
         return call(generation().preview_draft_delete, story, scene, target)
 
+    @router.post(target_path + "/delete-non-selected")
+    def delete_non_selected(story: str, scene: str, target: str, data: dict = Body(default={})):
+        return call(generation().delete_non_selected, story, scene, target, data)
+
+    @router.post(target_path + "/delete-non-selected/preview")
+    def preview_delete_non_selected(story: str, scene: str, target: str):
+        return call(generation().preview_delete_non_selected, story, scene, target)
+
     @router.post(target_path + "/candidates/{candidate}")
     def candidate_action(story: str, scene: str, target: str, candidate: str, data: dict = Body(...)):
         return call(generation().candidate_action, story, scene, target, candidate, data)

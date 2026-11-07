@@ -684,6 +684,72 @@ class CharacterAssetContainerService:
         with file_lock(path.with_suffix(".lock")):
             return self._board_action(character, phase, pipeline, costume, view, candidate_id, action, **options)
 
+    @staticmethod
+    def _bulk_clear_preview(value: dict, view: str, mode: str) -> dict:
+        import json
+        board = value["boards"].get(view)
+        if board is None:
+            raise CharacterAssetContainerError("Choose a view in this container.")
+        keep = set() if mode == "drafts" else ({board.get("selected_id")} |
+            {cid for cid, item in board["candidates"].items() if item.get("locked")})
+        candidates = [{"candidate_id": cid, "slot": index + 1}
+                      for index, cid in enumerate(board["slots"]) if cid and cid not in keep
+                      and (mode != "drafts" or board["candidates"][cid].get("render_mode", "draft") == "draft")]
+        active = {"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"}
+        if any(board["candidates"][item["candidate_id"]].get("status") in active for item in candidates):
+            raise CharacterAssetContainerError("Wait for active renders to finish before deleting these candidates.")
+        effects = []
+        for item in candidates:
+            candidate_id = item["candidate_id"]
+            if board.get("selected_id") == candidate_id:
+                effects.append({"id": f"select:{candidate_id}", "candidate_id": candidate_id,
+                                "label": f"Clear selected candidate in slot {item['slot']}"})
+            if board["candidates"][candidate_id].get("locked"):
+                effects.append({"id": f"lock:{candidate_id}", "candidate_id": candidate_id,
+                                "label": f"Clear locked candidate in slot {item['slot']}"})
+        token = hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
+        return {"candidates": candidates, "protected_effects": effects, "confirmation_token": token,
+                "revision": value["revision"]}
+
+    def preview_delete_non_selected(self, character: str, phase: str, pipeline: str,
+                                    costume: str, view: str) -> dict:
+        value = self.detail(character, phase, pipeline, costume)
+        return self._bulk_clear_preview(value, view, "non-selected")
+
+    def preview_delete_drafts(self, character: str, phase: str, pipeline: str,
+                              costume: str, view: str) -> dict:
+        value = self.detail(character, phase, pipeline, costume)
+        return self._bulk_clear_preview(value, view, "drafts")
+
+    def delete_candidates(self, character: str, phase: str, pipeline: str,
+                          costume: str, view: str, mode: str, data: dict) -> dict:
+        path = self._path(self._scope(character, phase, pipeline, costume))
+        with file_lock(path.with_suffix(".lock")):
+            value = self.detail(character, phase, pipeline, costume)
+            preview = self._bulk_clear_preview(value, view, mode)
+            if (data.get("confirmation_token") != preview["confirmation_token"] or
+                    data.get("expected_revision") != preview["revision"]):
+                raise CharacterAssetContainerError("The board changed. Refresh and review the deletion before confirming.")
+            approved = data.get("approved_effects")
+            if not isinstance(approved, list) or set(approved) != {effect["id"] for effect in preview["protected_effects"]}:
+                raise CharacterAssetContainerError("Approve each selected or locked candidate affected by deletion.")
+            board = value["boards"][view]
+            for item in preview["candidates"]:
+                self._remove_candidate(value, board, item["candidate_id"])
+            if preview["candidates"]:
+                board["revision"] += 1
+                value = self.save(character, phase, pipeline, costume, value,
+                                  expected_revision=preview["revision"])
+            return self.detail(character, phase, pipeline, costume)
+
+    def delete_non_selected(self, character: str, phase: str, pipeline: str,
+                            costume: str, view: str, data: dict) -> dict:
+        return self.delete_candidates(character, phase, pipeline, costume, view, "non-selected", data)
+
+    def delete_drafts(self, character: str, phase: str, pipeline: str,
+                      costume: str, view: str, data: dict) -> dict:
+        return self.delete_candidates(character, phase, pipeline, costume, view, "drafts", data)
+
     def _board_action(self, character: str, phase: str, pipeline: str, costume: str,
                      view: str, candidate_id: str, action: str, *, expected_revision: int,
                      expected_candidate_id: str = "", confirm_selected: bool = False,

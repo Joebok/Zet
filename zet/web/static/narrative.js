@@ -1,5 +1,5 @@
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
-import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} from './candidate_board.js';
+import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from './candidate_board.js?v=20261107-board-actions';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;
 let pollTimer = null;
@@ -735,13 +735,12 @@ function renderTarget(targets) {
       <label class="narrative-field">Answer or direct a revision<textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea></label>
       ${detail.kind === 'subscene' ? `<label class="narrative-field">Image for this interview<select id="narrative-interview-image"><option value="">None</option></select><small>Used for this turn only. Requires a vision-capable interview model.</small></label><div id="narrative-interview-image-preview"></div><p class="narrative-muted" id="narrative-interview-replay-image"></p>` : ''}
       <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button>${detail.kind === 'subscene' ? `<button class="primary narrative-interview-write-prompt" data-action="synthesize" ${acceptedInterviewChanges() ? '' : 'hidden'}>Write Prompt</button>` : ''}</div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
-    </details><div class="narrative-output"><details class="narrative-card narrative-generation-settings" ${viewingImages ? '' : 'open'}><summary><span>Prompt and generation</span><span class="narrative-summary-render-actions">${['draft','final'].map(mode=>[1,4].map(count=>`<button type="button" class="${mode==='draft'?'narrative-summary-render-draft':'narrative-summary-render-final'}" data-action="render" data-mode="${mode}" data-count="${count}">${mode==='draft'?'Draft':'Final'} ${count}</button>`).join('')).join('')}</span></summary>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option><option value="harmonize_composite" ${detail.assembly_mode==='harmonize_composite'?'selected':''}>Harmonize placed composite</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
+    </details><div class="narrative-output"><details class="narrative-card narrative-generation-settings" ${viewingImages ? '' : 'open'}><summary><span>Prompt and generation</span></summary>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option><option value="harmonize_composite" ${detail.assembly_mode==='harmonize_composite'?'selected':''}>Harmonize placed composite</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
       <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>
       ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
       <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
       <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div><p id="narrative-prompt-pending" class="narrative-muted"></p>
-      <div class="narrative-actions"><label>Generate count <input id="narrative-render-count" type="number" min="1" max="${Math.max(1,detail.slots.filter(id=>!id).length)}" value="1"></label>${['draft','final'].map(mode=>`<button class="primary ${mode==='draft'?'narrative-render-draft':''}" data-action="render" data-mode="${mode}" data-count-control="true">Generate ${mode==='draft'?'Draft':'Final'}</button>`).join('')}${['draft','final'].map(mode=>[1,4].map(count=>`<button class="primary ${mode==='draft'?'narrative-render-draft':''}" data-action="render" data-mode="${mode}" data-count="${count}">${mode==='draft'?'Draft':'Final'} ${count}</button>`).join('')).join('')}<button data-action="refresh">Refresh</button></div>
-      <div class="narrative-actions"><button type="button" class="danger-text-action" data-action="delete-draft-images">Delete Drafts</button></div>
+      ${renderBoardActions()}
       <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
       <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
     <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
@@ -887,7 +886,7 @@ function updateLive() {
         ? 'Qwen harmonizes the placed composite, including cutout corrections, lighting, color, edges and ground contact. The full generated image is retained; subject appearance can change and placement may drift.'
         : 'Qwen finishes the placed composite; seam and shadow blending preserves subject pixels.';
     host.querySelector('#narrative-assembly-prompt-warning').textContent = stale && detail.prompt ? 'This prompt belongs to another assembly mode. Write or edit the prompt before rendering.' : '';
-    for (const button of root.querySelectorAll('[data-action="render"]')) button.disabled = stale;
+    for (const button of root.querySelectorAll('[data-action="render"], [data-board-action="render"]')) button.disabled = stale;
   }
   for (const type of ['interview','prompt']) host.querySelector(`#narrative-${type}-effective`).textContent = `Next run: ${host.querySelector(`#narrative-${type}_model`).value || modelOptions.model}`;
   const working = jobs.filter(job=>active.has(job.status));
@@ -1172,6 +1171,11 @@ listen(host,'change',event=>{
 listen(host,'click',event=>{
   const button = event.target.closest('button,a,img[data-review]');
   if (!button) return;
+  if (button.dataset.boardAction) {
+    const actionName = button.dataset.boardAction;
+    button.dataset.action = actionName === 'render' ? 'render' :
+      actionName === 'delete-drafts' ? 'delete-draft-images' : 'delete-non-selected';
+  }
   if (button.dataset.copyPrompt) {
     event.preventDefault();
     navigator.clipboard.writeText(detail.candidates[button.dataset.copyPrompt].prompt).then(()=>{
@@ -1342,11 +1346,24 @@ listen(host,'click',event=>{
           const inspection = await api(base()+'/delete-draft-images/preview','POST',{});
           const approved = await confirmProtectedEffects('Delete Draft images?',
             'Delete all Draft images for this target? Matching work will be cancelled. Final images and Inventory copies remain. Approve each affected selection or lock.',
-            inspection.protected_effects || [], 'Delete Draft images');
+            (inspection.protected_effects || []).map(effect => ({...effect,
+              preview_url: detail.candidates[effect.candidate_id]?.image ? imageUrl(effect.candidate_id) : ''})), 'Delete Draft images');
           if (approved === null) break;
           const result = await api(base()+'/delete-draft-images','POST',
             {confirmation_token:inspection.confirmation_token,approved_effects:approved});
           if (result) { detail=result; updateLive(); status('Draft images deleted.'); }
+          break;
+        }
+        case 'delete-non-selected': {
+          await save();
+          const inspection = await api(base()+'/delete-non-selected/preview','POST',{});
+          const candidates = inspection.candidates || [];
+          if (!candidates.length) { status('No non-selected candidates to delete.'); break; }
+          const slotList = candidates.map(item=>`Slot ${item.slot}`).join(', ');
+          if (!confirm(`Delete non-selected candidates in ${slotList}? Selected and locked candidates are preserved.`)) break;
+          const result = await api(base()+'/delete-non-selected','POST',
+            {confirmation_token:inspection.confirmation_token});
+          if (result) { detail=result; updateLive(); status(`${candidates.length} non-selected candidate${candidates.length === 1 ? '' : 's'} deleted.`); }
           break;
         }
         case 'scene-text': if(!modeSelected())throw Error('Select an image first.'); await save(); await window.ZetSceneText.open({base:base(),universe,candidate:modeSelected(),done:async result=>{detail=result;updateLive();reviewCandidate=modeSelected();if(!host.querySelector('#image-dialog').open)host.querySelector('#image-dialog').showModal();renderImageReview();}});break;

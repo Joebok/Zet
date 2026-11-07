@@ -83,15 +83,15 @@
 .narrative-slot img { width:100%; height:180px; object-fit:contain; background:var(--surface-subtle); cursor:zoom-in; }
 .narrative-slot .placeholder { height:180px; background:var(--surface-subtle); display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
 .narrative-slot button, .narrative-slot a { font-size:.8rem; padding:.3rem .4rem; }
-button.candidate-regen-draft { color:#175cd3; border-color:#175cd3; }
-button.candidate-regen-final { color:#15803d; border-color:#15803d; }
-.narrative-app button.narrative-render-draft { background:#175cd3; border-color:#175cd3; color:white; }
+.candidate-board-actions { display:flex; flex-wrap:nowrap; gap:.5rem; align-items:center; overflow-x:auto; padding:.4rem 0; }
+.candidate-board-actions button { flex:0 0 auto; white-space:nowrap; }
+.candidate-board-actions button.candidate-board-render-draft { background:var(--info); border-color:var(--info); color:white; }
+.candidate-board-actions button.candidate-board-render-final { background:var(--success); border-color:var(--success); color:white; }
+.candidate-board-actions button.candidate-board-render-draft:hover,
+.candidate-board-actions button.candidate-board-render-final:hover { filter:brightness(.92); }
+button.candidate-regen-draft { color:var(--info); border-color:var(--info); }
+button.candidate-regen-final { color:var(--success); border-color:var(--success); }
 .narrative-generation-settings > summary::after { content:""; display:block; clear:both; }
-.narrative-summary-render-actions { float:right; display:inline-flex; gap:.35rem; margin-left:.75rem; }
-.narrative-generation-settings[open] .narrative-summary-render-actions { display:none; }
-.narrative-summary-render-actions button { padding:.2rem .45rem; font-size:.78rem; white-space:nowrap; }
-.narrative-app button.narrative-summary-render-draft { color:#175cd3; border-color:#175cd3; }
-.narrative-app button.narrative-summary-render-final { color:#15803d; border-color:#15803d; }
 .narrative-render-mode-pill { display:inline-block; padding:.12rem .48rem; border-radius:999px; font-size:.76rem; font-weight:700; line-height:1.35; }
 .narrative-render-mode-pill.draft { color:#175cd3; background:#eff6ff; }
 .narrative-render-mode-pill.final { color:#15803d; background:#ecfdf3; }

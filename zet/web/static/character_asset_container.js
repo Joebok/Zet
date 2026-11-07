@@ -1,4 +1,4 @@
-import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} from "./candidate_board.js";
+import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from "./candidate_board.js?v=20261107-board-actions";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -439,6 +439,7 @@ import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} fr
       universe_id: document.querySelector("#universe-select").value,
     };
     state.pipeline = pipeline || params.get("pipeline") || "body-reference";
+    $("board-actions").innerHTML = renderBoardActions();
     state.view = options.view ?? params.get("view") ?? "";
     state.costume = state.pipeline === "costume-dressing"
       ? options.costume ?? params.get("costume") ?? "" : "";
@@ -456,7 +457,7 @@ import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} fr
     $("phase-source-file").value = "";
     $("template-guidance").value = options.guidance ?? "";
     $("prompt-preview-button").disabled = false;
-    document.querySelectorAll(".character-container-render-action").forEach(button => { button.disabled = false; });
+    document.querySelectorAll(".candidate-board-actions button").forEach(button => { button.disabled = false; });
     $("title").textContent = pipelineLabels[state.pipeline] || "Character Asset Container";
     $("context").textContent = "";
     renderTemplateProposal();
@@ -502,7 +503,7 @@ import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} fr
     const view = state.view;
     const signal = state.controller.signal;
     const modal = $("review").open;
-    const buttons = [...document.querySelectorAll(".character-container-render-action")];
+    const buttons = [...document.querySelectorAll(".candidate-board-actions [data-board-action='render']")];
     state.mutation = true;
     buttons.forEach((button) => { button.disabled = true; });
     const feedback = (message, error = false) => modal && $("review").open
@@ -558,9 +559,68 @@ import {renderCandidateBoard, candidateActions, reviewPosition, reviewInputs} fr
     finally { if (!signal.aborted) button.disabled = false; }
   }
 
-  document.querySelectorAll(".character-container-render-action").forEach((button) => {
-    button.addEventListener("click", () => void generate(Number(button.dataset.count), button.dataset.quality));
+  $("board-actions").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-board-action]");
+    if (!button || state.mutation || !state.detail || !state.view) return;
+    if (button.dataset.boardAction === "render") {
+      void generate(Number(button.dataset.count), button.dataset.mode);
+      return;
+    }
+    void bulkBoardAction(button);
   });
+
+  async function bulkBoardAction(button) {
+    const action = button.dataset.boardAction;
+    const endpoint = action === "delete-drafts" ? "delete-drafts" : "delete-non-selected";
+    const title = action === "delete-drafts" ? "Delete Draft images?" : "Delete Non-Selected candidates?";
+    const prompt = action === "delete-drafts"
+      ? "Delete all Draft candidates in this view? Approve each selected or locked candidate affected."
+      : "Clear every candidate except selected or locked candidates in this view?";
+    const controls = [...$("board-actions").querySelectorAll("button")];
+    controls.forEach(control => { control.disabled = true; });
+    state.mutation = true;
+    show("Reviewing candidates to delete…");
+    try {
+      const endpointPath = `/views/${encodeURIComponent(state.view)}/${endpoint}`;
+      const path = api(endpointPath);
+      const preview = await request(api(`${endpointPath}/preview`), {method: "POST", body: "{}"});
+      const candidates = preview.candidates || [];
+      if (!candidates.length) { show("No candidates match this action."); return; }
+      const effects = (preview.protected_effects || []).map(effect => ({...effect,
+        preview_url: state.detail.boards[state.view].candidates[effect.candidate_id]?.image_path
+          ? imageUrl(effect.candidate_id) : ""}));
+      let approved = [];
+      if (effects.length) {
+        approved = await window.confirmProtectedEffects(title,
+          `${prompt} ${candidates.length} slot${candidates.length === 1 ? "" : "s"} will be cleared.`, effects,
+          action === "delete-drafts" ? "Delete Drafts" : "Delete Non-Selected");
+        if (approved === null) return;
+      } else if (!confirm(`${prompt}\n\n${candidates.length} slot${candidates.length === 1 ? "" : "s"} will be cleared.`)) return;
+      const result = await request(path, {method: "POST", body: JSON.stringify({
+        confirmation_token: preview.confirmation_token, expected_revision: preview.revision,
+        approved_effects: approved,
+      })});
+      const previous = state.detail.boards[state.view];
+      const removedReviewCandidate = previous.candidates[state.reviewCandidateId] &&
+        !result.boards[state.view].candidates[state.reviewCandidateId];
+      const previousSlot = previous.candidates[state.reviewCandidateId]?.slot || state.originSlot || 1;
+      state.detail = result;
+      render();
+      if ($("review").open) {
+        if (removedReviewCandidate) {
+          const slots = result.boards[state.view].slots;
+          const next = slots.slice(previousSlot).find(Boolean) || slots.slice(0, previousSlot - 1).reverse().find(Boolean);
+          if (next) review(next); else $("review").close();
+        } else renderReviewComparison();
+      }
+      show(`${candidates.length} candidate slot${candidates.length === 1 ? "" : "s"} cleared.`);
+    } catch (error) { reportError(error); }
+    finally {
+      state.mutation = false;
+      controls.forEach(control => { control.disabled = false; });
+      if ($("review").open) renderReviewComparison();
+    }
+  }
   $("prompt-preview-button").addEventListener("click", () => void previewPrompt());
   $("edit-template").addEventListener("click", async () => {
     const signal = state.controller.signal;

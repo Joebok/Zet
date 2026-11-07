@@ -4405,7 +4405,12 @@ async function confirmProtectedEffects(title, message, effects, confirmLabel = "
   const checks = effects.map(effect => {
     const label = document.createElement("label");
     const check = document.createElement("input"); check.type = "checkbox";
-    label.append(check, document.createTextNode(effect.label)); list.append(label);
+    label.append(check);
+    if (effect.preview_url) {
+      const image = document.createElement("img"); image.src = effect.preview_url;
+      image.alt = "Affected candidate preview"; label.append(image);
+    }
+    label.append(document.createTextNode(effect.label)); list.append(label);
     return check;
   });
   const actions = document.createElement("div"); actions.className = "button-row";
@@ -4711,7 +4716,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261107-candidate-board');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261107-board-actions');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;

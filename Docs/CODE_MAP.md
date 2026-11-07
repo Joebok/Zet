@@ -11,7 +11,10 @@ and the [completed migration plan](../plans/completed/character-image-production
 The character container controller renders a pipeline overview or a Candidate
 Board according to the optional route view. The dashboard shell owns header
 scope changes. `candidate_board.js` and the shared styles in `narrative.css`
-own card and review actions and layout for Character and Narrative.
+own card and review actions, the shared render/cleanup toolbar, and layout for
+Character and Narrative. Character bulk cleanup is owned by
+`CharacterAssetContainerService`; Narrative target cleanup is owned by
+`NarrativeGenerationService`.
 The shared `draft_upscale_request` in `image_render_request.py` freezes a
 single-image Qwen edit at the Draft's exact ratio. The Character and Narrative
 board services settle the existing slot through their normal AI_Proxy polling.

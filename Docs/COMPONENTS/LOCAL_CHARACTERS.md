@@ -31,6 +31,10 @@ Render actions are explicit: Draft 1, Draft 4, Final 1, or Final 4. The pipeline
 prepares the prompt and ordered references; the common image-production path queues
 on demand and returns harvested results to the owning slots. Candidate review uses
 the shared board actions for selection, locking, retry, regeneration, and clearing.
+All five boards use the shared action row: blue Draft 1/4, green Final 1/4, outlined
+Delete Drafts, and solid-red Delete Non-Selected. Bulk actions preview affected
+slots and candidate images, and fence commit to the current container revision. Delete Non-Selected keeps
+selected and locked candidates; both actions wait for affected renders to settle.
 The up arrow on a completed, unlocked Draft queues a Qwen upscale. The Draft
 stays visible until the validated Final replaces it in the same slot, with the
 original generation prompt and captured inputs.

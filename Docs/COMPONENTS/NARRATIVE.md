@@ -12,6 +12,13 @@ image's quality, and scene-text confirmation selects the affected image.
 Older two-board targets require the versioned dry-run migration before opening.
 See the Narrative-specific decision following ADR 0039.
 
+Narrative candidate targets use the same shared action row as Character boards:
+blue Draft 1/4, green Final 1/4, outlined Delete Drafts, and solid-red Delete
+Non-Selected. Draft deletion retains its protected-effects preview. Delete
+Non-Selected previews its exact slots and preserves selected/locked candidates;
+non-selected deletion waits for affected renders to settle. Draft deletion cancels
+matching Draft work using its existing job cleanup path.
+
 Saved prompt changes set a permanent, advisory `source_change_fyi` on affected
 finished candidates. Target polling requests detail only while generation or
 collection is active. Draft cleanup requires a state-bound preview and approval
