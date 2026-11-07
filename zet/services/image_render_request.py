@@ -17,6 +17,12 @@ DRAFT_UPSCALE_PROMPT = (
     "Preserve the existing lettering, symbols, and markings exactly as shown."
 )
 
+TRANSPARENT_DRAFT_INSTRUCTION = (
+    "Render the artwork as an isolated cutout on a fully transparent background. "
+    "Leave the empty canvas and gaps around the subject transparent in the PNG alpha channel. "
+    "Keep fine hair and other soft edges naturally translucent, with clean edges free of any background color."
+)
+
 
 @dataclass(frozen=True)
 class ImageRenderRequest:
@@ -57,8 +63,13 @@ def draft_upscale_request(config, target_id: str, candidate_id: str, candidate: 
     profile = LocalRenderBackendService(presets_path, config=config).preset(preset)
     if not profile:
         raise ValueError("The Qwen Image 2.1 edit profile is unavailable.")
+    prompt = DRAFT_UPSCALE_PROMPT
     with Image.open(source) as image:
         width, height = image.size
+        if "A" in image.getbands() or "transparency" in image.info:
+            # Qwen may emit slight alpha variation even on an opaque render.
+            if image.convert("RGBA").getchannel("A").getextrema()[0] < 128:
+                prompt = f"{TRANSPARENT_DRAFT_INSTRUCTION} {prompt}"
     divisor = gcd(width, height)
     ratio = f"{width // divisor}:{height // divisor}"
     unit_width, unit_height = width // divisor * 32, height // divisor * 32
@@ -73,7 +84,7 @@ def draft_upscale_request(config, target_id: str, candidate_id: str, candidate: 
     output_width, output_height = unit_width * scale, unit_height * scale
     sizing = {"render_mode": "final", "aspect_ratio": ratio, "width": output_width,
               "height": output_height, "target_pixels": output_width * output_height}
-    frozen = frozen_input(directory, DRAFT_UPSCALE_PROMPT,
+    frozen = frozen_input(directory, prompt,
         [{"path": str(source), "role": "Draft image"}], preset, render_sizing=sizing)
     settings = {**sizing, "profile": preset, "profile_snapshot": profile,
                 "checkpoint": profile["diffusion_model"], "disable_prompt_globals": True}
