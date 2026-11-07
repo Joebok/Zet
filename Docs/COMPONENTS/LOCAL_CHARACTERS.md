@@ -55,15 +55,25 @@ saved Final choice, falling back to Draft only when Final was not saved.
 The container also opens the governing `Character.md` in the shared source editor;
 new prompt compilation always uses the current master.
 
-Template improvement is an optional, explicit action on a finished board
-candidate. `CharacterContainerTemplateService` captures the candidate image,
+Template improvement is an optional, explicit container action. In candidate
+mode, `CharacterContainerTemplateService` captures the candidate image,
 submitted prompt, and frozen ordered inputs, proposes and validates a complete
 master edit, then compiles a preview for the same view using those captured
 inputs. The operator reviews the diff and prompt before accepting through
 `SourceEditorService`; a master revision check prevents overwriting intervening
 edits. Acceptance changes future compilation only. The latest proposal restores
-when its container opens. This path has no run ownership, trial render, or
-background authoring poller.
+when its container opens. This path has no run ownership or trial render.
+
+The container overview now has a separate, collapsible Template Improvement
+panel. It can analyze current governing sources and eight non-renderable text
+prompts without an image or direction, or analyze a finished candidate's frozen
+image, submitted prompt and ordered inputs. Reviews persist under the container;
+individual exact-text findings start unselected. The operator previews selected
+edits and explicitly accepts them with current-master revision checks. Dressing
+can propose edits to Character.md and its selected Costume template; both also
+open directly in the shared source editor. Assembly supports optional text
+review. Current board work never waits for review, and existing asks remain
+frozen. The earlier whole-file candidate proposal format remains readable.
 
 Costume rename retains the same Dressing container ID and candidate board under
 the new canonical slug, updating saved paths inside its records. It refuses

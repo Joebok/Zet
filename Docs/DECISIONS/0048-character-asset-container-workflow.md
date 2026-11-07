@@ -69,6 +69,13 @@ candidate's captured inputs. The operator explicitly accepts through the shared
 source editor with a master revision check. This changes only future requests;
 it does not create an automatic trial render or gate board work.
 
+The container also supports text-only current-master analysis before a candidate
+exists. Both modes offer individual exact-text suggestions; selected corrections
+are compiled for review and saved only after explicit revision-fenced acceptance.
+Dressing may edit its selected Costume master alongside Character.md. An active
+review blocks costume rename; a saved review based on a renamed Costume master
+remains history and requires fresh analysis before acceptance.
+
 ## Rationale
 
 The Asset Container is the persistent workflow identity; batch membership is no

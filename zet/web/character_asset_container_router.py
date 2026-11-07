@@ -43,6 +43,35 @@ def create_character_asset_container_router(resolve_app):
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @router.get("/api/character-containers/{pipeline}/template-sources")
+    def template_sources(pipeline: str, character: str = Query(...), phase: str = Query(...),
+                         costume: str = Query(""), universe_id: str = Query("")):
+        try:
+            instance = template_service(universe_id)
+            scope = instance.containers._scope(character, phase, pipeline, costume)
+            return {"sources": [{key: value for key, value in source.items() if key not in {"text", "sha256"}}
+                                for source in instance._sources(scope)]}
+        except (CharacterContainerTemplateError, CharacterAssetContainerError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.post("/api/character-containers/{pipeline}/template-reviews")
+    def start_template_review(pipeline: str, payload: dict = Body(...), character: str = Query(...),
+                              phase: str = Query(...), costume: str = Query(""), universe_id: str = Query("")):
+        try:
+            return template_service(universe_id).start_review(character, phase, pipeline, costume, payload)
+        except (CharacterContainerTemplateError, CharacterAssetContainerError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.put("/api/character-containers/{pipeline}/template-proposals/{proposal_id}/decisions")
+    def decide_template_review(pipeline: str, proposal_id: str, payload: dict = Body(...),
+                               character: str = Query(...), phase: str = Query(...),
+                               costume: str = Query(""), universe_id: str = Query("")):
+        try:
+            return template_service(universe_id).decide(character, phase, pipeline, costume,
+                proposal_id, payload.get("selected_ids"))
+        except (CharacterContainerTemplateError, CharacterAssetContainerError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @router.post("/api/character-containers/{pipeline}/template-proposals")
     def propose_template(pipeline: str, payload: dict = Body(...),
                          character: str = Query(...), phase: str = Query(...),
@@ -78,8 +107,13 @@ def create_character_asset_container_router(resolve_app):
                           character: str = Query(...), phase: str = Query(...),
                           costume: str = Query(""), universe_id: str = Query("")):
         try:
-            return template_service(universe_id).accept(character, phase, pipeline, costume,
-                proposal_id, confirm=payload.get("confirm") is True)
+            instance = template_service(universe_id)
+            record = instance.detail(character, phase, pipeline, costume, proposal_id)
+            if record.get("schema_version") == 2:
+                return instance.accept_review(character, phase, pipeline, costume,
+                    proposal_id, confirm=payload.get("confirm") is True)
+            return instance.accept(character, phase, pipeline, costume, proposal_id,
+                confirm=payload.get("confirm") is True)
         except (CharacterContainerTemplateError, CharacterAssetContainerError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

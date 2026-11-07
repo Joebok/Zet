@@ -9,7 +9,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   };
   const state = {pipeline: "", costume: "", view: "", detail: null,
     timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null,
-    reviewCandidateId: "", mutation: false, originSlot: null, scope: null, controller: null};
+    reviewCandidateId: "", mutation: false, originSlot: null, scope: null, controller: null, templateTimer: null};
   const activeCandidateStates = new Set(["SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"]);
   const escape = (value) => String(value ?? "").replace(/[&<>"']/g,
     (char) => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[char]));
@@ -192,7 +192,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       selectedId: board.selected_id, escape, imageUrl,
       renderActions: (candidate, index) => renderActions(candidate, index + 1),
       renderDetails: (candidate) => candidate
-        ? `<details class="candidate-request-details"><summary>Submitted prompt and references</summary><pre>${escape(candidate.prompt || "")}</pre><ul>${(candidate.render_request?.inputs || []).map(item => `<li>${escape(item.role || "Reference")}${item.render_mode ? ` · ${escape(item.render_mode)}` : ""}</li>`).join("")}</ul>${candidate.status === "PREPARED" ? `<button data-board-action="submit" data-candidate-id="${escape(candidate.candidate_id)}">Generate</button>` : ""} ${candidate.status === "COMPLETE" && candidate.image_path ? `<button data-template-improve="${escape(candidate.candidate_id)}">Suggest Character.md edit from this image</button>` : ""}</details>`
+        ? `<details class="candidate-request-details"><summary>Submitted prompt and references</summary><pre>${escape(candidate.prompt || "")}</pre><ul>${(candidate.render_request?.inputs || []).map(item => `<li>${escape(item.role || "Reference")}${item.render_mode ? ` · ${escape(item.render_mode)}` : ""}</li>`).join("")}</ul>${candidate.status === "PREPARED" ? `<button data-board-action="submit" data-candidate-id="${escape(candidate.candidate_id)}">Generate</button>` : ""} ${candidate.status === "COMPLETE" && candidate.image_path ? `<button data-template-improve="${escape(candidate.candidate_id)}">Improve template from this image</button>` : ""}</details>`
         : ""});
     const host = $("board");
     const focused = document.activeElement;
@@ -227,6 +227,9 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const phaseSource = sources.phase_change ?? byMode.final ?? byMode.draft ?? {};
     const authoring = $("authoring");
     authoring.hidden = Boolean(state.view);
+    $("template-improvement").hidden = Boolean(state.view);
+    $("edit-costume-template").hidden = state.pipeline !== "costume-dressing";
+    renderTemplateChoices();
     $("apply-wrap").hidden = !isHead() || state.view !== "FRONT";
     $("phase-source").hidden = !["head-image", "head-image-edit"].includes(state.pipeline);
     $("assembly-source").hidden = state.pipeline !== "character-assembly";
@@ -370,12 +373,110 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     }
   }
 
+  function renderTemplateChoices() {
+    if (!state.detail) return;
+    const picker = $("template-candidate");
+    const chosen = picker.value;
+    const options = [new Option("Choose a finished candidate", "")];
+    for (const [view, board] of Object.entries(state.detail.boards)) {
+      for (const candidate of Object.values(board.candidates)) {
+        if (candidate.status === "COMPLETE" && candidate.image_path && board.slots.includes(candidate.candidate_id)) {
+          options.push(new Option(`${view.replaceAll("_", " ")} · slot ${candidate.slot} · ${candidate.render_mode}`,
+            `${view}:${candidate.candidate_id}`));
+        }
+      }
+    }
+    picker.replaceChildren(...options); picker.value = chosen;
+  }
+
+  function updateTemplateMode() {
+    $("template-candidate-wrap").hidden = $("template-mode").value !== "candidate";
+  }
+
+  function watchTemplateReview() {
+    clearInterval(state.templateTimer); state.templateTimer = null;
+    if (!state.active || state.view || !$("template-improvement").open ||
+        state.templateProposal?.schema_version !== 2 || state.templateProposal.status !== "PROPOSING") return;
+    state.templateTimer = setInterval(async () => {
+      if (!state.active || state.view || !$("template-improvement").open) { clearInterval(state.templateTimer); state.templateTimer = null; return; }
+      try {
+        state.templateProposal = await request(api(`/template-proposals/${state.templateProposal.proposal_id}`));
+        renderTemplateProposal();
+        if (state.templateProposal.status !== "PROPOSING") { clearInterval(state.templateTimer); state.templateTimer = null; }
+      } catch (error) { reportError(error); clearInterval(state.templateTimer); state.templateTimer = null; }
+    }, 3000);
+  }
+
   function renderTemplateProposal() {
     const host = $("template-proposal");
     const proposal = state.templateProposal;
     host.replaceChildren();
     host.hidden = !proposal;
     if (!proposal) return;
+    if (proposal.schema_version === 2) {
+      const heading = document.createElement("h3");
+      heading.textContent = `Template review · ${proposal.status}`;
+      host.append(heading);
+      if (proposal.error) { const error = document.createElement("p"); error.textContent = proposal.error; host.append(error); }
+      if (proposal.summary) { const summary = document.createElement("p"); summary.textContent = proposal.summary; host.append(summary); }
+      if (proposal.status === "REVIEW_READY" || proposal.status === "ACCEPTED") {
+        const list = document.createElement("div");
+        for (const finding of proposal.findings || []) {
+          const label = document.createElement("label");
+          const check = document.createElement("input"); check.type = "checkbox"; check.value = finding.id;
+          check.checked = (proposal.selected_ids || []).includes(finding.id);
+          check.disabled = proposal.status === "ACCEPTED";
+          label.append(check, document.createTextNode(`${finding.source_id} · ${finding.views.join(", ")} · ${finding.rationale}`));
+          const before = document.createElement("pre"); before.textContent = `Before\n${finding.before}`;
+          const after = document.createElement("pre"); after.textContent = `After\n${finding.after}`;
+          list.append(label, before, after);
+        }
+        if (!(proposal.findings || []).length) { const none = document.createElement("p"); none.textContent = "No changes suggested."; list.append(none); }
+        host.append(list);
+        if (proposal.status === "REVIEW_READY") {
+          const review = document.createElement("button"); review.type = "button"; review.textContent = "Preview selected corrections";
+          review.addEventListener("click", async () => {
+            review.disabled = true;
+            try {
+              const ids = [...list.querySelectorAll("input:checked")].map(input => input.value);
+              state.templateProposal = await request(api(`/template-proposals/${proposal.proposal_id}/decisions`),
+                {method: "PUT", body: JSON.stringify({selected_ids: ids})});
+              renderTemplateProposal();
+            } catch (error) { reportError(error); review.disabled = false; }
+          });
+          host.append(review);
+        }
+        for (const diff of proposal.diffs || []) {
+          const details = document.createElement("details");
+          const summary = document.createElement("summary"); summary.textContent = `${diff.source_id} master → proposed`;
+          const pre = document.createElement("pre"); pre.textContent = (diff.rows || []).map(row =>
+            row.kind === "gap" ? "…" : `${row.master_line == null ? "" : `− ${row.master_text || ""}`}\n${row.proposed_line == null ? "" : `+ ${row.proposed_text || ""}`}`).join("\n");
+          details.append(summary, pre); host.append(details);
+        }
+        if (proposal.previews) {
+          const previews = document.createElement("details");
+          const summary = document.createElement("summary"); summary.textContent = "Compiled prompt previews"; previews.append(summary);
+          for (const item of proposal.previews) { const detail = document.createElement("details");
+            const title = document.createElement("summary"); title.textContent = item.view;
+            const pre = document.createElement("pre"); pre.textContent = item.prompt; detail.append(title, pre); previews.append(detail); }
+          host.append(previews);
+          if (proposal.status === "REVIEW_READY") {
+            const accept = document.createElement("button"); accept.type = "button"; accept.textContent = "Accept selected corrections and save masters";
+            list.addEventListener("change", () => { accept.disabled = true;
+              accept.title = "Preview the changed selection before accepting."; });
+            accept.addEventListener("click", async () => {
+              if (!confirm("Save the selected corrections to the governing master templates?")) return;
+              accept.disabled = true;
+              try { state.templateProposal = await request(api(`/template-proposals/${proposal.proposal_id}/accept`),
+                {method: "POST", body: JSON.stringify({confirm: true})}); renderTemplateProposal();
+                show("Governing templates updated for future prompts."); }
+              catch (error) { reportError(error); accept.disabled = false; }
+            }); host.append(accept);
+          }
+        }
+      }
+      return;
+    }
     const heading = document.createElement("h3");
     heading.textContent = `${proposal.status === "ACCEPTED" ? "Accepted template proposal" : "Template proposal"} · ${proposal.view} · ${proposal.render_mode}`;
     const summary = document.createElement("p"); summary.textContent = proposal.summary || "";
@@ -415,6 +516,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   }
 
   function deactivate() {
+    clearInterval(state.templateTimer); state.templateTimer = null;
     state.controller?.abort();
     state.request += 1;
     state.sourceRequest += 1;
@@ -446,8 +548,9 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     state.originSlot = null;
     state.reviewCandidateId = "";
     for (const id of ["board", "outputs", "review-pair", "review-prompt", "prompt-references", "source-status", "prompt-text"]) $(id).replaceChildren();
-    for (const id of ["workspace", "outputs", "authoring", "prompt-preview", "refresh", "costume-wrap"]) $(id).hidden = true;
-    $("authoring").open = Boolean(options.proposal);
+    for (const id of ["workspace", "outputs", "authoring", "template-improvement", "prompt-preview", "refresh", "costume-wrap"]) $(id).hidden = true;
+    $("authoring").open = false;
+    $("template-improvement").open = Boolean(options.proposal || options.templateCandidate);
     $("apply-phase-change").checked = false;
     $("phase-source-file").value = "";
     $("template-guidance").value = options.guidance ?? "";
@@ -477,10 +580,20 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       await loadDetail();
       controller.signal.throwIfAborted();
       syncRoute();
-      if (!state.view && !options.proposal) {
+      if (!state.view) {
+        const sources = await request(api("/template-sources"));
+        $("template-sources").replaceChildren(...sources.sources.map(source => {
+          const label = document.createElement("label"); const input = document.createElement("input");
+          input.type = "checkbox"; input.value = source.source_id; input.checked = true;
+          label.append(input, document.createTextNode(` Improve ${source.source_id}`)); return label;
+        }));
         const savedProposal = await request(api("/template-proposals"));
-        state.templateProposal = savedProposal.proposal;
+        if (!options.proposal) state.templateProposal = savedProposal.proposal;
         renderTemplateProposal();
+        renderTemplateChoices();
+        if (options.templateCandidate) { $("template-mode").value = "candidate";
+          $("template-candidate").value = options.templateCandidate; updateTemplateMode(); }
+        watchTemplateReview();
       }
       show("Container ready.");
     } catch (error) {
@@ -626,6 +739,40 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
         (message) => show(message, true), signal);
     } catch (error) { reportError(error); }
   });
+  $("edit-costume-template").addEventListener("click", async () => {
+    try {
+      const sources = await request(api("/template-sources"));
+      const costume = sources.sources.find(source => source.kind === "costume");
+      if (!costume) throw new Error("The governing Costume template is unavailable.");
+      await window.ZetSourceEditor.open({source_path: costume.source_path,
+        source_label: costume.source_id, editable: true}, (message) => show(message, true), state.controller.signal);
+    } catch (error) { reportError(error); }
+  });
+  window.ZetModelPicker?.attach($("template-model"), {required: ["text"], allowDefault: true});
+  $("template-mode").addEventListener("change", updateTemplateMode);
+  $("template-improvement").addEventListener("toggle", watchTemplateReview);
+  $("template-reload").addEventListener("click", async () => {
+    try { state.templateProposal = (await request(api("/template-proposals"))).proposal;
+      renderTemplateProposal(); watchTemplateReview(); }
+    catch (error) { reportError(error); }
+  });
+  $("template-analyze").addEventListener("click", async () => {
+    if (!state.detail) return;
+    const button = $("template-analyze"); button.disabled = true;
+    const mode = $("template-mode").value;
+    const choice = $("template-candidate").value;
+    if (mode === "candidate" && !choice) { $("template-status").textContent = "Choose a finished candidate."; button.disabled = false; return; }
+    const [view, candidate_id] = mode === "candidate" ? choice.split(":") : ["", ""];
+    try {
+      state.templateProposal = await request(api("/template-reviews"), {method: "POST",
+        body: JSON.stringify({mode, view, candidate_id, direction: $("template-guidance").value,
+          model: $("template-model").value, expected_revision: state.detail.revision,
+          source_ids: [...$("template-sources").querySelectorAll("input:checked")].map(input => input.value)})});
+      $("template-status").textContent = "Analyzing templates…";
+      renderTemplateProposal(); watchTemplateReview();
+    } catch (error) { $("template-status").textContent = error.message; reportError(error); }
+    finally { button.disabled = false; }
+  });
   function refresh() {
     void loadDetail().then(pollProgress).catch(reportError);
   }
@@ -683,17 +830,9 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     }
     const improve = event.target.closest("[data-template-improve]");
     if (improve) {
-      improve.disabled = true;
-      const originalLabel = improve.textContent;
-      improve.textContent = "Preparing proposal…";
-      try {
-        const proposal = await request(api("/template-proposals"), {method: "POST",
-          body: JSON.stringify({view: state.view, candidate_id: improve.dataset.templateImprove,
-            direction: $("template-guidance").value, expected_revision: state.detail.revision})});
-        history.pushState({}, "", route(""));
-        await activate(state.pipeline, {view: "", costume: state.costume, proposal});
-      } catch (error) { reportError(error); }
-      finally { improve.disabled = false; improve.textContent = originalLabel; }
+      const candidate = `${state.view}:${improve.dataset.templateImprove}`;
+      history.pushState({}, "", route(""));
+      await activate(state.pipeline, {view: "", costume: state.costume, templateCandidate: candidate});
       return;
     }
     await boardAction(event);

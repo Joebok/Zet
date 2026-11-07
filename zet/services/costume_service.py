@@ -186,7 +186,10 @@ class CostumeService:
             raise CostumeServiceError("Recover the Costume Dressing publication before renaming the costume.")
         for metadata_path in old_dir.rglob("*.json"):
             try:
-                json.loads(metadata_path.read_text(encoding="utf-8"))
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if ("template-proposals" in metadata_path.parts and isinstance(metadata, dict)
+                        and metadata.get("status") == "PROPOSING"):
+                    raise CostumeServiceError("Wait for Costume Dressing template analysis to finish before renaming.")
             except (OSError, json.JSONDecodeError) as exc:
                 raise CostumeServiceError(f"Costume Dressing metadata is unreadable: {metadata_path}") from exc
 
@@ -221,7 +224,13 @@ class CostumeService:
                 payload = json.loads(metadata_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as exc:
                 raise CostumeServiceError(f"Cannot update Costume Dressing metadata after rename: {metadata_path}") from exc
-            write_json_atomic(metadata_path, update(payload))
+            updated = update(payload)
+            if ("template-proposals" in metadata_path.parts and isinstance(updated, dict)
+                    and updated.get("schema_version") == 2
+                    and any(source.get("kind") == "costume" for source in updated.get("sources", []))
+                    and updated.get("status") == "REVIEW_READY"):
+                updated.update(status="STALE", error="Costume master was renamed; analyze again from current masters.")
+            write_json_atomic(metadata_path, updated)
 
     def _rename_turnaround_data(self, character: str, phase: str, old_name: str, new_name: str) -> None:
         """Keep tracked Costume-Dressing turnaround metadata and files aligned."""

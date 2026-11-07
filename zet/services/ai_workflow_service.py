@@ -38,6 +38,7 @@ class AIWorkflowService:
         "reconstruction": {"_run", "_comparison_task", "_correction_task"},
         "image_prompt": {"_run"},
         "template_revision": {"_propose_job", "_review_job"},
+        "container_template_revision": {"_review_job"},
         "character_refinement": {"_analysis_job", "_render_job"},
         "post_render_prompt": {"_analysis_job", "_render_job"},
         "post_render_costume": {"_analysis_job", "_render_job", "_evaluation_job"},
@@ -161,6 +162,10 @@ class AIWorkflowService:
             from pathlib import Path
             from zet.services.local_template_revision_service import LocalTemplateRevisionService
             return LocalTemplateRevisionService(self.app, Path(__file__).resolve().parents[2])
+        if name == "container_template_revision":
+            from pathlib import Path
+            from zet.services.character_container_template_service import CharacterContainerTemplateService
+            return CharacterContainerTemplateService(self.app, Path(__file__).resolve().parents[2])
         if name == "minor":
             return self.app.minor_character_service
         if name == "costume":

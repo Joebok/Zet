@@ -389,12 +389,7 @@
       <details id="character-container-authoring" class="control-panel" hidden>
         <summary>Container settings</summary>
         <button id="character-container-edit-template" type="button">Edit governing Character.md</button>
-        <section class="control-panel">
-          <h2>Optional template improvement</h2>
-          <p class="muted">Use a finished board candidate as evidence for a proposed Character.md edit. Review and accept it to update the master for future prompts.</p>
-          <label>Improvement direction<textarea id="character-container-template-guidance" rows="2" maxlength="20000"></textarea></label>
-          <div id="character-container-template-proposal" hidden></div>
-        </section>
+        <button id="character-container-edit-costume-template" type="button" hidden>Edit governing Costume template</button>
         <div id="character-container-phase-source" class="button-row compact" hidden>
           <p class="muted">One source applies to new FRONT requests at both qualities. A locked source follows the current locked FRONT in the chosen phase and pipeline.</p>
           <label>Source phase<select id="character-container-source-phase"></select></label>
@@ -409,6 +404,18 @@
           <label>Head family<select id="character-container-head-pipeline"><option value="head-image">Head Image Construct</option><option value="head-image-edit">Head Image Edit</option></select></label>
           <button id="character-container-save-head-pipeline" type="button">Save head family</button>
         </div>
+      </details>
+      <details id="character-container-template-improvement" class="control-panel template-improvement" hidden>
+        <summary>Template Improvement</summary>
+        <p class="muted">Optional analysis of current prompts, with a finished image as evidence if you choose one. Changes reach governing masters only after review and acceptance.</p>
+        <div id="character-container-template-sources"></div>
+        <label>Analysis mode<select id="character-container-template-mode"><option value="text">Current masters and prompts</option><option value="candidate">Finished candidate and captured inputs</option></select></label>
+        <label id="character-container-template-candidate-wrap" hidden>Finished candidate<select id="character-container-template-candidate"></select></label>
+        <label>Improvement direction (optional)<textarea id="character-container-template-guidance" rows="2" maxlength="20000"></textarea></label>
+        <label>Review model<input id="character-container-template-model" type="text"></label>
+        <div class="button-row"><button id="character-container-template-analyze" type="button">Analyze prompts</button><button id="character-container-template-reload" type="button">Reload saved results</button></div>
+        <p id="character-container-template-status" role="status"></p>
+        <div id="character-container-template-proposal" hidden></div>
       </details>
       <p id="character-container-source-status" class="muted" role="status"></p>
       <p id="character-container-status" class="muted" role="status" aria-live="polite"></p>

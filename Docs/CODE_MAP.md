@@ -2,11 +2,16 @@
 
 Character Asset Container template improvement is owned by
 `CharacterContainerTemplateService`: it stores finished-candidate-backed
-Character.md proposals, validates and compiles captured-input previews, and
+Character.md proposals and text-only reviews, validates and compiles previews, and
 promotes only after explicit acceptance and a current-master revision check.
 The container router and `character_asset_container.js` expose proposal review
 on the Assets container page. See [Local Characters](COMPONENTS/LOCAL_CHARACTERS.md#character-asset-container-workflow-2026-11-06)
 and the [completed migration plan](../plans/completed/character-image-production-workflow.md).
+The service now also persists optional text-only, eight-view reviews and selected
+exact-text corrections for Character.md and Dressing's Costume template.
+`CharacterContainerTextPreviewService` builds declared, non-renderable prompts;
+`AIWorkflowService` resumes review continuations. The container controller owns
+the separate disclosure, source/evidence controls, findings and preview actions.
 
 The character container controller renders a pipeline overview or a Candidate
 Board according to the optional route view. The dashboard shell owns header
