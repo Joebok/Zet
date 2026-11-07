@@ -78,6 +78,65 @@ class CharacterContainerTemplateService:
                  "text": path.read_text(encoding="utf-8"),
                  "sha256": self._hash(path.read_bytes())} for path in paths]
 
+    @staticmethod
+    def _finding_views(values: object, scope: dict) -> list[str]:
+        from zet.services.view_conditioning_service import VIEW_ORDER, ViewConditioningError, _expand
+        if not isinstance(values, list) or not values or any(not isinstance(value, str) for value in values):
+            raise ValueError("views must be a nonempty list of view names.")
+        result = set()
+        expected_domain = "head" if scope["pipeline"].startswith("head-image") else "body"
+        for value in values:
+            if value in VIEW_ORDER:
+                result.add(value)
+                continue
+            try:
+                domain, expanded = _expand(value, path="<review>", section="views", line=1)
+            except ViewConditioningError as exc:
+                raise ValueError(f"Unknown affected view {value!r}.") from exc
+            if domain and domain != expected_domain:
+                raise ValueError(f"Affected view {value!r} belongs to the {domain} domain.")
+            result.update(expanded)
+        return [view for view in VIEW_ORDER if view in result]
+
+    @classmethod
+    def _review_findings(cls, answer: dict, record: dict) -> tuple[list[dict], list[dict]]:
+        sources = {source["source_id"]: source for source in record["sources"]}
+        accepted, rejected = [], []
+        for index, finding in enumerate(answer["findings"], 1):
+            source_id = finding.get("source_id") if isinstance(finding, dict) else None
+            reasons = []
+            source = sources.get(source_id) if isinstance(source_id, str) else None
+            if not source or source_id not in record["source_ids"]:
+                reasons.append("Source is not selected for this review.")
+            before = finding.get("before") if isinstance(finding, dict) else None
+            after = finding.get("after") if isinstance(finding, dict) else None
+            rationale = finding.get("rationale") if isinstance(finding, dict) else None
+            if not isinstance(before, str) or not before or not isinstance(after, str) or before == after or not isinstance(rationale, str):
+                reasons.append("Correction needs distinct nonempty before/after text and a rationale.")
+            elif source:
+                if source["text"].count(before) != 1:
+                    reasons.append("Before text must match exactly one location in the selected source.")
+                else:
+                    replacement = source["text"].replace(before, after, 1)
+                    try:
+                        LocalTemplateRevisionService._validate_text(source["text"], replacement)
+                        LocalTemplateRevisionService._validate_owned(record["pipeline"], source, source["text"], replacement)
+                    except ValueError as exc:
+                        reasons.append(str(exc))
+            raw_views = finding.get("views") if isinstance(finding, dict) else None
+            try:
+                views = cls._finding_views(raw_views, record["scope"])
+            except ValueError as exc:
+                views = []
+                reasons.append(str(exc))
+            if reasons:
+                rejected.append({"number": index, "source_id": str(source_id or "")[:100],
+                                 "reported_views": [str(item)[:80] for item in raw_views[:16]] if isinstance(raw_views, list) else [],
+                                 "reasons": [reason[:300] for reason in reasons]})
+            else:
+                accepted.append({**finding, "id": str(index), "views": views})
+        return accepted, rejected
+
     def start_review(self, character: str, phase: str, pipeline: str, costume: str,
                      payload: dict) -> dict:
         container = self.containers.detail(character, phase, pipeline, costume)
@@ -141,6 +200,7 @@ class CharacterContainerTemplateService:
         record = self._read(scope, proposal_id)
         if record["status"] != "PROPOSING":
             return
+        stage = "compile prompts"
         try:
             from zet.services.llm_role_service import resolve_role_model
             from zet.services.character_container_text_preview_service import CharacterContainerTextPreviewService
@@ -157,40 +217,38 @@ class CharacterContainerTemplateService:
                 "findings": {"type": "array", "items": {"type": "object", "properties": {
                     "source_id": {"type": "string"}, "before": {"type": "string"},
                     "after": {"type": "string"}, "rationale": {"type": "string"},
-                    "views": {"type": "array", "items": {"type": "string"}}},
+                    "views": {"type": "array", "items": {"type": "string", "enum": scope["views"]}}},
                     "required": ["source_id", "before", "after", "rationale", "views"],
                     "additionalProperties": False}}}, "required": ["summary", "findings"],
                     "additionalProperties": False}
             prompt = ("Suggest focused, independent exact-text corrections to selected governing templates. "
                 "Return no findings when no justified edit exists. Preserve identity, markers, placeholders, "
-                "view annotations and reference order. Do not edit unselected sources.\n"
+                "view annotations and reference order. Do not edit unselected sources. "
+                "Each before must match one unique source substring. Report affected views using only these "
+                f"full names: {', '.join(scope['views'])}; views are not source tags or pipeline names. "
+                + ("For Head Image Edit, change only text inside HEAD_EDIT_* sections of Character.md. "
+                   "Other Character.md sections are read-only context. " if scope["pipeline"] == "head-image-edit" else "") + "\n"
                 f"Pipeline: {scope['pipeline']}; mode: {record['mode']}; direction: {record['direction']}\n"
                 f"Editable sources: {record['source_ids']}\n"
                 f"Sources: {[(s['source_id'], s['text']) for s in record['sources']]}\n"
                 f"Compiled prompts: {prompts}")
             model = str(resolve_role_model(self.app.config, "character_prompt_review", record["model"]))
+            stage = "model response"
             answer, runtime = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
                 model, "", prompt, schema, images, task_type="character_template_revision",
                 role="template_revision", render_context={"operation": "mixed", "bindings_owned_by_zet": True},
                 workflow=scope["pipeline"], owner={"container_id": record["container_id"], "proposal_id": proposal_id})
             if not isinstance(answer, dict) or not isinstance(answer.get("summary"), str) or not isinstance(answer.get("findings"), list):
                 raise ValueError("Template analysis returned an invalid response.")
-            by_id = {source["source_id"]: source for source in record["sources"]}
-            findings = []
-            for index, finding in enumerate(answer["findings"]):
-                if (not isinstance(finding, dict) or finding.get("source_id") not in record["source_ids"]
-                        or not all(isinstance(finding.get(key), str) for key in ("before", "after", "rationale"))
-                        or not finding["before"] or finding["before"] == finding["after"]
-                        or not isinstance(finding.get("views"), list)
-                        or any(view not in scope["views"] for view in finding["views"])):
-                    raise ValueError("Template analysis proposed an invalid correction.")
-                if by_id[finding["source_id"]]["text"].count(finding["before"]) != 1:
-                    raise ValueError("A proposed correction does not match exactly one source location.")
-                findings.append({**finding, "id": str(index + 1)})
-            record.update(status="REVIEW_READY", findings=findings, summary=answer["summary"],
+            stage = "validate findings"
+            findings, rejected = self._review_findings(answer, record)
+            record.update(status="REVIEW_READY" if findings or not answer["findings"] else "FAILED",
+                          findings=findings, rejected_findings=rejected, summary=answer["summary"],
                           runtime=runtime, current_prompts=prompts, model=model)
+            if record["status"] == "FAILED":
+                record.update(error="All proposed corrections were rejected.", failure_stage=stage)
         except Exception as exc:
-            record.update(status="FAILED", error=str(exc))
+            record.update(status="FAILED", error=str(exc), failure_stage=stage)
         write_json_atomic(path, record)
 
     def propose(self, character: str, phase: str, pipeline: str, costume: str,

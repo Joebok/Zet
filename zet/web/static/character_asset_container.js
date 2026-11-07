@@ -417,8 +417,24 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       const heading = document.createElement("h3");
       heading.textContent = `Template review · ${proposal.status}`;
       host.append(heading);
-      if (proposal.error) { const error = document.createElement("p"); error.textContent = proposal.error; host.append(error); }
+      if (proposal.error) { const error = document.createElement("p");
+        error.textContent = `${proposal.failure_stage ? `${proposal.failure_stage}: ` : ""}${proposal.error}`; host.append(error); }
       if (proposal.summary) { const summary = document.createElement("p"); summary.textContent = proposal.summary; host.append(summary); }
+      if (proposal.rejected_findings?.length) {
+        const details = document.createElement("details"); details.open = proposal.status === "FAILED";
+        const title = document.createElement("summary");
+        title.textContent = `${proposal.rejected_findings.length} rejected correction${proposal.rejected_findings.length === 1 ? "" : "s"}`;
+        details.append(title);
+        const list = document.createElement("ul");
+        for (const rejected of proposal.rejected_findings) {
+          const item = document.createElement("li");
+          item.textContent = `Finding ${rejected.number} · ${rejected.source_id || "unknown source"}`
+            + `${rejected.reported_views?.length ? ` · reported views: ${rejected.reported_views.join(", ")}` : ""}`
+            + ` · ${(rejected.reasons || []).join(" ")}`;
+          list.append(item);
+        }
+        details.append(list); host.append(details);
+      }
       if (proposal.status === "REVIEW_READY" || proposal.status === "ACCEPTED") {
         const list = document.createElement("div");
         for (const finding of proposal.findings || []) {

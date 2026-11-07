@@ -74,6 +74,13 @@ can propose edits to Character.md and its selected Costume template; both also
 open directly in the shared source editor. Assembly supports optional text
 review. Current board work never waits for review, and existing asks remain
 frozen. The earlier whole-file candidate proposal format remains readable.
+Review responses name affected views with canonical eight-view names; recognized
+view tags are normalized for compatibility. Each finding is checked separately
+for exact source text and pipeline-owned edits. The panel reports rejected
+findings with their source, reported views and reason, while valid findings stay
+available for selection. A nonempty response with no valid findings fails with
+those diagnostics; an empty response is a valid no-change review. Head Image Edit
+review instructions and validation confine edits to `HEAD_EDIT_*` sections.
 
 Costume rename retains the same Dressing container ID and candidate board under
 the new canonical slug, updating saved paths inside its records. It refuses

@@ -1,5 +1,19 @@
 # Local testing
 
+## Container template review diagnostics (2026-11-07)
+
+A disposable read-only replay of the two saved Valindia Head Image Edit model
+responses verified view-tag normalization and per-finding ownership checks. The
+first response yields zero valid and two rejected findings; the second yields one
+valid FRONT finding and four rejected findings. `character_assembly` is rejected
+as a view label. Empty findings remain valid. The saved FAILED proposals were not
+changed, and no live model or render was invoked. Browser and fast-suite results
+are recorded in the completed plan. An isolated Chromium check rendered an
+all-rejected failure and a mixed review: the failure stage and rejected reason
+were visible, and the valid correction remained selectable. `npm run test:e2e`
+passed all four approved scenarios (44.6s). Python compilation, JavaScript
+syntax, and `git diff --check` passed.
+
 ## Character Asset Container current-source continuity (2026-11-06)
 
 A disposable browser/API check verified that a published Draft lock appears in
