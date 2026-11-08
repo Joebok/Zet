@@ -94,7 +94,8 @@ function schedule() {
   if (!character || busy || document.hidden || !page.classList.contains("active")) return;
   const current = board();
   if (!Object.values(current.candidates).some(item => ["SUBMITTING","QUEUED","RUNNING"].includes(item.status))
-      && current.text_job?.status !== "RUNNING" && current.luna_review?.status !== "RUNNING") return;
+      && current.text_job?.status !== "RUNNING" && current.luna_review?.status !== "RUNNING"
+      && character.intake_job?.status !== "RUNNING") return;
   const token = epoch, path = asset(), id = base();
   timer = setTimeout(async () => {
     try {
@@ -102,7 +103,11 @@ function schedule() {
       if (epoch !== token || !character || asset() !== path || busy || universe !== bridge.universe()) return;
       if (progress.revision !== character.revision) {
         const {character:value} = await api(id);
-        if (epoch === token && !busy && asset() === path && (!edits.size || value.template_hash === character.template_hash)) adopt(value);
+        if (epoch !== token || busy || !character || asset() !== path || universe !== bridge.universe()) return;
+        const intakeSaved = character.intake_job?.status === "RUNNING" &&
+          value.intake_job?.id === character.intake_job.id &&
+          value.intake_job.saved_template_hash === value.template_hash;
+        if (!edits.size || value.template_hash === character.template_hash || intakeSaved) adopt(value);
       }
     } catch (error) { if (epoch === token) message(error.message, true); }
     finally { schedule(); }
@@ -120,6 +125,13 @@ function render() {
   $("mc-style-changes").hidden = view !== "STYLE";
   $("mc-refinement").hidden = view === "STYLE";
   $("mc-source-status").textContent = character.source?.label || character.source_error || "Choose an Inventory image.";
+  const intake = character.intake_job;
+  const hasBlankFields = Object.values(character.fields).some(value => !value.trim());
+  $("mc-intake").disabled = !character.source || !hasBlankFields || intake?.status === "RUNNING";
+  $("mc-intake-status").textContent = intake?.error || {
+    RUNNING: "Analyzing the source image…",
+    COMPLETE: `Saved to the template: ${(intake?.applied_fields || []).join(", ")}.`,
+  }[intake?.status] || "";
   const evidence = $("mc-evidence"), previousEvidence = evidence.value;
   evidence.replaceChildren(new Option("None", ""), ...current.slots.filter(id => current.candidates[id]?.status === "COMPLETE")
     .map(id => new Option(`Slot ${current.candidates[id].slot}`, id)));
@@ -241,6 +253,7 @@ page.addEventListener("submit",event=>{
   });
 });
 $("mc-write").onclick=()=>run(async()=>{ await author("write-prompt"); promptDrafts.delete(promptKey()); render(); });
+$("mc-intake").onclick=()=>run(()=>change(base()+"/intake",{}));
 $("mc-interview").onclick=()=>run(()=>author("interview"));
 $("mc-save-prompt").onclick=()=>run(()=>flush(true));
 $("mc-model").onclick=async()=>{

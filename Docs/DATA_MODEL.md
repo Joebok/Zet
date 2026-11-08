@@ -454,6 +454,10 @@ saved byte hash and write the validated Markdown atomically.
 Runtime records use workflow version 3 at
 `_state/MinorCharacterCollections/<id>/session.json`. Each of six asset IDs
 has a prompt, aspect ratio, jobs, and one board with a selection and lock
-across qualities. Frozen ImageRenderRequests belong to individual candidates.
+across qualities. An optional collection-level `intake_job` records the
+captured Inventory image, the starting template and image hashes, and the
+resulting status and saved fields. The continuation applies to blank shared
+fields only when the source and template still match. Frozen
+ImageRenderRequests belong to individual candidates.
 Fresh template IDs create new catalog lock owners. Legacy session files stay
 in their original storage. See [ADR 0050](DECISIONS/0050-minor-character-asset-collections.md).

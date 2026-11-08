@@ -985,6 +985,14 @@ edits the universe's MinorCharacter.md sections and selects the original
 Inventory image. Asset settings owns the interview, prompt and aspect ratio.
 Accepted interview proposals save to the template and report the affected fields.
 
+Choose an Inventory image in Container settings and click **Run Intake** to
+fill blank Appearance, Framing, and Directions fields with observations from
+that image. Intake saves supported observations to the template and leaves
+existing entries and intentional changes in place. It can run before a
+canonical universe style is set. Review or edit the saved fields, then use
+**Write Prompt** in Style Alignment. Config's **Minor Character intake** role
+controls the vision model used for this request.
+
 Style Alignment analyzes the original image, optionally with a completed
 candidate as feedback evidence. Its interview edits only the optional
 `STYLE_ALIGNMENT_CHANGES` section, shown as Source-to-reference changes in

@@ -25,6 +25,7 @@ ROLES = (
     LLMRole("inventory_metadata", "Inventory catalog metadata", "Extracts stable identity and costume metadata.", "ai_image_description_model", capabilities=("vision",)),
     LLMRole("reconstruction_prompt", "Reconstruction prompt drafting", "Writes the intended result independently of analysis-only source pixels.", "ai_image_prompt_generation_model", "authoring", ("vision",), prompt_fields=("content_prompt",)),
     LLMRole("reconstruction_review", "Reconstruction review", "Compares target and candidate; writes scoped correction suggestions.", "ai_image_prompt_generation_model", "review", ("vision",), prompt_fields=("items[].correction",)),
+    LLMRole("minor_intake", "Minor Character intake", "Fills blank shared template fields from the Inventory source image.", "ai_quick_character_wizard_model", capabilities=("vision",)),
     LLMRole("minor_interview", "Minor Character interview", "Proposes editable character fields.", "ai_quick_character_wizard_model", capabilities=("vision",)),
     LLMRole("minor_prompt", "Minor Character prompt writing", "Writes a reference-based character prompt.", "ai_quick_character_wizard_model", "authoring", ("vision",), prompt_fields=("prompt",)),
     LLMRole("character_description", "Minor / Quick Character description", "Drafts reusable appearance prose; keeps observations and identity separate.", "ai_quick_character_wizard_model", "fragments", ("vision",), prompt_fields=("description",)),

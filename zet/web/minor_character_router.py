@@ -60,6 +60,10 @@ def create_minor_character_router(provider):
     def source(sid: str):
         return FileResponse(call("source_image", sid))
 
+    @router.post("/{sid}/intake")
+    def intake(sid: str, data: dict = Body(...)):
+        return {"character": call("start_intake", sid, data)}
+
     @router.get("/{sid}/assets/{view}/progress")
     def progress(sid: str, view: str):
         return call("progress", sid, view)

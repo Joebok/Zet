@@ -9,6 +9,14 @@ composed with canonical universe style. Each view uses deterministically
 filtered template inputs and the current locked Style image. Interview
 revisions reach the template after review and explicit application.
 
+## Source intake (2026-11-08)
+
+The explicit Container settings action authorizes filling blank shared fields
+from the frozen Inventory source. Completion compares the current source and
+template with the request inputs before writing. This keeps intake observations
+in the shared template and reserves intentional changes for the existing Style
+Alignment interview and review.
+
 ## Offline bootstrap
 
 Run `python3 -B -m zet.scripts.bootstrap_minor_character_templates <universe-root>`

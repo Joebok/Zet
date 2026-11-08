@@ -462,7 +462,10 @@ owns the offline cutover and orphan move manifest.
 
 `minor_character_templates.py` owns universe Markdown, section updates and
 view conditioning. `MinorCharacterService` owns authoring, reference eligibility
-and the shared board adapter. The shared image production service transports
+and the shared board adapter. Its `start_intake` entry point, exposed as
+`POST /api/minor-characters/{sid}/intake`, uses the existing durable authoring
+continuation to fill blank shared fields from a frozen Inventory image.
+The shared image production service transports
 frozen requests. AIJobCoordinator applies answers by owning universe,
 collection, asset, candidate, slot and attempt. The offline name-and-source
 bootstrap lives in `zet.scripts.bootstrap_minor_character_templates`.
