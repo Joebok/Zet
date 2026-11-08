@@ -68,7 +68,9 @@ published Narrative assemblies and emits their `LIB:ASSET` reference tag.
 
 Narrative target boards offer on-demand **Luna Review** across completed images.
 It assesses saved prompt fidelity, story continuity, composition and visible
-artifacts against captured render inputs. The target record retains rank, full
+artifacts. The shared review request numbers finished outputs first and maps
+each candidate's own frozen prompt and ordered inputs to deduplicated evidence.
+The target record retains rank, full
 per-image review text, the submitted prompt and model. Results remain in slot
 order and become obsolete after a newly generated image lands. The review is
 available through the target `luna-review` API action.

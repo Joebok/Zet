@@ -246,28 +246,25 @@ class CharacterAssetContainerService:
         criteria = (f"Compare all completed {pipeline.replace('-', ' ')} images for {view}. Rank Draft and Final images together. "
                     "Assess requested view accuracy, source preservation, identity, anatomy, visible detail, and usefulness as a reference. "
                     "Give each image a concise but informative full assessment, noting visible strengths and defects.")
-        references = []
-        reference_labels = []
-        selected_id = board.get("selected_id")
-        for candidate in candidates:
-            for item in (candidate.get("render_request") or {}).get("inputs", []):
-                if item.get("candidate_id") == selected_id and item.get("render_mode") == "draft":
-                    continue
-                reference = Path(str(item.get("path") or "")).resolve()
-                if reference.is_file():
-                    references.append(reference)
-                    reference_labels.append(f"{candidate['candidate_id']}: image {len(references)} ({item.get('role') or item.get('label') or 'captured input'})")
+        if pipeline == "costume-dressing":
+            criteria += (
+                " Judge the visible costume against the saved render prompt and any captured dressed reference. "
+                "For doll dressing, use Character Assembly for identity, proportions and target framing. "
+                "Its fitment clothing and bare feet are not the target costume. A batch_view_reference guides "
+                "costume design. When a costume_rotation_source is supplied, use it for costume continuity "
+                "and use the Character Assembly layout reference for target orientation, stance and framing."
+            )
+        comparisons = ()
         if pipeline == "character-assembly" and view != "FRONT":
             front_board = value["boards"].get("FRONT", {})
             front = front_board.get("candidates", {}).get(front_board.get("selected_id") or "")
-            front_path = Path(str((front or {}).get("image_path") or "")).resolve()
-            if front and front_path.is_file():
-                references.append(front_path)
-                reference_labels.append(f"Ranking comparison: selected FRONT image {len(references)}. Compare identity and head-to-body proportions while judging the requested {view} view.")
-        prompt = criteria + "\nCandidate reference mapping:\n" + "\n".join(reference_labels) + "\nCandidate IDs in attachment order: " + ", ".join(ids)
+            if front and front.get("image_path"):
+                comparisons = ({"path": front["image_path"],
+                                "label": "Selected FRONT Assembly. Compare identity and head-to-body "
+                                         f"proportions while judging the requested {view} view."},)
         try:
-            entries, model = review_images_with_luna(prompt=prompt, candidate_ids=ids, image_paths=images,
-                reference_image_paths=references, paths=self.app.ai_proxy_service.ai_proxy_path_service,
+            entries, model, prompt = review_images_with_luna(criteria=criteria, candidates=candidates,
+                comparisons=comparisons, paths=self.app.ai_proxy_service.ai_proxy_path_service,
                 owner={"container_id": value["container_id"], "pipeline": pipeline, "view": view,
                        "luna_review_id": review_id})
             result = {"status": "COMPLETE", "active_id": "", "review_id": review_id,

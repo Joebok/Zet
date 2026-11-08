@@ -142,20 +142,71 @@ def rank_images_with_luna(
     return validate_ranking(value, candidate_ids), model
 
 
-def review_images_with_luna(*, prompt: str, candidate_ids: list[str], image_paths: list[str | Path],
-                            paths, owner=None, reference_image_paths: list[str | Path] | None = None,
-                            admission=None) -> tuple[list[dict[str, str]], str]:
+def review_images_with_luna(*, criteria: str, candidates: list[dict], paths, owner=None,
+                            comparisons: tuple[dict, ...] = (),
+                            admission=None) -> tuple[list[dict[str, str]], str, str]:
     """Return a comparative rank and full per-image review from one Luna response."""
-    if len(candidate_ids) != len(image_paths):
-        raise ValueError("Every reviewed candidate must have exactly one image.")
+    candidate_ids = [item["candidate_id"] for item in candidates]
     if not candidate_ids:
-        return [], ""
+        return [], "", ""
+    images = [Path(item["image_path"]) for item in candidates]
+    evidence_numbers = {}
+    digests = {}
+
+    def attach_evidence(item):
+        path = Path(item.get("path") or "").resolve()
+        if path not in digests:
+            try:
+                digests[path] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+            except OSError:
+                digests[path] = None
+        digest = digests[path]
+        if not digest or (item.get("sha256") and item["sha256"] != digest):
+            return "unavailable"
+        if digest not in evidence_numbers:
+            images.append(path)
+            evidence_numbers[digest] = len(images)
+        return f"attachment {evidence_numbers[digest]}"
+
+    lines = [
+        "Rank only the finished outputs listed below. Attachment numbers are one-based. "
+        "Every other attachment is evidence only. For every candidate ID, describe visible details "
+        "from its assigned output before comparing it with that candidate's evidence. "
+        "Use saved render prompts as descriptions of the intended result. Image numbers inside those "
+        "prompts refer to original render inputs, so use the per-candidate mapping below.",
+        criteria,
+        "Finished outputs to rank:",
+    ]
+    lines.extend(f"Attachment {number}: candidate {item['candidate_id']}, slot {item['slot']}"
+                 for number, item in enumerate(candidates, 1))
+    saved_prompts = {}
+    for item in candidates:
+        request = item.get("render_request") or {}
+        lines.append(f"\nEvidence for candidate {item['candidate_id']}:")
+        for number, reference in enumerate(request.get("inputs") or [], 1):
+            details = ", ".join(f"{key}={reference[key]}" for key in
+                                ("role", "prompt_role", "view", "source_view", "body_view", "head_view", "label")
+                                if reference.get(key))
+            lines.append(f"Render input {number}: {attach_evidence(reference)} ({details or 'captured input'})")
+        if not request.get("inputs"):
+            lines.append("No captured render inputs.")
+        saved = request.get("prompt") or item.get("prompt")
+        if saved:
+            number = saved_prompts.setdefault(saved, len(saved_prompts) + 1)
+            lines.append(f"Saved render prompt {number} applies to this candidate.")
+        else:
+            lines.append("No saved render prompt.")
+    for comparison in comparisons:
+        lines.append(f"\nRanking-only comparison: {attach_evidence(comparison)}. {comparison['label']}")
+    for saved, number in saved_prompts.items():
+        lines.append(f"\nSaved render prompt {number}:\n{saved}")
+    prompt = "\n".join(lines)
     schema = {"type": "object", "properties": {"ranking": {"type": "array", "items": {
         "type": "object", "properties": {"candidate_id": {"type": "string"}, "review": {"type": "string"}},
         "required": ["candidate_id", "review"], "additionalProperties": False}}},
         "required": ["ranking"], "additionalProperties": False}
     model = resolve_role_model(paths.config, "image_ranking")
     value, _ = paths.jobs.generate_json(model, "", prompt, schema,
-        [*(reference_image_paths or []), *image_paths], task_type="local_image_ranking",
+        images, task_type="local_image_ranking",
         role="image_ranking", render_context={}, timeout=1800, owner=owner or {}, admission=admission)
-    return validate_ranking(value, candidate_ids, require_review=True), model
+    return validate_ranking(value, candidate_ids, require_review=True), model, prompt

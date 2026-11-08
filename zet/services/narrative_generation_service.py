@@ -91,18 +91,10 @@ class NarrativeGenerationService:
         criteria = (f"Rank all completed Narrative {record.get('kind', 'scene')} images together. Assess fidelity to the saved prompt, "
                     "story and source continuity, composition, subject readability, and visible image artifacts. "
                     "Give every image a specific full assessment and rank the set from strongest to weakest.")
-        refs, seen = [], set()
-        for candidate in candidates:
-            for item in (candidate.get("render_request") or {}).get("inputs", []):
-                ref = Path(str(item.get("path") or "")).resolve()
-                if ref.is_file() and ref not in seen:
-                    refs.append(ref)
-                    seen.add(ref)
-        prompt = criteria + "\nSaved prompts by candidate:\n" + "\n".join(
-            f"{candidate['id']}: {candidate.get('prompt', '')}" for candidate in candidates)
+        review_candidates = [{**candidate, "candidate_id": cid, "image_path": image}
+                             for candidate, cid, image in zip(candidates, ids, images)]
         try:
-            entries, model = review_images_with_luna(prompt=prompt, candidate_ids=ids,
-                image_paths=images, reference_image_paths=refs,
+            entries, model, prompt = review_images_with_luna(criteria=criteria, candidates=review_candidates,
                 paths=self.author.app.ai_proxy_service.ai_proxy_path_service,
                 owner={"story": story, "scene": scene, "target": target, "luna_review_id": review_id})
             result = {"status": "COMPLETE", "active_id": "", "candidate_ids": ids,
