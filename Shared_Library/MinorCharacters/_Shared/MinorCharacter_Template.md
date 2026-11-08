@@ -61,3 +61,9 @@ Use Zet view tags such as `- [fl,pl] ...` on lines that apply to specific views.
 <!-- ZET:BEGIN BODY_REFINEMENT_RIGHT_PROFILE -->
 
 <!-- ZET:END BODY_REFINEMENT_RIGHT_PROFILE -->
+
+## Source-to-reference changes
+
+<!-- ZET:BEGIN STYLE_ALIGNMENT_CHANGES -->
+
+<!-- ZET:END STYLE_ALIGNMENT_CHANGES -->

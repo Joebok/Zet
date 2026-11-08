@@ -7,7 +7,7 @@ import sqlite3
 from uuid import NAMESPACE_URL, uuid5
 
 from zet.scripts.reconcile_inventory_locks import confined, fingerprint
-from zet.services.minor_character_templates import MinorCharacterTemplates, seed
+from zet.services.minor_character_templates import MinorCharacterTemplates, matches_seed, seed
 from zet.services.workflow_storage import file_lock, validate_image
 
 
@@ -101,7 +101,7 @@ def preview(root, choices=None):
             row["blockers"].append("Choose an eligible Inventory asset for this source.")
         else:
             row["asset_checksum"] = assets[row["asset_id"]]["checksum"]
-            if destination.exists() and destination.read_text(encoding="utf-8-sig") != seed(row["name"], row["asset_id"]):
+            if destination.exists() and not matches_seed(destination.read_text(encoding="utf-8-sig"), row["name"], row["asset_id"]):
                 row["blockers"].append("Destination template already contains different data.")
     names = [row["name"].casefold() for row in rows]
     for row in rows:

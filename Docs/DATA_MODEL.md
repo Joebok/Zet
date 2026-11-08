@@ -445,7 +445,9 @@ Story animation version 2 stores transitions by boundary, independent of scene o
 ### Minor Character collection records
 
 `MinorCharacters/<id>/MinorCharacter.md` holds the name, source Inventory
-asset ID, shared prompt sections, and view refinement sections. Zet view tags
+asset ID, shared prompt sections, view refinement sections, and the optional
+`STYLE_ALIGNMENT_CHANGES` section. Templates without that section read as blank.
+Only Style Alignment compiles and applies proposals to that section. Zet view tags
 condition those fields before authoring. Dashboard template saves compare the
 saved byte hash and write the validated Markdown atomically.
 

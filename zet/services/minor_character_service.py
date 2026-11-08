@@ -20,10 +20,11 @@ from zet.services.render_slot_service import frozen_input, verify_input
 from zet.services.workflow_storage import file_lock
 
 from zet.services.minor_character_templates import (
-    VIEWS, SHARED, REFINEMENT, MinorCharacterTemplates, replace_sections, seed,
+    VIEWS, SHARED, STYLE_FIELDS, REFINEMENT, MinorCharacterTemplates, replace_sections, seed,
 )
 from zet.services.universe_style_service import compose_style, universe_style
 
+STYLE_CHANGES = "style_alignment_changes"
 ACTIVE = {"SUBMITTING", "QUEUED", "RUNNING"}
 CONSUMER = "zet-minor-collections"
 
@@ -118,6 +119,8 @@ class MinorCharacterService(QuickCharacterWizardService):
                 public["source_error"] = str(exc)
         public["canonical_style_ready"] = bool(universe_style(self.app.config.base_library_path)["text"])
         for view, board in public["boards"].items():
+            if view == "STYLE":
+                board[STYLE_CHANGES] = sections[STYLE_FIELDS[STYLE_CHANGES]]
             board["refinement"] = sections[REFINEMENT[view]] if view != "STYLE" else ""
             board["prompt_current"] = False
             basis = board.pop("prompt_basis", None)
@@ -132,6 +135,10 @@ class MinorCharacterService(QuickCharacterWizardService):
                 for index, entry in enumerate(item.get("render_request", {}).get("inputs", []), 1):
                     item["render_request"]["inputs"][index - 1] = {"role": entry.get("role", "Reference")}
             if board.get("text_job"):
+                job = board["text_job"]
+                if view == "STYLE" and job.get("review") and STYLE_CHANGES not in job.get("baseline", {}).get("editable", {}):
+                    job.update(status="OBSOLETE", error="Run a fresh Style Alignment interview.")
+                    job.pop("review")
                 for key in ("baseline", "evidence", "feedback", "authoring_reference"):
                     board["text_job"].pop(key, None)
             if board.get("luna_review"):
@@ -172,6 +179,10 @@ class MinorCharacterService(QuickCharacterWizardService):
                 asset_id = data["source"].get("asset_id", "")
                 self._source_binding(asset_id)
                 changes["SOURCE_ASSET_ID"] = asset_id
+            if STYLE_CHANGES in data:
+                if data.get("view") != "STYLE":
+                    raise ValueError("Source-to-reference changes belong to Style Alignment.")
+                changes[STYLE_FIELDS[STYLE_CHANGES]] = data[STYLE_CHANGES]
             if "refinement" in data:
                 changes[REFINEMENT[data["view"]]] = data["refinement"]
             if "aspect_ratio" in data:
@@ -552,7 +563,7 @@ class MinorCharacterService(QuickCharacterWizardService):
 
     def _baseline(self, value, view):
         _, digest, sections, _ = self._template(value["session_id"])
-        fields = SHARED if view == "STYLE" else {"refinement": REFINEMENT[view]}
+        fields = STYLE_FIELDS if view == "STYLE" else {"refinement": REFINEMENT[view]}
         return {**self._prompt_basis(value, view), "template_hash": digest,
                 "editable": {field: sections[key] for field, key in fields.items()},
                 "prompt": self._board(value, view)["prompt"]}
@@ -577,10 +588,12 @@ class MinorCharacterService(QuickCharacterWizardService):
                 job = board.get("text_job", {})
                 if job.get("id") != data.get("job_id") or job.get("status") != "COMPLETE" or not job.get("review"):
                     raise ValueError("Choose the current interview review.")
+                if view == "STYLE" and STYLE_CHANGES not in job["baseline"]["editable"]:
+                    raise QuickCharacterWizardConflict("Run a fresh Style Alignment interview.")
                 if job["baseline"] != self._baseline(value, view):
                     raise QuickCharacterWizardConflict("Authoring inputs changed. Run a new interview.")
                 from zet.services.narrative_interview_service import proposal_choices
-                keys = SHARED if view == "STYLE" else {"refinement": REFINEMENT[view]}
+                keys = STYLE_FIELDS if view == "STYLE" else {"refinement": REFINEMENT[view]}
                 accepted = {row["field"]: row["text"] for row, choice in
                             proposal_choices(job["review"]["proposals"], data.get("choices")) if choice == "accept"}
                 if accepted:
@@ -704,9 +717,12 @@ class MinorCharacterService(QuickCharacterWizardService):
             context["editable_fields"] = fields
             system = ("Propose optional whole-field replacements with reasons. Preserve unrelated text and view tags. "
                       "Any second image is evidence for feedback.")
+            if view == "STYLE":
+                system += (" Propose only intentional changes from the original image to the aligned reference. "
+                           "Use shared descriptions as context and keep general character facts out of the changes.")
         elif view == "STYLE":
             system = ("Write one standalone text-to-image character prompt. Describe the intended identity, design, "
-                      "costume and asymmetry, honoring requested changes. Default to a neutral full-body reference "
+                      "costume and asymmetry. Apply source-to-reference changes to the named features and preserve the rest. Default to a neutral full-body reference "
                       "on a plain background with no required angle. Zet adds the canonical style separately. "
                       "Do not repeat it or refer to an attached image in the prompt.")
         else:

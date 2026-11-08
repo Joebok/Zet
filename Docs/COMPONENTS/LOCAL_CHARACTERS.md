@@ -986,7 +986,12 @@ Inventory image. Asset settings owns the interview, prompt and aspect ratio.
 Accepted interview proposals save to the template and report the affected fields.
 
 Style Alignment analyzes the original image, optionally with a completed
-candidate as feedback evidence. Write Prompt describes the target character
+candidate as feedback evidence. Its interview edits only the optional
+`STYLE_ALIGNMENT_CHANGES` section, shown as Source-to-reference changes in
+Asset settings. Put intentional changes from the source in this section.
+Shared Appearance, Framing and Directions remain in Container settings.
+The Style prompt uses both the shared description and the dedicated changes.
+Downstream views compile their own inputs and omit the change section. Write Prompt describes the target character
 and composes the universe canonical style into the displayed render prompt.
 New Style renders use text-to-image. For each view, the shared compiler filters
 template text for its orientation before prompt writing. A view interview

@@ -116,7 +116,8 @@ function render() {
     Object.entries(character.boards).map(([id, item]) =>
       `<button type="button" data-view="${id}" aria-pressed="${view === id}">${escape(item.label)}</button>`).join("");
   for (const [key,value] of Object.entries({...character.fields, name:character.name,
-    refinement:current.refinement, prompt:promptDrafts.get(promptKey()) ?? current.prompt_body ?? "", aspect_ratio:current.aspect_ratio})) form.elements.namedItem(key).value = edits.get(key) ?? value;
+    refinement:current.refinement, style_alignment_changes:current.style_alignment_changes ?? "", prompt:promptDrafts.get(promptKey()) ?? current.prompt_body ?? "", aspect_ratio:current.aspect_ratio})) form.elements.namedItem(key).value = edits.get(key) ?? value;
+  $("mc-style-changes").hidden = view !== "STYLE";
   $("mc-refinement").hidden = view === "STYLE";
   $("mc-source-status").textContent = character.source?.label || character.source_error || "Choose an Inventory image.";
   const evidence = $("mc-evidence"), previousEvidence = evidence.value;
@@ -152,7 +153,7 @@ function render() {
   $("mc-proposals").hidden = !proposals;
   const proposalChoices = Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select => [select.dataset.proposal, select.value]));
   $("mc-proposals").innerHTML = proposals ? `<div id="mc-proposal-form"><h2>Review interview proposals</h2>${
-    proposals.map(row => `<article class="narrative-proposal"><h3>${escape(row.field)}</h3><p>${escape(row.reason)}</p>${renderProposalComparison(row, escape)}
+    proposals.map(row => `<article class="narrative-proposal"><h3>${escape(row.field === "style_alignment_changes" ? "Source-to-reference changes" : row.field)}</h3><p>${escape(row.reason)}</p>${renderProposalComparison(row, escape)}
       <label>Decision<select data-proposal="${escape(row.id)}"><option value="reject">Reject</option><option value="accept">Accept</option></select></label></article>`).join("")
       || "<p>No field changes proposed.</p>"}<button type="button" data-apply-proposals>Apply</button></div>` : "";
   for (const select of $("mc-proposals").querySelectorAll("select")) {
@@ -161,7 +162,7 @@ function render() {
   $("mc-authoring-status").textContent = [
     view === "STYLE" && !character.canonical_style_ready ? "Set the canonical art style in Universe Settings." : "",
     job?.error || (job?.status === "RUNNING" ? "Authoring in progress…" : ""),
-    job?.applied_fields?.length ? `Applied to template: ${job.applied_fields.join(", ")}.` : "",
+    job?.applied_fields?.length ? `Applied to template: ${job.applied_fields.map(field => field === "style_alignment_changes" ? "Source-to-reference changes" : field).join(", ")}.` : "",
     current.prompt && !current.prompt_current ? "Inputs changed. Write Prompt or save the prompt for the current inputs." : "",
   ].filter(Boolean).join(" ");
   if (current.luna_review?.error) message(current.luna_review.error, true);
