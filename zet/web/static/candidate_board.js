@@ -26,10 +26,11 @@ export function renderCandidateBoard({host, slots, candidates, selectedId, escap
       : `<div class="placeholder">${candidate ? '' : 'Empty'}</div>`;
     const renderTime = candidate?.status === 'COMPLETE' && Number.isInteger(candidate.render_duration_seconds)
       ? ` · ${candidate.render_duration_seconds}s` : '';
-    const rank = (lunaReview.entries || []).findIndex(entry => entry.candidate_id === id);
+    const rank = ['COMPLETE', 'OBSOLETE'].includes(lunaReview.status)
+      ? (lunaReview.entries || []).findIndex(entry => entry.candidate_id === id) : -1;
     const obsolete = lunaReview.status === 'OBSOLETE';
     const metadata = candidate
-      ? `<p class="narrative-muted image-card-state"><span class="narrative-render-mode-pill ${candidate.render_mode === 'final' ? 'final' : 'draft'}">${candidate.render_mode === 'final' ? 'Final' : 'Draft'}</span> · ${escape(candidate.status.toLowerCase())}${renderTime}${id === selectedId ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}${rank >= 0 ? ` · Luna ${obsolete ? 'previous ' : ''}rank #${rank + 1}` : ''}</p>`
+      ? `<p class="narrative-muted image-card-state"><span class="narrative-render-mode-pill ${candidate.render_mode === 'final' ? 'final' : 'draft'}">${candidate.render_mode === 'final' ? 'Final' : 'Draft'}</span> · ${escape(candidate.status.toLowerCase())}${renderTime}${rank >= 0 ? ` · ${obsolete ? 'Luna previous ' : ''}#${rank + 1}` : ''}${id === selectedId ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>`
       : '';
     const review = `<div class="narrative-actions narrative-review-actions">${candidate ? `<button type="button" data-review="${id}" aria-label="Review slot ${index + 1}">Review</button>` : ''}${renderActions(candidate, index)}</div>`;
     return `<article class="narrative-slot ${id && id === selectedId ? 'selected' : ''}" data-state="${state}"><h3 class="render-mode-heading">Slot ${index + 1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>${image}${metadata}${candidate?.error ? `<p class="error">${escape(candidate.error)}</p>` : ''}${review}${renderDetails(candidate)}</article>`;

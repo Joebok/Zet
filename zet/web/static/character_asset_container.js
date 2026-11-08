@@ -51,6 +51,13 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     $("status").classList.toggle("error", error);
   }
 
+  function showReviewStatus(review) {
+    if (review?.status === "RUNNING") show("Luna Review is running…");
+    else if (review?.status === "COMPLETE") show("Luna Review complete.");
+    else if (review?.status === "FAILED") show(`Luna Review failed · ${review.error || "No details available."}`, true);
+    else if (review?.status === "OBSOLETE") show("Luna Review is out of date.");
+  }
+
   function stopPolling() {
     clearInterval(state.timer);
     state.timer = null;
@@ -98,18 +105,25 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       if (!pageVisible() || state.mutation || sequence !== state.request ||
           url !== api(`/views/${encodeURIComponent(state.view)}/progress`) ||
           progress.container_id !== state.detail?.container_id || progress.revision < state.detail.revision) return;
+      const board = state.detail.boards[state.view];
+      const previousReview = board.luna_review || {};
+      const review = progress.luna_review || {};
+      const reviewChanged = previousReview.status !== review.status ||
+        previousReview.active_id !== review.active_id || previousReview.recorded_at !== review.recorded_at;
+      if (reviewChanged) {
+        board.luna_review = review;
+        showReviewStatus(review);
+        renderBoard();
+        if ($("review").open) renderReviewComparison();
+        if (review.status !== "RUNNING") await loadDetail();
+      }
       if (!progress.active.length) {
-        if (progress.luna_review?.status === "RUNNING") {
-          state.detail.boards[state.view].luna_review = progress.luna_review;
-          renderBoard();
-          if ($("review").open) renderReviewComparison();
-        } else {
+        if (review.status !== "RUNNING") {
           stopPolling();
           await loadDetail();
         }
         return;
       }
-      const board = state.detail.boards[state.view];
       if (progress.slots.length !== board.slots.filter(Boolean).length ||
           progress.slots.some((slot) => board.slots[slot.slot - 1] !== slot.candidate_id)) {
         await loadDetail();
@@ -247,7 +261,10 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const focused = document.activeElement;
     [...staging.children].forEach((card, index) => {
       const id = board.slots[index];
-      card.dataset.signature = JSON.stringify([id, candidates[id], board.selected_id === id]);
+      const luna = board.luna_review || {};
+      const rank = ['COMPLETE', 'OBSOLETE'].includes(luna.status)
+        ? (luna.entries || []).findIndex(entry => entry.candidate_id === id) : -1;
+      card.dataset.signature = JSON.stringify([id, candidates[id], board.selected_id === id, luna.status, rank]);
       const previous = host.children[index];
       if (!previous) host.append(card);
       else if (previous.dataset.signature !== card.dataset.signature) {
@@ -768,7 +785,15 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     if (!button || state.mutation || !state.detail || !state.view) return;
     if (button.dataset.boardAction === "luna-review") {
       void request(api(`/views/${encodeURIComponent(state.view)}/luna-review`), {method: "POST", body: "{}"})
-        .then(async () => { await loadDetail(); show("Luna Review complete."); })
+        .then(async result => {
+          if (!state.active || !state.view) return;
+          state.detail.boards[state.view].luna_review = result;
+          showReviewStatus(result);
+          renderBoard();
+          startPolling();
+          await loadDetail();
+          showReviewStatus(state.detail?.boards?.[state.view]?.luna_review);
+        })
         .catch(error => show(error.message, true));
       return;
     }

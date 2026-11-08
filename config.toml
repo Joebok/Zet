@@ -22,7 +22,7 @@ CompletedRetentionDays = 7
 MaintenanceIntervalHours = 24
 
 [StorageByPlatform.Windows]
-Root = "E:/Zet/AppData"
+Root = "D:/Zet/AppData"
 
 [BaseFolders]
 BaseLibraryPath = "Zet_Library_v5/"
@@ -33,7 +33,7 @@ BaseAIQueuePath = "AI_Queue/"
 
 [BaseFoldersByPlatform.Windows]
 BaseLibraryPath = "E:/Zet/Zet_Library_v5/"
-BaseAIQueuePath = "E:/Zet/AI_Queue"
+BaseAIQueuePath = "D:/Zet/AI_Queue"
 
 [BaseFoldersByPlatform.Darwin]
 BaseLibraryPath = "/Users/joe/Projects/Zet_Library-V5/"
