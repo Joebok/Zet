@@ -653,6 +653,29 @@ class CharacterAssetContainerService:
         with file_lock(path.with_suffix(".lock")):
             return self._refresh_view(character, phase, pipeline, costume, view)
 
+    def collect_background_job(self, ask_id: str, manifest: dict) -> bool:
+        owner = manifest.get("image_production") or {}
+        character, phase = owner.get("character"), owner.get("phase")
+        pipeline, costume, view = owner.get("pipeline"), owner.get("costume", ""), owner.get("view", "")
+        try:
+            scope = self._scope(character, phase, pipeline, costume)
+            path = self._path(scope)
+            with file_lock(path.with_suffix(".lock"), timeout=0):
+                value = self.detail(character, phase, pipeline, costume)
+                if (scope["universe_id"] != self.app.universe_id
+                        or owner.get("universe_id") != self.app.universe_id):
+                    return False
+                board = value["boards"].get(view)
+                candidate = (board or {}).get("candidates", {}).get(owner.get("candidate_id"))
+                if (not candidate or candidate.get("attempt_id") != owner.get("attempt_id")
+                        or candidate.get("ask_id") != ask_id or candidate.get("slot") != owner.get("slot")
+                        or candidate.get("id") not in board["slots"]):
+                    return False
+                self._refresh_view(character, phase, pipeline, costume, view)
+                return True
+        except TimeoutError:
+            return False
+
     def _refresh_view(self, character: str, phase: str, pipeline: str, costume: str,
                      view: str) -> dict:
         value = self.detail(character, phase, pipeline, costume)
@@ -660,6 +683,7 @@ class CharacterAssetContainerService:
             raise CharacterAssetContainerError("Choose a view in this container.")
         board = value["boards"][view]
         changed = False
+        board_applications = []
         for candidate_id in board["slots"]:
             if not candidate_id:
                 continue
@@ -671,6 +695,12 @@ class CharacterAssetContainerService:
             if candidate.get("reserved_ask_id"):
                 owner["slot"] = candidate["slot"]
             root = self._path(value["scope"]).parent / "renders" / candidate_id / "attempts" / str(attempt_id)
+            ask_id = candidate.get("ask_id")
+            if ask_id:
+                jobs = self.app.ai_proxy_service.ai_proxy_path_service.jobs
+                if jobs.lifecycle.read_receipt(ask_id) or jobs.ready_answer(ask_id):
+                    jobs.repository.update(ask_id, board_application_state="PENDING")
+                    board_applications.append(ask_id)
             updates = self.image_production.reconcile(candidate, owner, root,
                 f"container_{value['container_id']}_{candidate_id}_{attempt_id}")
             previous_image_path = candidate.get("image_path")
@@ -686,6 +716,9 @@ class CharacterAssetContainerService:
         if changed:
             board["revision"] += 1
             self.save(character, phase, pipeline, costume, value, expected_revision=value["revision"])
+        for ask_id in board_applications:
+            self.app.ai_proxy_service.ai_proxy_path_service.jobs.repository.update(
+                ask_id, board_application_state="SETTLED")
         return self.progress(character, phase, pipeline, costume, view)
 
     def _settle_upscale(self, value: dict, candidate: dict, updates: dict) -> bool:

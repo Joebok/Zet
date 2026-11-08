@@ -82,7 +82,8 @@ class AIJobRepository:
                 "task_type", "consumer", "model", "provider", "workflow", "worker_type", "asset_id",
                 "owner", "queue_titles", "render_mode", "harvest_state", "error", "failure_stage", "exception_type",
                 "affected_path", "failed_at", "collection_failures", "collection_retry_at",
-                "recovery_stage", "current_attempt_id", "last_recovered_at", "status"}
+                "recovery_stage", "current_attempt_id", "last_recovered_at", "status",
+                "board_application_state"}
         for value in self.metadata.snapshot(self.root, projector=lambda row: {key: row[key] for key in keep if key in row}):
             job_id = value.get("ask_id")
             if job_id and not self.is_deleted(job_id):

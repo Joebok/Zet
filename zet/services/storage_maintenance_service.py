@@ -334,6 +334,8 @@ class StorageMaintenanceService:
                         if not self._safe_child(path, jobs):
                             continue
                         record = self._read(path)
+                        if record.get("board_application_state") == "PENDING":
+                            continue
                         job_id = str(record.get("ask_id") or "")
                         pair = receipts.get((queue_hash.name, host.name, job_id))
                         if not pair:
@@ -347,6 +349,9 @@ class StorageMaintenanceService:
                                            "files": 1, "bytes": path.stat().st_size, "ask_id": job_id})
                 for (receipt_queue, receipt_host, job_id), (path, receipt) in receipts.items():
                     if receipt_queue != queue_hash.name or receipt_host != host.name:
+                        continue
+                    job_record = self._read((host / "Jobs" / (hashlib.sha256(job_id.encode()).hexdigest() + ".json")))
+                    if job_record.get("board_application_state") == "PENDING":
                         continue
                     completed = self._completed(receipt)
                     if (completed is None or completed >= self.cutoff or receipt.get("retention_compacted")

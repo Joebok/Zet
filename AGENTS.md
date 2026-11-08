@@ -47,6 +47,11 @@ Zet is a local creative-production dashboard for character references, illustrat
 - Poll compact progress only while visible work is active; refresh detail when it settles. Refresh idle views on entry, relevant actions, tab return, or explicit request. Avoid routine completed-image lineage scans and full-library checks.
 - When changing these paths, validate the transport boundary and one representative completed-image case with the smallest approved or disposable checks. Do not add recurring validation, polling, or permanent test scenarios by default. Follow [ADR 0045](Docs/DECISIONS/0045-finished-image-source-policy.md) where older lineage guidance conflicts.
 
+## Miscellaneous
+
+- Do not use em dashes. Repalce with a standard hyphen when encountered.
+- Do not use en dasehs. Replace with a standard hyphen when encountered.
+
 ## Runtime and dependencies
 
 ### Python Runtime

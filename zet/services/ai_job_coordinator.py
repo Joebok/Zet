@@ -44,6 +44,7 @@ class AIJobCoordinator:
         self.recovery = StorageRecoveryService(app)
         self.handlers = {
             "zet-narrative-scenes": self._narrative,
+            "zet-character-containers": self._character_container,
             "zet-image-generation": self._images,
             "zet-structured": self._structured,
             "zet_ollama_model_service": self._structured,
@@ -56,6 +57,20 @@ class AIJobCoordinator:
     def _narrative(app, record, jobs):
         ask = record["manifest"]
         app.narrative_generation_service.detail(ask["narrative_story_id"], ask["narrative_scene_id"], ask["narrative_target_id"])
+
+    @staticmethod
+    def _character_container(app, record, jobs):
+        from zet.services.character_asset_container_service import CharacterAssetContainerService
+        ask = record.get("manifest", {})
+        if not jobs.lifecycle.read_receipt(record["ask_id"]) and not jobs.ready_answer(record["ask_id"]):
+            return
+        jobs.repository.update(record["ask_id"], board_application_state="PENDING")
+        service = getattr(app, "_character_asset_container_service", None)
+        if service is None:
+            service = app._character_asset_container_service = CharacterAssetContainerService(app)
+        if not service.collect_background_job(record["ask_id"], ask):
+            return
+        jobs.repository.update(record["ask_id"], board_application_state="SETTLED")
 
     @staticmethod
     def _images(app, record, jobs):
@@ -213,7 +228,9 @@ class AIJobCoordinator:
                     self._discovered.add(universe)
                 receipt_ids = {row.get("ask_id") for _, row in lifecycle.iter_receipts() or ()}
                 candidates = [row for row in records if row.get("universe_id") == universe
-                              and row.get("ask_id") not in receipt_ids
+                              and (row.get("ask_id") not in receipt_ids or
+                                   (row.get("consumer") == "zet-character-containers"
+                                    and row.get("board_application_state") == "PENDING"))
                               and row.get("harvest_state") not in {"SUPERSEDED", "HARVEST_FAILED"}
                               and not self.repository.is_deleted(row.get("ask_id", ""))]
                 self._collect_app(app, [self.repository.get(row["ask_id"]) for row in candidates])
@@ -309,14 +326,14 @@ class AIJobCoordinator:
                 continue
             if self.repository.is_deleted(job_id):
                 continue
-            if paths.lifecycle.read_receipt(job_id):
+            receipt = paths.lifecycle.read_receipt(job_id)
+            if receipt and not (record.get("consumer") == "zet-character-containers"
+                                and record.get("board_application_state") == "PENDING"):
                 continue
             if record.get("harvest_state") == "HARVEST_FAILED":
                 continue
             ask = record.get("manifest", {})
             consumer = record.get("consumer", "zet")
-            if consumer == "zet-character-containers":
-                continue  # The visible board owns result application.
             if consumer == "zet-image-generation":
                 key = (app.universe_id, ask.get("ad_hoc_request_id") or job_id)
                 now = time.monotonic()
@@ -326,7 +343,7 @@ class AIJobCoordinator:
             try:
                 handler = self.handlers.get(consumer)
                 if handler is not None:
-                    if jobs.ready_answer(job_id):
+                    if not receipt and jobs.ready_answer(job_id):
                         jobs.repository.update(job_id, harvest_state="HARVESTING")
                     handler(app, record, jobs)
                 elif consumer != "zet" and jobs.ready_answer(job_id):

@@ -30,8 +30,8 @@
     for (const item of rows) {
       const row = document.createElement("tr");
       row.dataset.jobId = item.ask_id;
-      for (const value of [item.universe_id, ({ PAUSED_STORAGE: "Paused — storage unavailable", RECOVERING: "Recovering" })[item.status] || item.status, workflowTarget(item),
-        ({ draft: "Draft", final: "Final" })[item.render_mode] || "\u2014", `${item.provider || ""} · ${item.model || ""}`, createdAt(item.created_at),
+      for (const value of [item.universe_id, ({ PAUSED_STORAGE: "Paused: storage unavailable", RECOVERING: "Recovering" })[item.status] || item.status, workflowTarget(item),
+        ({ draft: "Draft", final: "Final" })[item.render_mode] || "\u2014", `${item.provider || ""} Â· ${item.model || ""}`, createdAt(item.created_at),
         [item.failure_stage && `Stage: ${item.failure_stage}`, window.ZetPipelineMessage(item.details),
           item.age_seconds != null && `Age: ${Math.floor(item.age_seconds / 60)} min`, item.recovery_action].filter(Boolean).join(" Â· ")]) {
         const cell = document.createElement("td"); cell.textContent = value || ""; row.append(cell);
@@ -110,8 +110,8 @@
         recent.append(row);
       }
       document.querySelector("#recent-harvest-count").textContent = `${(payload.recent_harvests || []).length} recent harvested job(s)`;
-      const refreshed = payload.updated_at ? `Updated ${new Date(payload.updated_at).toLocaleTimeString()}` : "Loading activity snapshot…";
-      status.textContent = actionError || payload.refresh_error || (payload.refreshing ? "Refreshing activity…" : rows.length ? `${payload.total} job(s) · ${refreshed}` : `No AI jobs match these filters. ${refreshed}`);
+      const refreshed = payload.updated_at ? `Updated ${new Date(payload.updated_at).toLocaleTimeString()}` : "Loading activity snapshotâ€¦";
+      status.textContent = actionError || payload.refresh_error || (payload.refreshing ? "Refreshing activityâ€¦" : rows.length ? `${payload.total} job(s) Â· ${refreshed}` : `No AI jobs match these filters. ${refreshed}`);
     } catch (error) {
       if (error.name !== "AbortError") status.textContent = `${rows.length ? "Showing previous activity. " : ""}Queue unavailable: ${error.message}`;
     } finally { if (request === controller) request = null; }

@@ -760,7 +760,7 @@ Body and Head bootstrap from text; other views may use newly generated local fro
 
 Joe approved initial Tsaeytte batch review for FRONT (8), FRONT_LEFT_3_4 (4), and BACK_RIGHT_3_4 (4), through Canonical Adventure Gear, in existing galleries. Provisional selected-batch sources can advance this chain without replacing published locks. New images require explicit source-layer refresh before appearing in an already frozen Narrative assembly. Local implementation checks passed; live batch review remains pending rollout of the new prompt templates.
 
-Local Head, Assembly and Dressing candidates track the staged ask�s `target_output_file`, matching the background harvester�s destination. A runner must not wait on a separate candidate filename after the generic harvester has consumed the answer. The live style-unification trial exposed this handoff race; existing successful outputs were recovered by matching ask receipts and seeds without rerendering.
+Local Head, Assembly and Dressing candidates track the staged ask's `target_output_file`, matching the background harvester's destination. A runner must not wait on a separate candidate filename after the generic harvester has consumed the answer. The live style-unification trial exposed this handoff race; existing successful outputs were recovered by matching ask receipts and seeds without rerendering.
 
 Costume-Dressing batch lookup compares normalized workspace qualifiers, so a costume display name and its underscore slug resolve the same batch. Costume links also accept either identifier when selecting the existing gallery control. Other costume qualifiers remain isolated.
 
@@ -967,3 +967,5 @@ Disposable isolated checks covered the grace period, pending-job guard, timeout,
 provider failure, late completion, missing/empty images and persisted recovery.
 All four approved fast E2E scenarios passed (47.2s). No live renders or production
 state edits were performed; these results do not establish hosted deployment.
+
+Background collection uses the shared AI job coordinator for Character Asset Container renders. It applies results through the same locked, revision-checked board reconciliation as foreground progress refresh. A pending application marker supports recovery after answer harvesting and protects the receipt until the board commit settles.
