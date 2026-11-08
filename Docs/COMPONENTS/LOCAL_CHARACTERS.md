@@ -21,6 +21,9 @@ Body, Head Edit, Head Construct, Assembly and Costume Dressing locks in display
 order: front, front left/right 3/4, left/right profile, back left/right 3/4, back.
 The Character Asset Container view selector uses the same display order; prompt
 conditioning retains its separate orientation order.
+Persisted container identity compares view membership independently of order, so
+existing containers remain readable when display ordering changes. Reads return
+the current display order, and the next write stores it.
 New Costume Dressing view settings default to Doll-dressing (w/ Ref) and use
 FRONT as the reference view; the selector follows the same display order.
 The dashboard links each view card to its owning Asset Container and uses bounded

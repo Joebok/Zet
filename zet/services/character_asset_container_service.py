@@ -78,6 +78,21 @@ class CharacterAssetContainerService:
         from zet.services.view_conditioning_service import DISPLAY_VIEW_ORDER
         return list(DISPLAY_VIEW_ORDER)
 
+    @staticmethod
+    def _same_scope(saved: object, expected: dict) -> bool:
+        """Compare container identity while treating view order as presentation."""
+        if not isinstance(saved, dict):
+            return False
+        saved_identity = {key: value for key, value in saved.items() if key != "views"}
+        expected_identity = {key: value for key, value in expected.items() if key != "views"}
+        saved_views = saved.get("views")
+        expected_views = expected.get("views")
+        return (saved_identity == expected_identity
+                and isinstance(saved_views, list) and isinstance(expected_views, list)
+                and all(isinstance(view, str) for view in saved_views + expected_views)
+                and len(saved_views) == len(set(saved_views))
+                and set(saved_views) == set(expected_views))
+
     def _path(self, scope: dict) -> Path:
         values = [scope["character"], scope["phase"], scope["pipeline"], scope["costume"] or "_"]
         safe = [quote(item, safe="-_.") for item in values]
@@ -98,8 +113,11 @@ class CharacterAssetContainerService:
                     write_json_atomic(path, value)
             except (OSError, ValueError) as exc:
                 raise CharacterAssetContainerError("The Asset Container is unreadable.") from exc
-            if value.get("scope") != scope:
+            if not self._same_scope(value.get("scope"), scope):
                 raise CharacterAssetContainerError("The Asset Container scope does not match its location.")
+            # The persisted view order is presentation metadata. Return the current
+            # order so old containers render consistently after an ordering change.
+            value["scope"] = scope
             pending = value.get("cleanup_pending")
             if pending:
                 try:
@@ -131,17 +149,18 @@ class CharacterAssetContainerService:
                     journal = json.loads(journal_path.read_text(encoding="utf-8"))
                     operation_id = str(journal.get("operation_id") or journal_path.stem)
                     if (len(operation_id) != 32 or any(char not in "0123456789abcdef" for char in operation_id)
-                            or journal.get("scope") != scope
+                            or not self._same_scope(journal.get("scope"), scope)
                             or Path(str(journal.get("container_path") or "")).resolve() != container_path.resolve()):
                         raise ValueError("Publication journal identity does not match its Asset Container.")
                     committed = self.app.entity_library_service.publication_receipt(operation_id) is not None
                     current = json.loads(container_path.read_text(encoding="utf-8")) if container_path.is_file() else None
                     if committed:
                         recovered = journal.get("next")
-                        if not isinstance(recovered, dict) or recovered.get("scope") != scope:
+                        if not isinstance(recovered, dict) or not self._same_scope(recovered.get("scope"), scope):
                             raise ValueError("Committed publication journal is missing its next container state.")
-                        if current is not None and (not isinstance(current, dict) or current.get("scope") != scope):
+                        if current is not None and (not isinstance(current, dict) or not self._same_scope(current.get("scope"), scope)):
                             raise ValueError("Current container scope does not match its committed publication.")
+                        recovered["scope"] = scope
                         next_revision = int(recovered.get("revision", -1))
                         current_revision = int(current.get("revision", -1)) if isinstance(current, dict) else -1
                         same_committed_state = current == recovered
@@ -156,8 +175,9 @@ class CharacterAssetContainerService:
                             pass
                     elif isinstance(current, dict) and current.get("_pending_publication_id") == operation_id:
                         recovered = journal.get("previous")
-                        if not isinstance(recovered, dict) or recovered.get("scope") != scope:
+                        if not isinstance(recovered, dict) or not self._same_scope(recovered.get("scope"), scope):
                             raise ValueError("Uncommitted publication journal is missing its previous container state.")
+                        recovered["scope"] = scope
                         write_json_atomic(container_path, recovered)
                     journal_path.unlink(missing_ok=True)
             except (OSError, ValueError, TypeError) as exc:
@@ -730,8 +750,10 @@ class CharacterAssetContainerService:
             current = self.detail(character, phase, pipeline, costume)
             if current["revision"] != expected_revision:
                 raise CharacterAssetContainerError("The container changed. Refresh before saving.")
-            if value.get("container_id") != current["container_id"] or value.get("scope") != scope:
+            if (value.get("container_id") != current["container_id"]
+                    or not self._same_scope(value.get("scope"), scope)):
                 raise CharacterAssetContainerError("The container identity cannot be changed.")
+            value["scope"] = scope
             value["revision"] = expected_revision + 1
             write_json_atomic(path, value)
             return copy.deepcopy(value)
