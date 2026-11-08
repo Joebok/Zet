@@ -11,7 +11,7 @@
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
   <link rel="stylesheet" href="/static/zet.css?v=20261107-character-overview">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
-  <link rel="stylesheet" href="/static/narrative.css?v=20261107-board-actions">
+  <link rel="stylesheet" href="/static/narrative.css?v=20261107-board-toolbar">
 <link rel="stylesheet" href="/static/scene_text.css"><script src="/static/scene_text.js" defer></script>
 </head>
 <body>
@@ -375,7 +375,10 @@
     </section>
     <section id="character-asset-container-page" class="page">
       <div class="page-title-row"><h1 id="character-container-title">Character Asset Container</h1></div>
-      <p id="character-container-context" class="muted"></p>
+      <div class="character-board-context">
+        <span id="character-container-context" class="muted"></span>
+        <label id="character-container-view-wrap" hidden>View<select id="character-container-view"></select></label>
+      </div>
       <label id="character-container-costume-wrap" hidden>Costume<select id="character-container-costume"></select></label>
       <details id="character-container-authoring" class="control-panel" hidden>
         <summary>Container settings</summary>
@@ -413,25 +416,29 @@
       <section id="character-container-outputs" class="narrative-slots" aria-label="Asset views" hidden></section>
       <section id="character-container-workspace" hidden>
         <a id="character-container-back" href="/">Back to Asset Container</a>
-        <div id="character-container-view-source" class="button-row compact" hidden>
-          <label>Reference view for this board<select id="character-container-source-view"></select></label>
-          <button id="character-container-save-view-source" type="button">Save view recipe</button>
-        </div>
-
         <section class="control-panel">
-          <div id="character-container-dressing-settings" class="button-row compact" hidden>
+          <div id="character-container-view-source" class="character-board-settings" role="group" aria-label="View recipe" hidden>
+            <label>Reference view for this board<select id="character-container-source-view"></select></label>
+            <button id="character-container-save-view-source" type="button">Save view recipe</button>
+            <p id="character-container-view-source-status" class="muted" role="status"></p>
+          </div>
+          <div id="character-container-dressing-settings" class="character-board-settings" role="group" aria-label="Costume settings" hidden>
             <label>Costume mode<select id="character-container-dressing-mode"><option value="doll-dressing-ref">Doll-dressing (w/ Ref)</option><option value="doll-dressing-no-ref">Doll-dressing (no Ref)</option><option value="rotate">Rotate</option></select></label>
             <label>Costume reference view<select id="character-container-dressing-reference"></select></label>
             <button id="character-container-save-dressing-settings" type="button">Save costume settings</button>
+            <p id="character-container-dressing-status" class="muted" role="status"></p>
           </div>
-          <p id="character-container-dressing-status" class="muted" role="status"></p>
-          <p id="character-container-head-reference-summary" class="muted"></p>
-          <div class="button-row compact">
-            <label id="character-container-apply-wrap" hidden><input id="character-container-apply-phase-change" type="checkbox"> Apply phase change to new FRONT requests</label>
-            <label>Aspect ratio<input id="character-container-aspect" value="2:3"></label>
-            <button id="character-container-prompt-preview-button" type="button">Preview prompt</button>
+          <div id="character-container-apply-wrap" class="character-board-settings" role="group" aria-label="FRONT reference" hidden>
+            <label><input id="character-container-apply-phase-change" type="checkbox"> Apply phase change to new FRONT requests</label>
+            <p id="character-container-head-reference-summary" class="muted"></p>
           </div>
-          <div id="character-container-board-actions"></div>
+          <div class="character-board-toolbar">
+            <div class="character-board-prompt-controls">
+              <label>Aspect ratio<input id="character-container-aspect" size="8" value="2:3"></label>
+              <button id="character-container-prompt-preview-button" type="button">Prompt</button>
+            </div>
+            <div id="character-container-board-actions"></div>
+          </div>
         </section>
         <details id="character-container-prompt-preview" class="control-panel" hidden>
           <summary>Current prompt and ordered references</summary>
@@ -2298,7 +2305,7 @@ Add prompt language here.
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/character_hub.js?v=20261107-character-overview"></script>
-  <script src="/static/zet.js?v=20261107-character-hub"></script>
+  <script src="/static/zet.js?v=20261107-board-toolbar"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>
@@ -2307,7 +2314,7 @@ Add prompt language here.
   <script src="/static/minor_characters.js?v=20261031-final-mode-cues"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
-  <script type="module" src="/static/character_asset_container.js?v=20261107-board-render-options"></script>
+  <script type="module" src="/static/character_asset_container.js?v=20261107-board-toolbar"></script>
 
 </body>
 </html>

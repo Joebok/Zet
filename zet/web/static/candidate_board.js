@@ -8,8 +8,10 @@ export function renderBoardActions(criteria = 'Rank every completed image in the
     <button type="button" class="candidate-board-render-final" data-board-action="render" data-mode="final" data-count="4">Final 4</button>
     <button type="button" data-board-action="luna-review">Luna Review</button>
     <details class="luna-review-criteria"><summary>Review criteria</summary><pre>${safeCriteria}</pre></details>
-    <button type="button" class="danger-text-action" data-board-action="delete-drafts">Delete Drafts</button>
-    <button type="button" class="danger-action" data-board-action="delete-non-selected">Delete Non-Selected</button>
+    <div class="candidate-board-delete-actions">
+      <button type="button" class="danger-text-action" data-board-action="delete-drafts">Delete Drafts</button>
+      <button type="button" class="danger-action" data-board-action="delete-non-selected">Delete Non-Selected</button>
+    </div>
   </div>`;
 }
 

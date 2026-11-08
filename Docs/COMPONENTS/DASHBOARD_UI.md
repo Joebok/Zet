@@ -24,6 +24,11 @@ glyphs, and desktop review layout with controls on the right. Character review
 places comparison images on the left and the candidate under review on the right,
 using its existing slot and publication guards for select, lock, retry, regen,
 and clear.
+The character board's View selector opens any view in the current container.
+Conditional render settings sit above the action bar with their save controls
+and feedback. Aspect ratio and Prompt precede the Character generation buttons.
+Both board types group the delete actions at the right edge of the action bar,
+which wraps on narrow screens.
 Completed candidate cards show the elapsed render time in whole seconds after
 their status. Timing begins when Zet submits the render and ends when the image
 is collected and placed; older completed candidates without saved timing retain

@@ -1,4 +1,4 @@
-import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from "./candidate_board.js?v=20261107-render-time";
+import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from "./candidate_board.js?v=20261107-board-toolbar";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -160,7 +160,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
 
   function navigate(view) {
     history.pushState({}, "", route(view));
-    return activate(state.pipeline, {view, costume: state.costume, guidance: $("template-guidance").value});
+    return activate(state.pipeline, {view, costume: state.costume, scope: state.scope, guidance: $("template-guidance").value});
   }
 
   function isHead() { return ["head-image", "head-image-edit"].includes(state.pipeline); }
@@ -168,7 +168,13 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   function render() {
     const {scope, boards} = state.detail;
     $("title").textContent = `${pipelineLabels[state.pipeline]} · ${scope.character} · ${scope.phase}`;
-    $("context").textContent = [scope.costume, state.view.replaceAll("_", " ")].filter(Boolean).join(" · ");
+    $("context").textContent = scope.costume || "";
+    $("view-wrap").hidden = !state.view;
+    const viewSelect = $("view");
+    if (state.view && !viewSelect.options.length) {
+      viewSelect.replaceChildren(...scope.views.map(view => new Option(view.replaceAll("_", " "), view)));
+    }
+    viewSelect.value = state.view;
     $("workspace").hidden = !state.view;
     $("costume-wrap").hidden = state.pipeline !== "costume-dressing" || Boolean(state.view);
     $("outputs").hidden = Boolean(state.view);
@@ -199,7 +205,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const dressing = state.pipeline === "costume-dressing";
     const headFront = isHead() && state.view === "FRONT";
     $("dressing-settings").hidden = !dressing || state.view === "FRONT";
-    $("head-reference-summary").hidden = !headFront;
+    $("apply-wrap").hidden = !headFront;
     if (dressing && state.view !== "FRONT") {
       const saved = state.detail.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-no-ref", costume_reference_view: ""};
       const draft = state.dressingDrafts[state.view] || saved;
@@ -268,7 +274,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     $("template-improvement").hidden = Boolean(state.view);
     $("edit-costume-template").hidden = state.pipeline !== "costume-dressing";
     renderTemplateChoices();
-    $("apply-wrap").hidden = !isHead() || Boolean(state.view && state.view !== "FRONT");
     $("phase-source").hidden = !["head-image", "head-image-edit"].includes(state.pipeline);
     $("assembly-source").hidden = state.pipeline !== "character-assembly";
     $("view-source").hidden = !["body-reference", "head-image", "head-image-edit"].includes(state.pipeline) || !state.view || state.view === "FRONT";
@@ -314,6 +319,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   }
 
   async function saveSource(name, source, renderMode = "") {
+    const status = $(name === "views" ? "view-source-status" : "source-status");
     try {
       state.detail = await request(api(`/sources/${encodeURIComponent(name)}`), {
         method: "PUT", body: JSON.stringify({source, render_mode: renderMode,
@@ -321,8 +327,8 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       });
       render();
       if (!state.view && isHead()) void loadPhaseSourceCandidates();
-      $("source-status").textContent = "Reference choice saved for new requests.";
-    } catch (error) { if (error.name !== "AbortError") $("source-status").textContent = error.message; }
+      status.textContent = "Reference choice saved for new requests.";
+    } catch (error) { if (error.name !== "AbortError") status.textContent = error.message; }
   }
 
   function review(candidateId) {
@@ -623,6 +629,9 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     document.querySelectorAll(".candidate-board-actions button").forEach(button => { button.disabled = false; });
     $("title").textContent = pipelineLabels[state.pipeline] || "Character Asset Container";
     $("context").textContent = "";
+    $("view-wrap").hidden = true;
+    $("view").replaceChildren();
+    $("view-source-status").textContent = "";
     renderTemplateProposal();
     show("Loading Asset Container…");
     if (options.sync !== false) syncRoute();
@@ -852,6 +861,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     if (error.name !== "AbortError") show(error.message, true);
   }
   $("refresh").addEventListener("click", refresh);
+  $("view").addEventListener("change", (event) => void navigate(event.target.value));
   $("costume").addEventListener("change", () => void activate(state.pipeline, {costume: $("costume").value, view: state.view}));
   function followViewLink(event, link, view) {
     if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
