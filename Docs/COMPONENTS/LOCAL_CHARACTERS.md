@@ -193,7 +193,9 @@ references when preparing renders. Restart does not dispatch rendering. The
 [completed plan](../../plans/completed/character-pipeline-ui.md) records validation.
 The durable behavior is recorded in [ADR 0042](../DECISIONS/0042-character-mode-restart.md).
 
-Head Image and Head Image Edit phase changes use one source setting across Draft and Final. A phase/pipeline choice follows the current locked FRONT, without pinning a candidate or matching its quality; a managed upload is an alternative. Legacy mode-specific records prefer Final when present. See the [active phase-source plan](../../plans/active/phase-change-mode-sources.md) for implementation and validation status.
+Head Image and Head Image Edit use one FRONT reference source across Draft and Final. A phase/pipeline choice follows the current locked FRONT, without pinning a candidate or matching its quality; a managed upload is an alternative. Legacy mode-specific records prefer Final when present. See the [active phase-source plan](../../plans/active/phase-change-mode-sources.md) for source storage and migration status.
+
+In Container settings, FRONT can render in three modes: no reference, reference without Phase Change, or reference with Phase Change. The shared Phase Change checkbox controls prompt intent; source phase/pipeline selectors are enabled while selected. Upload accepts file selection or clipboard paste. Phase Change without an available reference is rejected during prompt compilation and render preparation. The FRONT mode caption appears above render actions. Non-FRONT Head Image Construct and Head Image Edit default to the selected FRONT candidate as their reference; each view can save another selected view as its guide. A missing selected reference blocks prompt compilation and rendering. These settings affect new requests; prepared requests retain frozen inputs.
 
 Shared slot recovery reattaches current candidates affected by the historical render-wait timeout to their original queued requests, or restores successful harvested images to review eligibility. It checks slot membership, request identity and receipts before changing state.
 

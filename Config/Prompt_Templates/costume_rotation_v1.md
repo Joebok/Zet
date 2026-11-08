@@ -1,21 +1,16 @@
 # Render Task
 
-Rotate the fully dressed character in Image 1 from {{ROTATION_SOURCE_VIEW}} to {{ROTATION_TARGET_VIEW}}, matching the orientation of Image 2.
-Create one full-body reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, wearing {{COSTUME_NAME}}.
-
-# Image Inputs
-
-{{CHATGPT_IMAGE_INPUTS}}
+Turn the single fully dressed figure in <image1> in three dimensions from {{ROTATION_SOURCE_VIEW}} to {{ROTATION_TARGET_VIEW}}. Keep {{CHARACTER_NAME}}'s identity, proportions, and rendering style from <image1> and carry {{COSTUME_NAME}} through the turn. Use <image2> only for the target body and head direction, stance, and framing. {{DRESSING_DETAIL_REFERENCES}} Return exactly one studio frame with the dressed figure fully visible from the top of the hair through both soles, with clear space around the silhouette.
 
 # Rotation
 
 {{ROTATION_INSTRUCTION}}
 
-Edit Image 1. Turn the entire standing figure in three dimensions into the body and head direction shown by Image 2. Rotate head, neck, shoulders, torso, hips, legs and feet coherently. Match which surfaces face the viewer and which are hidden in Image 2. Reconstruct newly exposed surfaces of the same dressed character.
+Rotate head, neck, shoulders, torso, hips, legs and feet coherently. Match which surfaces face the viewer and which are hidden in <image2>. Reconstruct newly exposed surfaces of the same dressed character.
 
-Image 2 controls target orientation, stance and framing only. Its fitment underwear, bare feet and rendering details are not costume instructions. Keep the finished clothing, footwear, character identity, anatomy, proportions, hair, ears, materials and visual treatment of Image 1, except for the rotation and authored construction requirements below. Preserve both feet planted and the complete figure including footwear.
+Keep the finished clothing, footwear, anatomy, hair, ears, materials and visual treatment of <image1>, applying the authored construction requirements below. Keep both feet planted.
 
-This is a turn of the character, not a flat image rotation, camera roll, mirror, independent head turn or new pose. Do not retain Image 1's old viewing angle or turn the figure toward a supporting design reference.
+Keep the camera level and the head and body aligned as the figure turns. Match the handedness of the target view.
 
 # Garment Construction Across the Turn
 
@@ -56,7 +51,7 @@ Requested head view: {{HEAD_VIEW_DISPLAY}}.
 
 {{FOOTWEAR_CONTACT}}
 
-Preserve Image 1's dimensional skin, hair, cloth, leather, metal and gemstone treatment. Supplemental references control only their labeled design details, never the body angle, pose or full costume silhouette. Do not transfer a reference swatch's background or display shape onto the garment.
+Preserve <image1>'s dimensional skin, hair, cloth, leather, metal and gemstone treatment.
 
 {{LOCAL_CANONICAL_ART_STYLE}}
 

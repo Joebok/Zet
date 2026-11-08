@@ -19,11 +19,11 @@ def rotation_instruction(source: str, target: str) -> str:
     steps = (_TURN_ORDER.index(target) - _TURN_ORDER.index(source)) % 8
     degrees = rotation_degrees(source, target)
     if degrees == 180:
-        return f"Turn the dressed figure from {source} to {target} by 180 degrees; use Image 2 to resolve the final body and head orientation."
+        return f"Turn the dressed figure from {source} to {target} by 180 degrees. Match <image2> for the final body and head orientation."
     direction = 1 if steps <= 4 else -1
     start = _TURN_ORDER.index(source)
     arc = " -> ".join(_TURN_ORDER[(start + direction * step) % 8] for step in range(degrees // 45 + 1))
-    return f"Turn the dressed figure from {source} to {target} by {degrees} degrees around the body's vertical axis, following this direction through successive viewing orientations: {arc}. Match Image 2 at the endpoint."
+    return f"Turn the dressed figure from {source} to {target} by {degrees} degrees around the body's vertical axis, along this arc: {arc}. Match <image2> at the endpoint."
 
 
 def rotation_source(run: dict, view: str) -> dict:

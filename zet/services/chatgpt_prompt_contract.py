@@ -248,7 +248,7 @@ def compile_prompt_diagnostics(
     if len(image_inputs) > 6:
         warnings.append("Prompt uses more than six image inputs; verify that every reference is necessary.")
     for item in image_inputs:
-        marker = f"Image {item['index']}"
+        marker = item.get("prompt_marker") or f"Image {item['index']}"
         if marker not in prompt:
             errors.append(f"Prompt does not identify {marker}.")
     return {

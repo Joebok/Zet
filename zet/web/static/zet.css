@@ -2034,6 +2034,40 @@ button.danger-action {
   color: #fff;
 }
 
+.head-source-settings,
+.head-source-lock-settings,
+.head-source-actions {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.head-source-settings[hidden],
+.head-source-lock-settings[hidden] { display: none; }
+
+.head-source-settings > p { margin: 0; }
+.head-source-settings label,
+.head-source-lock-settings label { align-items: flex-start; }
+.head-phase-change-toggle { display: flex; gap: 7px; }
+.head-source-paste {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: text;
+  min-height: 44px;
+  padding: 10px;
+  text-align: left;
+  width: min(100%, 420px);
+}
+.head-source-paste:focus { outline: 2px solid var(--focus); }
+button.clear-source-action {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+.head-render-mode { margin: 0 0 8px; text-align: left; }
+
 button.tab.active {
   background: var(--primary-soft);
   border-color: var(--nav);

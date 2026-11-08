@@ -359,7 +359,7 @@ class CharacterAssetContainerService:
                 return []
             source_view = (value["sources"].get("views") or {}).get(view)
             if not source_view:
-                if pipeline != "head-image-edit":
+                if pipeline not in {"head-image", "head-image-edit"}:
                     return []
                 source_view = "FRONT"
             role = "body_reference_front_anchor" if pipeline == "body-reference" else "head_image_source"
@@ -408,8 +408,13 @@ class CharacterAssetContainerService:
                        assembly_style_mode: str = "", render_mode: str = "draft",
                        costume_settings: dict | None = None) -> dict:
         scope = self._scope(character, phase, pipeline, costume)
+        if apply_phase_change and pipeline in {"head-image", "head-image-edit"} and view != "FRONT":
+            raise CharacterAssetContainerError("Phase Change applies only to FRONT renders.")
         references = self.resolve_references(character, phase, pipeline, scope["costume"], view,
                                              render_mode=render_mode, costume_settings=costume_settings)
+        if apply_phase_change and pipeline in {"head-image", "head-image-edit"} and not references:
+            raise CharacterAssetContainerError(
+                "Phase Change requires an uploaded FRONT reference or a selected locked FRONT source.")
         target = self._path(scope).parent / "prompt-previews" / quote(view, safe="-_.")
         from zet.services.character_container_prompt_service import CharacterContainerPromptService
         project_root = Path(__file__).resolve().parents[2]

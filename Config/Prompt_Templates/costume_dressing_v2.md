@@ -1,6 +1,10 @@
 <!-- ZET:BEGIN IMAGE_PROMPT_ONLY -->
 # Render Task
 
+<!-- ZET:BEGIN LOCAL_PIPELINE_ONLY -->
+{{DRESSING_EDIT_TASK}}
+<!-- ZET:END LOCAL_PIPELINE_ONLY -->
+<!-- ZET:BEGIN TRADITIONAL_PIPELINE_ONLY -->
 Edit the supplied assembled character into one finished full-body costume reference of {{CHARACTER_NAME}}, {{CHARACTER_PHASE}}, wearing {{COSTUME_NAME}}.
 
 Requested body view: {{BODY_VIEW_DISPLAY}}.
@@ -17,6 +21,7 @@ Requested head view: {{HEAD_VIEW_DISPLAY}}.
 # Preserve Contract
 
 {{CHATGPT_PRESERVE_CONTRACT}}
+<!-- ZET:END TRADITIONAL_PIPELINE_ONLY -->
 
 <!-- ZET:PROMPT_PACKET {"version":1,"references":[{"id":"selected-front","role":"character_identity","label":"Selected FRONT from this Dressing batch","audience":"analysis","views":["BACK_LEFT_3_4","BACK_RIGHT_3_4","BACK"],"source":{"kind":"batch_view","view":"FRONT","state":"selected"}}]} -->
 <!-- ZET:END IMAGE_PROMPT_ONLY -->
@@ -35,9 +40,9 @@ Judge the candidate image against the visible requirements below and the supplie
 
 {{LOCAL_CANONICAL_ART_STYLE}}
 
-Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume. Preserve identity, anatomy, body proportions, pose, body and head orientation, camera, and crop from Image 1. The costume conforms to the existing body; the body does not change to fit the costume.
+Replace only the generic fitment clothing, jewelry, equipment, and footwear controlled by the costume. Preserve the assembled character's identity, anatomy, body proportions, pose, body and head orientation, camera, and crop. The costume conforms to the existing body.
 
-Preserve the dimensional facial planes, skin variation and hair detail of Image 1 at the output scale. Render the new costume in the same visual treatment, distinguishing woven cloth and seams, weighted folds, leather grain and creases, metal highlights and gemstone reflections. Do not simplify the face or exposed body while adding the costume. Supporting design images control their assigned designs and visible details, not the overall rendering style.
+Preserve the assembled character's dimensional facial planes, skin variation and hair detail at the output scale. Render the new costume in the same visual treatment, distinguishing woven cloth and seams, weighted folds, leather grain and creases, metal highlights and gemstone reflections. Do not simplify the face or exposed body while adding the costume. Supporting design images control their assigned visible details.
 
 # Costume
 

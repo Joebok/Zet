@@ -488,6 +488,35 @@ Reviewed At:
     )
 
 
+_DRESSING_DESIGN_ROLES = {"batch_view_reference", "front_costume"}
+
+
+def _dressing_edit_task(
+    image_inputs: list[dict], costume_name: str, body_view: str, head_view: str, detail_guidance: str,
+) -> str:
+    edit_base = next(item for item in image_inputs if item["role"] == "edit_base")
+    canvas = edit_base["prompt_marker"]
+    instructions = [
+        f"Dress the single person in {canvas} in place. Use {canvas} as the sole canvas and "
+        "preserve the person's identity, age, anatomy, proportions, stance, camera, and framing. Preserve the "
+        f"{body_view.lower()} body view and the {head_view.lower()} head view. Replace the fitment clothing "
+        f"with {costume_name}, including only the garments, jewelry, equipment, and footwear specified below.",
+    ]
+    for item in image_inputs:
+        if item["source_role"] in _DRESSING_DESIGN_ROLES:
+            instructions.append(
+                f"Use {item['prompt_marker']} only for garment construction, colors, materials, and trim. "
+                f"Fit those details to the person in {canvas} and show only the surfaces visible from that angle."
+            )
+    if detail_guidance:
+        instructions.append(detail_guidance)
+    instructions.append(
+        "Return exactly one finished studio frame with one dressed figure, fully visible from the top of the hair "
+        "through both soles, with clear space around the silhouette."
+    )
+    return " ".join(instructions)
+
+
 @prompt_preview_compiler
 def compile_costume_dressing_job(
     job: dict, project_root: Path = PROJECT_ROOT, *, prompt_variant: str = "generation",
@@ -572,9 +601,21 @@ def compile_costume_dressing_job(
         project_root, ["\n".join(selection.sections.values())], references,
         universe_root=universe_root,
     )
+    qwen_edit = pipeline_mode == "local" and prompt_variant == "generation"
+    if qwen_edit and not rotation:
+        references = [
+            {**reference, "prompt_role": "costume_reference"}
+            if reference.get("role") in _DRESSING_DESIGN_ROLES else reference
+            for reference in references
+        ]
     references, image_inputs, contract_values, contract_manifest = prepare_chatgpt_prompt_contract(
         references, render_mode="edit"
     )
+    if qwen_edit:
+        image_inputs = [
+            {**item, "prompt_marker": f"<image{item['index']}>" if len(image_inputs) > 1 else "the supplied image"}
+            for item in image_inputs
+        ]
 
     paths = bundle_output_paths(output_dir, output_files(bundle), {
         "final_prompt": "Final_Image_Prompt.md",
@@ -642,7 +683,7 @@ def compile_costume_dressing_job(
             + ("Image 2 is the selected FRONT costume image and guides costume appearance only. "
                if has_front_costume_reference else "")
             + "Preserve the requested view and the Image 1 pose, body, and framing."
-            if pipeline_mode == "local" and body_view_token != "FRONT" else ""
+            if pipeline_mode == "local" and not qwen_edit and body_view_token != "FRONT" else ""
         ),
         "LOCAL_CANONICAL_ART_STYLE": (
             f"Apply the universe's Canonical Art Style: {universe_style}."
@@ -683,8 +724,22 @@ def compile_costume_dressing_job(
         "EQUIPMENT_VIEW_HEADING": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Optional equipment view heading", "editable": False},
         "LOCAL_COSTUME_REFERENCE_GUIDANCE": {"source_kind": "runtime_generated", "source_path": "", "source_label": "Local costume reference guidance", "editable": False},
     }
-    from zet.services.local_view_reference_service import batch_reference_guidance
-    if pipeline_mode == "local" and not rotation:
+    if qwen_edit:
+        detail_guidance = " ".join(
+            f"Use {item['prompt_marker']} ({item['label']}) only for the specific design detail assigned to it below."
+            for item in image_inputs
+            if item["source_role"] not in _DRESSING_DESIGN_ROLES
+            and item["role"] not in {"edit_base", "layout_reference"}
+        )
+        if rotation:
+            metadata_values["DRESSING_DETAIL_REFERENCES"] = detail_guidance
+        else:
+            metadata_values["DRESSING_EDIT_TASK"] = _dressing_edit_task(
+                image_inputs, metadata_values["COSTUME_NAME"] or costume_name,
+                body_view_display, head_view_display, detail_guidance,
+            )
+    elif pipeline_mode == "local":
+        from zet.services.local_view_reference_service import batch_reference_guidance
         metadata_values["LOCAL_COSTUME_REFERENCE_GUIDANCE"] += "\n" + batch_reference_guidance(references, body_view_token)
     prompt_text = render_static_prompt_artifacts(
         project_root=project_root,

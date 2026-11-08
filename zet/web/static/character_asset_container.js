@@ -7,9 +7,10 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     "head-image-edit": "Head Image Edit", "character-assembly": "Character Assembly",
     "costume-dressing": "Costume Dressing",
   };
-  const state = {pipeline: "", costume: "", view: "", detail: null,
+  const state = {pipeline: "", costume: "", view: "", detail: null, phaseSourceFile: null,
     timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null, dressingDrafts: {},
-    reviewCandidateId: "", mutation: false, originSlot: null, scope: null, controller: null, templateTimer: null};
+    reviewCandidateId: "", mutation: false, originSlot: null, scope: null, controller: null, templateTimer: null,
+    phaseChange: false, sourceScopeKey: ""};
   const reviewZoom = window.ZetReviewImageZoom.attach($("review"), () => [...$("review-pair").querySelectorAll("img")]);
   const activeCandidateStates = new Set(["SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"]);
   const escape = (value) => String(value ?? "").replace(/[&<>"']/g,
@@ -203,9 +204,18 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const board = state.detail.boards[state.view];
     $("board-actions").innerHTML = renderBoardActions(board.luna_review?.prompt);
     const dressing = state.pipeline === "costume-dressing";
-    const headFront = isHead() && state.view === "FRONT";
     $("dressing-settings").hidden = !dressing || state.view === "FRONT";
-    $("apply-wrap").hidden = !headFront;
+    const renderMode = $("head-render-mode");
+    renderMode.hidden = !isHead();
+    if (isHead() && state.view === "FRONT") {
+      const source = state.detail.sources?.phase_change ?? state.detail.sources?.phase_change_by_mode?.final ?? state.detail.sources?.phase_change_by_mode?.draft ?? {};
+      const hasReference = source.kind === "upload" || Boolean(source.phase);
+      renderMode.textContent = `FRONT render: ${hasReference ? "With FRONT reference" : "No FRONT reference"}${$("apply-phase-change").checked ? " · Phase Change" : " · No Phase Change"}.`;
+    } else if (isHead()) {
+      const sourceView = (state.detail.sources?.views || {})[state.view] || "FRONT";
+      const candidate = state.detail.boards[sourceView]?.candidates[state.detail.boards[sourceView]?.selected_id];
+      renderMode.textContent = `${state.view.replaceAll("_", " ")} render: ${sourceView.replaceAll("_", " ")} reference${candidate?.image_path ? " selected" : " not selected"}.`;
+    }
     if (dressing && state.view !== "FRONT") {
       const saved = state.detail.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-ref", costume_reference_view: "FRONT"};
       const draft = state.dressingDrafts[state.view] || saved;
@@ -221,11 +231,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       $("dressing-status").textContent = state.dressingDrafts[state.view]
         ? "Unsaved changes. Preview and Generate use saved settings."
         : `Saved mode: ${saved.mode}.`;
-    }
-    if (headFront) {
-      const source = state.detail.sources?.phase_change ?? state.detail.sources?.phase_change_by_mode?.final ?? state.detail.sources?.phase_change_by_mode?.draft ?? {};
-      $("head-reference-summary").textContent = source.kind === "upload" ? `Saved FRONT reference: ${source.filename || "uploaded image"}.` : source.phase ? `Saved FRONT reference: ${source.phase} · ${source.pipeline}.` : "No FRONT reference saved. FRONT will use the prompt directly.";
-      $("apply-phase-change").disabled = !source.phase && source.kind !== "upload";
     }
     const staging = document.createElement("div");
     const candidates = Object.fromEntries(Object.entries(board.candidates).map(([id, candidate]) => [id, {
@@ -270,7 +275,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const byMode = sources.phase_change_by_mode || {};
     const phaseSource = sources.phase_change ?? byMode.final ?? byMode.draft ?? {};
     const authoring = $("authoring");
-    authoring.hidden = Boolean(state.view);
+    authoring.hidden = false;
     $("template-improvement").hidden = Boolean(state.view);
     $("edit-costume-template").hidden = state.pipeline !== "costume-dressing";
     renderTemplateChoices();
@@ -284,15 +289,18 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     phaseSelect.value = phases.some((phase) => phase.value === phaseSource.phase)
       ? phaseSource.phase : (phases[0]?.value || "");
     $("source-pipeline").value = phaseSource.pipeline || "head-image";
+    $("source-lock").hidden = !$("apply-phase-change").checked;
+    $("source-phase").disabled = !$("apply-phase-change").checked;
+    $("source-pipeline").disabled = !$("apply-phase-change").checked;
+    $("save-phase-source").disabled = !$("apply-phase-change").checked;
     $("head-pipeline").value = sources.head_pipeline || "head-image";
 
     const recipe = {...(sources.views || {})};
     const sourceView = $("source-view");
     const choices = detail.scope.views.filter((view) => view !== state.view);
     const options = choices.map((view) => new Option(view.replaceAll("_", " "), view));
-    if (state.pipeline !== "head-image-edit") options.unshift(new Option("No image reference", ""));
     sourceView.replaceChildren(...options);
-    sourceView.value = recipe[state.view] ?? (state.pipeline === "head-image-edit" ? "FRONT" : "");
+    sourceView.value = recipe[state.view] || "FRONT";
   }
 
   async function loadPhaseSourceCandidates() {
@@ -300,26 +308,26 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const phase = $("source-phase").value;
     const pipeline = $("source-pipeline").value;
     if (!phase) {
-      $("source-status").textContent = "Choose a source phase.";
+      $("phase-source-status").textContent = "Choose a source phase.";
       return;
     }
-    $("source-status").textContent = "Checking the current locked FRONT…";
+    $("phase-source-status").textContent = "Checking the current locked FRONT…";
     try {
       const data = await request(apiAt(pipeline, phase));
       if (sequence !== state.sourceRequest) return;
       const board = data.boards.FRONT;
       const candidate = board.slots.map((id) => id && board.candidates[id])
         .find((item) => item?.locked && item.inventory_asset_id);
-      $("source-status").textContent = candidate
+      $("phase-source-status").textContent = candidate
         ? `Current source: locked FRONT · ${candidate.render_mode} · slot ${candidate.slot}`
         : "No locked, published FRONT yet. Save this phase and pipeline; new FRONT requests will wait until one is locked.";
     } catch (error) {
-      if (sequence === state.sourceRequest) $("source-status").textContent = error.message;
+      if (sequence === state.sourceRequest) $("phase-source-status").textContent = error.message;
     }
   }
 
   async function saveSource(name, source, renderMode = "") {
-    const status = $(name === "views" ? "view-source-status" : "source-status");
+    const status = $(name === "views" ? "view-source-status" : name === "phase_change" ? "phase-source-status" : "source-status");
     try {
       state.detail = await request(api(`/sources/${encodeURIComponent(name)}`), {
         method: "PUT", body: JSON.stringify({source, render_mode: renderMode,
@@ -597,6 +605,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
 
   async function activate(pipeline, options = {}) {
     const params = new URLSearchParams(location.search);
+    const authoringWasOpen = $("authoring").open;
     deactivate();
     const controller = new AbortController();
     state.controller = controller;
@@ -611,6 +620,11 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     state.dressingDrafts = {};
     state.costume = state.pipeline === "costume-dressing"
       ? options.costume ?? params.get("costume") ?? "" : "";
+    const sourceScopeKey = JSON.stringify([state.scope.universe_id, state.scope.character,
+      state.scope.phase, state.pipeline]);
+    const sameSourceScope = state.sourceScopeKey === sourceScopeKey;
+    if (!sameSourceScope) state.phaseChange = false;
+    state.sourceScopeKey = sourceScopeKey;
     state.active = true;
     state.pollInFlight = false;
     state.mutation = false;
@@ -618,12 +632,13 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     state.templateProposal = options.proposal || null;
     state.originSlot = null;
     state.reviewCandidateId = "";
-    for (const id of ["board", "outputs", "review-pair", "review-prompt", "prompt-references", "source-status", "prompt-text"]) $(id).replaceChildren();
+    for (const id of ["board", "outputs", "review-pair", "review-prompt", "prompt-references", "source-status", "phase-source-status", "prompt-text"]) $(id).replaceChildren();
     for (const id of ["workspace", "outputs", "authoring", "template-improvement", "prompt-preview", "refresh", "costume-wrap"]) $(id).hidden = true;
-    $("authoring").open = false;
+    $("authoring").open = sameSourceScope && authoringWasOpen;
     $("template-improvement").open = Boolean(options.proposal || options.templateCandidate);
-    $("apply-phase-change").checked = false;
+    $("apply-phase-change").checked = state.phaseChange;
     $("phase-source-file").value = "";
+    state.phaseSourceFile = null;
     $("template-guidance").value = options.guidance ?? "";
     $("prompt-preview-button").disabled = false;
     document.querySelectorAll(".candidate-board-actions button").forEach(button => { button.disabled = false; });
@@ -681,6 +696,12 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
 
   async function generate(count, renderMode, replacement = {}) {
     if (state.mutation || !state.detail) return;
+    const frontSource = state.detail.sources?.phase_change ?? state.detail.sources?.phase_change_by_mode?.final ?? state.detail.sources?.phase_change_by_mode?.draft ?? {};
+    if (isHead() && state.view === "FRONT" && $("apply-phase-change").checked
+        && frontSource.kind !== "upload" && !frontSource.phase) {
+      show("Phase Change requires an uploaded FRONT reference or a selected locked FRONT source.", true);
+      return;
+    }
     const scope = api();
     const view = state.view;
     const signal = state.controller.signal;
@@ -696,7 +717,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       const result = await request(api(`/views/${encodeURIComponent(view)}/generate`), {
         method: "POST", body: JSON.stringify({count, render_mode: renderMode,
           aspect_ratio: $("aspect").value, expected_revision: state.detail.revision,
-          apply_phase_change: $("apply-phase-change").checked,
+          apply_phase_change: isHead() && view === "FRONT" && $("apply-phase-change").checked,
           costume_settings: savedDressingSettings(), ...replacement}),
       });
       if (signal.aborted || scope !== api() || view !== state.view || result.revision < state.detail.revision) return;
@@ -726,7 +747,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     button.disabled = true;
     try {
       const preview = await request(api(`/views/${encodeURIComponent(state.view)}/prompt`), {
-        method: "POST", body: JSON.stringify({apply_phase_change: $("apply-phase-change").checked,
+        method: "POST", body: JSON.stringify({apply_phase_change: isHead() && state.view === "FRONT" && $("apply-phase-change").checked,
           costume_settings: savedDressingSettings()}),
       });
       $("prompt-text").textContent = preview.prompt;
@@ -875,6 +896,33 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   });
   $("source-phase").addEventListener("change", () => void loadPhaseSourceCandidates());
   $("source-pipeline").addEventListener("change", () => void loadPhaseSourceCandidates());
+  $("apply-phase-change").addEventListener("change", () => {
+    state.phaseChange = $("apply-phase-change").checked;
+    $("source-lock").hidden = !$("apply-phase-change").checked;
+    $("source-phase").disabled = !$("apply-phase-change").checked;
+    $("source-pipeline").disabled = !$("apply-phase-change").checked;
+    $("save-phase-source").disabled = !$("apply-phase-change").checked;
+    if ($("apply-phase-change").checked) void loadPhaseSourceCandidates();
+    if (state.view === "FRONT") renderBoard();
+    const frontSource = state.detail?.sources?.phase_change ?? state.detail?.sources?.phase_change_by_mode?.final ?? state.detail?.sources?.phase_change_by_mode?.draft ?? {};
+    if (!$("head-render-mode").hidden && state.view === "FRONT") {
+      const hasReference = frontSource.kind === "upload" || Boolean(frontSource.phase);
+      $("head-render-mode").textContent = `FRONT render: ${hasReference ? "With FRONT reference" : "No FRONT reference"}${$("apply-phase-change").checked ? " · Phase Change" : " · No Phase Change"}${$("apply-phase-change").checked && !hasReference ? " — Phase Change requires a reference." : "."}`;
+    }
+  });
+  const phaseSourcePaste = $("phase-source-paste");
+  window.ZetImageInput.attach(phaseSourcePaste, $("phase-source-file"));
+  $("phase-source-file").addEventListener("change", () => {
+    state.phaseSourceFile = $("phase-source-file").files?.[0] || null;
+    if (state.phaseSourceFile) $("phase-source-status").textContent = `Selected ${state.phaseSourceFile.name}. Upload to save it as the FRONT reference.`;
+  });
+  phaseSourcePaste.addEventListener("paste", (event) => {
+    const file = Array.from(event.clipboardData?.items || []).map((item) => item.getAsFile()).find(Boolean);
+    if (!file) return;
+    event.preventDefault();
+    state.phaseSourceFile = file;
+    $("phase-source-status").textContent = `Pasted ${file.name || "image"}. Upload to save it as the FRONT reference.`;
+  });
   $("dressing-mode").addEventListener("change", () => {
     state.dressingDrafts[state.view] = {mode: $("dressing-mode").value, costume_reference_view: $("dressing-reference").value};
     $("dressing-reference").disabled = $("dressing-mode").value === "doll-dressing-no-ref";
@@ -896,26 +944,28 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     } catch (error) { if (error.name !== "AbortError") $("dressing-status").textContent = error.message; }
   });
   $("save-phase-source").addEventListener("click", () => {
+    if (!$("apply-phase-change").checked) return;
     const source = {phase: $("source-phase").value, pipeline: $("source-pipeline").value};
-    if (!source.phase) { $("source-status").textContent = "Choose a source phase first."; return; }
+    if (!source.phase) { $("phase-source-status").textContent = "Choose a source phase first."; return; }
     void saveSource("phase_change", source);
   });
   $("clear-phase-source").addEventListener("click", () =>
     void saveSource("phase_change", {}));
   $("upload-phase-source").addEventListener("click", async () => {
-    const file = $("phase-source-file").files?.[0];
-    if (!file) { $("source-status").textContent = "Choose a PNG, JPEG, or WebP image first."; return; }
+    const file = state.phaseSourceFile || $("phase-source-file").files?.[0];
+    if (!file) { $("phase-source-status").textContent = "Choose or paste a PNG, JPEG, or WebP image first."; return; }
     const params = query();
-    params.set("filename", file.name);
+    params.set("filename", file.name || "pasted-front.png");
     params.set("expected_revision", state.detail.revision);
     try {
       state.detail = await request(`/api/character-containers/${encodeURIComponent(state.pipeline)}/sources/phase-change-upload?${params}`, {
         method: "PUT", headers: {"Content-Type": file.type || "application/octet-stream"}, body: file,
       });
       $("phase-source-file").value = "";
+      state.phaseSourceFile = null;
       render();
-      $("source-status").textContent = "Managed upload saved for new FRONT requests.";
-    } catch (error) { if (error.name !== "AbortError") $("source-status").textContent = error.message; }
+      $("phase-source-status").textContent = "Managed upload saved for new FRONT requests.";
+    } catch (error) { if (error.name !== "AbortError") $("phase-source-status").textContent = error.message; }
   });
   $("save-head-pipeline").addEventListener("click", () => void saveSource("head_pipeline", $("head-pipeline").value));
   $("save-view-source").addEventListener("click", () => {

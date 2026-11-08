@@ -20,6 +20,11 @@ own card and review actions, the shared render/cleanup toolbar, and layout for
 Character and Narrative. Character bulk cleanup is owned by
 `CharacterAssetContainerService`; Narrative target cleanup is owned by
 `NarrativeGenerationService`.
+Head Container settings in `index.html` and `character_asset_container.js` own
+FRONT upload/paste, Phase Change source selection, render-mode captions, and
+per-view Head reference choice. `CharacterAssetContainerService` resolves the
+selected source and enforces the Phase Change/reference requirement at prompt
+compilation.
 The shared `draft_upscale_request` in `image_render_request.py` freezes a
 single-image Qwen edit at the Draft's exact ratio. The Character and Narrative
 board services settle the existing slot through their normal AI_Proxy polling.

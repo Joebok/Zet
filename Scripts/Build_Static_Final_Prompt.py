@@ -237,7 +237,8 @@ def _image_input_citation(tag: str, image_inputs_by_tag: dict[str, dict]) -> str
             f"Embedded image reference was not assigned an image input number: {tag}",
         )
     label = str(image_input.get("label") or image_input.get("source_role") or "reference image").strip()
-    return f"Image {image_input['index']} ({label})"
+    citation = image_input.get("prompt_marker") or f"Image {image_input['index']}"
+    return f"{citation} ({label})"
 
 
 def _replace_auxiliary_resource_tags(text: str, image_inputs_by_tag: dict[str, dict]) -> str:

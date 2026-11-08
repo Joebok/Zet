@@ -258,6 +258,10 @@ published in that container; quality and prior candidate identity do not pin the
 source. Managed uploads remain checksum-verified and copied into each prepared
 request. Each prepared request freezes its chosen bytes, so later source changes
 affect only new requests.
+Head FRONT requests have three valid prompt modes: without a reference, with a
+reference and no Phase Change, or with a reference and Phase Change. Phase Change
+requires a resolved reference. Non-FRONT Head Construct/Edit requests require an
+available selected reference view, defaulting to the selected FRONT candidate.
 Current-source readers prefer a locked container output for its pipeline/costume/view
 over a legacy LocalAssets lock. Saved container-source references use the stable
 Inventory asset ID and remain resolvable after board unlock or candidate clearing;

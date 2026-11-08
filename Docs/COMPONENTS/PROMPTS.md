@@ -12,6 +12,8 @@ Character Assembly accepts optional `CHARACTER_ASSEMBLY_GENERAL_INSTRUCTIONS` an
 
 `Run_Costume_Dressing_Jobs.compile_costume_dressing_job` takes a rendering mode independently of local/traditional pipeline mode. `CostumeRenderModeService` supplies the same ordered references to slots, staging and text previews. Rotate uses `costume_rotation_v1` with an explicit source/target turn instruction; dressing modes retain Assembly as the edit base. Mode settings and image profiles are captured with each prepared request.
 
+Local generation prompts open with a single full-body figure. Dressing edits the person in Assembly in place. A dressed reference supplies garment appearance only when attached, and authored costume details guide both dressing modes. Rotate turns the already-dressed source, using Assembly for the target body and head directions, stance, and framing. In multi-image edits, `<imageN>` follows attachment order in the opening instruction and in authored citations. Supplemental references supply only the details cited in the costume specification.
+
 Existing view bullets compose with an optional inline annotation, for example:
 
 ```markdown
