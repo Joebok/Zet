@@ -928,59 +928,40 @@
     </section>
 
     <section id="minor-characters-page" class="page">
-      <div class="page-title-row minor-character-title-row"><h1>Minor Characters</h1><label id="mc-character-picker-label" hidden>Character<select id="mc-character-picker" aria-label="Choose a Minor Character to edit"></select></label></div>
-      <div id="mc-message" class="status-text" role="status" aria-live="polite"></div>
+      <h1>Minor Characters</h1>
+      <p id="mc-message" role="status" aria-live="polite"></p>
       <section id="mc-list-panel">
-        <form id="mc-create-form" class="button-row"><label>New Minor Character name<input id="mc-new-name" maxlength="200" required></label><button type="submit">New Minor Character</button></form>
-        <div id="mc-name-match"></div>
-        <section id="mc-inventory-entry" hidden><p>Create a named character using this image, or continue an existing character without changing its references.</p><img id="mc-entry-image" alt="Starting image"><label>Continue existing<select id="mc-continue-choice"></select></label><button id="mc-continue" type="button">Continue existing</button></section>
-        <div id="mc-list"></div>
+        <form id="mc-create-form" class="button-row"><label>New Minor Character name<input id="mc-new-name" maxlength="200" required></label><button>New Minor Character</button></form>
+        <div id="mc-list" class="button-row"></div>
       </section>
       <section id="mc-editor" hidden>
-        <div class="mc-workspace">
-          <aside class="control-panel mc-inputs">
-            <label>Name<input id="mc-name" maxlength="200" required></label><div id="mc-rename-match"></div>
-            <button id="mc-delete" type="button" class="danger">Delete Minor Character</button>
-            <h3>Original references</h3><div id="mc-references"></div>
-            <h4 class="mc-reference-add-heading">Add a new reference image</h4>
-            <div class="mc-reference-adders"><button id="mc-add-reference" type="button">Add from Inventory</button><button id="mc-upload-trigger" type="button">Upload new image</button><input id="mc-upload" type="file" accept="image/png,image/jpeg,image/webp" hidden></div>
-            <div id="mc-paste" class="paste-zone" tabindex="0">Click here and paste a reference image</div>
-            <label>Primary identity reference<select id="mc-primary"></select></label>
-            <label>Comparison reference<select id="mc-comparison-reference"></select></label>
-            <label>Universe style<select id="mc-style-variant"><option value="canonical">Canonical</option><option value="environmental">Environmental</option></select></label><label>Style<select id="mc-style"><option value="universe">Reconstruct in universe style</option><option value="preserve_source">Keep source style</option></select></label>
-            <label>Framing<select id="mc-framing"><option value="full_body">Full body</option><option value="portrait">Portrait</option></select></label>
-            <label>Preserve<textarea id="mc-preserve" rows="2"></textarea></label>
-            <label>Required changes<textarea id="mc-changes" rows="2"></textarea></label>
-            <label>Additional direction<textarea id="mc-notes" rows="2"></textarea></label>
-            <button id="mc-generate" type="button" class="primary-action" aria-describedby="mc-generate-help">New front iteration</button>
-            <p id="mc-generate-help" class="muted"></p>
-            <details id="mc-analysis"><summary>Description and generation details</summary>
-              <label>Analysis model<select id="mc-model"></select></label><p id="mc-style-text"></p>
-              <label>Description<textarea id="mc-description" rows="5"></textarea></label><label>Identity<textarea id="mc-identity" rows="3"></textarea></label>
-              <label>Proposed details<textarea id="mc-proposals" rows="3"></textarea></label>
-              <div id="mc-questions"></div><button id="mc-analyze" type="button">Analyze references</button>
-            </details>
-          </aside>
-          <section class="mc-images">
-            <div class="button-row compact"><label>Render quality <select id="mc-render-mode"><option value="draft">Draft</option><option value="final">Final</option></select></label><label>Aspect ratio <input id="mc-render-ratio" value="2:3" required></label><span id="mc-size-preview" role="status"></span><label>Seed <select id="mc-seed-source"><option value="">New seed</option></select></label></div>
-            <div id="mc-tabs" class="button-row" role="tablist" aria-label="Character views"></div>
-            <h3 id="mc-stage-status" class="render-mode-heading">Style alignment</h3>
-            <div class="button-row"><button id="mc-continue-true-ups" type="button" aria-describedby="mc-refine-help" hidden>Continue to true-ups</button><button id="mc-restart" type="button">Restart Style alignment</button><button id="mc-undo" type="button" disabled>Undo true-up</button></div>
-            <div class="button-row compact"><button id="mc-delete-draft-view" type="button" class="danger-text-action">Delete Draft images in this view</button><button id="mc-delete-draft-all" type="button" class="danger-text-action">Delete all Draft images</button></div>
-            <div id="mc-add-renders"></div>
-            <div id="mc-slots" class="mc-slots" aria-label="Current stage render slots"></div>
-            <section id="mc-suggestions" aria-labelledby="mc-suggestions-title">
-              <h3 id="mc-suggestions-title">Suggested changes</h3><div id="mc-findings"></div>
-              <label class="mc-feedback-label">What else would you like to change?<textarea id="mc-feedback" rows="3" placeholder="Add any changes beyond the checked suggestions."></textarea></label>
-              <button id="mc-refine" type="button" aria-describedby="mc-refine-help">Try these changes</button>
-              <p id="mc-refine-help" class="muted"></p>
-              <div id="mc-current-prompt-panel" class="mc-current-prompt-panel" hidden><strong>Current image prompt</strong><pre id="mc-current-prompt"></pre></div>
-            </section>
-          </section>
+        <nav id="mc-assets" class="button-row" aria-label="Minor Character assets"></nav>
+        <form id="mc-authoring" class="control-panel">
+          <label>Name<input name="name" maxlength="200" required></label>
+          <div id="mc-source-controls">
+            <img id="mc-source-image" alt="Style Alignment source" width="160" hidden>
+            <button type="button" id="mc-add-reference">Choose from Inventory</button>
+            <label>Upload source<input id="mc-upload" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          </div>
+          <p id="mc-reference-status"></p>
+          <label>Appearance<textarea name="appearance"></textarea></label>
+          <label>Framing<textarea name="framing"></textarea></label>
+          <label>Directions<textarea name="directions"></textarea></label>
+          <label>Render prompt<textarea name="prompt" rows="5"></textarea></label>
+          <label>Aspect ratio<input name="aspect_ratio" required></label>
+          <button type="submit">Save</button>
+        </form>
+        <div class="narrative-actions">
+          <button type="button" id="mc-write">Write Prompt</button><button type="button" id="mc-interview">Interview</button>
+          <label>Interview feedback<input id="mc-feedback"></label>
+          <button type="button" id="mc-model">Use configured default</button>
         </div>
+        <div id="mc-proposals"></div>
+        <div id="mc-board-actions"></div>
+        <div id="mc-board" class="narrative-slots"></div>
       </section>
+      <dialog id="mc-review" aria-label="Review Minor Character candidate"></dialog>
     </section>
-
     <section id="phase-comparison-page" class="page">
       <div class="page-title-row">
         <h1>Phase Comparison</h1>
@@ -2316,7 +2297,7 @@ Add prompt language here.
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>
     <div id="mc-review-pair" class="qc-comparison-pair"></div>
   </dialog>
-  <script src="/static/minor_characters.js?v=20261031-final-mode-cues"></script>
+  <script type="module" src="/static/minor_characters.js?v=asset-collections"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
   <script type="module" src="/static/character_asset_container.js?v=20261108-review-comparison"></script>

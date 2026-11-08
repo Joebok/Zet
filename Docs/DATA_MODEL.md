@@ -322,7 +322,9 @@ New wizard sessions use version 2 with `style_mode`, preserve/change inputs, ana
 
 Custom Image Generation feedback is appended to the next target's ordered changes and change text, with a new target hash; its submitted metadata identifies that effective target. Wizard comparison context includes the applicable refinement chain. A rendered `REVIEW_FAILED` wizard candidate can still be selected, refined with custom feedback, or published as an operator-selected view. Review state is not an artistic approval requirement.
 
-### Minor Character current boards (2026-10-15)
+### Legacy Minor Character boards (2026-10-15)
+
+See [Minor Character collection records](#minor-character-collection-records) for the active format.
 
 New records retain `_state/QuickCharacterWizard/<id>/session.json` and base session version 2, adding `workflow_version: 1`. Retired records without this marker are excluded/rejected, not migrated. Names remain trimmed, case-insensitive and universe-local. Stable reference IDs preserve entry order; primary identity and comparison designation are independent.
 
@@ -439,3 +441,13 @@ Universe descriptors additionally support `environmental_art_style`. Missing/emp
 Narrative assembly layers accept `fit: manual` for a backdrop. Its existing `x` and `y` are normalized canvas coordinates and `scale` is width divided by canvas width. Cover and contain retain centered preset behavior. Frozen assembly snapshots retain the layer values used at submission.
 
 Story animation version 2 stores transitions by boundary, independent of scene order. Refresh pins artwork and confirmed lettering as content-derived snapshots and revision-checks the updated document.
+
+### Minor Character collection records
+
+Version 2 of the Minor Character workflow uses the existing universe-relative
+session location and character ID. Each of its six stable asset IDs owns a
+working prompt, fields and a shared board with one selection and lock across
+qualities. New renders carry an immutable ImageRenderRequest. An imported
+Final lock has the saved prompt and image but may have no frozen request.
+The catalog owner key stays the same across conversion and relocking.
+Version 1 data and image files are archived in place.

@@ -408,18 +408,12 @@ class NarrativeSceneService:
             from zet.services.narrative_generation_service import NarrativeGenerationService
             if not NarrativeGenerationService._same_mode(record, job["detail"]):
                 raise ValueError("Settings changed; run a new interview before applying proposals.")
+            from zet.services.narrative_interview_service import proposal_choices
             choices = data.get("choices")
-            rows = review["proposals"]
-            if not isinstance(choices, dict) or set(choices) != {row["id"] for row in rows}:
-                raise ValueError("Choose an action for every proposal.")
             parent = self.repository.read(story, scene)
             elements = {item["id"]: item for item in parent["elements"]}
             scene_changed = False
-            for row in rows:
-                choice = choices[row["id"]]
-                allowed = ("override", "shared", "reject") if row["scope"] == "visual" else ("accept", "reject")
-                if choice not in allowed:
-                    raise ValueError("Choose a valid proposal action.")
+            for row, choice in proposal_choices(review["proposals"], choices):
                 if choice == "reject":
                     continue
                 key = row["field"]

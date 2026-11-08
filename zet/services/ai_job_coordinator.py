@@ -43,6 +43,7 @@ class AIJobCoordinator:
         from zet.services.storage_recovery_service import StorageRecoveryService
         self.recovery = StorageRecoveryService(app)
         self.handlers = {
+            "zet-minor-collections": self._minor_collection,
             "zet-narrative-scenes": self._narrative,
             "zet-character-containers": self._character_container,
             "zet-image-generation": self._images,
@@ -57,6 +58,15 @@ class AIJobCoordinator:
     def _narrative(app, record, jobs):
         ask = record["manifest"]
         app.narrative_generation_service.detail(ask["narrative_story_id"], ask["narrative_scene_id"], ask["narrative_target_id"])
+
+    @staticmethod
+    def _minor_collection(app, record, jobs):
+        ask_id = record["ask_id"]
+        if not jobs.lifecycle.read_receipt(ask_id) and not jobs.ready_answer(ask_id):
+            return
+        jobs.repository.update(ask_id, board_application_state="PENDING")
+        if app.minor_character_service.collect_background(ask_id, record["manifest"]):
+            jobs.repository.update(ask_id, board_application_state="SETTLED")
 
     @staticmethod
     def _character_container(app, record, jobs):
@@ -229,7 +239,7 @@ class AIJobCoordinator:
                 receipt_ids = {row.get("ask_id") for _, row in lifecycle.iter_receipts() or ()}
                 candidates = [row for row in records if row.get("universe_id") == universe
                               and (row.get("ask_id") not in receipt_ids or
-                                   (row.get("consumer") == "zet-character-containers"
+                                   (row.get("consumer") in {"zet-character-containers", "zet-minor-collections"}
                                     and row.get("board_application_state") == "PENDING"))
                               and row.get("harvest_state") not in {"SUPERSEDED", "HARVEST_FAILED"}
                               and not self.repository.is_deleted(row.get("ask_id", ""))]
@@ -327,7 +337,7 @@ class AIJobCoordinator:
             if self.repository.is_deleted(job_id):
                 continue
             receipt = paths.lifecycle.read_receipt(job_id)
-            if receipt and not (record.get("consumer") == "zet-character-containers"
+            if receipt and not (record.get("consumer") in {"zet-character-containers", "zet-minor-collections"}
                                 and record.get("board_application_state") == "PENDING"):
                 continue
             if record.get("harvest_state") == "HARVEST_FAILED":
@@ -357,7 +367,7 @@ class AIJobCoordinator:
                     jobs.repository.collection_failed(job_id, exc, stage="consumer_application")
         # These handlers apply render/review transitions; they never run provider calls.
         try:
-            minor = app.minor_character_service
+            minor = app.quick_character_wizard_service
             for session in minor._records():
                 if not any(candidate.get("status") in {"QUEUING", "QUEUED", "RUNNING", "REVIEWING"} for candidate in session.get("candidates", [])):
                     continue

@@ -1,3 +1,4 @@
+import {renderProposalComparison} from './interview_proposals.js';
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
 import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from './candidate_board.js?v=20261107-board-toolbar';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
@@ -791,7 +792,7 @@ function renderInterviewReview() {
     ${review.proposals.map(row=>`<article class="narrative-proposal" data-proposal-id="${row.id}"><h3>${esc(row.element_name ? row.element_name+' · Appearance notes' : title(row.field))}</h3>
       <p>${esc(row.reason)}</p>${row.scope === 'appearance' ? '<p class="narrative-muted">Shared appearance: affects every subscene using this element.</p>' : ''}
       ${row.scope === 'visual' ? `<p class="narrative-muted">Shared: ${esc(job.detail.inherited_context?.[row.field] || 'Not specified')}<br>Local override: ${esc(job.detail.visual_overrides?.[row.field] || 'None — inherits shared')}</p>` : ''}
-      <div class="narrative-proposal-comparison"><section><h4>Old${row.scope === 'visual' ? ' · Effective' : ''}</h4><pre>${esc(row.old)}</pre></section><section><h4>New</h4><pre>${esc(row.text)}</pre></section></div>
+      ${renderProposalComparison(row, esc, row.scope === 'visual' ? 'Old · Effective' : 'Old')}
       <div class="narrative-actions" role="group" aria-label="${esc(row.element_name || title(row.field))} action">${(row.scope === 'visual' ? ['override','shared','reject'] : ['accept','reject']).map(choice=>`<button data-proposal="${row.id}" data-proposal-choice="${choice}" aria-pressed="${choices[row.id].action === choice}">${title(choice)}</button>`).join('')}</div></article>`).join('') || '<p>No field changes proposed.</p>'}
     <div class="narrative-actions narrative-review-footer"><button class="primary" data-apply-interview="${job.id}">Apply</button><button data-close="narrative-interview-review">Close</button></div>
     <p id="narrative-interview-review-error" class="error" role="status"></p>`;

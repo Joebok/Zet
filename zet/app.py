@@ -201,7 +201,8 @@ class ZetApp:
         self.costume_service = costume_service
         self.costume_wizard_service = CostumeWizardService(self, Path(__file__).resolve().parents[1])
         self.minor_character_service = MinorCharacterService(self, Path(__file__).resolve().parents[1])
-        self.quick_character_wizard_service = self.minor_character_service
+        from zet.services.legacy_minor_character_service import MinorCharacterService as LegacyMinorCharacterService
+        self.quick_character_wizard_service = LegacyMinorCharacterService(self, Path(__file__).resolve().parents[1])
         self.scene_appearance_service = scene_appearance_service
         self.expression_service = expression_service
         self.character_onboarding_service = character_onboarding_service

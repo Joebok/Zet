@@ -41,7 +41,6 @@ from zet.services.pipeline_retirement import require_active_pipeline
 from zet.services.local_character_overview_service import LocalCharacterOverviewService
 from zet.web.character_asset_container_router import create_character_asset_container_router
 from zet.web.ad_hoc_image_generation_router import create_ad_hoc_image_generation_router
-from zet.web.quick_character_wizard_router import create_quick_character_wizard_router
 from zet.web.minor_character_router import create_minor_character_router
 from zet.web.narrative_router import create_narrative_router
 from zet.web.task_router import create_task_router, render_task_capture_page
@@ -1214,15 +1213,7 @@ def _create_available_app(
     app.include_router(create_character_asset_container_router(lambda: _app(app.state.config_path)))
     app.include_router(create_ad_hoc_image_generation_router(_image_generation_service))
 
-    def quick_character_wizard_service():
-        service = _app(app.state.config_path).quick_character_wizard_service
-        # Share the durable render transport; references are session snapshots,
-        # while drafts and publication remain bound to the requested universe.
-        service.generation_service = _image_generation_service()
-        return service
-
-    app.include_router(create_quick_character_wizard_router(quick_character_wizard_service))
-    app.include_router(create_minor_character_router(quick_character_wizard_service))
+    app.include_router(create_minor_character_router(lambda: _app(app.state.config_path).minor_character_service))
     app.include_router(create_narrative_router(lambda: _app(app.state.config_path)))
     # A captured report belongs to its frozen universe, not the current UI selection.
     app.include_router(create_task_router(lambda: app.state.zet_app, lambda: app.state.worker_bridge_service))

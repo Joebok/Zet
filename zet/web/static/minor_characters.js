@@ -1,597 +1,245 @@
-(() => {
-  "use strict";
-  const bridge = window.zetQuickCharacterWizard;
-  const $ = id => document.getElementById(id);
-  if (!bridge || !$("minor-characters-page")) return;
-  const fields = {name:"mc-name", universe_style_variant:"mc-style-variant", style_mode:"mc-style", framing:"mc-framing",
-    preserve:"mc-preserve", changes:"mc-changes", notes:"mc-notes", model:"mc-model",
-    description:"mc-description", identity:"mc-identity", proposals:"mc-proposals",
-    primary_reference_id:"mc-primary", comparison_reference_id:"mc-comparison-reference"};
-  let character = null, universe = "", characters = [], references = [], entryAsset = null;
-  let patch = {}, saving = null, saveTimer = null, pollTimer = null, pending = false, generation = 0;
-  let view = "STYLE", preview = "", referenceSignature = "", renderMode = "draft";
-  const seedSources = new Map();
-  let feedback = "", feedbackDirty = false;
-  const suggestions = new Map();
-  let comparisonId = "";
-  const reviewZoom = window.ZetReviewImageZoom.attach($("mc-review"), () => [...$("mc-review-pair").querySelectorAll("img")]);
-  const slotPending = new Set();
-  let pollFailures = 0, pollError = "", pollVersion = 0;
-  const element = (tag, text = "", cls = "") => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
-  const button = (text, action, run = act) => { const b = element("button", text); b.type = "button"; b.addEventListener("click", () => run(action)); return b; };
-  const url = value => value + (value.includes("?") ? "&" : "?") + "universe_id=" + encodeURIComponent(universe);
-  const message = (text, error = false) => { $("mc-message").textContent = text; $("mc-message").classList.toggle("error", error); };
-  const label = value => ({STYLE:"Style alignment", FRONT:"Front", FRONT_LEFT_3_4:"Front left 3/4",
-    FRONT_RIGHT_3_4:"Front right 3/4", LEFT_PROFILE:"Left profile", RIGHT_PROFILE:"Right profile"})[value] || value;
-  const boardsOf = (value, mode = renderMode) => mode === "final" ? value?.final_boards || {} : value?.boards || {};
-  const selections = () => renderMode === "final" ? character?.final_selected || {} : character?.selected || {};
-  const locks = () => renderMode === "final" ? character?.final_locked || {} : character?.locked || {};
-  const styleSelection = () => selections().STYLE || (renderMode === "final" ? character?.selected?.STYLE : character?.final_selected?.STYLE) || "";
-  async function updateSizePreview() {
-    const mode=renderMode, ratio=$("mc-render-ratio").value;
+import {candidateActions, renderBoardActions, renderCandidateBoard, reviewInputs, reviewPosition} from "./candidate_board.js";
+import {renderProposalComparison} from "./interview_proposals.js";
+
+const $ = id => document.getElementById(id);
+const page = $("minor-characters-page");
+const bridge = window.zetQuickCharacterWizard;
+const form = $("mc-authoring");
+const dialog = $("mc-review");
+window.ZetReviewImageZoom.attach(dialog, () => [...dialog.querySelectorAll(".narrative-review-images img")]);
+const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
+  ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"})[char]);
+let character, universe, entryAsset, timer, reviewId;
+let view = "STYLE", dirty = false, busy = false, model = "", epoch = 0;
+const board = () => character.boards[view];
+const base = () => "/" + character.character_id;
+const asset = () => base() + "/assets/" + view;
+const media = (cid, part = "image") => scoped("/api/minor-characters" + asset() + "/candidates/" + cid + "/" + part);
+const scoped = path => path + "?universe_id=" + encodeURIComponent(universe);
+const api = (path, method = "GET", body) => bridge.fetchJson("/api/minor-characters" + path, {
+  method, bindToPage:false, ...(body === undefined ? {} : {
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
+  })
+});
+function route(id) {
+  const url = new URL(location.href);
+  url.searchParams.set("page", "minor-characters");
+  if (id) url.searchParams.set("minor_character", id);
+  else url.searchParams.delete("minor_character");
+  history.replaceState(history.state, "", url);
+}
+function message(text, error = false) {
+  $("mc-message").textContent = text;
+  $("mc-message").classList.toggle("error", error);
+}
+function adopt(value) {
+  character = value;
+  render();
+}
+async function run(action) {
+  if (busy) return;
+  clearTimeout(timer);
+  busy = true;
+  message("");
+  try { await action(); }
+  catch (error) { message(error.message, true); }
+  finally { busy = false; schedule(); }
+}
+async function flush() {
+  if (!dirty || !character || universe !== bridge.universe()) return;
+  const data = Object.fromEntries(new FormData(form));
+  data.view = view;
+  data.revision = character.revision;
+  const result = await api(base(), "PATCH", data);
+  dirty = false;
+  adopt(result.character);
+}
+async function change(path, data) {
+  await flush();
+  const result = await api(path, "POST", {...data, revision:character.revision});
+  adopt(result.character);
+}
+async function open(id) {
+  await flush();
+  route(id);
+  view = "STYLE";
+  adopt((await api("/" + id)).character);
+}
+async function load() {
+  clearTimeout(timer);
+  epoch++;
+  const next = bridge.universe();
+  if (universe !== next) { character = null; dirty = false; }
+  universe = next;
+  $("mc-editor").hidden = true;
+  $("mc-list-panel").hidden = false;
+  const {characters} = await api("");
+  $("mc-list").innerHTML = characters.map(row =>
+    `<button data-open="${escape(row.character_id)}" ${row.needs_migration ? "disabled" : ""}>${escape(row.name)}${row.needs_migration ? " · Migration required" : ""}</button>`).join("");
+  const id = new URL(location.href).searchParams.get("minor_character");
+  if (id) await open(id);
+  else character = null;
+  schedule();
+}
+function schedule() {
+  clearTimeout(timer);
+  if (!character || busy || document.hidden || !page.classList.contains("active")) return;
+  const current = board();
+  if (!Object.values(current.candidates).some(item => ["SUBMITTING","QUEUED","RUNNING"].includes(item.status))
+      && current.text_job?.status !== "RUNNING" && current.luna_review?.status !== "RUNNING") return;
+  const token = epoch, path = asset(), id = base();
+  timer = setTimeout(async () => {
     try {
-      const sizing=await bridge.fetchJson(`/api/image-generation/sizing?${new URLSearchParams({render_mode:mode,aspect_ratio:ratio})}`);
-      if(mode!==renderMode || ratio!==$("mc-render-ratio").value)return;
-      $("mc-render-ratio").setCustomValidity("");$("mc-size-preview").textContent=`${sizing.width} × ${sizing.height}`;
-    } catch(error) {if(mode===renderMode && ratio===$("mc-render-ratio").value){$("mc-render-ratio").setCustomValidity(error.message);$("mc-size-preview").textContent=error.message;}}
-  }
-  async function api(path = "", method = "GET", body) {
-    if (universe !== bridge.universe()) throw new Error("The active universe changed. Reopen Minor Characters.");
-    if (method !== "GET") { pollVersion++; clearTimeout(pollTimer); }
-    const id = character?.character_id, current = generation;
-    try {
-      return await bridge.fetchJson("/api/minor-characters" + path, {method, bindToPage:false,
-        ...(body === undefined ? {} : {headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})});
-    } catch (error) {
-      if (error.detail?.preview) {
-        const inspection = error.detail.preview;
-        const approved = await confirmProtectedEffects("Image state changed", error.detail.message,
-          inspection.protected_effects || [], "Continue");
-        if (approved === null) return null;
-        return api(path, method, {...body, confirmation_token: inspection.confirmation_token,
-          approved_effects: approved});
+      const progress = await api(path + "/progress");
+      if (epoch !== token || !character || asset() !== path || busy || universe !== bridge.universe()) return;
+      if (progress.revision !== character.revision && !dirty) {
+        const {character:value} = await api(id);
+        if (epoch === token && !busy && !dirty && asset() === path) adopt(value);
       }
-      if (method !== "GET" && id && character?.character_id === id && current === generation) {
-        try {
-          const result = await api(`/${id}`);
-          if (character?.character_id === id && current === generation) show(result.character);
-        } catch { if (character?.character_id === id && current === generation) schedulePoll(); }
-      }
-      throw error;
-    }
-  }
-  async function act(operation) {
-    if (pending) return;
-    pending = true; updateButtons();
-    try { await operation(); } catch (error) { message(error.message, true); }
-    finally { pending = false; if (character) renderImages(); updateButtons(); }
-  }
-  function route(id, replace = false) {
-    const target = new URL(location.href); target.searchParams.set("page", "minor-characters");
-    if (id) target.searchParams.set("minor_character", id); else target.searchParams.delete("minor_character");
-    if (target.href !== location.href) history[replace ? "replaceState" : "pushState"]({}, "", target);
-  }
-  function changed(key, value) {
-    patch[key] = value; clearTimeout(saveTimer); message("Saving…");
-    saveTimer = setTimeout(() => flush().catch(error => message(error.message, true)), 450);
-  }
-  async function flush() {
-    clearTimeout(saveTimer);
-    if (saving) { await saving; return flush(); }
-    if (!character || !Object.keys(patch).length) return;
-    const data = {...patch}, id = character.character_id;
-    saving = api(`/${id}`, "PATCH", data).then(({character:next}) => {
-      if (character?.character_id !== id) return;
-      for (const key of Object.keys(data)) if (patch[key] === data[key]) delete patch[key];
-      if (patch.board_edit) patch.board_edit.revision = boardsOf(next,patch.board_edit.render_mode)[patch.board_edit.view].revision;
-      if (data.references && !patch.references) references = next.references;
-      show(next); message("Saved");
-    }).finally(() => { saving = null; });
-    await saving;
-    if (Object.keys(patch).length) await flush();
-  }
-  async function refreshList() {
-    characters = (await api()).characters;
-    $("mc-list").replaceChildren(); $("mc-continue-choice").replaceChildren();
-    $("mc-character-picker").replaceChildren(...characters.map(item => new Option(item.name, item.character_id)));
-    for (const item of characters) {
-      const card = element("article", "", "mc-list-card");
-      card.append(element("strong", item.name, "mc-list-name"));
-      const image = button("", () => open(item.character_id)); image.className = "mc-list-image";
-      image.setAttribute("aria-label", `Edit ${item.name}`);
-      if (item.locked.FRONT) { const img = document.createElement("img"); img.src = url(item.locked.FRONT.image_url); img.alt = `${item.name} locked front`; img.loading = "lazy"; image.append(img); }
-      else image.append(element("span", "No locked front", "mc-no-front"));
-      const edit = button("Edit", () => open(item.character_id));
-      edit.setAttribute("aria-label", `Edit ${item.name}`);
-      const remove=button("Delete",()=>deleteCharacter(item.character_id,item.name));
-      remove.className="danger";remove.setAttribute("aria-label",`Delete ${item.name}`);
-      const actions = element("div", "", "button-row mc-list-actions"); actions.append(edit, remove);
-      card.append(image, actions); $("mc-list").append(card);
-      $("mc-continue-choice").add(new Option(item.name, item.character_id));
-    }
-    if (!characters.length) $("mc-list").append(element("p", "Create your first Minor Character."));
-    $("mc-continue").disabled = !characters.length;
-    nameMatch();
-  }
-  function nameMatch() {
-    const key = $("mc-new-name").value.trim().toLocaleLowerCase();
-    const found = characters.find(c => c.name.trim().toLocaleLowerCase() === key);
-    $("mc-name-match").replaceChildren();
-    if (found) $("mc-name-match").append(button(`Open existing ${found.name}`, () => open(found.character_id)));
-  }
-  async function list() {
-    await flush(); generation++; clearTimeout(pollTimer); character = null; patch = {}; feedbackDirty = false; route("");
-    $("mc-editor").hidden = true; $("mc-character-picker-label").hidden = true; $("mc-review").close(); $("mc-list-panel").hidden = false;
-    $("mc-inventory-entry").hidden = !entryAsset; await refreshList(); message("");
-  }
-  async function open(id) {
-    $("mc-review").close(); comparisonId = "";
-    await flush(); generation++; clearTimeout(pollTimer); pollFailures = 0; pollError = ""; patch = {}; feedback = ""; feedbackDirty = false; suggestions.clear();
-    const result = await api(`/${id}`); character = result.character;
-    $("mc-render-ratio").value=character.framing === "portrait" ? "1:1" : "2:3";
-    void updateSizePreview();
-    references = character.references; referenceSignature = "";
-    view = character.views.includes(character.active_view) ? character.active_view : "STYLE";
-    preview = character.preview_candidate_id || ""; route(character.character_id);
-    $("mc-list-panel").hidden = true; $("mc-editor").hidden = false; $("mc-character-picker-label").hidden = false;
-    $("mc-character-picker").value = character.character_id;
-    show(character); message("");
-  }
-  async function deleteCharacter(id, name) {
-    await flush();
-    const inspection = await api(`/${id}/delete-preview`, "POST", {});
-    const approved = await confirmProtectedEffects("Delete Minor Character?",
-      `Delete “${name}”? Published Inventory images will be kept. Approve each affected selection or lock.`,
-      inspection.protected_effects || [], "Delete");
-    if (approved === null) return;
-    generation++;clearTimeout(pollTimer);
-    const result = await api(`/${id}`,"DELETE", {confirmation_token: inspection.confirmation_token,
-      approved_effects: approved});
-    if (!result) return;
-    $("mc-review").close();character=null;patch={};entryAsset=null;
-    await list();message(`Deleted ${name}.`);
-  }
-  function imageFigure(source, caption) {
-    const figure = element("figure"); const img = document.createElement("img"); img.src = url(source); img.alt = caption;
-    figure.append(img, element("figcaption", caption)); return figure;
-  }
-  function awaitingResponse() {
-    return Boolean(character?.busy || character?.candidates.some(candidate => candidate.status === "REVIEWING"));
-  }
-  function referencePayload() {
-    return references.map(r => ({...(r.reference_id ? {reference_id:r.reference_id} : {}),
-      ...(r.image ? {image:r.image} : !r.reference_id ? {asset_id:r.asset_id} : {}), caption:r.caption}));
-  }
-  function drawReferences() {
-    const signature = JSON.stringify(references);
-    if (signature === referenceSignature || $("mc-references").contains(document.activeElement)) return;
-    referenceSignature = signature; $("mc-references").replaceChildren();
-    references.forEach((ref, index) => {
-      const card = element("section", "", "mc-reference");
-      if (ref.url || ref.image) { const img = document.createElement("img"); img.src = ref.image || url(ref.url); img.alt = `Reference ${index+1}`; card.append(img); }
-      card.append(element("figcaption", ref.caption, "mc-reference-caption"), button("Remove", async () => { references.splice(index, 1); referenceSignature = ""; changed("references", referencePayload()); drawReferences(); await flush(); }));
-      $("mc-references").append(card);
-    });
-  }
-  function show(next) {
-    const edit=patch.board_edit, previous=edit && boardsOf(character,edit.render_mode)[edit.view], incoming=edit && boardsOf(next,edit.render_mode)[edit.view];
-    if (previous && incoming && previous.template_candidate_id===incoming.template_candidate_id
-        && incoming.revision>=edit.revision) edit.revision=incoming.revision;
-    character = next;
-    character.universe_style_variant ||= "canonical";
-    if (!patch.references) references = character.references;
-    for (const [key, id] of Object.entries(fields)) {
-      if (["primary_reference_id","comparison_reference_id"].includes(key)) continue;
-      if (key === "model") {
-        const control = $(id), value = patch.model ?? character.model ?? "";
-        if (value && ![...control.options].some(option => option.value === value)) control.add(new Option(`${value} (unavailable)`, value));
-        control.value = value;
-        window.ZetModelPicker?.sync(control);
-        continue;
-      }
-      if (!(key in patch) && document.activeElement !== $(id)) $(id).value = key === "proposals" ? character.proposals.join("\n") : character[key] || "";
-    }
-    for (const [key, id] of [["primary_reference_id","mc-primary"],["comparison_reference_id","mc-comparison-reference"]]) {
-      const picker = $(id); picker.replaceChildren(...references.filter(r=>r.reference_id).map((r,i)=>new Option(`Reference ${i+1} · ${r.caption}`,r.reference_id)));
-      picker.value = patch[key] || character[key];
-    }
-    drawReferences();
-    $("mc-style-text").textContent = character.target_brief?.style?.text || "";
-    $("mc-questions").replaceChildren();
-    for (const question of character.questions) $("mc-questions").append(element("p", question));
-    if (character.questions.length) $("mc-questions").append(element("p",
-      "To answer these questions, enter your choices in Additional direction above and correct any conflicting instructions. Then click Analyze references below. Once analysis finishes, click Generate style alignment on the Style alignment tab to create an image using the updated description.", "muted"));
-    if (!patch.board_edit) {
-      const edit = board()?.edit;
-      if (!feedbackDirty) feedback = edit?.instructions || "";
-      if (edit?.candidate_id) suggestions.set(edit.candidate_id, new Set(edit.item_ids));
-    }
-    renderImages(); updateButtons();
-    if (character.job.error) message(character.job.error, true);
-    schedulePoll();
-  }
-  function schedulePoll() {
-    clearTimeout(pollTimer);
-    if (awaitingResponse() && $("minor-characters-page").classList.contains("active")) {
-      const id = character.character_id, current = generation, version = pollVersion;
-      pollTimer = setTimeout(async () => {
-        const isCurrent = () => current === generation && version === pollVersion && character?.character_id === id
-          && universe === bridge.universe() && $("minor-characters-page").classList.contains("active");
-        if (!isCurrent()) return;
-        try {
-          const result = await api(`/${id}`);
-          if (!isCurrent()) return;
-          pollFailures = 0;
-          if (pollError && $("mc-message").textContent === pollError) message("");
-          pollError = "";
-          show(result.character);
-        } catch (error) {
-          if (!isCurrent()) return;
-          pollFailures++;
-          pollError = `Unable to refresh image status: ${error.message}. Retrying automatically…`;
-          message(pollError, true);
-          schedulePoll();
-        }
-      }, Math.min(1800 * 2 ** Math.min(pollFailures, 4), 15000));
-    }
-  }
-  function choice() { return character?.candidates.find(c=>c.candidate_id===preview && c.view===view); }
-  function board() { return boardsOf(character)[view]; }
-  function occupied() { return (board()?.slots || []).map(id=>character.candidates.find(c=>c.candidate_id===id)).filter(c=>c?.image_url); }
-  function persistEdit() {
-    const source = choice()?.candidate_id || board()?.edit.candidate_id || "";
-    const current = board()?.edit;
-    const itemIds = [...(suggestions.get(source) || [])];
-    if (current && current.candidate_id === source && current.view === view
-        && current.instructions === feedback && JSON.stringify(current.item_ids || []) === JSON.stringify(itemIds)) return;
-    changed("board_edit", {view, render_mode:renderMode, revision:board().revision, candidate_id:source,
-      item_ids:itemIds, instructions:feedback});
-  }
-  async function selectCandidate(id = preview) {
-    await flush(); show((await api(`/${character.character_id}/select`,"POST",{candidate_id:id,revision:board().revision})).character);
-  }
-  async function slotAction(action, slot, count = 1) {
-    if (!["clear","retry"].includes(action) && !$("mc-render-ratio").reportValidity()) return;
-    const id=character.character_id, target=view, current=generation, key=`${id}:${target}:${slot ?? "add"}`;
-    if (slotPending.has(key)) return;
-    slotPending.add(key); renderImages(); updateButtons();
-    try {
-      await flush();
-      const seed=$("mc-seed-source").value;
-      const result=await api(`/${id}/boards/${target}/slots/action`,"POST",{action,slot,count,revision:board().revision,render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value,...(["add","regenerate"].includes(action) && seed ? {seed_candidate_id:seed} : {})});
-      if (character?.character_id===id && current===generation) show(result.character);
-    } catch (error) { message(error.message,true); }
-    finally { slotPending.delete(key); if (character?.character_id===id) {renderImages();updateButtons();} }
-  }
-  async function lockCandidate(candidate) {
-    await flush();
-    const locked=locks()[candidate.view]?.candidate_id===candidate.candidate_id;
-    show((await api(`/${character.character_id}/${locked ? "unlock" : "lock"}`,"POST",{view:candidate.view,candidate_id:candidate.candidate_id,revision:board().revision,render_mode:renderMode})).character);
-    message(locked ? "View unlocked. Saved Inventory images are retained." : renderMode === "draft" || candidate.view==="STYLE" ? "Image locked privately." : "Locked image saved to Inventory.");
-  }
-  function lockControl(candidate) {
-    const locked=locks()[candidate.view]?.candidate_id===candidate.candidate_id;
-    const title=`${locked ? "Unlock" : "Lock"} ${label(candidate.view).toLowerCase()}`;
-    const control=button(locked ? "🔒 Unlock" : "🔓 Lock",()=>lockCandidate(candidate));
-    control.title=title;control.setAttribute("aria-label",title);control.setAttribute("aria-pressed",String(locked));
-    control.disabled=pending || slotPending.size>0;
-    return control;
-  }
-  function comparisons() {
-    const result = [], seen = new Set();
-    const add = (id, source, caption, checksum) => {
-      if (!source || seen.has(checksum || id)) return;
-      seen.add(checksum || id); result.push({id, source, caption});
-    };
-    const original = references.find(r=>r.reference_id===(patch.comparison_reference_id || character.comparison_reference_id)) || references[0];
-    if (original) add(original.reference_id, original.url, "Designated original", original.checksum);
-    const addCandidate = (id, caption) => {
-      const candidate = character.candidates.find(c=>c.candidate_id===id);
-      if (candidate) add(id, candidate.image_url, caption, candidate.sha256);
-    };
-    if (view==="STYLE") {
-      for (const id of boardsOf(character).STYLE.slots) addCandidate(id,"Style-alignment candidate");
-    } else {
-      addCandidate(styleSelection(),"Selected style alignment");
-      for (const other of character.views.filter(v=>v!=="STYLE" && v!==view)) addCandidate(selections()[other],`Selected ${label(other).toLowerCase()}`);
-    }
-    const draft = character.locked?.[view];
-    if (draft?.image_url) result.push({id: `locked-draft:${view}`, source: draft.image_url, caption: `Locked Draft · ${label(view)}`});
-    return result;
-  }
-  function renderReview() {
-    if (!$("mc-review").open) return;
-    const list = occupied(), candidate = choice(), index = list.findIndex(c=>c.candidate_id===preview);
-    const previous=$("mc-review-prev"), next=$("mc-review-next");
-    $("mc-review-navigation").append(previous,next);
-    $("mc-review-pair").replaceChildren();
-    const sources = comparisons();
-    const ref = sources.find(r=>r.id===comparisonId) || sources[0];
-    comparisonId = ref?.id || "";
-    if (ref) {
-      const figure=imageFigure(ref.source,ref.caption), arrows=element("div","","button-row mc-comparison-arrows");
-      for (const [text,direction] of [["‹",-1],["›",1]]) {
-        const arrow=button(text,()=>{
-          comparisonId=sources[(sources.indexOf(ref)+direction+sources.length)%sources.length].id;
-          renderReview();
-        }, operation=>operation());
-        arrow.setAttribute("aria-label",direction<0 ? "Previous comparison image" : "Next comparison image");
-        arrow.disabled=sources.length<2; arrows.append(arrow);
-      }
-      figure.append(arrows); $("mc-review-pair").append(figure);
-    }
-    if (candidate?.image_url && index>=0) {
-      const figure=imageFigure(candidate.image_url,`${character.name} · ${label(view)} · Slot ${board().slots.indexOf(preview)+1}`);
-      const select=button(selections()[view]===preview ? "Selected" : "Select",()=>selectCandidate(candidate.candidate_id));
-      select.classList.add("primary-action");
-      select.disabled=pending || selections()[view]===preview;
-      const actions=element("div","","button-row mc-review-actions");actions.append(previous,select);
-      if (candidate.can_lock) {
-        actions.append(lockControl(candidate));
-      }
-      actions.append(next);figure.append(actions);$("mc-review-pair").append(figure);
-    }
-    previous.disabled=index<=0;next.disabled=index<0 || index>=list.length-1;
-    reviewZoom.sync(`${view}:${preview}`);
-  }
-  function navigateReview(direction) {
-    const list=occupied(), index=list.findIndex(c=>c.candidate_id===preview), next=list[index+direction];
-    if (next) { previewCandidate(next.candidate_id); renderImages(); updateButtons(); }
-  }
-  function previewCandidate(id) {
-    if (preview!==id) { feedback=board().edit.candidate_id===id ? board().edit.instructions : ""; feedbackDirty=false; }
-    preview=id;changed("preview_candidate_id",preview);persistEdit();
-  }
-  function inspect(id = preview) {
-    previewCandidate(id);renderImages(); if (!$("mc-review").open) $("mc-review").showModal(); renderReview();
-  }
-  function renderImages() {
-    $("minor-characters-page").dataset.renderMode = renderMode;
-    if (!character.views.includes(view)) view="STYLE";
-    const current=board();
-    const seedKey=`${renderMode}:${view}`, seedSelect=$("mc-seed-source");
-    const otherCandidates=character.candidates.filter(candidate=>candidate.view===view && (candidate.render_mode || "draft")!==renderMode && Number.isInteger(candidate.seed));
-    const seedSignature=JSON.stringify([seedKey,otherCandidates.map(candidate=>candidate.candidate_id)]);
-    if(seedSelect.dataset.signature!==seedSignature){seedSelect.replaceChildren(new Option("New seed",""),...otherCandidates.map(candidate=>new Option(`Reuse ${candidate.candidate_id.slice(0,8)} (${candidate.render_mode === "final" ? "Final" : "Draft"})`,candidate.candidate_id)));seedSelect.dataset.signature=seedSignature;seedSelect.value=seedSources.get(seedKey) || "";}
-    if (!current?.slots.includes(preview)) preview=current?.slots.find(id=>id===selections()[view]) || current?.slots.find(Boolean) || "";
-    $("mc-tabs").replaceChildren();
-    for (const target of character.views) {
-      const tab=button(label(target),async()=>{
-        if (target === view) return;
-        if (Object.keys(patch).length) {
-          message(`Saving changes before switching to ${label(target)}…`);
-          await flush();
-        }
-        view=target;preview="";comparisonId="";feedback=boardsOf(character)[target]?.edit.instructions || "";feedbackDirty=false;
-        changed("active_view",view);show(character);
-      });
-      tab.disabled=target!=="STYLE" && !styleSelection() && !boardsOf(character)[target]?.slots.some(Boolean);
-      tab.title=tab.disabled ? "Select a style-alignment image first" : "";
-      tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(view===target));$("mc-tabs").append(tab);
-    }
-    $("mc-stage-status").textContent=label(view)+(view==="STYLE" ? " · Select a style image to enable views" : current?.mode==="true_up" ? " · True-ups" : " · View alignment: preview an image, then continue to true-ups");
-    $("mc-restart").textContent=`Restart ${label(view)}`;
-    $("mc-slots").replaceChildren();$("mc-add-renders").replaceChildren();
-    for(let slot=0;slot<4;slot++) {
-      const candidate=character.candidates.find(c=>c.candidate_id===current?.slots[slot]);
-      const card=element("section","","mc-slot");card.append(element("strong",`Slot ${slot+1}`,"render-mode-heading"));
-      card.addEventListener("click",event=>{
-        if (!candidate?.image_url || event.target.closest("button")) return;
-        previewCandidate(candidate.candidate_id);renderImages();updateButtons();
-      });
-      card.classList.toggle("mc-slot-preview",candidate?.candidate_id===preview);
-      if(candidate && current.prior_selection_id===candidate.candidate_id) card.append(element("span","Prior selection","mc-prior-selection"));
-      if(candidate?.image_url) {
-        const thumb=button("",()=>inspect(candidate.candidate_id));thumb.className="mc-slot-image";thumb.title="Inspect full size";
-        const img=document.createElement("img");img.src=url(candidate.image_url);img.alt=`Slot ${slot+1} candidate`;thumb.append(img);card.append(thumb);
-      } else if (!candidate) card.append(element("p", "Empty", "image-card-state"));
-      if (candidate?.error) card.append(element("p", candidate.error, "error"));
-      const controls=element("div","","button-row mc-slot-actions");
-      const submitting=slotPending.size>0;
-      const slotLocked=Boolean(candidate && locks()[view]?.candidate_id===candidate.candidate_id);
-      const regen=button(candidate?.status === "FAILED" ? "Retry" : candidate ? "Regenerate" : "Generate",async()=>{
-        if(candidate) previewCandidate(candidate.candidate_id);
-        await slotAction(candidate?.status === "FAILED" ? "retry" : "regenerate",slot);
-      },operation=>operation());
-      regen.disabled=pending || submitting || slotLocked || !current?.template_candidate_id;
-      const clear=button("Clear slot",async()=>{
-        if(candidate) previewCandidate(candidate.candidate_id);
-        await slotAction("clear",slot);
-      },operation=>operation());clear.disabled=pending || submitting || slotLocked || !candidate;
-      if (slotLocked) regen.title=clear.title="Unlock this image before replacing its slot.";
-      const select=button(candidate && selections()[view]===candidate.candidate_id ? "Selected" : "Select",async()=>{
-        previewCandidate(candidate.candidate_id);await selectCandidate(candidate.candidate_id);
-      });select.disabled=pending || !candidate?.image_url;
-      clear.classList.add("danger-text-action");
-      if (!candidate) regen.classList.add("primary-action");
-      else if (selections()[view] !== candidate.candidate_id) select.classList.add("primary-action");
-      card.classList.toggle("is-selected", Boolean(candidate && selections()[view] === candidate.candidate_id));
-      card.dataset.state = !candidate ? "empty" : locks()[view]?.candidate_id === candidate.candidate_id ? "locked" : selections()[view] === candidate.candidate_id ? "selected" : candidate.status === "FAILED" ? "failed" : candidate.image_url ? "available" : "pending";
-      if (candidate) {
-        card.append(element("p", `${renderMode === "final" ? "Final" : "Draft"}${candidate.render_sizing ? ` · requested ${candidate.render_sizing.width} × ${candidate.render_sizing.height}` : ""} · ${candidate.status.toLowerCase()}${selections()[view] === candidate.candidate_id ? " · Selected" : ""}${locks()[view]?.candidate_id === candidate.candidate_id ? " · Locked" : ""}`, "muted image-card-state"));
-        if (candidate.source_change_fyi) card.append(element("span", "Source changed", "status-badge review"));
-      }
-      if (regen.disabled) card.append(element("p", pending || submitting ? "An operation is in progress." : "Select an alignment image to enable rendering.", "slot-action-reason muted"));
-      controls.append(select);
-      if(candidate?.can_lock) {
-        controls.append(lockControl(candidate));
-      }
-      controls.append(regen,clear);
-      card.append(controls);$("mc-slots").append(card);
-    }
-    if(current?.template_candidate_id) $("mc-add-renders").append(window.ZetRenderSlots.countControl(current.slots.filter(id=>!id).length,count=>slotAction("add",undefined,count),{disabled:pending || slotPending.size>0}));
-    const candidate=choice(), source=candidate || current?.findings;
-    $("mc-feedback").value=feedback;
-    $("mc-current-prompt").textContent=current?.prompt || "";
-    $("mc-current-prompt-panel").hidden=!current?.prompt;
-    $("mc-suggestions-title").textContent=candidate ? `Suggested changes · Slot ${current.slots.indexOf(preview)+1}` : "Suggested changes";
-    $("mc-findings").replaceChildren();
-    if(source?.comparison) {
-      $("mc-findings").append(element("p",source.review));
-      const id=candidate?.candidate_id || current.edit.candidate_id;
-      const selected=suggestions.get(id) || new Set();suggestions.set(id,selected);
-      for(const item of source.comparison.items) {
-        const row=element("div","","qc-finding");row.append(element("strong",item.feature),element("p",`Expected: ${item.expected}`),element("p",`Observed: ${item.observed}`));
-        if(item.correction) {
-          const labelNode=element("label",item.correction),input=document.createElement("input");input.type="checkbox";input.checked=selected.has(item.id);
-          input.addEventListener("change",()=>{input.checked ? selected.add(item.id) : selected.delete(item.id);persistEdit();});labelNode.prepend(input);row.append(labelNode);
-        }
-        $("mc-findings").append(row);
-      }
-    } else $("mc-findings").append(element("p",source?.review || source?.error || (candidate?.status==="REVIEWING" ? "Suggested changes are being prepared. Selection and custom refinement remain available." : "Inspect a candidate to see suggested changes.")));
-    renderReview();
-  }
-  function updateButtons() {
-    const busy = pending || slotPending.size>0 || character?.busy;
-    $("mc-render-mode").disabled = pending || slotPending.size>0;
-    const current=board();
-    const candidate=choice(), aligning=view!=="STYLE" && current?.mode!=="true_up";
-    $("mc-generate").textContent=view==="STYLE" ? "Generate style alignment" : "Generate view alignment";
-    $("mc-generate-help").textContent=view==="STYLE" ? "Establish style and character details without requiring an official view. Select an image before generating views." : "Uses only the selected style image and a short orientation prompt. A new alignment replaces this view's working board.";
-    $("mc-generate").disabled=!character || busy || (view==="STYLE" ? !references.length : !styleSelection());
-    $("mc-refine").disabled=!character || busy || (!choice()?.image_url && !current?.edit.candidate_id) || (view!=="STYLE" && current?.mode!=="true_up");
-    $("mc-refine").title=aligning ? "Continue to true-ups above to enable these changes" : "";
-    $("mc-continue-true-ups").hidden=view==="STYLE" || current?.mode==="true_up";
-    $("mc-continue-true-ups").disabled=busy || (!candidate?.image_url && !current?.can_continue);
-    $("mc-refine-help").textContent=busy ? "Wait for the current image task to finish." : aligning
-      ? candidate?.image_url
-        ? `Continue to true-ups will select Slot ${current.slots.indexOf(candidate.candidate_id)+1} and keep it as the starting image. Your checked suggestions and additional changes will be kept; then use Try these changes.`
-        : "Generate a view image, then preview it and continue to true-ups to enable changes."
-      : "Use checked suggestions, your additional changes, or both. Suggested changes do not need to finish before you can refine an image.";
-    $("mc-undo").disabled=busy || !current?.can_undo;
-    $("mc-restart").disabled=busy || !character || (view==="STYLE" ? !references.length : !styleSelection());
-    $("mc-analyze").disabled = !character || busy || !references.length;
-    $("mc-add-reference").disabled = pending || references.length>=3;
-    $("mc-upload-trigger").disabled = references.length>=3;
-    $("mc-upload").disabled = references.length>=3;
-    $("mc-delete").disabled=pending || !character;
-    if (character) renderReview();
-  }
-  async function addReference(reference) {
-    if (references.length>=3) throw new Error("Use up to three original references.");
-    references.push(reference); referenceSignature=""; changed("references",referencePayload()); drawReferences(); await flush();
-  }
-  async function upload(file) {
-    if (!file || !["image/png","image/jpeg","image/webp"].includes(file.type) || file.size>20*1024*1024) throw new Error("Choose a PNG, JPEG or WEBP image up to 20 MiB.");
-    const image = await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error("Could not read image."));reader.readAsDataURL(file);});
-    await addReference({image,caption:file.name || "Identity and appearance reference"});
-  }
-  async function generateImage(refine) {
-    await flush();
-    if (!$('mc-render-ratio').reportValidity()) return;
-    const source=choice()?.candidate_id || board().edit.candidate_id;
-    const result=await api(`/${character.character_id}/generate`,"POST",{view,revision:board().revision,
-      render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value,
-      ...($("mc-seed-source").value ? {seed_candidate_id:$("mc-seed-source").value} : {}),
-      ...(refine ? {candidate_id:source,instructions:feedback,item_ids:[...(suggestions.get(source)||[])]} : {})});
-    feedbackDirty=false;
-    preview=boardsOf(result.character)[view].template_candidate_id;show(result.character);
-  }
-  async function boardAction(action) {
-    await flush();
-    const result=await api(`/${character.character_id}/boards/${view}/${action}`,"POST",{revision:board().revision,
-      render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value,
-      ...(action==="continue" ? {candidate_id:choice()?.candidate_id || board().selected_id} : {})});
-    preview="";show(result.character);
-  }
-  function viewWorkStarted() {
-    return character.views.some(target=>{
-      if (target==="STYLE") return false;
-      const current=boardsOf(character)[target];
-      return Boolean(current?.template_candidate_id || current?.slots.some(Boolean) || current?.selected_id
-        || current?.mode==="true_up" || current?.can_undo);
-    });
-  }
-  async function restartCurrentOperation() {
-    const target=view, confirmViews=target==="STYLE" && viewWorkStarted();
-    await flush();
-    const inspection = await api(`/${character.character_id}/boards/${target}/restart-preview`, "POST", {render_mode:renderMode});
-    const approved = await confirmProtectedEffects(`Restart ${label(target)}?`,
-      `Restarting ${renderMode} ${label(target)} will clear its working board${confirmViews ? " and that mode's view boards" : ""}. Approve each affected selection or lock.`,
-      inspection.protected_effects || [], "Restart");
-    if (approved === null) return;
-    const result=await api(`/${character.character_id}/boards/${target}/restart`,"POST",{
-      revision:board().revision, confirm_views_discarded:confirmViews,render_mode:renderMode,aspect_ratio:$("mc-render-ratio").value,
-      confirmation_token:inspection.confirmation_token,approved_effects:approved});
-    if (!result) return;
-    patch={}; feedback=""; feedbackDirty=false; suggestions.clear(); comparisonId="";
-    view=target; preview=target==="STYLE" ? "" : boardsOf(result.character)[target].template_candidate_id;
-    show(result.character);
-  }
-  async function load() {
-    if (universe!==bridge.universe()) { generation++; clearTimeout(pollTimer); character=null; patch={}; universe=bridge.universe(); entryAsset=null; }
-    const options = await api("/options"); $("mc-model").replaceChildren(...options.models.map(m=>new Option(m,m)));
-    await refreshList();
-    const requested = new URL(location.href).searchParams.get("minor_character");
-    if (requested) { if (character?.character_id!==requested) await open(requested); else show(character); }
-    else await list();
-  }
-  async function fromInventory() {
-    const asset=bridge.selectedAsset(); if (!asset) throw new Error("Choose an Inventory image first.");
-    universe=bridge.universe(); const owner=await api(`/owner/${encodeURIComponent(asset.asset_id)}`);
-    if (owner.character_id) { route(owner.character_id); await bridge.activatePage("minor-characters"); return; }
-    await flush(); entryAsset=asset; character=null; route(""); await bridge.activatePage("minor-characters");
-    $("mc-new-name").value=asset.label || ""; $("mc-entry-image").src=bridge.fileUrl(asset.image_path); $("mc-inventory-entry").hidden=false; nameMatch();
-  }
-  for (const [key,id] of Object.entries(fields)) $(id).addEventListener("input",()=>{
-    let value=$(id).value; if (key==="proposals") value=value.split("\n").map(s=>s.trim()).filter(Boolean);
-    changed(key,value);
-    if (key==="comparison_reference_id") renderImages();
-    if (key==="name") { const match=characters.find(c=>c.character_id!==character?.character_id && c.name.trim().toLocaleLowerCase()===value.trim().toLocaleLowerCase());
-      $("mc-rename-match").replaceChildren(); if(match) $("mc-rename-match").append(button(`Open existing ${match.name}`,async()=>{delete patch.name;await open(match.character_id);})); }
+    } catch (error) { if (epoch === token) message(error.message, true); }
+    finally { schedule(); }
+  }, 1800);
+}
+function render() {
+  $("mc-editor").hidden = false;
+  $("mc-list-panel").hidden = true;
+  const current = board();
+  $("mc-assets").innerHTML = '<button type="button" data-list>All Minor Characters</button>' +
+    Object.entries(character.boards).map(([id, item]) =>
+      `<button type="button" data-view="${id}" aria-pressed="${view === id}">${escape(item.label)}</button>`).join("");
+  for (const [key,value] of Object.entries({...current.fields, name:character.name,
+    prompt:current.prompt, aspect_ratio:current.aspect_ratio})) form.elements.namedItem(key).value = value;
+  $("mc-source-controls").hidden = view !== "STYLE";
+  $("mc-source-image").hidden = !character.source;
+  if (character.source) $("mc-source-image").src = scoped(character.source.url);
+  const style = character.boards.STYLE;
+  const hasReference = view === "STYLE" ? !!character.source : !!style.candidates[style.selected_id]?.locked;
+  $("mc-reference-status").textContent = hasReference
+    ? (view === "STYLE" ? character.source.label : "Render reference · Locked Style Alignment")
+    : (view === "STYLE" ? "Choose a source image." : "Lock a Style Alignment candidate before preparing this view.");
+  $("mc-write").disabled = $("mc-interview").disabled = !hasReference || current.text_job?.status === "RUNNING";
+  $("mc-board-actions").innerHTML = renderBoardActions(current.luna_review?.prompt);
+  $("mc-board-actions").querySelectorAll('[data-board-action="render"]').forEach(button => {
+    button.disabled = !hasReference || !current.prompt.trim() ||
+      current.slots.filter(id => !id).length < Number(button.dataset.count);
   });
-  $("mc-render-mode").addEventListener("change",()=>act(async()=>{await flush();renderMode=$("mc-render-mode").value;preview="";comparisonId="";feedback=boardsOf(character)[view]?.edit.instructions || "";feedbackDirty=false;void updateSizePreview();if(character)show(character);}));
-  $("mc-render-ratio").addEventListener("input",()=>void updateSizePreview());
-  $("mc-seed-source").addEventListener("change",()=>seedSources.set(`${renderMode}:${view}`,$("mc-seed-source").value));
-  $("mc-feedback").addEventListener("input",()=>{feedback=$("mc-feedback").value;feedbackDirty=true;persistEdit();});
-  $("mc-new-name").addEventListener("input",nameMatch);
-  $("mc-create-form").addEventListener("submit",event=>{event.preventDefault();act(async()=>{
-    const result=await api("","POST",{name:$("mc-new-name").value}); const asset=entryAsset;
+  renderCandidateBoard({host:$("mc-board"), slots:current.slots, candidates:current.candidates,
+    selectedId:current.selected_id, escape, imageUrl:cid=>media(cid), lunaReview:current.luna_review,
+    promptIndicator:item=>item?.source_change_fyi ? "Earlier source or prompt" : "",
+    renderActions:(item,index)=>candidateActions({id:item?.id || "", candidate:item, slot:index+1,
+      selected:!!item && item.id === current.selected_id, escape,
+      busy:!!item && ["SUBMITTING","QUEUED","RUNNING"].includes(item.status),
+      canReplace:hasReference && !!current.prompt.trim() && (!item || (!item.locked && item.id !== current.selected_id)),
+      canClear:!item?.locked})});
+  const job = current.text_job;
+  const proposals = job?.review?.proposals;
+  $("mc-proposals").innerHTML = proposals ? `<form id="mc-proposal-form"><h2>Review interview proposals</h2>${
+    proposals.map(row => `<article class="narrative-proposal"><h3>${escape(row.field)}</h3><p>${escape(row.reason)}</p>${renderProposalComparison(row, escape)}
+      <label>Decision<select name="${escape(row.id)}"><option value="reject">Reject</option><option value="accept">Accept</option></select></label></article>`).join("")
+      || "<p>No field changes proposed.</p>"}<button>Apply</button></form>` : "";
+  const statuses = [job, current.luna_review].filter(Boolean).map(item => item.error || item.status);
+  if (statuses.length) message(statuses.join(" · "));
+  if (dialog.open) renderReview();
+}
+function renderReview() {
+  const current = board(), item = current.candidates[reviewId];
+  if (!item) { dialog.close(); return; }
+  const ids = current.slots.filter(Boolean), index = ids.indexOf(reviewId);
+  const other = current.selected_id !== reviewId ? current.selected_id : null;
+  const ranking = current.luna_review?.entries?.find(row=>row.candidate_id === reviewId);
+  dialog.innerHTML = `<form method="dialog"><button>Close</button></form><h2>${reviewPosition(item,index,ids.length,current.selected_id === reviewId)}</h2>
+    <button data-review="${ids[index-1] || ""}" ${index === 0 ? "disabled" : ""}>Previous</button>
+    <button data-review="${ids[index+1] || ""}" ${index === ids.length-1 ? "disabled" : ""}>Next</button>
+    <div class="narrative-review-images">${other && current.candidates[other].image ? `<img src="${media(other)}" alt="Selected comparison" width="300">` : ""}
+    ${item.image ? `<img src="${media(reviewId)}" alt="Candidate" width="350">` : ""}</div>
+    <pre>${escape(item.prompt)}</pre>${reviewInputs(item.render_request?.inputs, n=>media(reviewId,"inputs/"+n),escape)}
+    ${ranking ? `<p>${escape(ranking.review || "")}</p>` : ""}
+    ${candidateActions({id:reviewId,candidate:item,selected:reviewId===current.selected_id,slot:item.slot,escape,
+      busy:["SUBMITTING","QUEUED","RUNNING"].includes(item.status),review:true,canReplace:false,canClear:!item.locked})}
+    ${item.status === "COMPLETE" ? '<button data-evidence>Interview this candidate</button>' : ""}`;
+}
+async function bulk(kind) {
+  await flush();
+  const path = asset() + "/bulk/" + kind;
+  const preview = await api(path + "/preview","POST");
+  const ids = await window.confirmProtectedEffects("Delete candidates?", `Clear ${preview.slots.length} candidate slots.`,
+    preview.protected_effects.map(effect => ({...effect, preview_url:media(effect.candidate_id)})), "Delete");
+  if (ids === null || ids === false) return;
+  adopt((await api(path,"POST",{revision:preview.revision, approved_effects:ids})).character);
+}
+async function setSource(source) {
+  await flush();
+  adopt((await api(base(),"PATCH",{revision:character.revision,source})).character);
+}
+function author(action, extra = {}) {
+  return change(asset()+"/authoring/"+action,{model,feedback:$("mc-feedback").value,...extra});
+}
+page.addEventListener("click", event => {
+  const button = event.target.closest("button");
+  if (!button || button.disabled) return;
+  const data = button.dataset;
+  if (data.open) return run(()=>open(data.open));
+  if ("list" in data) return run(async()=>{await flush(); route(""); await load();});
+  if (data.view) return run(async()=>{await flush(); view=data.view; $("mc-feedback").value=""; render();});
+  if (data.review) { reviewId=data.review; renderReview(); if (!dialog.open) dialog.showModal(); return; }
+  if ("evidence" in data) return run(async()=>{dialog.close(); await author("interview",{candidate_id:reviewId});});
+  if (data.renderSlot) return run(()=>change(asset()+"/generate",{slot:Number(data.renderSlot),render_mode:data.mode,
+    expected_candidate_id:board().slots[Number(data.renderSlot)-1]}));
+  if (data.candidateAction) return run(async()=>{
+    const selected = board().selected_id === data.candidate;
+    if (data.candidateAction === "clear" && selected && !window.confirm("Clear the selected image?")) return;
+    await change(asset()+"/candidates/"+data.candidate+"/"+data.candidateAction,{confirm_selected:selected});
+  });
+  if (data.boardAction === "render") return run(()=>change(asset()+"/generate",{count:Number(data.count),render_mode:data.mode}));
+  if (data.boardAction === "delete-drafts") return run(()=>bulk("drafts"));
+  if (data.boardAction === "delete-non-selected") return run(()=>bulk("non-selected"));
+  if (data.boardAction === "luna-review") return run(()=>author("luna-review"));
+});
+form.addEventListener("input",()=>{dirty=true;});
+page.addEventListener("submit",event=>{
+  if (event.target.method === "dialog") return;
+  event.preventDefault();
+  if (event.target === form) return run(flush);
+  if (event.target.id === "mc-proposal-form") return run(()=>author("apply",{
+    job_id:board().text_job.id, choices:Object.fromEntries(new FormData(event.target))}));
+  if (event.target.id === "mc-create-form") return run(async()=>{
+    const result=await api("","POST",{name:$("mc-new-name").value});
     await open(result.character.character_id);
-    if(asset && !result.character.existing) await addReference({asset_id:asset.asset_id,caption:asset.label || "Identity reference"});
-    entryAsset=null; if(result.character.existing) message("Opened the existing Minor Character.");
-  });});
-  $("mc-continue-true-ups").addEventListener("click",()=>act(()=>boardAction("continue")));
-  $("mc-undo").addEventListener("click",()=>act(()=>boardAction("undo")));
-  for (const [id, all] of [["mc-delete-draft-view", false], ["mc-delete-draft-all", true]]) {
-    $(id).addEventListener("click",()=>act(async()=>{
-      const scope = all ? "this character" : label(view);
-      await flush();
-      const body = all ? {} : {view};
-      const inspection = await api(`/${character.character_id}/delete-draft-images/preview`, "POST", body);
-      const approved = await confirmProtectedEffects("Delete Draft images?",
-        `Delete Draft images for ${scope}? Matching renders will be cancelled. Final images and Inventory copies remain. Approve each affected selection or lock.`,
-        inspection.protected_effects || [], "Delete Draft images");
-      if (approved === null) return;
-      const result = await api(`/${character.character_id}/delete-draft-images`, "POST",
-        {...body, confirmation_token: inspection.confirmation_token, approved_effects: approved});
-      if (!result) return;
-      preview=""; comparisonId=""; feedback=""; feedbackDirty=false;
-      show(result.character); message("Draft images deleted.");
-    }));
-  }
-  $("mc-restart").addEventListener("click",()=>act(restartCurrentOperation));
-  $("mc-delete").addEventListener("click",()=>act(()=>deleteCharacter(character.character_id,character.name)));
-  $("mc-continue").addEventListener("click",()=>act(async()=>{entryAsset=null;await open($("mc-continue-choice").value);}));
-  $("mc-character-picker").addEventListener("change",event=>act(()=>open(event.target.value)));
-  $("mc-generate").addEventListener("click",()=>act(()=>generateImage(false)));
-  $("mc-refine").addEventListener("click",()=>act(()=>generateImage(true)));
-  $("mc-review-close").addEventListener("click",()=>$("mc-review").close());
-  $("mc-review-prev").addEventListener("click",()=>navigateReview(-1));
-  $("mc-review-next").addEventListener("click",()=>navigateReview(1));
-  document.addEventListener("keydown",event=>{
-    if ($("mc-review").open && ["ArrowLeft","ArrowRight"].includes(event.key) && !["INPUT","TEXTAREA","SELECT"].includes(event.target.tagName)) {
-      event.preventDefault(); navigateReview(event.key==="ArrowLeft" ? -1 : 1);
-    }
+    if (entryAsset) { await setSource({asset_id:entryAsset.asset_id,label:entryAsset.label}); entryAsset=null; }
   });
-  $("mc-analyze").addEventListener("click",()=>act(async()=>{await flush();show((await api(`/${character.character_id}/analyze`,"POST",{})).character);}));
-  $("mc-add-reference").addEventListener("click",()=>act(()=>bridge.openLibraryPicker(asset=>act(()=>addReference({asset_id:asset.asset_id,caption:asset.label || "Identity reference"})))));
-  $("mc-upload-trigger").addEventListener("click",()=>$("mc-upload").click());
-  $("mc-upload").addEventListener("change",()=>act(async()=>{await upload($("mc-upload").files[0]);$("mc-upload").value="";}));
-  window.ZetImageInput.attach($("mc-paste"), $("mc-upload"));
-  $("mc-paste").addEventListener("click",()=>$("mc-paste").focus());
-  $("mc-paste").addEventListener("paste",event=>{const item=[...(event.clipboardData?.items||[])].find(i=>i.type.startsWith("image/"));if(item){event.preventDefault();act(()=>upload(item.getAsFile()));}});
-  $("quick-character-wizard-open").addEventListener("click",()=>act(async()=>{route("");await bridge.activatePage("minor-characters");}));
-  $("quick-character-wizard-from-asset").addEventListener("click",()=>act(fromInventory));
-  window.zetMinorCharacters={load,flush,navigateList:async()=>{await flush();route("");},characterId:()=>character?.character_id || ""};
-})();
+});
+$("mc-write").onclick=()=>run(()=>author("write-prompt"));
+$("mc-interview").onclick=()=>run(()=>author("interview"));
+$("mc-model").onclick=async()=>{
+  const value=await window.ZetModelPicker.open({value:model,required:["vision"],allowDefault:true});
+  if (value !== null) {model=value; $("mc-model").textContent=model || "Use configured default";}
+};
+$("mc-add-reference").onclick=()=>bridge.openLibraryPicker(item=>run(()=>setSource({asset_id:item.asset_id,label:item.label})));
+$("mc-upload").onchange=event=>{
+  const file=event.target.files[0];
+  if (!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>run(()=>setSource({image:reader.result,label:file.name}));
+  reader.onerror=()=>message("The source file could not be read.",true);
+  reader.readAsDataURL(file);
+};
+$("quick-character-wizard-open").onclick=()=>run(async()=>{route(""); await bridge.activatePage("minor-characters");});
+$("quick-character-wizard-from-asset").onclick=()=>run(async()=>{
+  const item=bridge.selectedAsset();
+  if (!item) throw new Error("Choose an Inventory image first.");
+  universe=bridge.universe();
+  const owner=await api("/owner/"+encodeURIComponent(item.asset_id));
+  entryAsset=owner.character_id ? null : item;
+  route(owner.character_id);
+  await bridge.activatePage("minor-characters");
+  if (entryAsset) $("mc-new-name").value=item.label || "";
+});
+window.zetMinorCharacters={load:()=>load().catch(error=>message(error.message,true)),flush,
+  navigateList:async()=>{await flush();route("");},characterId:()=>character?.character_id || ""};
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearTimeout(timer);
+  else if (character && !dirty && page.classList.contains("active")) {
+    void run(async()=>adopt((await api(base())).character));
+  }
+});

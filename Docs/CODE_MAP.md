@@ -457,3 +457,12 @@ Symbolic Inventory locks resolve through `EntityLibraryService.bind_workflow_loc
 and `image_binding`. `workflow_lock_journal.py` recovers Minor Character and
 Narrative record updates from catalog receipts. `reconcile_inventory_locks.py`
 owns the offline cutover and orphan move manifest.
+
+## Minor Character asset collections
+
+MinorCharacterService owns versioned collections, per-asset authoring,
+source eligibility and shared-board adapters. The shared image production
+service transports frozen render requests and AIJobCoordinator applies
+results by owning collection, asset, candidate, slot and attempt.
+The shared interview proposal helpers serve Narrative and Minor Characters.
+The offline migration lives in zet.scripts.migrate_minor_character_collections.

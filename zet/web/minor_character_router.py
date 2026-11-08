@@ -1,21 +1,21 @@
-"""HTTP presentation for persistent Minor Character workspaces."""
+"""HTTP presentation for Minor Character collections."""
 import json
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
-from zet.services.quick_character_wizard_service import QuickCharacterWizardConflict
 from zet.services.minor_character_service import MinorCharacterNotFound
 from zet.services.protected_effect_preview import ProtectedEffectsChanged
+from zet.services.quick_character_wizard_service import QuickCharacterWizardConflict
 
 
 def create_minor_character_router(provider):
     router = APIRouter(prefix="/api/minor-characters", tags=["minor-characters"])
 
-    def call(operation):
+    def call(method, *args):
         try:
-            return operation(provider())
+            return getattr(provider(), method)(*args)
         except MinorCharacterNotFound as exc:
             raise HTTPException(404, str(exc)) from exc
         except ProtectedEffectsChanged as exc:
@@ -25,108 +25,71 @@ def create_minor_character_router(provider):
         except (ValueError, KeyError, TypeError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
-    async def payload(request):
-        body = bytearray()
-        async for chunk in request.stream():
-            body.extend(chunk)
-            if len(body) > 85 * 1024 * 1024:
-                raise HTTPException(413, "References exceed the request limit.")
-        try:
-            value = json.loads(body)
-            if not isinstance(value, dict):
-                raise ValueError()
-            return value
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise HTTPException(400, "Expected a Minor Character form.") from exc
-
     @router.get("")
     def characters():
-        return {"characters": call(lambda s: s.list_characters())}
-
-    @router.get("/options")
-    def options():
-        return call(lambda s: s.reconstruction_options())
+        return {"characters": call("list_characters")}
 
     @router.get("/owner/{asset_id}")
     def owner(asset_id: str):
-        return {"character_id": call(lambda s: s.owner(asset_id))}
+        return {"character_id": call("owner", asset_id)}
 
     @router.post("")
-    async def create(request: Request):
-        data = await payload(request)
-        return {"character": await run_in_threadpool(call, lambda s: s.create_character(data))}
+    def create(data: dict = Body(...)):
+        return {"character": call("create_character", data)}
 
     @router.get("/{sid}")
     def character(sid: str):
-        return {"character": call(lambda s: s.get_character(sid))}
+        return {"character": call("get_character", sid)}
 
     @router.patch("/{sid}")
     async def update(sid: str, request: Request):
-        data = await payload(request)
-        return {"character": await run_in_threadpool(call, lambda s: s.update_character(sid, data))}
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > 28 * 1024 * 1024:
+                raise HTTPException(413, "The source image is too large.")
+        try:
+            data = json.loads(body)
+            if not isinstance(data, dict):
+                raise ValueError()
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, "Expected a Minor Character form.") from exc
+        return {"character": await run_in_threadpool(call, "update_character", sid, data)}
 
-    @router.post("/{sid}/delete-preview")
-    def preview_delete_character(sid: str):
-        return call(lambda s: s.preview_delete_character(sid))
+    @router.get("/{sid}/source")
+    def source(sid: str):
+        return FileResponse(call("source_image", sid))
 
-    @router.delete("/{sid}")
-    def delete(sid: str, data: dict = Body(default={})):
-        return call(lambda s: s.delete_character(sid, data))
+    @router.get("/{sid}/assets/{view}/progress")
+    def progress(sid: str, view: str):
+        return call("progress", sid, view)
 
-    @router.post("/{sid}/delete-draft-images")
-    def delete_draft_images(sid: str, data: dict = Body(default={})):
-        return {"character": call(lambda s: s.delete_draft_images(sid, str(data.get("view") or ""),
-            confirmation_token=str(data.get("confirmation_token") or ""), approved_effects=data.get("approved_effects")))}
+    @router.post("/{sid}/assets/{view}/generate")
+    def generate(sid: str, view: str, data: dict = Body(...)):
+        return {"character": call("generate", sid, view, data)}
 
-    @router.post("/{sid}/delete-draft-images/preview")
-    def preview_draft_delete(sid: str, data: dict = Body(default={})):
-        return call(lambda s: s.preview_draft_delete(sid, str(data.get("view") or "")))
+    @router.post("/{sid}/assets/{view}/authoring/{action}")
+    def author(sid: str, view: str, action: str, data: dict = Body(...)):
+        return {"character": call("text_action", sid, view, action, data)}
 
-    @router.post("/{sid}/generate")
-    def generate(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.render(sid, "", str(data.get("view", "FRONT")),
-            str(data.get("instructions", "")), str(data.get("candidate_id", "")), data.get("item_ids", []), expected=data["revision"],
-            render_mode=data.get("render_mode", "draft"), aspect_ratio=data.get("aspect_ratio"),
-            seed_candidate_id=data.get("seed_candidate_id", "")))}
+    @router.post("/{sid}/assets/{view}/bulk/{kind}/preview")
+    def preview(sid: str, view: str, kind: str):
+        return call("bulk", sid, view, kind)
 
-    @router.post("/{sid}/boards/{view}/restart-preview")
-    def restart_preview(sid: str, view: str, data: dict = Body(default={})):
-        return call(lambda s: s.preview_restart(sid, view, data.get("render_mode", "draft")))
+    @router.post("/{sid}/assets/{view}/bulk/{kind}")
+    def bulk(sid: str, view: str, kind: str, data: dict = Body(...)):
+        return {"character": call("bulk", sid, view, kind, data)}
 
-    @router.post("/{sid}/boards/{view}/{action}")
-    def board_action(sid: str, view: str, action: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.board_action(sid, view, action, data["revision"], data))}
+    @router.get("/{sid}/assets/{view}/candidates/{cid}/image")
+    def image(sid: str, view: str, cid: str):
+        return FileResponse(call("candidate_file", sid, view, cid))
 
-    @router.post("/{sid}/boards/{view}/slots/action")
-    def board_slots(sid: str, view: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.view_slots(sid, view, data))}
+    @router.get("/{sid}/assets/{view}/candidates/{cid}/inputs/{index}")
+    def input_image(sid: str, view: str, cid: str, index: int):
+        return FileResponse(call("candidate_file", sid, view, cid, index))
 
-    @router.post("/{sid}/analyze")
-    def analyze(sid: str, data: dict = Body(default={})):
-        return {"character": call(lambda s: s.analyze(sid, answers=data.get("answers")))}
-
-    @router.post("/{sid}/select")
-    def select(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.select(sid, "", str(data.get("candidate_id", "")), expected=data["revision"]))}
-
-    @router.post("/{sid}/lock")
-    def lock(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.lock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"], render_mode=data.get("render_mode", "draft")))}
-
-    @router.post("/{sid}/unlock")
-    def unlock(sid: str, data: dict = Body(...)):
-        return {"character": call(lambda s: s.unlock_view(sid, str(data.get("view", "FRONT")), str(data.get("candidate_id", "")), expected=data["revision"], render_mode=data.get("render_mode", "draft")))}
-
-    @router.get("/{sid}/references/{reference_id}")
-    def reference(sid: str, reference_id: str):
-        return FileResponse(call(lambda s: s.reference_image_path(sid, reference_id)))
-
-    @router.get("/{sid}/images/{candidate_id}")
-    def image(sid: str, candidate_id: str):
-        return FileResponse(call(lambda s: s.image_path(sid, candidate_id=candidate_id)))
-
-    @router.get("/{sid}/locked/{view}")
-    def locked(sid: str, view: str, render_mode: str = "draft"):
-        return FileResponse(call(lambda s: s.locked_image_path(sid, view, render_mode)))
+    @router.post("/{sid}/assets/{view}/candidates/{cid}/{action}")
+    def action(sid: str, view: str, cid: str, action: str, data: dict = Body(...)):
+        return {"character": call("action", sid, view, cid, action, data)}
 
     return router

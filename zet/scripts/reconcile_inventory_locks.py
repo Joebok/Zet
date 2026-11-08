@@ -92,6 +92,17 @@ def preview(root):
 
     for path in sorted(root.glob("_state/QuickCharacterWizard/*/session.json")):
         data = load(path)
+        if data.get("workflow_version") == 2:
+            for view, board in data["boards"].items():
+                locked = [item for item in board["candidates"].values() if item.get("locked")]
+                if not locked:
+                    continue
+                if len(locked) != 1 or locked[0]["id"] != board["selected_id"] or board["selected_id"] not in board["slots"]:
+                    raise ValueError(f"Invalid Minor Character board: {path} ({view})")
+                item = locked[0]
+                bind(path, ("minor", data["session_id"], view), item["id"], path.parent / item["image_path"],
+                     f"{data['name']} · {view}", item["prompt"], item.get("inventory_asset_id"), "imagegen")
+            continue
         if data.get("workflow_version") != 1 or data.get("deleted_at") or data.get("status") == "ABANDONED":
             continue
         final = data.get("final_locked") or {}
@@ -228,6 +239,10 @@ def apply(root, approved):
                 write_json_atomic(path, record)
             elif parts[0] == "minor":
                 view = parts[2]
+                if record.get("workflow_version") == 2:
+                    record["boards"][view]["candidates"][cid]["inventory_asset_id"] = asset["asset_id"]
+                    write_json_atomic(path, record)
+                    return
                 lock = record.get("final_locked", {}).get(view) or record["locked"][view]
                 lock["asset_id"] = asset["asset_id"]
                 # A historical private snapshot remains the workflow-owned image.

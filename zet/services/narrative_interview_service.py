@@ -50,7 +50,25 @@ def interview_review(result: dict, detail: dict, job_id: str) -> dict:
         if destination in seen:
             raise ValueError("The interview returned duplicate field proposals.")
         seen.add(destination)
-        if old != proposal["text"]:
-            rows.append({**proposal, "id": f"{job_id}-{len(rows)}", "old": old,
-                         "element_name": elements[element_id]["name"] if element_id else ""})
+        row = field_replacement(proposal, old, job_id, len(rows))
+        if row:
+            rows.append({**row, "element_name": elements[element_id]["name"] if element_id else ""})
     return {"status": "pending", "proposals": rows, "conflicts": conflicts, "questions": questions}
+
+def field_replacement(proposal, old, job_id, index):
+    if any(not isinstance(value, str) for value in proposal.values()):
+        raise ValueError("The interview returned an invalid proposal.")
+    if old != proposal["text"]:
+        return {**proposal, "id": f"{job_id}-{index}", "old": old}
+    return None
+
+
+def proposal_choices(rows, choices):
+    if not isinstance(choices, dict) or set(choices) != {row["id"] for row in rows}:
+        raise ValueError("Choose an action for every proposal.")
+    for row in rows:
+        choice = choices[row["id"]]
+        allowed = ("override", "shared", "reject") if row.get("scope") == "visual" else ("accept", "reject")
+        if choice not in allowed:
+            raise ValueError("Choose a valid proposal action.")
+        yield row, choice

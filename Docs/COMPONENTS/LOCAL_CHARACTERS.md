@@ -781,7 +781,9 @@ Intent/description changes invalidate approvals; a new front invalidates views u
 Operator trial update (2026-10-15): Joe accepted the Freydis improvement as sufficient to proceed. The wizard now emphasizes Generate, custom feedback, Try these changes and Use this image. Analysis, suggestions and earlier attempts are optional details; generating uses the current description without a separate approval checkbox. Failed automated review does not block choosing or refining a rendered image. Custom feedback composes directly without model compatibility approval; see PROMPTS.md and ADR 0013.
 
 
-## Minor Characters: alignment and true-ups (2026-10-15)
+## Legacy Minor Characters alignment and true-ups (2026-10-15)
+
+The [asset collection workflow](#minor-character-asset-collections) supersedes this historical description.
 
 `MinorCharacterService` handles named universe-local workspaces, input analysis and publication. `MinorCharacterWorkflow` in `minor_character_workflow_service.py` owns current boards, stage prompts, rendering and review. New workspaces use the current workflow only; retired records are excluded without migration or file deletion. The Quick Character notes above describe preceding view/history rules, superseded by [ADR 0015](../DECISIONS/0015-minor-character-alignment.md).
 
@@ -974,3 +976,23 @@ All four approved fast E2E scenarios passed (47.2s). No live renders or producti
 state edits were performed; these results do not establish hosted deployment.
 
 Background collection uses the shared AI job coordinator for Character Asset Container renders. It applies results through the same locked, revision-checked board reconciliation as foreground progress refresh. A pending application marker supports recovery after answer harvesting and protects the receipt until the board commit settles.
+
+## Minor Character asset collections
+
+Each named collection has a Style Alignment asset followed by Front, both
+front three-quarter views, and both profiles. Each asset has a shared
+eight-slot mixed-quality Candidate Board. Style Alignment uses one original
+image and the universe canonical style. New view requests use the current
+locked Style Alignment image. The source gate applies during preparation.
+Already rendered candidates and frozen retries keep their captured inputs.
+
+Appearance, framing, directions, and the working render prompt belong to
+each asset. Interview optionally examines one candidate and returns editable
+field proposals for explicit acceptance or rejection. Write Prompt and manual
+prompt edits prepare subsequent renders. Luna Review ranks board candidates
+on demand. Either quality may lock and publish a symbolic Inventory link,
+including Style Alignment.
+
+Legacy workflows are archived during offline conversion. See
+[Minor Character collections](../DECISIONS/0050-minor-character-asset-collections.md)
+for the migration and recovery procedure.

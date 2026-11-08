@@ -33,6 +33,7 @@ def work_id(label="item"):
 
 class AIWorkflowService:
     METHODS = {
+        "minor_collection": {"run_authoring_job"},
         "minor": {"_draft_job", "_render_job", "_review_job", "_dispatch_candidate", "_analyze_then_render"},
         "costume": {"_draft_job", "_render_job", "_refine_job"},
         "reconstruction": {"_run", "_comparison_task", "_correction_task"},
@@ -166,8 +167,10 @@ class AIWorkflowService:
             from pathlib import Path
             from zet.services.character_container_template_service import CharacterContainerTemplateService
             return CharacterContainerTemplateService(self.app, Path(__file__).resolve().parents[2])
-        if name == "minor":
+        if name == "minor_collection":
             return self.app.minor_character_service
+        if name == "minor":
+            return self.app.quick_character_wizard_service
         if name == "costume":
             return self.app.costume_wizard_service
         if name in {"reconstruction", "image_prompt"}:
