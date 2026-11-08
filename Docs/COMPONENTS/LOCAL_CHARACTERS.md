@@ -979,20 +979,19 @@ Background collection uses the shared AI job coordinator for Character Asset Con
 
 ## Minor Character asset collections
 
-Each named collection has a Style Alignment asset followed by Front, both
-front three-quarter views, and both profiles. Each asset has a shared
-eight-slot mixed-quality Candidate Board. Style Alignment uses one original
-image and the universe canonical style. New view requests use the current
-locked Style Alignment image. The source gate applies during preparation.
-Already rendered candidates and frozen retries keep their captured inputs.
+Each named collection has Style Alignment and five view assets. Each asset
+uses the shared eight-slot mixed-quality Candidate Board. Container settings
+edits the universe's MinorCharacter.md sections and selects the original
+Inventory image. Asset settings owns the interview, prompt and aspect ratio.
+Accepted interview proposals save to the template and report the affected fields.
 
-Appearance, framing, directions, and the working render prompt belong to
-each asset. Interview optionally examines one candidate and returns editable
-field proposals for explicit acceptance or rejection. Write Prompt and manual
-prompt edits prepare subsequent renders. Luna Review ranks board candidates
-on demand. Either quality may lock and publish a symbolic Inventory link,
-including Style Alignment.
+Style Alignment analyzes the original image, optionally with a completed
+candidate as feedback evidence. Write Prompt describes the target character
+and composes the universe canonical style into the displayed render prompt.
+New Style renders use text-to-image. For each view, the shared compiler filters
+template text for its orientation before prompt writing. A view interview
+updates its refinement section. New view renders use the current locked Style
+Alignment image. Captured requests remain available for retry.
 
-Legacy workflows are archived during offline conversion. See
-[Minor Character collections](../DECISIONS/0050-minor-character-asset-collections.md)
-for the migration and recovery procedure.
+See [ADR 0050](../DECISIONS/0050-minor-character-asset-collections.md) for the
+name-and-source-only offline bootstrap.

@@ -1,4 +1,4 @@
-import {candidateActions, renderBoardActions, renderCandidateBoard, reviewInputs, reviewPosition} from "./candidate_board.js";
+import {candidateActions, renderBoardActions, renderCandidateBoard, reviewInputs, reviewPosition} from "./candidate_board.js?v=20261107-board-toolbar";
 import {renderProposalComparison} from "./interview_proposals.js";
 
 const $ = id => document.getElementById(id);
@@ -10,7 +10,8 @@ window.ZetReviewImageZoom.attach(dialog, () => [...dialog.querySelectorAll(".nar
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"})[char]);
 let character, universe, entryAsset, timer, reviewId;
-let view = "STYLE", dirty = false, busy = false, model = "", epoch = 0;
+let view = "STYLE", busy = false, model = "", epoch = 0;
+const edits = new Map();
 const board = () => character.boards[view];
 const base = () => "/" + character.character_id;
 const asset = () => base() + "/assets/" + view;
@@ -21,6 +22,9 @@ const api = (path, method = "GET", body) => bridge.fetchJson("/api/minor-charact
     headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
   })
 });
+const promptDrafts = new Map();
+const promptKey = () => [universe, character?.character_id, view].join(":");
+
 function route(id) {
   const url = new URL(location.href);
   url.searchParams.set("page", "minor-characters");
@@ -45,18 +49,22 @@ async function run(action) {
   catch (error) { message(error.message, true); }
   finally { busy = false; schedule(); }
 }
-async function flush() {
-  if (!dirty || !character || universe !== bridge.universe()) return;
-  const data = Object.fromEntries(new FormData(form));
+async function flush(savePrompt = false) {
+  if ((!edits.size && !savePrompt) || !character || universe !== bridge.universe()) return;
+  const submitted = new Map(edits);
+  const data = Object.fromEntries(submitted);
+  if (savePrompt) data.prompt = form.elements.namedItem("prompt").value;
   data.view = view;
+  data.template_hash = character.template_hash;
   data.revision = character.revision;
   const result = await api(base(), "PATCH", data);
-  dirty = false;
+  for (const [key, value] of submitted) if (edits.get(key) === value) edits.delete(key);
+  if (savePrompt) promptDrafts.delete(promptKey());
   adopt(result.character);
 }
 async function change(path, data) {
   await flush();
-  const result = await api(path, "POST", {...data, revision:character.revision});
+  const result = await api(path, "POST", {...data, revision:character.revision, template_hash:character.template_hash});
   adopt(result.character);
 }
 async function open(id) {
@@ -69,7 +77,7 @@ async function load() {
   clearTimeout(timer);
   epoch++;
   const next = bridge.universe();
-  if (universe !== next) { character = null; dirty = false; }
+  if (universe !== next) { character = null; edits.clear(); }
   universe = next;
   $("mc-editor").hidden = true;
   $("mc-list-panel").hidden = false;
@@ -92,9 +100,9 @@ function schedule() {
     try {
       const progress = await api(path + "/progress");
       if (epoch !== token || !character || asset() !== path || busy || universe !== bridge.universe()) return;
-      if (progress.revision !== character.revision && !dirty) {
+      if (progress.revision !== character.revision) {
         const {character:value} = await api(id);
-        if (epoch === token && !busy && !dirty && asset() === path) adopt(value);
+        if (epoch === token && !busy && asset() === path && (!edits.size || value.template_hash === character.template_hash)) adopt(value);
       }
     } catch (error) { if (epoch === token) message(error.message, true); }
     finally { schedule(); }
@@ -107,9 +115,15 @@ function render() {
   $("mc-assets").innerHTML = '<button type="button" data-list>All Minor Characters</button>' +
     Object.entries(character.boards).map(([id, item]) =>
       `<button type="button" data-view="${id}" aria-pressed="${view === id}">${escape(item.label)}</button>`).join("");
-  for (const [key,value] of Object.entries({...current.fields, name:character.name,
-    prompt:current.prompt, aspect_ratio:current.aspect_ratio})) form.elements.namedItem(key).value = value;
-  $("mc-source-controls").hidden = view !== "STYLE";
+  for (const [key,value] of Object.entries({...character.fields, name:character.name,
+    refinement:current.refinement, prompt:promptDrafts.get(promptKey()) ?? current.prompt_body ?? "", aspect_ratio:current.aspect_ratio})) form.elements.namedItem(key).value = edits.get(key) ?? value;
+  $("mc-refinement").hidden = view === "STYLE";
+  $("mc-source-status").textContent = character.source?.label || character.source_error || "Choose an Inventory image.";
+  const evidence = $("mc-evidence"), previousEvidence = evidence.value;
+  evidence.replaceChildren(new Option("None", ""), ...current.slots.filter(id => current.candidates[id]?.status === "COMPLETE")
+    .map(id => new Option(`Slot ${current.candidates[id].slot}`, id)));
+  if ([...evidence.options].some(option => option.value === previousEvidence)) evidence.value = previousEvidence;
+  $("mc-render-prompt").textContent = current.prompt;
   $("mc-source-image").hidden = !character.source;
   if (character.source) $("mc-source-image").src = scoped(character.source.url);
   const style = character.boards.STYLE;
@@ -117,10 +131,12 @@ function render() {
   $("mc-reference-status").textContent = hasReference
     ? (view === "STYLE" ? character.source.label : "Render reference · Locked Style Alignment")
     : (view === "STYLE" ? "Choose a source image." : "Lock a Style Alignment candidate before preparing this view.");
-  $("mc-write").disabled = $("mc-interview").disabled = !hasReference || current.text_job?.status === "RUNNING";
+  $("mc-write").disabled = $("mc-interview").disabled =
+    !hasReference || (view === "STYLE" && !character.canonical_style_ready) || current.text_job?.status === "RUNNING";
+  $("mc-save-prompt").disabled = $("mc-write").disabled;
   $("mc-board-actions").innerHTML = renderBoardActions(current.luna_review?.prompt);
   $("mc-board-actions").querySelectorAll('[data-board-action="render"]').forEach(button => {
-    button.disabled = !hasReference || !current.prompt.trim() ||
+    button.disabled = !hasReference || !current.prompt_current ||
       current.slots.filter(id => !id).length < Number(button.dataset.count);
   });
   renderCandidateBoard({host:$("mc-board"), slots:current.slots, candidates:current.candidates,
@@ -129,16 +145,26 @@ function render() {
     renderActions:(item,index)=>candidateActions({id:item?.id || "", candidate:item, slot:index+1,
       selected:!!item && item.id === current.selected_id, escape,
       busy:!!item && ["SUBMITTING","QUEUED","RUNNING"].includes(item.status),
-      canReplace:hasReference && !!current.prompt.trim() && (!item || (!item.locked && item.id !== current.selected_id)),
+      canReplace:hasReference && !!current.prompt_current && (!item || (!item.locked && item.id !== current.selected_id)),
       canClear:!item?.locked})});
   const job = current.text_job;
   const proposals = job?.review?.proposals;
-  $("mc-proposals").innerHTML = proposals ? `<form id="mc-proposal-form"><h2>Review interview proposals</h2>${
+  $("mc-proposals").hidden = !proposals;
+  const proposalChoices = Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select => [select.dataset.proposal, select.value]));
+  $("mc-proposals").innerHTML = proposals ? `<div id="mc-proposal-form"><h2>Review interview proposals</h2>${
     proposals.map(row => `<article class="narrative-proposal"><h3>${escape(row.field)}</h3><p>${escape(row.reason)}</p>${renderProposalComparison(row, escape)}
-      <label>Decision<select name="${escape(row.id)}"><option value="reject">Reject</option><option value="accept">Accept</option></select></label></article>`).join("")
-      || "<p>No field changes proposed.</p>"}<button>Apply</button></form>` : "";
-  const statuses = [job, current.luna_review].filter(Boolean).map(item => item.error || item.status);
-  if (statuses.length) message(statuses.join(" · "));
+      <label>Decision<select data-proposal="${escape(row.id)}"><option value="reject">Reject</option><option value="accept">Accept</option></select></label></article>`).join("")
+      || "<p>No field changes proposed.</p>"}<button type="button" data-apply-proposals>Apply</button></div>` : "";
+  for (const select of $("mc-proposals").querySelectorAll("select")) {
+    if (proposalChoices[select.dataset.proposal]) select.value = proposalChoices[select.dataset.proposal];
+  }
+  $("mc-authoring-status").textContent = [
+    view === "STYLE" && !character.canonical_style_ready ? "Set the canonical art style in Universe Settings." : "",
+    job?.error || (job?.status === "RUNNING" ? "Authoring in progress…" : ""),
+    job?.applied_fields?.length ? `Applied to template: ${job.applied_fields.join(", ")}.` : "",
+    current.prompt && !current.prompt_current ? "Inputs changed. Write Prompt or save the prompt for the current inputs." : "",
+  ].filter(Boolean).join(" ");
+  if (current.luna_review?.error) message(current.luna_review.error, true);
   if (dialog.open) renderReview();
 }
 function renderReview() {
@@ -169,10 +195,10 @@ async function bulk(kind) {
 }
 async function setSource(source) {
   await flush();
-  adopt((await api(base(),"PATCH",{revision:character.revision,source})).character);
+  adopt((await api(base(),"PATCH",{revision:character.revision,template_hash:character.template_hash,source})).character);
 }
 function author(action, extra = {}) {
-  return change(asset()+"/authoring/"+action,{model,feedback:$("mc-feedback").value,...extra});
+  return change(asset()+"/authoring/"+action,{model,feedback:$("mc-feedback").value,candidate_id:$("mc-evidence").value,...extra});
 }
 page.addEventListener("click", event => {
   const button = event.target.closest("button");
@@ -182,6 +208,10 @@ page.addEventListener("click", event => {
   if ("list" in data) return run(async()=>{await flush(); route(""); await load();});
   if (data.view) return run(async()=>{await flush(); view=data.view; $("mc-feedback").value=""; render();});
   if (data.review) { reviewId=data.review; renderReview(); if (!dialog.open) dialog.showModal(); return; }
+  if ("applyProposals" in data) return run(()=>author("apply", {
+    job_id: board().text_job.id,
+    choices: Object.fromEntries([...$("mc-proposals").querySelectorAll("select")].map(select => [select.dataset.proposal, select.value])),
+  }));
   if ("evidence" in data) return run(async()=>{dialog.close(); await author("interview",{candidate_id:reviewId});});
   if (data.renderSlot) return run(()=>change(asset()+"/generate",{slot:Number(data.renderSlot),render_mode:data.mode,
     expected_candidate_id:board().slots[Number(data.renderSlot)-1]}));
@@ -195,34 +225,28 @@ page.addEventListener("click", event => {
   if (data.boardAction === "delete-non-selected") return run(()=>bulk("non-selected"));
   if (data.boardAction === "luna-review") return run(()=>author("luna-review"));
 });
-form.addEventListener("input",()=>{dirty=true;});
+form.addEventListener("input", event => {
+  if (event.target.name === "prompt") promptDrafts.set(promptKey(), event.target.value);
+  else if (event.target.name) edits.set(event.target.name, event.target.value);
+});
 page.addEventListener("submit",event=>{
   if (event.target.method === "dialog") return;
   event.preventDefault();
   if (event.target === form) return run(flush);
-  if (event.target.id === "mc-proposal-form") return run(()=>author("apply",{
-    job_id:board().text_job.id, choices:Object.fromEntries(new FormData(event.target))}));
   if (event.target.id === "mc-create-form") return run(async()=>{
     const result=await api("","POST",{name:$("mc-new-name").value});
     await open(result.character.character_id);
     if (entryAsset) { await setSource({asset_id:entryAsset.asset_id,label:entryAsset.label}); entryAsset=null; }
   });
 });
-$("mc-write").onclick=()=>run(()=>author("write-prompt"));
+$("mc-write").onclick=()=>run(async()=>{ await author("write-prompt"); promptDrafts.delete(promptKey()); render(); });
 $("mc-interview").onclick=()=>run(()=>author("interview"));
+$("mc-save-prompt").onclick=()=>run(()=>flush(true));
 $("mc-model").onclick=async()=>{
   const value=await window.ZetModelPicker.open({value:model,required:["vision"],allowDefault:true});
   if (value !== null) {model=value; $("mc-model").textContent=model || "Use configured default";}
 };
 $("mc-add-reference").onclick=()=>bridge.openLibraryPicker(item=>run(()=>setSource({asset_id:item.asset_id,label:item.label})));
-$("mc-upload").onchange=event=>{
-  const file=event.target.files[0];
-  if (!file) return;
-  const reader=new FileReader();
-  reader.onload=()=>run(()=>setSource({image:reader.result,label:file.name}));
-  reader.onerror=()=>message("The source file could not be read.",true);
-  reader.readAsDataURL(file);
-};
 $("quick-character-wizard-open").onclick=()=>run(async()=>{route(""); await bridge.activatePage("minor-characters");});
 $("quick-character-wizard-from-asset").onclick=()=>run(async()=>{
   const item=bridge.selectedAsset();
@@ -239,7 +263,7 @@ window.zetMinorCharacters={load:()=>load().catch(error=>message(error.message,tr
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) clearTimeout(timer);
-  else if (character && !dirty && page.classList.contains("active")) {
+  else if (character && !edits.size && page.classList.contains("active")) {
     void run(async()=>adopt((await api(base())).character));
   }
 });

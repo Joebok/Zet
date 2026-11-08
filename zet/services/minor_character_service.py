@@ -1,5 +1,6 @@
 """Minor Character collections and their shared image boards."""
 from copy import deepcopy
+from hashlib import sha256
 from pathlib import Path
 import random
 from uuid import uuid4
@@ -18,12 +19,11 @@ from zet.services.quick_character_wizard_service import (
 from zet.services.render_slot_service import frozen_input, verify_input
 from zet.services.workflow_storage import file_lock
 
-VIEWS = {
-    "STYLE": "Style Alignment", "FRONT": "Front",
-    "FRONT_LEFT_3_4": "Front Left 3/4", "FRONT_RIGHT_3_4": "Front Right 3/4",
-    "LEFT_PROFILE": "Left Profile", "RIGHT_PROFILE": "Right Profile",
-}
-FIELDS = ("appearance", "framing", "directions")
+from zet.services.minor_character_templates import (
+    VIEWS, SHARED, REFINEMENT, MinorCharacterTemplates, replace_sections, seed,
+)
+from zet.services.universe_style_service import compose_style, universe_style
+
 ACTIVE = {"SUBMITTING", "QUEUED", "RUNNING"}
 CONSUMER = "zet-minor-collections"
 
@@ -32,13 +32,13 @@ class MinorCharacterNotFound(ValueError):
     pass
 
 
-def empty_collection(sid, name):
+def empty_collection(sid):
     return {
-        "session_id": sid, "character_id": sid, "name": name, "version": 2,
-        "workflow_version": 2, "revision": 0, "source": None,
+        "session_id": sid, "character_id": sid, "version": 2,
+        "workflow_version": 3, "revision": 0,
         "boards": {
             view: {
-                "id": f"{sid}:{view}", "label": label, "fields": dict.fromkeys(FIELDS, ""),
+                "id": f"{sid}:{view}", "label": label,
                 "prompt": "", "aspect_ratio": "2:3", "slots": [None] * board_policy.SLOT_COUNT,
                 "candidates": {}, "selected_id": None,
             } for view, label in VIEWS.items()
@@ -46,42 +46,45 @@ def empty_collection(sid, name):
     }
 
 
+def legacy_collection(sid, name):
+    value = empty_collection(sid)
+    value.update(name=name, source=None, workflow_version=2)
+    for board in value["boards"].values():
+        board["fields"] = dict.fromkeys(SHARED, "")
+    return value
+
+
 class MinorCharacterService(QuickCharacterWizardService):
     """Use the existing session file location and file primitives."""
 
     def __init__(self, app, project_root):
         super().__init__(app, project_root)
+        self.root = app.path_service.state_path("MinorCharacterCollections")
+        self.templates = MinorCharacterTemplates(app.config.base_library_path)
         self.production = ImageProductionService(app)
 
     def _path(self, sid):
         return self._directory(sid) / "session.json"
 
+    def _template(self, sid):
+        try:
+            return self.templates.read(sid)
+        except FileNotFoundError as exc:
+            raise MinorCharacterNotFound("Minor Character template was not found.") from exc
+
     def _read(self, sid):
-        if (self.root.parent / "minor-collection-migration.json").exists():
-            raise QuickCharacterWizardConflict("Finish the offline Minor Character migration before opening collections.")
-        if not self._path(sid).is_file():
-            raise MinorCharacterNotFound("Minor Character was not found.")
+        self._template(sid)
         workflow_lock_journal.recover(self._path(sid), self.app.entity_library_service, self._write)
-        value = super()._read(sid)
-        if value.get("workflow_version") != 2:
-            raise QuickCharacterWizardConflict("This Minor Character needs the offline collection migration.")
-        return value
+        return super()._read(sid) if self._path(sid).is_file() else empty_collection(sid)
 
     def list_characters(self):
         rows = []
-        for path in self.root.glob("*/session.json"):
-            if len(path.parent.name) != 32 or any(c not in "0123456789abcdef" for c in path.parent.name):
+        for path in self.templates.root.glob("*/MinorCharacter.md"):
+            try:
+                _, _, sections, _ = self.templates.read(path.parent.name)
+            except (OSError, ValueError):
                 continue
-            with self._lock(path.parent.name):
-                try:
-                    saved = super()._read(path.parent.name)
-                except ValueError:
-                    continue
-                if saved.get("deleted_at") or saved.get("status") == "ABANDONED":
-                    continue
-                if saved.get("workflow_version") in (1, 2):
-                    rows.append({"character_id": path.parent.name, "name": saved["name"],
-                                 "needs_migration": saved["workflow_version"] == 1})
+            rows.append({"character_id": path.parent.name, "name": sections["NAME"]})
         return sorted(rows, key=lambda row: row["name"].casefold())
 
     def create_character(self, data):
@@ -89,9 +92,9 @@ class MinorCharacterService(QuickCharacterWizardService):
         with file_lock(self.root / "names.lock"):
             if any(row["name"].casefold() == name.casefold() for row in self.list_characters()):
                 raise QuickCharacterWizardConflict("A Minor Character with that name already exists.")
-            value = empty_collection(uuid4().hex, name)
-            self._write(value)
-            return self._public(value)
+            sid = uuid4().hex
+            self.templates.write(sid, seed(name))
+            return self._public(empty_collection(sid))
 
     @staticmethod
     def _name(name):
@@ -103,17 +106,33 @@ class MinorCharacterService(QuickCharacterWizardService):
         public = deepcopy(value)
         public.pop("cleanup_pending", None)
         sid = value["session_id"]
-        if public["source"]:
-            public["source"]["url"] = f"/api/minor-characters/{sid}/source"
-            public["source"].pop("file", None)
+        _, digest, sections, _ = self._template(sid)
+        public.update(name=sections["NAME"], template_hash=digest,
+                      fields={field: sections[key] for field, key in SHARED.items()}, source=None)
+        if sections["SOURCE_ASSET_ID"]:
+            try:
+                binding = self._source_binding(sections["SOURCE_ASSET_ID"])
+                public["source"] = {"url": f"/api/minor-characters/{sid}/source",
+                                    "label": binding["label"], "asset_id": binding["asset_id"]}
+            except ValueError as exc:
+                public["source_error"] = str(exc)
+        public["canonical_style_ready"] = bool(universe_style(self.app.config.base_library_path)["text"])
         for view, board in public["boards"].items():
+            board["refinement"] = sections[REFINEMENT[view]] if view != "STYLE" else ""
+            board["prompt_current"] = False
+            basis = board.pop("prompt_basis", None)
+            if board["prompt"] and basis:
+                try:
+                    board["prompt_current"] = basis == self._prompt_basis(value, view, previous=basis)
+                except ValueError:
+                    pass
             for item in board["candidates"].values():
                 item.pop("image_path", None)
                 item.pop("upscale_request", None)
                 for index, entry in enumerate(item.get("render_request", {}).get("inputs", []), 1):
                     item["render_request"]["inputs"][index - 1] = {"role": entry.get("role", "Reference")}
             if board.get("text_job"):
-                for key in ("baseline", "evidence", "feedback"):
+                for key in ("baseline", "evidence", "feedback", "authoring_reference"):
                     board["text_job"].pop(key, None)
             if board.get("luna_review"):
                 board["luna_review"].pop("images", None)
@@ -131,39 +150,49 @@ class MinorCharacterService(QuickCharacterWizardService):
         if type(data.get("revision")) is not int or value["revision"] != data["revision"]:
             raise QuickCharacterWizardConflict("This collection changed. Refresh and try again.")
 
+    def _check_template(self, sid, data):
+        template = self._template(sid)
+        if data.get("template_hash") != template[1]:
+            raise QuickCharacterWizardConflict("The Minor Character template changed. Refresh and try again.")
+        return template
+
     def update_character(self, sid, data):
         with file_lock(self.root / "names.lock"), self._lock(sid):
             value = self._read(sid)
             self._check(value, data)
+            text, _, sections, _ = self._check_template(sid, data)
+            changes = {key: data[field] for field, key in SHARED.items() if field in data}
             if "name" in data:
                 name = self._name(data["name"])
                 if any(row["character_id"] != sid and row["name"].casefold() == name.casefold()
                        for row in self.list_characters()):
                     raise QuickCharacterWizardConflict("A Minor Character with that name already exists.")
-                value["name"] = name
+                changes["NAME"] = name
             if "source" in data:
-                item = data["source"]
-                contents, extension = self._image_bytes(item)
-                relative = f"references/{uuid4().hex}.{extension}"
-                write_bytes_atomic(self._directory(sid) / relative, contents)
-                value["source"] = {"file": relative, "label": str(item.get("label") or "Source image")}
+                asset_id = data["source"].get("asset_id", "")
+                self._source_binding(asset_id)
+                changes["SOURCE_ASSET_ID"] = asset_id
+            if "refinement" in data:
+                changes[REFINEMENT[data["view"]]] = data["refinement"]
+            if "aspect_ratio" in data:
+                resolve_image_sizing(self.app.config, "draft", data["aspect_ratio"])
+            if "prompt" in data and not isinstance(data["prompt"], str):
+                raise ValueError("Prompt must be text.")
+            if data.get("prompt", "").strip():
+                if data.get("view") == "STYLE" and "SOURCE_ASSET_ID" in changes:
+                    if not universe_style(self.app.config.base_library_path)["text"]:
+                        raise ValueError("Set the canonical art style in Universe Settings.")
+                else:
+                    self._prompt_basis(value, data["view"])
+            if any(sections[key] != content for key, content in changes.items()):
+                self.templates.write(sid, replace_sections(text, changes))
                 self._mark_changed(value["boards"]["STYLE"])
             if "view" in data:
                 board = self._board(value, data["view"])
-                for key in FIELDS:
-                    if key in data:
-                        if not isinstance(data[key], str):
-                            raise ValueError("Authoring fields must be text.")
-                        board["fields"][key] = data[key]
-                if "prompt" in data:
-                    if not isinstance(data["prompt"], str):
-                        raise ValueError("Prompt must be text.")
-                    if board["prompt"] != data["prompt"]:
-                        self._mark_changed(board)
-                    board["prompt"] = data["prompt"]
                 if "aspect_ratio" in data:
-                    resolve_image_sizing(self.app.config, "draft", data["aspect_ratio"])
                     board["aspect_ratio"] = data["aspect_ratio"]
+                if "prompt" in data:
+                    self._set_prompt(value, data["view"], data["prompt"])
             self._save(value)
             return self._public(value)
 
@@ -186,12 +215,24 @@ class MinorCharacterService(QuickCharacterWizardService):
             raise MinorCharacterNotFound("This image is unavailable.")
         return path
 
+    def _source_binding(self, asset_id):
+        from zet.services.entity_library_service import EntityLibraryServiceError
+        if not asset_id:
+            raise ValueError("Choose an Inventory image for Style Alignment.")
+        try:
+            library = self.app.entity_library_service
+            row = library.repository.fetchone("SELECT status FROM assets WHERE asset_id=?", (asset_id,))
+            if not row or row["status"] == "archived":
+                raise ValueError("Choose an available Inventory image.")
+            return library.image_binding(asset_id)
+        except EntityLibraryServiceError as exc:
+            raise ValueError(str(exc)) from exc
+
     def _reference(self, value, view):
         sid = value["session_id"]
         if view == "STYLE":
-            if not value["source"]:
-                raise ValueError("Choose a source image for Style Alignment.")
-            return self._owned_file(sid, value["source"]["file"]), "Original character reference"
+            asset_id = self._template(sid)[2]["SOURCE_ASSET_ID"]
+            return Path(self._source_binding(asset_id)["image_path"]), "Original character reference"
         style = value["boards"]["STYLE"]
         item = style["candidates"].get(style["selected_id"], {})
         if not item.get("locked"):
@@ -223,7 +264,7 @@ class MinorCharacterService(QuickCharacterWizardService):
         return None
 
     def _request(self, value, view, cid, mode, board, reference):
-        preset = "comfyui-qwen-local-character-edit"
+        preset = "comfyui-qwen-head-image-text" if view == "STYLE" else "comfyui-qwen-local-character-edit"
         preset_path = self.app.config.state_file(self.project_root, "Local_Render_Presets.json")
         profile = LocalRenderBackendService(preset_path, config=self.app.config).preset(preset)
         if not profile:
@@ -231,7 +272,8 @@ class MinorCharacterService(QuickCharacterWizardService):
         sizing = resolve_image_sizing(self.app.config, mode, board["aspect_ratio"])
         directory = self._directory(value["session_id"]) / "renders" / cid / "inputs"
         path, role = reference
-        frozen = frozen_input(directory, board["prompt"], [{"path": str(path), "role": role}],
+        inputs = [] if view == "STYLE" else [{"path": str(path), "role": role}]
+        frozen = frozen_input(directory, board["prompt"], inputs,
                               preset, render_sizing=sizing)
         settings = {**sizing, "profile": preset, "profile_snapshot": profile,
                     "checkpoint": profile["diffusion_model"], "disable_prompt_globals": True}
@@ -246,6 +288,9 @@ class MinorCharacterService(QuickCharacterWizardService):
             self._check(value, data)
             board = self._board(value, view)
             reference = self._reference(value, view)
+            self._check_template(sid, data)
+            if board.get("prompt_basis") != self._prompt_basis(value, view):
+                raise QuickCharacterWizardConflict("Write or save the prompt for the current inputs before rendering.")
             mode = data.get("render_mode")
             if mode not in ("draft", "final") or not board["prompt"].strip():
                 raise ValueError("Save a render prompt and choose Draft or Final.")
@@ -379,6 +424,8 @@ class MinorCharacterService(QuickCharacterWizardService):
     def collect_background(self, ask_id, ask):
         owner = ask["image_production"]
         sid, view, cid = (owner[key] for key in ("session_id", "view", "candidate_id"))
+        if not self.templates.path(sid).is_file():
+            return True
         with self._lock(sid):
             value = self._read(sid)
             board = self._board(value, view)
@@ -451,7 +498,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                 stage()
 
             library.bind_workflow_lock(owner, item["id"], source, origin="imagegen",
-                label=f"{value['name']} · {VIEWS[view]}", prompt=item["prompt"],
+                label=f"{self._template(sid)[2]['NAME']} · {VIEWS[view]}", prompt=item["prompt"],
                 operation_id=operation_id, before_commit=bind)
 
         workflow_lock_journal.commit(self._path(sid), library, value, self._write, change)
@@ -490,12 +537,33 @@ class MinorCharacterService(QuickCharacterWizardService):
             return self._public(value)
 
 
-    def _baseline(self, value, view):
-        board = self._board(value, view)
+    def _prompt_basis(self, value, view, previous=None):
+        _, _, sections, sources = self._template(value["session_id"])
         ref, _ = self._reference(value, view)
-        from zet.services.universe_style_service import universe_style
-        return {"fields": dict(board["fields"]), "prompt": board["prompt"], "reference": str(ref),
-                "style": universe_style(self.app.config.base_library_path)["text"] if view == "STYLE" else ""}
+        style = universe_style(self.app.config.base_library_path)["text"] if view == "STYLE" else ""
+        if view == "STYLE" and not style:
+            raise ValueError("Set the canonical art style in Universe Settings.")
+        stat = ref.stat()
+        stamp = [stat.st_size, stat.st_mtime_ns]
+        digest = (previous["reference_hash"] if previous and previous["reference"] == str(ref)
+                  and previous.get("reference_stamp") == stamp else sha256(ref.read_bytes()).hexdigest())
+        return {"fields": self.templates.compile(sections, sources, view), "reference": str(ref),
+                "reference_hash": digest, "reference_stamp": stamp, "style": style}
+
+    def _baseline(self, value, view):
+        _, digest, sections, _ = self._template(value["session_id"])
+        fields = SHARED if view == "STYLE" else {"refinement": REFINEMENT[view]}
+        return {**self._prompt_basis(value, view), "template_hash": digest,
+                "editable": {field: sections[key] for field, key in fields.items()},
+                "prompt": self._board(value, view)["prompt"]}
+
+    def _set_prompt(self, value, view, body):
+        board = self._board(value, view)
+        basis = self._prompt_basis(value, view) if body.strip() else {}
+        prompt = compose_style(body, basis["style"]) if basis.get("style") else body.strip()
+        if board["prompt"] != prompt:
+            self._mark_changed(board)
+        board.update(prompt=prompt, prompt_body=body, prompt_basis=basis)
 
     def text_action(self, sid, view, action, data):
         from zet.services.ai_workflow_service import AIWorkflowService
@@ -503,6 +571,8 @@ class MinorCharacterService(QuickCharacterWizardService):
             value = self._read(sid)
             self._check(value, data)
             board = self._board(value, view)
+            if action != "luna-review":
+                self._check_template(sid, data)
             if action == "apply":
                 job = board.get("text_job", {})
                 if job.get("id") != data.get("job_id") or job.get("status") != "COMPLETE" or not job.get("review"):
@@ -510,9 +580,13 @@ class MinorCharacterService(QuickCharacterWizardService):
                 if job["baseline"] != self._baseline(value, view):
                     raise QuickCharacterWizardConflict("Authoring inputs changed. Run a new interview.")
                 from zet.services.narrative_interview_service import proposal_choices
-                for row, choice in proposal_choices(job["review"]["proposals"], data.get("choices")):
-                    if choice == "accept":
-                        board["fields"][row["field"]] = row["text"]
+                keys = SHARED if view == "STYLE" else {"refinement": REFINEMENT[view]}
+                accepted = {row["field"]: row["text"] for row, choice in
+                            proposal_choices(job["review"]["proposals"], data.get("choices")) if choice == "accept"}
+                if accepted:
+                    text = self._template(sid)[0]
+                    self.templates.write(sid, replace_sections(text, {keys[field]: content for field, content in accepted.items()}))
+                job["applied_fields"] = list(accepted)
                 job.pop("review")
             elif action in {"interview", "write-prompt", "luna-review"}:
                 field = "luna_review" if action == "luna-review" else "text_job"
@@ -526,6 +600,13 @@ class MinorCharacterService(QuickCharacterWizardService):
                         raise ValueError("Generate at least one candidate before reviewing.")
                 else:
                     job["baseline"] = self._baseline(value, view)
+                    source = Path(job["baseline"]["reference"])
+                    relative = f"interviews/{job['id']}-reference{source.suffix}"
+                    contents = source.read_bytes()
+                    if sha256(contents).hexdigest() != job["baseline"]["reference_hash"]:
+                        raise QuickCharacterWizardConflict("The reference changed. Run the action again.")
+                    write_bytes_atomic(self._directory(sid) / relative, contents)
+                    job["authoring_reference"] = relative
                     job["feedback"] = str(data.get("feedback") or "") if action == "interview" else ""
                     job["model"] = str(data.get("model") or "")
                     cid = data.get("candidate_id")
@@ -553,6 +634,8 @@ class MinorCharacterService(QuickCharacterWizardService):
 
     def run_authoring_job(self, sid, view, field, job_id):
         from zet.services.ai_workflow_service import AIPending
+        if not self.templates.path(sid).is_file():
+            return
         with self._lock(sid):
             value = self._read(sid)
             board = self._board(value, view)
@@ -591,8 +674,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                 if not unchanged:
                     status, result = "OBSOLETE", {"error": "Authoring inputs changed during this request."}
                 elif "written_prompt" in result:
-                    self._mark_changed(board)
-                    board["prompt"] = result.pop("written_prompt")
+                    self._set_prompt(value, view, result.pop("written_prompt"))
             current.update(status=status, **result)
             self._save(value)
 
@@ -604,27 +686,39 @@ class MinorCharacterService(QuickCharacterWizardService):
         role = "minor_interview" if interview else "minor_prompt"
         model = resolve_role_model(self.app.config, role, job["model"])
         baseline = job["baseline"]
-        images = [baseline["reference"]]
+        fields = baseline["editable"]
+        images = [str(self._owned_file(sid, job["authoring_reference"]))]
         if job.get("evidence"):
             images.append(str(self._owned_file(sid, job["evidence"])))
         properties = {"prompt": {"type": "string"}}
         if interview:
             properties = {"proposals": {"type": "array", "items": {"type": "object",
-                "properties": {"field": {"type": "string", "enum": list(FIELDS)},
+                "properties": {"field": {"type": "string", "enum": list(fields)},
                                "text": {"type": "string"}, "reason": {"type": "string"}},
                 "required": ["field", "text", "reason"], "additionalProperties": False}}}
         schema = {"type": "object", "properties": properties, "required": list(properties),
                   "additionalProperties": False}
-        context = {key: baseline[key] for key in ("fields", "prompt", "style")}
-        context.update(asset=VIEWS[view], feedback=job["feedback"])
-        system = ("Produce optional whole-field replacements, each with a reason." if interview else
-                  "Write one complete image-editing prompt using the first image as the reference.")
-        system += (" Preserve character identity, clothing and anatomical asymmetry except for requested changes."
-                   " Follow the named view, using anatomical left/right. Style Alignment establishes the art style"
-                   " without requiring a specific angle. Any second image is interview evidence only.")
+        context = {"fields": baseline["fields"], "style": baseline["style"],
+                   "asset": VIEWS[view], "feedback": job["feedback"]}
+        if interview:
+            context["editable_fields"] = fields
+            system = ("Propose optional whole-field replacements with reasons. Preserve unrelated text and view tags. "
+                      "Any second image is evidence for feedback.")
+        elif view == "STYLE":
+            system = ("Write one standalone text-to-image character prompt. Describe the intended identity, design, "
+                      "costume and asymmetry, honoring requested changes. Default to a neutral full-body reference "
+                      "on a plain background with no required angle. Zet adds the canonical style separately. "
+                      "Do not repeat it or refer to an attached image in the prompt.")
+        else:
+            from zet.services.minor_character_workflow_service import MinorCharacterWorkflow
+            context["orientation"] = MinorCharacterWorkflow.alignment_prompt(view)
+            system = ("Write one image-editing prompt for the supplied locked style reference. Follow the given "
+                      "anatomical orientation and filtered instructions. Preserve the reference's art style, "
+                      "identity and unaffected design. Use only the supplied instructions for view details.")
         result, _ = self.app.ai_proxy_service.ai_proxy_path_service.jobs.generate_json(
             model, system, json.dumps(context), schema, images, role=role,
-            owner={"session_id": sid, "view": view}, render_context={"operation": "edit"})
+            owner={"session_id": sid, "view": view},
+            render_context={"operation": "generate", "render_references": []} if view == "STYLE" else {"operation": "edit"})
         if not interview:
             if not isinstance(result.get("prompt"), str) or not result["prompt"].strip():
                 raise ValueError("The model returned an empty prompt.")
@@ -632,10 +726,10 @@ class MinorCharacterService(QuickCharacterWizardService):
         rows, seen = [], set()
         for proposal in result["proposals"]:
             field = proposal["field"]
-            if field not in FIELDS or field in seen:
+            if field not in fields or field in seen:
                 raise ValueError("The interview proposed an invalid or duplicate field.")
             seen.add(field)
-            row = field_replacement(proposal, baseline["fields"][field], job["id"], len(rows))
+            row = field_replacement(proposal, fields[field], job["id"], len(rows))
             if row:
                 rows.append(row)
         return {"review": {"proposals": rows}}

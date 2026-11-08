@@ -90,9 +90,12 @@ def preview(root):
                  item.get("inventory_asset_id"), "pipeline",
                  **{key: scope[key] for key in ("character", "phase", "costume")}, view=view)
 
-    for path in sorted(root.glob("_state/QuickCharacterWizard/*/session.json")):
+    from zet.services.minor_character_templates import MinorCharacterTemplates
+    templates = MinorCharacterTemplates(root)
+    for path in sorted(root.glob("_state/MinorCharacterCollections/*/session.json")):
         data = load(path)
-        if data.get("workflow_version") == 2:
+        if data.get("workflow_version") == 3:
+            name = templates.read(data["session_id"])[2]["NAME"]
             for view, board in data["boards"].items():
                 locked = [item for item in board["candidates"].values() if item.get("locked")]
                 if not locked:
@@ -101,30 +104,8 @@ def preview(root):
                     raise ValueError(f"Invalid Minor Character board: {path} ({view})")
                 item = locked[0]
                 bind(path, ("minor", data["session_id"], view), item["id"], path.parent / item["image_path"],
-                     f"{data['name']} · {view}", item["prompt"], item.get("inventory_asset_id"), "imagegen")
+                     f"{name} · {view}", item["prompt"], item.get("inventory_asset_id"), "imagegen")
             continue
-        if data.get("workflow_version") != 1 or data.get("deleted_at") or data.get("status") == "ABANDONED":
-            continue
-        final = data.get("final_locked") or {}
-        draft = data.get("locked") or {}
-        for view, lock in sorted({**draft, **final}.items()):
-            cid = lock["candidate_id"]
-            matches = [c for c in data["candidates"] if c["candidate_id"] == cid and c["view"] == view]
-            if len(matches) != 1:
-                raise ValueError(f"Cannot locate Minor Character lock: {path} ({view})")
-            candidate = matches[0]
-            if view in final and view in draft:
-                unlocks.append(dict(record=path.relative_to(root).as_posix(), view=view,
-                                    candidate=draft[view]["candidate_id"]))
-            source = path.parent / (lock.get("snapshot") or candidate["filename"])
-            if lock.get("asset_id"):
-                row = rows[lock["asset_id"]]
-                if row.get("lock_path"):
-                    source = root / row["lock_path"]
-                elif not row.get("lock_owner"):
-                    source = root / "images" / row["file_name"]
-            bind(path, ("minor", data["session_id"], view), cid, source, f"{data['name']} · {view}",
-                 candidate.get("prompt"), lock.get("asset_id"), "imagegen")
 
     for story_path in sorted(root.glob("NarrativeStories/*/story.json")):
         story = load(story_path)
@@ -239,7 +220,7 @@ def apply(root, approved):
                 write_json_atomic(path, record)
             elif parts[0] == "minor":
                 view = parts[2]
-                if record.get("workflow_version") == 2:
+                if record.get("workflow_version") in (2, 3):
                     record["boards"][view]["candidates"][cid]["inventory_asset_id"] = asset["asset_id"]
                     write_json_atomic(path, record)
                     return

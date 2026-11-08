@@ -11,7 +11,7 @@ from zet.repositories.entity_library_repository import EntityLibraryRepository
 from zet.scripts.reconcile_inventory_locks import confined, fingerprint
 from zet.services.atomic_file_service import write_bytes_atomic, write_json_atomic
 from zet.services.entity_library_service import EntityLibraryService
-from zet.services.minor_character_service import VIEWS, empty_collection
+from zet.services.minor_character_service import VIEWS, legacy_collection
 from zet.services.minor_character_workflow_service import MinorCharacterWorkflow
 from zet.services.workflow_storage import file_lock, validate_image
 
@@ -149,7 +149,7 @@ def _migrate(root, library, row):
     if archive.exists() and fingerprint(archive) != row["sha256"]:
         raise ValueError(f"An unrelated archive already exists: {archive}")
     write_bytes_atomic(archive, path.read_bytes())
-    value = empty_collection(sid, row["name"])
+    value = legacy_collection(sid, row["name"])
 
     def copy(evidence, key):
         source = confined(root, root / evidence["path"])

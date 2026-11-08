@@ -460,9 +460,9 @@ owns the offline cutover and orphan move manifest.
 
 ## Minor Character asset collections
 
-MinorCharacterService owns versioned collections, per-asset authoring,
-source eligibility and shared-board adapters. The shared image production
-service transports frozen render requests and AIJobCoordinator applies
-results by owning collection, asset, candidate, slot and attempt.
-The shared interview proposal helpers serve Narrative and Minor Characters.
-The offline migration lives in zet.scripts.migrate_minor_character_collections.
+`minor_character_templates.py` owns universe Markdown, section updates and
+view conditioning. `MinorCharacterService` owns authoring, reference eligibility
+and the shared board adapter. The shared image production service transports
+frozen requests. AIJobCoordinator applies answers by owning universe,
+collection, asset, candidate, slot and attempt. The offline name-and-source
+bootstrap lives in `zet.scripts.bootstrap_minor_character_templates`.

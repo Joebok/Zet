@@ -444,10 +444,14 @@ Story animation version 2 stores transitions by boundary, independent of scene o
 
 ### Minor Character collection records
 
-Version 2 of the Minor Character workflow uses the existing universe-relative
-session location and character ID. Each of its six stable asset IDs owns a
-working prompt, fields and a shared board with one selection and lock across
-qualities. New renders carry an immutable ImageRenderRequest. An imported
-Final lock has the saved prompt and image but may have no frozen request.
-The catalog owner key stays the same across conversion and relocking.
-Version 1 data and image files are archived in place.
+`MinorCharacters/<id>/MinorCharacter.md` holds the name, source Inventory
+asset ID, shared prompt sections, and view refinement sections. Zet view tags
+condition those fields before authoring. Dashboard template saves compare the
+saved byte hash and write the validated Markdown atomically.
+
+Runtime records use workflow version 3 at
+`_state/MinorCharacterCollections/<id>/session.json`. Each of six asset IDs
+has a prompt, aspect ratio, jobs, and one board with a selection and lock
+across qualities. Frozen ImageRenderRequests belong to individual candidates.
+Fresh template IDs create new catalog lock owners. Legacy session files stay
+in their original storage. See [ADR 0050](DECISIONS/0050-minor-character-asset-collections.md).

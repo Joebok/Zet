@@ -2,22 +2,23 @@
 
 Status: accepted locally
 
-A named Minor Character collection owns six assets. Style Alignment consumes
-one original image and the universe canonical style. Views use the current
-locked Style image for new requests. Each asset uses the shared board
-policies, render transport, and Inventory lock transaction. Interview and
-Write Prompt remain separate authoring actions. A candidate attached to an
-interview is evidence for field suggestions.
+The universe Markdown template owns minor character authoring inputs. The
+six assets use a separate runtime store and shared mixed-quality boards.
+Style Alignment uses the original for analysis and generates from a prompt
+composed with canonical universe style. Each view uses deterministically
+filtered template inputs and the current locked Style image. Interview
+revisions reach the template after review and explicit application.
 
-## Offline conversion
+## Offline bootstrap
 
-Generate the read-only manifest for the universe root with
-`python3 -B -m zet.scripts.migrate_minor_character_collections <universe-root>`.
-Review Final locks, source issues, alias deactivations, and blockers. Resolve
-blockers and regenerate the manifest before approval. Save the approved
-JSON, stop dashboard and library writers, then pass that exact manifest with
-`--apply-reviewed <manifest> --writers-stopped`. The command backs up the
-catalog and affected records, retains each legacy session and its image
-files, and adopts verified Final locks. It archives Draft-only symbolic links.
-Resume an interrupted migration using the same manifest before starting
-writers. Existing candidate history stays in the archive.
+Run `python3 -B -m zet.scripts.bootstrap_minor_character_templates <universe-root>`
+for a read-only preview. If a source is ambiguous or missing, supply
+`--choices <json>` mapping legacy IDs to reviewed Inventory IDs and preview
+again. Settle pending jobs, publication journals and active legacy locks
+before proceeding. Save and review the preview JSON, stop dashboard and
+library writers, and run the same command with
+`--apply-reviewed <manifest> --writers-stopped`. The manifest is rechecked
+before writing templates, and the same manifest resumes a partial apply.
+Names and verified Inventory source IDs seed the templates. Legacy files
+remain in place. Open the templates using the release that supports the new
+runtime store.
