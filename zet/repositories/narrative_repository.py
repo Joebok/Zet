@@ -33,6 +33,10 @@ class NarrativeRepository:
         path = self.path(story, scene, target)
         # Coordinate readers with atomic replacements, which can briefly deny reads on Windows.
         with self.lock():
+            library = self.usage_provider() if self.usage_provider else None
+            if library and target:
+                from zet.services.workflow_lock_journal import recover
+                recover(path, library, lambda data: self.write(data, story, scene, target))
             if not path.is_file():
                 raise KeyError("Narrative record not found.")
             record = read_library_json(path, self.library_root)

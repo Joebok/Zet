@@ -447,3 +447,8 @@ and `ImageGenerationWorkspace.delete_draft_images` own their respective scopes.
 
 `AIWorkflowService.cancel_matching` fences matching durable continuations and
 attributed structured AI asks; `AIJobService` binds new asks to workflow IDs.
+
+Symbolic Inventory locks resolve through `EntityLibraryService.bind_workflow_lock`
+and `image_binding`. `workflow_lock_journal.py` recovers Minor Character and
+Narrative record updates from catalog receipts. `reconcile_inventory_locks.py`
+owns the offline cutover and orphan move manifest.

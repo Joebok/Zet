@@ -39,7 +39,6 @@ const reviewZoom = window.ZetReviewImageZoom?.attach(host.querySelector('#image-
 let renderRatio = '';
 let previewSizing = null;
 let ratioTarget = '';
-let inventorySaved = null;
 let sourcePicker = null;
 let contextState = 'loading';
 let contextLabels = {};
@@ -187,7 +186,6 @@ async function action(callback) {
     if (reviewError) reviewError.textContent = actionError;
     const interviewError = host.querySelector('#narrative-interview-review-error');
     if (interviewError) interviewError.textContent = actionError;
-    host.querySelector('#narrative-inventory-error').textContent = actionError;
   }
 }
 
@@ -939,9 +937,6 @@ function reviewImages() {
 
 function renderImageReview() {
   if (disposed) return;
-  const inventorySubmit = host.querySelector('#narrative-inventory-form button[type="submit"]');
-  inventorySubmit.disabled = busy;
-  inventorySubmit.textContent = busy ? 'Saving…' : 'Save image';
   const dialog = host.querySelector('#image-dialog');
   if (!dialog.open) return;
   const images = reviewImages();
@@ -980,10 +975,9 @@ function renderImageReview() {
     <div class="button-row compact local-pipeline-review-actions">
       ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked || candidate.status !== 'COMPLETE' ? "disabled" : ""}>Edit text</button>` : ''}${candidateActions({id: reviewCandidate, candidate, selected, slot: candidate.slot,
         busy, escape: esc, review: true, showProtectedRegen: true})}
-      <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image before publishing it to Inventory">Publish to Inventory</button>
+      <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image to view it in Inventory">View in Inventory</button>
     </div>
     ${assessment ? `<section class="luna-review-assessment"><h3>Luna ${luna.status === 'OBSOLETE' ? 'previous ' : ''}rank #${rank + 1}${luna.status === 'OBSOLETE' ? ' · Obsolete' : ''}</h3><p>${esc(assessment)}</p></section>` : ''}
-    ${inventorySaved?.candidate === reviewCandidate ? `<p role="status">Saved “${esc(inventorySaved.label)}” to inventory.</p>` : ''}
     <p class="error" role="status" id="narrative-review-error"></p>
     ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
     <details ${detailsOpen ? 'open' : ''}><summary>Prompt and source ${copyPromptButton(reviewCandidate)}</summary><p class="narrative-muted">${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}${candidate.assembly_snapshot ? ' · '+assemblyModeName(candidate.assembly_mode) : ''}</p>
@@ -1209,13 +1203,12 @@ listen(host,'click',event=>{
   }
   if (button.dataset.close) { document.getElementById(button.dataset.close).close(); return; }
   if (button.dataset.saveInventory) {
-    const form = host.querySelector('#narrative-inventory-form');
-    form.dataset.endpoint = base()+`/candidates/${button.dataset.saveInventory}/inventory`;
-    form.dataset.candidate = button.dataset.saveInventory;
-    form.elements.label.value = detail.title;
-    host.querySelector('#narrative-inventory-prompt').textContent = detail.candidates[button.dataset.saveInventory].prompt || 'Prompt not recorded';
-    host.querySelector('#narrative-inventory-error').textContent = '';
-    host.querySelector('#narrative-inventory-dialog').showModal();
+    action(async () => {
+      const result = await api(base()+`/candidates/${button.dataset.saveInventory}/inventory`, 'POST', {});
+      window.dispatchEvent(new CustomEvent('zet:open-inventory-image', {
+        detail: {assetId: result.asset.asset_id, universe},
+      }));
+    });
     return;
   }
   if (button.dataset.moveScene) {
@@ -1440,13 +1433,6 @@ listen(host,'submit',event=>{
   action(async()=>{
     const fields = Object.fromEntries(new FormData(form));
     switch (form.id) {
-      case 'narrative-inventory-form': {
-        const result = await api(form.dataset.endpoint,'POST',fields);
-        inventorySaved = {candidate:form.dataset.candidate,label:result.asset.label};
-        host.querySelector('#narrative-inventory-dialog').close();
-        status(`Saved “${result.asset.label}” to inventory.`);
-        break;
-      }
       case 'narrative-source-form': {
         await save();
         if (!sourcePicker.preview) throw new Error('Choose an available source first.');

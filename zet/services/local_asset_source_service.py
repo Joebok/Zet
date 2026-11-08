@@ -119,6 +119,12 @@ class LocalAssetSourceService:
         # Include legacy lock rows only for saved old keys and migration diagnostics.
         sources = []
         for record in self.store.locked_assets(character, phase, pipeline=pipeline, render_mode=None):
+            asset_id = record.get("entity_library_asset_id")
+            if asset_id:
+                row = self.store._ensure_entity_library().repository.fetchone(
+                    "SELECT lock_owner,lock_path FROM assets WHERE asset_id=?", (asset_id,))
+                if row and row["lock_owner"]:
+                    continue
             image = Path(record["image_path"])
             category_key = LocalAssetStoreService.key(record.get("pipeline", ""), record.get("view", ""),
                                                        record.get("qualifier", ""))

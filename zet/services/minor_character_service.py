@@ -33,6 +33,8 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
 
     def _read(self, sid):
         with self._lock(sid):
+            from zet.services.workflow_lock_journal import recover
+            recover(self._directory(sid) / "session.json", self.app.entity_library_service, super()._write)
             value = super()._read(sid)
         if value.get("workflow_version") != 1:
             raise QuickCharacterWizardError("This workspace belongs to the retired workflow. Create a new Minor Character.")
@@ -123,7 +125,7 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                     current = self._read(target)
                     current.update(deleted_at=self._now(), status="ABANDONED",
                         job={"kind": "delete", "status": "COMPLETE", "error": ""})
-                    self._write(current)
+                    self._unbind_views(current, {*current["locked"], *current["final_locked"]})
         return {"deleted": True, "character_id": record["session_id"]}
 
     @staticmethod
@@ -502,6 +504,7 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 if candidate.get("filename"):
                     outputs.append(candidate["filename"])
                 candidate.update(status="CANCELLED", filename="", error="Deleted with Draft images.")
+            removed_locks = [item for item in views if item in session["locked"]]
             epochs = session.setdefault("draft_cleanup_epochs", {})
             for item in views:
                 epochs[item] = epochs.get(item, 0) + 1
@@ -516,12 +519,12 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                     outputs.append(lock["snapshot"])
             if session.get("preview_candidate_id") in candidate_ids:
                 session["preview_candidate_id"] = ""
+            self._unbind_views(session, removed_locks)
             for relative in outputs:
                 path = (root / relative).resolve()
                 if not path.is_relative_to(root) or path == root:
                     raise QuickCharacterWizardError("Draft output is outside this workspace.")
                 path.unlink(missing_ok=True)
-            self._write(session)
             result = self._public(session)
         def matches(record):
             if (record.get("service") != "minor" or record.get("owner", {}).get("session_id") != sid
@@ -540,7 +543,6 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
         return result
 
     def lock_view(self, sid, view, candidate_id="", expected=None, render_mode="draft"):
-        from zet.services.quick_character_publication_service import publish_quick_character
         sid = self._canonical(sid)["session_id"]
         with self._lock(sid):
             session = self._read(sid)
@@ -554,6 +556,9 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 and c["candidate_id"] in board["slots"]), None)
             if not candidate:
                 raise QuickCharacterWizardError("Select an image for this view first.")
+            other_key = "locked" if locked_key == "final_locked" else "final_locked"
+            if session[other_key].get(view):
+                raise QuickCharacterWizardConflict("Unlock this view before locking a different quality.")
             existing = session[locked_key].get(view) or {}
             if existing and existing.get("candidate_id") != candidate["candidate_id"]:
                 raise QuickCharacterWizardConflict("Unlock this mode's existing image before locking another.")
@@ -563,25 +568,32 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
             board["revision"] += 1
             session[selected_key][view] = candidate["candidate_id"]
             locked = {"candidate_id": candidate["candidate_id"], "source_session_id": sid, "locked_at": self._now(), "render_mode": render_mode}
-            if render_mode == "final" and view != "STYLE":
-                frozen = {**session, **candidate.get("inputs", {}), "selected": {**session["selected"], view: candidate["candidate_id"]}}
-                published = publish_quick_character(self.app, frozen, self._directory(sid), views=[view])
-                session["minor_set_id"] = published["set_id"]
-                locked.update(asset_id=published["asset_ids"][view], set_id=published["set_id"])
-            else:
-                from zet.services.atomic_file_service import write_bytes_atomic
-                source = self._directory(sid) / candidate["filename"]
-                relative = f"locks/{render_mode}_{view}_{candidate['candidate_id']}{source.suffix}"
-                destination = self._directory(sid) / relative
-                contents = source.read_bytes()
-                if destination.exists() and destination.read_bytes() != contents:
-                    raise QuickCharacterWizardConflict("The locked image snapshot has changed.")
-                if not destination.exists():
-                    write_bytes_atomic(destination, contents)
-                locked["snapshot"] = relative
             session[locked_key][view] = locked
-            self._write(session)
+            library = self.app.entity_library_service
+            from zet.services.workflow_lock_journal import commit
+
+            def change(operation_id, stage):
+                def publish(asset):
+                    locked["asset_id"] = asset["asset_id"]
+                    stage()
+
+                source = self._directory(sid) / candidate["filename"]
+                library.bind_workflow_lock(library.lock_owner("minor", sid, view),
+                    candidate["candidate_id"], source, label=f"{session['name']} · {view.replace('_', ' ').title()}",
+                    origin="imagegen", prompt=candidate.get("prompt", ""), existing_id=existing.get("asset_id", ""),
+                    operation_id=operation_id, before_commit=publish)
+
+            commit(self._directory(sid) / "session.json", library, session, self._write, change)
             return self._public(session)
+
+    def _unbind_views(self, session, views):
+        from zet.services.workflow_lock_journal import commit
+        sid = session["session_id"]
+        library = self.app.entity_library_service
+        owners = [library.lock_owner("minor", sid, view) for view in views]
+        commit(self._directory(sid) / "session.json", library, session, self._write,
+               lambda operation_id, stage: library.unbind_workflow_locks(
+                   owners, operation_id=operation_id, before_commit=stage))
 
     def unlock_view(self, sid, view, candidate_id, expected=None, render_mode="draft"):
         sid = self._canonical(sid)["session_id"]
@@ -593,7 +605,7 @@ class MinorCharacterService(MinorCharacterWorkflow, QuickCharacterWizardService)
                 raise QuickCharacterWizardConflict("This view's locked image changed. Reload it before trying again.")
             session[locked_key].pop(view)
             board["revision"] += 1
-            self._write(session)
+            self._unbind_views(session, [view])
             return self._public(session)
 
     def accept(self, sid, revision_id):

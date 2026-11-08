@@ -1,8 +1,6 @@
 """Authoring and image ownership for narrative scenes, independent of Scene Builder."""
 from zet.services.llm_role_service import resolve_role_model
 from dataclasses import asdict
-import hashlib
-from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
@@ -55,51 +53,42 @@ class NarrativeSceneService:
     def _normalize_prompt(value: str) -> str:
         return value.replace("\r\n", "\n").replace("\r", "\n")
 
-    def save_subscene_image_to_inventory(self, story: str, scene: str, target: str,
-                                        candidate_id: str, data: dict) -> dict:
-        """Publish a locked Narrative target image as an independent Inventory asset."""
+    def inventory_owner(self, story, scene, target):
+        return self.app.entity_library_service.lock_owner("narrative", story, scene, target)
+
+    def commit_inventory_lock(self, story, scene, target, record, candidate_id=None):
         from zet.services.narrative_scene_text_service import finished_path
+        from zet.services.workflow_lock_journal import commit
 
+        library = self.app.entity_library_service
+        owner = self.inventory_owner(story, scene, target)
+
+        def change(operation_id, stage):
+            if candidate_id is None:
+                library.unbind_workflow_locks([owner], operation_id=operation_id, before_commit=stage)
+                return
+            candidate = record["candidates"][candidate_id]
+            source = finished_path(self.repository, story, scene, target, candidate_id)
+
+            def publish(asset):
+                candidate["published_asset_id"] = asset["asset_id"]
+                stage()
+
+            library.bind_workflow_lock(owner, candidate_id, source, label=record["title"],
+                origin="narrative", prompt=candidate.get("prompt") or "",
+                existing_id=candidate.get("published_asset_id") or "",
+                operation_id=operation_id, before_commit=publish)
+
+        commit(self.repository.path(story, scene, target), library, record,
+               lambda data: self.repository.write(data, story, scene, target), change)
+
+    def save_subscene_image_to_inventory(self, story, scene, target, candidate_id, data):
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
             candidate = record["candidates"].get(candidate_id)
-            if not candidate or not candidate.get("image"):
-                raise KeyError("Candidate image not found.")
-            if not candidate.get("locked"):
-                raise ValueError("Lock this image before publishing it to Inventory.")
-            if candidate.get("published_asset_id"):
-                return {"asset": self.app.entity_library_service.get_asset(candidate["published_asset_id"])}
-            label = str(data.get("label", record["title"]) or "").strip()
-            if not label:
-                raise ValueError("Image name is required.")
-            notes = (f"Saved from Narrative story: {self.repository.read(story)['title']}\n"
-                     f"Scene: {self.repository.read(story, scene)['title']}\n"
-                     f"Target: {record['title']}")
-            image_path = finished_path(self.repository, story, scene, target, candidate_id)
-            contents = image_path.read_bytes()
-            prompt = candidate.get("prompt") or ""
-            digest = hashlib.sha256(contents).hexdigest()
-            origin_key = f"narrative:{self.app.config.universe_id}:{story}:{scene}:{target}:{candidate_id}:{digest}"
-
-        with Image.open(BytesIO(contents)) as image:
-            mime_type = Image.MIME.get(image.format, "")
-        try:
-            asset = self.app.entity_library_import(label, mime_type, contents, notes=notes, prompt=prompt,
-                origin="narrative", origin_key=origin_key, preserve_prompt_whitespace=True,
-                provenance_details={"source": "narrative_candidate", "story_id": story,
-                                    "scene_id": scene, "target_id": target,
-                                    "candidate_id": candidate_id})
-        except EntityLibraryServiceError as exc:
-            raise ValueError(str(exc)) from exc
-        with self.repository.lock():
-            record = self.repository.read(story, scene, target)
-            candidate = record["candidates"].get(candidate_id)
-            if (not candidate or not candidate.get("locked")
-                    or finished_path(self.repository, story, scene, target, candidate_id) != image_path):
-                raise ValueError("The locked image changed while Inventory publication was completing.")
-            candidate["published_asset_id"] = asset["asset_id"]
-            self.repository.write(record, story, scene, target)
-        return {"asset": asset}
+            if not candidate or not candidate.get("locked") or not candidate.get("published_asset_id"):
+                raise ValueError("Lock this image to view it in Inventory.")
+            return {"asset": self.app.entity_library_service.get_asset(candidate["published_asset_id"])}
 
     def stories(self) -> list[dict]:
         with self.repository.lock():
@@ -525,9 +514,21 @@ class NarrativeSceneService:
     def delete(self, story: str, scene: str = "", target: str = "", confirmed: list[str] | None = None) -> None:
         with self.repository.lock():
             self.confirm(self.protected_images(story, scene, target), confirmed or [])
+            if target:
+                targets = [(scene, target)]
+            elif scene:
+                targets = [(scene, tid) for tid in self.repository.read(story, scene)["target_ids"]]
+            else:
+                targets = [(sid, tid) for sid in self.repository.read(story)["scene_ids"]
+                           for tid in self.repository.read(story, sid)["target_ids"]]
+            for sid, tid in targets:
+                self.repository.read(story, sid, tid)
+
             with self.app.entity_library_service.image_usages.mutation(
                     self.repository.folder(story, scene, target), tree=True):
                 self.repository.delete(story, scene, target)
+            self.app.entity_library_service.unbind_workflow_locks(
+                [self.inventory_owner(story, sid, tid) for sid, tid in targets])
             if target:
                 parent = self.repository.read(story, scene)
                 parent["target_ids"].remove(target)

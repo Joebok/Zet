@@ -93,7 +93,7 @@ class IdentityKeyService:
         with self._write_lock(character, phase):
             key = self.get_identity_key(character, phase, identity_key_id)
             if locked:
-                return self._publish(key)
+                return key if key.inventory_asset_id else self._publish(key)
             self.entity_library.unpublish_identity_key(self._reference_key(key))
             key.inventory_asset_id = None
             return key

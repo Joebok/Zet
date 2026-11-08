@@ -90,6 +90,95 @@ class EntityLibraryService:
         return self.images_root / (f"{asset_id}{basename}" if basename.startswith(".") else basename)
 
     @staticmethod
+    def lock_owner(*parts: str) -> str:
+        return json.dumps(parts, separators=(",", ":"), ensure_ascii=False)
+
+    def _asset_path(self, row: dict) -> Path | None:
+        if not row.get("lock_owner"):
+            return self._image_path(row["asset_id"], row["file_name"])
+        relative = row.get("lock_path")
+        if not relative:
+            return None
+        root = Path(self.path_service.config.base_library_path).resolve()
+        path = (root / relative).resolve()
+        if Path(relative).is_absolute() or not path.is_relative_to(root):
+            return None
+        if path.is_relative_to(root / "OrphanedImages"):
+            return None
+        return path
+
+    def bind_workflow_lock(self, owner: str, candidate: str, source: Path, *, label: str,
+                           prompt: str = "", origin: str = "pipeline", existing_id: str = "",
+                           character: str = "", phase: str = "", costume: str = "", view: str = "",
+                           operation_id: str = "", before_commit=None) -> dict:
+        from mimetypes import guess_type
+
+        root = Path(self.path_service.config.base_library_path).resolve()
+        source = source.resolve(strict=True)
+        if not source.is_relative_to(root) or source.is_relative_to(root / "OrphanedImages"):
+            raise EntityLibraryServiceError("The locked image is outside workflow storage.")
+        data = source.read_bytes()
+        mime = guess_type(source.name)[0]
+        width, height = self._dimensions(data, mime) if mime in IMAGE_TYPES else (0, 0)
+        if not width or not height:
+            raise EntityLibraryServiceError("The locked image has an unsupported format.")
+        digest = hashlib.sha256(data).hexdigest()
+        stamp = _now()
+        with self.repository.transaction() as connection:
+            row = connection.execute("SELECT * FROM assets WHERE lock_owner=?", (owner,)).fetchone()
+            if row is None and existing_id:
+                row = connection.execute("SELECT * FROM assets WHERE asset_id=?", (existing_id,)).fetchone()
+                if row is None or (row["lock_owner"] and row["lock_owner"] != owner) or row["checksum"] != digest:
+                    raise EntityLibraryServiceError("The existing publication does not match this locked image.")
+            asset_id = row["asset_id"] if row else str(uuid4())
+            path = source.relative_to(root).as_posix()
+            if row:
+                connection.execute(
+                    """UPDATE assets SET checksum=?,file_name=?,mime_type=?,width=?,height=?,
+                       status='approved',prompt=?,updated_at=?,lock_owner=?,lock_candidate=?,lock_path=?
+                       WHERE asset_id=?""",
+                    (digest, source.name, mime, width, height, prompt, stamp, owner, candidate, path, asset_id))
+            else:
+                connection.execute(
+                    """INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,
+                       status,prompt,created_at,updated_at,lock_owner,lock_candidate,lock_path)
+                       VALUES(?,?,?,?,?,?,?,?,'approved',?,?,?,?,?,?)""",
+                    (asset_id, label, digest, source.name, mime, width, height, origin,
+                     prompt, stamp, stamp, owner, candidate, path))
+            if character and costume:
+                self._classify_costume_image_in_transaction(
+                    connection, asset_id, character=character, phase=phase, costume=costume,
+                    view=view, reference_key="", stamp=stamp)
+            elif character:
+                self._link_locked_character_in_transaction(connection, asset_id, character, phase, stamp)
+            if before_commit:
+                before_commit({"asset_id": asset_id, "image_path": str(source), "checksum": digest})
+            self._record_lock_receipt(connection, operation_id, [asset_id], stamp)
+        return self.get_asset(asset_id)
+
+    @staticmethod
+    def _record_lock_receipt(connection, operation_id, ids, stamp):
+        if operation_id:
+            connection.execute(
+                "INSERT INTO catalog_publication_receipts VALUES(?,?,?)", (operation_id, json.dumps(ids), stamp))
+
+    def unbind_workflow_locks(self, owners, *, operation_id="", before_commit=None):
+        stamp = _now()
+        ids = []
+        with self.repository.transaction() as connection:
+            for owner in owners:
+                row = connection.execute("SELECT asset_id FROM assets WHERE lock_owner=?", (owner,)).fetchone()
+                if row:
+                    ids.append(row["asset_id"])
+                    connection.execute(
+                        """UPDATE assets SET status='archived',lock_path=NULL,lock_candidate=NULL,updated_at=?
+                           WHERE asset_id=?""", (stamp, row["asset_id"]))
+            self._deactivate_asset_references(connection, ids, stamp)
+            if before_commit:
+                before_commit()
+            self._record_lock_receipt(connection, operation_id, ids, stamp)
+
+    @staticmethod
     def _json(row: dict) -> dict:
         for key in ("width", "height", "rating"):
             if row.get(key) is None:
@@ -197,7 +286,7 @@ class EntityLibraryService:
     def _asset_rows(self, filters: dict, *, limit: int | None = None, offset: int = 0):
         include_archived = bool(filters.get("include_archived", False))
         hide_obsolete = bool(filters.get("hide_obsolete", False))
-        where, params = [], []
+        where, params = ["(a.lock_owner IS NULL OR a.lock_path IS NOT NULL)"], []
         status = str(filters.get("status") or "")
         if status:
             where.append("a.status=?")
@@ -284,8 +373,8 @@ class EntityLibraryService:
         output = []
         for row in rows:
             asset_id = row["asset_id"]
-            path = self._image_path(asset_id, row["file_name"])
-            available = path.is_file()
+            path = self._asset_path(row)
+            available = path is not None and path.is_file()
             if not available and not include_unavailable:
                 continue
             logical_refs = grouped["references"].get(asset_id, [])
@@ -304,11 +393,11 @@ class EntityLibraryService:
 
     def image_binding(self, asset_id: str) -> dict:
         """Resolve an already chosen image without inventory scans or prompt metadata."""
-        item = self.repository.fetchone("SELECT asset_id,label,file_name FROM assets WHERE asset_id=?", (asset_id,))
+        item = self.repository.fetchone("SELECT asset_id,label,file_name,lock_owner,lock_path FROM assets WHERE asset_id=?", (asset_id,))
         if item is None:
             raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
-        path = self._image_path(asset_id, item["file_name"])
-        if not path.is_file():
+        path = self._asset_path(item)
+        if path is None or not path.is_file():
             raise EntityLibraryServiceError(f"Reference image is unavailable: {asset_id}")
         return {**item, "image_path": str(path)}
 
@@ -316,8 +405,8 @@ class EntityLibraryService:
         row = self.repository.fetchone("SELECT * FROM assets WHERE asset_id=?", (asset_id,))
         if row is None:
             raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
-        path = self._image_path(asset_id, row["file_name"])
-        if not path.is_file():
+        path = self._asset_path(row)
+        if path is None or not path.is_file():
             raise EntityLibraryServiceError(f"Image asset not found: {asset_id}")
         entities = self.repository.fetchall(
             """SELECT ae.asset_id,e.entity_id,e.name,e.entity_type,ae.role,ae.variant_id,
@@ -461,7 +550,6 @@ class EntityLibraryService:
     def publish_identity_key(self, key, source: Path, reference_key: str, *,
                              operation_id: str, before_commit) -> str:
         """Commit the current crop, its source evidence and its stable Inventory binding."""
-        from zet.services.atomic_file_service import write_bytes_atomic
         from zet.services.workflow_storage import validate_image
 
         source = self.path_service.resolve_served_path(source)
@@ -483,17 +571,18 @@ class EntityLibraryService:
             if before_commit is not None and (not current or current["status"] != "approved"):
                 raise EntityLibraryServiceError("The Identity Key's Inventory lock changed. Reload and try again.")
             asset_id = current["asset_id"] if current else str(uuid4())
-            target = self._image_path(asset_id, f"{asset_id}-{checksum}.png")
-            if not target.is_file() or target.read_bytes() != data:
-                write_bytes_atomic(target, data)
+            owner = self.lock_owner("identity", reference_key)
             connection.execute(
                 """INSERT INTO assets(asset_id,label,checksum,file_name,mime_type,width,height,origin,origin_key,
-                   status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pipeline',?,'approved',?,?,?)
+                   status,notes,created_at,updated_at,lock_owner,lock_candidate,lock_path)
+                   VALUES(?,?,?,?,?,?,?,'pipeline',?,'approved',?,?,?,?,?,?)
                    ON CONFLICT(asset_id) DO UPDATE SET label=excluded.label,checksum=excluded.checksum,
                    file_name=excluded.file_name,mime_type=excluded.mime_type,width=excluded.width,
-                   height=excluded.height,status='approved',updated_at=excluded.updated_at""",
-                (asset_id, label, checksum, target.name, "image/png", width, height, reference_key,
-                 "Locked Identity Key", stamp, stamp),
+                   height=excluded.height,status='approved',updated_at=excluded.updated_at,
+                   lock_owner=excluded.lock_owner,lock_candidate=excluded.lock_candidate,lock_path=excluded.lock_path""",
+                (asset_id, label, checksum, source.name, "image/png", width, height, reference_key,
+                 "Locked Identity Key", stamp, stamp, owner, key.identity_key_id,
+                 source.relative_to(library_root).as_posix()),
             )
             self._link_locked_character_in_transaction(connection, asset_id, key.character, key.phase, stamp)
             self._save_logical_reference(
@@ -545,7 +634,7 @@ class EntityLibraryService:
             ).fetchone()
             if row:
                 asset_id = row["asset_id"]
-                connection.execute("UPDATE assets SET status='archived',updated_at=? WHERE asset_id=?", (stamp, asset_id))
+                connection.execute("UPDATE assets SET status='archived',lock_candidate=NULL,lock_path=NULL,updated_at=? WHERE asset_id=?", (stamp, asset_id))
                 self._deactivate_asset_references(connection, [asset_id], stamp)
 
     def register_locked_pipeline_images(self, items: list[dict], *, operation_id: str,
@@ -917,6 +1006,8 @@ class EntityLibraryService:
 
     def replace_asset(self, asset_id: str, mime_type: str, data: bytes) -> dict:
         original = self.get_asset(asset_id)
+        if original.get("lock_owner"):
+            raise EntityLibraryServiceError("Replace the lock in its workflow.")
         created = self.import_asset(original["label"], mime_type, data, notes=f"Replacement for {asset_id}")
         if created["asset_id"] == asset_id:
             return created
@@ -959,7 +1050,7 @@ class EntityLibraryService:
                     return asset
             except (TypeError, json.JSONDecodeError):
                 pass
-        if asset["origin"] == "pipeline" or asset["status"] == "archived":
+        if asset.get("lock_owner") or asset["origin"] == "pipeline" or asset["status"] == "archived":
             raise EntityLibraryServiceError("Only available, non-pipeline images can be modified.")
         if asset["checksum"] != expected_checksum:
             raise EntityLibraryServiceError("The source image changed. Reopen Image Generation from the current image.")
@@ -1013,6 +1104,8 @@ class EntityLibraryService:
         return self.get_asset(asset_id)
 
     def set_asset_status(self, asset_id: str, status: str, *, confirm_ids=None, expected_versions=None) -> dict:
+        if self.repository.fetchone("SELECT 1 FROM assets WHERE asset_id=? AND lock_owner IS NOT NULL", (asset_id,)):
+            raise EntityLibraryServiceError("Change the lock in its workflow.")
         if status not in ASSET_STATUSES:
             raise EntityLibraryServiceError("Invalid image status.")
         with self.repository.transaction() as connection:
@@ -1195,6 +1288,8 @@ class EntityLibraryService:
                 "SELECT 1 FROM logical_references WHERE asset_id=? AND status='active' LIMIT 1",
                 (asset_id,),
             ).fetchone())
+            if fresh.get("lock_owner") and status != "approved":
+                raise EntityLibraryServiceError("Unlock this image in its workflow first.")
             if fresh["status"] == "approved" and status not in {"approved", "archived"}:
                 if has_usages or active_references:
                     raise EntityLibraryServiceError(
@@ -1451,7 +1546,7 @@ class EntityLibraryService:
         item = self.repository.fetchone("SELECT * FROM reference_sets WHERE set_id=?", (set_id,))
         if not item:
             raise EntityLibraryServiceError(f"Reference set not found: {set_id}")
-        item["assets"] = self.repository.fetchall("SELECT a.asset_id,a.file_name,a.label,a.status,sa.role,sa.sort_order FROM reference_set_assets sa JOIN assets a ON a.asset_id=sa.asset_id WHERE sa.set_id=? ORDER BY sa.sort_order", (set_id,))
+        item["assets"] = self.repository.fetchall("SELECT a.asset_id,a.file_name,a.label,a.status,sa.role,sa.sort_order FROM reference_set_assets sa JOIN assets a ON a.asset_id=sa.asset_id WHERE sa.set_id=? AND (a.lock_owner IS NULL OR a.lock_path IS NOT NULL) ORDER BY sa.sort_order", (set_id,))
         item["image_count"] = len(item["assets"])
         item["descriptors"] = self.repository.fetchall("SELECT * FROM descriptors WHERE owner_type='set' AND owner_id=? ORDER BY priority", (set_id,))
         return item

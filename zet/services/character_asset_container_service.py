@@ -891,12 +891,18 @@ class CharacterAssetContainerService:
             if not isinstance(approved, list) or set(approved) != {effect["id"] for effect in preview["protected_effects"]}:
                 raise CharacterAssetContainerError("Approve each selected or locked candidate affected by deletion.")
             board = value["boards"][view]
+            previous = copy.deepcopy(value)
+            removes_lock = any(board["candidates"][item["candidate_id"]].get("locked")
+                               for item in preview["candidates"])
             for item in preview["candidates"]:
                 self._remove_candidate(value, board, item["candidate_id"])
             if preview["candidates"]:
                 board["revision"] += 1
-                value = self.save(character, phase, pipeline, costume, value,
-                                  expected_revision=preview["revision"])
+                if removes_lock:
+                    self._unbind_board(previous, value, view, preview["revision"])
+                else:
+                    self.save(character, phase, pipeline, costume, value,
+                              expected_revision=preview["revision"])
             return self.detail(character, phase, pipeline, costume)
 
     def delete_non_selected(self, character: str, phase: str, pipeline: str,
@@ -966,50 +972,67 @@ class CharacterAssetContainerService:
             image = Path(candidate["image_path"]).resolve()
             if not image.is_relative_to(self.library_root):
                 raise CharacterAssetContainerError("Candidate image is outside this universe's library.")
-            digest = hashlib.sha256(image.read_bytes()).hexdigest()
-            operation_id = uuid4().hex
             board["revision"] += 1
-            journal_path = self._path(value["scope"]).parent / "publications" / f"{operation_id}.json"
+            library = self.app.entity_library_service
 
-            def commit_board(published):
-                asset = published[0]
-                candidate.update(locked_image_path=asset["image_path"],
-                                inventory_asset_id=asset["asset_id"],
-                                image_sha256=digest)
-                next_value = copy.deepcopy(value)
-                next_value["revision"] = expected_revision + 1
-                pending_value = copy.deepcopy(next_value)
-                pending_value["_pending_publication_id"] = operation_id
-                write_json_atomic(journal_path, {"operation_id": operation_id,
-                    "container_path": str(self._path(value["scope"])), "scope": value["scope"],
-                    "previous": previous, "next": next_value})
-                self._publishing_board = True
-                try:
-                    self.save(character, phase, pipeline, costume, pending_value,
-                              expected_revision=expected_revision)
-                finally:
-                    self._publishing_board = False
+            def bind(operation_id, commit):
+                def publish(asset):
+                    candidate.update(locked_image_path=asset["image_path"],
+                                     inventory_asset_id=asset["asset_id"], image_sha256=asset["checksum"])
+                    commit()
 
-            try:
-                self.app.entity_library_service.register_locked_pipeline_images([{
-                    "source": str(image), "checksum": digest, "pipeline": pipeline,
-                    "character": character, "phase": phase, "costume": value["scope"]["costume"],
-                    "view": view, "candidate_id": candidate_id,
-                    "prompt": candidate.get("prompt", ""),
-                    "label": " · ".join(part for part in
+                library.bind_workflow_lock(
+                    library.lock_owner("character", value["container_id"], view), candidate_id, image,
+                    existing_id=candidate.get("inventory_asset_id", ""), prompt=candidate.get("prompt", ""),
+                    label=" · ".join(part for part in
                         (character, phase, costume, pipeline.replace("-", " ").title(), view.replace("_", " ").title()) if part),
-                }], operation_id=operation_id, before_commit=commit_board)
-                self._recover_publications(self._path(value["scope"]), value["scope"])
-            except Exception as exc:
-                raise CharacterAssetContainerError(f"Could not publish the locked candidate: {exc}") from exc
+                    character=character, phase=phase, costume=value["scope"]["costume"], view=view,
+                    operation_id=operation_id, before_commit=publish)
+
+            self._commit_lock_change(previous, value, expected_revision, bind)
             return self.detail(character, phase, pipeline, costume)
         elif action == "unlock":
             locked_id = next((item for item in board["slots"] if item and board["candidates"][item].get("locked")), None)
             if locked_id != candidate_id or board.get("selected_id") != candidate_id:
                 raise CharacterAssetContainerError("Unlock the current locked candidate on this board.")
+            previous = copy.deepcopy(value)
             unlock_candidate(board, candidate_id)
+            board["revision"] += 1
+            self._unbind_board(previous, value, view, expected_revision)
+            return self.detail(character, phase, pipeline, costume)
         else:
             raise CharacterAssetContainerError("Choose select, lock, or unlock.")
         board["revision"] += 1
         return self.save(character, phase, pipeline, costume, value,
                          expected_revision=expected_revision)
+
+    def _commit_lock_change(self, previous, value, expected_revision, change):
+        scope = value["scope"]
+        path = self._path(scope)
+        operation_id = uuid4().hex
+        journal_path = path.parent / "publications" / f"{operation_id}.json"
+
+        def commit():
+            next_value = copy.deepcopy(value)
+            next_value["revision"] = expected_revision + 1
+            pending_value = {**next_value, "_pending_publication_id": operation_id}
+            write_json_atomic(journal_path, {"operation_id": operation_id,
+                "container_path": str(path), "scope": scope, "previous": previous, "next": next_value})
+            self._publishing_board = True
+            try:
+                self.save(scope["character"], scope["phase"], scope["pipeline"], scope["costume"],
+                          pending_value, expected_revision=expected_revision)
+            finally:
+                self._publishing_board = False
+
+        try:
+            change(operation_id, commit)
+        finally:
+            self._recover_publications(path, scope)
+
+    def _unbind_board(self, previous, value, view, expected_revision):
+        library = self.app.entity_library_service
+        owner = library.lock_owner("character", value["container_id"], view)
+        self._commit_lock_change(previous, value, expected_revision,
+            lambda operation_id, commit: library.unbind_workflow_locks(
+                [owner], operation_id=operation_id, before_commit=commit))

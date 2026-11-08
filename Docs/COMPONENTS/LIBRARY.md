@@ -25,12 +25,10 @@ Configuration selects a library container; a universe descriptor binds the creat
 
 Reconciliation scans authored/queue sources, fingerprints content, reuses cached parses, records malformed sources as errors, builds a generation, and publishes it for queries. Replacement snapshots become visible transactionally; successful publication retains the newly active generation and prunes obsolete parsed-source revisions and compilation dependencies. Completed summaries are deduplicated by job ID and limited to configured retention (seven days by default). Index file free pages are returned to the OS only by explicit offline compaction; ordinary publication bounds rows, while `manage_storage --compact-indexes` performs `integrity_check` and `VACUUM`. HTTP results retain cursor/generation/freshness behavior; rebuilding a cache is different from migrating the record catalog or backing up entity SQLite.
 
-Narrative subscene review can save selected or locked images as independent
-imports through `NarrativeSceneService.save_subscene_image_to_inventory`. The
-existing asset label, notes and prompt fields retain the editable name, source
-titles and frozen rendered prompt. Omitting `origin_key` allows repeated saves
-without deduplication or source relationships; asset names already permit
-duplicates. See [Narrative](NARRATIVE.md#save-a-subscene-image-to-inventory-2026-10-30).
+Workflow locks use one symbolic Inventory ID per asset slot. The entity catalog
+stores its current candidate and a universe-relative path to the locked output.
+Unlocking removes the current binding. Relocking the slot reuses its ID. Imported
+images retain their own managed files. See [the Inventory lock ADR](../DECISIONS/0049-symbolic-inventory-locks.md).
 
 ## Failure modes and extension points
 

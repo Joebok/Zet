@@ -58,7 +58,7 @@ class LibraryDeletionService:
             return
         placeholders = ",".join("?" for _ in ids)
         rows = self.entity_repository.fetchall(
-            f"SELECT asset_id,file_name FROM assets WHERE asset_id IN ({placeholders})", tuple(ids)
+            f"SELECT asset_id,file_name FROM assets WHERE lock_owner IS NULL AND asset_id IN ({placeholders})", tuple(ids)
         )
         for row in rows:
             source = self.paths.entity_library_images_path() / row["file_name"]
@@ -158,6 +158,9 @@ class LibraryDeletionService:
         confirm_image_deletion(connection, ids, confirm_ids, expected_versions)
         archive = self._archive(character, phase, "phase")
         self._move(phase_path, archive / "Characters" / character / phase)
+        container_phase = self.paths.state_path(
+            "CharacterAssetContainers", quote(character, safe="-_."), quote(phase, safe="-_."))
+        self._move(container_phase, archive / "CharacterAssetContainers" / character / phase)
         self._move(self.paths.character_asset_path(character, phase), archive / "Assets" / character / phase)
         self._move(self.paths.pipeline_base_path(character, phase), archive / "Pipelines" / character / phase)
         self._move(self.paths.pipeline_candidates_path("Character-Pipeline", character, phase), archive / "PipelineCandidates" / character / phase)

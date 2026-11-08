@@ -634,9 +634,13 @@ class NarrativeGenerationService:
                 self._cleanup_upscale(record, job)
                 if record.get("active_llm_job") == job["id"]:
                     record["active_llm_job"] = None
+            removes_lock = any(record["candidates"][cid].get("locked") for cid in ids)
             for candidate_id in ids:
                 self._remove_candidate(story, scene, target, record, candidate_id)
-            self.repository.write(record, story, scene, target)
+            if removes_lock:
+                self.author.commit_inventory_lock(story, scene, target, record)
+            else:
+                self.repository.write(record, story, scene, target)
             self._cleanup_pending(story, scene, target, record)
             return self.author.target(story, scene, target)
 
@@ -706,12 +710,16 @@ class NarrativeGenerationService:
                 state = self.author.app.narrative_scene_text_service.state(story, scene, target, candidate_id)
                 if candidate.get("scene_text_final", {}).get("token") != state["token"]:
                     raise ValueError("Confirm scene text on this image before selecting or locking.")
+            removes_lock = False
             if action == "select":
                 select_candidate(record, candidate_id)
             elif action == "lock":
                 lock_candidate(record, candidate_id)
             elif action == "unlock":
+                if not candidate.get("locked"):
+                    raise ValueError("Unlock the current locked candidate.")
                 unlock_candidate(record, candidate_id)
+                removes_lock = True
             elif action == "retry":
                 retry_request(record, candidate_id, allow_legacy=True)
                 parent = next((job for job in record["jobs"].values() if candidate_id in job.get("candidate_ids", [])), None)
@@ -725,10 +733,15 @@ class NarrativeGenerationService:
                 images = [{"id": candidate_id, "label": f"{record['title']} · slot {candidate['slot']}"}]
                 if candidate["locked"] or record[selection_key] == candidate_id:
                     self.author.confirm(images, data.get("confirm_ids") or [])
+                removes_lock = candidate["locked"]
                 self._remove_candidate(story, scene, target, record, candidate_id)
             else:
                 raise ValueError("Unknown candidate action.")
-            self.repository.write(record, story, scene, target)
+            if action == "lock" or removes_lock:
+                self.author.commit_inventory_lock(story, scene, target, record,
+                                                  candidate_id if action == "lock" else None)
+            else:
+                self.repository.write(record, story, scene, target)
             self._cleanup_pending(story, scene, target, record)
             return self.author.target(story, scene, target)
 

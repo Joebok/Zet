@@ -13979,3 +13979,13 @@ main();
 // A narrow dashboard bridge keeps wizard presentation in its own module.
 
 document.querySelector('#current-universe-settings').addEventListener('click',()=>runGuardedTransition(()=>activatePage('universe-settings',{universeId:state.universeId})));
+
+window.addEventListener("zet:open-inventory-image", async ({ detail }) => {
+  if (detail.universe !== state.universeId) return;
+  try {
+    await activatePage("auxiliary-resources", { skipAutosave: true });
+    await selectEntityLibraryAsset(detail.assetId);
+  } catch (error) {
+    showActionMessage(error.message, "error");
+  }
+});

@@ -31,7 +31,14 @@ def eligible_images(source: Path) -> list[Path]:
             continue
         root = catalog.parent
         with closing(sqlite3.connect(catalog.resolve().as_uri() + "?mode=ro", uri=True)) as db:
-            for asset_id, file_name in db.execute("SELECT asset_id, file_name FROM assets"):
+            columns = {row[1] for row in db.execute("PRAGMA table_info(assets)")}
+            symbolic = "lock_owner" in columns
+            fields = "asset_id,file_name,lock_owner,lock_path" if symbolic else "asset_id,file_name,NULL,NULL"
+            for asset_id, file_name, owner, lock_path in db.execute(f"SELECT {fields} FROM assets"):
+                if owner:
+                    if lock_path:
+                        add(lock_path, root)
+                    continue
                 name = Path(file_name).name
                 if name != file_name or not name:
                     raise ValueError(f"Invalid inventory filename in {catalog}")
@@ -41,6 +48,8 @@ def eligible_images(source: Path) -> list[Path]:
                  for path in (root / "_state" / "LocalAssets").glob("*/*/local_assets.json")):
         record = json.loads(path.read_text(encoding="utf-8"))
         universe = path.parents[4]
+        if (universe / "_state" / "CharacterAssetContainers").is_dir():
+            continue
         for asset in record.get("assets", {}).values():
             if asset.get("render_mode") == "final" and asset.get("locked"):
                 add(asset["locked_image_path"], universe)

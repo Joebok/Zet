@@ -232,6 +232,19 @@ class CostumeService:
                 updated.update(status="STALE", error="Costume master was renamed; analyze again from current masters.")
             write_json_atomic(metadata_path, updated)
 
+        from zet.repositories.entity_library_repository import EntityLibraryRepository
+        root = Path(self.path_service.config.base_library_path).resolve()
+        catalog = root / "catalog.sqlite3"
+        if catalog.is_file():
+            old_prefix = old_dir.resolve().relative_to(root).as_posix() + "/"
+            new_prefix = new_dir.resolve().relative_to(root).as_posix() + "/"
+            with EntityLibraryRepository(catalog).transaction() as connection:
+                connection.execute(
+                    """UPDATE assets SET lock_path=? || substr(lock_path,length(?)+1)
+                       WHERE substr(lock_path,1,length(?))=?""",
+                    (new_prefix, old_prefix, old_prefix, old_prefix),
+                )
+
     def _rename_turnaround_data(self, character: str, phase: str, old_name: str, new_name: str) -> None:
         """Keep tracked Costume-Dressing turnaround metadata and files aligned."""
         if old_name == new_name:

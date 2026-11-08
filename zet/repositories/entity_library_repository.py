@@ -15,7 +15,7 @@ class EntityLibraryRepositoryError(Exception):
 class EntityLibraryRepository:
     """Store the authoritative entity-centered image catalog in SQLite."""
 
-    SCHEMA_VERSION = 4
+    SCHEMA_VERSION = 5
 
     def __init__(self, database_path: str | Path):
         self.database_path = Path(database_path).resolve()
@@ -166,6 +166,11 @@ class EntityLibraryRepository:
                 connection.execute("ALTER TABLE assets ADD COLUMN negative_prompt TEXT NOT NULL DEFAULT ''")
             if "preferred_reference_key" not in columns:
                 connection.execute("ALTER TABLE assets ADD COLUMN preferred_reference_key TEXT")
+            if "lock_owner" not in columns:
+                connection.execute("ALTER TABLE assets ADD COLUMN lock_owner TEXT")
+                connection.execute("ALTER TABLE assets ADD COLUMN lock_candidate TEXT")
+                connection.execute("ALTER TABLE assets ADD COLUMN lock_path TEXT")
+            connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS asset_lock_owner ON assets(lock_owner)")
             if version < 3:
                 connection.execute(
                     """UPDATE assets SET preferred_reference_key=(
