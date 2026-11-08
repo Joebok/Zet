@@ -65,8 +65,9 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   function startPolling() {
     stopPolling();
     if (!pageVisible()) return;
-    if (state.active && state.view && state.detail?.boards?.[state.view]?.slots.some((id) => id &&
-      activeCandidateStates.has(state.detail.boards[state.view].candidates[id]?.status))) {
+    if (state.active && state.view && (state.detail?.boards?.[state.view]?.luna_review?.status === "RUNNING" ||
+      state.detail?.boards?.[state.view]?.slots.some((id) => id &&
+      activeCandidateStates.has(state.detail.boards[state.view].candidates[id]?.status)))) {
       state.timer = setInterval(() => { if (activeOnScreen()) void pollProgress(); }, 1500);
     }
   }
@@ -97,8 +98,14 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
           url !== api(`/views/${encodeURIComponent(state.view)}/progress`) ||
           progress.container_id !== state.detail?.container_id || progress.revision < state.detail.revision) return;
       if (!progress.active.length) {
-        stopPolling();
-        await loadDetail();
+        if (progress.luna_review?.status === "RUNNING") {
+          state.detail.boards[state.view].luna_review = progress.luna_review;
+          renderBoard();
+          if ($("review").open) renderReviewComparison();
+        } else {
+          stopPolling();
+          await loadDetail();
+        }
         return;
       }
       const board = state.detail.boards[state.view];
@@ -188,6 +195,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
 
   function renderBoard() {
     const board = state.detail.boards[state.view];
+    $("board-actions").innerHTML = renderBoardActions(board.luna_review?.prompt);
     const dressing = state.pipeline === "costume-dressing";
     const headFront = isHead() && state.view === "FRONT";
     $("dressing-settings").hidden = !dressing || state.view === "FRONT";
@@ -219,7 +227,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       image: Boolean(candidate.image_path),
     }]));
     renderCandidateBoard({host: staging, slots: board.slots, candidates,
-      selectedId: board.selected_id, escape, imageUrl,
+      selectedId: board.selected_id, escape, imageUrl, lunaReview: board.luna_review,
       renderActions: (candidate, index) => renderActions(candidate, index + 1),
       renderDetails: (candidate) => candidate
         ? `<details class="candidate-request-details"><summary>Submitted prompt and references</summary><pre>${escape(candidate.prompt || "")}</pre><ul>${(candidate.render_request?.inputs || []).map(item => `<li>${escape(item.role || "Reference")}${item.render_mode ? ` · ${escape(item.render_mode)}` : ""}</li>`).join("")}</ul>${candidate.status === "PREPARED" ? `<button data-board-action="submit" data-candidate-id="${escape(candidate.candidate_id)}">Generate</button>` : ""} ${candidate.status === "COMPLETE" && candidate.image_path ? `<button data-template-improve="${escape(candidate.candidate_id)}">Improve template from this image</button>` : ""}</details>`
@@ -373,6 +381,13 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     $("review-next").disabled = state.mutation || index === ids.length - 1;
     $("review-copy").disabled = !candidate.prompt;
     $("review-actions").innerHTML = renderActions({...candidate, image: Boolean(candidate.image_path)}, candidate.slot, true);
+    const luna = board.luna_review || {};
+    const rank = (luna.entries || []).findIndex(entry => entry.candidate_id === state.reviewCandidateId);
+    const assessment = rank >= 0 ? luna.entries[rank].review : "";
+    $("review-status").innerHTML = assessment
+      ? `<strong>Luna ${luna.status === "OBSOLETE" ? "previous " : ""}rank #${rank + 1}${luna.status === "OBSOLETE" ? " · Obsolete" : ""}</strong><p>${escape(assessment)}</p><details><summary>Review criteria used · ${escape(luna.recorded_at || "")}</summary><pre>${escape(luna.prompt || "")}</pre></details>`
+      : luna.status === "FAILED" ? `Luna Review failed · ${escape(luna.error || "No details available.")}`
+        : luna.status === "RUNNING" ? "Luna Review is running…" : "";
 
     const choices = [...$("review-compare").selectedOptions].map((option) => {
       const [view, id] = option.value.split(":");
@@ -585,7 +600,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       universe_id: document.querySelector("#universe-select").value,
     };
     state.pipeline = pipeline || params.get("pipeline") || "body-reference";
-    $("board-actions").innerHTML = renderBoardActions();
+    $("board-actions").innerHTML = renderBoardActions(state.detail?.boards?.[state.view]?.luna_review?.prompt);
     state.view = options.view ?? params.get("view") ?? "";
     state.dressingDrafts = {};
     state.costume = state.pipeline === "costume-dressing"
@@ -721,6 +736,12 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   $("board-actions").addEventListener("click", (event) => {
     const button = event.target.closest("[data-board-action]");
     if (!button || state.mutation || !state.detail || !state.view) return;
+    if (button.dataset.boardAction === "luna-review") {
+      void request(api(`/views/${encodeURIComponent(state.view)}/luna-review`), {method: "POST", body: "{}"})
+        .then(async () => { await loadDetail(); show("Luna Review complete."); })
+        .catch(error => show(error.message, true));
+      return;
+    }
     if (button.dataset.boardAction === "render") {
       void generate(Number(button.dataset.count), button.dataset.mode);
       return;

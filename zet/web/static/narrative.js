@@ -280,7 +280,7 @@ async function loadPageContent() {
     host.querySelector('#narrative-breadcrumb').textContent = 'Stories';
   } else if (!route.scene) {
     detail = await api(base());
-    progressSignature = JSON.stringify(detail.jobs);
+    progressSignature = JSON.stringify([detail.jobs, detail.luna_review]);
     contextLabels.story = detail.title;
     root.innerHTML = `<h1>${esc(detail.title)}</h1><section class="narrative-card">${label('title',detail.title,false)}${label('brief',detail.brief)}<button type="button" id="scene-text-story-style">Scene text style</button>
       <div class="narrative-actions"><button data-action="save">Save story</button><button class="danger" data-action="delete">Delete story</button></div></section>
@@ -828,6 +828,13 @@ function updatePromptIndicators() {
 
 function updateLive() {
   if (disposed) return;
+  const criteriaDisclosure = host.querySelector('.luna-review-criteria');
+  const criteriaText = criteriaDisclosure?.querySelector('pre');
+  if (criteriaText && detail?.luna_review?.prompt) criteriaText.textContent = detail.luna_review.prompt;
+  const criteriaSummary = criteriaDisclosure?.querySelector('summary');
+  if (criteriaSummary && detail?.luna_review?.recorded_at) {
+    criteriaSummary.textContent = `Review criteria · ${detail.luna_review.status === 'OBSOLETE' ? 'Obsolete · ' : ''}${detail.luna_review.recorded_at}`;
+  }
   const imagesCard = host.querySelector('#narrative-images-card');
   if (imagesCard) {
     imagesCard.querySelector('h2').classList.add('render-mode-heading');
@@ -915,10 +922,10 @@ function updateLive() {
     failures.filter(job=>job.kind !== 'image').map(job=>`<div class="narrative-failure">${esc(modelName(job.provenance))} · ${esc(job.error)}${job.kind === 'interview' ? ` <button data-retry-job="${job.id}">Retry</button>` : ''}</div>`).join('');
   updatePromptIndicators();
   const slots = modeSlots(), selected = modeSelected();
-  const signature = JSON.stringify([slots,detail.candidates,selected]);
-  if (signature === slotSignature) return;
+  const signature = JSON.stringify([slots,detail.candidates,selected,detail.luna_review]);
+  if (signature === slotSignature) { renderImageReview(); return; }
   slotSignature = signature;
-  renderCandidateBoard({host: host.querySelector('#narrative-slots'), slots, candidates: detail.candidates,
+  renderCandidateBoard({host: host.querySelector('#narrative-slots'), slots, candidates: detail.candidates, lunaReview: detail.luna_review,
     selectedId: selected, escape: esc, imageUrl, promptIndicator,
     renderActions: (candidate, index) => candidateActions({id: slots[index], candidate,
       selected: Boolean(candidate) && slots[index] === selected, slot: index + 1, escape: esc})});
@@ -965,6 +972,9 @@ function renderImageReview() {
   const detailsOpen = sameCandidate && previousDetails?.open;
   const detailsScroll = sameCandidate ? panel.scrollTop : 0;
   panel.dataset.candidate = reviewCandidate;
+  const luna = detail.luna_review || {};
+  const rank = (luna.entries || []).findIndex(entry => entry.candidate_id === reviewCandidate);
+  const assessment = rank >= 0 ? luna.entries[rank].review : '';
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
     <p class="local-pipeline-review-position">${esc(reviewPosition(candidate, index, images.length, selected))}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
@@ -972,6 +982,7 @@ function renderImageReview() {
         busy, escape: esc, review: true, showProtectedRegen: true})}
       <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image before publishing it to Inventory">Publish to Inventory</button>
     </div>
+    ${assessment ? `<section class="luna-review-assessment"><h3>Luna ${luna.status === 'OBSOLETE' ? 'previous ' : ''}rank #${rank + 1}${luna.status === 'OBSOLETE' ? ' · Obsolete' : ''}</h3><p>${esc(assessment)}</p></section>` : ''}
     ${inventorySaved?.candidate === reviewCandidate ? `<p role="status">Saved “${esc(inventorySaved.label)}” to inventory.</p>` : ''}
     <p class="error" role="status" id="narrative-review-error"></p>
     ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
@@ -988,7 +999,7 @@ function renderImageReview() {
 }
 
 function mergeTarget(updated) {
-  progressSignature = JSON.stringify(updated.jobs);
+  progressSignature = JSON.stringify([updated.jobs, updated.luna_review]);
   if (dirty.has('layers') || layerDrag || brush) updated.layers = detail.layers;
   if (dirty.has('backdrop_adaptation') || cropDrag) updated.backdrop_adaptation = detail.backdrop_adaptation;
   for (const key of targetFields) {
@@ -1058,14 +1069,14 @@ async function save() {
 async function poll() {
   if (disposed) return;
   if (!route.target || pollBusy || busy) return;
-  if (document.hidden || (!llmSubmitting && !Object.values(detail?.jobs || {}).some(job =>
+  if (document.hidden || (!llmSubmitting && detail?.luna_review?.status !== 'RUNNING' && !Object.values(detail?.jobs || {}).some(job =>
     ['SUBMITTING','QUEUED','RUNNING','DISPATCHING','TRANSFERRING','RECONCILING'].includes(job.status)))) return;
   pollBusy = true;
   const url = base();
   try {
     const progress = await api(url + '/progress');
     if (base() !== url) return;
-    const signature = JSON.stringify(progress.jobs);
+    const signature = JSON.stringify([progress.jobs, progress.luna_review]);
     if (signature !== progressSignature) {
       progressSignature = signature;
       const updated = await api(url);
@@ -1175,6 +1186,14 @@ listen(host,'click',event=>{
   if (!button) return;
   if (button.dataset.boardAction) {
     const actionName = button.dataset.boardAction;
+    if (actionName === 'luna-review') {
+      action(async()=>{
+        const result = await api(base() + '/luna-review', 'POST', {});
+        detail.luna_review = result;
+        updateLive();
+      }).catch(error=>status(error.message,true));
+      return;
+    }
     button.dataset.action = actionName === 'render' ? 'render' :
       actionName === 'delete-drafts' ? 'delete-draft-images' : 'delete-non-selected';
   }

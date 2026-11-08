@@ -7,6 +7,12 @@ import hashlib
 import os
 import copy
 from urllib.parse import quote
+from concurrent.futures import ThreadPoolExecutor
+import threading
+
+_LUNA_REVIEW_WORKERS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="zet-luna-review")
+_LUNA_REVIEW_ACTIVE = set()
+_LUNA_REVIEW_ACTIVE_LOCK = threading.Lock()
 
 from zet.services.atomic_file_service import write_json_atomic
 from zet.services.local_image_pipeline_policy import local_image_pipeline_config
@@ -171,7 +177,105 @@ class CharacterAssetContainerService:
                  for candidate in (board["candidates"][candidate_id],)]
         return {"container_id": value["container_id"], "revision": value["revision"],
                 "view": view, "slots": slots, "selected_id": board["selected_id"],
-                "active": [slot for slot in slots if slot["status"] in active]}
+                "active": [slot for slot in slots if slot["status"] in active],
+                "luna_review": board.get("luna_review", {})}
+
+    def luna_review(self, character: str, phase: str, pipeline: str, costume: str, view: str,
+                    *, _review_id: str = "") -> dict:
+        """Rank the current completed mixed-quality board and retain full reviews."""
+        import hashlib
+        from datetime import datetime, timezone
+        from zet.services.local_image_ranking_service import review_images_with_luna
+
+        path = self._path(self._scope(character, phase, pipeline, costume))
+        with file_lock(path.with_suffix(".lock")):
+            value = self.detail(character, phase, pipeline, costume)
+            board = value["boards"].get(view)
+            if board is None:
+                raise CharacterAssetContainerError("Choose a view in this container.")
+            candidates = [board["candidates"][cid] for cid in board["slots"] if cid
+                          and board["candidates"].get(cid, {}).get("status") == "COMPLETE"
+                          and board["candidates"][cid].get("image_path")]
+            if not candidates:
+                raise CharacterAssetContainerError("Generate at least one image before running Luna Review.")
+            review_id = _review_id or uuid4().hex
+            images = [Path(item["image_path"]).resolve() for item in candidates]
+            ids = [str(item["candidate_id"]) for item in candidates]
+            hashes = [hashlib.sha256(image.read_bytes()).hexdigest() for image in images]
+            previous = board.get("luna_review", {})
+            if not _review_id:
+                if previous.get("status") == "RUNNING":
+                    with _LUNA_REVIEW_ACTIVE_LOCK:
+                        if previous.get("active_id") in _LUNA_REVIEW_ACTIVE:
+                            return previous
+                    previous = {**previous, "status": "INTERRUPTED", "active_id": ""}
+                board["luna_review"] = {**previous, "status": "RUNNING", "active_id": review_id,
+                                        "started_at": datetime.now(timezone.utc).isoformat()}
+                board["revision"] += 1
+                self.save(character, phase, pipeline, costume, value, expected_revision=value["revision"])
+            elif previous.get("active_id") != review_id:
+                return previous
+
+        if not _review_id:
+            with _LUNA_REVIEW_ACTIVE_LOCK:
+                _LUNA_REVIEW_ACTIVE.add(review_id)
+            _LUNA_REVIEW_WORKERS.submit(self._run_luna_review_worker, character, phase, pipeline, costume,
+                                        view, review_id)
+            return {"status": "RUNNING", "active_id": review_id}
+
+        criteria = (f"Compare all completed {pipeline.replace('-', ' ')} images for {view}. Rank Draft and Final images together. "
+                    "Assess requested view accuracy, source preservation, identity, anatomy, visible detail, and usefulness as a reference. "
+                    "Give each image a concise but informative full assessment, noting visible strengths and defects.")
+        references = []
+        reference_labels = []
+        selected_id = board.get("selected_id")
+        for candidate in candidates:
+            for item in (candidate.get("render_request") or {}).get("inputs", []):
+                if item.get("candidate_id") == selected_id and item.get("render_mode") == "draft":
+                    continue
+                reference = Path(str(item.get("path") or "")).resolve()
+                if reference.is_file():
+                    references.append(reference)
+                    reference_labels.append(f"{candidate['candidate_id']}: image {len(references)} ({item.get('role') or item.get('label') or 'captured input'})")
+        if pipeline == "character-assembly" and view != "FRONT":
+            front_board = value["boards"].get("FRONT", {})
+            front = front_board.get("candidates", {}).get(front_board.get("selected_id") or "")
+            front_path = Path(str((front or {}).get("image_path") or "")).resolve()
+            if front and front_path.is_file():
+                references.append(front_path)
+                reference_labels.append(f"Ranking comparison: selected FRONT image {len(references)}. Compare identity and head-to-body proportions while judging the requested {view} view.")
+        prompt = criteria + "\nCandidate reference mapping:\n" + "\n".join(reference_labels) + "\nCandidate IDs in attachment order: " + ", ".join(ids)
+        try:
+            entries, model = review_images_with_luna(prompt=prompt, candidate_ids=ids, image_paths=images,
+                reference_image_paths=references, paths=self.app.ai_proxy_service.ai_proxy_path_service,
+                owner={"container_id": value["container_id"], "pipeline": pipeline, "view": view,
+                       "luna_review_id": review_id})
+            result = {"status": "COMPLETE", "active_id": "", "review_id": review_id,
+                      "candidate_ids": ids, "image_hashes": dict(zip(ids, hashes)),
+                      "entries": entries, "prompt": prompt, "model": model,
+                      "recorded_at": datetime.now(timezone.utc).isoformat()}
+        except Exception as exc:
+            result = {**previous, "status": "FAILED", "active_id": "", "error": str(exc)}
+        with file_lock(path.with_suffix(".lock")):
+            latest = self.detail(character, phase, pipeline, costume)
+            current = latest["boards"].get(view, {})
+            if (current.get("luna_review", {}).get("active_id") == review_id
+                    and current.get("luna_review", {}).get("status") == "RUNNING"):
+                if result.get("status") == "COMPLETE":
+                    current_ids = [cid for cid in current["slots"] if cid and current["candidates"].get(cid, {}).get("image_path")]
+                    if set(current_ids) != set(ids) or any(cid not in current_ids or hashlib.sha256(Path(current["candidates"][cid]["image_path"]).read_bytes()).hexdigest() != result["image_hashes"].get(cid) for cid in ids):
+                        result = {**previous, "status": "FAILED", "active_id": "", "error": "Board images changed while Luna Review was running."}
+                current["luna_review"] = result
+                current["revision"] += 1
+                self.save(character, phase, pipeline, costume, latest, expected_revision=latest["revision"])
+        return result
+
+    def _run_luna_review_worker(self, character, phase, pipeline, costume, view, review_id):
+        try:
+            self.luna_review(character, phase, pipeline, costume, view, _review_id=review_id)
+        finally:
+            with _LUNA_REVIEW_ACTIVE_LOCK:
+                _LUNA_REVIEW_ACTIVE.discard(review_id)
 
     def candidate_image(self, character: str, phase: str, pipeline: str, costume: str,
                         view: str, candidate_id: str) -> Path:
@@ -544,11 +648,15 @@ class CharacterAssetContainerService:
             root = self._path(value["scope"]).parent / "renders" / candidate_id / "attempts" / str(attempt_id)
             updates = self.image_production.reconcile(candidate, owner, root,
                 f"container_{value['container_id']}_{candidate_id}_{attempt_id}")
+            previous_image_path = candidate.get("image_path")
             if (self._settle_upscale(value, candidate, updates)
                     or any(candidate.get(key) != item for key, item in updates.items())):
                 candidate.update(updates)
                 if candidate.get("status") == "COMPLETE":
                     record_render_completion(candidate)
+                    if candidate.get("image_path") != previous_image_path and board.get("luna_review", {}).get("status") in {"COMPLETE", "RUNNING"}:
+                        board["luna_review"]["status"] = "OBSOLETE"
+                        board["luna_review"]["active_id"] = ""
                 changed = True
         if changed:
             board["revision"] += 1

@@ -1,17 +1,20 @@
 /** Shared Candidate Board card presentation. Pipelines inject their slot actions. */
-export function renderBoardActions() {
+export function renderBoardActions(criteria = 'Rank every completed image in the current board together across Draft and Final. Assess target-view accuracy, source preservation, identity, anatomy or scene composition as appropriate, visible artifacts, and usefulness. Give each image a specific assessment and rank the full set from strongest to weakest.') {
+  const safeCriteria = String(criteria).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   return `<div class="candidate-board-actions" role="group" aria-label="Candidate board actions">
     <button type="button" class="candidate-board-render-draft" data-board-action="render" data-mode="draft" data-count="1">Draft 1</button>
     <button type="button" class="candidate-board-render-draft" data-board-action="render" data-mode="draft" data-count="4">Draft 4</button>
     <button type="button" class="candidate-board-render-final" data-board-action="render" data-mode="final" data-count="1">Final 1</button>
     <button type="button" class="candidate-board-render-final" data-board-action="render" data-mode="final" data-count="4">Final 4</button>
+    <button type="button" data-board-action="luna-review">Luna Review</button>
+    <details class="luna-review-criteria"><summary>Review criteria</summary><pre>${safeCriteria}</pre></details>
     <button type="button" class="danger-text-action" data-board-action="delete-drafts">Delete Drafts</button>
     <button type="button" class="danger-action" data-board-action="delete-non-selected">Delete Non-Selected</button>
   </div>`;
 }
 
 export function renderCandidateBoard({host, slots, candidates, selectedId, escape, imageUrl,
-  promptIndicator = () => '', renderActions, renderDetails = () => ''}) {
+  promptIndicator = () => '', renderActions, renderDetails = () => '', lunaReview = {}}) {
   host.innerHTML = slots.map((id, index) => {
     const candidate = id ? candidates[id] : null;
     const state = candidate?.locked ? 'locked' : id && id === selectedId ? 'selected' :
@@ -21,8 +24,10 @@ export function renderCandidateBoard({host, slots, candidates, selectedId, escap
       : `<div class="placeholder">${candidate ? '' : 'Empty'}</div>`;
     const renderTime = candidate?.status === 'COMPLETE' && Number.isInteger(candidate.render_duration_seconds)
       ? ` · ${candidate.render_duration_seconds}s` : '';
+    const rank = (lunaReview.entries || []).findIndex(entry => entry.candidate_id === id);
+    const obsolete = lunaReview.status === 'OBSOLETE';
     const metadata = candidate
-      ? `<p class="narrative-muted image-card-state"><span class="narrative-render-mode-pill ${candidate.render_mode === 'final' ? 'final' : 'draft'}">${candidate.render_mode === 'final' ? 'Final' : 'Draft'}</span> · ${escape(candidate.status.toLowerCase())}${renderTime}${id === selectedId ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>`
+      ? `<p class="narrative-muted image-card-state"><span class="narrative-render-mode-pill ${candidate.render_mode === 'final' ? 'final' : 'draft'}">${candidate.render_mode === 'final' ? 'Final' : 'Draft'}</span> · ${escape(candidate.status.toLowerCase())}${renderTime}${id === selectedId ? ' · Selected' : ''}${candidate.locked ? ' · Locked' : ''}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}${rank >= 0 ? ` · Luna ${obsolete ? 'previous ' : ''}rank #${rank + 1}` : ''}</p>`
       : '';
     const review = `<div class="narrative-actions narrative-review-actions">${candidate ? `<button type="button" data-review="${id}" aria-label="Review slot ${index + 1}">Review</button>` : ''}${renderActions(candidate, index)}</div>`;
     return `<article class="narrative-slot ${id && id === selectedId ? 'selected' : ''}" data-state="${state}"><h3 class="render-mode-heading">Slot ${index + 1} <span data-prompt-indicator="${id || ''}">${promptIndicator(candidate)}</span></h3>${image}${metadata}${candidate?.error ? `<p class="error">${escape(candidate.error)}</p>` : ''}${review}${renderDetails(candidate)}</article>`;

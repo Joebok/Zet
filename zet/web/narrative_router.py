@@ -264,6 +264,10 @@ def create_narrative_router(app_provider):
     def target_progress(story: str, scene: str, target: str):
         return call(generation().progress, story, scene, target)
 
+    @router.post(target_path + "/luna-review")
+    def target_luna_review(story: str, scene: str, target: str):
+        return call(generation().luna_review, story, scene, target)
+
     @router.patch(target_path)
     def update_target(story: str, scene: str, target: str, data: dict = Body(...)):
         call(author().update_target, story, scene, target, data)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 
-def validate_ranking(value: object, candidate_ids: list[str]) -> list[dict[str, str]]:
+def validate_ranking(value: object, candidate_ids: list[str], *, require_review: bool = False) -> list[dict[str, str]]:
     """Validate an ordered comparison result against the exact submitted set."""
     if not isinstance(value, dict) or not isinstance(value.get("ranking"), list):
         raise ValueError("Ranking output must contain a ranking list.")
@@ -15,10 +15,11 @@ def validate_ranking(value: object, candidate_ids: list[str]) -> list[dict[str, 
             raise ValueError("Every ranking entry must be an object.")
         candidate_id = str(item.get("candidate_id") or "")
         reason = str(item.get("reason") or "").strip()
-        if not candidate_id or candidate_id in seen or not reason:
-            raise ValueError("Ranking entries require unique candidate IDs and concise reasons.")
+        review = str(item.get("review") or "").strip()
+        if not candidate_id or candidate_id in seen or not (review if require_review else reason):
+            raise ValueError("Ranking entries require unique candidate IDs and nonempty assessment text.")
         seen.add(candidate_id)
-        normalized.append({"candidate_id": candidate_id, "reason": reason})
+        normalized.append({"candidate_id": candidate_id, **({"review": review} if require_review else {"reason": reason})})
     if seen != set(candidate_ids) or len(normalized) != len(candidate_ids):
         raise ValueError("Ranking must contain every surviving candidate exactly once.")
     return normalized

@@ -140,3 +140,22 @@ def rank_images_with_luna(
                                       [*(reference_image_paths or []), *image_paths],
                                       task_type="local_image_ranking", role="image_ranking", render_context={}, timeout=timeout, owner=owner or {}, admission=admission)
     return validate_ranking(value, candidate_ids), model
+
+
+def review_images_with_luna(*, prompt: str, candidate_ids: list[str], image_paths: list[str | Path],
+                            paths, owner=None, reference_image_paths: list[str | Path] | None = None,
+                            admission=None) -> tuple[list[dict[str, str]], str]:
+    """Return a comparative rank and full per-image review from one Luna response."""
+    if len(candidate_ids) != len(image_paths):
+        raise ValueError("Every reviewed candidate must have exactly one image.")
+    if not candidate_ids:
+        return [], ""
+    schema = {"type": "object", "properties": {"ranking": {"type": "array", "items": {
+        "type": "object", "properties": {"candidate_id": {"type": "string"}, "review": {"type": "string"}},
+        "required": ["candidate_id", "review"], "additionalProperties": False}}},
+        "required": ["ranking"], "additionalProperties": False}
+    model = resolve_role_model(paths.config, "image_ranking")
+    value, _ = paths.jobs.generate_json(model, "", prompt, schema,
+        [*(reference_image_paths or []), *image_paths], task_type="local_image_ranking",
+        role="image_ranking", render_context={}, timeout=1800, owner=owner or {}, admission=admission)
+    return validate_ranking(value, candidate_ids, require_review=True), model

@@ -7,6 +7,8 @@ from copy import deepcopy
 from io import BytesIO
 import json
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
+import threading
 from pathlib import Path
 import random
 from PIL import Image
@@ -22,6 +24,9 @@ from zet.services.image_candidate_board_service import allocate, lock as lock_ca
 
 
 ACTIVE = {"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"}
+_LUNA_REVIEW_WORKERS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="zet-narrative-luna-review")
+_LUNA_REVIEW_ACTIVE = set()
+_LUNA_REVIEW_ACTIVE_LOCK = threading.Lock()
 
 
 class NarrativeGenerationService:
@@ -44,7 +49,91 @@ class NarrativeGenerationService:
             jobs = [{"id": job["id"], "status": job["status"], "candidate_id": job.get("candidate_id"),
                      "candidate_ids": job.get("candidate_ids", [])}
                     for job in record["jobs"].values()]
-            return {"jobs": jobs}
+            return {"jobs": jobs, "luna_review": record.get("luna_review", {})}
+
+    def luna_review(self, story: str, scene: str, target: str, *, _review_id: str = "") -> dict:
+        """Review and rank completed target images using their frozen render inputs."""
+        import hashlib
+        from datetime import datetime, timezone
+        from pathlib import Path
+        from uuid import uuid4
+        from zet.services.local_image_ranking_service import review_images_with_luna
+
+        with self.repository.lock():
+            record = self.repository.read(story, scene, target)
+            self._refresh(story, scene, target, record)
+            candidates = [record["candidates"][cid] for cid in record["slots"] if cid
+                          and record["candidates"].get(cid, {}).get("status") == "COMPLETE"
+                          and record["candidates"][cid].get("image")]
+            if not candidates:
+                raise ValueError("Generate at least one image before running Luna Review.")
+            review_id = _review_id or uuid4().hex
+            ids = [candidate["id"] for candidate in candidates]
+            folder = self.repository.folder(story, scene, target)
+            images = [(folder / candidate["image"]).resolve() for candidate in candidates]
+            hashes = {cid: hashlib.sha256(image.read_bytes()).hexdigest() for cid, image in zip(ids, images)}
+            previous = record.get("luna_review", {})
+            if not _review_id:
+                if previous.get("status") == "RUNNING":
+                    with _LUNA_REVIEW_ACTIVE_LOCK:
+                        if previous.get("active_id") in _LUNA_REVIEW_ACTIVE:
+                            return previous
+                    previous = {**previous, "status": "INTERRUPTED", "active_id": ""}
+                record["luna_review"] = {**previous, "status": "RUNNING", "active_id": review_id}
+                self.repository.write(record, story, scene, target)
+            elif previous.get("active_id") != review_id:
+                return previous
+        if not _review_id:
+            with _LUNA_REVIEW_ACTIVE_LOCK:
+                _LUNA_REVIEW_ACTIVE.add(review_id)
+            _LUNA_REVIEW_WORKERS.submit(self._run_luna_review_worker, story, scene, target, review_id)
+            return {"status": "RUNNING", "active_id": review_id}
+        criteria = (f"Rank all completed Narrative {record.get('kind', 'scene')} images together. Assess fidelity to the saved prompt, "
+                    "story and source continuity, composition, subject readability, and visible image artifacts. "
+                    "Give every image a specific full assessment and rank the set from strongest to weakest.")
+        refs, seen = [], set()
+        for candidate in candidates:
+            for item in (candidate.get("render_request") or {}).get("inputs", []):
+                ref = Path(str(item.get("path") or "")).resolve()
+                if ref.is_file() and ref not in seen:
+                    refs.append(ref)
+                    seen.add(ref)
+        prompt = criteria + "\nSaved prompts by candidate:\n" + "\n".join(
+            f"{candidate['id']}: {candidate.get('prompt', '')}" for candidate in candidates)
+        try:
+            entries, model = review_images_with_luna(prompt=prompt, candidate_ids=ids,
+                image_paths=images, reference_image_paths=refs,
+                paths=self.author.app.ai_proxy_service.ai_proxy_path_service,
+                owner={"story": story, "scene": scene, "target": target, "luna_review_id": review_id})
+            result = {"status": "COMPLETE", "active_id": "", "candidate_ids": ids,
+                      "image_hashes": hashes, "entries": entries, "prompt": prompt, "model": model,
+                      "recorded_at": datetime.now(timezone.utc).isoformat()}
+        except Exception as exc:
+            result = {**previous, "status": "FAILED", "active_id": "", "error": str(exc)}
+        with self.repository.lock():
+            current = self.repository.read(story, scene, target)
+            if (current.get("luna_review", {}).get("active_id") == review_id
+                    and current.get("luna_review", {}).get("status") == "RUNNING"):
+                if result.get("status") == "COMPLETE":
+                    current_ids = [cid for cid in current["slots"] if cid and current["candidates"].get(cid, {}).get("image")]
+                    if set(current_ids) != set(ids):
+                        result = {**previous, "status": "FAILED", "active_id": "", "error": "Target candidate set changed while Luna Review was running."}
+                    for cid, digest in hashes.items():
+                        candidate = current["candidates"].get(cid)
+                        image = (folder / candidate["image"]).resolve() if candidate and candidate.get("image") else None
+                        if not image or not image.is_file() or hashlib.sha256(image.read_bytes()).hexdigest() != digest:
+                            result = {**previous, "status": "FAILED", "active_id": "", "error": "Target images changed while Luna Review was running."}
+                            break
+                current["luna_review"] = result
+                self.repository.write(current, story, scene, target)
+        return result
+
+    def _run_luna_review_worker(self, story, scene, target, review_id):
+        try:
+            self.luna_review(story, scene, target, _review_id=review_id)
+        finally:
+            with _LUNA_REVIEW_ACTIVE_LOCK:
+                _LUNA_REVIEW_ACTIVE.discard(review_id)
 
     def start(self, story: str, scene: str, target: str, data: dict) -> dict:
         with self.repository.lock():
@@ -386,6 +475,9 @@ class NarrativeGenerationService:
                                 if snapshot else None)
                             candidate["image"] = relative
                             record_render_completion(candidate)
+                            if record.get("luna_review", {}).get("status") in {"COMPLETE", "RUNNING"}:
+                                record["luna_review"]["status"] = "OBSOLETE"
+                                record["luna_review"]["active_id"] = ""
                     else:
                         value = json.loads(result.decode("utf-8"))
                         if job["kind"] == "interview":

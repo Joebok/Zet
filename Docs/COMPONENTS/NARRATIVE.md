@@ -66,6 +66,13 @@ published Narrative assemblies and emits their `LIB:ASSET` reference tag.
 
 ## Save a subscene image to Inventory (2026-10-30)
 
+Narrative target boards offer on-demand **Luna Review** across completed images.
+It assesses saved prompt fidelity, story continuity, composition and visible
+artifacts against captured render inputs. The target record retains rank, full
+per-image review text, the submitted prompt and model. Results remain in slot
+order and become obsolete after a newly generated image lands. The review is
+available through the target `luna-review` API action.
+
 Subscene image review offers **Save to inventory** for a selected or locked image.
 The naming dialog defaults to the subscene title and preserves the rendered
 candidate's prompt. `NarrativeSceneService.save_subscene_image_to_inventory`,

@@ -24,6 +24,13 @@ valid. The page refreshes on entry/context change and has no active polling.
 
 ## Character Asset Container workflow (2026-11-06)
 
+Each mixed-quality view board offers an on-demand **Luna Review**. It compares
+all completed Draft and Final images together using their captured render inputs,
+stores rank and full assessment text without changing slot order, and shows the
+submitted prompt under Review criteria. A successful new image makes that saved
+review obsolete. Selection and prompt edits do not. The action is exposed by the
+container view API and its status is included in compact view progress.
+
 The replacement workflow is manual: Assets opens one container for Body Reference,
 Head Image Construct, Head Image Edit, Assembly, or a selected Dressing costume.
 Its overview shows the current selected or locked image for each view and holds

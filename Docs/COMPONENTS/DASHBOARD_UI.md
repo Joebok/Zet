@@ -266,6 +266,12 @@ advice scrolls independently while decisions/actions stay reachable. Prompt/sour
 details include recorded inputs, ordered source labels and generation metadata.
 The former Image details and render actions wrapper is removed.
 
+Character Asset Container and Narrative candidate boards expose on-demand Luna
+Review beside Draft/Final generation actions. Review criteria opens beside the
+action, successful ranks appear in card metadata without moving slots, and the
+full assessment appears in image review. The disclosure shows the saved prompt
+after a run.
+
 Inventory copy feedback, shared fullscreen viewers (including Overview, identity,
 turnaround, costume, phase comparison and Zine images), Minor Character comparison
 controls and standalone refinement image actions use the same decorator. Workflow

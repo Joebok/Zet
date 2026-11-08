@@ -126,6 +126,14 @@ def create_character_asset_container_router(resolve_app):
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @router.post("/api/character-containers/{pipeline}/views/{view}/luna-review")
+    def luna_review(pipeline: str, view: str, character: str = Query(...), phase: str = Query(...),
+                    costume: str = Query(""), universe_id: str = Query("")):
+        try:
+            return service(universe_id).luna_review(character, phase, pipeline, costume, view)
+        except (CharacterAssetContainerError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @router.post("/api/character-containers/{pipeline}/views/{view}/prompt")
     def compile_prompt(pipeline: str, view: str, payload: dict = Body(default={}),
                        character: str = Query(...), phase: str = Query(...),
