@@ -9,7 +9,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   };
   const state = {pipeline: "", costume: "", view: "", detail: null, phaseSourceFile: null,
     timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null, dressingDrafts: {},
-    reviewCandidateId: "", mutation: false, originSlot: null, scope: null, controller: null, templateTimer: null,
+    reviewCandidateId: "", reviewCompareValues: [], mutation: false, originSlot: null, scope: null, controller: null, templateTimer: null,
     phaseChange: false, sourceScopeKey: ""};
   const reviewZoom = window.ZetReviewImageZoom.attach($("review"), () => [...$("review-pair").querySelectorAll("img")]);
   const activeCandidateStates = new Set(["SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"]);
@@ -357,7 +357,11 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   }
 
   function review(candidateId) {
-    if (state.reviewCandidateId !== candidateId) $("review-pair").replaceChildren();
+    if (state.reviewCandidateId !== candidateId) {
+      state.reviewCompareValues = [...$("review-compare").selectedOptions].map(option => option.value);
+      $("review-pair").replaceChildren();
+      $("review-action-feedback").textContent = "";
+    }
     const board = state.detail?.boards?.[state.view];
     const candidate = board?.candidates?.[candidateId];
     if (!candidate) return;
@@ -373,8 +377,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       const id = viewBoard.selected_id;
       const item = id && viewBoard.candidates[id];
       if (!item?.image_path || id === candidateId) continue;
-      if (item.render_mode === "draft" && (item.locked || viewBoard.selected_id === id)) continue;
-      choices.push({id, view, item});
+      choices.push({id, view, item, selected: true});
     }
     const priority = (choice) => {
       const index = preferred.indexOf(choice.view);
@@ -383,18 +386,24 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     choices.sort((left, right) => priority(left) - priority(right));
     const compare = $("review-compare");
     compare.replaceChildren(...choices.map((choice) => {
-      const label = `${choice.view.replaceAll("_", " ")} · Slot ${choice.item.slot} · ${choice.item.render_mode}`;
+      const label = `${choice.view.replaceAll("_", " ")} · Slot ${choice.item.slot} · ${choice.item.render_mode} · Selected`;
       const option = new Option(label, `${choice.view}:${choice.id}`);
       return option;
     }));
     compare.size = Math.min(4, Math.max(2, choices.length));
-    if (choices.length) {
+    const preserved = state.reviewCompareValues.filter(value => choices.some(choice => `${choice.view}:${choice.id}` === value));
+    if (preserved.length) {
+      for (const option of compare.options) option.selected = preserved.includes(option.value);
+    } else if (choices.length) {
       const selectedChoice = choices.find((choice) => preferred.includes(choice.view)) || choices[0];
       compare.value = `${selectedChoice.view}:${selectedChoice.id}`;
     }
     compare.disabled = choices.length === 0;
     renderReviewComparison();
-    compare.onchange = () => renderReviewComparison();
+    compare.onchange = () => {
+      state.reviewCompareValues = [...compare.selectedOptions].map(option => option.value);
+      renderReviewComparison();
+    };
     if (!$("review").open) $("review").showModal();
   }
 
@@ -1042,7 +1051,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const scope = api();
     const view = state.view;
     const modal = $("review").open;
-    const feedback = modal ? $("review-status") : document.createElement("p");
+    const feedback = modal ? $("review-action-feedback") : document.createElement("p");
     if (!modal) {
       button.closest("article").querySelector("p[data-slot-feedback]")?.remove();
       feedback.dataset.slotFeedback = "";
@@ -1079,7 +1088,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
             $("review").close();
           }
         } else renderReviewComparison();
-        feedback.textContent = action === "upscale" ? upscaleFeedback : action === "lock" ? "Locked and published." : "Candidate updated.";
+        $("review-action-feedback").textContent = action === "upscale" ? upscaleFeedback : action === "lock" ? "Locked and published." : "Candidate updated.";
       }
     } catch (error) {
       if (!signal.aborted) {

@@ -352,6 +352,6 @@ Narrative places source linking before authoring. Linking mode selectively expos
 
 Universe settings and creation expose Environmental style. Image Generation persists a canonical/environmental choice with its form; Add Universe art style uses that choice. Minor Characters and character batch creation expose independent universe-style selectors.
 
-Character pipeline candidate reviews offer available selected FRONT, opposite-side, and matching locked Draft comparisons. The comparison choice follows view navigation and polling. Minor Character review includes the matching private Draft lock in its comparison carousel.
+Character pipeline candidate reviews offer available selected FRONT, opposite-side, and matching locked Draft comparisons, including the selected candidate from the current board. Comparison choices persist while navigating candidates. Action feedback has a separate status area so select/lock acknowledgements do not replace Luna's rank and assessment. Minor Character review includes the matching private Draft lock in its comparison carousel.
 
-Character and Narrative Candidate Boards share review position, decisions, and captured input links. Character keeps its view comparisons alongside those controls and refreshes active cards from compact slot progress.
+Character and Narrative Candidate Boards share review position, decisions, and captured input links. Narrative review can show the target's selected image beside the candidate under review, and keeps that choice while navigating candidates. Character keeps its view comparisons alongside those controls and refreshes active cards from compact slot progress.

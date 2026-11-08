@@ -131,6 +131,7 @@ button.candidate-regen-final { color:var(--success); border-color:var(--success)
 .candidate-review .local-pipeline-review-layout { grid-template-columns:minmax(0,1fr) clamp(280px,24vw,380px); padding:48px 10px 10px; }
 .candidate-review .local-pipeline-review-comparison { grid-column:1; }
 .candidate-review .single-image { grid-template-columns:minmax(0,1fr); }
+.narrative-review-compare-choice { display:flex; align-items:center; gap:.5rem; margin:.5rem 0; }
 .candidate-review .character-review-images { grid-auto-flow:column; grid-auto-columns:minmax(220px, 1fr); grid-template-columns:none; overflow-x:auto; }
 .candidate-review .character-review-images.single-image { grid-auto-columns:minmax(0, 1fr); }
 .candidate-review .local-pipeline-review-info { min-height:0; }

@@ -35,6 +35,7 @@ let layerDrag = null;
 let activeLayer = null;
 let brush = null;
 let reviewCandidate = null;
+let reviewCompareCandidate = '';
 const reviewZoom = window.ZetReviewImageZoom?.attach(host.querySelector('#image-dialog'), () => [host.querySelector('#review-image')]);
 let renderRatio = '';
 let previewSizing = null;
@@ -970,13 +971,16 @@ function renderImageReview() {
   const luna = detail.luna_review || {};
   const rank = (luna.entries || []).findIndex(entry => entry.candidate_id === reviewCandidate);
   const assessment = rank >= 0 ? luna.entries[rank].review : '';
+  const compareId = modeSelected();
+  const compareCandidate = compareId && compareId !== reviewCandidate ? detail.candidates[compareId] : null;
+  const compareSelect = `<label class="narrative-review-compare-choice">Compare with selected image<select id="narrative-review-compare-choice"><option value="">No comparison</option>${compareCandidate?.image ? `<option value="${esc(compareId)}" ${reviewCompareCandidate === compareId ? 'selected' : ''}>Selected · ${compareCandidate.render_mode === 'final' ? 'Final' : 'Draft'} · Slot ${compareCandidate.slot}</option>` : ''}</select></label>`;
   panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
     <p class="local-pipeline-review-position">${esc(reviewPosition(candidate, index, images.length, selected))}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
     <div class="button-row compact local-pipeline-review-actions">
       ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked || candidate.status !== 'COMPLETE' ? "disabled" : ""}>Edit text</button>` : ''}${candidateActions({id: reviewCandidate, candidate, selected, slot: candidate.slot,
         busy, escape: esc, review: true, showProtectedRegen: true})}
       <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image to view it in Inventory">View in Inventory</button>
-    </div>
+    </div>${compareSelect}
     ${assessment ? `<section class="luna-review-assessment"><h3>Luna ${luna.status === 'OBSOLETE' ? 'previous ' : ''}rank #${rank + 1}${luna.status === 'OBSOLETE' ? ' · Obsolete' : ''}</h3><p>${esc(assessment)}</p></section>` : ''}
     <p class="error" role="status" id="narrative-review-error"></p>
     ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
@@ -986,6 +990,18 @@ function renderImageReview() {
     ${candidate.source_snapshot ? `<p class="narrative-muted">Source: ${esc(candidate.source_snapshot.scene_title)} · ${esc(candidate.source_snapshot.title)} · ${esc(candidate.backdrop_adaptation?.operation || 'edit')}</p>` : ''}
     ${candidate.assembly_snapshot ? `${(candidate.assembly_snapshot.has_composite ?? (candidate.assembly_snapshot.assembly_mode || 'finish_composite')==='finish_composite') ? `<a href="${esc(artifactUrl(`candidates/${reviewCandidate}/composite`))}" target="_blank">Compare raw composite</a>` : ''}<p>${candidate.assembly_snapshot.layers.filter(layer=>layer.visible).map(layer=>esc(layer.label)).join(' · ')}</p>` : ''}
     </details>`;
+  const compareFigure = host.querySelector('#narrative-review-compare-figure');
+  const compareImage = host.querySelector('#narrative-review-compare-image');
+  const comparisonPanel = host.querySelector('#image-dialog .local-pipeline-review-comparison');
+  const showComparison = Boolean(compareCandidate?.image && reviewCompareCandidate === compareId);
+  comparisonPanel.classList.toggle('single-image', !showComparison);
+  compareFigure.hidden = !showComparison;
+  if (showComparison) {
+    compareImage.src = imageUrl(compareId);
+    compareImage.alt = `Selected ${compareCandidate.render_mode} image, slot ${compareCandidate.slot}`;
+  } else compareImage.removeAttribute('src');
+  const compareChoice = host.querySelector('#narrative-review-compare-choice');
+  compareChoice.onchange = () => { reviewCompareCandidate = compareChoice.value; renderImageReview(); };
   window.ZetImageCardUI.scan(panel);
   if (sameCandidate && focusedAction) [...panel.querySelectorAll("button,a")]
     .find(button => (button.dataset.actionKey || button.dataset.imageAction) === focusedAction)?.focus({ preventScroll: true });
