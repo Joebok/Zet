@@ -77,6 +77,20 @@ def wait_for_update(service, operation, *, stage_only=False, timeout=1800):
     raise TimeoutError(f"Stopped waiting; deployment may still be running. Inspect {path} before retrying.")
 
 
+def require_available_bind(host, port):
+    """Check the production bind address without relying on a TCP probe."""
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    try:
+        with socket.socket(family, socket.SOCK_STREAM) as probe:
+            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            else:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind((host, port))
+    except OSError as exc:
+        raise ValueError(f"Cannot bind the production address {host}:{port}: {exc}") from exc
+
+
 def deploy_stopped(service, address, *, stage_only=False):
     """Stage and start a compatible release when the old release cannot boot."""
     from contextlib import closing
@@ -89,13 +103,7 @@ def deploy_stopped(service, address, *, stage_only=False):
     config = context.config
 
     def require_offline():
-        try:
-            connection = socket.create_connection(("127.0.0.1", port), timeout=2)
-        except ConnectionRefusedError:
-            pass
-        else:
-            connection.close()
-            raise ValueError("A server is listening on the production port.")
+        require_available_bind(host, port)
         process = context.process_service
         if any(process._matches(info, spec) for info in process.list_processes() for spec in process.specs()):
             raise ValueError("Stop the managed dashboard and harvester before using --offline.")
