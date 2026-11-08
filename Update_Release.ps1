@@ -3,9 +3,11 @@
 Validate and deploy the latest merged origin/main, then restart Zet and its harvester.
 .DESCRIPTION
 Uses the configured active production runtime and this checkout's deployment
-controller. Requires a running managed Zet release. Does not commit or push changes.
+controller. Normally requires a running managed Zet release.
 .PARAMETER RuntimeRoot
 Override Runtime.Root from the project's config.toml.
+.PARAMETER Offline
+Stage and start a compatible release with the dashboard and harvester stopped.
 .PARAMETER StageOnly
 Run release validation without stopping or promoting production.
 .EXAMPLE
@@ -16,7 +18,8 @@ Run release validation without stopping or promoting production.
 [CmdletBinding()]
 param(
     [string]$RuntimeRoot,
-    [switch]$StageOnly
+    [switch]$StageOnly,
+    [switch]$Offline
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +34,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $updateArguments = @("-B", "-u", "-m", "zet.scripts.update_release")
 if ($RuntimeRoot) { $updateArguments += @("--runtime-root", $RuntimeRoot) }
+if ($Offline) { $updateArguments += "--offline" }
 if ($StageOnly) { $updateArguments += "--stage-only" }
 
 Push-Location $PSScriptRoot

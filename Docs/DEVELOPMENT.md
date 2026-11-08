@@ -54,6 +54,7 @@ Only commands explicitly reported under Observed verification were executed succ
 | Windows launch | `.\run_zet_web.bat` | Activates `.venv`; refuses a duplicate 0.0.0.0:8081 listener; script uses its environment's `python`. |
 | macOS launch | `./run_zet_web.command` | zsh launcher checks port 8081 and executes `python3`; unlike the Windows launcher, it does not activate `.venv`, so select the environment first. |
 | Explicit local launch | `python3 -B -m zet.web.app --config config.toml --host 127.0.0.1 --port 8081` | Browser at localhost:8081. `Ctrl+C` stops it. App construction initializes stores/recovery; use an appropriate library, not an accidental live test target. |
+| Start a new production release after an offline migration | `.\Update_Release.ps1 -Offline` | Run from an ordinary PowerShell with the managed dashboard and harvester stopped. Stages merged main, validates it, checks catalog compatibility and waits for the expected release to report ready before updating the active release record. |
 | Approved fast tests | `npm run test:e2e` | Four serial Playwright task scenarios against disposable fixtures. The pretest setup restores locked npm packages and the matching Chromium browser when missing. |
 | Inspect test library | `npm run test:library` | Separate inspection copy on 127.0.0.1:8766; see [Testing](Testing.md). |
 | Optional live Narrative check | `npm run test:e2e:live` | Run only when Joe requests it, with the environment and prerequisites in [Testing](Testing.md). |
