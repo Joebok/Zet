@@ -8,6 +8,8 @@ from Scripts.Compile_Character_Template import load_template_sections_with_sourc
 
 VIEW_ORDER = ("FRONT", "FRONT_LEFT_3_4", "LEFT_PROFILE", "BACK_LEFT_3_4", "BACK",
               "BACK_RIGHT_3_4", "RIGHT_PROFILE", "FRONT_RIGHT_3_4")
+DISPLAY_VIEW_ORDER = ("FRONT", "FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE",
+                      "RIGHT_PROFILE", "BACK_LEFT_3_4", "BACK_RIGHT_3_4", "BACK")
 VIEW_SHORT = dict(zip(("f", "fl", "pl", "bl", "b", "br", "pr", "fr"), VIEW_ORDER))
 _sets = {
     "all": VIEW_ORDER,

@@ -207,7 +207,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     $("dressing-settings").hidden = !dressing || state.view === "FRONT";
     $("apply-wrap").hidden = !headFront;
     if (dressing && state.view !== "FRONT") {
-      const saved = state.detail.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-no-ref", costume_reference_view: ""};
+      const saved = state.detail.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-ref", costume_reference_view: "FRONT"};
       const draft = state.dressingDrafts[state.view] || saved;
       const mode = $("dressing-mode"), reference = $("dressing-reference");
       mode.value = draft.mode;
@@ -215,7 +215,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
         const item = state.detail.boards[view].candidates[state.detail.boards[view].selected_id];
         return new Option(`${view.replaceAll("_", " ")} · ${item?.image_path ? "selected" : "image not selected"}`, view);
       }));
-      reference.value = draft.costume_reference_view || "";
+      reference.value = draft.costume_reference_view || "FRONT";
       reference.disabled = mode.value === "doll-dressing-no-ref";
       $("save-dressing-settings").disabled = false;
       $("dressing-status").textContent = state.dressingDrafts[state.view]

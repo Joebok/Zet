@@ -17,7 +17,12 @@ unlock. The accepted boundary is recorded in [ADR 0048](../DECISIONS/0048-charac
 ## Character Overview Hub
 
 `LocalCharacterOverviewService` returns the selected phase's current published
-Body, Head Edit, Head Construct, Assembly and Costume Dressing locks in view order.
+Body, Head Edit, Head Construct, Assembly and Costume Dressing locks in display
+order: front, front left/right 3/4, left/right profile, back left/right 3/4, back.
+The Character Asset Container view selector uses the same display order; prompt
+conditioning retains its separate orientation order.
+New Costume Dressing view settings default to Doll-dressing (w/ Ref) and use
+FRONT as the reference view; the selector follows the same display order.
 The dashboard links each view card to its owning Asset Container and uses bounded
 cached previews. Setup creation/upload controls are visible until Character.md is
 valid. The page refreshes on entry/context change and has no active polling.

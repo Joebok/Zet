@@ -136,7 +136,8 @@ These checks used isolated storage and no live AI calls.
 Character Overview is the selected character/phase hub. Setup retains draft,
 upload and validation controls until Character.md is valid, then exposes the
 character template editor. Base Images and each costume show eight view cards for
-current published locks; cards link directly to their Asset Container view and
+current published locks in front, front left/right 3/4, left/right profile, back
+left/right 3/4, back order; cards link directly to their Asset Container view and
 show an empty state when no lock exists. Thumbnails are bounded cached JPEGs.
 Base Images starts collapsed and remembers its open or closed state per universe,
 character and phase, like the other disclosures. Data refreshes

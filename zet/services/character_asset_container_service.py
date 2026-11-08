@@ -75,8 +75,8 @@ class CharacterAssetContainerService:
 
     @staticmethod
     def _views(pipeline: str) -> list[str]:
-        from zet.services.view_conditioning_service import VIEW_ORDER
-        return list(VIEW_ORDER)
+        from zet.services.view_conditioning_service import DISPLAY_VIEW_ORDER
+        return list(DISPLAY_VIEW_ORDER)
 
     def _path(self, scope: dict) -> Path:
         values = [scope["character"], scope["phase"], scope["pipeline"], scope["costume"] or "_"]
@@ -362,8 +362,8 @@ class CharacterAssetContainerService:
             from zet.services.costume_mode_conditioning_service import MODES
             saved = (value.get("sources", {}).get("dressing_settings") or {}).get(view) or {}
             settings = costume_settings or saved
-            mode = settings.get("mode", "doll-dressing-no-ref")
-            source_view = str(settings.get("costume_reference_view") or "").upper()
+            mode = settings.get("mode", "doll-dressing-ref")
+            source_view = str(settings.get("costume_reference_view") or "FRONT").upper()
             if mode not in MODES:
                 raise CharacterAssetContainerError("Choose a supported Costume Dressing mode.")
             if mode == "doll-dressing-no-ref":

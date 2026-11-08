@@ -30,8 +30,8 @@ class LocalCharacterOverviewService:
             import os
             runtime = str(Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache") / "Zet")
         self.thumbnail_cache = Path(runtime).resolve() / "cache" / "character-overview-thumbnails"
-        from zet.services.view_conditioning_service import VIEW_ORDER
-        self.views = list(VIEW_ORDER)
+        from zet.services.view_conditioning_service import DISPLAY_VIEW_ORDER
+        self.views = list(DISPLAY_VIEW_ORDER)
 
     def overview(self, character: str, phase: str, universe_id: str = "") -> dict[str, Any]:
         if universe_id and universe_id != str(self.app.universe_id):

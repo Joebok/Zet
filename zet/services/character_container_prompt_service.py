@@ -57,7 +57,7 @@ class CharacterContainerPromptService:
         }
         if pipeline == "costume-dressing":
             settings = costume_settings or {}
-            job["Rendering Mode"] = settings.get("mode", "doll-dressing-no-ref") if view != "FRONT" else "doll-dressing-ref"
+            job["Rendering Mode"] = settings.get("mode", "doll-dressing-ref")
             if job["Rendering Mode"] == "rotate":
                 job["Rotation"] = True
             costume = next(item for item in self.app.costume_service.list_costumes(
