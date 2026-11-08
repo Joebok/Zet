@@ -21,8 +21,9 @@ proposal updates the governing Character.md for future requests. See the
 
 Character and Narrative use the same responsive Candidate Board grid, action
 glyphs, and desktop review layout with controls on the right. Character review
-adds side-by-side comparisons and uses its existing slot and publication guards
-for select, lock, retry, regen, and clear.
+places comparison images on the left and the candidate under review on the right,
+using its existing slot and publication guards for select, lock, retry, regen,
+and clear.
 Completed candidate cards show the elapsed render time in whole seconds after
 their status. Timing begins when Zet submits the render and ends when the image
 is collected and placed; older completed candidates without saved timing retain
@@ -132,7 +133,8 @@ upload and validation controls until Character.md is valid, then exposes the
 character template editor. Base Images and each costume show eight view cards for
 current published locks; cards link directly to their Asset Container view and
 show an empty state when no lock exists. Thumbnails are bounded cached JPEGs.
-Disclosure preferences are stored per universe, character and phase. Data refreshes
+Base Images starts collapsed and remembers its open or closed state per universe,
+character and phase, like the other disclosures. Data refreshes
 on entry/context change without recurring or tab visibility polling. The former
 `local-overview` page and `/local-character-overview` URL map to this hub.
 

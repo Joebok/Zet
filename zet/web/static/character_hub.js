@@ -1,6 +1,7 @@
 (() => {
   const $ = (selector) => document.querySelector(selector);
   const state = {generation: 0, context: null};
+  const baseImages = $("#character-base-images");
   const labels = {"body-reference":"Body-Reference", "head-image-edit":"Head-Image (Edit)", "head-image":"Head-Image (Construct)", "character-assembly":"Character Assembly", "costume-dressing":"Costume-Dressing"};
   function prefKey() { const c=state.context; return `zet:character-hub:${c.universeId}:${c.character}:${c.phase}`; }
   function saveDisclosure(event) { if (!state.context) return; try { const p=JSON.parse(localStorage.getItem(prefKey())||"{}"); p[event.target.id]=event.target.open; localStorage.setItem(prefKey(),JSON.stringify(p)); } catch {} }
@@ -19,6 +20,7 @@
     state.context=options; const generation=++state.generation; if(!options.character||!options.phase)return;
     const key=prefKey(); let prefs={}; try{prefs=JSON.parse(localStorage.getItem(key)||"{}");}catch{}
     const setup=$("#character-setup-details"), costumes=$("#character-costumes-details");
+    baseImages.open = prefs[baseImages.id] ?? false;
     if(changed){setup.open=true;costumes.open=true;}
     if(prefs[setup.id]!==undefined)setup.open=prefs[setup.id]; if(prefs[costumes.id]!==undefined)costumes.open=prefs[costumes.id];
     try { const data=await options.fetchJson(`/api/local/character-overview?character=${encodeURIComponent(options.character)}&phase=${encodeURIComponent(options.phase)}&universe_id=${encodeURIComponent(options.universeId)}`); if(generation!==state.generation)return;
@@ -30,5 +32,6 @@
     } catch(error){ if(generation===state.generation)$("#character-overview-status").textContent=error.message; }
   }
   $("#character-setup-details").addEventListener("toggle",saveDisclosure); $("#character-costumes-details").addEventListener("toggle",saveDisclosure);
+  baseImages.addEventListener("toggle",saveDisclosure);
   window.ZetCharacterHub={activate};
 })();

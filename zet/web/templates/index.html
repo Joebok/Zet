@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261107-field-checkboxes">
+  <link rel="stylesheet" href="/static/zet.css?v=20261107-character-overview">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
   <link rel="stylesheet" href="/static/narrative.css?v=20261107-board-actions">
 <link rel="stylesheet" href="/static/scene_text.css"><script src="/static/scene_text.js" defer></script>
@@ -259,7 +259,9 @@
         </div>
         </div>
       </details>
-      <section id="character-base-images" class="character-overview-section"><h2>Base Images</h2><div id="character-base-groups"></div></section>
+      <details id="character-base-images" class="overview-details character-overview-section">
+        <summary>Base Images</summary><div id="character-base-groups"></div>
+      </details>
       <details id="character-costumes-details" class="overview-details character-overview-section" open>
         <summary>Costumes</summary><div id="character-costume-groups"></div>
       </details>
@@ -2295,7 +2297,7 @@ Add prompt language here.
   <script src="/static/pipeline_labels.js"></script>
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
-  <script src="/static/character_hub.js?v=20261107"></script>
+  <script src="/static/character_hub.js?v=20261107-character-overview"></script>
   <script src="/static/zet.js?v=20261107-character-hub"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>

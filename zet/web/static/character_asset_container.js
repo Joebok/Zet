@@ -381,9 +381,11 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     }).filter(Boolean);
     const pair = $("review-pair");
     pair.classList.toggle("single-image", !choices.length);
-    const images = [{view: state.view, id: state.reviewCandidateId, item: candidate}, ...choices];
+    const candidateImage = {view: state.view, id: state.reviewCandidateId, item: candidate};
+    const images = [candidateImage, ...choices];
+    const displayImages = [...choices, candidateImage];
     const title = ({view, item}) => `${item === candidate ? "Candidate" : view.replaceAll("_", " ")} · Slot ${item.slot} · ${item.render_mode}`;
-    pair.innerHTML = images.map(image => `<figure><header><strong>${escape(title(image))}</strong></header>
+    pair.innerHTML = displayImages.map(image => `<figure><header><strong>${escape(title(image))}</strong></header>
       ${image.item.image_path ? `<img src="${escape(comparisonImageUrl(image.view, image.id))}" alt="${escape(title(image))}">`
         : `<p>${escape(image.item.status === "FAILED" ? image.item.error || "Render failed." : "No image available yet.")}</p>`}</figure>`).join("");
     reviewZoom.sync(`${state.view}:${state.reviewCandidateId}:${candidate.image_path || candidate.status}`);
