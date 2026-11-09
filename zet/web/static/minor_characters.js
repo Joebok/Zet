@@ -308,9 +308,9 @@ page.addEventListener("click", event => {
     const params = new URL(link.href).searchParams;
     return run(()=>navigate(params.get("minor_character"), params.get("view")));
   }
-  const button = event.target.closest("button");
-  if (!button || button.disabled) return;
-  const data = button.dataset;
+  const control = event.target.closest("button, img[data-review]");
+  if (!control || control.disabled) return;
+  const data = control.dataset;
   if (data.review) { reviewId=data.review; renderReview(); if (!dialog.open) dialog.showModal(); return; }
   if ("applyProposals" in data) return run(()=>author("apply", {
     job_id: board().text_job.id,
