@@ -37,6 +37,10 @@ and any form.
   `comparisonDefaults` optionally lists initially shown keys. Use
   `selected:<candidate id>` to recommend the board's automatic Selected
   option. The viewer handles explicit choices and image-load errors.
+  A comparison may also include `prompt`, `negativePrompt`, ordered `inputs`
+  (`{label, url?}`), and `provenance`. The review renders these in the same
+  disclosure format as the active candidate. Reference links open separately
+  so the review remains available.
 
 ## Connect workflow actions and polling
 

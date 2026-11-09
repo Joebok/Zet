@@ -162,7 +162,7 @@ passes data and action handlers through the component API.
 | `lunaReview` | Optional board-level advisory status, criteria, and error, with rankings and assessments keyed by candidate ID. Identify obsolete results explicitly so the grid and review display the same advisory state. |
 | `renderControls` | Prompt kind and draft state, optional settings, `{mode, count}` render options, shared available capacity, and action states. The adapter supplies freshness and readiness. |
 | `actions` | Board- and candidate-scoped descriptors with stable action key, placement, label, shared glyph key, semantic style role, and enabled/disabled state with reason. Unsupported actions are absent. Supply candidate actions once for both surfaces, with explicit placement for context-specific actions. |
-| `comparisons` | The component derives the Selected option from the active board. The adapter supplies ordered descriptors with stable key, label, role, review URL, optional source details, and availability. Deduplicate identical entries while preserving the Selected label and source context. |
+| `comparisons` | The component derives the Selected option from the active board. The adapter supplies ordered descriptors with stable key, label, role, review URL, optional source details, and availability. A descriptor may include the saved prompt, negative prompt, ordered `{label, url?}` inputs, and provenance for its shared review disclosure. Deduplicate identical entries while preserving the Selected label and source context. |
 
 ### Methods and events
 

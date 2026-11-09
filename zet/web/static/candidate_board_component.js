@@ -58,10 +58,13 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     if (node.dataset.markup === html) return;
     const focused = document.activeElement;
     const token = node.contains(focused) && [focused.dataset.command, focused.dataset.key, focused.name, focused.tagName];
-    const open = node.querySelector('details')?.open;
+    const disclosures = [...node.querySelectorAll('details')].map(details => [details.querySelector('summary')?.textContent, details.open]);
     node.innerHTML = html;
     node.dataset.markup = html;
-    if (open && node.querySelector('details')) node.querySelector('details').open = true;
+    for (const details of node.querySelectorAll('details')) {
+      const state = disclosures.find(([summary]) => summary === details.querySelector('summary')?.textContent);
+      if (state) details.open = state[1];
+    }
     if (token) [...node.querySelectorAll('button,input,select,textarea,summary')].find(control =>
       control.dataset.command === token[0] && control.dataset.key === token[1] && control.name === token[2] &&
       control.tagName === token[3]
@@ -290,11 +293,14 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       <p>${escape(model.lunaReview?.error || model.lunaReview?.status)}</p>
       ${candidate.humanAssessment ? `<p>Human assessment · ${escape(candidate.humanAssessment)}</p>` : ''}`);
     const details = view('details');
-    patch(details, `<details><summary>Prompt and ordered inputs</summary>
-      ${candidate.prompt ? button('Copy prompt','copy') : ''}<pre>${escape(candidate.prompt || 'Prompt not recorded')}</pre>
-      ${candidate.negativePrompt ? `<p>Negative prompt</p><pre>${escape(candidate.negativePrompt)}</pre>` : ''}
-      <ol>${(candidate.inputs || []).map(input => `<li>${input.url ? `<a href="${escape(input.url)}">${escape(input.label)}</a>` : escape(input.label)}</li>`).join('')}</ol>
-      ${(candidate.provenance || []).map(line => `<p>${escape(line)}</p>`).join('')}</details>
+    const disclosure = (item, label, copy = false) => `<details><summary>${escape(label)}</summary>
+      ${copy && item.prompt ? button('Copy prompt','copy') : ''}<pre>${escape(item.prompt || 'Prompt not recorded')}</pre>
+      ${item.negativePrompt ? `<p>Negative prompt</p><pre>${escape(item.negativePrompt)}</pre>` : ''}
+      <ol>${(item.inputs || []).map(input => `<li>${input.url ? `<a href="${escape(input.url)}" target="_blank" rel="noopener">${escape(input.label)}</a>` : escape(input.label)}</li>`).join('')}</ol>
+      ${(item.provenance || []).map(line => `<p>${escape(line)}</p>`).join('')}</details>`;
+    const activeEvidence = compare && (compare.prompt || compare.negativePrompt || compare.inputs?.length || compare.provenance?.length);
+    patch(details, `${disclosure(candidate, 'Candidate prompt and ordered inputs', true)}
+      ${activeEvidence ? disclosure(compare, `${compare.label} prompt and ordered inputs`) : ''}
       <p>${escape((candidate.notices || []).join(' · '))}</p>`);
     decorate(details);
   }

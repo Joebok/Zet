@@ -421,6 +421,12 @@
       <p id="character-container-source-status" class="muted" role="status"></p>
       <p id="character-container-status" class="muted" role="status" aria-live="polite"></p>
       <button id="character-container-refresh" type="button" hidden>Refresh</button>
+      <button id="character-container-prompt-preview-button" type="button" hidden>Preview Prompt</button>
+      <details id="character-container-prompt-preview" class="control-panel" hidden>
+        <summary>Current prompt and ordered references</summary>
+        <pre id="character-container-prompt-text"></pre>
+        <ol id="character-container-prompt-references"></ol>
+      </details>
       <section id="character-container-outputs" class="narrative-slots" aria-label="Asset views" hidden></section>
       <section id="character-container-workspace" hidden>
         <a id="character-container-back" href="/">Back to Asset Container</a>
@@ -436,46 +442,10 @@
             <button id="character-container-save-dressing-settings" type="button">Save costume settings</button>
             <p id="character-container-dressing-status" class="muted" role="status"></p>
           </div>
-          <div class="character-board-toolbar">
-            <p id="character-container-head-render-mode" class="muted head-render-mode" hidden></p>
-            <div class="character-board-prompt-controls">
-              <label>Aspect ratio<input id="character-container-aspect" size="8" value="2:3"></label>
-              <button id="character-container-prompt-preview-button" type="button">Prompt</button>
-            </div>
-            <div id="character-container-board-actions"></div>
-          </div>
         </section>
-        <details id="character-container-prompt-preview" class="control-panel" hidden>
-          <summary>Current prompt and ordered references</summary>
-          <pre id="character-container-prompt-text"></pre>
-          <ol id="character-container-prompt-references"></ol>
-        </details>
-        <section id="character-container-board" class="narrative-slots" aria-label="Candidate board"></section>
+        <div id="character-container-shared-board"></div>
       </section>
-      <dialog id="character-container-review" class="local-pipeline-review-dialog candidate-review" aria-labelledby="character-container-review-title">
-        <button class="review-close" id="character-container-review-close" type="button">Close review</button>
-        <div class="local-pipeline-review-layout">
-          <div id="character-container-review-pair" class="local-pipeline-review-comparison character-review-images"></div>
-          <div class="local-pipeline-review-info character-review-info">
-            <section class="candidate-review-panel">
-              <h2 id="character-container-review-title">Review candidate</h2>
-              <p id="character-container-review-position"></p>
-              <div class="button-row">
-                <button id="character-container-review-prev" type="button">Previous candidate</button>
-                <button id="character-container-review-next" type="button">Next candidate</button>
-                <button id="character-container-review-copy" type="button">Copy prompt</button>
-              </div>
-              <div id="character-container-review-actions" class="button-row local-pipeline-review-actions"></div>
-              <p id="character-container-review-status" role="status"></p>
-              <p id="character-container-review-action-feedback" role="status"></p>
-              <label class="character-container-review-choices">Compare with (select one or more)
-                <select id="character-container-review-compare" multiple aria-label="Comparison images"></select>
-              </label>
-              <div id="character-container-review-prompt"></div>
-            </section>
-          </div>
-        </div>
-      </dialog>
+      <div id="character-container-dialog-host"></div>
     </section>
     <dialog id="local-pipeline-review-dialog" class="local-pipeline-review-dialog" aria-label="Review local image candidate">
       <button id="local-pipeline-review-close" class="review-close" type="button">Close</button>
@@ -2339,7 +2309,7 @@ Add prompt language here.
   <script type="module" src="/static/minor_characters.js?v=20261108-review-click"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
-  <script type="module" src="/static/character_asset_container.js?v=20261108-review-comparison"></script>
+  <script type="module" src="/static/character_asset_container.js?v=20261109-candidate-board"></script>
 
 </body>
 </html>

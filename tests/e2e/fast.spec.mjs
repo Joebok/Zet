@@ -177,14 +177,14 @@ test("character-to-costume workflow uses manual container boards and publishes o
   const final = await generateCharacterImage(page, "character-assembly", "", "final", 2, image(1216, 832));
   expect(draft.candidate_id).not.toBe(final.candidate_id);
 
-  await page.getByRole("button", {name: "Review slot 1"}).click();
+  await page.locator(".zcb-thumbnail[aria-label=\"Review slot 1\"]").click();
   const review = page.getByRole("dialog", {name: "Review candidate"});
   await expect(review).toContainText("1 of 2 · Draft");
   await review.getByRole("button", {name: "Next candidate"}).click();
   await expect(review).toContainText("2 of 2 · Final");
   await review.locator("summary").first().click();
   const references = review.locator("ol a");
-  await expect(references).toHaveText(["body_reference", "head_image"]);
+  await expect(references).toHaveText(["body_reference · draft", "head_image · draft"]);
   expect((await page.request.get(await references.first().getAttribute("href"))).ok()).toBeTruthy();
   await expect(review.locator("pre").first()).toHaveText(final.prompt);
   await review.getByRole("button", {name: "Select", exact: true}).click();
@@ -205,7 +205,7 @@ test("character-to-costume workflow uses manual container boards and publishes o
   expect(dressing.render_request.inputs[0].candidate_id).toBe(locked.candidate_id);
   expect(dressing.render_request.inputs[0].sha256).toBe(locked.image_sha256);
   expect(dressing.render_request.provenance.costume).toBe("Test_Travel_Outfit");
-  await page.getByRole("button", {name: "Review slot 1"}).click();
+  await page.locator(".zcb-thumbnail[aria-label=\"Review slot 1\"]").click();
   await review.getByRole("button", {name: "Lock", exact: true}).click();
   await expect(review).toContainText("Locked and published");
 
@@ -218,8 +218,8 @@ test("character-to-costume workflow uses manual container boards and publishes o
 
   await page.goto("/?page=character-asset-container&pipeline=costume-dressing&costume=Test%20Travel%20Outfit&view=FRONT&character=Traveler&phase=Adult&universe_id=Test");
   await expect(page.locator("#character-asset-container-page")).toHaveClass(/active/);
-  await expect(page.locator("#character-container-board")).toContainText("Locked");
-  await expect(page.locator("#character-container-board article").first().locator("img")).toBeVisible();
+  await expect(page.locator(".zet-candidate-board")).toContainText("Locked");
+  await expect(page.locator(".zet-candidate-board article").first().locator("img")).toBeVisible();
   await expect(page.locator("#toolbar-batches")).toHaveCount(0);
   await expect(page.locator("#local-operations-button")).toHaveCount(0);
   expect(context.ids.story).toMatch(/^[a-f0-9]{32}$/);
@@ -283,7 +283,7 @@ async function characterBoard(page, pipeline, costume = "") {
 
 async function generateCharacterImage(page, pipeline, costume, quality, slot, pngPath) {
   const context = await (await page.request.get("/__test/context")).json();
-  await expect(page.locator("#character-container-board article")).toHaveCount(8);
+  await expect(page.locator(".zet-candidate-board article")).toHaveCount(8);
   const label = quality === "draft" ? "Draft 1" : "Final 1";
   await page.getByRole("button", {name: label, exact: true}).click();
   let candidate;
@@ -294,7 +294,7 @@ async function generateCharacterImage(page, pipeline, costume, quality, slot, pn
   }).toBe("QUEUED");
   expect(candidate.render_mode).toBe(quality);
   await answerLocalEnvelope(context.queue, candidate.ask_id, await readFile(pngPath));
-  const card = page.locator("#character-container-board article").nth(slot - 1);
+  const card = page.locator(".zet-candidate-board article").nth(slot - 1);
   await expect(card.locator("img")).toBeVisible();
   await expect(card).toContainText(quality === "draft" ? "Draft" : "Final");
   return candidate;

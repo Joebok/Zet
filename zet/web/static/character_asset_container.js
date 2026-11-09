@@ -1,4 +1,4 @@
-import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from "./candidate_board.js?v=20261107-board-toolbar";
+import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-character-board";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -9,9 +9,12 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
   };
   const state = {pipeline: "", costume: "", view: "", detail: null, phaseSourceFile: null,
     timer: null, active: false, pollInFlight: false, request: 0, sourceRequest: 0, templateProposal: null, dressingDrafts: {},
-    reviewCandidateId: "", reviewCompareValues: [], mutation: false, originSlot: null, scope: null, controller: null, templateTimer: null,
-    phaseChange: false, sourceScopeKey: ""};
-  const reviewZoom = window.ZetReviewImageZoom.attach($("review"), () => [...$("review-pair").querySelectorAll("img")]);
+    mutation: false, scope: null, controller: null, templateTimer: null,
+    phaseChange: false, sourceScopeKey: "", aspectRatio: "2:3"};
+  let sharedBoard = null;
+  const sharedBoardHost = $("shared-board");
+  const sharedDialogHost = $("dialog-host");
+
   const activeCandidateStates = new Set(["SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"]);
   const escape = (value) => String(value ?? "").replace(/[&<>"']/g,
     (char) => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[char]));
@@ -87,10 +90,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     state.detail = data;
     if (state.view && !data.boards[state.view]) state.view = data.scope.views[0];
     render();
-    if ($("review").open) {
-      if (data.boards[state.view]?.candidates[state.reviewCandidateId]) renderReviewComparison();
-      else $("review").close();
-    }
     if (!state.view && isHead()) void loadPhaseSourceCandidates();
   }
 
@@ -114,7 +113,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
         board.luna_review = review;
         showReviewStatus(review);
         renderBoard();
-        if ($("review").open) renderReviewComparison();
         if (review.status !== "RUNNING") await loadDetail();
       }
       if (!progress.active.length) {
@@ -141,7 +139,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       }
       if (changed) {
         renderBoard();
-        if ($("review").open) renderReviewComparison();
       }
     } catch (error) {
       if (sequence === state.request && pageVisible()) show(error.message, true);
@@ -191,6 +188,8 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     }
     viewSelect.value = state.view;
     $("workspace").hidden = !state.view;
+    $("prompt-preview-button").hidden = !state.view;
+    $("prompt-preview-button").disabled = false;
     $("costume-wrap").hidden = state.pipeline !== "costume-dressing" || Boolean(state.view);
     $("outputs").hidden = Boolean(state.view);
     $("refresh").hidden = false;
@@ -216,20 +215,9 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
 
   function renderBoard() {
     const board = state.detail.boards[state.view];
-    $("board-actions").innerHTML = renderBoardActions(board.luna_review?.prompt);
+
     const dressing = state.pipeline === "costume-dressing";
-    $("dressing-settings").hidden = !dressing || state.view === "FRONT";
-    const renderMode = $("head-render-mode");
-    renderMode.hidden = !isHead();
-    if (isHead() && state.view === "FRONT") {
-      const source = state.detail.sources?.phase_change ?? state.detail.sources?.phase_change_by_mode?.final ?? state.detail.sources?.phase_change_by_mode?.draft ?? {};
-      const hasReference = source.kind === "upload" || Boolean(source.phase);
-      renderMode.textContent = `FRONT render: ${hasReference ? "With FRONT reference" : "No FRONT reference"}${$("apply-phase-change").checked ? " · Phase Change" : " · No Phase Change"}.`;
-    } else if (isHead()) {
-      const sourceView = (state.detail.sources?.views || {})[state.view] || "FRONT";
-      const candidate = state.detail.boards[sourceView]?.candidates[state.detail.boards[sourceView]?.selected_id];
-      renderMode.textContent = `${state.view.replaceAll("_", " ")} render: ${sourceView.replaceAll("_", " ")} reference${candidate?.image_path ? " selected" : " not selected"}.`;
-    }
+    $("dressing-settings").hidden = true;
     if (dressing && state.view !== "FRONT") {
       const saved = state.detail.sources?.dressing_settings?.[state.view] || {mode: "doll-dressing-ref", costume_reference_view: "FRONT"};
       const draft = state.dressingDrafts[state.view] || saved;
@@ -246,43 +234,119 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
         ? "Unsaved changes. Preview and Generate use saved settings."
         : `Saved mode: ${saved.mode}.`;
     }
-    const staging = document.createElement("div");
-    const candidates = Object.fromEntries(Object.entries(board.candidates).map(([id, candidate]) => [id, {
-      ...candidate,
-      image: Boolean(candidate.image_path),
-    }]));
-    renderCandidateBoard({host: staging, slots: board.slots, candidates,
-      selectedId: board.selected_id, escape, imageUrl, lunaReview: board.luna_review,
-      renderActions: (candidate, index) => renderActions(candidate, index + 1),
-      renderDetails: (candidate) => candidate
-        ? `<details class="candidate-request-details"><summary>Submitted prompt and references</summary><pre>${escape(candidate.prompt || "")}</pre><ul>${(candidate.render_request?.inputs || []).map(item => `<li>${escape(item.role || "Reference")}${item.render_mode ? ` · ${escape(item.render_mode)}` : ""}</li>`).join("")}</ul>${candidate.status === "PREPARED" ? `<button data-board-action="submit" data-candidate-id="${escape(candidate.candidate_id)}">Generate</button>` : ""} ${candidate.status === "COMPLETE" && candidate.image_path ? `<button data-template-improve="${escape(candidate.candidate_id)}">Improve template from this image</button>` : ""}</details>`
-        : ""});
-    const host = $("board");
-    const focused = document.activeElement;
-    [...staging.children].forEach((card, index) => {
-      const id = board.slots[index];
-      const luna = board.luna_review || {};
-      const rank = ['COMPLETE', 'OBSOLETE'].includes(luna.status)
-        ? (luna.entries || []).findIndex(entry => entry.candidate_id === id) : -1;
-      card.dataset.signature = JSON.stringify([id, candidates[id], board.selected_id === id, luna.status, rank]);
-      const previous = host.children[index];
-      if (!previous) host.append(card);
-      else if (previous.dataset.signature !== card.dataset.signature) {
-        const action = previous.contains(focused) ? focused.dataset.actionKey : "";
-        previous.replaceWith(card);
-        if (action) [...card.querySelectorAll("button")].find((button) =>
-          button.dataset.actionKey === action)?.focus();
-      }
+    const model = characterBoardModel(board);
+    if (!sharedBoard) sharedBoard = mountCandidateBoard({boardHost:sharedBoardHost,dialogHost:sharedDialogHost},model,{
+      onEdit:({field,value})=>{
+        if(field==="aspect_ratio")state.aspectRatio=value;
+        if(field==="reference_view")$("source-view").value=value;
+        if(field==="costume_mode") { $("dressing-mode").value=value; state.dressingDrafts[state.view]={mode:value,costume_reference_view:$("dressing-reference").value}; }
+        if(field==="costume_reference_view") { $("dressing-reference").value=value; state.dressingDrafts[state.view]={mode:$("dressing-mode").value,costume_reference_view:value}; }
+      },
+      onAction:characterBoardAction,
     });
+    else sharedBoard.update(model);
   }
 
-  function renderActions(candidate, slot, review = false) {
-    const id = candidate?.candidate_id;
-    const selected = Boolean(id) && state.detail.boards[state.view].selected_id === id;
-    const active = activeCandidateStates.has(candidate?.status);
-    return candidateActions({id, candidate, slot, selected, escape, review, busy: review && state.mutation,
-      canReplace: !active && !selected && !candidate?.locked,
-      canClear: !active && !candidate?.locked, showProtectedRegen: review});
+  function candidateEvidence(view,id,item) {
+    const inputs=(item.render_request?.inputs||[]).map((input,index)=>({
+      label:[input.role||input.label||`Reference ${index+1}`,input.render_mode].filter(Boolean).join(" · "),
+      url:api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(id)}/inputs/${index+1}`),
+    }));
+    return {id,quality:item.render_mode,status:item.status,image:item.image_path?{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}:null,
+      thumbnail:item.image_path?{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}:null,
+      elapsedSeconds:item.render_duration_seconds,locked:Boolean(item.locked),prompt:item.prompt,
+      negativePrompt:item.render_request?.negative_prompt,inputs,provenance:Object.entries(item.render_request?.provenance||{}).map(([key,value])=>`${key}: ${value}`),
+      error:item.error,notices:item.source_change_fyi?["Saved source differs from current source."]:[],reviewable:true};
+  }
+
+  function characterBoardModel(board) {
+    const slots=board.slots.map((id,index)=>{
+      if(!id)return {key:String(index+1)};
+      const item=board.candidates[id];
+      const actions=[];
+      const add=(key,label,placement=["card","review"],extra={})=>actions.push({key,label,placement,...extra});
+      if(item.status==="PREPARED")add("submit","Generate");
+      if(item.status==="FAILED")add("retry","Retry");
+      if(item.image_path){add("select","Select");add(item.locked?"unlock":"lock",item.locked?"Unlock":"Lock");if(item.render_mode!=="final"&&!item.locked)add("upscale","Upscale draft");}
+      if(!item.locked)add("clear","Clear slot",["card","review"],{role:"danger-text-action"});
+      if(!activeCandidateStates.has(item.status)&&!item.locked&&board.selected_id!==id)for(const mode of ["draft","final"])add(`regen-${mode}`,`Regen ${mode==="draft"?"Draft":"Final"}`,["card","review"],{mode});
+      if(item.status==="COMPLETE"&&item.image_path)add("template-improve","Improve template from this image",["review"]);
+      return {key:String(index+1),candidate:candidateEvidence(state.view,id,item),actions};
+    });
+    const order=state.view==="FRONT"?["FRONT_LEFT_3_4","FRONT_RIGHT_3_4","LEFT_PROFILE","RIGHT_PROFILE"]:["FRONT"];
+    const comparisons=Object.entries(state.detail.boards).filter(([view])=>view!==state.view).map(([view,other])=>{
+      const id=other.selected_id,item=id&&other.candidates[id];if(!item?.image_path)return null;
+      const evidence=candidateEvidence(view,id,item);return {key:`${view}:${id}`,label:`${view.replaceAll("_"," ")} · Slot ${item.slot} · ${item.render_mode} · Selected`,role:"Selected view",image:evidence.image,prompt:evidence.prompt,negativePrompt:evidence.negativePrompt,inputs:evidence.inputs,provenance:evidence.provenance};
+    }).filter(Boolean).sort((a,b)=>(order.includes(a.key.split(":")[0])?order.indexOf(a.key.split(":")[0]):order.length)-(order.includes(b.key.split(":")[0])?order.indexOf(b.key.split(":")[0]):order.length));
+    const luna=board.luna_review||{};
+    const fields=[{key:"aspect_ratio",label:"Aspect ratio",type:"text",value:state.aspectRatio}];
+    const actions=[{key:"luna-review",label:"Luna Review",group:"luna",placement:["controls"]},
+      {key:"delete-drafts",label:"Delete Drafts",group:"bulk",placement:["controls"],role:"danger-text-action"},{key:"delete-non-selected",label:"Delete Non-Selected",group:"bulk",placement:["controls"],role:"danger-action"}];
+    if(["body-reference","head-image","head-image-edit"].includes(state.pipeline)&&state.view!=="FRONT") {
+      const views=state.detail.scope.views.filter(view=>view!==state.view);
+      fields.push({key:"reference_view",label:"Reference view",type:"select",value:$("source-view").value,options:views.map(view=>({value:view,label:view.replaceAll("_"," ")}))});
+      actions.push({key:"save-view-source",label:"Save view recipe",group:"render",placement:["controls"]});
+    }
+    if(state.pipeline==="costume-dressing"&&state.view!=="FRONT") {
+      const saved=state.detail.sources?.dressing_settings?.[state.view]||{mode:"doll-dressing-ref",costume_reference_view:"FRONT"};
+      const draft=state.dressingDrafts[state.view]||saved;
+      fields.push({key:"costume_mode",label:"Costume mode",type:"select",value:draft.mode,options:[{value:"doll-dressing-ref",label:"Doll-dressing (w/ Ref)"},{value:"doll-dressing-no-ref",label:"Doll-dressing (no Ref)"},{value:"rotate",label:"Rotate"}]});
+      fields.push({key:"costume_reference_view",label:"Costume reference view",type:"select",value:draft.costume_reference_view||"FRONT",options:state.detail.scope.views.filter(view=>view!==state.view).map(view=>({value:view,label:view.replaceAll("_"," ")}))});
+      actions.push({key:"save-dressing-settings",label:"Save costume settings",group:"render",placement:["controls"]});
+    }
+    return {scope:{key:`${state.detail.container_id}:${state.view}`,title:pipelineLabels[state.pipeline],view:state.view},revision:state.detail.revision,slots,selectedId:board.selected_id,
+      lunaReview:{status:luna.status,criteria:luna.prompt,error:luna.error,entries:Object.fromEntries((luna.entries||[]).map((entry,index)=>[entry.candidate_id,{rank:index+1,assessment:entry.review}]))},
+      renderControls:{fields,readiness:{},promptStatus:"",renderStatus:""},actions,comparisons,comparisonDefaults:comparisons[0]?[comparisons[0].key]:[]};
+  }
+
+  async function characterBoardAction(intent) {
+    if (state.mutation) return {status:"cancelled"};
+    if(intent.key==="save-view-source") {
+      const views={...(state.detail.sources?.views||{}),[state.view]:$("source-view").value};
+      await saveSource("views",views);return {status:"success",message:"View recipe saved."};
+    }
+    if(intent.key==="save-dressing-settings") {
+      const source={view:state.view,mode:$("dressing-mode").value,costume_reference_view:$("dressing-reference").value};
+      state.detail=await request(api("/sources/dressing_settings"),{method:"PUT",body:JSON.stringify({source,expected_revision:state.detail.revision})});
+      delete state.dressingDrafts[state.view];render();return {status:"success",message:"Costume settings saved."};
+    }
+    if(intent.key.startsWith("render-")) {
+      await generate(intent.count,intent.mode);
+      return {status:"success",message:"Render slots updated."};
+    }
+    if(intent.key==="preview-prompt") { await previewPrompt();return {status:"success",message:"Prompt preview updated."}; }
+    if(intent.key==="luna-review") {
+      state.mutation=true;
+      try {
+        const review=await request(api(`/views/${encodeURIComponent(state.view)}/luna-review`),{method:"POST",body:"{}"});
+        state.detail.boards[state.view].luna_review=review;renderBoard();startPolling();return {status:"success",message:"Luna Review started."};
+      } finally { state.mutation=false; }
+    }
+    if(intent.key.startsWith("delete-")) {
+      const button=document.createElement("button");button.dataset.boardAction=intent.key;
+      await bulkBoardAction(button);return {status:"success",message:"Candidates updated."};
+    }
+    const view=state.view,board=state.detail?.boards?.[view],candidate=board?.candidates?.[intent.candidateId];
+    if(!candidate||String(candidate.slot)!==String(intent.slotKey)||intent.expectedOccupant!==intent.candidateId)return {status:"error",message:"This slot changed. Refresh the board."};
+    if(intent.key==="regen-draft"||intent.key==="regen-final") {
+      await generate(1,intent.mode,{slot:candidate.slot,expected_candidate_id:candidate.candidate_id});return {status:"success",message:"Replacement queued."};
+    }
+    if(intent.key==="template-improve") {
+      history.pushState({},"",route(""));await activate(state.pipeline,{view:"",costume:state.costume,templateCandidate:`${view}:${candidate.candidate_id}`});return {status:"success",message:"Template Improvement opened."};
+    }
+    const payload={expected_revision:intent.revision,expected_candidate_id:intent.expectedOccupant};
+    if(intent.key==="clear") {
+      payload.confirm_selected=board.selected_id===candidate.candidate_id&&confirm("Clear the selected candidate from this board?");
+      if(board.selected_id===candidate.candidate_id&&!payload.confirm_selected)return {status:"cancelled"};
+      if(candidate.locked)return {status:"error",message:"Unlock the candidate before clearing its slot."};
+    }
+    const endpoint=intent.key==="submit"?`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(candidate.candidate_id)}/submit`:`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(candidate.candidate_id)}/${encodeURIComponent(intent.key)}`;
+    state.mutation=true;
+    try {
+      const result=await request(api(endpoint),{method:"POST",body:JSON.stringify(payload)});
+      if(result.revision<state.detail.revision)return {status:"cancelled"};
+      state.detail=result;render();return {status:"success",message:intent.key==="lock"?"Locked and published.":"Candidate updated."};
+    } finally { state.mutation=false; }
   }
 
   function renderAuthoring() {
@@ -298,7 +362,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     renderTemplateChoices();
     $("phase-source").hidden = !["head-image", "head-image-edit"].includes(state.pipeline);
     $("assembly-source").hidden = state.pipeline !== "character-assembly";
-    $("view-source").hidden = !["body-reference", "head-image", "head-image-edit"].includes(state.pipeline) || !state.view || state.view === "FRONT";
+    $("view-source").hidden = true;
     const phaseSelect = $("source-phase");
     const phases = Array.from(document.querySelector("#phase-select").options)
       .filter((option) => option.value && option.value !== detail.scope.phase);
@@ -354,111 +418,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       if (!state.view && isHead()) void loadPhaseSourceCandidates();
       status.textContent = "Reference choice saved for new requests.";
     } catch (error) { if (error.name !== "AbortError") status.textContent = error.message; }
-  }
-
-  function review(candidateId) {
-    if (state.reviewCandidateId !== candidateId) {
-      state.reviewCompareValues = [...$("review-compare").selectedOptions].map(option => option.value);
-      $("review-pair").replaceChildren();
-      $("review-action-feedback").textContent = "";
-    }
-    const board = state.detail?.boards?.[state.view];
-    const candidate = board?.candidates?.[candidateId];
-    if (!candidate) return;
-    state.reviewCandidateId = candidateId;
-    const opposites = {FRONT_LEFT_3_4: "FRONT_RIGHT_3_4", FRONT_RIGHT_3_4: "FRONT_LEFT_3_4",
-      LEFT_PROFILE: "RIGHT_PROFILE", RIGHT_PROFILE: "LEFT_PROFILE",
-      BACK_LEFT_3_4: "BACK_RIGHT_3_4", BACK_RIGHT_3_4: "BACK_LEFT_3_4"};
-    const preferred = state.view === "FRONT"
-      ? ["FRONT_LEFT_3_4", "FRONT_RIGHT_3_4", "LEFT_PROFILE", "RIGHT_PROFILE"]
-      : ["FRONT", opposites[state.view]].filter(Boolean);
-    const choices = [];
-    for (const [view, viewBoard] of Object.entries(state.detail.boards)) {
-      const id = viewBoard.selected_id;
-      const item = id && viewBoard.candidates[id];
-      if (!item?.image_path || id === candidateId) continue;
-      choices.push({id, view, item, selected: true});
-    }
-    const priority = (choice) => {
-      const index = preferred.indexOf(choice.view);
-      return index < 0 ? preferred.length : index;
-    };
-    choices.sort((left, right) => priority(left) - priority(right));
-    const compare = $("review-compare");
-    compare.replaceChildren(...choices.map((choice) => {
-      const label = `${choice.view.replaceAll("_", " ")} · Slot ${choice.item.slot} · ${choice.item.render_mode} · Selected`;
-      const option = new Option(label, `${choice.view}:${choice.id}`);
-      return option;
-    }));
-    compare.size = Math.min(4, Math.max(2, choices.length));
-    const preserved = state.reviewCompareValues.filter(value => choices.some(choice => `${choice.view}:${choice.id}` === value));
-    if (preserved.length) {
-      for (const option of compare.options) option.selected = preserved.includes(option.value);
-    } else if (choices.length) {
-      const selectedChoice = choices.find((choice) => preferred.includes(choice.view)) || choices[0];
-      compare.value = `${selectedChoice.view}:${selectedChoice.id}`;
-    }
-    compare.disabled = choices.length === 0;
-    renderReviewComparison();
-    compare.onchange = () => {
-      state.reviewCompareValues = [...compare.selectedOptions].map(option => option.value);
-      renderReviewComparison();
-    };
-    if (!$("review").open) $("review").showModal();
-  }
-
-  function renderReviewComparison() {
-    const board = state.detail?.boards?.[state.view];
-    const candidate = board?.candidates?.[state.reviewCandidateId];
-    if (!candidate) return;
-    const focused = document.activeElement;
-    const focusedAction = $("review-actions").contains(focused) ? focused.dataset.actionKey : "";
-    const focusedInput = $("review-prompt").contains(focused) ? focused.getAttribute("href") : "";
-    const ids = board.slots.filter(Boolean);
-    const index = ids.indexOf(state.reviewCandidateId);
-    $("review-position").textContent = reviewPosition(candidate, index, ids.length, board.selected_id === state.reviewCandidateId);
-    $("review-prev").disabled = state.mutation || index === 0;
-    $("review-next").disabled = state.mutation || index === ids.length - 1;
-    $("review-copy").disabled = !candidate.prompt;
-    $("review-actions").innerHTML = renderActions({...candidate, image: Boolean(candidate.image_path)}, candidate.slot, true);
-    const luna = board.luna_review || {};
-    const rank = (luna.entries || []).findIndex(entry => entry.candidate_id === state.reviewCandidateId);
-    const assessment = rank >= 0 ? luna.entries[rank].review : "";
-    $("review-status").innerHTML = assessment
-      ? `<strong>Luna ${luna.status === "OBSOLETE" ? "previous " : ""}rank #${rank + 1}${luna.status === "OBSOLETE" ? " · Obsolete" : ""}</strong><p>${escape(assessment)}</p><details><summary>Review criteria used · ${escape(luna.recorded_at || "")}</summary><pre>${escape(luna.prompt || "")}</pre></details>`
-      : luna.status === "FAILED" ? `Luna Review failed · ${escape(luna.error || "No details available.")}`
-        : luna.status === "RUNNING" ? "Luna Review is running…" : "";
-
-    const choices = [...$("review-compare").selectedOptions].map((option) => {
-      const [view, id] = option.value.split(":");
-      const item = state.detail.boards[view]?.candidates?.[id];
-      return item?.image_path ? {view, id, item} : null;
-    }).filter(Boolean);
-    const pair = $("review-pair");
-    pair.classList.toggle("single-image", !choices.length);
-    const candidateImage = {view: state.view, id: state.reviewCandidateId, item: candidate};
-    const images = [candidateImage, ...choices];
-    const displayImages = [...choices, candidateImage];
-    const title = ({view, item}) => `${item === candidate ? "Candidate" : view.replaceAll("_", " ")} · Slot ${item.slot} · ${item.render_mode}`;
-    pair.innerHTML = displayImages.map(image => `<figure><header><strong>${escape(title(image))}</strong></header>
-      ${image.item.image_path ? `<img src="${escape(comparisonImageUrl(image.view, image.id))}" alt="${escape(title(image))}">`
-        : `<p>${escape(image.item.status === "FAILED" ? image.item.error || "Render failed." : "No image available yet.")}</p>`}</figure>`).join("");
-    reviewZoom.sync(`${state.view}:${state.reviewCandidateId}:${candidate.image_path || candidate.status}`);
-    const prompt = $("review-prompt");
-    const open = new Set([...prompt.querySelectorAll("details[open]")].map(details => details.dataset.promptKey));
-    prompt.innerHTML = images.map(({view, id, item}) => {
-      const key = `${view}:${id}`;
-      return `<details data-prompt-key="${escape(key)}" ${open.has(key) ? "open" : ""}><summary>${item === candidate ? "Prompt and ordered inputs" : escape(title({view, item}))}</summary>
-        <pre>${escape(item.prompt || "")}</pre>${reviewInputs(item.render_request?.inputs,
-        index => api(`/views/${view}/candidates/${id}/inputs/${index}`), escape)}</details>`;
-    }).join("");
-    window.ZetImageCardUI.scan($("review"));
-    if (focusedAction) {
-      const buttons = [...$("review-actions").querySelectorAll("button:not(:disabled)")];
-      (buttons.find(button => button.dataset.actionKey === focusedAction) || $("review-close")).focus();
-    } else if (focusedInput) {
-      [...$("review-prompt").querySelectorAll("a")].find(link => link.getAttribute("href") === focusedInput)?.focus();
-    }
   }
 
   function renderTemplateChoices() {
@@ -626,7 +585,8 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     state.sourceRequest += 1;
     state.active = false;
     stopPolling();
-    if ($("review").open) $("review").close();
+    if (sharedBoard) { sharedBoard.dispose(); sharedBoard = null; }
+
   }
 
   async function activate(pipeline, options = {}) {
@@ -641,7 +601,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       universe_id: document.querySelector("#universe-select").value,
     };
     state.pipeline = pipeline || params.get("pipeline") || "body-reference";
-    $("board-actions").innerHTML = renderBoardActions(state.detail?.boards?.[state.view]?.luna_review?.prompt);
+
     state.view = options.view ?? params.get("view") ?? "";
     state.dressingDrafts = {};
     state.costume = state.pipeline === "costume-dressing"
@@ -656,9 +616,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     state.mutation = false;
     state.detail = null;
     state.templateProposal = options.proposal || null;
-    state.originSlot = null;
-    state.reviewCandidateId = "";
-    for (const id of ["board", "outputs", "review-pair", "review-prompt", "prompt-references", "source-status", "phase-source-status", "prompt-text"]) $(id).replaceChildren();
+    for (const id of ["outputs", "source-status", "phase-source-status", "prompt-text"]) $(id).replaceChildren();
     for (const id of ["workspace", "outputs", "authoring", "template-improvement", "prompt-preview", "refresh", "costume-wrap"]) $(id).hidden = true;
     $("authoring").open = sameSourceScope && authoringWasOpen;
     $("template-improvement").open = Boolean(options.proposal || options.templateCandidate);
@@ -667,7 +625,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     state.phaseSourceFile = null;
     $("template-guidance").value = options.guidance ?? "";
     $("prompt-preview-button").disabled = false;
-    document.querySelectorAll(".candidate-board-actions button").forEach(button => { button.disabled = false; });
+
     $("title").textContent = pipelineLabels[state.pipeline] || "Character Asset Container";
     $("context").textContent = "";
     $("view-wrap").hidden = true;
@@ -731,27 +689,22 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const scope = api();
     const view = state.view;
     const signal = state.controller.signal;
-    const modal = $("review").open;
+    const modal = false;
     const buttons = [...document.querySelectorAll(".candidate-board-actions [data-board-action='render']")];
     state.mutation = true;
     buttons.forEach((button) => { button.disabled = true; });
-    const feedback = (message, error = false) => modal && $("review").open
-      ? $("review-status").textContent = message : show(message, error);
+    const feedback = (message, error = false) => show(message, error);
     feedback("Preparing render…");
-    if (modal) renderReviewComparison();
     try {
       const result = await request(api(`/views/${encodeURIComponent(view)}/generate`), {
         method: "POST", body: JSON.stringify({count, render_mode: renderMode,
-          aspect_ratio: $("aspect").value, expected_revision: state.detail.revision,
+          aspect_ratio: state.aspectRatio, expected_revision: state.detail.revision,
           apply_phase_change: isHead() && view === "FRONT" && $("apply-phase-change").checked,
           costume_settings: savedDressingSettings(), ...replacement}),
       });
       if (signal.aborted || scope !== api() || view !== state.view || result.revision < state.detail.revision) return;
       state.detail = result;
       render();
-      if (modal && $("review").open && replacement.slot) {
-        review(result.boards[view].slots[replacement.slot - 1]);
-      }
       feedback("Render slots updated.");
     } catch (error) {
       if (!signal.aborted && scope === api() && view === state.view) {
@@ -762,7 +715,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
       if (!signal.aborted) {
         state.mutation = false;
         buttons.forEach((button) => { button.disabled = false; });
-        if ($("review").open) renderReviewComparison();
       }
     }
   }
@@ -789,30 +741,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     finally { if (!signal.aborted) button.disabled = false; }
   }
 
-  $("board-actions").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-board-action]");
-    if (!button || state.mutation || !state.detail || !state.view) return;
-    if (button.dataset.boardAction === "luna-review") {
-      void request(api(`/views/${encodeURIComponent(state.view)}/luna-review`), {method: "POST", body: "{}"})
-        .then(async result => {
-          if (!state.active || !state.view) return;
-          state.detail.boards[state.view].luna_review = result;
-          showReviewStatus(result);
-          renderBoard();
-          startPolling();
-          await loadDetail();
-          showReviewStatus(state.detail?.boards?.[state.view]?.luna_review);
-        })
-        .catch(error => show(error.message, true));
-      return;
-    }
-    if (button.dataset.boardAction === "render") {
-      void generate(Number(button.dataset.count), button.dataset.mode);
-      return;
-    }
-    void bulkBoardAction(button);
-  });
-
   async function bulkBoardAction(button) {
     const action = button.dataset.boardAction;
     const endpoint = action === "delete-drafts" ? "delete-drafts" : "delete-non-selected";
@@ -820,7 +748,7 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const prompt = action === "delete-drafts"
       ? "Delete all Draft candidates in this view? Approve each selected or locked candidate affected."
       : "Clear every candidate except selected or locked candidates in this view?";
-    const controls = [...$("board-actions").querySelectorAll("button")];
+    const controls = [];
     controls.forEach(control => { control.disabled = true; });
     state.mutation = true;
     show("Reviewing candidates to delete…");
@@ -844,25 +772,13 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
         confirmation_token: preview.confirmation_token, expected_revision: preview.revision,
         approved_effects: approved,
       })});
-      const previous = state.detail.boards[state.view];
-      const removedReviewCandidate = previous.candidates[state.reviewCandidateId] &&
-        !result.boards[state.view].candidates[state.reviewCandidateId];
-      const previousSlot = previous.candidates[state.reviewCandidateId]?.slot || state.originSlot || 1;
       state.detail = result;
       render();
-      if ($("review").open) {
-        if (removedReviewCandidate) {
-          const slots = result.boards[state.view].slots;
-          const next = slots.slice(previousSlot).find(Boolean) || slots.slice(0, previousSlot - 1).reverse().find(Boolean);
-          if (next) review(next); else $("review").close();
-        } else renderReviewComparison();
-      }
       show(`${candidates.length} candidate slot${candidates.length === 1 ? "" : "s"} cleared.`);
     } catch (error) { reportError(error); }
     finally {
       state.mutation = false;
       controls.forEach(control => { control.disabled = false; });
-      if ($("review").open) renderReviewComparison();
     }
   }
   $("prompt-preview-button").addEventListener("click", () => void previewPrompt());
@@ -1006,132 +922,6 @@ import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPositi
     const views = {...(state.detail.sources?.views || {}), [state.view]: $("source-view").value};
     void saveSource("views", views);
   });
-  $("board").addEventListener("click", async (event) => {
-    const reviewButton = event.target.closest("[data-review]");
-    if (reviewButton) {
-      state.originSlot = state.detail.boards[state.view].candidates[reviewButton.dataset.review].slot;
-      $("review-status").textContent = "";
-      review(reviewButton.dataset.review);
-      return;
-    }
-    const improve = event.target.closest("[data-template-improve]");
-    if (improve) {
-      const candidate = `${state.view}:${improve.dataset.templateImprove}`;
-      history.pushState({}, "", route(""));
-      await activate(state.pipeline, {view: "", costume: state.costume, templateCandidate: candidate});
-      return;
-    }
-    await boardAction(event);
-  });
-
-  async function boardAction(event) {
-    const button = event.target.closest("[data-candidate-action], [data-board-action], [data-render-slot]");
-    if (!button || state.mutation || !state.detail) return;
-    const board = state.detail.boards[state.view];
-    if (button.dataset.renderSlot) {
-      const slot = Number(button.dataset.renderSlot);
-      const id = board.slots[slot - 1];
-      if (!id || confirm(`Replace slot ${slot} and delete its current candidate?`)) {
-        await generate(1, button.dataset.mode, {slot, expected_candidate_id: id});
-      }
-      return;
-    }
-    const id = button.dataset.candidate || button.dataset.candidateId;
-    const action = button.dataset.candidateAction || button.dataset.boardAction;
-    const candidate = board.candidates[id];
-    if (!candidate) return;
-    const signal = state.controller.signal;
-    const payload = {expected_revision: state.detail.revision};
-    if (action === "clear") {
-      payload.expected_candidate_id = id;
-      payload.confirm_selected = state.detail.boards[state.view].selected_id === id && confirm("Clear the selected candidate from this board?");
-      if (state.detail.boards[state.view].selected_id === id && !payload.confirm_selected) return;
-      if (candidate.locked) { show("Unlock the candidate before clearing its slot.", true); return; }
-    }
-    const scope = api();
-    const view = state.view;
-    const modal = $("review").open;
-    const feedback = modal ? $("review-action-feedback") : document.createElement("p");
-    if (!modal) {
-      button.closest("article").querySelector("p[data-slot-feedback]")?.remove();
-      feedback.dataset.slotFeedback = "";
-      feedback.setAttribute("role", "status");
-      button.closest("article").append(feedback);
-    }
-    feedback.textContent = "Working…";
-    button.disabled = true;
-    state.mutation = true;
-    try {
-      const result = await request(api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(id)}/${action}`),
-        {method: "POST", body: JSON.stringify(payload)});
-      if (signal.aborted || scope !== api() || view !== state.view || result.revision < state.detail.revision) return;
-      state.detail = result;
-      state.mutation = false;
-      render();
-      const updated = result.boards[view].candidates[id];
-      const upscaleFeedback = updated?.error || "Upscale queued.";
-      if (!modal) {
-        const card = $("board").children[candidate.slot - 1];
-        card.append(feedback);
-        feedback.textContent = action === "upscale" ? upscaleFeedback : action === "lock" ? "Locked and published." : "Slot updated.";
-        const next = [...card.querySelectorAll("button:not(:disabled)")].find(control =>
-          control.dataset.candidateAction === action || control.dataset.review === id);
-        next?.focus();
-      }
-      if (modal && $("review").open) {
-        if (action === "clear") {
-          const slots = result.boards[view].slots;
-          const next = slots.slice(candidate.slot).find(Boolean) || slots.slice(0, candidate.slot - 1).reverse().find(Boolean);
-          if (next) review(next);
-          else {
-            state.originSlot = candidate.slot;
-            $("review").close();
-          }
-        } else renderReviewComparison();
-        $("review-action-feedback").textContent = action === "upscale" ? upscaleFeedback : action === "lock" ? "Locked and published." : "Candidate updated.";
-      }
-    } catch (error) {
-      if (!signal.aborted) {
-        feedback.textContent = error.message;
-        await loadDetail().catch(() => {});
-      }
-    } finally {
-      if (!signal.aborted && state.mutation) {
-        state.mutation = false;
-        button.disabled = false;
-        if (modal && $("review").open) renderReviewComparison();
-      }
-    }
-  }
-
-  $("review-actions").addEventListener("click", boardAction);
-  function moveReview(offset) {
-    if (state.mutation) return;
-    const ids = state.detail.boards[state.view].slots.filter(Boolean);
-    const id = ids[ids.indexOf(state.reviewCandidateId) + offset];
-    if (id) review(id);
-  }
-  $("review-prev").onclick = () => moveReview(-1);
-  $("review-next").onclick = () => moveReview(1);
-  $("review").addEventListener("keydown", (event) => {
-    if (event.target.closest("select, input, textarea")) return;
-    if (event.key === "ArrowLeft") moveReview(-1);
-    if (event.key === "ArrowRight") moveReview(1);
-  });
-  $("review").addEventListener("close", () => {
-    if ($("review").open || !state.originSlot) return;
-    const card = $("board").children[state.originSlot - 1];
-    (card?.querySelector("button:not(:disabled)") || $("back")).focus();
-  });
-  $("review-copy").onclick = async () => {
-    const candidate = state.detail.boards[state.view].candidates[state.reviewCandidateId];
-    const signal = state.controller.signal;
-    try {
-      await navigator.clipboard.writeText(candidate.prompt);
-      if (!signal.aborted) $("review-status").textContent = "Prompt copied.";
-    } catch (error) { if (!signal.aborted) $("review-status").textContent = error.message; }
-  };
-  $("review-close").addEventListener("click", () => $("review").close());
   document.addEventListener("visibilitychange", () => {
     if (!pageVisible()) { stopPolling(); return; }
     if (state.active && state.scope?.phase && (state.pipeline !== "costume-dressing" || state.costume)) refresh();
