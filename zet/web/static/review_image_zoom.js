@@ -4,6 +4,7 @@
   function attach(dialog, getImages) {
     if (!dialog) return;
     const state = {scale: 1, x: .5, y: .5, key: ""};
+    const events = new AbortController();
     states.set(dialog, state);
     function prepare() {
       for (const img of getImages() || []) {
@@ -41,13 +42,20 @@
       if (x < 0 || x > 1 || y < 0 || y > 1) return;
       state.x = Math.max(0, Math.min(1, x)); state.y = Math.max(0, Math.min(1, y)); state.scale = next;
       event.preventDefault(); apply();
-    }, {passive: false});
-    dialog.addEventListener("close", () => reset(dialog));
-    dialog.addEventListener("cancel", () => reset(dialog));
+    }, {passive: false, signal: events.signal});
+    dialog.addEventListener("close", () => { if (!dialog.open) reset(dialog); }, {signal: events.signal});
     return {sync(key, resetOnChange = true) {
       if (resetOnChange && key !== state.key) { state.scale = 1; state.x = .5; state.y = .5; }
       state.key = key; apply();
-    }, reset() { reset(dialog); }};
+    }, reset() { reset(dialog); }, step(direction) {
+      if (!images().length) return;
+      state.scale = Math.max(1, Math.min(4, state.scale * 1.25 ** direction));
+      apply();
+    }, dispose() {
+      events.abort();
+      reset(dialog);
+      states.delete(dialog);
+    }};
   }
   function reset(dialog) {
     const state = states.get(dialog); if (!state) return;

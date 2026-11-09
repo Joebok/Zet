@@ -1,0 +1,526 @@
+/** Browser presentation. The subscriber owns requests and authoritative board data. */
+const escape = value => String(value ?? '').replace(/[&<>"']/g, char =>
+  ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[char]);
+const qualities = ['draft', 'final'];
+const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
+const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate'};
+const imageKey = image => JSON.stringify([image?.url, image?.version]);
+
+function button(label, command, key = '') {
+  const glyph = {copy:'copy', 'comparison-previous':'previous', 'comparison-next':'next'}[command];
+  return `<button type="button" data-command="${command}" data-key="${escape(key)}"
+    ${glyph ? `data-glyph="${glyph}" data-label="${escape(label)}"` : ''}>${escape(label)}</button>`;
+}
+
+export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapter) {
+  const events = new AbortController();
+  const listen = (node, type, handler, options = {}) =>
+    node.addEventListener(type, handler, {...options, signal: events.signal});
+  const board = document.createElement('section');
+  board.className = 'zet-candidate-board';
+  board.innerHTML = `<section aria-label="Render Controls" class="zcb-controls">
+    <h2>Render Controls</h2><div data-part="fields"></div>
+    <div data-part="toolbar"></div><div data-part="board-status"></div>
+  </section><div class="zcb-grid" data-part="grid"></div>`;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'zet-candidate-review';
+  dialog.setAttribute('aria-label', 'Review candidate');
+  dialog.innerHTML = `<header><h2 data-part="title"></h2>
+    ${button('Previous candidate','previous')}${button('Next candidate','next')}
+    ${button('Close review','close')}</header>
+    <div class="zcb-review-layout">
+      <div class="zcb-pictures"><figure data-part="comparison" hidden></figure><figure data-part="image"></figure></div>
+      <aside><div class="zcb-tools">
+        ${button('Zoom In','zoom-in')}${button('Zoom Out','zoom-out')}${button('Reset Zoom','zoom-reset')}
+        ${button('Hide review controls','rail')}
+      </div><div data-part="rail">
+        <div data-part="review-actions"></div><div data-part="review-status" role="status"></div>
+        <details><summary>Compare with</summary><div data-part="choices"></div></details>
+        <div data-part="assessment"></div><div data-part="details"></div>
+      </div></aside>
+    </div>`;
+  boardHost.append(board);
+  dialogHost.append(dialog);
+  const part = (root, name) => root.querySelector(`[data-part="${name}"]`);
+  const view = name => part(dialog, name);
+  const grid = part(board, 'grid');
+  const zoom = window.ZetReviewImageZoom.attach(dialog, () => [...dialog.querySelectorAll('.zcb-pictures img')]);
+  const cards = new Map();
+  const imageErrors = new WeakMap();
+  const pending = new Set();
+  const feedback = new Map();
+  const failedComparisons = new Set();
+  let model, candidateId, origin, originSlot, chosen, activeComparison;
+  let scopeEpoch = 0, reviewEpoch = 0;
+  let disposed = false;
+
+  function patch(node, html) {
+    if (node.dataset.markup === html) return;
+    const focused = document.activeElement;
+    const token = node.contains(focused) && [focused.dataset.command, focused.dataset.key, focused.name, focused.tagName];
+    const open = node.querySelector('details')?.open;
+    node.innerHTML = html;
+    node.dataset.markup = html;
+    if (open && node.querySelector('details')) node.querySelector('details').open = true;
+    if (token) [...node.querySelectorAll('button,input,select,textarea,summary')].find(control =>
+      control.dataset.command === token[0] && control.dataset.key === token[1] && control.name === token[2] &&
+      control.tagName === token[3]
+    )?.focus({preventScroll:true});
+  }
+
+  function decorate(root) {
+    for (const control of root.querySelectorAll('[data-glyph]')) {
+      window.ZetImageCardUI.decorate(control, control.dataset.glyph, control.dataset.label);
+    }
+  }
+
+  const notify = (type, data = {}) => adapter.onEvent?.({type, scopeKey:model.scope.key, candidateId, ...data});
+  const slotFor = id => model.slots.find(slot => slot.candidate?.id === id);
+  const reviewable = () => model.slots.filter(slot => slot.candidate && slot.candidate.reviewable !== false);
+  const command = name => dialog.querySelector(`[data-command="${name}"]`);
+  const scopeActions = (slot, surface) => (slot ? slot.actions : model.actions || [])
+    ?.filter(action => !action.placement || action.placement.includes(surface)) || [];
+  const pendingKey = (key, slot) => JSON.stringify([slot?.key, slot?.candidate?.id, key]);
+
+  function boardActions() {
+    const controls = model.renderControls || {};
+    const empty = model.slots.filter(slot => !slot.candidate).length;
+    const render = qualities.flatMap(mode => [1, 4].map(count => {
+      const key = `render-${mode}-${count}`;
+      const readiness = controls.readiness?.[key] || controls.readiness?.[mode];
+      return {key, mode, count, label:`${mode === 'draft' ? 'Draft' : 'Final'} ${count}`,
+        disabledReason: empty < count ? `Requires ${count} empty slots.` : readiness};
+    }));
+    return [...scopeActions(null, 'controls').filter(action => action.group === 'prompt'), ...render,
+      ...scopeActions(null, 'controls').filter(action => action.group !== 'prompt')];
+  }
+
+  function actionMarkup(action, slot) {
+    const busy = pending.has(pendingKey(action.key, slot));
+    const reason = action.disabledReason || (busy ? 'Working…' : '');
+    const glyph = action.glyph || glyphs[action.key] || (actionOrder.includes(action.key) ? action.key : '');
+    return `<span class="zcb-action"><button type="button" data-command="action" data-key="${escape(action.key)}"
+      class="${escape(action.role || '')}" data-quality="${escape(action.mode)}"
+      ${glyph ? `data-glyph="${escape(glyph)}" data-label="${escape(action.label)}"` : ''}
+      ${reason ? 'disabled' : ''}>${escape(action.label)}</button>
+      ${reason ? `<small>${escape(reason)}</small>` : ''}</span>`;
+  }
+
+  function showFeedback(node, result) {
+    node.classList.toggle('error', result?.status === 'error');
+    node.textContent = result?.message || '';
+  }
+
+  function renderControls() {
+    const controls = model.renderControls || {};
+    const fields = controls.fields || [];
+    const host = part(board, 'fields');
+    patch(host, fields.length ? `<details><summary>Prompt and render settings</summary>${fields.map(field => {
+      const attrs = `name="${escape(field.key)}" ${field.disabled ? 'disabled' : ''}`;
+      const input = field.type === 'textarea' ? `<textarea ${attrs}></textarea>`
+        : field.type === 'select' ? `<select ${attrs}>${(field.options || []).map(option =>
+          `<option value="${escape(option.value)}">${escape(option.label)}</option>`).join('')}</select>`
+          : `<input ${attrs} type="${field.type === 'checkbox' ? 'checkbox' : 'text'}">`;
+      return `<label>${escape(field.label)}${input}</label>`;
+    }).join('')}</details>` : '');
+    for (const field of fields) {
+      const control = [...host.querySelectorAll('[name]')].find(input => input.name === field.key);
+      if (control === document.activeElement) continue;
+      if (field.type === 'checkbox') control.checked = Boolean(field.value);
+      else if (control.value !== String(field.value ?? '')) control.value = field.value ?? '';
+    }
+    const actions = boardActions();
+    const toolbar = part(board, 'toolbar');
+    patch(toolbar, `<div class="zcb-tools">${actions.filter(action => action.group !== 'bulk').map(action => actionMarkup(action)).join('')}
+      <div class="zcb-bulk">${actions.filter(action => action.group === 'bulk').map(action => actionMarkup(action)).join('')}</div></div>`);
+    decorate(toolbar);
+    const status = part(board, 'board-status');
+    patch(status, `<p role="status">${escape(controls.promptStatus)}</p><p role="status">${escape(controls.renderStatus)}</p>
+      <p role="status">${escape(model.lunaReview?.error || model.lunaReview?.status)}</p>
+      ${model.lunaReview?.criteria ? `<details><summary>Review criteria</summary><pre>${escape(model.lunaReview.criteria)}</pre></details>` : ''}
+      <div role="status" data-feedback="prompt"></div><div role="status" data-feedback="render"></div>
+      <div role="status" data-feedback="luna"></div><div role="status" data-feedback="bulk"></div>`);
+    for (const node of status.querySelectorAll('[data-feedback]')) showFeedback(node, feedback.get(node.dataset.feedback));
+  }
+
+  function renderImage(host, image, fallback, onError) {
+    const key = JSON.stringify([imageKey(image), image ? null : fallback]);
+    if (host.dataset.imageKey === key) {
+      const img = host.querySelector('img');
+      if (img && img.alt !== (image.label || '')) img.alt = image.label || '';
+      return;
+    }
+    host.dataset.imageKey = key;
+    host.replaceChildren();
+    const placeholder = document.createElement('span');
+    placeholder.className = 'zcb-placeholder';
+    placeholder.textContent = image ? 'Image unavailable' : fallback;
+    placeholder.hidden = Boolean(image);
+    host.append(placeholder);
+    if (!image) return;
+    const img = document.createElement('img');
+    img.alt = image.label || '';
+    imageErrors.set(img, () => {
+      img.hidden = true;
+      placeholder.hidden = false;
+      onError?.();
+    });
+    if (!dialog.contains(host)) img.loading = 'lazy';
+    img.src = image.url;
+    host.append(img);
+  }
+
+  for (const root of [board, dialog]) listen(root, 'error', event => imageErrors.get(event.target)?.(), {capture:true});
+  listen(dialog, 'load', syncZoom, {capture:true});
+
+  function statusText(candidate) {
+    if (!candidate) return 'Empty';
+    const rank = model.lunaReview?.entries?.[candidate.id]?.rank;
+    return [candidate.quality === 'final' ? 'Final' : 'Draft', candidate.status,
+      Number.isInteger(candidate.elapsedSeconds) ? `${candidate.elapsedSeconds}s` : '',
+      candidate.id === model.selectedId ? 'Selected' : '', candidate.locked ? 'Locked' : '',
+      rank ? `Luna ${model.lunaReview.status === 'OBSOLETE' ? 'previous ' : ''}#${rank}` : ''].filter(Boolean).join(' · ');
+  }
+
+  function candidateActions(slot, surface) {
+    const order = key => actionOrder.includes(key) ? actionOrder.indexOf(key) : actionOrder.length - 2.5;
+    return scopeActions(slot, surface).slice().sort((left, right) => order(left.key) - order(right.key))
+      .map(action => actionMarkup(action, slot)).join('');
+  }
+
+  function renderGrid() {
+    for (const [key, card] of cards) {
+      if (!model.slots.some(slot => slot.key === key)) { card.remove(); cards.delete(key); }
+    }
+    model.slots.forEach((slot, index) => {
+      let card = cards.get(slot.key);
+      if (!card) {
+        card = document.createElement('article');
+        card.dataset.slot = slot.key;
+        card.innerHTML = `<h3></h3><button type="button" data-command="open" class="zcb-thumbnail"></button>
+          <p data-part="state"></p><p data-part="notice"></p><div class="zcb-tools" data-part="actions"></div>
+          <div role="status" data-part="feedback"></div>`;
+        cards.set(slot.key, card);
+      }
+      if (grid.children[index] !== card) grid.insertBefore(card, grid.children[index] || null);
+      const candidate = slot.candidate;
+      const label = `Review slot ${index + 1}`;
+      const canReview = candidate && candidate.reviewable !== false;
+      card.querySelector('h3').textContent = `Slot ${index + 1}`;
+      card.classList.toggle('is-selected', Boolean(candidate && candidate.id === model.selectedId));
+      const preview = card.querySelector('.zcb-thumbnail');
+      preview.setAttribute('aria-label', label);
+      preview.disabled = !canReview;
+      renderImage(preview, candidate?.thumbnail || candidate?.image, candidate ? 'No image available' : 'Empty slot');
+      part(card, 'state').textContent = statusText(candidate);
+      part(card, 'notice').textContent = [candidate?.error, ...(candidate?.notices || [])].filter(Boolean).join(' · ');
+      const actions = part(card, 'actions');
+      patch(actions, `${canReview ? `<button type="button" data-command="open" data-glyph="review" data-label="${label}">${label}</button>` : ''}
+        ${candidateActions(slot, 'card')}`);
+      decorate(actions);
+      showFeedback(part(card, 'feedback'), feedback.get(pendingKey('card', slot)));
+    });
+  }
+
+  function comparisons() {
+    const selected = slotFor(model.selectedId)?.candidate;
+    const options = selected?.image ? [{key:`selected:${selected.id}`, label:'Selected candidate', image:selected.image}] : [];
+    const seen = new Set(options.map(option => imageKey(option.image)));
+    for (const option of model.comparisons || []) {
+      const key = imageKey(option.image);
+      if (option.image && !seen.has(key)) { options.push(option); seen.add(key); }
+    }
+    return options;
+  }
+
+  function syncZoom() {
+    if (dialog.open) zoom.sync(JSON.stringify([candidateId, imageKey(slotFor(candidateId)?.candidate?.image)]));
+  }
+
+  function renderReview() {
+    const slot = slotFor(candidateId);
+    if (!dialog.open || !slot) return;
+    const candidate = slot.candidate;
+    const list = reviewable();
+    const position = list.indexOf(slot);
+    const slotNumber = model.slots.indexOf(slot) + 1;
+    view('title').textContent = [model.scope.title, model.scope.view, `Slot ${slotNumber} · ${position + 1} of ${list.length}`, statusText(candidate)].filter(Boolean).join(' · ');
+    command('previous').disabled = position <= 0;
+    command('next').disabled = position >= list.length - 1;
+    const options = comparisons();
+    const defaults = model.comparisonDefaults || [];
+    const keys = chosen ?? defaults.filter(key => key !== `selected:${candidateId}`);
+    const selected = options.filter(option => keys.includes(option.key) && !failedComparisons.has(imageKey(option.image)));
+    if (!selected.some(option => option.key === activeComparison)) activeComparison = selected[0]?.key;
+    const compare = selected.find(option => option.key === activeComparison);
+    const comparison = view('comparison');
+    comparison.hidden = !compare;
+    renderImage(comparison, compare?.image, '', () => {
+      failedComparisons.add(imageKey(compare.image));
+      renderReview();
+    });
+    if (compare) {
+      let caption = comparison.querySelector('figcaption');
+      if (!caption) {
+        caption = document.createElement('figcaption');
+        comparison.append(caption);
+      }
+      caption.textContent = compare.label;
+    }
+    renderImage(view('image'), candidate.image, candidate.error || 'No image available');
+    syncZoom();
+    const choices = view('choices');
+    patch(choices, `${button('No comparison','no-comparison')}
+      ${!options.some(option => option.key.startsWith('selected:')) ? '<p>No selected image available.</p>' : ''}
+      ${options.map(option => {
+        const failed = failedComparisons.has(imageKey(option.image));
+        return `<label><input type="checkbox" name="${escape(option.key)}" data-comparison
+          ${keys.includes(option.key) && !failed ? 'checked' : ''} ${failed ? 'disabled' : ''}>
+          ${escape(option.label)}${failed ? ' · Image unavailable' : ''}</label>`;
+      }).join('')}
+      ${compare ? `<p>${escape(compare.label)}</p>` : ''}
+      ${selected.length > 1 ? button('Previous comparison','comparison-previous') + button('Next comparison','comparison-next') : ''}`);
+    decorate(choices);
+    const actions = view('review-actions');
+    patch(actions, `<div class="zcb-tools">${candidateActions(slot, 'review')}</div>`);
+    decorate(actions);
+    showFeedback(view('review-status'), feedback.get(pendingKey('review', slot)));
+    const assessment = model.lunaReview?.entries?.[candidate.id];
+    patch(view('assessment'), `${assessment ? `<h3>Luna ${model.lunaReview.status === 'OBSOLETE' ? 'previous ' : ''}rank ${escape(assessment.rank)}</h3><p>${escape(assessment.assessment)}</p>` : ''}
+      <p>${escape(model.lunaReview?.error || model.lunaReview?.status)}</p>
+      ${candidate.humanAssessment ? `<p>Human assessment · ${escape(candidate.humanAssessment)}</p>` : ''}`);
+    const details = view('details');
+    patch(details, `<details><summary>Prompt and ordered inputs</summary>
+      ${candidate.prompt ? button('Copy prompt','copy') : ''}<pre>${escape(candidate.prompt || 'Prompt not recorded')}</pre>
+      ${candidate.negativePrompt ? `<p>Negative prompt</p><pre>${escape(candidate.negativePrompt)}</pre>` : ''}
+      <ol>${(candidate.inputs || []).map(input => `<li>${input.url ? `<a href="${escape(input.url)}">${escape(input.label)}</a>` : escape(input.label)}</li>`).join('')}</ol>
+      ${(candidate.provenance || []).map(line => `<p>${escape(line)}</p>`).join('')}</details>
+      <p>${escape((candidate.notices || []).join(' · '))}</p>`);
+    decorate(details);
+  }
+
+  function render() {
+    renderControls();
+    renderGrid();
+    renderReview();
+  }
+
+  function changeCandidate(id) {
+    candidateId = id;
+    reviewEpoch++;
+    const disclosure = view('details').querySelector('details');
+    if (disclosure) disclosure.open = false;
+    view('rail').parentElement.scrollTop = 0;
+    renderReview();
+  }
+
+  async function canLeave(nextId) {
+    const epoch = reviewEpoch;
+    const scope = scopeEpoch;
+    const current = () => !disposed && scope === scopeEpoch && epoch === reviewEpoch;
+    try {
+      const allowed = await adapter.beforeReviewLeave?.({scopeKey:model.scope.key, candidateId, nextId});
+      return current() && allowed !== false;
+    } catch (error) {
+      if (current()) {
+        feedback.set(pendingKey('review', slotFor(candidateId)), {status:'error', message:error.message || String(error)});
+        renderReview();
+      }
+      return false;
+    }
+  }
+
+  async function openReview(id, from) {
+    if (disposed || !reviewable().some(slot => slot.candidate.id === id)) return;
+    if (dialog.open) {
+      if (candidateId !== id && await canLeave(id) && reviewable().some(slot => slot.candidate.id === id)) {
+        changeCandidate(id);
+        notify('candidate-change');
+      }
+      return;
+    }
+    origin = from || document.activeElement;
+    originSlot = slotFor(id).key;
+    dialog.showModal();
+    changeCandidate(id);
+    command('close').focus();
+    notify('review-open');
+  }
+
+  function moveReview(direction) {
+    if (!dialog.open) return;
+    const list = reviewable();
+    const next = list[list.indexOf(slotFor(candidateId)) + direction];
+    if (next) return openReview(next.candidate.id);
+  }
+
+  function finishReview(restoreFocus = true) {
+    if (!dialog.open) return;
+    dialog.close();
+    zoom.reset();
+    reviewEpoch++;
+    notify('review-close');
+    candidateId = undefined;
+    if (restoreFocus) {
+      const card = cards.get(originSlot);
+      const matchingControl = [...(card?.querySelectorAll('button:not(:disabled)') || [])].find(control =>
+        control.dataset.command === origin?.dataset.command && control.dataset.key === origin?.dataset.key &&
+        control.dataset.glyph === origin?.dataset.glyph);
+      const fallback = matchingControl || card?.querySelector('button:not(:disabled)') ||
+        board.querySelector('button:not(:disabled)');
+      (origin?.isConnected && !origin.disabled ? origin : fallback)?.focus({preventScroll:true});
+    }
+    origin = originSlot = undefined;
+  }
+
+  async function closeReview() {
+    if (dialog.open && await canLeave(undefined)) finishReview();
+  }
+
+  function setComparisons(keys) {
+    if (disposed) return;
+    chosen = [...keys];
+    activeComparison = undefined;
+    renderReview();
+    notify('comparison-change', {keys:chosen.slice(), activeKey:activeComparison});
+  }
+
+  function moveComparison(direction) {
+    const keys = [...view('choices').querySelectorAll('[data-comparison]:checked')].map(input => input.name);
+    activeComparison = keys[(keys.indexOf(activeComparison) + direction + keys.length) % keys.length];
+    renderReview();
+    notify('comparison-change', {keys, activeKey:activeComparison});
+  }
+
+  async function invoke(control, surface, slot) {
+    const actions = surface === 'controls' ? boardActions() : scopeActions(slot, surface);
+    const action = actions.find(item => item.key === control.dataset.key);
+    if (!action) return;
+    const key = pendingKey(action.key, slot);
+    if (pending.has(key)) return;
+    const epoch = scopeEpoch;
+    const review = reviewEpoch;
+    const target = surface === 'controls' ? action.group || (action.key === 'luna-review' ? 'luna' : 'render')
+      : pendingKey(surface, slot);
+    const intent = {key:action.key, origin:surface, scopeKey:model.scope.key, revision:model.revision,
+      candidateId:slot?.candidate?.id, slotKey:slot?.key, expectedOccupant:slot ? slot.candidate?.id ?? null : undefined,
+      mode:action.mode, count:action.count, value:action.value,
+      fields:Object.fromEntries([...part(board, 'fields').querySelectorAll('[name]')].map(field =>
+        [field.name, field.type === 'checkbox' ? field.checked : field.value]))};
+    pending.add(key);
+    feedback.set(target, {message:`${action.label}…`});
+    render();
+    let result;
+    try { result = await adapter.onAction(intent); }
+    catch (error) { result = {status:'error', message:error.message || String(error)}; }
+    if (disposed || epoch !== scopeEpoch) return;
+    pending.delete(key);
+    if (result?.status === 'cancelled') feedback.delete(target);
+    else feedback.set(target, result);
+    render();
+    if (result?.status === 'success' && result.reviewCandidateId && dialog.open && review === reviewEpoch) {
+      await openReview(result.reviewCandidateId);
+    }
+  }
+
+  listen(board, 'click', event => {
+    const control = event.target.closest('button[data-command]');
+    if (!control || control.disabled) return;
+    const card = control.closest('[data-slot]');
+    const slot = card && model.slots.find(item => String(item.key) === card.dataset.slot);
+    if (control.dataset.command === 'open') void openReview(slot.candidate.id, control);
+    if (control.dataset.command === 'action') void invoke(control, card ? 'card' : 'controls', slot);
+  });
+  listen(part(board, 'fields'), 'input', event => {
+    const {name, type, checked, value} = event.target;
+    adapter.onEdit?.({scopeKey:model.scope.key, field:name, value:type === 'checkbox' ? checked : value});
+  });
+  listen(dialog, 'change', event => {
+    if (event.target.matches('[data-comparison]')) {
+      setComparisons([...view('choices').querySelectorAll('[data-comparison]:checked')].map(input => input.name));
+    }
+  });
+  listen(dialog, 'click', async event => {
+    const control = event.target.closest('button[data-command]');
+    if (!control || control.disabled) return;
+    switch (control.dataset.command) {
+      case 'previous': return moveReview(-1);
+      case 'next': return moveReview(1);
+      case 'close': return closeReview();
+      case 'action': return invoke(control, 'review', slotFor(candidateId));
+      case 'no-comparison': return setComparisons([]);
+      case 'comparison-previous': return moveComparison(-1);
+      case 'comparison-next': return moveComparison(1);
+      case 'zoom-in': return zoom.step(1);
+      case 'zoom-out': return zoom.step(-1);
+      case 'zoom-reset': return zoom.reset();
+      case 'rail':
+        view('rail').hidden = !view('rail').hidden;
+        control.textContent = view('rail').hidden ? 'Show review controls' : 'Hide review controls';
+        return;
+      case 'copy': {
+        const slot = slotFor(candidateId);
+        const epoch = scopeEpoch;
+        const key = pendingKey('review', slot);
+        try {
+          await navigator.clipboard.writeText(slot.candidate.prompt);
+          if (!disposed && epoch === scopeEpoch) feedback.set(key, {message:'Prompt copied.'});
+        } catch (error) {
+          if (!disposed && epoch === scopeEpoch) feedback.set(key, {status:'error', message:error.message});
+        }
+        return renderReview();
+      }
+    }
+  });
+  listen(dialog, 'cancel', event => { event.preventDefault(); void closeReview(); });
+  listen(dialog, 'keydown', event => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+        event.target.closest('input,select,textarea,[contenteditable],[data-part="choices"]')) return;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      void moveReview(event.key === 'ArrowLeft' ? -1 : 1);
+    }
+  });
+
+  function update(next) {
+    if (disposed) return;
+    const oldIndex = model?.slots.indexOf(slotFor(candidateId)) ?? -1;
+    if (model && model.scope.key !== next.scope.key) {
+      finishReview(false);
+      scopeEpoch++;
+      chosen = activeComparison = undefined;
+      failedComparisons.clear();
+      pending.clear();
+      feedback.clear();
+      cards.clear();
+      grid.replaceChildren();
+      patch(part(board, 'fields'), '');
+      view('rail').hidden = false;
+      command('rail').textContent = 'Hide review controls';
+    }
+    model = next;
+    if (dialog.open && !reviewable().includes(slotFor(candidateId))) {
+      const available = reviewable();
+      const replacement = available.find(slot => model.slots.indexOf(slot) >= oldIndex) || available.at(-1);
+      if (replacement) { changeCandidate(replacement.candidate.id); notify('candidate-change'); }
+      else finishReview();
+    }
+    render();
+  }
+
+  for (const [name, glyph] of [['previous','previous'], ['next','next'], ['close','close']]) {
+    const control = command(name);
+    window.ZetImageCardUI.decorate(control, glyph, control.textContent);
+  }
+  update(initialModel);
+  return {update, openReview, moveReview, closeReview, setComparisons, resetZoom:() => zoom.reset(),
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      finishReview(false);
+      events.abort();
+      zoom.dispose();
+      board.remove();
+      dialog.remove();
+    }};
+}

@@ -166,6 +166,9 @@ passes data and action handlers through the component API.
 
 ### Methods and events
 
+See the [subscriber guide](CANDIDATE_BOARD_INTEGRATION.md) for the JavaScript
+model, action intents, and polling example.
+
 | Interface | Behavior |
 | --- | --- |
 | `mount({boardHost, dialogHost}, model, adapter)` | Render the initial model in the two hosts, attach handlers once, and return the board instance. |
@@ -174,7 +177,7 @@ passes data and action handlers through the component API.
 | `openReview(candidateId, origin)` / `moveReview(direction)` / `closeReview()` | Shared review lifecycle. Apply candidate eligibility, draft guard, focus return, and navigation rules. Expose review-open, candidate-change, and review-close notifications for host integrations. |
 | `setComparisons(keys)` / `resetZoom()` | Shared viewer state. Emit comparison changes for interested consumers. These are local presentation actions. |
 | `onAction(intent)` | Async adapter callback for prompt, render, candidate, assessment, and bulk actions. Include the action key, board scope/freshness, origin surface, and applicable candidate ID, slot key, expected occupant, mode/count, or edited value. A board render has no candidate ID. A slot replacement carries its observed occupant. |
-| Action outcome | The page controller applies authoritative action results through `update(model)`, the same entry point used for polling. The callback returns a structured success or error message and may suggest a review target after explicit replacement. The component shows feedback in the initiating surface while its context is current. On conflict, the page refreshes the relevant model and the component shows the reason. |
+| Action outcome | The page controller applies authoritative action results through `update(model)`, the same entry point used for polling. The callback returns a structured success or error message and may suggest a review target after explicit replacement. The component displays errors immediately in the initiating surface. Any refresh on error follows the workflow's existing behavior. |
 
 ### Polling and updates
 
@@ -205,8 +208,8 @@ returning to an idle board. Card and dialog elements are owned by the
 component. The public events report user interactions such as opening a
 review or choosing a comparison. Poll results enter through `update(model)`.
 
-Treat field and event names as the proposed JavaScript interface. Keep one
-normalized contract and reuse compatible backend endpoints. The adapter maps each
+Use the normalized JavaScript interface and reuse compatible backend endpoints.
+The adapter maps each
 action to the real workflow and can intercept draft navigation, gather extra
 input, or run protected-effect confirmation. Services remain authoritative for
 membership, ownership, eligibility, attempt fencing, publication, and frozen

@@ -64,3 +64,5 @@ export function reviewInputs(inputs, url, escape) {
   if (!inputs?.length) return "";
   return `<ol>${inputs.map((input, index) => `<li><a href="${escape(url(index + 1))}" target="_blank" rel="noopener">${escape(input.role || input.label || "Reference")}</a></li>`).join("")}</ol>`;
 }
+
+export {mountCandidateBoard} from "./candidate_board_component.js";

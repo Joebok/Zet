@@ -20,6 +20,11 @@ own card and review actions, the shared render/cleanup toolbar, and layout for
 Character and Narrative. Character bulk cleanup is owned by
 `CharacterAssetContainerService`; Narrative target cleanup is owned by
 `NarrativeGenerationService`.
+`candidate_board.js` also exports `mountCandidateBoard` for workflow migrations.
+`candidate_board_component.js` and `candidate_board.css` own the reusable controls,
+grid, and review modal. Subscribers supply action handlers and pass accepted
+polling results through `update(model)`. See the
+[subscriber guide](COMPONENTS/CANDIDATE_BOARD_INTEGRATION.md).
 Head Container settings in `index.html` and `character_asset_container.js` own
 FRONT upload/paste, Phase Change source selection, render-mode captions, and
 per-view Head reference choice. `CharacterAssetContainerService` resolves the

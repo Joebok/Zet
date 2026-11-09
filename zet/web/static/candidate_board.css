@@ -1,0 +1,89 @@
+.zet-candidate-board .zcb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: .75rem;
+}
+.zet-candidate-board .zcb-controls,
+.zet-candidate-board article {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  padding: .75rem;
+  min-width: 0;
+}
+.zet-candidate-board .zcb-controls { margin-bottom: .75rem; }
+.zet-candidate-board .is-selected { border-color: var(--primary); }
+.zet-candidate-board .zcb-thumbnail {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  overflow: hidden;
+}
+.zet-candidate-board .zcb-thumbnail img { width: 100%; height: 100%; object-fit: contain; }
+.zet-candidate-board .zcb-tools,
+.zet-candidate-board .zcb-bulk,
+.zet-candidate-review .zcb-tools,
+.zet-candidate-review header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: .5rem;
+}
+.zet-candidate-board .zcb-bulk { margin-inline-start: auto; }
+.zet-candidate-board .zcb-action,
+.zet-candidate-review .zcb-action { display: grid; gap: .25rem; }
+.zet-candidate-board button[data-quality="draft"] { background: var(--info); color: white; }
+.zet-candidate-board button[data-quality="final"] { background: var(--success); color: white; }
+.zet-candidate-board label,
+.zet-candidate-review label { display: block; margin-block: .4rem; }
+.zet-candidate-board pre,
+.zet-candidate-review pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.zet-candidate-board p:empty,
+.zet-candidate-review p:empty { display: none; }
+.zet-candidate-review {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: 96vw;
+  max-width: 96vw;
+  height: 94vh;
+  height: 94dvh;
+  max-height: 94dvh;
+  padding: .75rem;
+  overflow: hidden;
+}
+.zet-candidate-review[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.zet-candidate-review header { align-items: center; padding-bottom: .5rem; }
+.zet-candidate-review header h2 { flex: 1 1 16rem; margin: 0; }
+.zet-candidate-review .zcb-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(17rem, 25vw, 24rem);
+  gap: .75rem;
+  min-height: 0;
+}
+.zet-candidate-review .zcb-pictures { display: flex; gap: .5rem; min-height: 0; }
+.zet-candidate-review figure {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+}
+.zet-candidate-review aside { overflow: auto; }
+.zet-candidate-review figcaption { text-align: center; padding-top: .35rem; }
+.zet-candidate-board [hidden], .zet-candidate-review [hidden] { display: none !important; }
+@media (max-width: 800px), (max-height: 550px) {
+  .zet-candidate-review .zcb-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(120px, 1fr) minmax(100px, .65fr);
+    overflow: auto;
+  }
+}
+@media (pointer: coarse) {
+  .zet-candidate-board button, .zet-candidate-review button { min-width: 44px; min-height: 44px; }
+}
