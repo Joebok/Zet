@@ -980,12 +980,15 @@ Background collection uses the shared AI job coordinator for Character Asset Con
 ## Minor Character asset collections
 
 Each named collection has Style Alignment and five view assets. Each asset
-uses the shared eight-slot mixed-quality Candidate Board. Container settings
-edits the universe's MinorCharacter.md sections and selects the original
-Inventory image. Asset settings owns the interview, prompt and aspect ratio.
-Accepted interview proposals save to the template and report the affected fields.
+uses the shared eight-slot mixed-quality Candidate Board. The overview and
+container show locked images and link to all six boards. Container Settings
+edits the shared sections of MinorCharacter.md and selects the original
+Inventory image. Each board owns the interview, prompt, aspect ratio and render
+controls. Interviews start fresh from saved inputs, and accepted proposals save
+to the relevant section of the same template.
 
-Choose an Inventory image in Container settings and click **Run Intake** to
+Choose an Inventory image in Container Settings and click **Run Intake** under
+**Template Improvement** to
 fill blank Appearance, Framing, and Directions fields with observations from
 that image. Intake saves supported observations to the template and leaves
 existing entries and intentional changes in place. It can run before a

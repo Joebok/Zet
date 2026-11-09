@@ -2,6 +2,7 @@
 from copy import deepcopy
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import random
 from uuid import uuid4
@@ -12,6 +13,7 @@ from zet.services.atomic_file_service import write_bytes_atomic
 from zet.services.image_production_service import ImageProductionService
 from zet.services.image_render_request import ImageRenderRequest, draft_upscale_request, verify_upscale_output
 from zet.services.image_sizing_service import resolve_image_sizing
+from zet.services.image_thumbnail_service import ImageThumbnailService
 from zet.services.local_render_backend_service import LocalRenderBackendService
 from zet.services.protected_effect_preview import ProtectedEffectsChanged
 from zet.services.quick_character_wizard_service import (
@@ -89,6 +91,56 @@ class MinorCharacterService(QuickCharacterWizardService):
             rows.append({"character_id": path.parent.name, "name": sections["NAME"]})
         return sorted(rows, key=lambda row: row["name"].casefold())
 
+    def list_collections(self):
+        rows = self.list_characters()
+        for row in rows:
+            sid = row["character_id"]
+            path = self._path(sid)
+            value = empty_collection(sid)
+            if path.is_file() or path.with_suffix(".inventory-journal").is_file():
+                try:
+                    with self._lock(sid):
+                        value = self._read(sid)
+                except (OSError, ValueError):
+                    pass
+            row["assets"] = self._asset_summaries(value)
+        return rows
+
+    @staticmethod
+    def _locked_candidate(board):
+        cid = board.get("selected_id")
+        item = board["candidates"].get(cid)
+        if cid in board["slots"] and item and item.get("locked") and item.get("image"):
+            return item
+        return None
+
+    def _asset_summaries(self, value):
+        assets = []
+        sid = value["session_id"]
+        for view, label in VIEWS.items():
+            board = value["boards"].get(view)
+            item = self._locked_candidate(board) if board else None
+            asset = {"view": view, "label": label}
+            if item:
+                asset.update(
+                    thumbnail_url=f"/api/minor-characters/{sid}/assets/{view}/locked-thumbnail/{item['id']}",
+                    render_mode=item["render_mode"],
+                )
+            assets.append(asset)
+        return assets
+
+    def locked_thumbnail(self, sid, view, cid):
+        with self._lock(sid):
+            item = self._locked_candidate(self._board(self._read(sid), view))
+            if not item or item["id"] != cid:
+                raise MinorCharacterNotFound("No matching locked image.")
+            source = self._owned_file(sid, item["image_path"])
+            runtime = self.app.config.runtime_root or Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache") / "Zet"
+            try:
+                return ImageThumbnailService(Path(runtime) / "cache" / "minor-character-thumbnails").create(source)
+            except OSError as exc:
+                raise MinorCharacterNotFound("The locked preview is unavailable.") from exc
+
     def create_character(self, data):
         name = self._name(data.get("name"))
         with file_lock(self.root / "names.lock"):
@@ -110,7 +162,8 @@ class MinorCharacterService(QuickCharacterWizardService):
         sid = value["session_id"]
         _, digest, sections, _ = self._template(sid)
         public.update(name=sections["NAME"], template_hash=digest,
-                      fields={field: sections[key] for field, key in SHARED.items()}, source=None)
+                      fields={field: sections[key] for field, key in SHARED.items()}, source=None,
+                      assets=self._asset_summaries(value))
         if intake := value.get("intake_job"):
             public["intake_job"] = {key: intake[key] for key in
                 ("id", "status", "error", "applied_fields", "saved_template_hash") if key in intake}
@@ -435,6 +488,11 @@ class MinorCharacterService(QuickCharacterWizardService):
                     "candidates": {cid: row["status"] for cid, row in board["candidates"].items()},
                     "text": board.get("text_job", {}).get("status"),
                     "review": board.get("luna_review", {}).get("status")}
+
+    def intake_progress(self, sid):
+        with self._lock(sid):
+            value = self._read(sid)
+            return {"revision": value["revision"], "status": value.get("intake_job", {}).get("status")}
 
     def collect_background(self, ask_id, ask):
         owner = ask["image_production"]

@@ -11,11 +11,16 @@ revisions reach the template after review and explicit application.
 
 ## Source intake (2026-11-08)
 
-The explicit Container settings action authorizes filling blank shared fields
+The explicit Template Improvement action on the container authorizes filling blank shared fields
 from the frozen Inventory source. Completion compares the current source and
 template with the request inputs before writing. This keeps intake observations
 in the shared template and reserves intentional changes for the existing Style
 Alignment interview and review.
+
+The overview and container link to the six Candidate Boards and preview their
+locked outputs. Interviews, prompt editing, and renders live on the individual
+boards. Each interview starts from the current template, and accepted proposals
+write to the relevant section of that template.
 
 ## Offline bootstrap
 

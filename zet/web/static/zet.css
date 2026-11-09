@@ -5663,7 +5663,11 @@ dd {
 .mc-candidates { display: flex; gap: 10px; overflow-x: auto; padding: 12px 0; }
 .mc-iteration-card { flex: 0 0 100px; display: flex; flex-direction: column; gap: 6px; }
 .mc-iteration-card .mc-candidate { flex: 1; width: 100%; }
-#mc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 16px; margin-top: 16px; }
+#mc-list { display: grid; gap: 16px; margin-top: 16px; }
+#minor-characters-page .character-container-output h4 { margin: 0 0 8px; }
+#minor-characters-page .character-container-output img { width: 100%; height: 160px; object-fit: contain; }
+#minor-characters-page .character-container-output .placeholder[hidden] { display: none; }
+#mc-board-authoring > section { margin-block: 12px; }
 .mc-list-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--border, #bbb); border-radius: 8px; background: var(--panel, #fff); }
 .mc-list-name { overflow-wrap: anywhere; }
 .mc-list-image { display: flex; align-items: center; justify-content: center; width: 100%; height: 260px; padding: 8px; box-sizing: border-box; background: var(--panel-muted, #f4f5f6); color: var(--text, #222); }

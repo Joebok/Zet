@@ -10,7 +10,8 @@ window.ZetReviewImageZoom.attach(dialog, () => [...dialog.querySelectorAll(".nar
 const escape = value => String(value ?? "").replace(/[&<>"']/g, char =>
   ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"})[char]);
 let character, universe, entryAsset, timer, reviewId;
-let view = "STYLE", busy = false, model = "", epoch = 0;
+let view = "", busy = false, model = "", epoch = 0;
+let saving;
 const edits = new Map();
 const board = () => character.boards[view];
 const base = () => "/" + character.character_id;
@@ -24,13 +25,19 @@ const api = (path, method = "GET", body) => bridge.fetchJson("/api/minor-charact
 });
 const promptDrafts = new Map();
 const promptKey = () => [universe, character?.character_id, view].join(":");
+const renderActive = status => ["SUBMITTING", "QUEUED", "RUNNING"].includes(status);
 
-function route(id) {
-  const url = new URL(location.href);
-  url.searchParams.set("page", "minor-characters");
-  if (id) url.searchParams.set("minor_character", id);
-  else url.searchParams.delete("minor_character");
-  history.replaceState(history.state, "", url);
+function routeUrl(id, assetView) {
+  const params = new URLSearchParams({page:"minor-characters"});
+  if (id) params.set("minor_character", id);
+  if (id && assetView) params.set("view", assetView);
+  const taskUniverse = new URLSearchParams(location.search).get("task_universe");
+  if (taskUniverse) params.set("task_universe", taskUniverse);
+  return "?" + params;
+}
+function route(id, assetView, replace = false) {
+  const url = routeUrl(id, assetView);
+  if (location.search !== url) history[replace ? "replaceState" : "pushState"]({}, "", url);
 }
 function message(text, error = false) {
   $("mc-message").textContent = text;
@@ -50,80 +57,145 @@ async function run(action) {
   finally { busy = false; schedule(); }
 }
 async function flush(savePrompt = false) {
+  if (saving) await saving;
   if ((!edits.size && !savePrompt) || !character || universe !== bridge.universe()) return;
+  const id = base(), key = promptKey();
   const submitted = new Map(edits);
   const data = Object.fromEntries(submitted);
   if (savePrompt) data.prompt = form.elements.namedItem("prompt").value;
-  data.view = view;
+  if (view) data.view = view;
   data.template_hash = character.template_hash;
   data.revision = character.revision;
-  const result = await api(base(), "PATCH", data);
-  for (const [key, value] of submitted) if (edits.get(key) === value) edits.delete(key);
-  if (savePrompt) promptDrafts.delete(promptKey());
-  adopt(result.character);
+  saving = (async () => {
+    const result = await api(id, "PATCH", data);
+    for (const [field, value] of submitted) if (edits.get(field) === value) edits.delete(field);
+    if (savePrompt) promptDrafts.delete(key);
+    adopt(result.character);
+  })();
+  try { await saving; }
+  finally { saving = null; }
 }
 async function change(path, data) {
+  const token = epoch;
   await flush();
+  if (token !== epoch) return;
   const result = await api(path, "POST", {...data, revision:character.revision, template_hash:character.template_hash});
-  adopt(result.character);
+  if (token === epoch) adopt(result.character);
 }
-async function open(id) {
+async function navigate(id, assetView) {
   await flush();
-  route(id);
-  view = "STYLE";
-  adopt((await api("/" + id)).character);
+  route(id, assetView);
+  await load();
+}
+function cards(id, assets) {
+  return assets.map(item => {
+    const href = escape(routeUrl(id, item.view));
+    const preview = item.thumbnail_url ? `<a data-mc-route href="${href}"><img loading="lazy" src="${escape(scoped(item.thumbnail_url))}" alt="${escape(item.label)}"></a>
+      <p><span class="narrative-render-mode-pill ${item.render_mode === "final" ? "final" : "draft"}">${item.render_mode === "final" ? "Final" : "Draft"}</span> · Locked</p>` : "";
+    return `<article class="narrative-slot character-container-output"><h4>${escape(item.label)}</h4>
+      <div data-mc-preview>${preview}</div><div class="placeholder" ${preview ? "hidden" : ""}>${preview ? "Locked image unavailable" : "No locked image"}</div>
+      <a data-mc-route class="image-card-text-control" href="${href}">Open ${escape(item.label)} Candidate Board</a></article>`;
+  }).join("");
 }
 async function load() {
   clearTimeout(timer);
-  epoch++;
+  const token = ++epoch;
   const next = bridge.universe();
   if (universe !== next) { character = null; edits.clear(); }
+  else {
+    try { await flush(); }
+    catch (error) {
+      if (token === epoch) route(character.character_id, view, true);
+      throw error;
+    }
+  }
+  if (token !== epoch) return;
   universe = next;
+  character = null;
+  view = "";
+  if (dialog.open) dialog.close();
+  reviewId = null;
+  $("mc-feedback").value = $("mc-evidence").value = "";
+  $("mc-proposals").replaceChildren();
+  message("");
   $("mc-editor").hidden = true;
-  $("mc-list-panel").hidden = false;
+  $("mc-list-panel").hidden = true;
+  const params = new URLSearchParams(location.search);
+  const id = params.get("minor_character"), requested = params.get("view");
+  let unavailable = "";
+  if (id) {
+    try {
+      const result = await api("/" + encodeURIComponent(id));
+      if (token !== epoch || next !== bridge.universe()) return;
+      if (requested && !Object.hasOwn(result.character.boards, requested)) {
+        message("That asset is unavailable. Showing its collection.", true);
+        route(id, "", true);
+      } else view = requested || "";
+      adopt(result.character);
+      schedule();
+      return;
+    } catch (error) {
+      if (token !== epoch || next !== bridge.universe()) return;
+      unavailable = error.message;
+    }
+  }
   const {characters} = await api("");
-  $("mc-list").innerHTML = characters.map(row =>
-    `<button data-open="${escape(row.character_id)}" ${row.needs_migration ? "disabled" : ""}>${escape(row.name)}${row.needs_migration ? " · Migration required" : ""}</button>`).join("");
-  const id = new URL(location.href).searchParams.get("minor_character");
-  if (id) await open(id);
-  else character = null;
-  schedule();
+  if (token !== epoch || next !== bridge.universe()) return;
+  if (unavailable) {
+    route("", "", true);
+    message(unavailable, true);
+  }
+  $("mc-list").innerHTML = characters.map(row => `<section class="control-panel">
+    <h2>${escape(row.name)}</h2><a data-mc-route href="${escape(routeUrl(row.character_id))}">Open Asset Container</a>
+    <div class="narrative-slots">${cards(row.character_id, row.assets)}</div></section>`).join("") || "<p>No Minor Characters yet.</p>";
+  $("mc-list-panel").hidden = false;
 }
 function schedule() {
   clearTimeout(timer);
   if (!character || busy || document.hidden || !page.classList.contains("active")) return;
   const current = board();
-  if (!Object.values(current.candidates).some(item => ["SUBMITTING","QUEUED","RUNNING"].includes(item.status))
-      && current.text_job?.status !== "RUNNING" && current.luna_review?.status !== "RUNNING"
-      && character.intake_job?.status !== "RUNNING") return;
-  const token = epoch, path = asset(), id = base();
+  if (view ? (!Object.values(current.candidates).some(item => renderActive(item.status))
+      && current.text_job?.status !== "RUNNING" && current.luna_review?.status !== "RUNNING")
+      : character.intake_job?.status !== "RUNNING") return;
+  const token = epoch, id = base(), path = view ? asset() + "/progress" : id + "/intake";
   timer = setTimeout(async () => {
     try {
-      const progress = await api(path + "/progress");
-      if (epoch !== token || !character || asset() !== path || busy || universe !== bridge.universe()) return;
-      if (progress.revision !== character.revision) {
+      const progress = await api(path);
+      if (epoch !== token || busy || universe !== bridge.universe() || !page.classList.contains("active")) return;
+      const settled = view
+        ? Object.values(current.candidates).some(item => renderActive(item.status) && !renderActive(progress.candidates[item.id]))
+          || (current.text_job?.status === "RUNNING" && progress.text !== "RUNNING")
+          || (current.luna_review?.status === "RUNNING" && progress.review !== "RUNNING")
+        : progress.status !== "RUNNING";
+      if (settled && progress.revision !== character.revision) {
         const {character:value} = await api(id);
-        if (epoch !== token || busy || !character || asset() !== path || universe !== bridge.universe()) return;
+        if (epoch !== token || busy || universe !== bridge.universe() || !page.classList.contains("active")) return;
         const intakeSaved = character.intake_job?.status === "RUNNING" &&
           value.intake_job?.id === character.intake_job.id &&
           value.intake_job.saved_template_hash === value.template_hash;
         if (!edits.size || value.template_hash === character.template_hash || intakeSaved) adopt(value);
       }
     } catch (error) { if (epoch === token) message(error.message, true); }
-    finally { schedule(); }
+    finally { if (epoch === token) schedule(); }
   }, 1800);
 }
 function render() {
   $("mc-editor").hidden = false;
   $("mc-list-panel").hidden = true;
   const current = board();
-  $("mc-assets").innerHTML = '<button type="button" data-list>All Minor Characters</button>' +
-    Object.entries(character.boards).map(([id, item]) =>
-      `<button type="button" data-view="${id}" aria-pressed="${view === id}">${escape(item.label)}</button>`).join("");
-  for (const [key,value] of Object.entries({...character.fields, name:character.name,
-    refinement:current.refinement, style_alignment_changes:current.style_alignment_changes ?? "", prompt:promptDrafts.get(promptKey()) ?? current.prompt_body ?? "", aspect_ratio:current.aspect_ratio})) form.elements.namedItem(key).value = edits.get(key) ?? value;
-  $("mc-style-changes").hidden = view !== "STYLE";
-  $("mc-refinement").hidden = view === "STYLE";
+  $("mc-back").href = routeUrl(view ? character.character_id : "");
+  $("mc-back").textContent = view ? "Back to Asset Container" : "All Minor Characters";
+  $("mc-title").textContent = current ? `${character.name} · ${current.label}` : character.name;
+  $("mc-container").hidden = Boolean(view);
+  $("mc-board-authoring").hidden = $("mc-board-panel").hidden = !view;
+  if (view) renderBoard(current);
+  else renderContainer();
+}
+function renderContainer() {
+  for (const [key,value] of Object.entries({...character.fields, name:character.name}))
+    form.elements.namedItem(key).value = edits.get(key) ?? value;
+  form.elements.namedItem("name").required = true;
+  $("mc-assets").innerHTML = cards(character.character_id, character.assets);
   $("mc-source-status").textContent = character.source?.label || character.source_error || "Choose an Inventory image.";
   const intake = character.intake_job;
   const hasBlankFields = Object.values(character.fields).some(value => !value.trim());
@@ -132,13 +204,22 @@ function render() {
     RUNNING: "Analyzing the source image…",
     COMPLETE: `Saved to the template: ${(intake?.applied_fields || []).join(", ")}.`,
   }[intake?.status] || "";
+  $("mc-source-image").hidden = !character.source;
+  if (character.source) $("mc-source-image").src = scoped(character.source.url);
+}
+function renderBoard(current) {
+  form.elements.namedItem("name").required = false;
+  for (const [key,value] of Object.entries({
+    refinement:current.refinement, style_alignment_changes:current.style_alignment_changes ?? "",
+    prompt:promptDrafts.get(promptKey()) ?? current.prompt_body ?? "", aspect_ratio:current.aspect_ratio}))
+    form.elements.namedItem(key).value = edits.get(key) ?? value;
+  $("mc-style-changes").hidden = view !== "STYLE";
+  $("mc-refinement").hidden = view === "STYLE";
   const evidence = $("mc-evidence"), previousEvidence = evidence.value;
   evidence.replaceChildren(new Option("None", ""), ...current.slots.filter(id => current.candidates[id]?.status === "COMPLETE")
     .map(id => new Option(`Slot ${current.candidates[id].slot}`, id)));
   if ([...evidence.options].some(option => option.value === previousEvidence)) evidence.value = previousEvidence;
   $("mc-render-prompt").textContent = current.prompt;
-  $("mc-source-image").hidden = !character.source;
-  if (character.source) $("mc-source-image").src = scoped(character.source.url);
   const style = character.boards.STYLE;
   const hasReference = view === "STYLE" ? !!character.source : !!style.candidates[style.selected_id]?.locked;
   $("mc-reference-status").textContent = hasReference
@@ -198,28 +279,38 @@ function renderReview() {
     ${item.status === "COMPLETE" ? '<button data-evidence>Interview this candidate</button>' : ""}`;
 }
 async function bulk(kind) {
+  const token = epoch;
   await flush();
+  if (token !== epoch) return;
   const path = asset() + "/bulk/" + kind;
   const preview = await api(path + "/preview","POST");
+  if (token !== epoch) return;
   const ids = await window.confirmProtectedEffects("Delete candidates?", `Clear ${preview.slots.length} candidate slots.`,
     preview.protected_effects.map(effect => ({...effect, preview_url:media(effect.candidate_id)})), "Delete");
-  if (ids === null || ids === false) return;
-  adopt((await api(path,"POST",{revision:preview.revision, approved_effects:ids})).character);
+  if (ids === null || ids === false || token !== epoch) return;
+  const result = await api(path,"POST",{revision:preview.revision, approved_effects:ids});
+  if (token === epoch) adopt(result.character);
 }
 async function setSource(source) {
+  const token = epoch;
   await flush();
-  adopt((await api(base(),"PATCH",{revision:character.revision,template_hash:character.template_hash,source})).character);
+  if (token !== epoch) return;
+  const result = await api(base(),"PATCH",{revision:character.revision,template_hash:character.template_hash,source});
+  if (token === epoch) adopt(result.character);
 }
 function author(action, extra = {}) {
   return change(asset()+"/authoring/"+action,{model,feedback:$("mc-feedback").value,candidate_id:$("mc-evidence").value,...extra});
 }
 page.addEventListener("click", event => {
+  const link = event.target.closest("a[data-mc-route]");
+  if (link && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+    event.preventDefault();
+    const params = new URL(link.href).searchParams;
+    return run(()=>navigate(params.get("minor_character"), params.get("view")));
+  }
   const button = event.target.closest("button");
   if (!button || button.disabled) return;
   const data = button.dataset;
-  if (data.open) return run(()=>open(data.open));
-  if ("list" in data) return run(async()=>{await flush(); route(""); await load();});
-  if (data.view) return run(async()=>{await flush(); view=data.view; $("mc-feedback").value=""; render();});
   if (data.review) { reviewId=data.review; renderReview(); if (!dialog.open) dialog.showModal(); return; }
   if ("applyProposals" in data) return run(()=>author("apply", {
     job_id: board().text_job.id,
@@ -238,6 +329,13 @@ page.addEventListener("click", event => {
   if (data.boardAction === "delete-non-selected") return run(()=>bulk("non-selected"));
   if (data.boardAction === "luna-review") return run(()=>author("luna-review"));
 });
+page.addEventListener("error", event => {
+  const preview = event.target.closest?.("[data-mc-preview]");
+  if (preview) {
+    preview.hidden = true;
+    preview.nextElementSibling.hidden = false;
+  }
+}, true);
 form.addEventListener("input", event => {
   if (event.target.name === "prompt") promptDrafts.set(promptKey(), event.target.value);
   else if (event.target.name) edits.set(event.target.name, event.target.value);
@@ -247,12 +345,18 @@ page.addEventListener("submit",event=>{
   event.preventDefault();
   if (event.target === form) return run(flush);
   if (event.target.id === "mc-create-form") return run(async()=>{
+    const token = epoch;
     const result=await api("","POST",{name:$("mc-new-name").value});
-    await open(result.character.character_id);
+    if (token !== epoch || !page.classList.contains("active")) return;
+    await navigate(result.character.character_id);
     if (entryAsset) { await setSource({asset_id:entryAsset.asset_id,label:entryAsset.label}); entryAsset=null; }
   });
 });
-$("mc-write").onclick=()=>run(async()=>{ await author("write-prompt"); promptDrafts.delete(promptKey()); render(); });
+$("mc-write").onclick=()=>run(async()=>{
+  const token = epoch, key = promptKey();
+  await author("write-prompt");
+  if (token === epoch) { promptDrafts.delete(key); render(); }
+});
 $("mc-intake").onclick=()=>run(()=>change(base()+"/intake",{}));
 $("mc-interview").onclick=()=>run(()=>author("interview"));
 $("mc-save-prompt").onclick=()=>run(()=>flush(true));
@@ -260,7 +364,13 @@ $("mc-model").onclick=async()=>{
   const value=await window.ZetModelPicker.open({value:model,required:["vision"],allowDefault:true});
   if (value !== null) {model=value; $("mc-model").textContent=model || "Use configured default";}
 };
-$("mc-add-reference").onclick=()=>bridge.openLibraryPicker(item=>run(()=>setSource({asset_id:item.asset_id,label:item.label})));
+$("mc-add-reference").onclick=()=>{
+  const token = epoch;
+  return bridge.openLibraryPicker(item=>{
+    if (token === epoch && page.classList.contains("active"))
+      return run(()=>setSource({asset_id:item.asset_id,label:item.label}));
+  });
+};
 $("quick-character-wizard-open").onclick=()=>run(async()=>{route(""); await bridge.activatePage("minor-characters");});
 $("quick-character-wizard-from-asset").onclick=()=>run(async()=>{
   const item=bridge.selectedAsset();
@@ -273,11 +383,20 @@ $("quick-character-wizard-from-asset").onclick=()=>run(async()=>{
   if (entryAsset) $("mc-new-name").value=item.label || "";
 });
 window.zetMinorCharacters={load:()=>load().catch(error=>message(error.message,true)),flush,
-  navigateList:async()=>{await flush();route("");},characterId:()=>character?.character_id || ""};
+  navigateList:async()=>{await flush();route("");},
+  leave:()=>{epoch++;clearTimeout(timer);},
+  characterId:()=>character?.character_id || ""};
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) clearTimeout(timer);
-  else if (character && !edits.size && page.classList.contains("active")) {
-    void run(async()=>adopt((await api(base())).character));
+  else if (!edits.size && page.classList.contains("active")) {
+    void run(async()=>{
+      if (!character) return load();
+      const token = epoch;
+      const result = await api(base());
+      if (token === epoch) adopt(result.character);
+    });
+  } else {
+    schedule();
   }
 });

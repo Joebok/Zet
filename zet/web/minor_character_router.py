@@ -27,7 +27,7 @@ def create_minor_character_router(provider):
 
     @router.get("")
     def characters():
-        return {"characters": call("list_characters")}
+        return {"characters": call("list_collections")}
 
     @router.get("/owner/{asset_id}")
     def owner(asset_id: str):
@@ -63,6 +63,14 @@ def create_minor_character_router(provider):
     @router.post("/{sid}/intake")
     def intake(sid: str, data: dict = Body(...)):
         return {"character": call("start_intake", sid, data)}
+
+    @router.get("/{sid}/intake")
+    def intake_progress(sid: str):
+        return call("intake_progress", sid)
+
+    @router.get("/{sid}/assets/{view}/locked-thumbnail/{cid}")
+    def locked_thumbnail(sid: str, view: str, cid: str):
+        return FileResponse(call("locked_thumbnail", sid, view, cid), headers={"Cache-Control": "no-store"})
 
     @router.get("/{sid}/assets/{view}/progress")
     def progress(sid: str, view: str):

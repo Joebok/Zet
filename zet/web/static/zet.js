@@ -3835,8 +3835,11 @@ function browserRouteUrl() {
   }
   if (page) params.set("page", page);
   if (page === "minor-characters") {
-    const id = new URLSearchParams(location.search).get("minor_character");
+    const current = new URLSearchParams(location.search);
+    const id = current.get("minor_character");
     if (id) params.set("minor_character", id);
+    if (id && current.get("view")) params.set("view", current.get("view"));
+    if (current.get("task_universe")) params.set("task_universe", current.get("task_universe"));
   }
   if (page === "scene-batches") {
     const batch = new URLSearchParams(window.location.search).get("batch");
@@ -4523,7 +4526,10 @@ async function openTemplateManual(manualId) {
 }
 
 async function activatePage(page, options = {}) {
-  if (activePageName() === "minor-characters" && page !== "minor-characters") await window.zetMinorCharacters?.flush();
+  if (activePageName() === "minor-characters" && page !== "minor-characters") {
+    await window.zetMinorCharacters?.flush();
+    window.zetMinorCharacters?.leave();
+  }
   const retiredPage = ["render-console", "render-review"].includes(page);
   const retiredRoute = new URLSearchParams(window.location.search);
   const legacyPipeline = ({

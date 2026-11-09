@@ -219,15 +219,16 @@ change clears old rows before loading. Three-second polling and its in-flight gu
 are unchanged. An isolated prepared browser check covered populated refresh and
 failure retention; populated keyboard and long-label behavior remain unverified.
 
-The Minor Characters list uses a responsive card grid with each character's name,
-locked FRONT image (or an empty-image placeholder), and Edit/Delete buttons.
-Clicking the image or Edit opens the existing editor; Delete retains its confirmation
-and preserves published Inventory images.
+Minor Characters groups six asset cards under each collection. The same cards
+appear beneath Container Settings and Template Improvement on the collection
+page. Cards show locked Draft or Final previews and link to the asset's Candidate
+Board even when the image is unavailable. A character-only link opens the
+collection. Adding `view` opens the named board, which owns image generation and
+asset authoring.
 
 Direct Minor Characters links skip the shell's legacy `/api/assets` startup load;
 these universe-local workspaces do not require a selected phase's `Assets.json`.
-The controller's script cache key includes the five-view revision so cached code
-cannot retain bindings to the removed side selector.
+The overview reads collection summaries without polling individual boards.
 
 Post-render trial thumbnails open a viewing-only dialog with Previous/Next buttons,
 left/right arrow keys, and Close/Escape. Navigation includes ready images in the

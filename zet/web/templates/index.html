@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261108-review-comparison">
+  <link rel="stylesheet" href="/static/zet.css?v=20261108-collection-pages">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
   <link rel="stylesheet" href="/static/narrative.css?v=20261108-review-comparison">
 <link rel="stylesheet" href="/static/scene_text.css"><script src="/static/scene_text.js" defer></script>
@@ -932,51 +932,71 @@
       <p id="mc-message" role="status" aria-live="polite"></p>
       <section id="mc-list-panel">
         <form id="mc-create-form" class="button-row"><label>New Minor Character name<input id="mc-new-name" maxlength="200" required></label><button>New Minor Character</button></form>
-        <div id="mc-list" class="button-row"></div>
+        <div id="mc-list"></div>
       </section>
       <section id="mc-editor" hidden>
-        <nav id="mc-assets" class="button-row" aria-label="Minor Character assets"></nav>
+        <a id="mc-back" data-mc-route href="?page=minor-characters">All Minor Characters</a>
+        <h2 id="mc-title"></h2>
         <form id="mc-authoring">
-          <details class="control-panel" open>
-            <summary>Container settings</summary>
-            <label>Name<input name="name" maxlength="200" required></label>
-            <div id="mc-source-controls">
-              <img id="mc-source-image" alt="Original Inventory reference" width="160" hidden>
-              <button type="button" id="mc-add-reference">Choose from Inventory</button>
-              <p id="mc-source-status"></p>
+          <section id="mc-container">
+            <details class="control-panel">
+              <summary>Container Settings</summary>
+              <label>Name<input name="name" maxlength="200" required></label>
+              <div id="mc-source-controls">
+                <img id="mc-source-image" alt="Original Inventory reference" width="160" hidden>
+                <button type="button" id="mc-add-reference">Choose from Inventory</button>
+                <p id="mc-source-status"></p>
+              </div>
+              <p class="muted">Use Zet tags such as <code>- [fl,pl] …</code> for view-specific lines.</p>
+              <label>Appearance<textarea name="appearance"></textarea></label>
+              <label>Framing<textarea name="framing"></textarea></label>
+              <label>Directions<textarea name="directions"></textarea></label>
+              <button type="submit">Save</button>
+            </details>
+            <details class="control-panel template-improvement">
+              <summary>Template Improvement</summary>
               <button type="button" id="mc-intake" disabled>Run Intake</button>
               <p class="muted">Fill blank Appearance, Framing, and Directions fields from the source image.</p>
               <p id="mc-intake-status" role="status"></p>
-            </div>
-            <p class="muted">Use Zet tags such as <code>- [fl,pl] …</code> for view-specific lines.</p>
-            <label>Appearance<textarea name="appearance"></textarea></label>
-            <label>Framing<textarea name="framing"></textarea></label>
-            <label>Directions<textarea name="directions"></textarea></label>
-            <button type="submit">Save</button>
-          </details>
-          <details class="control-panel" open>
-            <summary>Asset settings</summary>
-            <p id="mc-reference-status"></p>
-            <label id="mc-style-changes">Source-to-reference changes<textarea name="style_alignment_changes"></textarea></label>
-            <label id="mc-refinement">View refinement<textarea name="refinement"></textarea></label>
-            <label>Interview feedback<textarea id="mc-feedback"></textarea></label>
-            <label>Candidate evidence<select id="mc-evidence"><option value="">None</option></select></label>
-            <div class="button-row">
-              <button type="button" id="mc-model">Use configured default</button>
-              <button type="button" id="mc-interview">Interview</button>
+            </details>
+            <div id="mc-assets" class="narrative-slots" aria-label="Minor Character assets"></div>
+          </section>
+          <section id="mc-board-authoring">
+            <section class="narrative-card">
+              <h3>Asset inputs</h3>
+              <p id="mc-reference-status"></p>
+              <p>Uses the shared character template, conditioned for this asset.</p>
+              <label id="mc-style-changes">Source-to-reference changes<textarea name="style_alignment_changes"></textarea></label>
+              <label id="mc-refinement">View refinement<textarea name="refinement"></textarea></label>
+              <label>Aspect ratio<input name="aspect_ratio"></label>
+              <button type="submit">Save settings</button>
+            </section>
+            <section class="narrative-card">
+              <h3>Interview</h3>
+              <p>Each interview uses the saved template. Applying proposals updates this asset’s section of that template.</p>
+              <label>Interview feedback<textarea id="mc-feedback"></textarea></label>
+              <label>Candidate evidence<select id="mc-evidence"><option value="">None</option></select></label>
+              <div class="button-row">
+                <button type="button" id="mc-model">Use configured default</button>
+                <button type="button" id="mc-interview">Interview</button>
+              </div>
+              <p id="mc-authoring-status" role="status"></p>
+              <div id="mc-proposals" hidden></div>
+            </section>
+            <section class="narrative-card">
+              <h3>Prompt</h3>
               <button type="button" id="mc-write">Write Prompt</button>
-            </div>
-            <p id="mc-authoring-status" role="status"></p>
-            <div id="mc-proposals" hidden></div>
-            <label>Prompt text<textarea name="prompt" rows="5"></textarea></label>
-            <button type="button" id="mc-save-prompt">Save as current prompt</button>
-            <details><summary>Exact render prompt</summary><pre id="mc-render-prompt"></pre></details>
-            <label>Aspect ratio<input name="aspect_ratio" required></label>
-            <button type="submit">Save settings</button>
-          </details>
+              <label>Prompt text<textarea name="prompt" rows="5"></textarea></label>
+              <button type="button" id="mc-save-prompt">Save as current prompt</button>
+              <details><summary>Exact render prompt</summary><pre id="mc-render-prompt"></pre></details>
+            </section>
+          </section>
         </form>
-        <div id="mc-board-actions"></div>
-        <div id="mc-board" class="narrative-slots"></div>
+        <section id="mc-board-panel">
+          <h3>Candidate Board</h3>
+          <div id="mc-board-actions"></div>
+          <div id="mc-board" class="narrative-slots"></div>
+        </section>
       </section>
       <dialog id="mc-review" aria-label="Review Minor Character candidate"></dialog>
     </section>
@@ -2309,13 +2329,13 @@ Add prompt language here.
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/character_hub.js?v=20261107-character-overview"></script>
-  <script src="/static/zet.js?v=20261107-board-toolbar"></script>
+  <script src="/static/zet.js?v=20261108-collection-pages"></script>
   <dialog id="mc-review" class="mc-review">
     <div class="button-row mc-review-close-row"><button id="mc-review-close" type="button">Close review</button></div>
     <div id="mc-review-navigation" hidden><button id="mc-review-prev" type="button" aria-label="Previous candidate">&lt;</button><button id="mc-review-next" type="button" aria-label="Next candidate">&gt;</button></div>
     <div id="mc-review-pair" class="qc-comparison-pair"></div>
   </dialog>
-  <script type="module" src="/static/minor_characters.js?v=source-intake"></script>
+  <script type="module" src="/static/minor_characters.js?v=collection-pages"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
   <script type="module" src="/static/character_asset_container.js?v=20261108-review-comparison"></script>
