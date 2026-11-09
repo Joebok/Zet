@@ -69,7 +69,11 @@ stays visible until the validated Final replaces it in the same slot, with the
 original generation prompt and captured inputs.
 Its Character comparison area lets the operator choose multiple selected-view
 images, typically FRONT or the selected opposite-side view. Selected or locked Draft images are not offered as comparisons.
-All five active boards mount `candidate_board_component.js`; the Character+controller adapts container records and existing actions to its shared Render+Controls, cards, comparison review, and zoom. Compiled Prompt Preview sits beside+Refresh. Comparison review can disclose the selected view's saved prompt and+ordered inputs through the shared component.
+All five active boards mount `candidate_board_component.js`; the Character
+controller adapts container records and existing actions to its shared Render
+Controls, cards, comparison review, and zoom. Compiled Prompt Preview sits beside
+Refresh. The review shows saved prompt and ordered input details for the candidate
+under review.
 
 `ImageProductionService` is the shared AI_Proxy image boundary. It validates the
 frozen request and owner, publishes the render ask, recovers matching Character

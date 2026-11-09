@@ -298,9 +298,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       ${item.negativePrompt ? `<p>Negative prompt</p><pre>${escape(item.negativePrompt)}</pre>` : ''}
       <ol>${(item.inputs || []).map(input => `<li>${input.url ? `<a href="${escape(input.url)}" target="_blank" rel="noopener">${escape(input.label)}</a>` : escape(input.label)}</li>`).join('')}</ol>
       ${(item.provenance || []).map(line => `<p>${escape(line)}</p>`).join('')}</details>`;
-    const activeEvidence = compare && (compare.prompt || compare.negativePrompt || compare.inputs?.length || compare.provenance?.length);
     patch(details, `${disclosure(candidate, 'Candidate prompt and ordered inputs', true)}
-      ${activeEvidence ? disclosure(compare, `${compare.label} prompt and ordered inputs`) : ''}
       <p>${escape((candidate.notices || []).join(' · '))}</p>`);
     decorate(details);
   }

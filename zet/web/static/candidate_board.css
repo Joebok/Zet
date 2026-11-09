@@ -14,6 +14,7 @@
 .zet-candidate-board .zcb-controls { margin-bottom: .75rem; }
 .zet-candidate-board .is-selected { border-color: var(--primary); }
 .zet-candidate-board .zcb-thumbnail {
+  position: relative;
   display: grid;
   place-items: center;
   width: 100%;
@@ -21,7 +22,7 @@
   padding: 0;
   overflow: hidden;
 }
-.zet-candidate-board .zcb-thumbnail img { width: 100%; height: 100%; object-fit: contain; }
+.zet-candidate-board .zcb-thumbnail img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .zet-candidate-board .zcb-tools,
 .zet-candidate-board .zcb-bulk,
 .zet-candidate-review .zcb-tools,

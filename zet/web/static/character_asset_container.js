@@ -1,4 +1,4 @@
-import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-character-board";
+import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-review-details";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -276,7 +276,7 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-cha
     const order=state.view==="FRONT"?["FRONT_LEFT_3_4","FRONT_RIGHT_3_4","LEFT_PROFILE","RIGHT_PROFILE"]:["FRONT"];
     const comparisons=Object.entries(state.detail.boards).filter(([view])=>view!==state.view).map(([view,other])=>{
       const id=other.selected_id,item=id&&other.candidates[id];if(!item?.image_path)return null;
-      const evidence=candidateEvidence(view,id,item);return {key:`${view}:${id}`,label:`${view.replaceAll("_"," ")} · Slot ${item.slot} · ${item.render_mode} · Selected`,role:"Selected view",image:evidence.image,prompt:evidence.prompt,negativePrompt:evidence.negativePrompt,inputs:evidence.inputs,provenance:evidence.provenance};
+      return {key:`${view}:${id}`,label:`${view.replaceAll("_"," ")} · Slot ${item.slot} · ${item.render_mode} · Selected`,role:"Selected view",image:{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}};
     }).filter(Boolean).sort((a,b)=>(order.includes(a.key.split(":")[0])?order.indexOf(a.key.split(":")[0]):order.length)-(order.includes(b.key.split(":")[0])?order.indexOf(b.key.split(":")[0]):order.length));
     const luna=board.luna_review||{};
     const fields=[{key:"aspect_ratio",label:"Aspect ratio",type:"text",value:state.aspectRatio}];
