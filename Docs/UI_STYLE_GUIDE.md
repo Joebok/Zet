@@ -9,7 +9,10 @@ currently differ. **A rule in this guide does not mean every page implements it.
 Creating this guide does not change the application or authorize a site-wide rollout.
 
 [Dashboard UI](COMPONENTS/DASHBOARD_UI.md) owns implementation details and observed
-device limitations. This document owns the intended presentation standard. Backend
+device limitations. The [Candidate Board specification](COMPONENTS/CANDIDATE_BOARD.md)
+defines the shared Render Controls, candidate cards, review dialog, and workflow
+adapter contract. Use it when designing or changing any Candidate Board.
+This document owns the intended presentation standard. Backend
 services remain authoritative for eligibility, selection, publication, and job state;
 see [invariants](INVARIANTS.md). “Required” below means acceptance criteria when a
 component is introduced or brought into alignment; “preferred” permits a documented

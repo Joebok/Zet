@@ -1,5 +1,9 @@
 # Dashboard presentation and image input
 
+The [Candidate Board specification](CANDIDATE_BOARD.md) defines the shared UI
+standard for Render Controls, candidate cards, and review. This page records
+implementation details.
+
 ## Current Character image production workflow (2026-11-06)
 
 The Assets menu opens Body Reference, Head Image Construct, Head Image Edit,
@@ -194,16 +198,12 @@ offers reference/candidate comparison, and removes the empty reference column
 when no comparison exists. Decisions, selection, close, and navigation stay outside
 scrolling details. Polling preserves the current candidate, unsaved decision,
 comparison choice, details expansion/scroll, and focus.
-Character Asset Container, Minor Character, Narrative Scene, and Image Generation
-candidate review dialogs support cursor-centered wheel zoom from the fitted image
-size to 4×. Visible comparisons share scale and normalized image focus. Letterbox
-space and modified or horizontal wheel gestures do not start zoom; closing a
-dialog or changing its main candidate resets the view. Zoom is transient and uses
-the existing review image bytes.
-[local_asset_pipeline.js](../../zet/web/static/local_asset_pipeline.js) owns this
-interaction; [narrative.js](../../zet/web/static/narrative.js) adapts shared styles
-to Narrative's independent records. Minor Characters retains its own comparison
-controller and selected-versus-preview distinction.
+The shared [review zoom helper](../../zet/web/static/review_image_zoom.js)
+provides cursor-centered wheel zoom from fit to 4×. Character Asset Containers
+register both candidate and comparison images. Narrative and Image Generation
+register the candidate image. Minor Characters attaches the helper without
+synchronizing its rendered images, so wheel zoom is unavailable there. The
+Candidate Board specification defines the common comparison and zoom behavior.
 
 Shared candidate review disables candidate/view navigation while saving a review
 decision and gives the pending action local status. Short-height, narrow review
@@ -353,6 +353,8 @@ Narrative places source linking before authoring. Linking mode selectively expos
 
 Universe settings and creation expose Environmental style. Image Generation persists a canonical/environmental choice with its form; Add Universe art style uses that choice. Minor Characters and character batch creation expose independent universe-style selectors.
 
-Character pipeline candidate reviews offer available selected FRONT, opposite-side, and matching locked Draft comparisons, including the selected candidate from the current board. Comparison choices persist while navigating candidates. Action feedback has a separate status area so select/lock acknowledgements do not replace Luna's rank and assessment. Minor Character review includes the matching private Draft lock in its comparison carousel.
-
-Character and Narrative Candidate Boards share review position, decisions, and captured input links. Narrative review can show the target's selected image beside the candidate under review, and keeps that choice while navigating candidates. Character keeps its view comparisons alongside those controls and refreshes active cards from compact slot progress.
+Character and Narrative Candidate Boards share review position, candidate actions,
+and captured input links. The current Character review offers selected view
+images and has a separate status area for candidate actions. Narrative offers
+the target's selected image in a chooser. Minor Characters automatically
+displays the selected image beside a different candidate when available.

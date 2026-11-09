@@ -37,6 +37,7 @@ The V5 history recovery on 2026-10-11 restored the approved fast E2E suite and r
 | [Testing.md](Testing.md) | Approved fast scenarios, isolated fixtures, optional live check, coverage approval | Before selecting or changing tests |
 | [GitHub_Task_Workflow.md](GitHub_Task_Workflow.md) | GitHub capture/evidence, worker/limits/attention, deployment and restoration | Dashboard task reporting and Kanban integration |
 | [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md) | Target palette, button/glyph vocabulary, cards, review dialogs, action acknowledgement and local feedback | Designing or aligning active dashboard pages; includes current foundations and aspirational standards |
+| [COMPONENTS/CANDIDATE_BOARD.md](COMPONENTS/CANDIDATE_BOARD.md) | Shared Render Controls, cards, review dialog, comparison and zoom, and workflow adapter contract | Designing or changing a Candidate Board |
 | [COMPONENTS/LIBRARY.md](COMPONENTS/LIBRARY.md) | Universe binding, authoritative images, derived discovery index | Library/reference/discovery work |
 | [COMPONENTS/LOCAL_CHARACTERS.md](COMPONENTS/LOCAL_CHARACTERS.md) | Candidate generation, ranking, human review, selection, publication | Character pipeline work |
 | [COMPONENTS/PROMPTS.md](COMPONENTS/PROMPTS.md) | Template compilation, view conditioning, attachment contracts | Prompt changes |
