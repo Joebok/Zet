@@ -22,15 +22,17 @@ test("live Narrative final assembly synthesis and render", async ({ page }) => {
     [ids.subscene, "The traveler reaches the forest gate, full body visible.", "render-1216x832.png"],
   ]) {
     await page.goto(`/narrative?story=${ids.story}&scene=${ids.scene}&target=${target}`);
-    await page.locator("#narrative-prompt").fill(prompt);
+    await page.getByText("Prompt and render settings", { exact: true }).click();
+
+    await page.getByRole("textbox", { name: "Final Qwen prompt" }).fill(prompt);
     await page.getByRole("button", { name: "Save inputs" }).click();
     await page.getByRole("button", { name: "Render 1" }).click();
     const job = await waitForJob(page, scene, target, "image", "QUEUED");
     await deliverPreparedImage(context.queue, job.id, await readFile(path.join(root, imageName)));
     await expect.poll(async () => (await getJob(page, scene, target, job.id))?.status,
       { timeout }).toBe("COMPLETE");
-    await page.locator(".narrative-slot").first().getByRole("button", { name: "Select" }).click();
-    await page.locator(".narrative-slot").first().getByRole("button", { name: "Lock" }).click();
+    await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Select" }).click();
+    await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Lock" }).click();
   }
 
   await page.goto(`/narrative?story=${ids.story}&scene=${ids.scene}&target=${ids.assembly}`);
@@ -50,11 +52,11 @@ test("live Narrative final assembly synthesis and render", async ({ page }) => {
   await expect.poll(async () => (await getJob(page, scene, ids.assembly, render.id))?.status,
     { timeout }).toBe("COMPLETE");
 
-  await page.locator(".narrative-slot").first().getByRole("button", { name: "Select" }).click();
-  await page.locator(".narrative-slot").first().getByRole("button", { name: "Lock" }).click();
+  await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Select" }).click();
+  await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Lock" }).click();
   await page.reload();
-  await expect(page.locator(".narrative-slot").first()).toContainText("Locked");
-  await expect(page.locator(".narrative-slot img").first()).toHaveJSProperty("naturalWidth", 1344);
+  await expect(page.locator(".zet-candidate-board [data-slot]").first()).toContainText("Locked");
+  await expect(page.locator(".zet-candidate-board [data-slot] img").first()).toHaveJSProperty("naturalWidth", 1344);
   await page.goto("/narrative");
   await expect(page.locator(".narrative-story-scene img")).toHaveJSProperty("naturalWidth", 1344);
   const stories = await (await page.request.get("/api/narrative/stories?universe_id=Test")).json();

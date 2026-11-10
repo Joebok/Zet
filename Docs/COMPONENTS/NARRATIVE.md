@@ -12,7 +12,7 @@ image's quality, and scene-text confirmation selects the affected image.
 Older two-board targets require the versioned dry-run migration before opening.
 See the Narrative-specific decision following ADR 0039.
 
-Narrative candidate targets use the same shared action row as Character boards:
+Narrative mounts the shared Candidate Board for Render Controls, slots, and review. The Narrative adapter supplies workflow actions, frozen evidence, and progress. Prompt authoring keeps the model picker and Write Prompt above the editable prompt and render settings. Render Controls include
 blue Draft 1/4, green Final 1/4, outlined Delete Drafts, and solid-red Delete
 Non-Selected. Draft deletion retains its protected-effects preview. Delete
 Non-Selected previews its exact slots and preserves selected/locked candidates;
@@ -20,8 +20,7 @@ non-selected deletion waits for affected renders to settle. Draft deletion cance
 matching Draft work using its existing job cleanup path.
 
 Saved prompt changes set a permanent, advisory `source_change_fyi` on affected
-finished candidates. Target polling requests detail only while generation or
-collection is active. Draft cleanup requires a state-bound preview and approval
+finished candidates. Visible active targets poll compact progress and fetch detail when work settles. Draft cleanup requires a state-bound preview and approval
 for each selection or lock it would clear; protected target deletion uses the
 same in-page dialog. See [ADR 0045](../DECISIONS/0045-finished-image-source-policy.md).
 Candidate deletion records owned image and lettering paths before cleanup, so a
@@ -144,15 +143,12 @@ mappings and strict lookup failures; the four approved fast scenarios passed.
 
 ## Data and job lifecycle
 
-Locking a candidate replaces other locks in the same render mode within that target, including final assemblies; locks in the other mode remain independent. The dashboard asks for confirmation when another candidate is already locked; cancelling preserves the existing locks. Selection remains independent.
+The target has one lock across Draft and Final. Locking also selects the candidate. Unlock the current image before selecting or locking a different image.
 
 Responsive cards and image review follow [Dashboard UI](DASHBOARD_UI.md). Existing
 targets with images prioritize viewing on compact screens, with direction and
 generation inputs available in disclosures. These visual conventions preserve
-Narrative's independent records and selection/lock lifecycle. Cards show render
-status once and use shared image-action icons. Prompt/source provenance, copying,
-assembly layers and raw-composite links live in the review disclosure, collapsed
-on opening/changing candidates. Pending/failed occupied slots can open details;
+Narrative's independent records and selection/lock lifecycle. Cards show quality, render time, and applicable status badges. The review disclosure holds the captured prompt, sources, and assembly provenance. Frozen raw composites are available in the comparison chooser. Pending/failed occupied slots can open details;
 selection and locking still require an image.
 
 Narrative JSON persistence uses the shared portable library-path codec for explicitly typed library-owned references, including frozen snapshots. Target-relative filenames and immutable job/transport artifacts keep their existing semantics. The offline updater excludes migration journals and historical free text; see [DATA_MODEL](../DATA_MODEL.md) and [ADR 0011](../DECISIONS/0011-portable-library-references.md).

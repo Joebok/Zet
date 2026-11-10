@@ -16,20 +16,6 @@
   <dialog id="membership-dialog" aria-label="Assign scene elements"></dialog>
   <dialog id="narrative-interview-review" aria-labelledby="interview-review-title"></dialog>
   <dialog id="narrative-source-dialog" aria-label="Choose source from another scene"></dialog>
-  <dialog id="image-dialog" class="local-pipeline-review-dialog candidate-review" aria-label="Image review">
-    <button class="review-close" type="button" data-close="image-dialog">Close</button>
-    <div class="local-pipeline-review-layout">
-      <section class="local-pipeline-review-comparison single-image" aria-label="Candidate image">
-        <figure><header><strong>Image to review</strong></header><img id="review-image" alt="Rendered candidate"></figure>
-        <figure id="narrative-review-compare-figure" hidden><header><strong>Selected image</strong></header><img id="narrative-review-compare-image" alt="Selected comparison image"></figure>
-      </section>
-      <div class="local-pipeline-review-info">
-        <button id="narrative-review-prev" class="review-nav" type="button" aria-label="Previous candidate">‹</button>
-        <section id="narrative-review-panel" class="candidate-review-panel"></section>
-        <button id="narrative-review-next" class="review-nav" type="button" aria-label="Next candidate">›</button>
-        <div class="local-pipeline-review-view-navigation"><button id="narrative-review-task" type="button">Create task</button></div>
-      </div>
-    </div>
-  </dialog>
+  <div id="narrative-board-dialog-host"></div>
 
 </section>

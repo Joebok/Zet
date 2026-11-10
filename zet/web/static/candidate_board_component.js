@@ -2,6 +2,7 @@
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[char]);
 const qualities = ['draft', 'final'];
+let nextBoardId = 0;
 const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
 const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate'};
 const imageKey = image => JSON.stringify([image?.url, image?.version]);
@@ -14,13 +15,14 @@ function button(label, command, key = '') {
 }
 
 export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapter) {
+  const boardId = ++nextBoardId;
   const events = new AbortController();
   const listen = (node, type, handler, options = {}) =>
     node.addEventListener(type, handler, {...options, signal: events.signal});
   const board = document.createElement('section');
   board.className = 'zet-candidate-board';
   board.innerHTML = `<section aria-label="Render Controls" class="zcb-controls">
-    <h2>Render Controls</h2><div data-part="fields"></div>
+    <h2>Render Controls</h2><div data-part="authoring"></div><div data-part="fields"></div>
     <div data-part="toolbar"></div><div data-part="board-status"></div>
   </section><div class="zcb-grid" data-part="grid"></div>`;
   const dialog = document.createElement('dialog');
@@ -59,6 +61,8 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     if (node.dataset.markup === html) return;
     const focused = document.activeElement;
     const token = node.contains(focused) && [focused.dataset.command, focused.dataset.key, focused.name, focused.tagName];
+    const selection = token && focused.selectionStart != null
+      ? [focused.selectionStart, focused.selectionEnd] : null;
     const disclosures = [...node.querySelectorAll('details')].map(details => [details.querySelector('summary')?.textContent, details.open]);
     node.innerHTML = html;
     node.dataset.markup = html;
@@ -66,10 +70,18 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       const state = disclosures.find(([summary]) => summary === details.querySelector('summary')?.textContent);
       if (state) details.open = state[1];
     }
-    if (token) [...node.querySelectorAll('button,input,select,textarea,summary')].find(control =>
+    const replacement = token && [...node.querySelectorAll('button,input,select,textarea,summary')].find(control =>
       control.dataset.command === token[0] && control.dataset.key === token[1] && control.name === token[2] &&
       control.tagName === token[3]
-    )?.focus({preventScroll:true});
+    );
+    if (replacement) {
+      if (replacement.name) {
+        replacement.value = focused.value;
+        if (replacement.type === 'checkbox') replacement.checked = focused.checked;
+        if (selection) replacement.setSelectionRange(...selection);
+      }
+      replacement.focus({preventScroll:true});
+    }
   }
 
   function decorate(root) {
@@ -119,23 +131,37 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const controls = model.renderControls || {};
     const fields = controls.fields || [];
     const host = part(board, 'fields');
-    patch(host, fields.length ? `<details><summary>Prompt and render settings</summary>${fields.map(field => {
+    const fieldMarkup = field => {
       const attrs = `name="${escape(field.key)}" ${field.disabled ? 'disabled' : ''}`;
+      const list = `zcb-${boardId}-${escape(field.key)}`;
       const input = field.type === 'textarea' ? `<textarea ${attrs}></textarea>`
         : field.type === 'select' ? `<select ${attrs}>${(field.options || []).map(option =>
           `<option value="${escape(option.value)}">${escape(option.label)}</option>`).join('')}</select>`
-          : `<input ${attrs} type="${field.type === 'checkbox' ? 'checkbox' : 'text'}">`;
-      return `<label>${escape(field.label)}${input}</label>`;
-    }).join('')}</details>` : '');
-    for (const field of fields) {
-      const control = [...host.querySelectorAll('[name]')].find(input => input.name === field.key);
+          : `<input ${attrs} type="${field.type === 'checkbox' ? 'checkbox' : 'text'}" placeholder="${escape(field.placeholder)}" ${field.suggestions ? `list="${list}"` : ''}>`;
+      return `<label>${escape(field.label)}${input}</label>${field.suggestions ?
+        `<datalist id="${list}">${field.suggestions.map(value => `<option value="${escape(value)}"></option>`).join('')}</datalist>` : ''}`;
+    };
+    const actions = boardActions();
+    const authoring = part(board, 'authoring');
+    const split = Boolean(controls.promptFields);
+    patch(authoring, split ? `<section aria-label="Prompt authoring"><h3>Prompt authoring</h3>
+      ${controls.promptFields.map(fieldMarkup).join('')}<div class="zcb-tools">${actions.filter(action => action.group === 'prompt').map(action => actionMarkup(action)).join('')}</div>
+      <p role="status"></p><div role="status"></div></section>` : '');
+    if (split) {
+      const [status, outcome] = authoring.querySelectorAll('[role="status"]');
+      status.textContent = controls.promptStatus || '';
+      showFeedback(outcome, feedback.get('prompt'));
+      decorate(authoring);
+    }
+    patch(host, fields.length ? `<details><summary>Prompt and render settings</summary>${fields.map(fieldMarkup).join('')}</details>` : '');
+    for (const field of [...(controls.promptFields || []), ...fields]) {
+      const control = [...board.querySelectorAll('[name]')].find(input => input.name === field.key);
       if (control === document.activeElement) continue;
       if (field.type === 'checkbox') control.checked = Boolean(field.value);
       else if (control.value !== String(field.value ?? '')) control.value = field.value ?? '';
     }
-    const actions = boardActions();
     const toolbar = part(board, 'toolbar');
-    patch(toolbar, `<div class="zcb-tools">${actions.filter(action => action.group !== 'bulk').map(action => actionMarkup(action)).join('')}
+    patch(toolbar, `<div class="zcb-tools">${actions.filter(action => action.group !== 'bulk' && (!split || action.group !== 'prompt')).map(action => actionMarkup(action)).join('')}
       <div class="zcb-bulk">${actions.filter(action => action.group === 'bulk').map(action => actionMarkup(action)).join('')}</div></div>`);
     decorate(toolbar);
     const status = part(board, 'board-status');
@@ -145,11 +171,11 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const reviewNote = startError?.status === 'error' ? startError.message
       : luna?.status === 'OBSOLETE' ? 'Ranking obsolete: candidate images changed'
       : luna?.status === 'FAILED' ? luna.error : '';
-    patch(status, `<p role="status">${escape(controls.promptStatus)}</p><p role="status">${escape(controls.renderStatus)}</p>
+    patch(status, `${split ? '' : `<p role="status">${escape(controls.promptStatus)}</p>`}<p role="status">${escape(controls.renderStatus)}</p>
       ${luna || actions.some(action => action.group === 'luna' || action.key === 'luna-review')
         ? `<p role="status">Review Status: ${reviewStatus}${reviewNote ? ` · ${escape(reviewNote)}` : ''}</p>` : ''}
       ${model.lunaReview?.criteria ? `<details><summary>Review criteria</summary><pre>${escape(model.lunaReview.criteria)}</pre></details>` : ''}
-      <div role="status" data-feedback="prompt"></div><div role="status" data-feedback="render"></div>
+      ${split ? '' : '<div role="status" data-feedback="prompt"></div>'}<div role="status" data-feedback="render"></div>
       <div role="status" data-feedback="bulk"></div>`);
     for (const node of status.querySelectorAll('[data-feedback]')) showFeedback(node, feedback.get(node.dataset.feedback));
   }
@@ -184,13 +210,19 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
   for (const root of [board, dialog]) listen(root, 'error', event => imageErrors.get(event.target)?.(), {capture:true});
   listen(dialog, 'load', syncZoom, {capture:true});
 
-  function statusText(candidate) {
+  function statusMarkup(candidate) {
     if (!candidate) return 'Empty';
     const rank = model.lunaReview?.entries?.[candidate.id]?.rank;
-    return [candidate.quality === 'final' ? 'Final' : 'Draft', candidate.status,
+    const quality = candidate.quality === 'final' ? 'Final' : 'Draft';
+    const status = String(candidate.status || '').toLowerCase();
+    return [`<span class="narrative-render-mode-pill ${quality.toLowerCase()}">${quality}</span>`,
+      status !== 'complete' ? escape(status) : '',
       Number.isInteger(candidate.elapsedSeconds) ? `${candidate.elapsedSeconds}s` : '',
-      candidate.id === model.selectedId ? 'Selected' : '', candidate.locked ? 'Locked' : '',
-      rank ? `Luna ${model.lunaReview.status === 'OBSOLETE' ? 'previous ' : ''}#${rank}` : ''].filter(Boolean).join(' · ');
+      candidate.id === model.selectedId ? 'Selected' : '',
+      candidate.locked ? `<span class="zcb-lock" title="Locked">${window.ZetImageCardUI.iconMarkup('lock')}<span class="zcb-visually-hidden">Locked</span></span>` : '',
+      rank ? `Luna ${model.lunaReview.status === 'OBSOLETE' ? 'previous ' : ''}#${escape(rank)}` : '',
+      candidate.earlierPrompt ? '<span class="status-badge review" title="The saved prompt changed after this image was made.">Earlier prompt</span>' : ''
+    ].filter(Boolean).join(' · ');
   }
 
   function candidateActions(slot, surface) {
@@ -223,7 +255,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       preview.setAttribute('aria-label', label);
       preview.disabled = !canReview;
       renderImage(preview, candidate?.thumbnail || candidate?.image, candidate ? 'No image available' : 'Empty slot');
-      part(card, 'state').textContent = statusText(candidate);
+      patch(part(card, 'state'), statusMarkup(candidate));
       part(card, 'notice').textContent = [candidate?.error, ...(candidate?.notices || [])].filter(Boolean).join(' · ');
       const actions = part(card, 'actions');
       patch(actions, `${canReview ? `<button type="button" data-command="open" data-glyph="review" data-label="${label}">${label}</button>` : ''}
@@ -235,7 +267,9 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
 
   function comparisons() {
     const selected = slotFor(model.selectedId)?.candidate;
-    const options = selected?.image ? [{key:`selected:${selected.id}`, label:'Selected candidate', image:selected.image}] : [];
+    const options = selected?.image ? [{key:`selected:${selected.id}`,
+      label:`Selected · ${selected.quality === 'final' ? 'Final' : 'Draft'} · Slot ${model.slots.indexOf(slotFor(selected.id)) + 1}`,
+      image:selected.image}] : [];
     const seen = new Set(options.map(option => imageKey(option.image)));
     for (const option of model.comparisons || []) {
       const key = imageKey(option.image);
@@ -255,9 +289,11 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const list = reviewable();
     const position = list.indexOf(slot);
     const slotNumber = model.slots.indexOf(slot) + 1;
-    view('title').textContent = [model.scope.title, model.scope.view, `Slot ${slotNumber} · ${position + 1} of ${list.length}`, statusText(candidate)].filter(Boolean).join(' · ');
-    command('previous').disabled = position <= 0;
-    command('next').disabled = position >= list.length - 1;
+    patch(view('title'), [model.scope.title, model.scope.view, `Slot ${slotNumber} · ${position + 1} of ${list.length}`]
+      .filter(Boolean).map(escape).join(' · ') + ' · ' + statusMarkup(candidate));
+    command('previous').disabled = pending.size > 0 || position <= 0;
+    command('next').disabled = pending.size > 0 || position >= list.length - 1;
+    command('close').disabled = pending.size > 0;
     const options = comparisons();
     const defaults = model.comparisonDefaults || [];
     const keys = chosen ?? defaults.filter(key => key !== `selected:${candidateId}`);
@@ -311,7 +347,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
         `<dt>${escape(label)}</dt><dd>${escape(value)}</dd>`).join('')}</dl>` : ''}
       ${(item.provenance || []).map(line => `<p>${escape(line)}</p>`).join('')}</details>`;
     patch(details, `${disclosure(candidate, 'Candidate prompt and ordered inputs', true)}
-      <p>${escape((candidate.notices || []).join(' · '))}</p>`);
+      <p>${escape([candidate.error, ...(candidate.notices || [])].filter(Boolean).join(' · '))}</p>`);
     decorate(details);
   }
 
@@ -331,6 +367,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
   }
 
   async function canLeave(nextId) {
+    if (pending.size) return false;
     const epoch = reviewEpoch;
     const scope = scopeEpoch;
     const current = () => !disposed && scope === scopeEpoch && epoch === reviewEpoch;
@@ -421,7 +458,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const intent = {key:action.key, origin:surface, scopeKey:model.scope.key, revision:model.revision,
       candidateId:slot?.candidate?.id, slotKey:slot?.key, expectedOccupant:slot ? slot.candidate?.id ?? null : undefined,
       mode:action.mode, count:action.count, value:action.value,
-      fields:Object.fromEntries([...part(board, 'fields').querySelectorAll('[name]')].map(field =>
+      fields:Object.fromEntries([...board.querySelectorAll('[name]')].map(field =>
         [field.name, field.type === 'checkbox' ? field.checked : field.value]))};
     pending.add(key);
     if (target === 'luna') feedback.delete(target);
@@ -448,7 +485,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     if (control.dataset.command === 'open') void openReview(slot.candidate.id, control);
     if (control.dataset.command === 'action') void invoke(control, card ? 'card' : 'controls', slot);
   });
-  listen(part(board, 'fields'), 'input', event => {
+  listen(board, 'input', event => {
     const {name, type, checked, value} = event.target;
     adapter.onEdit?.({scopeKey:model.scope.key, field:name, value:type === 'checkbox' ? checked : value});
   });

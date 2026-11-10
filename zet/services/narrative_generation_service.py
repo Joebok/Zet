@@ -39,6 +39,7 @@ class NarrativeGenerationService:
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
             self._refresh(story, scene, target, record)
+            self._reconcile_luna(story, scene, target, record)
             return self.author.target(story, scene, target)
 
     def progress(self, story: str, scene: str, target: str) -> dict:
@@ -46,10 +47,34 @@ class NarrativeGenerationService:
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
             self._refresh(story, scene, target, record)
+            self._reconcile_luna(story, scene, target, record)
             jobs = [{"id": job["id"], "status": job["status"], "candidate_id": job.get("candidate_id"),
                      "candidate_ids": job.get("candidate_ids", [])}
                     for job in record["jobs"].values()]
-            return {"jobs": jobs, "luna_review": record.get("luna_review", {})}
+            slots = [{"slot": index, "candidate_id": cid, "job_id": item.get("job_id"),
+                      "status": item["status"]}
+                     for index, cid in enumerate(record["slots"], 1)
+                     if cid and (item := record["candidates"].get(cid))]
+            review = record.get("luna_review", {})
+            return {"jobs": jobs, "slots": slots,
+                    "luna_review": {key: review[key] for key in ("status", "active_id") if key in review}}
+
+    def _reconcile_luna(self, story, scene, target, record):
+        review = record.get("luna_review", {})
+        if review.get("status") == "RUNNING":
+            with _LUNA_REVIEW_ACTIVE_LOCK:
+                if review.get("active_id") in _LUNA_REVIEW_ACTIVE:
+                    return
+            review.update(status="INTERRUPTED", active_id="")
+        elif not self.author.mark_outdated_luna(record):
+            return
+        self.repository.write(record, story, scene, target)
+
+    @staticmethod
+    def _invalidate_luna_for_harvest(record):
+        review = record.get("luna_review", {})
+        if review.get("status") in {"COMPLETE", "RUNNING"}:
+            review.update(status="OBSOLETE", active_id="")
 
     def luna_review(self, story: str, scene: str, target: str, *, _review_id: str = "") -> dict:
         """Review and rank completed target images using their frozen render inputs."""
@@ -81,11 +106,11 @@ class NarrativeGenerationService:
                     previous = {**previous, "status": "INTERRUPTED", "active_id": ""}
                 record["luna_review"] = {**previous, "status": "RUNNING", "active_id": review_id}
                 self.repository.write(record, story, scene, target)
+                with _LUNA_REVIEW_ACTIVE_LOCK:
+                    _LUNA_REVIEW_ACTIVE.add(review_id)
             elif previous.get("active_id") != review_id:
                 return previous
         if not _review_id:
-            with _LUNA_REVIEW_ACTIVE_LOCK:
-                _LUNA_REVIEW_ACTIVE.add(review_id)
             _LUNA_REVIEW_WORKERS.submit(self._run_luna_review_worker, story, scene, target, review_id)
             return {"status": "RUNNING", "active_id": review_id}
         criteria = (f"Rank all completed Narrative {record.get('kind', 'scene')} images together. Assess fidelity to the saved prompt, "
@@ -467,9 +492,7 @@ class NarrativeGenerationService:
                                 if snapshot else None)
                             candidate["image"] = relative
                             record_render_completion(candidate)
-                            if record.get("luna_review", {}).get("status") in {"COMPLETE", "RUNNING"}:
-                                record["luna_review"]["status"] = "OBSOLETE"
-                                record["luna_review"]["active_id"] = ""
+                            self._invalidate_luna_for_harvest(record)
                     else:
                         value = json.loads(result.decode("utf-8"))
                         if job["kind"] == "interview":
@@ -529,6 +552,7 @@ class NarrativeGenerationService:
                 pending.append(finished)
             candidate.pop("published_asset_id", None)
             candidate.update(image=relative, render_mode="final", error="")
+            self._invalidate_luna_for_harvest(record)
             if record.get("scene_text") and record["selected_id"] == candidate["id"]:
                 record["selected_id"] = None
         self._cleanup_upscale(record, job)
@@ -588,7 +612,8 @@ class NarrativeGenerationService:
                 effects.append({"id": f"unlock:draft:{candidate_id}", "candidate_id": candidate_id,
                                 "label": f"Unlock Draft image in slot {record['candidates'][candidate_id]['slot']}"})
         token = hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()
-        return {"protected_effects": effects, "confirmation_token": token}
+        slots = [index for index, cid in enumerate(record["slots"], 1) if cid in ids]
+        return {"slots": slots, "protected_effects": effects, "confirmation_token": token}
 
     def preview_draft_delete(self, story, scene, target):
         with self.repository.lock():

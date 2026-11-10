@@ -50,6 +50,18 @@ class NarrativeSceneService:
                 candidate["source_change_fyi"] = True
 
     @staticmethod
+    def mark_outdated_luna(record: dict) -> bool:
+        review = record.get("luna_review", {})
+        if review.get("status") != "COMPLETE":
+            return False
+        ranked = review.get("candidate_ids", [entry.get("candidate_id") for entry in review.get("entries", [])])
+        current = {cid for cid in record["slots"] if cid and record["candidates"].get(cid, {}).get("image")}
+        if set(ranked) == current:
+            return False
+        review.update(status="OBSOLETE", active_id="")
+        return True
+
+    @staticmethod
     def _normalize_prompt(value: str) -> str:
         return value.replace("\r\n", "\n").replace("\r", "\n")
 
@@ -349,6 +361,7 @@ class NarrativeSceneService:
         # Recheck on detail reads so existing candidates keep showing the advisory
         # even when their prompt difference was not observed during a save.
         self.mark_candidate_prompt_differences(record)
+        self.mark_outdated_luna(record)
         parent = self.repository.read(story, scene)
         by_id = {item["id"]: item for item in parent["elements"]}
         elements = []

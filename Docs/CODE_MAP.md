@@ -15,9 +15,7 @@ the separate disclosure, source/evidence controls, findings and preview actions.
 
 The character container controller renders a pipeline overview or a Candidate
 Board according to the optional route view. The dashboard shell owns header
-scope changes. `candidate_board.js` and the shared styles in `narrative.css`
-own card and review actions, the shared render/cleanup toolbar, and layout for
-Character and Narrative. Character bulk cleanup is owned by
+scope changes. The shared Candidate Board component and stylesheet own cards, review, and Render Controls for Character, Minor Characters, and Narrative. Character bulk cleanup is owned by
 `CharacterAssetContainerService`; Narrative target cleanup is owned by
 `NarrativeGenerationService`.
 `candidate_board.js` also exports `mountCandidateBoard` for workflow migrations.
@@ -395,6 +393,10 @@ Assembly front-first workflow: `local_character_progression_service` owns the se
 ## LLM role and guidance ownership (2026-10-22)
 
 [llm_role_service.py](../zet/services/llm_role_service.py) owns the explicit role inventory, model resolution and instruction-module selection; [llm_skill_service.py](../zet/services/llm_skill_service.py) composes frozen guidance at FileProxyClient publication for both request formats/providers. PipelineControlService and Config render the registry. Domain producers supply purpose and downstream render intent. See [LLM roles](COMPONENTS/LLM_ROLES.md) for the inventory, affected interfaces and disposable verification; S1–S4 retain their existing purposes.
+
+## Narrative candidate board
+
+Narrative mounts the shared board through the controller and [Narrative adapter](../zet/web/static/narrative_candidate_board.js). The adapter maps eligibility, captured evidence, and workflow intents. The controller reconciles compact progress and applies terminal detail. Existing Narrative services own render attempts, lettering, and Inventory publication.
 
 ## Narrative scene text (2026-10-29)
 

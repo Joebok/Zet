@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse, Response
 
 from zet.services.narrative_scene_service import ProtectedNarrativeImages
 from zet.services.protected_effect_preview import ProtectedEffectsChanged
+from zet.web.captured_image_response import captured_image_response
 
 
 def create_narrative_router(app_provider):
@@ -317,7 +318,7 @@ def create_narrative_router(app_provider):
 
     @router.get(target_path + "/candidates/{candidate}/inputs/{index}")
     def candidate_input(story: str, scene: str, target: str, candidate: str, index: int):
-        return FileResponse(call(generation().candidate_input, story, scene, target, candidate, index))
+        return captured_image_response(call(generation().candidate_input, story, scene, target, candidate, index))
 
     @router.get(target_path + "/scene-text")
     def text_state(story: str, scene: str, target: str, candidate: str = ""):

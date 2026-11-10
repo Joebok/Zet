@@ -64,6 +64,9 @@
     if (/review|inspect|compare|full.size/.test(value)) return 'review';
     return 'details';
   }
+  function iconMarkup(action) {
+    return `<svg data-card-icon aria-hidden="true" focusable="false" viewBox="0 0 24 24">${paths[action] || paths.details}</svg>`;
+  }
   function decorate(control, action, label) {
     if (!control) return control;
     label = label || control.getAttribute('aria-label') || control.textContent.trim();
@@ -79,7 +82,7 @@
     control.dataset.imageAction = action;
     control.dataset.imageLabel = label;
     control.setAttribute('aria-label', label);
-    control.innerHTML = `<svg data-card-icon aria-hidden="true" focusable="false" viewBox="0 0 24 24">${paths[action] || paths.details}</svg>`;
+    control.innerHTML = iconMarkup(action);
     const text = document.createElement('span');
     text.className = 'image-action-label'; text.textContent = label;
     control.append(text);
@@ -97,7 +100,7 @@
       if (label) decorate(control, current ? control.dataset.imageAction : undefined, label);
     }
   }
-  window.ZetImageCardUI = { decorate, scan };
+  window.ZetImageCardUI = { decorate, scan, iconMarkup };
   let scheduled = false;
   const observer = new MutationObserver(records => {
     if (!records.some(record => record.type === 'childList' || ['title', 'aria-label'].includes(record.attributeName))) return;

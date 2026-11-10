@@ -7,9 +7,7 @@ Render Controls and the grid belong. Put the dialog host outside the board
 and any form. The five active Character Asset Container pipelines are the
 reference integration. When adopting the component, replace the page's
 existing board and review rendering with the mount and reuse its workflow
-handlers through the adapter. The older `renderCandidateBoard` helper builds
-cards for existing callers. New subscribers use `mountCandidateBoard` to get
-Render Controls, cards, and review together.
+handlers through the adapter. Narrative uses the optional prompt authoring section for its model picker and Write Prompt.
 [Character adapter](../../zet/web/static/character_asset_container.js)
 
 Minor Characters also mounts the component for all six assets. Render Controls
@@ -29,7 +27,7 @@ interview workflow.
   URL and a changed version. Supply an uncropped thumbnail. The component fits
   the whole image in its 4:3 well and falls back to `image` when `thumbnail`
   is absent. Include applicable `elapsedSeconds`, `locked`,
-  `error`, `notices`, `humanAssessment`, `prompt`, `negativePrompt`,
+  `error`, `notices`, `earlierPrompt`, `humanAssessment`, `prompt`, `negativePrompt`,
   ordered `inputs` (`{label, url?, marker?}`), optional `renderSettings` rows
   (`{label, value}`), and `provenance` lines. Use the saved request for inputs
   and settings. A marker is literal prompt text such as `<image3>`. Set
@@ -45,7 +43,10 @@ interview workflow.
   actions. Supply their availability from the workflow's current state.
 - `renderControls.fields` contains labeled `{key, label, type, value}`
   fields, with optional `disabled` and select `options` as `{value, label}`.
-  Supported types are text, textarea, select, and checkbox. The component
+  Supported types are text, textarea, select, and checkbox. Optional
+  renderControls.promptFields places the prompt actions and feedback in a
+  noncollapsible Prompt authoring section. Text fields can provide suggestions
+  and a placeholder. Suggestions allow free-form input. The component
   supplies the four render shortcuts. Provide known disabled reasons in
   `renderControls.readiness` by shortcut key such as `render-draft-4` or
   mode such as `draft`. Supply `promptStatus` and `renderStatus` as needed.

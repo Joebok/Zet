@@ -1,6 +1,7 @@
 import {renderProposalComparison} from './interview_proposals.js';
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
-import {renderCandidateBoard, renderBoardActions, candidateActions, reviewPosition, reviewInputs} from './candidate_board.js?v=20261107-board-toolbar';
+import {mountCandidateBoard} from './candidate_board.js?v=20261110-shared';
+import {isNarrativeActive, narrativeBoardModel} from './narrative_candidate_board.js';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;
 let pollTimer = null;
@@ -21,8 +22,12 @@ let saveTimer = null;
 let saveChain = Promise.resolve();
 let busy = false;
 let pollBusy = false;
-let progressSignature = '';
-let slotSignature = '';
+let board = null;
+let boardEpoch = 0;
+let revision = 0;
+const boardDrafts = new Map();
+let boardSizing = {};
+let sizingError = '';
 let elementDraft = null;
 let modelOptions = {model:'general:latest', codex_models:[]};
 let knownModels = [];
@@ -36,16 +41,11 @@ let layerDrag = null;
 let activeLayer = null;
 let brush = null;
 let reviewCandidate = null;
-let reviewCompareCandidate = '';
-const reviewZoom = window.ZetReviewImageZoom?.attach(host.querySelector('#image-dialog'), () => [host.querySelector('#review-image')]);
-let renderRatio = '';
 let previewSizing = null;
-let ratioTarget = '';
 let sourcePicker = null;
 let contextState = 'loading';
 let contextLabels = {};
 let candidateRestorePending = params.get('task_context') === '1';
-const active = new Set(['SUBMITTING', 'QUEUED', 'RUNNING', 'DISPATCHING']);
 const visualFields = ['setting', 'camera', 'perspective', 'lighting', 'style'];
 const targetFields = ['universe_style_variant', 'title', 'narrative', 'staging', 'physical_context', 'use_transparent_background', 'framing', 'aspect_ratio', 'prompt', 'interview_model', 'prompt_model', 'assembly_mode'];
 const assemblyModeName = mode => ({assemble_references:'Assemble from references', harmonize_composite:'Harmonize placed composite'}[mode] || 'Finish placed composite');
@@ -88,9 +88,6 @@ function imageUrl(id, target = route.target) {
 function assetUrl(id) { return `/api/narrative/library/${encodeURIComponent(id)}/image?universe_id=${encodeURIComponent(universe)}`; }
 function artifactUrl(suffix) { return `${base()}/${suffix}?universe_id=${encodeURIComponent(universe)}`; }
 function modelName(provenance) { return provenance?.model || 'Model not recorded'; }
-function copyPromptButton(id) {
-  return `<button type="button" class="narrative-copy-prompt" data-copy-prompt="${id}" aria-label="Copy prompt to clipboard" title="Copy prompt to clipboard" ${detail.candidates[id].prompt ? '' : 'disabled'}>⧉</button>`;
-}
 function layerUrl(layer,kind='cutout') {
   let revision=0;
   for (const char of JSON.stringify([layer.candidate_id,layer.cutout,layer.tolerance,layer.strokes])) revision=(revision*31+char.charCodeAt(0))>>>0;
@@ -120,17 +117,18 @@ function enableModelPickers() {
   }
 }
 async function loadModels() {
-  const url = base();
+  const epoch = boardEpoch;
   try {
     const result = await api('/api/ai-controls/ollama-models');
-    if (base() !== url) return;
+    if (boardEpoch !== epoch) return;
     knownModels = result.models || [];
     const errorNode = host.querySelector('#narrative-model-error');
     if (errorNode) errorNode.textContent = '';
-  } catch (error) { const errorNode = host.querySelector('#narrative-model-error'); if (base() === url && errorNode) errorNode.textContent = error.message; }
-  if (!detail || base() !== url) return;
+  } catch (error) { const errorNode = host.querySelector('#narrative-model-error'); if (boardEpoch === epoch && errorNode) errorNode.textContent = error.message; }
+  if (!detail || boardEpoch !== epoch) return;
   const list = host.querySelector('#narrative-model-options');
   if (list) list.innerHTML = [...new Set([modelOptions.model,...knownModels,...modelOptions.codex_models,detail.interview_model,detail.prompt_model])].filter(Boolean).map(name=>`<option value="${esc(name)}"></option>`).join('');
+  publishBoard();
 }
 
 async function api(url, method = 'GET', data) {
@@ -140,14 +138,18 @@ async function api(url, method = 'GET', data) {
   if (!response.ok) {
     if (response.status === 409 && result.detail?.preview) {
       const inspection = result.detail.preview;
-      const approved = await confirmProtectedEffects('Image state changed', result.detail.message,
-        inspection.protected_effects || [], 'Continue');
+      if (inspection.candidates) {
+        if (!confirmNonSelected(inspection.candidates)) return null;
+        return api(url, method, {...data, confirmation_token: inspection.confirmation_token});
+      }
+      const approved = await confirmDraftDeletion(inspection);
       if (approved === null) return null;
       return api(url, method, {...data, confirmation_token: inspection.confirmation_token,
         approved_effects: approved});
     }
     if (response.status === 409 && result.detail?.protected_images) {
-      const images = result.detail.protected_images;
+      const images = result.detail.protected_images.map(effect => ({...effect,
+        preview_url: detail?.candidates?.[effect.id]?.image ? imageUrl(effect.id) : ''}));
       const approved = await confirmProtectedEffects('Delete selected or locked images?',
         'Approve each image this deletion will remove or unlock.', images, 'Delete images');
       if (approved === null) return null;
@@ -158,16 +160,172 @@ async function api(url, method = 'GET', data) {
   return result;
 }
 
+function boardRatio() {
+  return detail?.kind === 'subscene' ? boardDrafts.get('aspect_ratio') ?? detail.aspect_ratio : detail?.scene_canvas;
+}
+
+function boardModel() {
+  return narrativeBoardModel({detail, scopeKey: JSON.stringify([universe, route.story, route.scene, route.target]),
+    revision, drafts: boardDrafts, busy, llmSubmitting,
+    models: [...new Set([modelOptions.model, ...knownModels, ...modelOptions.codex_models, detail.prompt_model])].filter(Boolean),
+    defaultModel: modelOptions.model, sizing: boardSizing, sizingError, imageUrl, artifactUrl,
+    reviewedId: reviewCandidate, pendingInterviews: pendingInterviews().length});
+}
+
+function publishBoard() {
+  if (board && detail && !disposed) board.update(boardModel());
+}
+
+function disposeBoard() {
+  boardEpoch++;
+  const previous = board;
+  board = null;
+  previous?.dispose();
+  boardDrafts.clear();
+  boardSizing = {};
+  sizingError = '';
+  previewSizing = null;
+}
+
+function mountBoard() {
+  board = mountCandidateBoard({boardHost: root.querySelector('#narrative-board-host'),
+    dialogHost: host.querySelector('#narrative-board-dialog-host')}, boardModel(), {
+    onEdit({field, value}) {
+      boardDrafts.set(field, value);
+      dirty.add(field);
+      status('Saving changes…');
+      scheduleSave();
+      if (field === 'aspect_ratio') void updateRenderSize();
+      publishBoard();
+    },
+    onAction: boardAction,
+    beforeReviewLeave: () => !busy,
+    onEvent({type, candidateId}) {
+      if (type === 'comparison-change') return;
+      reviewCandidate = type === 'review-close' ? null : candidateId;
+      const current = board;
+      queueMicrotask(() => { if (board === current) publishBoard(); });
+    },
+  });
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    if (busy) scheduleSave();
+    else void save().catch(error => status(error.message, true));
+  }, 700);
+}
+
 async function updateRenderSize() {
-  const input = host.querySelector('#narrative-aspect_ratio');
-  const mode = 'draft', ratio = input?.value || detail.scene_canvas;
+  const epoch = boardEpoch, ratio = boardRatio();
+  const current = () => !disposed && epoch === boardEpoch && ratio === boardRatio();
   try {
-    const sizing = await api(`/api/image-generation/sizing?${new URLSearchParams({render_mode:mode,aspect_ratio:ratio})}`);
-    if (ratio !== (input?.value || detail.scene_canvas)) return;
-    if(input) input.setCustomValidity(''); previewSizing=sizing; renderPlacement();
+    const entries = await Promise.all(['draft', 'final'].map(async mode => [mode,
+      await api('/api/image-generation/sizing?' + new URLSearchParams({render_mode: mode, aspect_ratio: ratio}))]));
+    if (!current()) return;
+    boardSizing = Object.fromEntries(entries);
+    previewSizing = boardSizing.draft;
+    sizingError = '';
+    renderPlacement();
   } catch (error) {
-    if (ratio !== (input?.value || detail.scene_canvas)) return;
-    if(input) input.setCustomValidity(error.message); previewSizing=null;
+    if (!current()) return;
+    boardSizing = {};
+    previewSizing = null;
+    sizingError = error.message;
+  }
+  publishBoard();
+}
+
+function confirmDraftDeletion(inspection) {
+  return confirmProtectedEffects('Delete Draft images?',
+    `Delete Draft images in ${detail.title}, slots ${inspection.slots.join(', ')}? Matching work will be cancelled. Final images and Inventory copies remain.`,
+    (inspection.protected_effects || []).map(effect => ({...effect,
+      preview_url: detail.candidates[effect.candidate_id]?.image ? imageUrl(effect.candidate_id) : ''})), 'Delete Draft images');
+}
+
+function confirmNonSelected(candidates) {
+  const slots = candidates.map(item => item.slot).sort((a, b) => a - b);
+  return slots.length && confirm(`Delete non-selected candidates in ${detail.title}, slots ${slots.join(', ')}? Selected and locked candidates are preserved.`);
+}
+
+async function deleteBoardImages(drafts) {
+  const url = base() + (drafts ? '/delete-draft-images' : '/delete-non-selected');
+  const inspection = await api(url + '/preview', 'POST', {});
+  const {confirmation_token} = inspection;
+  if (drafts) {
+    const approved = await confirmDraftDeletion(inspection);
+    if (approved === null) return null;
+    return api(url, 'POST', {confirmation_token, approved_effects: approved});
+  }
+  if (!confirmNonSelected(inspection.candidates)) return null;
+  return api(url, 'POST', {confirmation_token});
+}
+
+async function boardAction(intent) {
+  const {key, candidateId, slotKey, expectedOccupant, mode, count} = intent;
+  const epoch = boardEpoch;
+  const cancelled = {status: 'cancelled'};
+  const success = {status: 'success'};
+  if (busy || intent.scopeKey !== boardModel().scope.key || intent.revision !== revision) return cancelled;
+  const current = () => !disposed && boardEpoch === epoch;
+  if (key === 'capture-task') {
+    void window.ZetTaskCapture.open();
+    return success;
+  }
+  busy = true;
+  revision++;
+  const target = root.querySelector('#narrative-target-select');
+  target.disabled = true;
+  publishBoard();
+  try {
+    const startsJob = key === 'synthesize' || key.startsWith('render-') || key.startsWith('regen-') || key.startsWith('apply-');
+    if (!startsJob) await save();
+    if (!current()) return cancelled;
+    const slot = Number(slotKey);
+    if (slot && (detail.slots[slot - 1] || null) !== expectedOccupant) throw Error('This slot changed. Refresh the board and try again.');
+    if (key === 'synthesize') {
+      await start('synthesize');
+      return success;
+    }
+    if (key.startsWith('render-') || key.startsWith('regen-') || key.startsWith('apply-')) {
+      const result = await start(key.startsWith('apply-') ? 'generate' : 'render', count || 1, slot, undefined, mode, expectedOccupant);
+      return current() ? {...success, message: 'Queued.', reviewCandidateId: slot ? result.slots[slot - 1] : undefined} : cancelled;
+    }
+    if (key === 'luna-review') {
+      const result = await api(base() + '/luna-review', 'POST', {});
+      if (!current()) return cancelled;
+      detail.luna_review = {...detail.luna_review, ...result};
+      return success;
+    }
+    const candidate = detail.candidates[candidateId];
+    if (key === 'edit-text' || (key === 'select' && detail.kind === 'assembly' &&
+        (detail.scene_text?.length || candidate.scene_text_final) && !(candidate.locked && !candidate.scene_text_pending))) {
+      await window.ZetSceneText.open({base: base(), universe, candidate: candidateId,
+        done: async result => { if (current()) mergeTarget(result); }});
+      return success;
+    }
+    const candidateUrl = base() + '/candidates/' + candidateId;
+    if (key === 'inventory') {
+      const result = await api(candidateUrl + '/inventory', 'POST', {});
+      if (!current()) return cancelled;
+      window.dispatchEvent(new CustomEvent('zet:open-inventory-image', {detail: {assetId: result.asset.asset_id, universe}}));
+      return success;
+    }
+    let result;
+    if (key === 'delete-drafts' || key === 'delete-non-selected') result = await deleteBoardImages(key === 'delete-drafts');
+    else if (key === 'reuse' || key === 'crop') result = await api(base() + '/backdrop-source', 'POST', {action: key});
+    else result = await api(candidateUrl, 'POST', {action: key});
+    if (!current() || !result) return cancelled;
+    mergeTarget(result);
+    if (key === 'upscale' && result.candidates[candidateId]?.error) throw Error(result.candidates[candidateId].error);
+    return {...success, message: 'Updated.'};
+  } finally {
+    busy = false;
+    if (current()) {
+      target.disabled = false;
+      updateLive();
+    }
   }
 }
 
@@ -175,17 +333,16 @@ async function action(callback) {
   if (disposed) return;
   if (busy) return;
   busy = true;
+  revision++;
   let actionError = '';
-  renderImageReview();
-  root.querySelectorAll('button, #narrative-target-select').forEach(control => { control.disabled = true; });
+  publishBoard();
+  root.querySelectorAll('button:not(.zet-candidate-board button), #narrative-target-select').forEach(control => { control.disabled = true; });
   try { await callback(); } catch (error) { actionError = error.message; status(error.message, true); }
   finally {
     if (disposed) return;
-    busy = false; root.querySelectorAll('button, #narrative-target-select').forEach(control => { control.disabled = false; });
+    busy = false; root.querySelectorAll('button:not(.zet-candidate-board button), #narrative-target-select').forEach(control => { control.disabled = false; });
     if (route.story && !route.scene) updateSceneOrderControls();
-    if (route.target && detail) updateLive(); renderImageReview();
-    const reviewError = host.querySelector('#narrative-review-error');
-    if (reviewError) reviewError.textContent = actionError;
+    if (route.target && detail) updateLive();
     const interviewError = host.querySelector('#narrative-interview-review-error');
     if (interviewError) interviewError.textContent = actionError;
   }
@@ -222,6 +379,7 @@ async function loadPage() {
   if (disposed) return;
   contextState = 'loading';
   document.body.dataset.narrativeReady = 'false';
+  disposeBoard();
   root.replaceChildren();
   contextLabels = {};
   detail = null;
@@ -234,9 +392,7 @@ async function loadPage() {
     if (candidateRestorePending && recorded && route.target) {
       candidateRestorePending = false;
       if (detail?.candidates?.[recorded]?.image) {
-        reviewCandidate = recorded;
-        host.querySelector('#image-dialog').showModal();
-        renderImageReview();
+        await board?.openReview(recorded);
       } else window.ZetTaskCapture.notice(`Recorded candidate "${recorded}" is unavailable. The target is open.`);
     }
   } catch (error) {
@@ -254,14 +410,13 @@ async function loadPage() {
 
 async function loadPageContent() {
   interviewImage = '';
-  host.querySelector('#image-dialog').close();
   host.querySelector('#narrative-interview-review').close();
   interviewReviewId = null;
   reviewCandidate = null;
   clearTimeout(saveTimer);
   const query = new URLSearchParams(location.search);
   route = {story:query.get('story'), scene:query.get('scene'), target:query.get('target')};
-  dirty = new Set(); slotSignature = ''; historySignature = ''; interviewReplies = 0;
+  dirty = new Set(); historySignature = ''; interviewReplies = 0;
   host.querySelector('#narrative-home').href = href({});
   status('Loading…');
   if (!route.story) {
@@ -280,7 +435,6 @@ async function loadPageContent() {
     host.querySelector('#narrative-breadcrumb').textContent = 'Stories';
   } else if (!route.scene) {
     detail = await api(base());
-    progressSignature = JSON.stringify([detail.jobs, detail.luna_review]);
     contextLabels.story = detail.title;
     root.innerHTML = `<h1>${esc(detail.title)}</h1><section class="narrative-card">${label('title',detail.title,false)}${label('brief',detail.brief)}<button type="button" id="scene-text-story-style">Scene text style</button>
       <div class="narrative-actions"><button data-action="save">Save story</button><button class="danger" data-action="delete">Delete story</button></div></section>
@@ -516,8 +670,7 @@ function renderPlacement() {
 }
 
 function layersChanged() {
-  hideRaw(); dirty.add('layers'); status('Saving changes…'); clearTimeout(saveTimer);
-  saveTimer = setTimeout(()=>save().catch(error=>status(error.message,true)),700);
+  hideRaw(); dirty.add('layers'); status('Saving changes…'); scheduleSave();
 }
 
 async function editMask(layerId) {
@@ -593,18 +746,16 @@ function sourcePanelHtml() {
     ${sourceTextHtml(source)}
     <label class="narrative-field">How to use the source<select id="backdrop-link-mode">${[['unmodified','Use unmodified'],['reference','Reference'],['regenerate','Regenerate']].map(([v,n])=>`<option value="${v}" ${mode===v?'selected':''}>${n}</option>`).join('')}</select></label>
     <div data-source-mode="regenerate"><div class="narrative-actions"><button data-action="copy-source-current">Copy current source inputs</button>${source.generation_inputs ? '<button data-action="copy-source-generation">Copy generation inputs</button>' : ''}</div><p>Copying replaces destination inputs and creates local visual overrides. Then edit manually or use the interview. The source image is not supplied to generation.</p></div>
-    <div data-source-mode="unmodified"><button data-action="reuse-backdrop">Use Unmodified Image</button></div>
     <div data-source-mode="reference"><button data-action="refresh-backdrop">Use current source selection</button>
     <label class="narrative-field">Crop<select id="backdrop-crop-enabled" data-adaptation="crop_enabled"><option value="no">No</option><option value="yes" ${settings.crop_enabled?'selected':''}>Yes</option></select></label>
     <div id="backdrop-crop-controls"><p>${esc(settings.crop_notice || 'Select an exact source region. Output dimensions do not change this crop.')}</p>
     <div class="narrative-crop-stage" id="backdrop-crop-stage"><img id="backdrop-source-image" src="${esc(artifactUrl('source-image'))}&revision=${esc(source.snapshot_id)}" alt="Pinned source backdrop"><div id="backdrop-crop-box"><span data-crop-resize="true"></span></div></div>
     <div class="narrative-grid">${['x','y','width','height'].map(key=>`<label class="narrative-field">Crop ${key}<input type="number" step="1" min="${['x','y'].includes(key)?0:1}" id="backdrop-crop-${key}" data-crop="${key}" value="${crop[key]??(['width','height'].includes(key)?source['image_'+key]:0)}"></label>`).join('')}</div>
     <button data-action="preview-crop">Preview crop</button><img id="backdrop-crop-preview" class="narrative-source-preview" hidden alt="Crop output preview"></div>
-    <button id="backdrop-local-action" data-action="${settings.crop_enabled?'crop-backdrop':'reuse-backdrop'}">${settings.crop_enabled?'Use Unmodified Crop':'Use Unmodified Image'}</button>
     <label class="narrative-field">Backdrop operation<select id="backdrop-operation" data-adaptation="operation">${[['edit','Other edits'],['expand','Expand'],['viewpoint','Change viewpoint']].map(([v,n])=>`<option value="${v}" ${(settings.operation||'edit')===v?'selected':''}>${n}</option>`).join('')}</select></label>
     <label class="narrative-field">Adaptation direction<textarea id="backdrop-direction" data-adaptation="direction">${esc(settings.direction||'')}</textarea></label>
     <label class="narrative-field" id="backdrop-expand-control">Expand toward<select data-adaptation="expand_side" id="backdrop-expand-side">${['left','right','top','bottom','all'].map(side=>`<option ${(settings.expand_side||'right')===side?'selected':''}>${side}</option>`).join('')}</select></label>
-    <button class="primary" data-action="apply-backdrop-operation" data-mode="draft">Apply Draft</button><button class="primary" data-action="apply-backdrop-operation" data-mode="final">Apply Final</button><p>Writes a fresh prompt and generates one image from the ${settings.crop_enabled?'crop':'full source'}. Scene settings and applied interview edits supply the changes. Generated edits may reinterpret pixels.</p></div>
+    </div>
     <p>After changing the mode, crop or operation, use Write Prompt to update existing prompt text. Render sends the entered prompt.</p>` : '<p>No source attached.</p>'}</section>`;
 }
 
@@ -615,9 +766,7 @@ function sourceVisibility() {
   if (crop) crop.hidden = !detail.backdrop_adaptation?.crop_enabled;
   const expand = host.querySelector('#backdrop-expand-control');
   if (expand) expand.hidden = detail.backdrop_adaptation?.operation !== 'expand';
-  const local = host.querySelector('#backdrop-local-action');
-  if (local) {local.dataset.action=detail.backdrop_adaptation?.crop_enabled?'crop-backdrop':'reuse-backdrop';local.textContent=detail.backdrop_adaptation?.crop_enabled?'Use Unmodified Crop':'Use Unmodified Image';}
-  host.querySelectorAll('.narrative-direction-settings > div > section:not(#narrative-source-panel), .narrative-generation-settings').forEach(el=>{el.hidden=mode==='unmodified';});
+  host.querySelectorAll('.narrative-direction-settings > div > section:not(#narrative-source-panel)').forEach(el=>{el.hidden=mode==='unmodified';});
 }
 
 function drawCropBox() {
@@ -708,13 +857,12 @@ function adaptationChanged() {
     crop_enabled:host.querySelector('#backdrop-crop-enabled').value==='yes',
     crop:Object.fromEntries(['x','y','width','height'].map(key=>[key,Number(host.querySelector(`#backdrop-crop-${key}`).value)]))};
   dirty.add('backdrop_adaptation');
-  clearTimeout(saveTimer);saveTimer=setTimeout(()=>save().catch(error=>status(error.message,true)),700);
+  scheduleSave();
   const preview=host.querySelector('#backdrop-crop-preview');if(preview)preview.hidden=true;
-  sourceVisibility();drawCropBox();
+  sourceVisibility();drawCropBox();publishBoard();
 }
 
 function renderTarget(targets) {
-  if (ratioTarget !== route.target) { ratioTarget = route.target; renderRatio = detail.kind === 'subscene' ? detail.aspect_ratio : detail.scene_canvas; previewSizing=null; }
   const backdrop = detail.kind === 'backdrop';
   const assembly = detail.kind === 'assembly';
   const viewingImages = window.matchMedia("(max-width: 1360px)").matches && modeSlots().some(id => id && detail.candidates[id]?.image);
@@ -724,9 +872,9 @@ function renderTarget(targets) {
       ${label('title',detail.title,false)}${label('narrative',detail.narrative,true,backdrop ? 'Describe the environment' : 'Describe what is happening')}
       ${label('staging',detail.staging,true,backdrop ? 'Environment composition' : 'Interaction and staging')}${label('physical_context',detail.physical_context)}
       ${detail.kind === 'subscene' ? `<label><input type="checkbox" id="narrative-use_transparent_background" data-field="use_transparent_background" ${detail.use_transparent_background ? 'checked' : ''}> Use transparent background</label><p class="narrative-muted">Interview and Write Prompt use transparency instead of visible scenery, including Setting. Camera, subject lighting and required supports still apply. Use Write Prompt to update existing prompt text; Render sends your edited prompt exactly as entered.</p>` : ''}
-      ${label('framing',detail.framing,false)}${detail.kind === 'subscene' ? `<label class="narrative-field">Canvas size aspect ratio<input data-field="aspect_ratio" id="narrative-aspect_ratio" value="${esc(renderRatio)}" required></label>` : `<p class="narrative-muted">Canvas size aspect ratio: ${esc(detail.scene_canvas)} (from scene)</p>`}
+      ${label('framing',detail.framing,false)}
       <div class="narrative-actions"><button data-action="save">Save inputs</button><button class="danger" data-action="delete">Delete ${assembly ? 'assembly' : backdrop ? 'backdrop' : 'subscene'}</button></div></section>
-    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button><button data-action="scene-text" ${modeSelected()?"":"disabled"}>Edit selected image text</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
+    ${assembly ? `<section class="narrative-card"><h2>Scene text</h2><button data-action="scene-text-raw">Edit raw composite text draft</button></section>`+assemblyHtml() : `<section class="narrative-card"><h2>Participants and references</h2><div id="narrative-elements">${elementsHtml(detail.elements,true)}</div>
       <div class="narrative-actions"><button data-action="assign-elements">Assign scene elements</button><button data-action="new-element">New element / library reference</button></div></section>`}
     <section class="narrative-card"><h2>Shared visual context</h2><p class="narrative-muted">Interview input · Interview may propose changes. Shared values apply across this scene; local overrides replace them for this target.</p>
       <p class="narrative-muted">Style source: ${esc(detail.style_source || 'saved scene')}</p>
@@ -735,17 +883,11 @@ function renderTarget(targets) {
     <section class="narrative-card"><h2>Interview</h2>${modelControl('interview_model')}<p class="narrative-muted" id="narrative-interview-effective"></p><p id="narrative-interview-status" role="status" aria-live="polite"></p><div id="narrative-interview" class="narrative-history"></div>
       <label class="narrative-field">Answer or direct a revision<textarea id="narrative-direction" placeholder="Describe what is happening, answer a question, or ask for a change."></textarea></label>
       ${detail.kind === 'subscene' ? `<label class="narrative-field">Image for this interview<select id="narrative-interview-image"><option value="">None</option></select><small>Used for this turn only. Requires a vision-capable interview model.</small></label><div id="narrative-interview-image-preview"></div><p class="narrative-muted" id="narrative-interview-replay-image"></p>` : ''}
-      <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button>${detail.kind === 'subscene' ? `<button class="primary narrative-interview-write-prompt" data-action="synthesize" ${acceptedInterviewChanges() ? '' : 'hidden'}>Write Prompt</button>` : ''}</div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
-    </details><div class="narrative-output"><details class="narrative-card narrative-generation-settings" ${viewingImages ? '' : 'open'}><summary><span>Prompt and generation</span></summary>${assembly ? `<label class="narrative-field">Assembly mode<select id="narrative-assembly_mode" data-field="assembly_mode"><option value="finish_composite" ${detail.assembly_mode==='finish_composite'?'selected':''}>Finish placed composite</option><option value="assemble_references" ${detail.assembly_mode==='assemble_references'?'selected':''}>Assemble from references</option><option value="harmonize_composite" ${detail.assembly_mode==='harmonize_composite'?'selected':''}>Harmonize placed composite</option></select></label><p id="narrative-assembly-help" class="narrative-muted"></p><p id="narrative-assembly-prompt-warning" class="error" role="status"></p>` : ''}${modelControl('prompt_model')}<p class="narrative-muted" id="narrative-prompt-effective"></p>
-      <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>
-      ${label('prompt',detail.prompt,true,'Final Qwen prompt')}<p id="narrative-prompt-origin" class="narrative-muted"></p>
-      <details><summary>Previous prompt outputs</summary><select id="narrative-prompt-history" aria-label="Previous prompt outputs"></select><pre id="narrative-prompt-preview"></pre></details>
-      <div class="narrative-actions"><button class="primary" data-action="synthesize">Write Prompt</button></div><p id="narrative-prompt-pending" class="narrative-muted"></p>
-      ${renderBoardActions()}
-      <p class="narrative-muted">Write Prompt replaces the prompt above. Render sends that text exactly as entered.</p>
-      <div id="narrative-job-status" role="status" aria-live="polite"></div></details>
-    <section id="narrative-images-card" class="narrative-card"><h2>Images</h2><div id="narrative-slots" class="narrative-slots"></div></section></div></div>`;
+      <div class="narrative-actions"><button class="primary" data-action="interview">Continue interview</button><button data-action="rerun_interview">Re-run last interview</button><button data-action="restart_interview" title="Clear interview history and start again from current inputs">Restart interview</button></div><div id="narrative-interview-failure"></div><div id="narrative-pending-reviews"></div><p class="narrative-muted">Interview revisions are proposals until you Apply them. Answers are optional; edit directly or generate whenever you are ready. Restart interview clears the conversation and pending proposals, keeping your current inputs and images.</p></section></div>
+    </details><div id="narrative-board-host"></div></div>
+    <datalist id="narrative-model-options"></datalist><p id="narrative-model-error" class="error"></p>`;
   sourceVisibility();
+  mountBoard();
   enableModelPickers();
   updateLive();
   void updateRenderSize();
@@ -757,11 +899,6 @@ function renderTarget(targets) {
 
 function pendingInterviews() {
   return Object.values(detail.jobs).filter(job=>job.status === 'COMPLETE' && job.review?.status === 'pending');
-}
-
-function acceptedInterviewChanges() {
-  return Object.values(detail.jobs).some(job=>job.review?.status === 'applied' &&
-    Object.values(job.review.choices || {}).some(choice=>choice !== 'reject'));
 }
 
 function reviewChoices(job) {
@@ -811,38 +948,10 @@ function refreshVisualContext() {
   }
 }
 
-function promptIndicator(candidate) {
-  if (!candidate?.image || candidate.status !== 'COMPLETE') return '';
-  const operation = candidate.backdrop_adaptation?.operation;
-  if (candidate.source_snapshot && ['crop','unchanged'].includes(operation)) return `<span class="narrative-prompt-indicator">${operation === 'crop' ? 'Local crop' : 'Local reuse'}</span>`;
-  if (typeof candidate.prompt !== 'string' || !candidate.prompt) return '<span class="narrative-prompt-indicator">Prompt not recorded</span>';
-  return candidate.source_change_fyi ? '<span class="status-badge review narrative-prompt-indicator" title="The saved prompt changed after this image was made.">Earlier prompt</span>' : '';
-}
-
-function updatePromptIndicators() {
-  for (const node of host.querySelectorAll('[data-prompt-indicator]')) {
-    const html = promptIndicator(detail.candidates[node.dataset.promptIndicator]);
-    if (node.innerHTML !== html) node.innerHTML = html;
-  }
-}
-
 function updateLive() {
   if (disposed) return;
-  const criteriaDisclosure = host.querySelector('.luna-review-criteria');
-  const criteriaText = criteriaDisclosure?.querySelector('pre');
-  if (criteriaText && detail?.luna_review?.prompt) criteriaText.textContent = detail.luna_review.prompt;
-  const criteriaSummary = criteriaDisclosure?.querySelector('summary');
-  if (criteriaSummary && detail?.luna_review?.recorded_at) {
-    criteriaSummary.textContent = `Review criteria · ${detail.luna_review.status === 'OBSOLETE' ? 'Obsolete · ' : ''}${detail.luna_review.recorded_at}`;
-  }
-  const imagesCard = host.querySelector('#narrative-images-card');
-  if (imagesCard) {
-    imagesCard.querySelector('h2').classList.add('render-mode-heading');
-  }
   const history = host.querySelector('#narrative-interview');
   if (!history) return;
-  const editText = host.querySelector('[data-action="scene-text"]');
-  if (editText) editText.disabled = !modeSelected();
   const jobs = Object.values(detail.jobs);
   const imagePicker = host.querySelector('#narrative-interview-image');
   if (imagePicker) {
@@ -860,9 +969,6 @@ function updateLive() {
   refreshVisualContext();
   const pending = pendingInterviews();
   host.querySelector('#narrative-pending-reviews').innerHTML = pending.map(job=>`<button data-interview-review="${job.id}">Review interview proposals · ${job.review.proposals.length} changes</button>`).join('');
-  const writePromptShortcut = host.querySelector('.narrative-interview-write-prompt');
-  if (writePromptShortcut) writePromptShortcut.hidden = !acceptedInterviewChanges();
-  host.querySelector('#narrative-prompt-pending').textContent = pending.length ? `${pending.length} interview review${pending.length === 1 ? '' : 's'} pending. Write Prompt uses saved, applied inputs.` : '';
   const signatureHistory = JSON.stringify([detail.interview, jobs.filter(job=>job.kind!=='image').map(job=>[job.id,job.status,job.result,job.review?.status])]);
   if (signatureHistory !== historySignature) {
     const replies = detail.interview.filter(item=>item.role === 'assistant').length;
@@ -879,33 +985,12 @@ function updateLive() {
       notice.className = 'narrative-complete';
       if (pending.length) openInterviewReview(pending.at(-1).id);
     }
-    const select = host.querySelector('#narrative-prompt-history');
-    const value = select.value;
-    select.innerHTML = '<option value="">Choose a previous prompt</option>'+jobs.filter(job=>['synthesize','generate'].includes(job.kind)&&typeof job.result==='string').map((job,index)=>`<option value="${job.id}">${index+1} · ${esc(modelName(job.provenance))}${detail.kind==='assembly' ? ' · '+assemblyModeName(job.detail.assembly_mode) : ''}</option>`).join('');
-    select.value = value;
   }
-  host.querySelector('#narrative-prompt-origin').textContent = `${modelName(detail.prompt_provenance)}${detail.prompt_provenance?.edited || dirty.has('prompt') ? ' · Manually edited' : ''}`;
-  if (detail.kind === 'assembly') {
-    const mode = host.querySelector('#narrative-assembly_mode').value;
-    const stale = !dirty.has('prompt') && (detail.prompt_provenance?.assembly_mode || 'finish_composite') !== mode;
-    host.querySelector('#narrative-assembly-help').textContent = mode === 'assemble_references'
-      ? 'Qwen assembles original sources using placement and depth instructions. Opacity is approximate; write the prompt again after changing it. Cutout corrections affect the placement preview and composite modes. Exact placement may vary. Up to ten visible sources.'
-      : mode === 'harmonize_composite'
-        ? 'Qwen harmonizes the placed composite, including cutout corrections, lighting, color, edges and ground contact. The full generated image is retained; subject appearance can change and placement may drift.'
-        : 'Qwen finishes the placed composite; seam and shadow blending preserves subject pixels.';
-    host.querySelector('#narrative-assembly-prompt-warning').textContent = stale && detail.prompt ? 'This prompt belongs to another assembly mode. Write or edit the prompt before rendering.' : '';
-    for (const button of root.querySelectorAll('[data-action="render"], [data-board-action="render"]')) button.disabled = stale;
-  }
-  for (const type of ['interview','prompt']) host.querySelector(`#narrative-${type}-effective`).textContent = `Next run: ${host.querySelector(`#narrative-${type}_model`).value || modelOptions.model}`;
-  const working = jobs.filter(job=>active.has(job.status));
-  const llmWorking = llmSubmitting || working.some(job=>job.kind !== 'image');
-  const prompt = host.querySelector('#narrative-prompt');
-  if (llmWorking && document.activeElement === prompt) prompt.blur();
-  prompt.disabled = llmWorking;
-  prompt.setAttribute('aria-busy', String(llmWorking));
-  const promptActions = ['interview','rerun_interview','restart_interview','synthesize','render'];
-  for (const button of root.querySelectorAll('[data-action]')) {
-    if (promptActions.includes(button.dataset.action)) button.disabled = busy || llmWorking || (button.dataset.action === 'render' && detail.kind==='backdrop' && detail.source_snapshot?.image_file && ['crop','unchanged'].includes(detail.backdrop_adaptation?.operation)) || (button.dataset.action === 'render' && Boolean(host.querySelector('#narrative-assembly-prompt-warning')?.textContent));
+  host.querySelector('#narrative-interview-effective').textContent = 'Next run: ' + (host.querySelector('#narrative-interview_model').value || modelOptions.model);
+  const working = jobs.filter(job => isNarrativeActive(job.status));
+  const llmWorking = llmSubmitting || working.some(job => job.kind !== 'image');
+  for (const button of root.querySelectorAll('[data-action*="interview"]')) {
+    if (['interview','rerun_interview','restart_interview'].includes(button.dataset.action)) button.disabled = busy || llmWorking;
   }
   const interviewJob = working.find(job=>job.kind === 'interview');
   if (interviewJob) {
@@ -916,101 +1001,15 @@ function updateLive() {
     host.querySelector('#narrative-interview-status').textContent = '';
     host.querySelector('#narrative-interview-status').className = '';
   }
-  const lastAuthorJob = jobs.filter(job=>job.kind !== 'image').at(-1);
-  const failures = lastAuthorJob?.status === 'FAILED' ? [lastAuthorJob] : [];
-  host.querySelector('#narrative-job-status').innerHTML = `<p class="${working.length || llmSubmitting ? 'narrative-pending' : 'narrative-muted'}">${working.length ? working.map(job=>`${esc(job.kind)}: ${esc(job.status.toLowerCase())}${job.kind !== 'image' ? ' · '+esc(job.model || 'Model not recorded') : ''}`).join(' · ') : llmSubmitting ? 'Submitting LLM request…' : 'Ready'}${llmWorking ? ' · Final prompt is unavailable until the LLM finishes.' : ''}</p>`+
-    failures.filter(job=>job.kind !== 'image').map(job=>`<div class="narrative-failure">${esc(modelName(job.provenance))} · ${esc(job.error)}${job.kind === 'interview' ? ` <button data-retry-job="${job.id}">Retry</button>` : ''}</div>`).join('');
-  updatePromptIndicators();
-  const slots = modeSlots(), selected = modeSelected();
-  const signature = JSON.stringify([slots,detail.candidates,selected,detail.luna_review]);
-  if (signature === slotSignature) { renderImageReview(); return; }
-  slotSignature = signature;
-  renderCandidateBoard({host: host.querySelector('#narrative-slots'), slots, candidates: detail.candidates, lunaReview: detail.luna_review,
-    selectedId: selected, escape: esc, imageUrl, promptIndicator,
-    renderActions: (candidate, index) => candidateActions({id: slots[index], candidate,
-      selected: Boolean(candidate) && slots[index] === selected, slot: index + 1, escape: esc})});
-  renderImageReview();
-}
-
-function reviewImages() {
-  // Occupied slots retain prompt/source inspection even before an image exists.
-  return modeSlots().filter(id=>id && detail.candidates[id]);
-}
-
-function renderImageReview() {
-  if (disposed) return;
-  const dialog = host.querySelector('#image-dialog');
-  if (!dialog.open) return;
-  const images = reviewImages();
-  if (!images.length) { dialog.close(); reviewCandidate = null; return; }
-  if (!images.includes(reviewCandidate)) reviewCandidate = images[0];
-  const candidate = detail.candidates[reviewCandidate];
-  const index = images.indexOf(reviewCandidate);
-  const selected = reviewCandidate === modeSelected();
-  const image = host.querySelector('#review-image');
-  image.hidden = !candidate.image;
-  if (candidate.image) image.src = imageUrl(reviewCandidate);
-  else image.removeAttribute('src');
-  let placeholder = image.parentElement.querySelector('.image-review-placeholder');
-  if (!placeholder) {
-    placeholder = document.createElement('p'); placeholder.className = 'image-review-placeholder';
-    placeholder.textContent = 'No image available yet.'; image.after(placeholder);
-  }
-  placeholder.hidden = Boolean(candidate.image);
-  reviewZoom?.sync(candidate.image ? `${reviewCandidate}:${image.src}` : `${reviewCandidate}:empty`);
-  host.querySelector('#review-image').alt = `Slot ${candidate.slot} candidate`;
-  host.querySelector('#narrative-review-prev').disabled = busy || index === 0;
-  host.querySelector('#narrative-review-next').disabled = busy || index === images.length - 1;
-  if(!dialog.querySelector('[data-clean-view]')){const toggle=document.createElement('button');toggle.dataset.cleanView='';toggle.textContent='Hide review controls';toggle.onclick=()=>{const clean=dialog.classList.toggle('narrative-clean-view');toggle.textContent=clean?'Show review controls':'Hide review controls';};dialog.append(toggle);}
-  const panel = host.querySelector('#narrative-review-panel');
-  const sameCandidate = panel.dataset.candidate === reviewCandidate;
-  const focusedAction = panel.contains(document.activeElement) ? (document.activeElement.dataset.actionKey || document.activeElement.dataset.imageAction) : "";
-  const previousDetails = panel.querySelector('details');
-  const detailsOpen = sameCandidate && previousDetails?.open;
-  const detailsScroll = sameCandidate ? panel.scrollTop : 0;
-  panel.dataset.candidate = reviewCandidate;
-  const luna = detail.luna_review || {};
-  const rank = (luna.entries || []).findIndex(entry => entry.candidate_id === reviewCandidate);
-  const assessment = rank >= 0 ? luna.entries[rank].review : '';
-  const compareId = modeSelected();
-  const compareCandidate = compareId && compareId !== reviewCandidate ? detail.candidates[compareId] : null;
-  const compareSelect = `<label class="narrative-review-compare-choice">Compare with selected image<select id="narrative-review-compare-choice"><option value="">No comparison</option>${compareCandidate?.image ? `<option value="${esc(compareId)}" ${reviewCompareCandidate === compareId ? 'selected' : ''}>Selected · ${compareCandidate.render_mode === 'final' ? 'Final' : 'Draft'} · Slot ${compareCandidate.slot}</option>` : ''}</select></label>`;
-  panel.innerHTML = `<h2>${esc(detail.title)} · Slot ${candidate.slot} <span data-prompt-indicator="${reviewCandidate}">${promptIndicator(candidate)}</span></h2>
-    <p class="local-pipeline-review-position">${esc(reviewPosition(candidate, index, images.length, selected))}${candidate.scene_text_pending ? ' · Scene text changes pending' : ''}</p>
-    <div class="button-row compact local-pipeline-review-actions">
-      ${detail.kind==='assembly' ? `<button data-scene-text-candidate="${reviewCandidate}" ${candidate.locked || candidate.status !== 'COMPLETE' ? "disabled" : ""}>Edit text</button>` : ''}${candidateActions({id: reviewCandidate, candidate, selected, slot: candidate.slot,
-        busy, escape: esc, review: true, showProtectedRegen: true})}
-      <button data-save-inventory="${reviewCandidate}" ${busy || !candidate.image || !candidate.locked ? 'disabled' : ''} title="Lock this image to view it in Inventory">View in Inventory</button>
-    </div>${compareSelect}
-    ${assessment ? `<section class="luna-review-assessment"><h3>Luna ${luna.status === 'OBSOLETE' ? 'previous ' : ''}rank #${rank + 1}${luna.status === 'OBSOLETE' ? ' · Obsolete' : ''}</h3><p>${esc(assessment)}</p></section>` : ''}
-    <p class="error" role="status" id="narrative-review-error"></p>
-    ${candidate.error ? `<p class="error">${esc(candidate.error)}</p>` : ''}
-    <details ${detailsOpen ? 'open' : ''}><summary>Prompt and source ${copyPromptButton(reviewCandidate)}</summary><p class="narrative-muted">${esc(modelName(candidate.prompt_provenance))}${candidate.prompt_provenance?.edited ? ' · Manually edited' : ''}${candidate.assembly_snapshot ? ' · '+assemblyModeName(candidate.assembly_mode) : ''}</p>
-    <pre>${esc(candidate.prompt || 'Prompt not recorded')}</pre>
-    ${reviewInputs(candidate.render_request?.inputs, index => artifactUrl(`candidates/${reviewCandidate}/inputs/${index}`), esc)}
-    ${candidate.source_snapshot ? `<p class="narrative-muted">Source: ${esc(candidate.source_snapshot.scene_title)} · ${esc(candidate.source_snapshot.title)} · ${esc(candidate.backdrop_adaptation?.operation || 'edit')}</p>` : ''}
-    ${candidate.assembly_snapshot ? `${(candidate.assembly_snapshot.has_composite ?? (candidate.assembly_snapshot.assembly_mode || 'finish_composite')==='finish_composite') ? `<a href="${esc(artifactUrl(`candidates/${reviewCandidate}/composite`))}" target="_blank">Compare raw composite</a>` : ''}<p>${candidate.assembly_snapshot.layers.filter(layer=>layer.visible).map(layer=>esc(layer.label)).join(' · ')}</p>` : ''}
-    </details>`;
-  const compareFigure = host.querySelector('#narrative-review-compare-figure');
-  const compareImage = host.querySelector('#narrative-review-compare-image');
-  const comparisonPanel = host.querySelector('#image-dialog .local-pipeline-review-comparison');
-  const showComparison = Boolean(compareCandidate?.image && reviewCompareCandidate === compareId);
-  comparisonPanel.classList.toggle('single-image', !showComparison);
-  compareFigure.hidden = !showComparison;
-  if (showComparison) {
-    compareImage.src = imageUrl(compareId);
-    compareImage.alt = `Selected ${compareCandidate.render_mode} image, slot ${compareCandidate.slot}`;
-  } else compareImage.removeAttribute('src');
-  const compareChoice = host.querySelector('#narrative-review-compare-choice');
-  compareChoice.onchange = () => { reviewCompareCandidate = compareChoice.value; renderImageReview(); };
-  window.ZetImageCardUI.scan(panel);
-  if (sameCandidate && focusedAction) [...panel.querySelectorAll("button,a")]
-    .find(button => (button.dataset.actionKey || button.dataset.imageAction) === focusedAction)?.focus({ preventScroll: true });
-  panel.scrollTop = detailsScroll;
+  const lastInterview = jobs.filter(job => job.kind === 'interview').at(-1);
+  const failure = host.querySelector('#narrative-interview-failure');
+  failure.innerHTML = lastInterview?.status === 'FAILED' ? '<p class="error">' + esc(lastInterview.error) + '</p><button data-retry-job="' + esc(lastInterview.id) + '">Retry</button>' : '';
+  publishBoard();
 }
 
 function mergeTarget(updated) {
-  progressSignature = JSON.stringify([updated.jobs, updated.luna_review]);
+  const previousRatio = boardRatio();
+  revision++;
   if (dirty.has('layers') || layerDrag || brush) updated.layers = detail.layers;
   if (dirty.has('backdrop_adaptation') || cropDrag) updated.backdrop_adaptation = detail.backdrop_adaptation;
   for (const key of targetFields) {
@@ -1029,10 +1028,7 @@ function mergeTarget(updated) {
     if (list) list.innerHTML = elementsHtml(updated.elements,true);
   }
   detail = updated;
-  if (updated.kind === 'subscene' && !dirty.has('aspect_ratio') && renderRatio !== updated.aspect_ratio) {
-    renderRatio = updated.aspect_ratio;
-    void updateRenderSize();
-  }
+  if (previousRatio !== boardRatio()) void updateRenderSize();
   renderPlacement();
   updateLive();
 }
@@ -1041,11 +1037,13 @@ async function save() {
   clearTimeout(saveTimer);
   if (!detail || !dirty.size) { await saveChain; return; }
   const url = base();
+  const epoch = boardEpoch;
   const payload = {};
   const changed = [...dirty];
   for (const key of changed) {
     if (key === 'layers') { payload.layers = structuredClone(detail.layers); continue; }
     if (key === 'backdrop_adaptation') { payload.backdrop_adaptation = structuredClone(detail.backdrop_adaptation); continue; }
+    if (boardDrafts.has(key)) { payload[key] = boardDrafts.get(key); continue; }
     if (key.startsWith('override_')) continue;
     const field = root.querySelector(`[data-field="${key}"]`);
     if (field) payload[key] = fieldValue(field);
@@ -1055,7 +1053,7 @@ async function save() {
   }
   const operation = saveChain.catch(()=>{}).then(async()=>{
     const updated = await api(url,'PATCH',payload);
-    if (base() !== url) return;
+    if (boardEpoch !== epoch || disposed) return;
     const pendingLayers = dirty.has('layers') && JSON.stringify(detail.layers) !== JSON.stringify(payload.layers) ? detail.layers : null;
     const pendingAdaptation = dirty.has('backdrop_adaptation') && JSON.stringify(detail.backdrop_adaptation) !== JSON.stringify(payload.backdrop_adaptation) ? detail.backdrop_adaptation : null;
     for (const key of changed) {
@@ -1063,8 +1061,10 @@ async function save() {
       if (key === 'backdrop_adaptation') { if (!pendingAdaptation) dirty.delete(key); continue; }
       const field = root.querySelector(`[data-field="${key}"]`);
       const value = key.startsWith('override_') ? payload.visual_overrides[key.slice(9)] : payload[key];
-      if (field && String(fieldValue(field)) === String(value)) dirty.delete(key);
+      if (boardDrafts.has(key) && boardDrafts.get(key) === value) { boardDrafts.delete(key); dirty.delete(key); }
+      else if (field && String(fieldValue(field)) === String(value)) dirty.delete(key);
     }
+    revision++;
     Object.assign(detail,updated);
     if (pendingLayers) detail.layers = pendingLayers;
     if (pendingAdaptation) detail.backdrop_adaptation = pendingAdaptation;
@@ -1077,31 +1077,42 @@ async function save() {
   await operation;
 }
 
-async function poll() {
-  if (disposed) return;
-  if (!route.target || pollBusy || busy) return;
-  if (document.hidden || (!llmSubmitting && detail?.luna_review?.status !== 'RUNNING' && !Object.values(detail?.jobs || {}).some(job =>
-    ['SUBMITTING','QUEUED','RUNNING','DISPATCHING','TRANSFERRING','RECONCILING'].includes(job.status)))) return;
+async function poll(refreshIdle = false) {
+  if (disposed || !board || document.hidden || pollBusy || busy) return;
+  const working = llmSubmitting || detail.luna_review?.status === 'RUNNING' ||
+    Object.values(detail.jobs).some(job => isNarrativeActive(job.status));
+  if (!working && !refreshIdle) return;
+  const epoch = boardEpoch, observed = revision, url = base();
+  const current = () => !disposed && epoch === boardEpoch && revision === observed && !busy;
   pollBusy = true;
-  const url = base();
   try {
-    const progress = await api(url + '/progress');
-    if (base() !== url) return;
-    const signature = JSON.stringify([progress.jobs, progress.luna_review]);
-    if (signature !== progressSignature) {
-      progressSignature = signature;
-      const updated = await api(url);
-      if (base() !== url) return;
-      mergeTarget(updated);
+    if (!refreshIdle) {
+      const progress = await api(url + '/progress');
+      if (!current()) return;
+      const changed = progress.jobs.filter(job => detail.jobs[job.id]?.status !== job.status);
+      const slots = (progress.slots || []).filter(slot => {
+        const candidate = detail.candidates[slot.candidate_id];
+        return detail.slots[slot.slot - 1] === slot.candidate_id && candidate?.job_id === slot.job_id && candidate.status !== slot.status;
+      });
+      if ((detail.luna_review?.status || '') === (progress.luna_review?.status || '') &&
+          changed.every(job => detail.jobs[job.id] && isNarrativeActive(job.status)) &&
+          slots.every(slot => isNarrativeActive(slot.status))) {
+        for (const job of changed) detail.jobs[job.id].status = job.status;
+        for (const slot of slots) detail.candidates[slot.candidate_id].status = slot.status;
+        if (changed.length || slots.length) updateLive();
+        return;
+      }
     }
-  } catch (error) { status(error.message,true); }
+    const updated = await api(url);
+    if (current()) mergeTarget(updated);
+  } catch (error) { if (current()) status(error.message, true); }
   finally { pollBusy = false; }
 }
 
 async function start(actionName, count = 1, slot, retryJobId, renderMode = 'draft', expectedCandidateId) {
-  if (['generate','render'].includes(actionName) && host.querySelector('#narrative-aspect_ratio') && !host.querySelector('#narrative-aspect_ratio').reportValidity()) return;
+  const epoch = boardEpoch;
   await save();
-  status(actionName === 'render' ? 'Queueing images…' : 'Queueing illustrator…');
+  if (disposed || epoch !== boardEpoch) throw Error('The target is no longer open.');
   const direction = host.querySelector('#narrative-direction');
   const replay = actionName.startsWith('rerun_') ? Object.values(detail.jobs).filter(job=>actionName==='rerun_interview' ? job.kind==='interview' && !job.interview_history_cleared : ['synthesize','generate'].includes(job.kind)).at(-1) : null;
   if (actionName.startsWith('rerun_') && !replay) throw new Error('Run an interview or write a prompt first.');
@@ -1109,16 +1120,15 @@ async function start(actionName, count = 1, slot, retryJobId, renderMode = 'draf
   updateLive();
   let result;
   try {
-    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,...(detail.kind==='subscene' ? {aspect_ratio:renderRatio} : {})} : {}), ...(slot ? {slot, expected_candidate_id:expectedCandidateId ?? null} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
+    result = await api(base()+'/jobs','POST',{action:actionName,count, ...(['generate','render'].includes(actionName) ? {render_mode:renderMode,...(detail.kind==='subscene' ? {aspect_ratio:boardRatio()} : {})} : {}), ...(slot ? {slot, expected_candidate_id:expectedCandidateId ?? null} : {}),...(replay ? {job_id:replay.id} : {}),...(retryJobId ? {retry_job_id:retryJobId} : {}),...(['interview','restart_interview'].includes(actionName) && interviewImage ? {interview_candidate_id:interviewImage} : {}),message:direction?.value || ''});
   } finally { llmSubmitting = false; updateLive(); }
+  if (disposed || epoch !== boardEpoch) throw Error('The target is no longer open.');
   if (['interview','restart_interview'].includes(actionName)) interviewImage = '';
-  if (slot && host.querySelector('#image-dialog').open && reviewCandidate === expectedCandidateId) {
-    reviewCandidate = result.slots[slot - 1] || reviewCandidate;
-  }
   mergeTarget(result);
   if (['interview','restart_interview'].includes(actionName) && direction) direction.value = '';
   const lastJob = Object.values(result.jobs).at(-1);
-  status(lastJob?.status === 'FAILED' ? lastJob.error : 'Queued. You can keep editing.', lastJob?.status === 'FAILED');
+  if (lastJob?.status === 'FAILED') throw Error(lastJob.error);
+  return result;
 }
 
 async function editElement(id) {
@@ -1152,7 +1162,6 @@ async function assignElements() {
 }
 
 listen(host,'input',event=>{
-  if (event.target.id==='narrative-aspect_ratio') {renderRatio=event.target.value;event.target.setCustomValidity('');void updateRenderSize();}
   if (event.target.id==='backdrop-link-mode') return;
   if (event.target.dataset.adaptation || event.target.dataset.crop) { adaptationChanged();updateLive();return; }
   if (event.target.dataset.layerField) {
@@ -1163,8 +1172,7 @@ listen(host,'input',event=>{
   }
   if (!event.target.dataset.field) return;
   dirty.add(event.target.dataset.field);
-  status('Saving changes…'); clearTimeout(saveTimer);
-  saveTimer = setTimeout(()=>save().catch(error=>status(error.message,true)),700);
+  status('Saving changes…'); scheduleSave();
   if(route.target) updateLive();
 });
 
@@ -1175,7 +1183,6 @@ listen(host,'change',event=>{
   if (event.target.id==='source-story') {populateSourceTargets().catch(error=>status(error.message,true));return;}
   if (event.target.id==='source-target') {populateSourceCandidates().catch(error=>status(error.message,true));return;}
   if (event.target.id==='source-candidate') {previewNarrativeSource().catch(error=>status(error.message,true));return;}
-  if (event.target.id==='narrative-prompt-history') {host.querySelector('#narrative-prompt-preview').textContent=detail.jobs[event.target.value]?.result||'';return;}
   if (event.target.dataset.layerField) {
     const layer=detail.layers.find(item=>item.id===event.target.dataset.layer),key=event.target.dataset.layerField;
     if(key==='fit' && event.target.value==='manual' && layer.fit!=='manual') { const img=host.querySelector(`[data-drag-layer="${layer.id}"] img`); if(!manualBackdrop(layer,img)) { status('Select the backdrop and wait for its image to load.',true); event.target.value=layer.fit; return; } }
@@ -1193,41 +1200,9 @@ listen(host,'change',event=>{
 });
 
 listen(host,'click',event=>{
-  const button = event.target.closest('button,a,img[data-review]');
+  const button = event.target.closest('button,a');
   if (!button) return;
-  if (button.dataset.boardAction) {
-    const actionName = button.dataset.boardAction;
-    if (actionName === 'luna-review') {
-      action(async()=>{
-        const result = await api(base() + '/luna-review', 'POST', {});
-        detail.luna_review = result;
-        updateLive();
-      }).catch(error=>status(error.message,true));
-      return;
-    }
-    button.dataset.action = actionName === 'render' ? 'render' :
-      actionName === 'delete-drafts' ? 'delete-draft-images' : 'delete-non-selected';
-  }
-  if (button.dataset.copyPrompt) {
-    event.preventDefault();
-    navigator.clipboard.writeText(detail.candidates[button.dataset.copyPrompt].prompt).then(()=>{
-      button.textContent = '✓';
-      button.title = 'Prompt copied';
-      status('Prompt copied to clipboard');
-      setTimeout(()=>{button.textContent = '⧉'; button.title = 'Copy prompt to clipboard';},2000);
-    }).catch(error=>status(`Unable to copy prompt: ${error.message}`,true));
-    return;
-  }
   if (button.dataset.close) { document.getElementById(button.dataset.close).close(); return; }
-  if (button.dataset.saveInventory) {
-    action(async () => {
-      const result = await api(base()+`/candidates/${button.dataset.saveInventory}/inventory`, 'POST', {});
-      window.dispatchEvent(new CustomEvent('zet:open-inventory-image', {
-        detail: {assetId: result.asset.asset_id, universe},
-      }));
-    });
-    return;
-  }
   if (button.dataset.moveScene) {
     const from = detail.scenes.findIndex(scene => scene.id === button.dataset.moveScene);
     const to = from + Number(button.dataset.direction);
@@ -1275,17 +1250,6 @@ listen(host,'click',event=>{
   if (button.matches('[data-navigate]') || button.id === 'narrative-home') {
     event.preventDefault(); action(()=>navigate(button.href)); return;
   }
-  if (button.dataset.review) {
-    reviewCandidate = button.dataset.review;
-    delete host.querySelector('#narrative-review-panel').dataset.candidate;
-    host.querySelector('#image-dialog').showModal(); renderImageReview(); return;
-  }
-  if (button.id === 'narrative-review-prev' || button.id === 'narrative-review-next') {
-    const images = reviewImages();
-    const index = images.indexOf(reviewCandidate) + (button.id === 'narrative-review-prev' ? -1 : 1);
-    if (!busy && images[index]) { reviewCandidate = images[index]; renderImageReview(); }
-    return;
-  }
   if (button.dataset.libraryAsset) {
     elementDraft.reference_key = button.dataset.referenceKey || '';
     elementDraft.asset_id = elementDraft.reference_key ? '' : button.dataset.libraryAsset;
@@ -1303,8 +1267,7 @@ listen(host,'click',event=>{
   if (button.id === 'remove-reference') {
     elementDraft.asset_id = ''; elementDraft.reference_key = ''; host.querySelector('#element-reference-label').textContent = 'Text only — no reference image'; return;
   }
-  if(button.dataset.sceneTextCandidate){void window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.sceneTextCandidate,done:async result=>{detail=result;updateLive();}}).catch(error=>status(error.message,true));return;}
-  if (!['editElement','removeElement','deleteElement','deleteSubscene','candidate','renderSlot','retryJob','action','currentSelection','maskLayer','removeLayer'].some(key=>button.dataset[key])&&!['mask-apply','mask-reset'].includes(button.id)) return;
+  if (!['editElement','removeElement','deleteElement','deleteSubscene','retryJob','action','currentSelection','maskLayer','removeLayer'].some(key=>button.dataset[key])&&!['mask-apply','mask-reset'].includes(button.id)) return;
   action(async()=>{
     if (button.id==='mask-apply'||button.id==='mask-reset') {
       const id=host.querySelector('#mask-canvas').dataset.maskSource;
@@ -1331,73 +1294,18 @@ listen(host,'click',event=>{
       await save(); await api(base(),'PATCH',{element_ids:detail.element_ids.filter(id=>id!==button.dataset.removeElement)}); await loadPage();
     } else if (button.dataset.deleteElement) {
       await api(`${base()}/elements/${button.dataset.deleteElement}`,'DELETE'); await loadPage();
-    } else if (button.dataset.candidate) {
-      await save();
-      if (button.dataset.candidateAction === 'lock' && Object.entries(detail.candidates).some(([id, candidate]) => id !== button.dataset.candidate && candidate.locked)) {
-        if (!confirm('An image is already locked. Lock this image and unlock the other image?')) return;
-      }
-      if(detail.kind==='assembly' && (detail.scene_text?.length || detail.candidates[button.dataset.candidate]?.scene_text_final) && !(detail.candidates[button.dataset.candidate]?.locked && !detail.candidates[button.dataset.candidate]?.scene_text_pending) && button.dataset.candidateAction==='select'){await window.ZetSceneText.open({base:base(),universe,candidate:button.dataset.candidate,done:async result=>{detail=result;updateLive();}});return;}
-      const clearedReviewSlot = button.dataset.candidateAction === 'clear' &&
-        button.dataset.candidate === reviewCandidate && host.querySelector('#image-dialog').open
-        ? detail.slots.indexOf(reviewCandidate) : -1;
-      const result = await api(base()+`/candidates/${button.dataset.candidate}`,'POST',{action:button.dataset.candidateAction});
-      if (result) {
-        detail = result;
-        if (clearedReviewSlot >= 0) {
-          reviewCandidate = detail.slots.slice(clearedReviewSlot + 1).find(Boolean) ||
-            detail.slots.slice(0, clearedReviewSlot).reverse().find(Boolean) || null;
-        }
-        updateLive();
-        if (clearedReviewSlot >= 0 && !reviewCandidate) {
-          host.querySelector('#narrative-slots').children[clearedReviewSlot]?.querySelector('button')?.focus();
-        }
-        const upscale = button.dataset.candidateAction === 'upscale';
-        const error = upscale && detail.candidates[button.dataset.candidate]?.error;
-        status(error || (upscale ? 'Upscale submitted.' : 'Updated'), Boolean(error));
-      }
-    } else if (button.dataset.renderSlot) {
-      const slot=Number(button.dataset.renderSlot);
-      await start('render',1,slot,undefined,button.dataset.mode,detail.slots[slot - 1]);
-    }
-    else if (button.dataset.retryJob) {
+    } else if (button.dataset.retryJob) {
       const job = detail.jobs[button.dataset.retryJob]; await start(job.kind,job.candidate_ids?.length === 4 ? 4 : 1,undefined,job.detail.kind==='assembly' || job.detail.source_snapshot?.image_file ? job.id : undefined);
     } else {
       switch (button.dataset.action) {
         case 'reference-backdrop': case 'attach-backdrop': await chooseNarrativeSource('backdrop',button.dataset.action==='attach-backdrop');break;
         case 'import-subscene': await chooseNarrativeSource('subscene');break;
-        case 'refresh-backdrop': case 'copy-source-current': case 'copy-source-generation': case 'reuse-backdrop': case 'crop-backdrop': {
+        case 'refresh-backdrop': case 'copy-source-current': case 'copy-source-generation': {
           await save();
-          const request = {'refresh-backdrop':{action:'refresh'},'copy-source-current':{action:'copy_inputs',basis:'current'},'copy-source-generation':{action:'copy_inputs',basis:'generation'},'reuse-backdrop':{action:'reuse'},'crop-backdrop':{action:'crop'}}[button.dataset.action];
+          const request = {'refresh-backdrop':{action:'refresh'},'copy-source-current':{action:'copy_inputs',basis:'current'},'copy-source-generation':{action:'copy_inputs',basis:'generation'}}[button.dataset.action];
           await api(base()+'/backdrop-source','POST',request);await loadPage();break;
         }
-        case 'apply-backdrop-operation': await start('generate',1,undefined,undefined,button.dataset.mode);break;
         case 'preview-crop': {await save();const image=host.querySelector('#backdrop-crop-preview');image.src=artifactUrl('crop-preview')+'&revision='+Date.now();image.hidden=false;break;}
-        case 'delete-draft-images': {
-          await save();
-          const inspection = await api(base()+'/delete-draft-images/preview','POST',{});
-          const approved = await confirmProtectedEffects('Delete Draft images?',
-            'Delete all Draft images for this target? Matching work will be cancelled. Final images and Inventory copies remain. Approve each affected selection or lock.',
-            (inspection.protected_effects || []).map(effect => ({...effect,
-              preview_url: detail.candidates[effect.candidate_id]?.image ? imageUrl(effect.candidate_id) : ''})), 'Delete Draft images');
-          if (approved === null) break;
-          const result = await api(base()+'/delete-draft-images','POST',
-            {confirmation_token:inspection.confirmation_token,approved_effects:approved});
-          if (result) { detail=result; updateLive(); status('Draft images deleted.'); }
-          break;
-        }
-        case 'delete-non-selected': {
-          await save();
-          const inspection = await api(base()+'/delete-non-selected/preview','POST',{});
-          const candidates = inspection.candidates || [];
-          if (!candidates.length) { status('No non-selected candidates to delete.'); break; }
-          const slotList = candidates.map(item=>`Slot ${item.slot}`).join(', ');
-          if (!confirm(`Delete non-selected candidates in ${slotList}? Selected and locked candidates are preserved.`)) break;
-          const result = await api(base()+'/delete-non-selected','POST',
-            {confirmation_token:inspection.confirmation_token});
-          if (result) { detail=result; updateLive(); status(`${candidates.length} non-selected candidate${candidates.length === 1 ? '' : 's'} deleted.`); }
-          break;
-        }
-        case 'scene-text': if(!modeSelected())throw Error('Select an image first.'); await save(); await window.ZetSceneText.open({base:base(),universe,candidate:modeSelected(),done:async result=>{detail=result;updateLive();reviewCandidate=modeSelected();if(!host.querySelector('#image-dialog').open)host.querySelector('#image-dialog').showModal();renderImageReview();}});break;
         case 'scene-text-raw': await save(); await window.ZetSceneText.open({base:base(),universe,done:async()=>loadPage()});break;
         case 'create-assembly': {await save();const target=await api(base()+'/targets','POST',{title:'Final assembly',kind:'assembly'});await navigate({...route,target:target.id});break;}
         case 'add-element-layer': {
@@ -1430,12 +1338,7 @@ listen(host,'click',event=>{
         }
         case 'new-element': await editElement(); break;
         case 'assign-elements': await assignElements(); break;
-        case 'interview': case 'restart_interview': case 'synthesize': case 'generate': case 'render': case 'rerun_interview': case 'rerun_prompt': {
-          const countInput = button.dataset.countControl ? host.querySelector('#narrative-render-count') : null;
-          if (countInput && !countInput.reportValidity()) break;
-          await start(button.dataset.action, Number(countInput?.value || button.dataset.count || 1), undefined, undefined, button.dataset.mode || 'draft');
-          break;
-        }
+        case 'interview': case 'restart_interview': case 'rerun_interview': await start(button.dataset.action); break;
         case 'refresh': await save(); mergeTarget(await api(base())); status('Updated'); break;
       }
     }
@@ -1513,7 +1416,7 @@ restoreProvider = window.ZetTaskCapture.registerProvider(() => {
     selections.render_target = {state:contextState,id:route.target,label:contextLabels.render_target || route.target};
     if (detail?.kind==='subscene') selections.subscene = {...selections.render_target};
     source.searchParams.set('target',route.target);
-    const id = host.querySelector('#image-dialog').open ? reviewCandidate : modeSelected()
+    const id = reviewCandidate || modeSelected()
       || new URLSearchParams(location.search).get('task_candidate');
     if (id) {
       const candidate = detail?.candidates?.[id];
@@ -1525,11 +1428,11 @@ restoreProvider = window.ZetTaskCapture.registerProvider(() => {
   return {page_id:'narrative',page_name:'Narrative Scenes',source_url:source.href,universe_id:universe || null,selections,
     workflow_status: contextState==='selected' ? Object.values(detail?.jobs || {}).slice(-4).map(job=>`${job.kind}: ${job.status}`).join(' · ') || 'Ready' : contextState};
 });
-listen(host.querySelector('#narrative-review-task'),'click',()=>void window.ZetTaskCapture.open());
+listen(document, 'visibilitychange', () => { if (!document.hidden) void poll(true); });
 try {
   await initialize();
 } catch (error) {
-  disposed = true; clearInterval(pollTimer); clearTimeout(saveTimer); events.abort(); restoreProvider?.();
+  disposed = true; clearInterval(pollTimer); clearTimeout(saveTimer); events.abort(); disposeBoard(); restoreProvider?.();
   throw error;
 }
 return {
@@ -1538,6 +1441,7 @@ return {
     await save();
     disposed = true;
     clearInterval(pollTimer); clearTimeout(saveTimer); events.abort();
+    disposeBoard();
     restoreProvider?.();
     for (const dialog of host.querySelectorAll('dialog[open]')) dialog.close();
     for (const image of host.querySelectorAll('[data-blob]')) URL.revokeObjectURL(image.dataset.blob);

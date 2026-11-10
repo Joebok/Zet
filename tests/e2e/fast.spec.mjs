@@ -112,30 +112,31 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
   await expect(page.locator("#narrative-narrative")).toHaveValue(details[1].narrative);
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(page.locator("#narrative-narrative")).toHaveValue("The traveler reaches a forest gate.");
-  const writePromptButtons = page.locator('button[data-action="synthesize"]');
-  await expect(writePromptButtons).toHaveCount(2);
-  expect(await writePromptButtons.evaluateAll(buttons => buttons.every(button => button.dataset.action === "synthesize"))).toBeTruthy();
-  await page.locator('button[data-action="synthesize"]').first().click();
+  await page.getByRole("button", { name: "Write Prompt", exact: true }).click();
   await answerJob(page, scene, ids.subscene, "synthesize", { scene: "A traveler reaches a forest gate.", rendering: "Soft daylight." });
 
   for (const [index, targetId] of targets.entries()) {
     await page.goto(`/narrative?story=${ids.story}&scene=${ids.scene}&target=${targetId}`);
     if (index === 0) {
-      await page.locator("#narrative-prompt").fill("A quiet forest path, soft daylight.");
+      await page.getByText("Prompt and render settings", { exact: true }).click();
+
+      await page.getByRole("textbox", { name: "Final Qwen prompt" }).fill("A quiet forest path, soft daylight.");
       await page.getByRole("button", { name: "Save inputs" }).click();
       await page.getByRole("button", { name: "Draft 1" }).click();
       await answerRender(page, scene, targetId, image(1184, 896));
     } else {
-      await page.locator("#narrative-prompt").fill("The traveler reaches the forest gate.");
+      await page.getByText("Prompt and render settings", { exact: true }).click();
+
+      await page.getByRole("textbox", { name: "Final Qwen prompt" }).fill("The traveler reaches the forest gate.");
       await page.getByRole("button", { name: "Save inputs" }).click();
       await page.getByRole("button", { name: "Draft 1" }).click();
       await answerRender(page, scene, targetId, null, true);
-      await expect(page.locator(".narrative-slot").first()).toContainText("failed");
-      await page.locator(".narrative-slot").first().getByRole("button", { name: "Retry" }).click();
+      await expect(page.locator(".zet-candidate-board [data-slot]").first()).toContainText("failed");
+      await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Retry" }).click();
       await answerRender(page, scene, targetId, image(1184, 896));
     }
-    await page.locator(".narrative-slot").first().getByRole("button", { name: "Select" }).click();
-    await page.locator(".narrative-slot").first().getByRole("button", { name: "Lock" }).click();
+    await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Select" }).click();
+    await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Lock" }).click();
   }
 
   await page.goto(`/narrative?story=${ids.story}&scene=${ids.scene}`);
@@ -152,10 +153,10 @@ test("narrative interview, prompt, render, retry, and final assembly persist", a
   const renderResponse = await renderReply;
   expect(renderResponse.ok(), await renderResponse.text()).toBeTruthy();
   await answerRender(page, scene, assembly, image(1184, 896));
-  await page.locator(".narrative-slot").first().getByRole("button", { name: "Select" }).click();
-  await page.locator(".narrative-slot").first().getByRole("button", { name: "Lock" }).click();
+  await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Select" }).click();
+  await page.locator(".zet-candidate-board [data-slot]").first().getByRole("button", { name: "Lock" }).click();
   await page.reload();
-  await expect(page.locator(".narrative-slot").first()).toContainText("Locked");
+  await expect(page.locator(".zet-candidate-board [data-slot]").first()).toContainText("Locked");
   const story = (await (await page.request.get("/api/narrative/stories?universe_id=Test")).json()).find(item => item.id === ids.story);
   expect(story.scenes[0].final_assembly?.target_id).toBe(assembly);
   const candidate = (await (await page.request.get(`${scene}/targets/${assembly}?universe_id=Test`)).json()).selected_id;
