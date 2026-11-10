@@ -27,7 +27,7 @@
   const scopes = [
     '.local-pipeline-candidate', '.local-pipeline-selected-card',
     '.local-pipeline-review-dialog', '.image-generation-result', '.image-generation-review',
-    '.image-generation-reference-controls', '.mc-slot-actions', '.mc-review', '.mc-reference',
+    '.image-generation-reference-controls', '.mc-slot-actions', '.mc-reference',
     '.narrative-slot', '#image-dialog', '.inventory-card-actions', '.fullscreen-image-overlay',
     '#character-phone-viewer', '.character-refinement .refinement-layout > section:first-child',
     '.image-card-actions', '.render-image-viewer', '.image-catalog-managed-buttons',

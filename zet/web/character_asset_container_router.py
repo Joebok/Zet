@@ -2,7 +2,7 @@
 from pathlib import Path
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from PIL import Image
+from zet.web.captured_image_response import captured_image_response
 
 from zet.services.character_asset_container_service import (
     CharacterAssetContainerError, CharacterAssetContainerService,
@@ -188,17 +188,7 @@ def create_character_asset_container_router(resolve_app):
                 character, phase, pipeline, costume, view, candidate_id, index)
         except CharacterAssetContainerError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        try:
-            with Image.open(path) as image:
-                media_type = Image.MIME.get(image.format)
-                image.verify()
-        except (OSError, SyntaxError, ValueError, Image.DecompressionBombError) as exc:
-            raise HTTPException(status_code=404, detail="Captured input image is unreadable.") from exc
-        if not media_type or not media_type.startswith("image/"):
-            raise HTTPException(status_code=404, detail="Captured input image format is unavailable.")
-        return FileResponse(path, media_type=media_type, headers={
-            "Content-Disposition": "inline", "Cache-Control": "private, no-cache",
-        })
+        return captured_image_response(path)
 
     @router.post("/api/character-containers/{pipeline}/views/{view}/candidates/{candidate_id}/submit")
     def dispatch_candidate(pipeline: str, view: str, candidate_id: str,

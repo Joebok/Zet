@@ -22,6 +22,13 @@ locked outputs. Interviews, prompt editing, and renders live on the individual
 boards. Each interview starts from the current template, and accepted proposals
 write to the relevant section of that template.
 
+## Candidate Board and publication
+
+All six assets mount the shared Candidate Board. Style Alignment locks its
+reference locally. Official view locks publish through the Inventory journal.
+Existing published STYLE locks retain their binding until explicit unlock or
+approved removal. Retirement preserves their Inventory bytes.
+
 ## Offline bootstrap
 
 Run `python3 -B -m zet.scripts.bootstrap_minor_character_templates <universe-root>`

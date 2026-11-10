@@ -3,8 +3,8 @@
 This is the design standard for Candidate Boards in the active Character Asset
 Container pipelines, Narrative Scenes, Minor Characters, Image Generation, and future
 image generation workflows.
-It specifies the presentation and adapter contract for future implementation
-plans. The [UI style guide](../UI_STYLE_GUIDE.md) governs shared tokens, glyphs,
+It specifies the presentation and adapter contract for new integrations.
+The [UI style guide](../UI_STYLE_GUIDE.md) governs shared tokens, glyphs,
 control sizes, and feedback. The on-page board contains **Render Controls**
 followed by the **candidate grid**. The **candidate review dialog** opens as a
 separate modal outside both sections and the board's page-flow layout.
@@ -25,7 +25,7 @@ render actions, availability reasons, and progress remain visible.
 | Next render prompt | Prompt authoring or preview, with an expandable editor or preview and status | **Write Prompt** where it synthesizes a prompt, **Preview Prompt** where the pipeline compiles from current inputs, and an editor where the operator supplies text. Include **Save Prompt** when required. Preserve saved or unsaved drafts per workflow. |
 | Render settings | Labeled settings adjacent to the action row, with advanced options in a disclosure | Aspect ratio, effective dimensions where available, source readiness, and relevant recipe or input controls. Keep interviews, source management, and unrelated authoring outside the action row. |
 | New renders | **Draft 1**, **Draft 4**, **Final 1**, **Final 4**. Use the existing blue Draft and green Final roles and retain visible text. | Supply readiness and disabled reasons. Each button reserves its stated count from the same pool of empty slots and sets the quality of the new candidates. |
-| Board assessment | **Luna Review** and a **Review criteria** disclosure where supported | Supply criteria, status, and results for the current board. The control requests advice on existing candidates. |
+| Board assessment | **Luna Review** and one **Review Status** line directly above **Review criteria** when criteria are available | Supply criteria, lifecycle status, and results for the current board. The control requests advice on existing candidates. |
 | Bulk actions | Separate destructive group at the trailing edge on desktop and on its own wrapped row as needed. Keep labels such as **Delete Drafts** and **Delete Non-Selected** explicit. | Supply the exact supported operations, eligibility, preview and commit handlers. Name the affected board, slots and effects. |
 | Feedback | A local status region beside the relevant group | Supply actionable prerequisite, pending, completion or failure messages. Prompt authoring, rendering, and Luna Review each have distinct status. |
 
@@ -35,6 +35,13 @@ or overwrite an occupied slot. Keep selected and locked protections specific to
 the operation. Bulk actions use the existing confirmation flow, with previews
 and individual approval of every affected selection or lock and a server-side
 recheck before commit. Label any retained Inventory image in the confirmation.
+
+The shared status line starts at **Not started**, becomes **Started** when
+Luna accepts the review, and shows **Finish** once the result is recorded.
+**Outdated** adds “Ranking obsolete: candidate images changed” and marks
+retained ranks and assessments as previous. **Failed** includes the error when
+available. **Interrupted** represents an interrupted review. Render and bulk
+action feedback stay separate from the Luna lifecycle.
 
 ## 2. Candidate image cards
 
@@ -46,9 +53,11 @@ row. Use thumbnails when available and open the full review image. Give the
 image an accessible button target so click, tap, Enter, and Space take the same
 path as the **Review** eye glyph.
 
-- Use the shared surface, border, spacing, typography, aspect-preserving image
-  well, and focus styles. Show quality as Draft or Final, lifecycle status,
-  whole-second render time when recorded, and the applicable Selected, Locked,
+- Use the shared surface, border, spacing, typography, and focus styles. Fit the
+  entire thumbnail inside the fixed 4:3 well without cropping or stretching.
+  Leave space around images whose aspect ratio differs from the well. Show
+  quality as Draft or Final, lifecycle status, whole-second render time when
+  recorded, and the applicable Selected, Locked,
   Luna rank, and source-change indicators. These facts can coexist. Use the
   saved status and timing for each candidate.
 - Empty, pending, failed, and image-load-failed states have distinct
@@ -88,15 +97,19 @@ and Close. Use the same responsive rules across boards.
 - **Decisions and actions.** Keep the common action row, supported asset
   actions, and local action feedback in consistent places. Show a human
   assessment control only where the workflow records one. Keep it distinct
-  from selection, locking, and Luna advice. Show the current or obsolete rank,
-  assessment, and recorded criteria where available. Action messages have
-  their own region and never replace advisory findings.
-- **Details.** Use collapsed disclosures for the exact submitted prompt, copy
-  control, and captured sources in original binding order. Include the
-  negative prompt, prompt origin, assembly context, comparison provenance, or
-  other recorded metadata when available. A source-change notice is a persistent
-  FYI about the finished image. The next render prompt remains in Render
-  Controls. An image-focused view can collapse the rail without losing state.
+  from selection, locking, and Luna advice. Show the candidate's recorded rank
+  and assessment in review. Keep Luna status and criteria in Render Controls
+  and action messages in their own feedback region.
+- **Details.** Use one collapsed **Candidate prompt and ordered inputs**
+  disclosure for the reviewed candidate. Show the exact saved prompt, copy
+  control, negative prompt when recorded, and captured sources in binding
+  order. Use descriptive link labels and the original prompt marker when
+  available. Links open in a separate tab and display the captured image
+  inline. Show applicable saved settings under **Render settings** with
+  readable labels and values. Optional provenance can supply useful recorded
+  context. A source-change notice is a persistent FYI about the finished image.
+  The next render prompt remains in Render Controls. An image-focused view can
+  collapse the rail without losing state.
 - **Focus and updates.** Open with meaningful focus and contain Tab in the
   dialog. Close and Escape use the same draft-safe path and restore the
   initiating card or nearest surviving control without jumping the gallery.
@@ -142,15 +155,11 @@ image's controls usable.
 
 ## 4. Shared component contract
 
-Use the existing [Candidate Board renderer](../../zet/web/static/candidate_board.js),
-[glyph helper](../../zet/web/static/image_card_ui.js), and
-[zoom helper](../../zet/web/static/review_image_zoom.js) as reuse points.
-Provide one template each for Render Controls, cards, and review. Use common
-CSS scoped to the board and dialog, using theme tokens. Mount the board as a
-reusable JavaScript component. The page controller owns fetching, polling,
-request construction, and workflow transitions. The component owns rendering
-and updating Render Controls, the cards, and the review dialog. The page
-passes data and action handlers through the component API.
+Use the shared `mountCandidateBoard` component for Render Controls, cards, and
+review. It uses scoped CSS and the dashboard's shared glyph and zoom helpers.
+The page controller owns fetching, polling, request construction, and workflow
+transitions. Pass normalized data and action handlers through the component API.
+[Shared component](../../zet/web/static/candidate_board_component.js)
 
 ### Properties
 
@@ -160,9 +169,9 @@ passes data and action handlers through the component API.
 | `slots` | Eight ordered slot records with stable slot keys and optional candidate records. A candidate has a stable ID independent of the slot, display status, quality, optional thumbnail and review image descriptors, and optional elapsed time, error, and notices. Image descriptors include a URL and label, with a version when the image bytes can change at the same URL. |
 | `selectedId`, candidate review state | Current selection, optional lock state, and optional human assessment. Saved prompt, ordered inputs with optional prompt markers, saved render settings, and optional provenance belong to the candidate under review. |
 | `lunaReview` | Optional advisory status, criteria, and error, with rankings and assessments keyed by candidate ID. Render Controls show one Review Status line above the criteria. Outdated results identify the ranking as obsolete and mark retained assessments as previous. |
-| `renderControls` | Prompt kind and draft state, optional settings, `{mode, count}` render options, shared available capacity, and action states. The adapter supplies freshness and readiness. |
+| `renderControls` | Optional fields, readiness reasons, and prompt and render status. The component provides the four render shortcuts and calculates capacity from the slots. The adapter supplies workflow readiness. |
 | `actions` | Board- and candidate-scoped descriptors with stable action key, placement, label, shared glyph key, semantic style role, and enabled/disabled state with reason. Unsupported actions are absent. Supply candidate actions once for both surfaces, with explicit placement for context-specific actions. |
-| `comparisons` | The component derives the Selected option from the active board. The adapter supplies ordered descriptors with stable key, label, role, review URL, and availability. Comparisons provide image context only; saved prompt, negative prompt, ordered inputs, and provenance are shown only for the candidate under review. Deduplicate identical entries while preserving the Selected label and source context. |
+| `comparisons`, `comparisonDefaults` | Ordered `{key, label, image}` descriptors and optional default keys. The component derives the Selected option and deduplicates by image URL and version. Comparisons supply images and captions. The prompt, ordered inputs, saved settings, and provenance stay with the reviewed candidate when the comparison changes. |
 
 ### Methods and events
 
@@ -171,7 +180,7 @@ model, action intents, and polling example.
 
 | Interface | Behavior |
 | --- | --- |
-| `mount({boardHost, dialogHost}, model, adapter)` | Render the initial model in the two hosts, attach handlers once, and return the board instance. |
+| `mountCandidateBoard({boardHost, dialogHost}, model, adapter)` | Render the initial model in the two hosts, attach handlers once, and return the board instance. |
 | `update(model)` | Accept the complete current UI model for the board. Reconcile Render Controls, cards, and any open review in the same update. Keep existing elements by stable key where possible. A changed board key closes the old review and clears its local state. A new revision of the same board keeps the review open under the rules in Section 3. |
 | `dispose()` | Remove component listeners and invalidate pending UI updates. The page controller stops its polling and discards outstanding responses when it leaves the board. |
 | `openReview(candidateId, origin)` / `moveReview(direction)` / `closeReview()` | Shared review lifecycle. Apply candidate eligibility, draft guard, focus return, and navigation rules. Expose review-open, candidate-change, and review-close notifications for host integrations. |
@@ -224,7 +233,7 @@ handlers. They share the board, card, and dialog layouts above.
 
 | Workflow | Comparison options in addition to the selected candidate | Material differences to preserve |
 | --- | --- | --- |
-| Character Asset Containers | Other selected views, with FRONT or matching opposite view prioritized as applicable. An eligible locked Draft or a pipeline-specific source can be supplied with its own label. | Mixed-quality view boards. Prompt preview compiles current masters and ordered inputs. View/phase, head-source and costume recipe settings vary by pipeline. Keep supported prepare/submit, select, lock/publication, retry, regen, upscale, clear, Luna, and template-improvement actions. The active review currently offers multiple selected views. |
+| Character Asset Containers | Other selected views, with FRONT or matching opposite view prioritized as applicable. An eligible locked Draft or a pipeline-specific source can be supplied with its own label. | Mixed-quality view boards. The page places Preview Prompt beside Refresh and compiles current masters and ordered inputs for the active view. View/phase, head-source and costume recipe settings vary by pipeline. Keep supported prepare/submit, select, lock/publication, retry, regen, upscale, clear, Luna, and template-improvement actions. |
 | Narrative Scenes | The current review offers its selected image. Relevant captured backdrop, composite, or other target-specific evidence can be offered by the adapter when available. | Mixed-quality target boards. Write Prompt and manual edits, target sizing, assembly mode and backdrop-operation eligibility stay in Narrative. Preserve captured input and assembly provenance, Edit Text where supported, task capture, and the existing Inventory action. Scene-text eligibility and lock/publication stay service-owned. |
 | Minor Characters | Style Alignment can offer its original source. Official views can offer the locked Style reference, matching private Draft where eligible, and other relevant saved views. | Mixed-quality asset boards. Keep Write/Save Prompt, interview using candidate evidence, and current source/Style readiness. STYLE locking is private. Official-view publication follows its existing rules. |
 
@@ -236,14 +245,10 @@ locked candidate after explicit confirmation and may require confirmed scene
 text before selection or lock. These differences change the available
 actions, reasons, and confirmations within the common UI.
 
-The Character and Narrative review controllers are the main source for this
-design. Their current dialogs differ in comparison layout and chooser, and
-Narrative zoom registers only the candidate image. Minor Characters already
-uses the common card builder, but its inline dialog does not use the common
-review styling or glyph scope. It attaches the zoom helper without calling
-`sync` after inserting images, so the required zoom viewports are never created.
-The comparison entries described above require eligible image descriptors from
-the asset.
+The five active Character Asset Container pipelines and all six Minor Character
+assets mount the shared component. Narrative uses earlier board helpers with its
+own review controller. Image Generation has its own workspace. The table describes what
+each adapter needs to preserve when adopting the shared component.
 
 - Character implementation and workflow. [Container controller](../../zet/web/static/character_asset_container.js)
   · [Character workflow](LOCAL_CHARACTERS.md#character-asset-container-workflow-2026-11-06)
@@ -278,6 +283,14 @@ rules in Section 5. Each workflow can meet these criteria independently.
   reach both the grid and an open review while slot order and applicable local
   review state are preserved. Check a failed slot and a completed image whose
   former source changed. Advisory and action feedback stay separate.
+- Portrait, square, and landscape thumbnails show the entire image at desktop
+  and compact widths. In review, switching comparisons leaves the candidate's
+  disclosure unchanged. Navigating candidates shows that candidate's saved
+  prompt, input order, and settings. Verify inline delivery of captured
+  references, including extensionless images where the workflow stores them.
+- Where Luna is supported, check start, completion, outdated, failure, and
+  rerun in the same status line. Confirm outdated rankings are marked previous
+  and old start messages do not linger after a result.
 - Each render shortcut requests its stated quality and count and reports
   insufficient capacity. Retry uses frozen inputs and Regen uses current
   inputs. Verify the workflow's applicable clear and bulk protections and

@@ -4,7 +4,19 @@ The dashboard shell loads the board stylesheet, shared image glyphs, and
 review zoom helper. Import `mountCandidateBoard` from
 `/static/candidate_board.js`. Give it two empty hosts. Put the board host where
 Render Controls and the grid belong. Put the dialog host outside the board
-and any form.
+and any form. The five active Character Asset Container pipelines are the
+reference integration. When adopting the component, replace the page's
+existing board and review rendering with the mount and reuse its workflow
+handlers through the adapter. The older `renderCandidateBoard` helper builds
+cards for existing callers. New subscribers use `mountCandidateBoard` to get
+Render Controls, cards, and review together.
+[Character adapter](../../zet/web/static/character_asset_container.js)
+
+Minor Characters also mounts the component for all six assets. Render Controls
+edit the next prompt body. Review shows the exact saved render prompt. The
+review-only Interview action hands the candidate ID back to the page's existing
+interview workflow.
+[Minor Character adapter](../../zet/web/static/minor_characters.js)
 
 ## Supply the model
 
@@ -14,7 +26,9 @@ and any form.
   `candidate`, and optional `actions`. A candidate has `id`, `quality`
   (`draft` or `final`), and `status`. Supply `thumbnail` and `image` as
   `{url, label, version?}`. For mutable images, give each version a cache-safe
-  URL and a changed version. Include applicable `elapsedSeconds`, `locked`,
+  URL and a changed version. Supply an uncropped thumbnail. The component fits
+  the whole image in its 4:3 well and falls back to `image` when `thumbnail`
+  is absent. Include applicable `elapsedSeconds`, `locked`,
   `error`, `notices`, `humanAssessment`, `prompt`, `negativePrompt`,
   ordered `inputs` (`{label, url?, marker?}`), optional `renderSettings` rows
   (`{label, value}`), and `provenance` lines. Use the saved request for inputs
@@ -22,9 +36,7 @@ and any form.
   `reviewable: false` for records that cannot be inspected.
 - Supply `selectedId` and optional `lunaReview` with `status`, `criteria`,
   `error`, and `entries` keyed by candidate ID. Each entry has `rank` and
-  `assessment`. Use `OBSOLETE` for a saved result that is no longer current.
-  The board owns the Luna status line. Publish accepted and polled Luna state
-  through `update()` and return action errors without a separate start message.
+  `assessment`. Use the status mapping below for workflows that offer Luna.
 - An action has `key`, `label`, optional `glyph`, `role` (a shared button
   class), `placement` (an array of `card`, `review`, or `controls`),
   `group` for board actions (`prompt`, `render`, `luna`, or `bulk`),
@@ -41,8 +53,59 @@ and any form.
   `comparisonDefaults` optionally lists initially shown keys. Use
   `selected:<candidate id>` to recommend the board's automatic Selected
   option. The viewer handles explicit choices and image-load errors.
-  Comparisons provide image context only. The review's saved prompt and ordered
-  input disclosure always belongs to the candidate under review.
+  The shared review uses comparison images and labels. Its single prompt and
+  ordered inputs disclosure, including **Render settings**, comes from the
+  candidate under review.
+
+### Map saved render evidence
+
+Map `inputs` in the submitted binding order. Put the source name, view, and
+quality in `label` when known, such as `Character Assembly · Back Left 3/4 · Final`
+or `Overskirt Embroidery`. Supply the literal `marker` used by that prompt when
+available. The component displays it as text before the label, for example
+`<image3> Overskirt Embroidery`. Omit `url` for an input without a viewable
+capture. The component displays its label as plain text.
+
+Map `renderSettings` from the same saved request. Give each row a readable
+label and display value, such as `{label: 'Costume Reference View', value: 'Front'}`.
+Include applicable recorded settings and omit blank or irrelevant fields.
+Format nested metadata into rows in the adapter. The board displays these
+rows in review, while `renderControls.fields` holds settings for the next render.
+
+### Serve captured input links
+
+The board opens a supplied `inputs[].url` in a separate tab. The subscribing
+workflow's endpoint must authorize access to the scoped candidate and input
+and serve the bytes captured for that render. A link should still show those
+bytes after the source asset changes.
+
+Serve the image with its raster `Content-Type` and
+`Content-Disposition: inline`. Detect the type from the captured bytes
+when a filename cannot establish it, including for extensionless files.
+Return an unavailable response for missing or unreadable captures. Where
+the endpoint previously served downloads, publish a fresh link URL to bypass
+cached responses and require revalidation for future requests. Character uses
+`delivery=inline` as a URL cache key and `Cache-Control: private, no-cache` in
+the response. The query parameter does not select or authorize the capture.
+[Character input endpoint](../../zet/web/character_asset_container_router.py)
+
+### Publish Luna lifecycle state
+
+| Adapter status | Shared Review Status |
+| --- | --- |
+| No recorded status | Not started |
+| `RUNNING` | Started |
+| `COMPLETE` | Finish |
+| `OBSOLETE` | Outdated |
+| `FAILED` | Failed |
+| `INTERRUPTED` | Interrupted |
+
+Use the `luna` group for the review action. Publish the accepted start and
+later progress or results through `update(model)`. Return success without a
+separate start message, and report a rejected start with an error outcome.
+Pass service failure text as `lunaReview.error`. The workflow determines
+when a ranking becomes obsolete. Keep recorded entries in an obsolete result
+if available so the component can show them as previous.
 
 ## Connect workflow actions and polling
 

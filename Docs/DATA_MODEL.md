@@ -458,6 +458,10 @@ across qualities. An optional collection-level `intake_job` records the
 captured Inventory image, the starting template and image hashes, and the
 resulting status and saved fields. The continuation applies to blank shared
 fields only when the source and template still match. Frozen
-ImageRenderRequests belong to individual candidates.
-Fresh template IDs create new catalog lock owners. Legacy session files stay
+ImageRenderRequests belong to individual candidates. Successful upscales retain
+a separate completed request with the exact Final prompt and frozen Draft input.
+Records without that request keep their original generation evidence. Official
+views own journaled catalog locks. New STYLE locks are private. Previously
+published STYLE records are preserved until an explicit unlock or approved
+bulk removal retires their binding. Legacy session files stay
 in their original storage. See [ADR 0050](DECISIONS/0050-minor-character-asset-collections.md).

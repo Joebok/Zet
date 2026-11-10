@@ -135,11 +135,7 @@ class MinorCharacterService(QuickCharacterWizardService):
             if not item or item["id"] != cid:
                 raise MinorCharacterNotFound("No matching locked image.")
             source = self._owned_file(sid, item["image_path"])
-            runtime = self.app.config.runtime_root or Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache") / "Zet"
-            try:
-                return ImageThumbnailService(Path(runtime) / "cache" / "minor-character-thumbnails").create(source)
-            except OSError as exc:
-                raise MinorCharacterNotFound("The locked preview is unavailable.") from exc
+            return self._thumbnail(source)
 
     def create_character(self, data):
         name = self._name(data.get("name"))
@@ -176,6 +172,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                 public["source_error"] = str(exc)
         public["canonical_style_ready"] = bool(universe_style(self.app.config.base_library_path)["text"])
         for view, board in public["boards"].items():
+            board["luna_criteria"] = self._luna_criteria(view)
             if view == "STYLE":
                 board[STYLE_CHANGES] = sections[STYLE_FIELDS[STYLE_CHANGES]]
             board["refinement"] = sections[REFINEMENT[view]] if view != "STYLE" else ""
@@ -187,10 +184,21 @@ class MinorCharacterService(QuickCharacterWizardService):
                 except ValueError:
                     pass
             for item in board["candidates"].values():
-                item.pop("image_path", None)
+                image_path = item.pop("image_path", None)
+                if image_path and item.get("image"):
+                    item["image_version"] = sha256(image_path.encode()).hexdigest()[:20]
                 item.pop("upscale_request", None)
-                for index, entry in enumerate(item.get("render_request", {}).get("inputs", []), 1):
-                    item["render_request"]["inputs"][index - 1] = {"role": entry.get("role", "Reference")}
+                original_request = item.pop("render_request", None)
+                request = item.pop("completed_upscale_request", None) or original_request
+                if request:
+                    item["render_request"] = {
+                        "prompt": request["prompt"],
+                        "settings": {key: val for key, val in request["settings"].items()
+                                     if key in {"render_mode", "aspect_ratio", "width", "height", "checkpoint"}},
+                        "inputs": [{key: entry[key] for key in
+                                    ("role", "label", "marker", "view", "render_mode") if key in entry}
+                                   for entry in request["inputs"]],
+                    }
             if board.get("text_job"):
                 job = board["text_job"]
                 if view == "STYLE" and job.get("review") and STYLE_CHANGES not in job.get("baseline", {}).get("editable", {}):
@@ -314,13 +322,28 @@ class MinorCharacterService(QuickCharacterWizardService):
     def candidate_file(self, sid, view, cid, index=None):
         with self._lock(sid):
             board = self._board(self._read(sid), view)
-            item = board_policy.validate_membership(board["slots"], board["candidates"], cid)
+            try:
+                item = board_policy.validate_membership(board["slots"], board["candidates"], cid)
+            except ValueError as exc:
+                raise MinorCharacterNotFound("This candidate is unavailable.") from exc
             if index is None:
-                return self._owned_file(sid, item["image_path"])
-            inputs = item.get("render_request", {}).get("inputs", [])
+                return self._owned_file(sid, item.get("image_path") or "")
+            request = item.get("completed_upscale_request") or item.get("render_request", {})
+            inputs = request.get("inputs", [])
             if not 1 <= index <= len(inputs):
                 raise MinorCharacterNotFound("Captured input was not found.")
             return self._owned_file(sid, inputs[index - 1]["path"])
+
+    def candidate_thumbnail(self, sid, view, cid):
+        source = self.candidate_file(sid, view, cid)
+        return self._thumbnail(source)
+
+    def _thumbnail(self, source):
+        runtime = self.app.config.runtime_root or Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache") / "Zet"
+        try:
+            return ImageThumbnailService(Path(runtime) / "cache" / "minor-character-thumbnails").create(source)
+        except OSError as exc:
+            raise MinorCharacterNotFound("The preview is unavailable.") from exc
 
     def owner(self, asset_id):
         row = self.app.entity_library_service.repository.fetchone("SELECT lock_owner FROM assets WHERE asset_id=?", (asset_id,))
@@ -340,7 +363,9 @@ class MinorCharacterService(QuickCharacterWizardService):
         sizing = resolve_image_sizing(self.app.config, mode, board["aspect_ratio"])
         directory = self._directory(value["session_id"]) / "renders" / cid / "inputs"
         path, role = reference
-        inputs = [] if view == "STYLE" else [{"path": str(path), "role": role}]
+        inputs = [] if view == "STYLE" else [{
+            "path": str(path), "role": role, "render_mode": self._locked_candidate(value["boards"]["STYLE"])["render_mode"],
+        }]
         frozen = frozen_input(directory, board["prompt"], inputs,
                               preset, render_sizing=sizing)
         settings = {**sizing, "profile": preset, "profile_snapshot": profile,
@@ -458,7 +483,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                         self._failed(item, str(exc))
                         changed = True
                         continue
-                    item.pop("upscale_request")
+                    item["completed_upscale_request"] = item.pop("upscale_request")
                     item["render_mode"] = "final"
                 updates["image"] = True
                 board_policy.record_render_completion(item)
@@ -525,6 +550,8 @@ class MinorCharacterService(QuickCharacterWizardService):
                 board_policy.select(board, cid)
             elif action in {"lock", "unlock"}:
                 if action == "lock":
+                    if view == "STYLE" and not item["locked"]:
+                        item.pop("inventory_asset_id", None)
                     board_policy.lock(board, cid)
                 else:
                     if not item["locked"]:
@@ -533,7 +560,10 @@ class MinorCharacterService(QuickCharacterWizardService):
                 if view == "STYLE":
                     for key in VIEWS.keys() - {"STYLE"}:
                         self._mark_changed(value["boards"][key])
-                self._publish(value, view, item, image if action == "lock" else None)
+                if view != "STYLE" or (action == "unlock" and item.get("inventory_asset_id")):
+                    self._publish(value, view, item, image if action == "lock" else None)
+                else:
+                    self._save(value)
                 return self._public(value)
             elif action == "clear":
                 if item["locked"] or (board["selected_id"] == cid and data.get("confirm_selected") is not True):
@@ -563,6 +593,8 @@ class MinorCharacterService(QuickCharacterWizardService):
 
         def change(operation_id, stage):
             if source is None:
+                if item and view == "STYLE":
+                    item.pop("inventory_asset_id", None)
                 library.unbind_workflow_locks([owner], operation_id=operation_id, before_commit=stage)
                 return
 
@@ -570,8 +602,9 @@ class MinorCharacterService(QuickCharacterWizardService):
                 item["inventory_asset_id"] = asset["asset_id"]
                 stage()
 
+            prompt = (item.get("completed_upscale_request") or item)["prompt"]
             library.bind_workflow_lock(owner, item["id"], source, origin="imagegen",
-                label=f"{self._template(sid)[2]['NAME']} · {VIEWS[view]}", prompt=item["prompt"],
+                label=f"{self._template(sid)[2]['NAME']} · {VIEWS[view]}", prompt=prompt,
                 operation_id=operation_id, before_commit=bind)
 
         workflow_lock_journal.commit(self._path(sid), library, value, self._write, change)
@@ -586,6 +619,7 @@ class MinorCharacterService(QuickCharacterWizardService):
                 board["candidates"][cid]["render_mode"] == "draft" if kind == "drafts"
                 else cid != board["selected_id"] and not board["candidates"][cid]["locked"])]
             effects = [{"id": f"{item['id']}:{effect}", "label": f"Slot {item['slot']} {effect}",
+                        "inventory_asset_id": item.get("inventory_asset_id") if effect == "lock" else None,
                         "candidate_id": item["id"], "effect": effect}
                        for item in targets for effect, affected in (
                            ("selection", board["selected_id"] == item["id"]), ("lock", item["locked"]))
@@ -602,7 +636,11 @@ class MinorCharacterService(QuickCharacterWizardService):
             for item in targets:
                 self._remove(value, board, item["id"])
             self._obsolete_review(board)
-            if any(item["locked"] for item in targets):
+            locked = next((item for item in targets if item["locked"]), None)
+            if locked and view == "STYLE":
+                for key in VIEWS.keys() - {"STYLE"}:
+                    self._mark_changed(value["boards"][key])
+            if locked and (view != "STYLE" or locked.get("inventory_asset_id")):
                 self._publish(value, view, None, None)
             else:
                 self._save(value)
@@ -732,6 +770,10 @@ class MinorCharacterService(QuickCharacterWizardService):
             self._save(value)
             return self._public(value)
 
+    @staticmethod
+    def _luna_criteria(view):
+        return f"Rank these Minor Character {VIEWS[view]} candidates for identity, style and view accuracy."
+
     def run_authoring_job(self, sid, view, field, job_id):
         from zet.services.ai_workflow_service import AIPending
         if not self.templates.path(sid).is_file():
@@ -745,12 +787,14 @@ class MinorCharacterService(QuickCharacterWizardService):
                 return
             candidates = [deepcopy(board["candidates"][cid]) for cid in job.get("images", {})]
             for item in candidates:
+                if request := item.get("completed_upscale_request"):
+                    item["render_request"] = request
                 item["image_path"] = str(self._owned_file(sid, item["image_path"]))
         try:
             if field == "luna_review":
                 from zet.services.local_image_ranking_service import review_images_with_luna
                 entries, model, prompt = review_images_with_luna(
-                    criteria=f"Rank these Minor Character {VIEWS[view]} candidates for identity, style and view accuracy.",
+                    criteria=self._luna_criteria(view),
                     candidates=candidates, paths=self.app.ai_proxy_service.ai_proxy_path_service,
                     owner={"session_id": sid, "view": view, "luna_review_id": job_id})
                 result = {"entries": entries, "model": model, "prompt": prompt}

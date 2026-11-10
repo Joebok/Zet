@@ -5,6 +5,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
+from zet.web.captured_image_response import captured_image_response
 from zet.services.minor_character_service import MinorCharacterNotFound
 from zet.services.protected_effect_preview import ProtectedEffectsChanged
 from zet.services.quick_character_wizard_service import QuickCharacterWizardConflict
@@ -96,9 +97,14 @@ def create_minor_character_router(provider):
     def image(sid: str, view: str, cid: str):
         return FileResponse(call("candidate_file", sid, view, cid))
 
+    @router.get("/{sid}/assets/{view}/candidates/{cid}/thumbnail")
+    def thumbnail(sid: str, view: str, cid: str):
+        return FileResponse(call("candidate_thumbnail", sid, view, cid), media_type="image/jpeg",
+                            headers={"Cache-Control": "private, no-cache"})
+
     @router.get("/{sid}/assets/{view}/candidates/{cid}/inputs/{index}")
     def input_image(sid: str, view: str, cid: str, index: int):
-        return FileResponse(call("candidate_file", sid, view, cid, index))
+        return captured_image_response(call("candidate_file", sid, view, cid, index))
 
     @router.post("/{sid}/assets/{view}/candidates/{cid}/{action}")
     def action(sid: str, view: str, cid: str, action: str, data: dict = Body(...)):
