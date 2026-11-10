@@ -910,7 +910,9 @@ class CharacterAssetContainerService:
                       for index, cid in enumerate(board["slots"]) if cid and cid not in keep
                       and (mode != "drafts" or board["candidates"][cid].get("render_mode", "draft") == "draft")]
         active = {"SUBMITTING", "QUEUED", "RUNNING", "DISPATCHING"}
-        if any(board["candidates"][item["candidate_id"]].get("status") in active for item in candidates):
+        active_slots = [item["slot"] for item in candidates
+                        if board["candidates"][item["candidate_id"]].get("status") in active]
+        if mode != "drafts" and active_slots:
             raise CharacterAssetContainerError("Wait for active renders to finish before deleting these candidates.")
         effects = []
         for item in candidates:
@@ -922,7 +924,8 @@ class CharacterAssetContainerService:
                 effects.append({"id": f"lock:{candidate_id}", "candidate_id": candidate_id,
                                 "label": f"Clear locked candidate in slot {item['slot']}"})
         token = hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
-        return {"candidates": candidates, "protected_effects": effects, "confirmation_token": token,
+        return {"candidates": candidates, "active_slots": active_slots,
+                "protected_effects": effects, "confirmation_token": token,
                 "revision": value["revision"]}
 
     def preview_delete_non_selected(self, character: str, phase: str, pipeline: str,
@@ -951,6 +954,15 @@ class CharacterAssetContainerService:
             previous = copy.deepcopy(value)
             removes_lock = any(board["candidates"][item["candidate_id"]].get("locked")
                                for item in preview["candidates"])
+            for slot in preview["active_slots"]:
+                candidate_id = board["slots"][slot - 1]
+                candidate = board["candidates"][candidate_id]
+                owner = self._render_owner(value, candidate_id, view, candidate.get("attempt_id", ""))
+                owner["slot"] = slot
+                try:
+                    self.image_production.supersede_candidate(candidate, owner)
+                except (ValueError, OSError) as exc:
+                    raise CharacterAssetContainerError(f"Could not cancel Draft slot {slot}: {exc}") from exc
             for item in preview["candidates"]:
                 self._remove_candidate(value, board, item["candidate_id"])
             if preview["candidates"]:

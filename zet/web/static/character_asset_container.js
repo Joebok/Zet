@@ -1,4 +1,4 @@
-import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-tooltips";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-board-consistency";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -294,14 +294,19 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-too
       if(!id)return {key:String(index+1)};
       const item=board.candidates[id];
       const actions=[];
-      const add=(key,label,placement=["card","review"],extra={})=>actions.push({key,label,placement,...extra});
-      if(item.status==="PREPARED")add("submit","Generate");
-      if(item.status==="FAILED")add("retry","Retry");
-      if(item.image_path){add("select","Select");add(item.locked?"unlock":"lock",item.locked?"Unlock":"Lock");if(item.render_mode!=="final"&&!item.locked)add("upscale","Upscale draft");}
-      if(!item.locked)add("clear","Clear slot",["card","review"],{role:"danger-text-action"});
-      if(!activeCandidateStates.has(item.status)&&!item.locked&&board.selected_id!==id)for(const mode of ["draft","final"])add(`regen-${mode}`,`Regen ${mode==="draft"?"Draft":"Final"}`,["card","review"],{mode});
-      if(item.status==="COMPLETE"&&item.image_path)add("template-improve","Improve template from this image",["review"]);
-      return {key:String(index+1),candidate:candidateEvidence(state.view,id,item),actions};
+      const active=activeCandidateStates.has(item.status), selected=board.selected_id===id;
+      const held=Object.values(board.candidates).some(other=>other!==item&&other.locked) ? "Unlock the current image first." : "";
+      const add=(key,disabledReason="")=>actions.push({key,disabledReason});
+      if(item.status==="PREPARED")actions.push({key:"submit",label:"Generate"});
+      if(item.status==="FAILED")add("retry");
+      const waiting=active ? "Wait for the render to finish." : "";
+      const ready=waiting || (!item.image_path ? "Wait for a completed image." : "");
+      add("select",ready || held || (selected ? "Already selected." : ""));
+      add(item.locked?"unlock":"lock",ready || held);
+      if(item.render_mode!=="final"&&item.image_path)add("upscale",waiting || (item.locked ? "Unlock this image first." : ""));
+      add("clear",waiting || (item.locked ? "Unlock this image before clearing its slot." : ""));
+      if(item.status==="COMPLETE"&&item.image_path)actions.push({key:"template-improve",label:"Improve template from this image",placement:["review"]});
+      return {key:String(index+1),candidate:candidateEvidence(state.view,id,item),actions,renderActive:active};
     });
     const order=state.view==="FRONT"?["FRONT_LEFT_3_4","FRONT_RIGHT_3_4","LEFT_PROFILE","RIGHT_PROFILE"]:["FRONT"];
     const comparisons=Object.entries(state.detail.boards).filter(([view])=>view!==state.view).map(([view,other])=>{
@@ -310,8 +315,8 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-too
     }).filter(Boolean).sort((a,b)=>(order.includes(a.key.split(":")[0])?order.indexOf(a.key.split(":")[0]):order.length)-(order.includes(b.key.split(":")[0])?order.indexOf(b.key.split(":")[0]):order.length));
     const luna=board.luna_review||{};
     const fields=[{key:"aspect_ratio",label:"Aspect ratio",type:"text",value:state.aspectRatio}];
-    const actions=[{key:"luna-review",label:"Luna Review",group:"luna",placement:["controls"]},
-      {key:"delete-drafts",label:"Delete Drafts",group:"bulk",placement:["controls"],role:"danger-text-action"},{key:"delete-non-selected",label:"Delete Non-Selected",group:"bulk",placement:["controls"],role:"danger-action"}];
+    const renderBlock = phaseChangeBlock();
+    const actions=[{key:"luna-review",label:"Luna Review",group:"luna",placement:["controls"]}];
     if(["body-reference","head-image","head-image-edit"].includes(state.pipeline)&&state.view!=="FRONT") {
       const views=state.detail.scope.views.filter(view=>view!==state.view);
       fields.push({key:"reference_view",label:"Reference view",type:"select",value:$("source-view").value,options:views.map(view=>({value:view,label:view.replaceAll("_"," ")}))});
@@ -326,7 +331,7 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-too
     }
     return {scope:{key:`${state.detail.container_id}:${state.view}`,title:pipelineLabels[state.pipeline],view:state.view},revision:state.detail.revision,slots,selectedId:board.selected_id,
       lunaReview:{status:luna.status,criteria:luna.prompt,error:luna.error,entries:Object.fromEntries((luna.entries||[]).map((entry,index)=>[entry.candidate_id,{rank:index+1,assessment:entry.review}]))},
-      renderControls:{fields,readiness:{},promptStatus:"",renderStatus:""},actions,comparisons,comparisonDefaults:comparisons[0]?[comparisons[0].key]:[]};
+      renderControls:{fields,readiness:{draft:renderBlock,final:renderBlock},promptStatus:"",renderStatus:""},actions,comparisons,comparisonDefaults:comparisons[0]?[comparisons[0].key]:[]};
   }
 
   async function characterBoardAction(intent) {
@@ -341,8 +346,7 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-too
       delete state.dressingDrafts[state.view];render();return {status:"success",message:"Costume settings saved."};
     }
     if(intent.key.startsWith("render-")) {
-      await generate(intent.count,intent.mode);
-      return {status:"success",message:"Render slots updated."};
+      return generate(intent.count,intent.mode,intent.revision);
     }
     if(intent.key==="preview-prompt") { await previewPrompt();return {status:"success",message:"Prompt preview updated."}; }
     if(intent.key==="luna-review") {
@@ -357,14 +361,17 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-too
       } finally { state.mutation=false; }
     }
     if(intent.key.startsWith("delete-")) {
-      const button=document.createElement("button");button.dataset.boardAction=intent.key;
-      await bulkBoardAction(button);return {status:"success",message:"Candidates updated."};
+      return bulkBoardAction(intent.key,intent.revision);
     }
     const view=state.view,board=state.detail?.boards?.[view],candidate=board?.candidates?.[intent.candidateId];
-    if(!candidate||String(candidate.slot)!==String(intent.slotKey)||intent.expectedOccupant!==intent.candidateId)return {status:"error",message:"This slot changed. Refresh the board."};
-    if(intent.key==="regen-draft"||intent.key==="regen-final") {
-      await generate(1,intent.mode,{slot:candidate.slot,expected_candidate_id:candidate.candidate_id});return {status:"success",message:"Replacement queued."};
+    if(intent.key.startsWith("regen-")) {
+      const slot = Number(intent.slotKey);
+      if (intent.revision !== state.detail.revision || board.slots[slot - 1] !== intent.expectedOccupant) {
+        return {status:"error",message:"This slot changed. Refresh the board."};
+      }
+      return generate(1,intent.mode,intent.revision,{slot,expected_candidate_id:intent.expectedOccupant});
     }
+    if(!candidate||String(candidate.slot)!==String(intent.slotKey)||intent.expectedOccupant!==intent.candidateId)return {status:"error",message:"This slot changed. Refresh the board."};
     if(intent.key==="template-improve") {
       history.pushState({},"",route(""));await activate(state.pipeline,{view:"",costume:state.costume,templateCandidate:`${view}:${candidate.candidate_id}`});return {status:"success",message:"Template Improvement opened."};
     }
@@ -712,44 +719,39 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-too
     }
   }
 
-  async function generate(count, renderMode, replacement = {}) {
-    if (state.mutation || !state.detail) return;
+  function phaseChangeBlock() {
     const frontSource = state.detail.sources?.phase_change ?? state.detail.sources?.phase_change_by_mode?.final ?? state.detail.sources?.phase_change_by_mode?.draft ?? {};
     if (isHead() && state.view === "FRONT" && $("apply-phase-change").checked
         && frontSource.kind !== "upload" && !frontSource.phase) {
-      show("Phase Change requires an uploaded FRONT reference or a selected locked FRONT source.", true);
-      return;
+      return "Phase Change requires an uploaded FRONT reference or a selected locked FRONT source.";
     }
-    const scope = api();
-    const view = state.view;
-    const signal = state.controller.signal;
-    const modal = false;
-    const buttons = [...document.querySelectorAll(".candidate-board-actions [data-board-action='render']")];
+    return "";
+  }
+
+  async function generate(count, renderMode, revision, replacement = {}) {
+    if (state.mutation || !state.detail) return {status:"cancelled"};
+    const reason = phaseChangeBlock();
+    if (reason) return {status:"error",message:reason};
+    const scope = api(), view = state.view, signal = state.controller.signal;
+    const current = () => !signal.aborted && scope === api() && view === state.view;
     state.mutation = true;
-    buttons.forEach((button) => { button.disabled = true; });
-    const feedback = (message, error = false) => show(message, error);
-    feedback("Preparing render…");
     try {
       const result = await request(api(`/views/${encodeURIComponent(view)}/generate`), {
         method: "POST", body: JSON.stringify({count, render_mode: renderMode,
-          aspect_ratio: state.aspectRatio, expected_revision: state.detail.revision,
+          aspect_ratio: state.aspectRatio, expected_revision: revision,
           apply_phase_change: isHead() && view === "FRONT" && $("apply-phase-change").checked,
           costume_settings: savedDressingSettings(), ...replacement}),
       });
-      if (signal.aborted || scope !== api() || view !== state.view || result.revision < state.detail.revision) return;
+      if (!current() || result.revision < state.detail.revision) return {status:"cancelled"};
       state.detail = result;
       render();
-      feedback("Render slots updated.");
+      return {status:"success",message:"Render slots updated."};
     } catch (error) {
-      if (!signal.aborted && scope === api() && view === state.view) {
-        feedback(error.message, true);
-        await loadDetail().catch(() => {});
-      }
+      if (!current()) return {status:"cancelled"};
+      await loadDetail().catch(() => {});
+      return {status:"error",message:error.message};
     } finally {
-      if (!signal.aborted) {
-        state.mutation = false;
-        buttons.forEach((button) => { button.disabled = false; });
-      }
+      if (!signal.aborted) state.mutation = false;
     }
   }
 
@@ -775,44 +777,29 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-too
     finally { if (!signal.aborted) button.disabled = false; }
   }
 
-  async function bulkBoardAction(button) {
-    const action = button.dataset.boardAction;
-    const endpoint = action === "delete-drafts" ? "delete-drafts" : "delete-non-selected";
-    const title = action === "delete-drafts" ? "Delete Draft images?" : "Delete Non-Selected candidates?";
-    const prompt = action === "delete-drafts"
-      ? "Delete all Draft candidates in this view? Approve each selected or locked candidate affected."
-      : "Clear every candidate except selected or locked candidates in this view?";
-    const controls = [];
-    controls.forEach(control => { control.disabled = true; });
+  async function bulkBoardAction(action, revision) {
+    const scope = api(), view = state.view, signal = state.controller.signal;
+    const current = () => !signal.aborted && scope === api() && view === state.view;
+    const endpoint = `/views/${encodeURIComponent(view)}/${action}`;
     state.mutation = true;
-    show("Reviewing candidates to delete…");
     try {
-      const endpointPath = `/views/${encodeURIComponent(state.view)}/${endpoint}`;
-      const path = api(endpointPath);
-      const preview = await request(api(`${endpointPath}/preview`), {method: "POST", body: "{}"});
-      const candidates = preview.candidates || [];
-      if (!candidates.length) { show("No candidates match this action."); return; }
-      const effects = (preview.protected_effects || []).map(effect => ({...effect,
-        preview_url: state.detail.boards[state.view].candidates[effect.candidate_id]?.image_path
-          ? imageUrl(effect.candidate_id) : ""}));
-      let approved = [];
-      if (effects.length) {
-        approved = await window.confirmProtectedEffects(title,
-          `${prompt} ${candidates.length} slot${candidates.length === 1 ? "" : "s"} will be cleared.`, effects,
-          action === "delete-drafts" ? "Delete Drafts" : "Delete Non-Selected");
-        if (approved === null) return;
-      } else if (!confirm(`${prompt}\n\n${candidates.length} slot${candidates.length === 1 ? "" : "s"} will be cleared.`)) return;
-      const result = await request(path, {method: "POST", body: JSON.stringify({
-        confirmation_token: preview.confirmation_token, expected_revision: preview.revision,
-        approved_effects: approved,
+      const preview = await request(api(endpoint + "/preview"), {method:"POST",body:"{}"});
+      if (!current()) return {status:"cancelled"};
+      if (preview.revision !== revision) throw new Error("The board changed. Refresh and review the deletion again.");
+      const effects = preview.protected_effects.map(effect => ({...effect,
+        preview_url:state.detail.boards[view].candidates[effect.candidate_id]?.image_path ? imageUrl(effect.candidate_id) : ""}));
+      const approved = await confirmCandidateDeletion(action, `${pipelineLabels[state.pipeline]} · ${view}`,
+        preview.candidates.map(item => item.slot), preview.active_slots, effects);
+      if (approved === null || !current()) return {status:"cancelled"};
+      const result = await request(api(endpoint), {method:"POST",body:JSON.stringify({
+        confirmation_token:preview.confirmation_token,expected_revision:preview.revision,approved_effects:approved,
       })});
+      if (!current()) return {status:"cancelled"};
       state.detail = result;
       render();
-      show(`${candidates.length} candidate slot${candidates.length === 1 ? "" : "s"} cleared.`);
-    } catch (error) { reportError(error); }
-    finally {
-      state.mutation = false;
-      controls.forEach(control => { control.disabled = false; });
+      return {status:"success",message:"Candidates updated."};
+    } finally {
+      if (!signal.aborted) state.mutation = false;
     }
   }
   $("prompt-preview-button").addEventListener("click", () => void previewPrompt());

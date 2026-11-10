@@ -21,7 +21,10 @@ scope changes. The shared Candidate Board component and stylesheet own cards, re
 `candidate_board.js` also exports `mountCandidateBoard` for workflow migrations.
 `candidate_board_component.js` and `candidate_board.css` own the reusable controls,
 grid, and review modal. Subscribers supply action handlers and pass accepted
-polling results through `update(model)`. See the
+polling results through `update(model)`. The board also owns the shared bulk
+delete controls and confirmation presentation. Workflow services validate and
+commit their previews. [ImageProductionService](../zet/services/image_production_service.py)
+withdraws owned queued Draft attempts and fences late and recovery answers. See the
 [subscriber guide](COMPONENTS/CANDIDATE_BOARD_INTEGRATION.md).
 Head Container settings in `index.html` and `character_asset_container.js` own
 FRONT upload/paste, Phase Change source selection, render-mode captions, and

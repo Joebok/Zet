@@ -43,6 +43,12 @@ class AIJobService:
         if self.repository.is_deleted(job_id):
             return {"ask_id": job_id, "status": "DELETED", "location": "", "path": "",
                     "blocking_reason": "Job was explicitly deleted."}
+        from zet.services.workflow_storage import task_state_path
+        marker = task_state_path(self.lifecycle.queue_root, "Superseded", job_id,
+                                 state_root=self.lifecycle.storage_root)
+        if marker.is_file() and not self.lifecycle.read_receipt(job_id):
+            return {"ask_id": job_id, "status": "SUPERSEDED", "location": "", "path": "",
+                    "blocking_reason": "The owning operation was superseded."}
         record = self.repository.get(job_id)
         receipt = self.lifecycle.read_receipt(job_id)
         info = {"ask_id": job_id, "status": "RECONCILING", "location": "", "path": "",

@@ -1,7 +1,7 @@
 import {renderProposalComparison} from './interview_proposals.js';
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
-import {mountCandidateBoard} from './candidate_board.js?v=20261110-tooltips';
-import {isNarrativeActive, narrativeBoardModel} from './narrative_candidate_board.js';
+import {mountCandidateBoard, confirmCandidateDeletion} from './candidate_board.js?v=20261110-board-consistency';
+import {isNarrativeActive, narrativeBoardModel} from './narrative_candidate_board.js?v=20261110-board-consistency';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;
 let pollTimer = null;
@@ -138,14 +138,12 @@ async function api(url, method = 'GET', data) {
   if (!response.ok) {
     if (response.status === 409 && result.detail?.preview) {
       const inspection = result.detail.preview;
-      if (inspection.candidates) {
-        if (!confirmNonSelected(inspection.candidates)) return null;
-        return api(url, method, {...data, confirmation_token: inspection.confirmation_token});
-      }
-      const approved = await confirmDraftDeletion(inspection);
-      if (approved === null) return null;
+      const drafts = !inspection.candidates;
+      const epoch = boardEpoch;
+      const approved = await confirmBoardDeletion(inspection, drafts);
+      if (approved === null || disposed || epoch !== boardEpoch) return null;
       return api(url, method, {...data, confirmation_token: inspection.confirmation_token,
-        approved_effects: approved});
+        ...(drafts ? {approved_effects: approved} : {})});
     }
     if (response.status === 409 && result.detail?.protected_images) {
       const images = result.detail.protected_images.map(effect => ({...effect,
@@ -237,29 +235,22 @@ async function updateRenderSize() {
   publishBoard();
 }
 
-function confirmDraftDeletion(inspection) {
-  return confirmProtectedEffects('Delete Draft images?',
-    `Delete Draft images in ${detail.title}, slots ${inspection.slots.join(', ')}? Matching work will be cancelled. Final images and Inventory copies remain.`,
-    (inspection.protected_effects || []).map(effect => ({...effect,
-      preview_url: detail.candidates[effect.candidate_id]?.image ? imageUrl(effect.candidate_id) : ''})), 'Delete Draft images');
-}
-
-function confirmNonSelected(candidates) {
-  const slots = candidates.map(item => item.slot).sort((a, b) => a - b);
-  return slots.length && confirm(`Delete non-selected candidates in ${detail.title}, slots ${slots.join(', ')}? Selected and locked candidates are preserved.`);
+function confirmBoardDeletion(inspection, drafts) {
+  const key = drafts ? 'delete-drafts' : 'delete-non-selected';
+  const effects = (inspection.protected_effects || []).map(effect => ({...effect,
+    preview_url: detail.candidates[effect.candidate_id]?.image ? imageUrl(effect.candidate_id) : ''}));
+  return confirmCandidateDeletion(key, detail.title,
+    inspection.slots || inspection.candidates.map(item => item.slot), inspection.active_slots || [], effects);
 }
 
 async function deleteBoardImages(drafts) {
   const url = base() + (drafts ? '/delete-draft-images' : '/delete-non-selected');
+  const epoch = boardEpoch;
   const inspection = await api(url + '/preview', 'POST', {});
-  const {confirmation_token} = inspection;
-  if (drafts) {
-    const approved = await confirmDraftDeletion(inspection);
-    if (approved === null) return null;
-    return api(url, 'POST', {confirmation_token, approved_effects: approved});
-  }
-  if (!confirmNonSelected(inspection.candidates)) return null;
-  return api(url, 'POST', {confirmation_token});
+  if (disposed || epoch !== boardEpoch) return null;
+  const approved = await confirmBoardDeletion(inspection, drafts);
+  if (approved === null || disposed || epoch !== boardEpoch) return null;
+  return api(url, 'POST', {confirmation_token: inspection.confirmation_token, ...(drafts ? {approved_effects: approved} : {})});
 }
 
 async function boardAction(intent) {

@@ -5,6 +5,19 @@ const qualities = ['draft', 'final'];
 let nextBoardId = 0;
 const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
 const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate'};
+const slotLabels = {select:'Select', lock:'Lock', unlock:'Unlock', retry:'Retry', upscale:'Upscale Draft', clear:'Clear slot'};
+const bulkLabels = {'delete-drafts':'Delete Drafts', 'delete-non-selected':'Delete Non-Selected'};
+const selectedKey = 'selected';
+
+export function confirmCandidateDeletion(key, board, slots, activeSlots, effects) {
+  if (!slots.length) return null;
+  const label = bulkLabels[key];
+  const ordered = values => [...values].sort((a, b) => a - b).join(', ');
+  const active = activeSlots.length
+    ? ` Active Draft work in slots ${ordered(activeSlots)} will be cancelled. Backend renders already running may finish, and their results will be discarded.` : '';
+  return window.confirmProtectedEffects(`${label}?`, `${board}. Clear slots ${ordered(slots)}.${active} Inventory copies are retained.`,
+    effects, label, {individual:true});
+}
 const imageKey = image => JSON.stringify([image?.url, image?.version]);
 const reviewStatusLabels = {RUNNING:'Started', COMPLETE:'Finish', OBSOLETE:'Outdated', FAILED:'Failed', INTERRUPTED:'Interrupted'};
 
@@ -93,8 +106,24 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
   const slotFor = id => model.slots.find(slot => slot.candidate?.id === id);
   const reviewable = () => model.slots.filter(slot => slot.candidate && slot.candidate.reviewable !== false);
   const command = name => dialog.querySelector(`[data-command="${name}"]`);
-  const scopeActions = (slot, surface) => (slot ? slot.actions : model.actions || [])
-    ?.filter(action => !action.placement || action.placement.includes(surface)) || [];
+  function scopeActions(slot, surface) {
+    const actions = (slot ? slot.actions : model.actions)?.filter(action => !action.placement || action.placement.includes(surface)) || [];
+    if (!slot) return actions;
+    const standard = actions.map(action => slotLabels[action.key] ? {
+      ...action, label:slotLabels[action.key], role:action.key === 'clear' ? 'danger-text-action' : undefined,
+    } : action);
+    if (!slot.candidate && surface !== 'card') return standard;
+    const protectedImage = slot.candidate && (slot.candidate.locked || slot.candidate.id === model.selectedId);
+    const blocked = slot.replacementBlock || (slot.renderActive ? 'Wait for the render to finish.'
+      : protectedImage ? 'Clear the protected image before replacing it.' : '');
+    for (const mode of qualities) {
+      const quality = mode === 'draft' ? 'Draft' : 'Final';
+      standard.push({key:`regen-${mode}`, mode, count:1,
+        label:slot.candidate ? `Regen ${quality}` : `Generate ${quality} here`,
+        disabledReason:blocked || model.renderControls?.readiness?.[mode]});
+    }
+    return standard;
+  }
   const pendingKey = (key, slot) => JSON.stringify([slot?.key, slot?.candidate?.id, key]);
 
   function boardActions() {
@@ -106,15 +135,25 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       return {key, mode, count, label:`${mode === 'draft' ? 'Draft' : 'Final'} ${count}`,
         disabledReason: empty < count ? `Requires ${count} empty slots.` : readiness};
     }));
-    return [...scopeActions(null, 'controls').filter(action => action.group === 'prompt'), ...render,
-      ...scopeActions(null, 'controls').filter(action => action.group !== 'prompt')];
+    const actions = scopeActions(null, 'controls');
+    const occupied = model.slots.filter(slot => slot.candidate);
+    const bulk = Object.entries(bulkLabels).map(([key, label]) => {
+      const drafts = key === 'delete-drafts';
+      const targets = occupied.filter(({candidate}) => drafts ? candidate.quality !== 'final'
+        : candidate.id !== model.selectedId && !candidate.locked);
+      return {key, label, group:'bulk', role:'danger-text-action',
+        disabledReason: model.bulkBlock || (!targets.length ? 'No candidates to delete.'
+          : !drafts && targets.some(slot => slot.renderActive) ? 'Wait for the affected renders to settle.' : '')};
+    });
+    return [...actions.filter(action => action.group === 'prompt'), ...render,
+      ...actions.filter(action => action.group !== 'prompt'), ...bulk];
   }
 
   function actionMarkup(action, slot) {
     const busy = pending.has(pendingKey(action.key, slot));
     const reason = action.disabledReason || (busy ? 'Working…' : '');
     const glyph = action.glyph || glyphs[action.key] || (actionOrder.includes(action.key) ? action.key : '');
-    const tooltip = slot && reason ? escape(`${action.label} · ${reason}`) : '';
+    const tooltip = (slot || action.group === 'bulk') && reason ? escape(`${action.label} · ${reason}`) : '';
     return `<span class="zcb-action" ${tooltip ? `title="${tooltip}" role="group" aria-label="${tooltip}" tabindex="0" data-key="${escape(action.key)}"` : ''}><button type="button" data-command="action" data-key="${escape(action.key)}"
       class="${escape(action.role || '')}" data-quality="${escape(action.mode)}"
       ${glyph ? `data-glyph="${escape(glyph)}" data-label="${escape(action.label)}"` : ''}
@@ -267,9 +306,9 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
 
   function comparisons() {
     const selected = slotFor(model.selectedId)?.candidate;
-    const options = selected?.image ? [{key:`selected:${selected.id}`,
-      label:`Selected · ${selected.quality === 'final' ? 'Final' : 'Draft'} · Slot ${model.slots.indexOf(slotFor(selected.id)) + 1}`,
-      image:selected.image}] : [];
+    const options = [{key:selectedKey, label:selected?.image
+      ? `Selected · ${selected.quality === 'final' ? 'Final' : 'Draft'} · Slot ${model.slots.indexOf(slotFor(selected.id)) + 1}`
+      : 'Selected · No image available', image:selected?.image}];
     const seen = new Set(options.map(option => imageKey(option.image)));
     for (const option of model.comparisons || []) {
       const key = imageKey(option.image);
@@ -295,18 +334,20 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     command('next').disabled = pending.size > 0 || position >= list.length - 1;
     command('close').disabled = pending.size > 0;
     const options = comparisons();
-    const defaults = model.comparisonDefaults || [];
-    const keys = chosen ?? defaults.filter(key => key !== `selected:${candidateId}`);
-    const selected = options.filter(option => keys.includes(option.key) && !failedComparisons.has(imageKey(option.image)));
+    const defaults = (model.comparisonDefaults || []).filter(key =>
+      options.some(option => option.key === key && option.image && !failedComparisons.has(imageKey(option.image))));
+    const keys = chosen ?? (defaults.length ? defaults : [selectedKey]);
+    const selected = keys.map(key => options.find(option => option.key === key)).filter(Boolean);
     if (!selected.some(option => option.key === activeComparison)) activeComparison = selected[0]?.key;
     const compare = selected.find(option => option.key === activeComparison);
     const comparison = view('comparison');
     comparison.hidden = !compare;
-    renderImage(comparison, compare?.image, '', () => {
+    const compareImage = compare?.image && !failedComparisons.has(imageKey(compare.image)) ? compare.image : undefined;
+    renderImage(comparison, compareImage, '', () => {
       failedComparisons.add(imageKey(compare.image));
       renderReview();
     });
-    if (compare) {
+    if (compareImage) {
       let caption = comparison.querySelector('figcaption');
       if (!caption) {
         caption = document.createElement('figcaption');
@@ -318,11 +359,10 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     syncZoom();
     const choices = view('choices');
     patch(choices, `${button('No comparison','no-comparison')}
-      ${!options.some(option => option.key.startsWith('selected:')) ? '<p>No selected image available.</p>' : ''}
       ${options.map(option => {
         const failed = failedComparisons.has(imageKey(option.image));
         return `<label><input type="checkbox" name="${escape(option.key)}" data-comparison
-          ${keys.includes(option.key) && !failed ? 'checked' : ''} ${failed ? 'disabled' : ''}>
+          ${keys.includes(option.key) ? 'checked' : ''}>
           ${escape(option.label)}${failed ? ' · Image unavailable' : ''}</label>`;
       }).join('')}
       ${compare ? `<p>${escape(compare.label)}</p>` : ''}
@@ -448,7 +488,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
   async function invoke(control, surface, slot) {
     const actions = surface === 'controls' ? boardActions() : scopeActions(slot, surface);
     const action = actions.find(item => item.key === control.dataset.key);
-    if (!action) return;
+    if (!action || action.disabledReason) return;
     const key = pendingKey(action.key, slot);
     if (pending.has(key)) return;
     const epoch = scopeEpoch;

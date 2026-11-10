@@ -16,6 +16,52 @@ class ImageProductionService:
     def __init__(self, app):
         self.app = app
 
+    def supersede_candidate(self, candidate: dict, owner: dict) -> None:
+        ask_id = candidate.get("ask_id")
+        reserved_id = candidate.get("reserved_ask_id")
+        if not (ask_id or reserved_id):
+            raise ValueError("The active Draft has no recorded render attempt.")
+        self.supersede(ask_id or reserved_id, {"image_production": owner}, reserved=not ask_id)
+
+    def supersede(self, ask_id: str, expected: dict, *, reserved: bool = False) -> None:
+        """Withdraw an owned queued ask and fence its logical and recovery answers."""
+        from zet.services.ai_attempt_recovery_service import AIAttemptRecoveryService
+        from zet.services.workflow_storage import file_lock, supersede_task
+
+        paths = self.app.ai_proxy_service.ai_proxy_path_service
+        jobs, client = paths.jobs, paths.file_proxy_client
+        jobs.validate_id(ask_id)
+        with file_lock(paths.lifecycle.lock_path(ask_id)):
+            record = jobs.repository.get(ask_id)
+            queued = client.ready_path(ask_id)
+            running = client.running_root / ask_id
+            evidence = [folder for folder in (queued, running, client.answer_root / ask_id,
+                        paths.lifecycle.inbox_root / ask_id, client.staging_path(ask_id)) if folder.is_dir()]
+            manifests = [record["manifest"]] if record else []
+            manifests.extend(self._manifest(folder) for folder in evidence)
+            if (not manifests and not reserved) or any(
+                    any(manifest.get(key) != value for key, value in expected.items())
+                    for manifest in manifests):
+                raise ValueError("Could not verify ownership of the Draft render to cancel.")
+            recovery = AIAttemptRecoveryService(jobs).read(ask_id)
+            current = recovery.get("current_attempt_id")
+            if current:
+                jobs.validate_id(current)
+                if recovery.get("logical_job_id") != ask_id:
+                    raise ValueError("Draft recovery attempt does not belong to this render.")
+                recovery_path = client.ready_path(current)
+                for folder in (recovery_path, client.running_root / current, client.answer_root / current,
+                               paths.lifecycle.inbox_root / current, client.staging_path(current)):
+                    if folder.is_dir():
+                        manifest = self._manifest(folder)
+                        if manifest.get("logical_job_id") != ask_id or any(
+                                manifest.get(key) != value for key, value in expected.items()):
+                            raise ValueError("Draft recovery attempt does not belong to this render.")
+            reason = "The owning Draft image was deleted."
+            supersede_task(paths.lifecycle.queue_root, queued, reason, state_root=paths.lifecycle.storage_root)
+            if current and current != ask_id:
+                supersede_task(paths.lifecycle.queue_root, recovery_path, reason, state_root=paths.lifecycle.storage_root)
+
     @staticmethod
     def _manifest(ask_path: Path) -> dict:
         try:

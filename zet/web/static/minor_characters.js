@@ -1,4 +1,4 @@
-import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-tooltips";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-board-consistency";
 import {renderProposalComparison} from "./interview_proposals.js";
 
 const $ = id => document.getElementById(id);
@@ -272,34 +272,22 @@ function boardModel(current) {
   const luna = current.luna_review;
   add("luna-review", "Luna Review", "luna", luna?.status === "RUNNING" ? "Luna Review is running."
     : !items.some(completed) ? "Generate a completed candidate first." : "");
-  for (const [kind, label, targets] of [
-    ["drafts", "Delete Drafts", items.filter(item => item.render_mode === "draft")],
-    ["non-selected", "Delete Non-Selected", items.filter(item => item.id !== current.selected_id && !item.locked)],
-  ]) {
-    const reason = !targets.length ? "No candidates to delete."
-      : targets.some(item => renderActive(item.status)) ? "Wait for the affected renders to settle." : "";
-    add("delete-" + kind, label, "bulk", reason, "danger-text-action");
-  }
   const locked = items.find(item => item.locked);
   const slots = current.slots.map((id, index) => {
     const item = current.candidates[id], slot = {key:String(index+1), actions:[]};
-    const action = (key, label, disabledReason, extra = {}) => slot.actions.push({key, label, disabledReason, ...extra});
+    const action = (key, disabledReason) => slot.actions.push({key, disabledReason});
     const active = item && renderActive(item.status) ? "Wait for the render to finish." : "";
     const selected = id && id === current.selected_id;
-    if (!item?.locked && !selected) for (const mode of ["draft", "final"]) {
-      const quality = mode === "draft" ? "Draft" : "Final";
-      action(`regen-${mode}`, item ? `Regen ${quality}` : `Generate ${quality} here`, active || renderReason, {mode, placement:item ? ["card","review"] : ["card"]});
-    }
     if (!item) return slot;
-    if (item.image) {
-      const otherLocked = locked && locked !== item ? "Unlock the current image first." : "";
-      if (!selected) action("select", "Select", active || otherLocked);
-      action(item.locked ? "unlock" : "lock", item.locked ? "Unlock" : "Lock", active || otherLocked);
-      if (item.render_mode === "draft" && !item.locked) action("upscale", "Upscale Draft", active);
-    }
-    if (item.status === "FAILED" && item.render_request) action("retry", "Retry");
-    if (!item.locked) action("clear", "Clear slot", active, {role:"danger-text-action"});
-    if (completed(item)) action("interview-candidate", "Interview this candidate", authorReason, {placement:["review"]});
+    slot.renderActive = Boolean(active);
+    const otherLocked = locked && locked !== item ? "Unlock the current image first." : "";
+    const ready = active || (!item.image ? "Wait for a completed image." : "");
+    action("select", ready || otherLocked || (selected ? "Already selected." : ""));
+    action(item.locked ? "unlock" : "lock", ready || otherLocked);
+    if (item.image && item.render_mode === "draft") action("upscale", active || (item.locked ? "Unlock this image first." : ""));
+    if (item.status === "FAILED") action("retry", item.render_request ? "" : "The original render request is unavailable.");
+    action("clear", active || (item.locked ? "Unlock this image before clearing its slot." : ""));
+    if (completed(item)) slot.actions.push({key:"interview-candidate",label:"Interview this candidate",disabledReason:authorReason,placement:["review"]});
     const request = item.render_request || {}, settings = request.settings || {};
     const earlierDraft = item.render_mode === "final" && settings.render_mode === "draft";
     const version = encodeURIComponent(item.image_version || item.id);
@@ -335,7 +323,7 @@ function boardModel(current) {
     : "";
   return {scope:{key:promptKey(), title:character.name, view:current.label}, revision:character.revision, slots, actions,
     selectedId:current.selected_id, comparisons,
-    comparisonDefaults:[current.selected_id && `selected:${current.selected_id}`, comparisons[0]?.key].filter(Boolean),
+    comparisonDefaults:["selected", comparisons[0]?.key].filter(Boolean),
     lunaReview:{status:luna?.status, error:luna?.error, criteria:luna?.prompt || current.luna_criteria,
       entries:Object.fromEntries((luna?.entries || []).map((entry, index) => [entry.candidate_id, {rank:index+1, assessment:entry.review}]))},
     renderControls:{fields:[
@@ -395,12 +383,12 @@ async function bulk(kind, isCurrent) {
   const preview = await api(path + "/preview","POST");
   if (!isCurrent()) return false;
   if (preview.revision !== character.revision) throw new Error("The board changed. Refresh and try again.");
-  const ids = await window.confirmProtectedEffects(`Delete candidates from ${board().label}?`,
-    `Clear slots ${preview.slots.join(", ")}.`, preview.protected_effects.map(effect => ({
+  const ids = await confirmCandidateDeletion("delete-" + kind, board().label, preview.slots, preview.active_slots,
+    preview.protected_effects.map(effect => ({
       ...effect,
       label:effect.label + (effect.inventory_asset_id ? ` · Inventory image ${effect.inventory_asset_id} will be retained` : ""),
       preview_url:media(effect.candidate_id),
-    })), "Delete");
+    })));
   if (ids === null || ids === false || !isCurrent()) return false;
   const result = await api(path,"POST",{revision:preview.revision, approved_effects:ids});
   if (!isCurrent()) return false;

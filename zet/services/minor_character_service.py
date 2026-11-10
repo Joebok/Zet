@@ -624,15 +624,22 @@ class MinorCharacterService(QuickCharacterWizardService):
                        for item in targets for effect, affected in (
                            ("selection", board["selected_id"] == item["id"]), ("lock", item["locked"]))
                        if affected]
+            active = [item for item in targets if item["status"] in ACTIVE]
             preview = {"revision": value["revision"], "slots": [item["slot"] for item in targets],
+                       "active_slots": [item["slot"] for item in active],
                        "protected_effects": effects}
             if data is None:
                 return preview
             if data.get("revision") != preview["revision"] or set(data.get("approved_effects", [])) != {
                     effect["id"] for effect in effects}:
                 raise ProtectedEffectsChanged(preview)
-            if any(item["status"] in ACTIVE for item in targets):
+            if kind != "drafts" and active:
                 raise ValueError("Wait for the affected renders to settle.")
+            for item in active:
+                try:
+                    self.production.supersede_candidate(item, self._transport_owner(value, view, item))
+                except (ValueError, OSError) as exc:
+                    raise ValueError(f"Could not cancel Draft slot {item['slot']}: {exc}") from exc
             for item in targets:
                 self._remove(value, board, item["id"])
             self._obsolete_review(board)

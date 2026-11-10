@@ -36,8 +36,8 @@
 .zet-candidate-board .zcb-action,
 .zet-candidate-review .zcb-action { display: grid; gap: .25rem; }
 .zcb-action[title] > button:disabled { pointer-events: none; }
-.zet-candidate-board button[data-quality="draft"] { background: var(--info); color: white; }
-.zet-candidate-board button[data-quality="final"] { background: var(--success); color: white; }
+:is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-quality="draft"] { background: var(--info); color: white; }
+:is(.zet-candidate-board, .zet-candidate-review) button:not(:disabled)[data-quality="final"] { background: var(--success); color: white; }
 .zet-candidate-board label,
 .zet-candidate-review label { display: block; margin-block: .4rem; }
 .zet-candidate-board pre,

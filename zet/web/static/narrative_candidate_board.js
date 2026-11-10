@@ -35,14 +35,10 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
     const item = detail.candidates[id];
     const complete = item?.status === 'COMPLETE' && item.image;
     const running = isNarrativeActive(item?.status);
-    const protectedImage = id && (id === detail.selected_id || item?.locked);
     const held = lockedId && lockedId !== id ? 'Unlock the current image first.' : '';
     const needsText = assembly && item?.scene_text_pending;
-    const replaceReason = busyReason || (running ? 'Wait for this render to finish.'
-      : protectedImage ? 'Clear the protected image before replacing it.' : renderReason);
-    const actions = ['draft', 'final'].map(mode => action('regen-' + mode,
-      mode === 'draft' ? 'Regen Draft' : 'Regen Final', {mode, disabledReason: replaceReason}));
-    if (!item) return {key: String(index + 1), actions};
+    const actions = [];
+    if (!item) return {key: String(index + 1), replacementBlock: busyReason};
     const local = ['crop', 'unchanged'].includes(item.backdrop_adaptation?.operation) && item.source_snapshot;
     const request = item.render_request || {};
     const captured = request.inputs || [];
@@ -77,17 +73,17 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
       ].filter(Boolean),
     };
     const ready = complete ? '' : 'Wait for a completed image.';
-    actions.push(action('select', 'Select', {disabledReason: busyReason || ready || held || (id === detail.selected_id ? 'Already selected.' : '')}));
-    actions.push(action(item.locked ? 'unlock' : 'lock', item.locked ? 'Unlock' : 'Lock', {
+    actions.push(action('select', undefined, {disabledReason: busyReason || ready || held || (id === detail.selected_id ? 'Already selected.' : '')}));
+    actions.push(action(item.locked ? 'unlock' : 'lock', undefined, {
       disabledReason: busyReason || (item.locked ? '' : ready || held || (needsText ? 'Confirm scene text first.' : '')),
     }));
-    if (item.status === 'FAILED') actions.push(action('retry', 'Retry', {disabledReason: busyReason}));
-    if (complete && candidate.quality === 'draft' && !item.locked) actions.push(action('upscale', 'Upscale Draft', {disabledReason: busyReason}));
-    actions.push(action('clear', 'Clear slot', {role: 'danger-text-action', disabledReason: busyReason || (running ? 'Wait for this render to finish.' : '')}));
+    if (item.status === 'FAILED') actions.push(action('retry', undefined, {disabledReason: busyReason}));
+    if (candidate.image && candidate.quality === 'draft') actions.push(action('upscale', undefined, {disabledReason: busyReason || ready || (item.locked ? 'Unlock this image first.' : '')}));
+    actions.push(action('clear', undefined, { disabledReason: busyReason || (running ? 'Wait for this render to finish.' : '')}));
     if (assembly) actions.push(action('edit-text', 'Edit Text', {placement: review, disabledReason: busyReason || ready || (item.locked ? 'Unlock this image before editing.' : '')}));
     actions.push(action('inventory', 'View in Inventory', {placement: review, disabledReason: busyReason || (!item.locked || !item.image ? 'Lock this image to view it in Inventory.' : '')}));
     actions.push(action('capture-task', 'Create task', {placement: review}));
-    return {key: String(index + 1), candidate, actions};
+    return {key: String(index + 1), candidate, actions, renderActive:running, replacementBlock:busyReason};
   });
   const extra = [];
   const item = detail.candidates[reviewedId];
@@ -101,15 +97,10 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
     const input = slots.find(slot => slot.candidate?.id === reviewedId)?.candidate.inputs[index];
     if (input?.url) extra.push({key: 'backdrop:' + reviewedId, label: 'Captured backdrop', image: {url: input.url, label: input.label}});
   }
-  const unlockedOthers = slots.filter(slot => slot.candidate && !slot.candidate.locked && slot.candidate.id !== detail.selected_id);
   const actions = [
     action('synthesize', 'Write Prompt', {group: 'prompt', role: 'primary', disabledReason: authorReason}),
     action('luna-review', 'Luna Review', {group: 'luna', disabledReason: busyReason || (luna.status === 'RUNNING' ? 'Review is running.' :
       slots.some(slot => slot.candidate?.status === 'COMPLETE' && slot.candidate.image) ? '' : 'Generate an image first.')}),
-    action('delete-drafts', 'Delete Drafts', {group: 'bulk', role: 'danger-text-action', disabledReason: busyReason ||
-      (slots.some(slot => slot.candidate?.quality === 'draft') ? '' : 'No Draft images.')}),
-    action('delete-non-selected', 'Delete Non-Selected', {group: 'bulk', role: 'danger-text-action', disabledReason: busyReason ||
-      (!unlockedOthers.length ? 'No non-selected images.' : unlockedOthers.some(slot => isNarrativeActive(slot.candidate.status)) ? 'Wait for active renders.' : '')}),
   ];
   if (reference && !localOnly) for (const mode of ['draft', 'final']) {
     actions.push(action('apply-' + mode, mode === 'draft' ? 'Apply Draft' : 'Apply Final', {group: 'render', mode,
@@ -134,7 +125,7 @@ export function narrativeBoardModel({detail, scopeKey, revision, drafts, busy, l
     reference && 'Apply writes a fresh prompt. Render shortcuts use the saved prompt.',
   ].filter(Boolean).join(' · ');
   return {scope: {key: scopeKey, title: detail.title}, revision, slots, selectedId: detail.selected_id,
-    actions, comparisons: extra,
+    actions, comparisons: extra, bulkBlock: busyReason,
     lunaReview: {status: luna.status, criteria: luna.prompt, error: luna.error,
       entries: Object.fromEntries((['COMPLETE', 'OBSOLETE'].includes(luna.status) ? luna.entries || [] : [])
         .map((entry, index) => [entry.candidate_id, {rank: index + 1, assessment: entry.review}]))},

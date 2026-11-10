@@ -34,7 +34,11 @@ with three empty slots is disabled with a reason. It cannot silently submit thre
 or overwrite an occupied slot. Keep selected and locked protections specific to
 the operation. Bulk actions use the existing confirmation flow, with previews
 and individual approval of every affected selection or lock and a server-side
-recheck before commit. Label any retained Inventory image in the confirmation.
+recheck before commit. Label any retained Inventory image in the confirmation. **Delete Drafts** previews
+active Draft slots and cancels their owned attempts. Queued work is withdrawn and
+late results are discarded. Backend execution already underway may finish. An
+upscale remains associated with its Draft until the Final is committed. **Delete
+Non-Selected** waits for affected renders to settle.
 
 The shared status line starts at **Not started**, becomes **Started** when
 Luna accepts the review, and shows **Finish** once the result is recorded.
@@ -83,7 +87,7 @@ Use one viewport-anchored modal template in a separate dialog host outside the
 board's Render Controls, grid, and forms. Its controller shares the board model
 and action adapter so both surfaces stay synchronized. On desktop, images
 occupy the main area and the control rail sits to the right. Keep the comparison
-on the left and the candidate on the right. With no comparison, the candidate
+on the left and the candidate on the right. When the user chooses **No comparison**, the candidate
 uses the entire image area. Use contained full-image wells and equivalent space
 for each side. On narrow or short screens, reflow the images and rail with both
 images accessible, a usable image area, and reachable decisions, navigation,
@@ -124,11 +128,11 @@ and Close. Use the same responsive rules across boards.
 ### Comparison and zoom
 
 Every board has the same **Compare with** control and a **No comparison**
-choice. The current board's selected candidate is always offered when its
-image is available, including Draft and Final selections. Keep it explicitly
-labeled even when reviewing that image. Showing the same image on both sides
-requires an explicit choice. An absent selection or unavailable image has a
-clear reason. Label every additional option by role and add slot, view, quality,
+choice. Always offer **Selected**, including when the current candidate is
+selected. Narrative defaults to Selected. Character and Minor Characters use
+their available preferred sources first and fall back to Selected. A default can
+show the same image in both panes. When Selected has no available image, keep the
+left well blank and the choice enabled. Label every additional option by role and add slot, view, quality,
 or other context that distinguishes it.
 
 The common chooser can retain multiple choices and display one at a time in
@@ -170,8 +174,8 @@ transitions. Pass normalized data and action handlers through the component API.
 | `selectedId`, candidate review state | Current selection, optional lock state, and optional human assessment. Saved prompt, ordered inputs with optional prompt markers, saved render settings, and optional provenance belong to the candidate under review. |
 | `lunaReview` | Optional advisory status, criteria, and error, with rankings and assessments keyed by candidate ID. Render Controls show one Review Status line above the criteria. Outdated results identify the ranking as obsolete and mark retained assessments as previous. |
 | `renderControls` | Optional fields, readiness reasons, and prompt and render status. The component provides the four render shortcuts and calculates capacity from the slots. The adapter supplies workflow readiness. |
-| `actions` | Board- and candidate-scoped descriptors with stable action key, placement, label, shared glyph key, semantic style role, and enabled/disabled state with reason. Unsupported actions are absent. Supply candidate actions once for both surfaces, with explicit placement for context-specific actions. |
-| `comparisons`, `comparisonDefaults` | Ordered `{key, label, image}` descriptors and optional default keys. The component derives the Selected option and deduplicates by image URL and version. Comparisons supply images and captions. The prompt, ordered inputs, saved settings, and provenance stay with the reviewed candidate when the comparison changes. |
+| `actions` | Board- and candidate-scoped descriptors with stable action key, placement, label, shared glyph key, semantic style role, and enabled/disabled state with reason. The component supplies slot generation and bulk-delete actions. Slots supply `renderActive` and `replacementBlock` for readiness. Supply remaining candidate actions once for both surfaces, with explicit placement for context-specific actions. |
+| `comparisons`, `comparisonDefaults` | Ordered `{key, label, image}` descriptors and optional default keys. The component owns the stable `selected` key and deduplicates additional sources by image URL and version. Comparisons supply images and captions. The prompt, ordered inputs, saved settings, and provenance stay with the reviewed candidate when the comparison changes. |
 
 ### Methods and events
 

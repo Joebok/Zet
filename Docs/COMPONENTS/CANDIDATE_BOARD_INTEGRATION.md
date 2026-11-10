@@ -41,6 +41,9 @@ interview workflow.
   and optional `disabledReason`, `mode`, `count`, and `value`. Omit
   unsupported actions. Use `lock` and `unlock` for their corresponding
   actions. Supply their availability from the workflow's current state.
+- Slot generation and the two bulk-delete descriptors come from the component.
+  Pass `renderActive` and `replacementBlock` on slots. The component uses mode
+  readiness for slot renders too. Pass `bulkBlock` for a workflow-wide block.
 - `renderControls.fields` contains labeled `{key, label, type, value}`
   fields, with optional `disabled` and select `options` as `{value, label}`.
   Supported types are text, textarea, select, and checkbox. Optional
@@ -52,7 +55,7 @@ interview workflow.
   mode such as `draft`. Supply `promptStatus` and `renderStatus` as needed.
 - `comparisons` lists eligible `{key, label, image}` records and
   `comparisonDefaults` optionally lists initially shown keys. Use
-  `selected:<candidate id>` to recommend the board's automatic Selected
+  `selected` to recommend the board's automatic Selected
   option. The viewer handles explicit choices and image-load errors.
   The shared review uses comparison images and labels. Its single prompt and
   ordered inputs disclosure, including **Render settings**, comes from the
@@ -152,8 +155,9 @@ function applyProgress(progress) {
 
 The functions in the example belong to the subscribing page. A successful
 Lock can also update selection and Inventory linkage. Publish the service's
-result in one model update. For protected bulk actions, keep the workflow's
-existing preview, per-effect approval, and guarded commit. Surface errors
+result in one model update. For bulk deletes, pass the server preview's affected slots, active Draft slots,
+and protected effects to `confirmCandidateDeletion`. Keep each workflow's
+preview and guarded commit endpoints. Surface errors
 directly. Any refresh on error follows the workflow's existing behavior.
 
 While visible work is active, merge compact progress for the current board

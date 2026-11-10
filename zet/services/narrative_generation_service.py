@@ -17,7 +17,7 @@ from zet.models.narrative import NarrativeCandidate, new_id
 from zet.services.atomic_file_service import write_bytes_atomic
 from zet.services.narrative_prompt_service import assemble_prompt, llm_request
 from zet.services.narrative_interview_service import interview_review
-from zet.services.narrative_proxy_service import NarrativeProxyService
+from zet.services.narrative_proxy_service import CONSUMER, NarrativeProxyService
 from zet.services.image_render_request import draft_upscale_request, verify_upscale_output
 from zet.services.render_slot_service import verify_input
 from zet.services.image_candidate_board_service import allocate, lock as lock_candidate, select as select_candidate, unlock as unlock_candidate, validate_membership
@@ -613,7 +613,10 @@ class NarrativeGenerationService:
                                 "label": f"Unlock Draft image in slot {record['candidates'][candidate_id]['slot']}"})
         token = hashlib.sha256(json.dumps(record, sort_keys=True, default=str).encode()).hexdigest()
         slots = [index for index, cid in enumerate(record["slots"], 1) if cid in ids]
-        return {"slots": slots, "protected_effects": effects, "confirmation_token": token}
+        active_slots = [index for index, cid in enumerate(record["slots"], 1)
+                        if cid in ids and record["candidates"][cid]["status"] in ACTIVE]
+        return {"slots": slots, "active_slots": active_slots,
+                "protected_effects": effects, "confirmation_token": token}
 
     def preview_draft_delete(self, story, scene, target):
         with self.repository.lock():
@@ -621,8 +624,6 @@ class NarrativeGenerationService:
 
     def delete_draft_images(self, story, scene, target, data=None):
         """Cancel and remove this target's Draft candidates, including locks."""
-        from zet.services.workflow_storage import supersede_task
-
         with self.repository.lock():
             record = self.repository.read(story, scene, target)
             preview = self._draft_delete_preview(record)
@@ -635,18 +636,20 @@ class NarrativeGenerationService:
                 raise ValueError("Approve each selected or locked Draft image affected by deletion.")
             ids = {cid for cid, candidate in record["candidates"].items()
                    if candidate.get("render_mode", "draft") == "draft"}
-            paths = self.author.app.ai_proxy_service.ai_proxy_path_service
             for job in record["jobs"].values():
                 children = set(job.get("candidate_ids") or [])
                 owned = job.get("candidate_id") in ids or bool(children and children <= ids)
                 if not owned or job.get("status") not in ACTIVE:
                     continue
-                paths.jobs.validate_id(job["id"])
-                task = paths.file_proxy_client.ask_root / job["id"]
-                if not task.exists():
-                    task = paths.file_proxy_client.running_root / job["id"]
-                supersede_task(Path(paths.config.base_ai_queue_path), task,
-                               "Narrative Draft images were deleted.", state_root=paths.lifecycle.storage_root)
+                expected = {"consumer": CONSUMER, "universe_id": self.author.app.universe_id,
+                            "narrative_story_id": story, "narrative_scene_id": scene,
+                            "narrative_target_id": target}
+                if job.get("candidate_id"):
+                    expected["narrative_candidate_id"] = job["candidate_id"]
+                try:
+                    self.proxy.image_production.supersede(job["id"], expected, reserved=True)
+                except (ValueError, OSError) as exc:
+                    raise ValueError(f"Could not cancel active Draft work: {exc}") from exc
                 job.update(status="CANCELLED", error="Deleted with Draft images.")
                 self._cleanup_upscale(record, job)
                 if record.get("active_llm_job") == job["id"]:

@@ -4394,7 +4394,7 @@ async function confirmAction(title, message, confirmLabel = "Confirm", { tone = 
   return (await dialogResult(confirmationDialog)) === "confirm";
 }
 
-async function confirmProtectedEffects(title, message, effects, confirmLabel = "Confirm") {
+async function confirmProtectedEffects(title, message, effects, confirmLabel = "Confirm", {individual = false} = {}) {
   if (!effects.length) return await confirmAction(title, message, confirmLabel) ? [] : null;
   const dialog = document.createElement("dialog");
   dialog.className = "protected-effects-dialog";
@@ -4414,14 +4414,18 @@ async function confirmProtectedEffects(title, message, effects, confirmLabel = "
     return check;
   });
   const actions = document.createElement("div"); actions.className = "button-row";
-  const all = document.createElement("button"); all.type = "button"; all.textContent = "Approve all";
   const cancel = document.createElement("button"); cancel.value = "cancel"; cancel.textContent = "Cancel";
   const confirm = document.createElement("button"); confirm.value = "confirm"; confirm.textContent = confirmLabel;
   confirm.className = "danger-action"; confirm.disabled = true;
   const update = () => { confirm.disabled = checks.some(check => !check.checked); };
   checks.forEach(check => check.addEventListener("change", update));
-  all.addEventListener("click", () => { checks.forEach(check => { check.checked = true; }); update(); });
-  actions.append(cancel, all, confirm); form.append(list, actions); dialog.append(heading, description, form);
+  actions.append(cancel);
+  if (!individual) {
+    const all = document.createElement("button"); all.type = "button"; all.textContent = "Approve all";
+    all.addEventListener("click", () => { checks.forEach(check => { check.checked = true; }); update(); });
+    actions.append(all);
+  }
+  actions.append(confirm); form.append(list, actions); dialog.append(heading, description, form);
   document.body.append(dialog);
   try {
     const accepted = (await dialogResult(dialog)) === "confirm";
@@ -4717,7 +4721,7 @@ async function activatePage(page, options = {}) {
         history.replaceState({}, '', '/?'+params);
       } catch (error) { window.ZetTaskCapture.notice(error.message); }
     }
-    const {mountNarrative} = await import('/static/narrative.js?v=20261110-tooltips');
+    const {mountNarrative} = await import('/static/narrative.js?v=20261110-board-consistency');
     if (!pageLoadIsCurrent(pageLoad)) return false;
     const pending = mountNarrative(document.querySelector('#narrative-page'), state.universeId, async next=>{
       const requested = location.search;
