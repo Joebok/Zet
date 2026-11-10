@@ -74,7 +74,8 @@ path as the **Review** eye glyph.
   names the action and remains near the initiating control. Use an accessible
   name and hover/focus label for glyphs, a visible keyboard focus indicator, and
   the style guide's compact desktop and 44 px touch targets. Keep visible
-  labels for unfamiliar or consequential actions and for unavailable reasons.
+  labels for unfamiliar or consequential actions. Disabled card and review
+  actions expose their reasons on hover and to assistive technology on focus.
 
 ## 3. Candidate review dialog
 
@@ -108,8 +109,7 @@ and Close. Use the same responsive rules across boards.
   inline. Show applicable saved settings under **Render settings** with
   readable labels and values. Optional provenance can supply useful recorded
   context. A source-change notice is a persistent FYI about the finished image.
-  The next render prompt remains in Render Controls. An image-focused view can
-  collapse the rail without losing state.
+  The next render prompt remains in Render Controls. Review controls stay visible.
 - **Focus and updates.** Open with meaningful focus and contain Tab in the
   dialog. Close and Escape use the same draft-safe path and restore the
   initiating card or nearest surviving control without jumping the gallery.

@@ -1,4 +1,4 @@
-import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-shared";
+import {mountCandidateBoard} from "./candidate_board_component.js?v=20261110-tooltips";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);

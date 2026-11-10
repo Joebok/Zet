@@ -35,7 +35,6 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       <div class="zcb-pictures"><figure data-part="comparison" hidden></figure><figure data-part="image"></figure></div>
       <aside><div class="zcb-tools">
         ${button('Zoom In','zoom-in')}${button('Zoom Out','zoom-out')}${button('Reset Zoom','zoom-reset')}
-        ${button('Hide review controls','rail')}
       </div><div data-part="rail">
         <div data-part="review-actions"></div><div data-part="review-status" role="status"></div>
         <details><summary>Compare with</summary><div data-part="choices"></div></details>
@@ -70,7 +69,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       const state = disclosures.find(([summary]) => summary === details.querySelector('summary')?.textContent);
       if (state) details.open = state[1];
     }
-    const replacement = token && [...node.querySelectorAll('button,input,select,textarea,summary')].find(control =>
+    const replacement = token && [...node.querySelectorAll('button,input,select,textarea,summary,.zcb-action[tabindex]')].find(control =>
       control.dataset.command === token[0] && control.dataset.key === token[1] && control.name === token[2] &&
       control.tagName === token[3]
     );
@@ -115,11 +114,12 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     const busy = pending.has(pendingKey(action.key, slot));
     const reason = action.disabledReason || (busy ? 'Working…' : '');
     const glyph = action.glyph || glyphs[action.key] || (actionOrder.includes(action.key) ? action.key : '');
-    return `<span class="zcb-action"><button type="button" data-command="action" data-key="${escape(action.key)}"
+    const tooltip = slot && reason ? escape(`${action.label} · ${reason}`) : '';
+    return `<span class="zcb-action" ${tooltip ? `title="${tooltip}" role="group" aria-label="${tooltip}" tabindex="0" data-key="${escape(action.key)}"` : ''}><button type="button" data-command="action" data-key="${escape(action.key)}"
       class="${escape(action.role || '')}" data-quality="${escape(action.mode)}"
       ${glyph ? `data-glyph="${escape(glyph)}" data-label="${escape(action.label)}"` : ''}
       ${reason ? 'disabled' : ''}>${escape(action.label)}</button>
-      ${reason ? `<small>${escape(reason)}</small>` : ''}</span>`;
+      ${reason && !tooltip ? `<small>${escape(reason)}</small>` : ''}</span>`;
   }
 
   function showFeedback(node, result) {
@@ -508,10 +508,6 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       case 'zoom-in': return zoom.step(1);
       case 'zoom-out': return zoom.step(-1);
       case 'zoom-reset': return zoom.reset();
-      case 'rail':
-        view('rail').hidden = !view('rail').hidden;
-        control.textContent = view('rail').hidden ? 'Show review controls' : 'Hide review controls';
-        return;
       case 'copy': {
         const slot = slotFor(candidateId);
         const epoch = scopeEpoch;
@@ -549,8 +545,6 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       cards.clear();
       grid.replaceChildren();
       patch(part(board, 'fields'), '');
-      view('rail').hidden = false;
-      command('rail').textContent = 'Hide review controls';
     }
     model = next;
     if (dialog.open && !reviewable().includes(slotFor(candidateId))) {
