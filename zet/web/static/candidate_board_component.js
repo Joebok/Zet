@@ -5,6 +5,7 @@ const qualities = ['draft', 'final'];
 const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
 const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate'};
 const imageKey = image => JSON.stringify([image?.url, image?.version]);
+const reviewStatusLabels = {RUNNING:'Started', COMPLETE:'Finish', OBSOLETE:'Outdated', FAILED:'Failed', INTERRUPTED:'Interrupted'};
 
 function button(label, command, key = '') {
   const glyph = {copy:'copy', 'comparison-previous':'previous', 'comparison-next':'next'}[command];
@@ -138,11 +139,18 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       <div class="zcb-bulk">${actions.filter(action => action.group === 'bulk').map(action => actionMarkup(action)).join('')}</div></div>`);
     decorate(toolbar);
     const status = part(board, 'board-status');
+    const luna = model.lunaReview;
+    const startError = feedback.get('luna');
+    const reviewStatus = startError?.status === 'error' ? 'Failed' : reviewStatusLabels[luna?.status] || 'Not started';
+    const reviewNote = startError?.status === 'error' ? startError.message
+      : luna?.status === 'OBSOLETE' ? 'Ranking obsolete: candidate images changed'
+      : luna?.status === 'FAILED' ? luna.error : '';
     patch(status, `<p role="status">${escape(controls.promptStatus)}</p><p role="status">${escape(controls.renderStatus)}</p>
-      <p role="status">${escape(model.lunaReview?.error || model.lunaReview?.status)}</p>
+      ${luna || actions.some(action => action.group === 'luna' || action.key === 'luna-review')
+        ? `<p role="status">Review Status: ${reviewStatus}${reviewNote ? ` · ${escape(reviewNote)}` : ''}</p>` : ''}
       ${model.lunaReview?.criteria ? `<details><summary>Review criteria</summary><pre>${escape(model.lunaReview.criteria)}</pre></details>` : ''}
       <div role="status" data-feedback="prompt"></div><div role="status" data-feedback="render"></div>
-      <div role="status" data-feedback="luna"></div><div role="status" data-feedback="bulk"></div>`);
+      <div role="status" data-feedback="bulk"></div>`);
     for (const node of status.querySelectorAll('[data-feedback]')) showFeedback(node, feedback.get(node.dataset.feedback));
   }
 
@@ -290,13 +298,17 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
     showFeedback(view('review-status'), feedback.get(pendingKey('review', slot)));
     const assessment = model.lunaReview?.entries?.[candidate.id];
     patch(view('assessment'), `${assessment ? `<h3>Luna ${model.lunaReview.status === 'OBSOLETE' ? 'previous ' : ''}rank ${escape(assessment.rank)}</h3><p>${escape(assessment.assessment)}</p>` : ''}
-      <p>${escape(model.lunaReview?.error || model.lunaReview?.status)}</p>
       ${candidate.humanAssessment ? `<p>Human assessment · ${escape(candidate.humanAssessment)}</p>` : ''}`);
     const details = view('details');
     const disclosure = (item, label, copy = false) => `<details><summary>${escape(label)}</summary>
       ${copy && item.prompt ? button('Copy prompt','copy') : ''}<pre>${escape(item.prompt || 'Prompt not recorded')}</pre>
       ${item.negativePrompt ? `<p>Negative prompt</p><pre>${escape(item.negativePrompt)}</pre>` : ''}
-      <ol>${(item.inputs || []).map(input => `<li>${input.url ? `<a href="${escape(input.url)}" target="_blank" rel="noopener">${escape(input.label)}</a>` : escape(input.label)}</li>`).join('')}</ol>
+      <ol>${(item.inputs || []).map(input => {
+        const text = escape([input.marker, input.label].filter(Boolean).join(' '));
+        return `<li>${input.url ? `<a href="${escape(input.url)}" target="_blank" rel="noopener">${text}</a>` : text}</li>`;
+      }).join('')}</ol>
+      ${item.renderSettings?.length ? `<h3>Render settings</h3><dl>${item.renderSettings.map(({label, value}) =>
+        `<dt>${escape(label)}</dt><dd>${escape(value)}</dd>`).join('')}</dl>` : ''}
       ${(item.provenance || []).map(line => `<p>${escape(line)}</p>`).join('')}</details>`;
     patch(details, `${disclosure(candidate, 'Candidate prompt and ordered inputs', true)}
       <p>${escape((candidate.notices || []).join(' · '))}</p>`);
@@ -412,14 +424,15 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       fields:Object.fromEntries([...part(board, 'fields').querySelectorAll('[name]')].map(field =>
         [field.name, field.type === 'checkbox' ? field.checked : field.value]))};
     pending.add(key);
-    feedback.set(target, {message:`${action.label}…`});
+    if (target === 'luna') feedback.delete(target);
+    else feedback.set(target, {message:`${action.label}…`});
     render();
     let result;
     try { result = await adapter.onAction(intent); }
     catch (error) { result = {status:'error', message:error.message || String(error)}; }
     if (disposed || epoch !== scopeEpoch) return;
     pending.delete(key);
-    if (result?.status === 'cancelled') feedback.delete(target);
+    if (result?.status === 'cancelled' || (target === 'luna' && result?.status !== 'error')) feedback.delete(target);
     else feedback.set(target, result);
     render();
     if (result?.status === 'success' && result.reviewCandidateId && dialog.open && review === reviewEpoch) {

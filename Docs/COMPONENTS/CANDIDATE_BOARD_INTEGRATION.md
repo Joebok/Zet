@@ -16,11 +16,15 @@ and any form.
   `{url, label, version?}`. For mutable images, give each version a cache-safe
   URL and a changed version. Include applicable `elapsedSeconds`, `locked`,
   `error`, `notices`, `humanAssessment`, `prompt`, `negativePrompt`,
-  ordered `inputs` (`{label, url?}`), and `provenance` lines. Set
+  ordered `inputs` (`{label, url?, marker?}`), optional `renderSettings` rows
+  (`{label, value}`), and `provenance` lines. Use the saved request for inputs
+  and settings. A marker is literal prompt text such as `<image3>`. Set
   `reviewable: false` for records that cannot be inspected.
 - Supply `selectedId` and optional `lunaReview` with `status`, `criteria`,
   `error`, and `entries` keyed by candidate ID. Each entry has `rank` and
   `assessment`. Use `OBSOLETE` for a saved result that is no longer current.
+  The board owns the Luna status line. Publish accepted and polled Luna state
+  through `update()` and return action errors without a separate start message.
 - An action has `key`, `label`, optional `glyph`, `role` (a shared button
   class), `placement` (an array of `card`, `review`, or `controls`),
   `group` for board actions (`prompt`, `render`, `luna`, or `bulk`),

@@ -184,7 +184,7 @@ test("character-to-costume workflow uses manual container boards and publishes o
   await expect(review).toContainText("2 of 2 · Final");
   await review.locator("summary").first().click();
   const references = review.locator("ol a");
-  await expect(references).toHaveText(["body_reference · draft", "head_image · draft"]);
+  await expect(references).toHaveText(["<image1> Body Reference · Front · Draft", "<image2> Head Image · Front · Draft"]);
   expect((await page.request.get(await references.first().getAttribute("href"))).ok()).toBeTruthy();
   await expect(review.locator("pre").first()).toHaveText(final.prompt);
   await review.getByRole("button", {name: "Select", exact: true}).click();

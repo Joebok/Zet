@@ -1,4 +1,4 @@
-import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-review-details";
+import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-review-clarity";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -54,13 +54,6 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-rev
     $("status").classList.toggle("error", error);
   }
 
-  function showReviewStatus(review) {
-    if (review?.status === "RUNNING") show("Luna Review is running…");
-    else if (review?.status === "COMPLETE") show("Luna Review complete.");
-    else if (review?.status === "FAILED") show(`Luna Review failed · ${review.error || "No details available."}`, true);
-    else if (review?.status === "OBSOLETE") show("Luna Review is out of date.");
-  }
-
   function stopPolling() {
     clearInterval(state.timer);
     state.timer = null;
@@ -111,15 +104,17 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-rev
         previousReview.active_id !== review.active_id || previousReview.recorded_at !== review.recorded_at;
       if (reviewChanged) {
         board.luna_review = review;
-        showReviewStatus(review);
         renderBoard();
-        if (review.status !== "RUNNING") await loadDetail();
       }
       if (!progress.active.length) {
         if (review.status !== "RUNNING") {
           stopPolling();
           await loadDetail();
         }
+        return;
+      }
+      if (reviewChanged && review.status !== "RUNNING") {
+        await loadDetail();
         return;
       }
       if (progress.slots.length !== board.slots.filter(Boolean).length ||
@@ -247,15 +242,49 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-rev
     else sharedBoard.update(model);
   }
 
+  const costumeModeLabels = {
+    'doll-dressing-ref': 'Doll-dressing (w/ Ref)',
+    'doll-dressing-no-ref': 'Doll-dressing (no Ref)',
+    rotate: 'Rotate',
+  };
+  const readableToken = token => String(token || '').toLowerCase().replaceAll('3_4', '3/4')
+    .replace(/[_-]/g, ' ').replace(/\b[a-z]/g, letter => letter.toUpperCase());
+
+  function savedRenderSettings(view, request, inputs) {
+    const saved = request.provenance || {};
+    const pipeline = saved.pipeline || state.pipeline;
+    const head = pipeline === 'head-image' || pipeline === 'head-image-edit';
+    const dressing = pipeline === 'costume-dressing';
+    const costume = saved.costume_settings || {};
+    const costumeReference = inputs.find(input => ['batch_view_reference', 'costume_rotation_source', 'front_costume'].includes(input.role));
+    const viewReference = inputs.find(input => ['body_reference_front_anchor', 'head_image_source'].includes(input.role));
+    const rows = [['Aspect ratio', request.settings?.aspect_ratio]];
+    if (dressing) {
+      rows.push(['Costume Mode', costumeModeLabels[costume.mode] || readableToken(costume.mode)]);
+      if (costumeReference) rows.push(['Costume Reference View', readableToken(costumeReference.view || costumeReference.source_view || costume.costume_reference_view)]);
+    } else if (viewReference) {
+      rows.push(['Reference view', readableToken(viewReference.view || viewReference.source_view)]);
+    }
+    if (head && view === 'FRONT' && typeof saved.apply_phase_change === 'boolean') {
+      rows.push(['Apply phase change', saved.apply_phase_change ? 'Yes' : 'No']);
+    }
+    if (pipeline === 'character-assembly') rows.push(['Assembly Style Mode', readableToken(saved.assembly_style_mode)]);
+    return rows.filter(([, value]) => value).map(([label, value]) => ({label, value}));
+  }
+
   function candidateEvidence(view,id,item) {
-    const inputs=(item.render_request?.inputs||[]).map((input,index)=>({
-      label:[input.role||input.label||`Reference ${index+1}`,input.render_mode].filter(Boolean).join(" · "),
+    const request = item.render_request || {};
+    const bindings = request.inputs || [];
+    const inputs=bindings.map((input,index)=>({
+      marker: bindings.length > 1 ? `<image${index + 1}>` : '',
+      label: [input.role === 'batch_view_reference' ? 'Reference view' : input.label || readableToken(input.role) || `Reference ${index + 1}`,
+        readableToken(input.view || input.source_view), readableToken(input.render_mode)].filter(Boolean).join(' · '),
       url:api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(id)}/inputs/${index+1}`),
     }));
     return {id,quality:item.render_mode,status:item.status,image:item.image_path?{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}:null,
       thumbnail:item.image_path?{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}:null,
       elapsedSeconds:item.render_duration_seconds,locked:Boolean(item.locked),prompt:item.prompt,
-      negativePrompt:item.render_request?.negative_prompt,inputs,provenance:Object.entries(item.render_request?.provenance||{}).map(([key,value])=>`${key}: ${value}`),
+      negativePrompt:request.negative_prompt,inputs,renderSettings:savedRenderSettings(view,request,bindings),
       error:item.error,notices:item.source_change_fyi?["Saved source differs from current source."]:[],reviewable:true};
   }
 
@@ -290,7 +319,7 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-rev
     if(state.pipeline==="costume-dressing"&&state.view!=="FRONT") {
       const saved=state.detail.sources?.dressing_settings?.[state.view]||{mode:"doll-dressing-ref",costume_reference_view:"FRONT"};
       const draft=state.dressingDrafts[state.view]||saved;
-      fields.push({key:"costume_mode",label:"Costume mode",type:"select",value:draft.mode,options:[{value:"doll-dressing-ref",label:"Doll-dressing (w/ Ref)"},{value:"doll-dressing-no-ref",label:"Doll-dressing (no Ref)"},{value:"rotate",label:"Rotate"}]});
+      fields.push({key:"costume_mode",label:"Costume mode",type:"select",value:draft.mode,options:Object.entries(costumeModeLabels).map(([value,label])=>({value,label}))});
       fields.push({key:"costume_reference_view",label:"Costume reference view",type:"select",value:draft.costume_reference_view||"FRONT",options:state.detail.scope.views.filter(view=>view!==state.view).map(view=>({value:view,label:view.replaceAll("_"," ")}))});
       actions.push({key:"save-dressing-settings",label:"Save costume settings",group:"render",placement:["controls"]});
     }
@@ -319,7 +348,11 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-rev
       state.mutation=true;
       try {
         const review=await request(api(`/views/${encodeURIComponent(state.view)}/luna-review`),{method:"POST",body:"{}"});
-        state.detail.boards[state.view].luna_review=review;renderBoard();startPolling();return {status:"success",message:"Luna Review started."};
+        const board = state.detail.boards[state.view];
+        board.luna_review = {...board.luna_review, ...review};
+        renderBoard();
+        startPolling();
+        return {status:"success"};
       } finally { state.mutation=false; }
     }
     if(intent.key.startsWith("delete-")) {
