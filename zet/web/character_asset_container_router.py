@@ -196,7 +196,9 @@ def create_character_asset_container_router(resolve_app):
             raise HTTPException(status_code=404, detail="Captured input image is unreadable.") from exc
         if not media_type or not media_type.startswith("image/"):
             raise HTTPException(status_code=404, detail="Captured input image format is unavailable.")
-        return FileResponse(path, media_type=media_type, headers={"Content-Disposition": "inline"})
+        return FileResponse(path, media_type=media_type, headers={
+            "Content-Disposition": "inline", "Cache-Control": "private, no-cache",
+        })
 
     @router.post("/api/character-containers/{pipeline}/views/{view}/candidates/{candidate_id}/submit")
     def dispatch_candidate(pipeline: str, view: str, candidate_id: str,

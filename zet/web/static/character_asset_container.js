@@ -279,7 +279,8 @@ import {mountCandidateBoard} from "./candidate_board_component.js?v=20261109-rev
       marker: bindings.length > 1 ? `<image${index + 1}>` : '',
       label: [input.role === 'batch_view_reference' ? 'Reference view' : input.label || readableToken(input.role) || `Reference ${index + 1}`,
         readableToken(input.view || input.source_view), readableToken(input.render_mode)].filter(Boolean).join(' · '),
-      url:api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(id)}/inputs/${index+1}`),
+      // Use a new URL for browsers that cached the old download response.
+      url:`${api(`/views/${encodeURIComponent(view)}/candidates/${encodeURIComponent(id)}/inputs/${index+1}`)}&delivery=inline`,
     }));
     return {id,quality:item.render_mode,status:item.status,image:item.image_path?{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}:null,
       thumbnail:item.image_path?{url:comparisonImageUrl(view,id),label:`${view} slot ${item.slot}`,version:item.image_path}:null,
