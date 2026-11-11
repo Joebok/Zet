@@ -12,6 +12,11 @@
   min-width: 0;
 }
 .zet-candidate-board .zcb-controls { margin-bottom: .75rem; }
+.zet-candidate-board .zcb-fields-inline { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); align-items: end; gap: .5rem; }
+.zet-candidate-board .zcb-fields-inline label { min-width: 0; }
+.zet-candidate-board .zcb-fields-inline input,
+.zet-candidate-board .zcb-fields-inline select { box-sizing: border-box; max-width: 100%; }
+.zet-candidate-board .zcb-settings-actions { margin-top: .5rem; }
 .zet-candidate-board .is-selected { border-color: var(--primary); }
 .zet-candidate-board .zcb-thumbnail {
   position: relative;

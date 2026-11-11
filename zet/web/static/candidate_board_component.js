@@ -135,7 +135,10 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       return {key, mode, count, label:`${mode === 'draft' ? 'Draft' : 'Final'} ${count}`,
         disabledReason: empty < count ? `Requires ${count} empty slots.` : readiness};
     }));
-    const actions = scopeActions(null, 'controls');
+    const actions = [...new Map([
+      ...scopeActions(null, 'controls'),
+      ...(model.actions || []).filter(action => action.placement?.includes('settings')),
+    ].map(action => [action.key, action])).values()];
     const occupied = model.slots.filter(slot => slot.candidate);
     const bulk = Object.entries(bulkLabels).map(([key, label]) => {
       const drafts = key === 'delete-drafts';
@@ -181,6 +184,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
         `<datalist id="${list}">${field.suggestions.map(value => `<option value="${escape(value)}"></option>`).join('')}</datalist>` : ''}`;
     };
     const actions = boardActions();
+    const settingsActions = actions.filter(action => action.placement?.includes('settings'));
     const authoring = part(board, 'authoring');
     const split = Boolean(controls.promptFields);
     patch(authoring, split ? `<section aria-label="Prompt authoring"><h3>Prompt authoring</h3>
@@ -192,7 +196,9 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       showFeedback(outcome, feedback.get('prompt'));
       decorate(authoring);
     }
-    patch(host, fields.length ? `<details><summary>Prompt and render settings</summary>${fields.map(fieldMarkup).join('')}</details>` : '');
+    patch(host, fields.length || settingsActions.length ? `<details><summary>Prompt and render settings</summary>
+      ${fields.length ? `<div class="zcb-fields ${controls.fieldsLayout === 'inline' ? 'zcb-fields-inline' : ''}">${fields.map(fieldMarkup).join('')}</div>` : ''}
+      ${settingsActions.length ? `<div class="zcb-tools zcb-settings-actions">${settingsActions.map(action => actionMarkup(action)).join('')}</div>` : ''}</details>` : '');
     for (const field of [...(controls.promptFields || []), ...fields]) {
       const control = [...board.querySelectorAll('[name]')].find(input => input.name === field.key);
       if (control === document.activeElement) continue;
@@ -200,7 +206,7 @@ export function mountCandidateBoard({boardHost, dialogHost}, initialModel, adapt
       else if (control.value !== String(field.value ?? '')) control.value = field.value ?? '';
     }
     const toolbar = part(board, 'toolbar');
-    patch(toolbar, `<div class="zcb-tools">${actions.filter(action => action.group !== 'bulk' && (!split || action.group !== 'prompt')).map(action => actionMarkup(action)).join('')}
+    patch(toolbar, `<div class="zcb-tools">${actions.filter(action => (!action.placement || action.placement.includes('controls')) && action.group !== 'bulk' && (!split || action.group !== 'prompt')).map(action => actionMarkup(action)).join('')}
       <div class="zcb-bulk">${actions.filter(action => action.group === 'bulk').map(action => actionMarkup(action)).join('')}</div></div>`);
     decorate(toolbar);
     const status = part(board, 'board-status');

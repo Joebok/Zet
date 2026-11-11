@@ -36,7 +36,7 @@ interview workflow.
   `error`, and `entries` keyed by candidate ID. Each entry has `rank` and
   `assessment`. Use the status mapping below for workflows that offer Luna.
 - An action has `key`, `label`, optional `glyph`, `role` (a shared button
-  class), `placement` (an array of `card`, `review`, or `controls`),
+  class), `placement` (an array of `card`, `review`, `controls`, or `settings`),
   `group` for board actions (`prompt`, `render`, `luna`, or `bulk`),
   and optional `disabledReason`, `mode`, `count`, and `value`. Omit
   unsupported actions. Use `lock` and `unlock` for their corresponding
@@ -46,6 +46,10 @@ interview workflow.
   readiness for slot renders too. Pass `bulkBlock` for a workflow-wide block.
 - `renderControls.fields` contains labeled `{key, label, type, value}`
   fields, with optional `disabled` and select `options` as `{value, label}`.
+  Fields render in a vertical stack by default. Set `fieldsLayout: "inline"`
+  for a responsive row of related settings. Board actions with `settings`
+  placement appear below those fields inside the Prompt and render settings
+  disclosure.
   Supported types are text, textarea, select, and checkbox. Optional
   renderControls.promptFields places the prompt actions and feedback in a
   noncollapsible Prompt authoring section. Text fields can provide suggestions

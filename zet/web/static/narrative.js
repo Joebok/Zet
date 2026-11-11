@@ -1,6 +1,6 @@
 import {renderProposalComparison} from './interview_proposals.js';
 /** Mounted Narrative editor; all listeners and polling belong to this mount. */
-import {mountCandidateBoard, confirmCandidateDeletion} from './candidate_board.js?v=20261110-board-consistency';
+import {mountCandidateBoard, confirmCandidateDeletion} from './candidate_board.js?v=20261110-settings-actions';
 import {isNarrativeActive, narrativeBoardModel} from './narrative_candidate_board.js?v=20261110-board-consistency';
 export async function mountNarrative(host, requestedUniverse = '', onContext = null) {
 let disposed = false;

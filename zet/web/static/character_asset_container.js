@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-board-consistency";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-settings-actions";
 
 (() => {
   const $ = (id) => document.getElementById(`character-container-${id}`);
@@ -320,18 +320,19 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     if(["body-reference","head-image","head-image-edit"].includes(state.pipeline)&&state.view!=="FRONT") {
       const views=state.detail.scope.views.filter(view=>view!==state.view);
       fields.push({key:"reference_view",label:"Reference view",type:"select",value:$("source-view").value,options:views.map(view=>({value:view,label:view.replaceAll("_"," ")}))});
-      actions.push({key:"save-view-source",label:"Save view recipe",group:"render",placement:["controls"]});
+      actions.push({key:"save-view-source",label:"Save view recipe",group:"render",placement:["settings"]});
     }
     if(state.pipeline==="costume-dressing"&&state.view!=="FRONT") {
       const saved=state.detail.sources?.dressing_settings?.[state.view]||{mode:"doll-dressing-ref",costume_reference_view:"FRONT"};
       const draft=state.dressingDrafts[state.view]||saved;
       fields.push({key:"costume_mode",label:"Costume mode",type:"select",value:draft.mode,options:Object.entries(costumeModeLabels).map(([value,label])=>({value,label}))});
       fields.push({key:"costume_reference_view",label:"Costume reference view",type:"select",value:draft.costume_reference_view||"FRONT",options:state.detail.scope.views.filter(view=>view!==state.view).map(view=>({value:view,label:view.replaceAll("_"," ")}))});
-      actions.push({key:"save-dressing-settings",label:"Save costume settings",group:"render",placement:["controls"]});
+      actions.push({key:"save-dressing-settings",label:"Save costume settings",group:"render",placement:["settings"]});
     }
     return {scope:{key:`${state.detail.container_id}:${state.view}`,title:pipelineLabels[state.pipeline],view:state.view},revision:state.detail.revision,slots,selectedId:board.selected_id,
       lunaReview:{status:luna.status,criteria:luna.prompt,error:luna.error,entries:Object.fromEntries((luna.entries||[]).map((entry,index)=>[entry.candidate_id,{rank:index+1,assessment:entry.review}]))},
-      renderControls:{fields,readiness:{draft:renderBlock,final:renderBlock},promptStatus:"",renderStatus:""},actions,comparisons,comparisonDefaults:comparisons[0]?[comparisons[0].key]:[]};
+      renderControls:{fields,fieldsLayout:dressing&&state.view!=="FRONT"?"inline":undefined,
+        readiness:{draft:renderBlock,final:renderBlock},promptStatus:"",renderStatus:""},actions,comparisons,comparisonDefaults:comparisons[0]?[comparisons[0].key]:[]};
   }
 
   async function characterBoardAction(intent) {

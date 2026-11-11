@@ -219,12 +219,19 @@ change clears old rows before loading. Three-second polling and its in-flight gu
 are unchanged. An isolated prepared browser check covered populated refresh and
 failure retention; populated keyboard and long-label behavior remain unverified.
 
-Minor Characters groups six asset cards under each collection. The same cards
-appear beneath Container Settings and Template Improvement on the collection
-page. Cards show locked Draft or Final previews and link to the asset's Candidate
-Board even when the image is unavailable. A character-only link opens the
-collection. Adding `view` opens the named board, which owns image generation and
-asset authoring.
+Minor Characters groups six horizontally arranged image cards under each
+collection, following the Character Overview card layout. Cards show locked
+Draft or Final previews and link to the asset's Candidate Board even when the
+image is unavailable. The Style board is labeled “Style”; other cards use their
+view name. The same cards appear beneath Container Settings and Template
+Improvement on the collection page. A character-only link opens the collection.
+Adding `view` opens the named board, which owns image generation and asset
+authoring.
+
+On a Minor Character asset page, the title identifies the character, an Asset
+selector switches among its boards, and Back to Asset Container returns to its
+collection. Asset inputs and Interview are separate collapsed sections above
+the Candidate Board.
 
 Direct Minor Characters links skip the shell's legacy `/api/assets` startup load;
 these universe-local workspaces do not require a selected phase's `Assets.json`.

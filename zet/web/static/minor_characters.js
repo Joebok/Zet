@@ -1,4 +1,4 @@
-import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-board-consistency";
+import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-settings-actions";
 import {renderProposalComparison} from "./interview_proposals.js";
 
 const $ = id => document.getElementById(id);
@@ -106,11 +106,14 @@ async function navigate(id, assetView) {
 function cards(id, assets) {
   return assets.map(item => {
     const href = escape(routeUrl(id, item.view));
-    const preview = item.thumbnail_url ? `<a data-mc-route href="${href}"><img loading="lazy" src="${escape(scoped(item.thumbnail_url))}" alt="${escape(item.label)}"></a>
-      <p><span class="narrative-render-mode-pill ${item.render_mode === "final" ? "final" : "draft"}">${item.render_mode === "final" ? "Final" : "Draft"}</span> · Locked</p>` : "";
-    return `<article class="narrative-slot character-container-output"><h4>${escape(item.label)}</h4>
-      <div data-mc-preview>${preview}</div><div class="placeholder" ${preview ? "hidden" : ""}>${preview ? "Locked image unavailable" : "No locked image"}</div>
-      <a data-mc-route class="image-card-text-control" href="${href}">Open ${escape(item.label)} Candidate Board</a></article>`;
+    const label = item.view === "STYLE" ? "Style" : item.label;
+    const preview = item.thumbnail_url
+      ? `<img loading="lazy" src="${escape(scoped(item.thumbnail_url))}" alt="Locked ${escape(label)}">`
+      : `<span>No locked image</span>`;
+    const status = item.thumbnail_url
+      ? `<small><span class="narrative-render-mode-pill ${item.render_mode === "final" ? "final" : "draft"}">${item.render_mode === "final" ? "Final" : "Draft"}</span> · Locked</small>`
+      : "";
+    return `<a data-mc-route class="mc-asset-card" href="${href}"><strong>${escape(label)}</strong>${preview}${status}</a>`;
   }).join("");
 }
 async function load() {
@@ -161,9 +164,10 @@ async function load() {
     route("", "", true);
     message(unavailable, true);
   }
+  $("mc-page-title").textContent = "Minor Characters";
   $("mc-list").innerHTML = characters.map(row => `<section class="control-panel">
     <h2>${escape(row.name)}</h2><a data-mc-route href="${escape(routeUrl(row.character_id))}">Open Asset Container</a>
-    <div class="narrative-slots">${cards(row.character_id, row.assets)}</div></section>`).join("") || "<p>No Minor Characters yet.</p>";
+    <div class="mc-asset-cards" aria-label="${escape(row.name)} assets">${cards(row.character_id, row.assets)}</div></section>`).join("") || "<p>No Minor Characters yet.</p>";
   $("mc-list-panel").hidden = false;
 }
 function schedule() {
@@ -214,7 +218,17 @@ function render() {
   const current = board();
   $("mc-back").href = routeUrl(view ? character.character_id : "");
   $("mc-back").textContent = view ? "Back to Asset Container" : "All Minor Characters";
-  $("mc-title").textContent = current ? `${character.name} · ${current.label}` : character.name;
+  $("mc-page-title").textContent = current ? `Minor Character - ${character.name}` : character.name;
+  $("mc-view-wrap").hidden = !view;
+  if (view) {
+    $("mc-view").replaceChildren(...Object.entries(character.boards).map(([key, item]) => {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = key === "STYLE" ? "Style" : item.label;
+      option.selected = key === view;
+      return option;
+    }));
+  }
   $("mc-container").hidden = Boolean(view);
   $("mc-board-authoring").hidden = $("mc-board-panel").hidden = !view;
   if (view) renderBoard(current);
@@ -262,13 +276,13 @@ function boardModel(current) {
   const authorReason = authoringReason(current);
   const renderReason = referenceReason() || (!current.prompt_current ? "Write or save the prompt for the current inputs." : "");
   const actions = [];
-  const add = (key, label, group, disabledReason, role) =>
-    actions.push({key, label, group, placement:["controls"], disabledReason, role});
+  const add = (key, label, group, disabledReason, role, placement = ["controls"]) =>
+    actions.push({key, label, group, placement, disabledReason, role});
   const items = current.slots.filter(Boolean).map(id => current.candidates[id]);
   const completed = item => item.status === "COMPLETE" && item.image;
   add("write-prompt", "Write Prompt", "prompt", authorReason);
   add("save-prompt", "Save Prompt", "prompt", authorReason);
-  add("save-settings", "Save settings", "render");
+  add("save-settings", "Save settings", "render", "", undefined, ["settings"]);
   const luna = current.luna_review;
   add("luna-review", "Luna Review", "luna", luna?.status === "RUNNING" ? "Luna Review is running."
     : !items.some(completed) ? "Generate a completed candidate first." : "");
@@ -503,6 +517,7 @@ page.addEventListener("submit",event=>{
 });
 $("mc-intake").onclick=()=>run(()=>change(base()+"/intake",{}));
 $("mc-interview").onclick=()=>run(()=>author("interview"));
+$("mc-view").addEventListener("change", event => run(() => navigate(character.character_id, event.target.value)));
 $("mc-model").onclick=async()=>{
   const value=await window.ZetModelPicker.open({value:model,required:["vision"],allowDefault:true});
   if (value !== null) {model=value; $("mc-model").textContent=model || "Use configured default";}

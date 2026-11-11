@@ -1,1 +1,1 @@
-export {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-board-consistency";
+export {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_component.js?v=20261110-settings-actions";

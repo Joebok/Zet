@@ -9,10 +9,10 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon_io/favicon-16x16.png">
   <link rel="manifest" href="/img/favicon_io/site.webmanifest">
   <link rel="shortcut icon" href="/img/favicon_io/favicon.ico">
-  <link rel="stylesheet" href="/static/zet.css?v=20261108-collection-pages">
+  <link rel="stylesheet" href="/static/zet.css?v=20261110-minor-character-asset-page">
   <link rel="stylesheet" href="/static/task_capture.css?v=20261020-template-publication">
   <link rel="stylesheet" href="/static/narrative.css?v=20261110-board-consistency">
-  <link rel="stylesheet" href="/static/candidate_board.css?v=20261110-board-consistency">
+  <link rel="stylesheet" href="/static/candidate_board.css?v=20261110-settings-actions">
 <link rel="stylesheet" href="/static/scene_text.css"><script src="/static/scene_text.js" defer></script>
 </head>
 <body>
@@ -899,15 +899,15 @@
     </section>
 
     <section id="minor-characters-page" class="page">
-      <h1>Minor Characters</h1>
+      <h1 id="mc-page-title">Minor Characters</h1>
       <p id="mc-message" role="status" aria-live="polite"></p>
       <section id="mc-list-panel">
         <form id="mc-create-form" class="button-row"><label>New Minor Character name<input id="mc-new-name" maxlength="200" required></label><button>New Minor Character</button></form>
         <div id="mc-list"></div>
       </section>
       <section id="mc-editor" hidden>
+        <label id="mc-view-wrap" class="mc-asset-selector" hidden>View<select id="mc-view"></select></label>
         <a id="mc-back" data-mc-route href="?page=minor-characters">All Minor Characters</a>
-        <h2 id="mc-title"></h2>
         <form id="mc-authoring">
           <section id="mc-container">
             <details class="control-panel">
@@ -933,15 +933,15 @@
             <div id="mc-assets" class="narrative-slots" aria-label="Minor Character assets"></div>
           </section>
           <section id="mc-board-authoring">
-            <section class="narrative-card">
-              <h3>Asset inputs</h3>
+            <details id="mc-asset-inputs" class="control-panel">
+              <summary>Asset inputs</summary>
               <p>Uses the shared character template, conditioned for this asset.</p>
               <label id="mc-style-changes">Source-to-reference changes<textarea name="style_alignment_changes"></textarea></label>
               <label id="mc-refinement">View refinement<textarea name="refinement"></textarea></label>
               <button type="submit">Save asset inputs</button>
-            </section>
-            <section class="narrative-card">
-              <h3>Interview</h3>
+            </details>
+            <details id="mc-interview-section" class="control-panel">
+              <summary>Interview</summary>
               <p>Each interview uses the saved template. Applying proposals updates this asset’s section of that template.</p>
               <label>Interview feedback<textarea id="mc-feedback"></textarea></label>
               <label>Candidate evidence<select id="mc-evidence"><option value="">None</option></select></label>
@@ -951,7 +951,7 @@
               </div>
               <p id="mc-authoring-status" role="status"></p>
               <div id="mc-proposals" hidden></div>
-            </section>
+            </details>
           </section>
         </form>
         <section id="mc-board-panel"><div id="mc-board"></div></section>
@@ -2287,11 +2287,11 @@ Add prompt language here.
   <script src="/static/ai_queue.js?v=20261017"></script>
   <script src="/static/template_editor.js?v=20261026"></script>
   <script src="/static/character_hub.js?v=20261107-character-overview"></script>
-  <script src="/static/zet.js?v=20261110-board-consistency"></script>
-  <script type="module" src="/static/minor_characters.js?v=20261110-board-consistency"></script>
+  <script src="/static/zet.js?v=20261110-settings-actions"></script>
+  <script type="module" src="/static/minor_characters.js?v=20261110-minor-character-settings-actions"></script>
   <script src="/static/local_template_improvement.js?v=20261102-batch-pages"></script>
   <script src="/static/local_asset_pipeline.js?v=20261103-rerun-rejected"></script>
-  <script type="module" src="/static/character_asset_container.js?v=20261110-board-consistency"></script>
+  <script type="module" src="/static/character_asset_container.js?v=20261110-settings-actions"></script>
 
 </body>
 </html>
