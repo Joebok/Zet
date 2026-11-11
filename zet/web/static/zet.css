@@ -6158,3 +6158,31 @@ button:enabled:active, .button-link:active { filter: brightness(.92); }
 .protected-effect-list { display: grid; gap: 10px; margin: 16px 0; }
 .protected-effect-list label { display: flex; align-items: center; gap: 10px; }
 .protected-effect-list img { width: 72px; height: 72px; object-fit: contain; background: var(--surface-subtle); border-radius: 4px; }
+
+.image-generation-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr));
+  gap: .75rem;
+  margin: .75rem 0;
+}
+.image-generation-gallery a {
+  display: grid;
+  gap: .5rem;
+  padding: .65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+}
+.image-generation-gallery img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: var(--surface-muted);
+}
+#image-generation-page [data-ig-asset] > details { margin-top: .75rem; }
+#image-generation-page details label { display: grid; gap: .25rem; margin-block: .4rem; }
+#image-generation-page [data-ig-findings] label { display: flex; align-items: start; gap: .5rem; }
+
+.image-generation-gallery[hidden] { display: none; }
+.image-generation-gallery figure { margin: 0; }

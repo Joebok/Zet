@@ -317,7 +317,8 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
     const luna=board.luna_review||{};
     const fields=[{key:"aspect_ratio",label:"Aspect ratio",type:"text",value:state.aspectRatio}];
     const renderBlock = phaseChangeBlock();
-    const actions=[{key:"luna-review",label:"Luna Review",group:"luna",placement:["controls"]}];
+    const actions=[{key:"luna-review",label:"Luna Review",group:"luna",placement:["controls"]},
+      {key:"stage-image-generation",label:"Stage in Image Generator",placement:["settings"],disabledReason:renderBlock}];
     if(["body-reference","head-image","head-image-edit"].includes(state.pipeline)&&state.view!=="FRONT") {
       const views=state.detail.scope.views.filter(view=>view!==state.view);
       fields.push({key:"reference_view",label:"Reference view",type:"select",value:$("source-view").value,options:views.map(view=>({value:view,label:view.replaceAll("_"," ")}))});
@@ -338,6 +339,17 @@ import {mountCandidateBoard, confirmCandidateDeletion} from "./candidate_board_c
 
   async function characterBoardAction(intent) {
     if (state.mutation) return {status:"cancelled"};
+    if (intent.key === "stage-image-generation") {
+      const view = state.view, scope = api(), signal = state.controller.signal;
+      const renderMode = state.detail.boards[view].candidates[state.detail.boards[view].selected_id]?.render_mode || "draft";
+      await window.zetStageCharacterViewInImageGenerator(api(`/views/${encodeURIComponent(view)}/image-generation-stage`),
+        false, () => !signal.aborted && scope === api() && view === state.view, false, false, renderMode, {
+          aspect_ratio:state.aspectRatio, expected_revision:intent.revision,
+          apply_phase_change:isHead() && view === "FRONT" && $("apply-phase-change").checked,
+          costume_settings:savedDressingSettings(),
+        });
+      return {status:"success"};
+    }
     if(intent.key==="save-view-source") {
       const views={...(state.detail.sources?.views||{}),[state.view]:$("source-view").value};
       await saveSource("views",views);return {status:"success",message:"View recipe saved."};

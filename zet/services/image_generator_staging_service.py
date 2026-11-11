@@ -1,4 +1,4 @@
-"""Prepare a character view for the independent Image Generator workspace."""
+"""Prepare a character view for the independent Image Generation asset."""
 from __future__ import annotations
 
 import base64
@@ -90,20 +90,63 @@ class ImageGeneratorStagingService:
                 inputs["render_config"]["overrides"] = {key: profile[key] for key in
                     ("steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae") if key in profile}
             self.generator.render_configuration(inputs, inputs["mode"])
-            for index, reference in enumerate(saved["references"], 1):
-                contents = Path(reference["path"]).read_bytes()
-                if len(contents) > IMAGE_GENERATION_MAX_REFERENCE_BYTES:
-                    raise ValueError(f"Reference image {index} exceeds Image Generator's 20 MiB limit.")
-                validate_image(contents)
-                with Image.open(BytesIO(contents)) as image:
-                    mime = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}.get(image.format)
-                if not mime:
-                    raise ValueError(f"Reference image {index} must be PNG, JPEG or WebP.")
-                inputs["reference_images"].append({
-                    "label": str(reference.get("label") or reference.get("prompt_role") or reference.get("role") or f"Image {index}"),
-                    "image": f"data:{mime};base64," + base64.b64encode(contents).decode("ascii"),
-                    "metadata": {key: reference[key] for key in
-                                 ("role", "prompt_role", "image_index", "view", "source_view", "render_mode") if key in reference},
-                })
-        # Preparation must succeed before detaching any existing results.
-        return {"inputs": inputs, "workspace": self.generator.slot_workspace.reset_for_staging(render_mode)}
+            inputs["reference_images"] = self._encode_references(saved["references"])
+        # Persist the validated recipe in a new asset.
+        asset = self.generator.slot_workspace.create_asset(f"{run_id} - {view}"[:160], inputs)
+        return {"asset_id": asset["asset_id"]}
+
+    def stage_container(self, character, phase, pipeline, costume, view, payload):
+        workflow = self.workflow
+        container = workflow.detail(character, phase, pipeline, costume)
+        if container["revision"] != payload.get("expected_revision"):
+            raise RenderSlotConflict("The character container changed. Refresh and stage again.")
+        render_mode = str(payload.get("render_mode") or "draft")
+        aspect_ratio = str(payload.get("aspect_ratio") or "2:3")
+        self.generator.sizing(render_mode, aspect_ratio)
+        style_mode = str(payload.get("assembly_style_mode") or "")
+        compiled = workflow.compile_prompt(character, phase, pipeline, costume, view,
+            render_mode=render_mode, apply_phase_change=payload.get("apply_phase_change") is True,
+            assembly_style_mode=style_mode, costume_settings=payload.get("costume_settings"))
+        references = compiled["reference_inputs"]
+        preset = workflow._preset(pipeline, bool(references), view, style_mode)
+        profile = require_qwen_profile(self.generator.project_root, preset, presets_path=self.generator.presets_path)
+        inputs = {
+            "mode": "img2img" if references else "txt2img", "prompt": compiled["prompt"],
+            "negative_prompt": "", "aspect_ratio": aspect_ratio,
+            "reference_images": self._encode_references(references),
+            "render_config": {
+                "preset": preset,
+                "checkpoint": str(profile.get("diffusion_model") or ""),
+                "append_reference_labels": False,
+                "disable_prompt_globals": bool(profile.get("disable_prompt_globals", False)),
+                "overrides": {key: profile[key] for key in
+                              ("steps", "cfg", "sampler_name", "scheduler", "denoise", "text_encoder", "vae")
+                              if key in profile},
+            },
+        }
+        self.generator.render_configuration(inputs, inputs["mode"])
+        name = " - ".join(filter(None, (character, phase, costume or pipeline, view)))
+        asset = self.generator.slot_workspace.create_asset(name[:160], inputs)
+        return {"asset_id": asset["asset_id"]}
+
+    @staticmethod
+    def _encode_references(references):
+        if len(references) > IMAGE_GENERATION_MAX_REFERENCES:
+            raise ValueError(f"Image Generation accepts up to {IMAGE_GENERATION_MAX_REFERENCES} references.")
+        encoded = []
+        for index, reference in enumerate(references, 1):
+            contents = Path(reference["path"]).read_bytes()
+            if len(contents) > IMAGE_GENERATION_MAX_REFERENCE_BYTES:
+                raise ValueError(f"Reference image {index} exceeds Image Generator's 20 MiB limit.")
+            validate_image(contents)
+            with Image.open(BytesIO(contents)) as image:
+                mime = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}.get(image.format)
+            if not mime:
+                raise ValueError(f"Reference image {index} must be PNG, JPEG or WebP.")
+            encoded.append({
+                "label": str(reference.get("label") or reference.get("prompt_role") or reference.get("role") or f"Image {index}"),
+                "image": f"data:{mime};base64," + base64.b64encode(contents).decode("ascii"),
+                "metadata": {key: reference[key] for key in
+                             ("role", "prompt_role", "image_index", "view", "source_view", "render_mode") if key in reference},
+            })
+        return encoded

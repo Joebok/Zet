@@ -1210,7 +1210,7 @@ def _create_available_app(
         with app.state.universe_lock:
             return image_services(selected)[1]
 
-    app.include_router(create_character_asset_container_router(lambda: _app(app.state.config_path)))
+    app.include_router(create_character_asset_container_router(lambda: _app(app.state.config_path), _image_generation_service))
     app.include_router(create_ad_hoc_image_generation_router(_image_generation_service))
 
     app.include_router(create_minor_character_router(lambda: _app(app.state.config_path).minor_character_service))

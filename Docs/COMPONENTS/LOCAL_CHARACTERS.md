@@ -609,9 +609,8 @@ For a new local asset operation use the local store/services and downstream sour
 Each Body, Head, Assembly and Dressing view offers **Stage in Image Generator**.
 [ImageGeneratorStagingService](../../zet/services/image_generator_staging_service.py)
 uses `CharacterRenderSlots.prepare_input` with the current view recipe and Recompile
-choice, validating prerequisites and captured image bytes before clearing the
-generator board. This stages the next Generate inputs, rather than replaying a
-candidate. It preserves prompt text, render profile/checkpoint, effective dimensions,
+choice, validating prerequisites and captured image bytes before creating and
+opening a new Image Generation asset with the next render inputs. It preserves prompt text, render profile/checkpoint, effective dimensions,
 prompt-global behavior and ordered references. It neither allocates pipeline
 candidates nor changes selections/locks or submits inference. The independent
 generator results are not automatically adopted. Minor Characters and refinement

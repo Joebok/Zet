@@ -3,7 +3,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, char =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[char]);
 const qualities = ['draft', 'final'];
 let nextBoardId = 0;
-const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
+const actionOrder = ['select', 'unselect', 'lock', 'unlock', 'inventory-add', 'inventory-update', 'retry', 'upscale', 'regen-draft', 'regen-final', 'download', 'clear'];
 const glyphs = {'regen-draft':'regenerate', 'regen-final':'regenerate'};
 const slotLabels = {select:'Select', unselect:'Deselect', lock:'Lock', unlock:'Unlock', retry:'Retry', upscale:'Upscale Draft', clear:'Clear slot'};
 const bulkLabels = {'delete-drafts':'Delete Drafts', 'delete-non-selected':'Delete Non-Selected'};

@@ -24,14 +24,14 @@ _held = threading.local()
 
 
 @contextmanager
-def file_lock(path: Path, timeout: float = 30):
+def file_lock(path: Path, timeout: float = 30, *, shared: bool = False):
     """Serialize threads and processes; the OS releases locks after a crash.
 
     Lock files intentionally persist: unlinking them can split concurrent owners
     across different inodes. Nested calls in the same thread are supported.
     """
     from zet.services.storage_health_service import local_lock_path
-    path = local_lock_path(path)
+    path = path.resolve() if shared else local_lock_path(path)
     key = os.path.normcase(str(path.resolve()))
     with _guard:
         lock = _locks.setdefault(key, threading.RLock())

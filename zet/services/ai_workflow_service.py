@@ -36,7 +36,7 @@ class AIWorkflowService:
         "minor_collection": {"run_authoring_job"},
         "minor": {"_draft_job", "_render_job", "_review_job", "_dispatch_candidate", "_analyze_then_render"},
         "costume": {"_draft_job", "_render_job", "_refine_job"},
-        "reconstruction": {"_run", "_comparison_task", "_correction_task"},
+        "reconstruction": {"_run", "_comparison_task", "_correction_task", "_analyze_asset_prompt"},
         "image_prompt": {"_run"},
         "template_revision": {"_propose_job", "_review_job"},
         "container_template_revision": {"_review_job"},

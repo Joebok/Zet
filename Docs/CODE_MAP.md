@@ -308,12 +308,11 @@ inspects and removes only the selected identity under a bounded shared lock dead
 ## Fixed render-slot entry points (2026-10-12)
 
 - Character-to-generator handoff: [image_generator_staging_service.py](../zet/services/image_generator_staging_service.py)
-  owns validated current-view preparation and replacement of the Image Generation
-  workspace. The local router exposes view `/image-generation-stage`;
-  `local_asset_pipeline.js` supplies per-view controls and `zet.js` applies/persists
-  the handoff. `AdHocImageGenerationService.render_configuration` preserves optional
-  pipeline settings through dispatch/retry; `ImageGenerationWorkspace.reset_for_staging`
-  atomically detaches selection/results. Disposable checks cover 32 view inputs,
+  owns validated current-view preparation and creation of a prefilled Image Generation
+  asset. The Character Asset Container router exposes view `/image-generation-stage`.
+  The Character board adapter supplies the view settings and `zet.js` opens the new asset.
+  `AdHocImageGenerationService.render_configuration` preserves optional pipeline settings
+  through dispatch and Retry. Disposable checks cover 32 view inputs,
   eight matched-seed graphs and four browser handoffs; S1–S4 remain regressions.
   Costume **Stage Rotation** adds [costume_rotation_service.py](../zet/services/costume_rotation_service.py)
   for same-batch selected-source choice and temporary compilation. The existing
@@ -324,12 +323,12 @@ inspects and removes only the selected identity under a bounded shared lock dead
   and [local character staging](COMPONENTS/LOCAL_CHARACTERS.md#fixed-render-slots-2026-10-12).
 
 - Retired Character allocation/protection: [render_slot_service.py](../zet/services/render_slot_service.py), called by the unmounted [local router](../zet/web/local_character_asset_pipeline_router.py). The historical router exposed view `/slots` generation and `/slots/{slot}/{operation}` actions; its batch recovery and Run All Remaining startup path are no longer active. The new container board uses [image_candidate_board_service.py](../zet/services/image_candidate_board_service.py).
-- Image Generation board and prompt controls: [image_generation_workspace_service.py](../zet/services/image_generation_workspace_service.py), via `/api/image-generation/workspace` detail/import/actions; [ad_hoc_image_generation_service.py](../zet/services/ad_hoc_image_generation_service.py) retains job APIs and child-index result application. The prompt form in `zet.js` can prepend the selected universe's canonical art style.
+- Image Generation board and prompt controls: [image_generation_workspace_service.py](../zet/services/image_generation_workspace_service.py), via `/api/image-generation/assets` list/detail/save/progress/actions; [ad_hoc_image_generation_service.py](../zet/services/ad_hoc_image_generation_service.py) retains job APIs and child-index result application. The [Image Generation controller](../zet/web/static/image_generation.js) mounts the shared Candidate Board and manages gallery, prompts, and reference inputs.
 - Shared controls: [render_slots.js](../zet/web/static/render_slots.js); character live updates in [local_asset_pipeline.js](../zet/web/static/local_asset_pipeline.js), ad hoc board updates in `zet.js`. S2/S3 protect existing publication/Narrative behavior. Separately approved disposable checks verify the reported deep-link, containment, prompt and overlapping-action issues; full Body/Head generation and general recovery remain coverage gaps.
 
 ## Style unification and reconstruction (2026-10-14)
 - Shared style ownership/composition: [universe_style_service.py](../zet/services/universe_style_service.py), used by the compiler adapter and Narrative/reconstruction services.
-- Image Generation reconstruction: [image_reconstruction_service.py](../zet/services/image_reconstruction_service.py), `/api/image-generation/reconstructions` start/status/options, existing workspace reservations, optional render provenance and existing page controls. Generation service instances follow request-universe binding and settings reloads.
+- Image Generation reconstruction: [image_reconstruction_service.py](../zet/services/image_reconstruction_service.py), `/api/image-generation/reconstructions` start/status/options, asset-scoped analysis-only prompt drafts, correction reservations, and render provenance. Generation service instances follow request-universe binding and settings reloads.
 - Narrative scene `use_universe_style`: scene defaults/read compatibility, effective context, job provenance and existing scene editor. Target style overrides retain precedence; rendering retains saved prompts.
 - S1–S3 pass. Disposable prepared-response/browser checks cover new style, reconstruction/replay and UI contracts; they are not added maintained scenarios. Live batch quality is not established by these checks.
 
@@ -337,7 +336,7 @@ inspects and removes only the selected identity under a bounded shared lock dead
 
 - `image_reconstruction_contract.py` owns frozen v2 target intent/precedence and report validation; `image_true_up_service.py` owns intent-aware comparison and direct composition of selected suggestions/custom feedback. `image_reconstruction_service.py` exposes shared prepare/analyze/revise/render-spec/compare operations independently of board allocation, plus Image Generation wrappers.
 - `quick_character_wizard_service.py` owns the reusable analysis/render/review engine. `minor_character_service.py` extends its existing store with named ongoing workspaces, legacy adoption, reference selection, working selection and per-view locking. `quick_character_publication_service.py` publishes locked views without replacing prior image bytes. A successful model review is not required to select or lock a rendered image.
-- Image Generation adds selected-result reconstruction, `/api/image-generation/comparisons`, report polling, source image reads and `/corrections`; workspace ownership revalidates the selected input during handoff. `zet.js` owns presentation and dirty refinement state.
+- Image Generation adds selected-result reconstruction, `/api/image-generation/comparisons`, report polling, source image reads and `/corrections`; workspace ownership revalidates the selected input during handoff. The Image Generation controller edits refinement state saved on the asset.
 - S1–S3 remain regression coverage only. Disposable prepared-response/browser checks cover the new flow; Freydis artistic acceptance remains pending. See [ADR 0013](DECISIONS/0013-shared-reconstruction-target-and-true-up.md).
 
 ## Minor Characters alignment workspace (2026-10-15)

@@ -10,7 +10,7 @@ followed by the **candidate grid**. The **candidate review dialog** opens as a
 separate modal outside both sections and the board's page-flow layout.
 Each asset or target has one board with eight slots and one selection shared
 by Draft and Final candidates. Image Generation follows the same standard
-with Lock and Unlock omitted.
+with Add to Image Inventory in the Lock position. Publication is available on each completed candidate and does not change the selection.
 
 ## 1. Render Controls
 
@@ -252,7 +252,7 @@ text before selection or lock. These differences change the available
 actions, reasons, and confirmations within the common UI.
 
 The five active Character Asset Container pipelines and all six Minor Character
-assets mount the shared component. Narrative mounts it for backdrop, subscene, and final assembly targets. Image Generation has its own workspace. The table describes what
+assets mount the shared component. Narrative mounts it for backdrop, subscene, and final assembly targets. Image Generation mounts the shared component for each asset in its universe library. The table describes what
 each adapter needs to preserve when adopting the shared component.
 
 - Character implementation and workflow. [Container controller](../../zet/web/static/character_asset_container.js)
@@ -260,7 +260,7 @@ each adapter needs to preserve when adopting the shared component.
 - Narrative implementation and workflow. [Controller](../../zet/web/static/narrative.js)
   · [Dialog template](../../zet/web/templates/narrative.html) · [Narrative workflow](NARRATIVE.md)
 - Minor Character and Image Generation implementation. [Minor Character controller](../../zet/web/static/minor_characters.js)
-  · [Image Generation controller](../../zet/web/static/zet.js) ·
+  · [Image Generation controller](../../zet/web/static/image_generation.js) ·
   [dashboard templates](../../zet/web/templates/index.html), and
   [Image Generation workspace service](../../zet/services/image_generation_workspace_service.py)
 

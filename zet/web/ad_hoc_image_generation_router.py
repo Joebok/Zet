@@ -18,25 +18,60 @@ def create_ad_hoc_image_generation_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/api/image-generation", tags=["image-generation"])
 
-    @router.get("/workspace")
-    def workspace(render_mode: str = Query("draft")):
+    @router.get("/assets")
+    def assets():
+        return {"assets": service_provider().slot_workspace.list_assets()}
+
+    @router.post("/assets")
+    def create_asset(payload: dict[str, Any] = Body(...)):
         try:
-            return service_provider().slot_workspace.detail(render_mode)
+            return service_provider().slot_workspace.create_asset(
+                payload.get("name"), payload.get("inputs"), payload.get("recovery_id"))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @router.post("/workspace/import")
-    def import_workspace(payload: dict[str, Any] = Body(...)):
-        return service_provider().slot_workspace.import_browser(payload)
-
-    @router.post("/workspace/{operation}")
-    def workspace_action(operation: str, payload: dict[str, Any] = Body(default={})):
+    @router.get("/assets/{asset_id}")
+    def asset_detail(asset_id: str):
         try:
-            if operation == "delete-draft-images":
-                return service_provider().slot_workspace.delete_draft_images()
-            return service_provider().slot_workspace.action(operation, payload)
+            return service_provider().slot_workspace.asset(asset_id).detail()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.get("/assets/{asset_id}/progress")
+    def asset_progress(asset_id: str):
+        try:
+            return service_provider().slot_workspace.asset(asset_id).progress()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.post("/assets/{asset_id}/{operation}")
+    def asset_action(asset_id: str, operation: str, payload: dict[str, Any] = Body(default={})):
+        service = service_provider()
+        try:
+            workspace = service.slot_workspace.asset(asset_id)
+            if operation == "save":
+                return workspace.update_asset(payload)
+            bulk = operation.removesuffix("-preview")
+            if bulk in {"delete-asset", "delete-drafts", "delete-non-selected"}:
+                return workspace.bulk(bulk, payload, preview=operation.endswith("-preview"))
+            if operation in {"inventory-add", "inventory-update"}:
+                return workspace.publish(operation, payload)
+            if operation == "analyze":
+                return service.reconstruction.start_asset_analysis(workspace, payload)
+            if operation == "compare":
+                return service.reconstruction.start_comparison({**payload, "generation_asset_id": asset_id})
+            if operation == "correct":
+                return service.reconstruction.correct_selected({**payload, "generation_asset_id": asset_id})
+            if operation in {"generate", "regenerate", "retry", "select", "unselect", "clear"}:
+                if (operation != "generate" or "slot" in payload) and (
+                        "slot" not in payload or "expected_assignment" not in payload):
+                    raise ValueError("Provide the current slot and occupant.")
+                return workspace.action(operation, payload)
+            raise ValueError("Unknown asset action.")
         except RenderSlotConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -115,6 +150,14 @@ def create_ad_hoc_image_generation_router(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
 
+    @router.get("/jobs/{request_id}/references/{index}")
+    def captured_reference(request_id: str, index: int):
+        try:
+            contents, mime = service_provider().captured_reference(request_id, index)
+            return Response(content=contents, media_type=mime, headers={"Cache-Control": "no-store"})
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="Captured reference not found.") from exc
+
     @router.get("/jobs/{request_id}/images/{index}")
     def image(request_id: str, index: int, download: bool = Query(False)) -> Response:
         try:
@@ -130,16 +173,20 @@ def create_ad_hoc_image_generation_router(
     @router.delete("/jobs/{request_id}/images/{index}")
     def clear_image(request_id: str, index: int) -> dict[str, Any]:
         try:
-            return service_provider().clear_image(request_id, index)
+            service = service_provider()
+            with service.slot_workspace.standalone_request(request_id):
+                return service.clear_image(request_id, index)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
-        except AdHocImageGenerationError as exc:
+        except (AdHocImageGenerationError, RenderSlotConflict) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @router.post("/jobs/{request_id}/images/{index}/import")
     def import_image(request_id: str, index: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         try:
-            result = service_provider().import_into_library(request_id, index, payload)
+            service = service_provider()
+            with service.slot_workspace.standalone_request(request_id):
+                result = service.import_into_library(request_id, index, payload)
             return {"asset": result.get("asset", result),
                     "duplicate": bool(result.get("duplicate", False))}
         except KeyError as exc:
@@ -150,7 +197,9 @@ def create_ad_hoc_image_generation_router(
     @router.post("/jobs/{request_id}/images/{index}/apply")
     def apply_image(request_id: str, index: int) -> dict[str, Any]:
         try:
-            return {"asset": service_provider().apply_to_source(request_id, index)}
+            service = service_provider()
+            with service.slot_workspace.standalone_request(request_id):
+                return {"asset": service.apply_to_source(request_id, index)}
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
         except Exception as exc:
@@ -159,10 +208,12 @@ def create_ad_hoc_image_generation_router(
     @router.delete("/jobs/{request_id}")
     def clear(request_id: str) -> dict[str, str]:
         try:
-            service_provider().clear(request_id)
+            service = service_provider()
+            with service.slot_workspace.standalone_request(request_id):
+                service.clear(request_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
-        except AdHocImageGenerationError as exc:
+        except (AdHocImageGenerationError, RenderSlotConflict) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"message": "Image generation results cleared."}
 

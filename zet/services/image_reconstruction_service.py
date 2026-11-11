@@ -76,7 +76,7 @@ class ImageReconstructionService:
 
     def _sources(self, payload):
         if payload.get("selected_result") is not None:
-            contents, source = self.generator.slot_workspace.selected_result(payload["selected_result"])
+            contents, source = self._workspace(payload).selected_result(payload["selected_result"])
             parent = source.get("reconstruction", {})
             refs = []
             if parent.get("id"):
@@ -343,7 +343,7 @@ class ImageReconstructionService:
 
     def start_comparison(self, payload):
         expected = payload.get("selected_result")
-        contents, source = self.generator.slot_workspace.selected_result(expected)
+        contents, source = self._workspace(payload).selected_result(expected)
         metadata = source.get("reconstruction", {})
         job_id = metadata.get("id", "")
         job = self._read(job_id)
@@ -363,7 +363,7 @@ class ImageReconstructionService:
 
     def correct_selected(self, payload):
         expected = payload.get("selected_result")
-        contents, source = self.generator.slot_workspace.selected_result(expected)
+        contents, source = self._workspace(payload).selected_result(expected)
         job_id = str(payload.get("task_id") or "")
         report_id = str(payload.get("report_id") or "")
         report = self.report(job_id, report_id)
@@ -397,11 +397,11 @@ class ImageReconstructionService:
                 new["target_hash"] = fingerprint(new["target"])
                 new["prompt"] = self.compose(new)
             new.update(status="RUNNING", count=1, selected_result=expected, render_sizing=sizing,
-                       source_render_mode=source.get("render_mode"),
+                       source_render_mode=source.get("render_mode"), generation_asset_id=payload.get("generation_asset_id"),
                        width=sizing["width"], height=sizing["height"])
             self._save(new)
             try:
-                self.generator.slot_workspace.reserve_reconstruction(new["id"], 1, sizing["render_mode"] if sizing else "draft")
+                self._workspace(payload).reserve_reconstruction(new["id"], 1, sizing["render_mode"] if sizing else "draft")
             except Exception as exc:
                 from zet.services.storage_health_service import pause_on_storage_error
                 pause_on_storage_error(self.app.config, exc)
@@ -446,7 +446,7 @@ class ImageReconstructionService:
             spec["reconstruction"].update(self.metadata(new), parent_task_id=job_id)
             new["render_payload"] = spec
             self._save(new)
-            self.generator.slot_workspace.submit_reconstruction(new_id,
+            self._workspace(new).submit_reconstruction(new_id,
                 {**spec, "width": new["width"], "height": new["height"]}, expected,
                 render_mode=(new.get("render_sizing") or {}).get("render_mode", "draft"), frozen_sizing=new.get("render_sizing"),
                 source_render_mode=new.get("source_render_mode"))
@@ -484,6 +484,48 @@ class ImageReconstructionService:
                 "default_model": resolve_role_model(self.app.config, "reconstruction_prompt"),
                 "style": universe_style(self.app.config.base_library_path)}
 
+    def _workspace(self, payload):
+        workspace = self.generator.slot_workspace
+        asset_id = payload.get("generation_asset_id")
+        return workspace.asset(asset_id) if asset_id else workspace
+
+    def start_asset_analysis(self, workspace, payload):
+        with workspace.locked():
+            board = workspace._load()
+            workspace._check_revision(board, payload)
+            if workspace._analysis_active(board):
+                raise ValueError("Wait for the current analysis to finish.")
+            job = self.prepare({**payload, "generation_asset_id": workspace.asset_id})
+            job.update(status="RUNNING", generation_asset_id=workspace.asset_id)
+            self._save(job)
+            board["authoring"] = {**board["authoring"], "job_id": job["id"],
+                                  "edited_prompt": None, "selected_result": payload.get("selected_result")}
+            workspace._save(board)
+            with self._guard:
+                self._active.add(job["id"])
+        try:
+            from zet.services.ai_workflow_service import AIWorkflowService
+            AIWorkflowService(self.app).submit(self._analyze_asset_prompt, [job["id"]],
+                service="reconstruction", owner={"reconstruction_id": job["id"]})
+        except Exception:
+            job.update(status="FAILED", error="Unable to start reconstruction analysis.")
+            self._save(job)
+            with self._guard:
+                self._active.discard(job["id"])
+            raise
+        return workspace.detail()
+
+    def _analyze_asset_prompt(self, job_id):
+        job = self._read(job_id)
+        try:
+            self.analyze(job_id)
+        except Exception as exc:
+            job.update(status="FAILED", error=str(exc))
+            self._save(job)
+        finally:
+            with self._guard:
+                self._active.discard(job_id)
+
     def start(self, payload):
         count = render_count(payload.get("count"), 4)
         if "width" in payload or "height" in payload:
@@ -493,7 +535,7 @@ class ImageReconstructionService:
         job = self.prepare(payload)
         source_mode = None
         if payload.get("selected_result") is not None:
-            _, source = self.generator.slot_workspace.selected_result(payload["selected_result"])
+            _, source = self._workspace(payload).selected_result(payload["selected_result"])
             source_mode = source.get("render_mode")
         job.update(status="RUNNING", count=count, width=width, height=height, render_sizing=sizing,
                    selected_result=payload.get("selected_result"), source_render_mode=source_mode)

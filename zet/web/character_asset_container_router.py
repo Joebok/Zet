@@ -12,7 +12,7 @@ from zet.services.character_container_template_service import (
 )
 
 
-def create_character_asset_container_router(resolve_app):
+def create_character_asset_container_router(resolve_app, image_generation_provider):
     router = APIRouter()
 
     def service(universe_id: str):
@@ -146,6 +146,18 @@ def create_character_asset_container_router(resolve_app):
                 render_mode=str(payload.get("render_mode") or "draft"),
                 costume_settings=payload.get("costume_settings"))
         except CharacterAssetContainerError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/api/character-containers/{pipeline}/views/{view}/image-generation-stage")
+    def stage_image_generation(pipeline: str, view: str, payload: dict = Body(...),
+                               character: str = Query(...), phase: str = Query(...),
+                               costume: str = Query(""), universe_id: str = Query("")):
+        from zet.services.image_generator_staging_service import ImageGeneratorStagingService
+
+        try:
+            return ImageGeneratorStagingService(service(universe_id), image_generation_provider()).stage_container(
+                character, phase, pipeline, costume, view, payload)
+        except (CharacterAssetContainerError, ValueError, OSError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @router.post("/api/character-containers/{pipeline}/views/{view}/candidates")

@@ -69,8 +69,7 @@ Character run state retains legacy `slots_by_view` and `selected_views` as Draft
 with `final_slots_by_view` and `final_selected_views` for Final. Local asset keys
 use their existing key for Draft and a `final:` prefix for Final. Minor Character
 workspaces similarly retain `boards`, `selected` and `locked` as Draft alongside
-`final_boards`, `final_selected` and `final_locked`. Image Generator stores a
-Final board beside its legacy Draft board. Missing mode fields mean Draft.
+`final_boards`, `final_selected` and `final_locked`. Image Generation migrates the legacy Draft and Final boards into mixed-quality asset records. Missing legacy mode fields mean Draft.
 
 Story animation version-2 shots may contain `camera_mode: "target"`; missing
 mode retains legacy camera-center interpretation. Camera keyframes store normalized
@@ -293,7 +292,7 @@ Character `spec.json` retains initial candidate definitions and initial `slots_b
 
 New mode-scoped local character locks copy the selected candidate's prompt into the local asset record; Final pipeline Inventory publication saves that prompt in the catalog. Existing locks without a recorded prompt remain usable. Narrative candidates may carry additive `source_change_fyi: true` after a saved prompt change; the marker is advisory and persistent.
 
-Image Generation jobs remain under universe `_state/ImageGeneration/<request_id>/job.json`. New jobs use `image_slots_version=1`, child-index image arrays, per-child status/error/seed, and persisted `render_payload` for replay. Historical completion-order jobs retain their original result indices. `_state/ImageGeneration/workspace.json` (version 1) owns eight nullable `{requestId,index}` assignments, `selected_slot` (zero-based or null), and one-time browser import state. A persistent workspace lock serializes allocation; reservations are saved before dispatch. Missing jobs display interruption rather than binding another result. Clear removes board bindings, not historical job files. See [ADR 0007](DECISIONS/0007-stable-render-slots.md).
+Image Generation jobs remain under universe `_state/ImageGeneration/<request_id>/job.json`. New jobs use `image_slots_version=1`, child-index image arrays, per-child status/error/seed, and persisted `render_payload` for replay. Historical completion-order jobs retain their original result indices. Version 2 asset records in `_state/ImageGeneration/assets/<asset_id>.json` own the display name, revision, eight mixed-quality assignments, one selection, editable generation inputs including ordered reference bytes, and reconstruction and refinement state. The version 1 `workspace.json` is the migration source. Recovery preserves child indices and splits boards when necessary to retain capacity or both selections. Board deletion removes bindings and retains independent Inventory records. See [ADR 0007](DECISIONS/0007-stable-render-slots.md).
 
 Character staging adds optional `render_payload.render_config` (`preset`,
 `checkpoint`, `disable_prompt_globals`, `append_reference_labels`) and optional

@@ -191,7 +191,6 @@ const LAST_CONTEXT_STORAGE_KEY = "zet:last-character-phase";
 const LAST_STORY_CONTEXT_STORAGE_KEY = "zet:last-story-scene";
 const WORKSPACE_STORAGE_KEY = "zet:workspace-preferences";
 const HIDE_BASE_IMAGES_STORAGE_KEY = "zet:asset-hide-base-images";
-const IMAGE_GENERATION_STORAGE_KEY = "zet:image-generation";
 
 const CHARACTER_PAGES = new Set(["onboarding", "minor-characters", "identity-keys", "turnarounds", "costumes", "phase-comparison"]);
 const STORY_PAGES = new Set(["narrative", "scene-candidates", "zine"]);
@@ -205,84 +204,8 @@ const LOCAL_ASSET_PAGES = new Set([
   "local-body-reference", "local-head-image", "local-head-image-edit", "local-character-assembly", "local-costume-dressing",
 ]);
 const PRODUCTION_PAGES = new Set(["prompt-review"]);
-const IMAGE_GENERATION_SLOT_COUNT = 8;
-const IMAGE_GENERATION_REFERENCE_COUNT = 10;
-let imageGenerationSlots = Array(IMAGE_GENERATION_SLOT_COUNT).fill(null);
-let imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
-let imageGenerationSelectedSlot = -1;
-let imageGenerationJobIds = [];
-const imageGenerationJobs = new Map();
-let imageGenerationPending = false;
-let imageReconstructionSource = null;
-let imageReconstructionSourceVersion = 0;
-let imageReconstructionUniverse = "";
-let imageReconstructionJob = null;
-let imageReconstructionPolling = false;
-let imageGenerationReconstruction = null;
-const reconstructionField = name => document.querySelector(`#image-reconstruction-${name}`);
-
-const characterSelect = document.querySelector("#character-select");
-const imageGenerationForm = document.querySelector("#image-generation-form");
-const imageGenerationTxt2img = document.querySelector("#image-generation-txt2img");
-const imageGenerationImg2img = document.querySelector("#image-generation-img2img");
-const imageGenerationReferenceSlotsElement = document.querySelector("#image-generation-reference-slots");
-const imageGenerationReferenceList = document.querySelector("#image-generation-reference-list");
-const imageGenerationPrompt = document.querySelector("#image-generation-prompt");
-const imageGenerationAddUniverseArtStyle = document.querySelector("#image-generation-add-universe-art-style");
-let imageGenerationUniverseStyle = null;
-const imageGenerationStyleVariant = document.querySelector("#image-generation-style-variant");
-const imageGenerationNegative = document.querySelector("#image-generation-negative");
-const imageGenerationRenderMode = document.querySelector("#image-generation-render-mode");
-const imageGenerationAspectRatio = document.querySelector("#image-generation-aspect-ratio");
-const imageGenerationSize = document.querySelector("#image-generation-size");
-let imageGenerationSizingRevision = 0;
-let imageGenerationActiveBoardMode = "draft";
-
-async function updateImageGenerationSizing() {
-  const revision = ++imageGenerationSizingRevision;
-  imageGenerationAspectRatio.setCustomValidity("Calculating output size.");
-  const params = new URLSearchParams({render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value});
-  try {
-    const sizing = await fetchJson(`/api/image-generation/sizing?${params}`);
-    if (revision !== imageGenerationSizingRevision) return;
-    imageGenerationAspectRatio.setCustomValidity("");
-    imageGenerationSize.textContent = `Output: ${sizing.width} × ${sizing.height}`;
-  } catch (error) {
-    if (revision !== imageGenerationSizingRevision) return;
-    imageGenerationAspectRatio.setCustomValidity(error.message);
-    imageGenerationSize.textContent = error.message;
-  }
-}
-const imageGenerationSubmit = document.querySelector("#image-generation-submit");
-const imageGenerationFill = document.querySelector("#image-generation-fill");
-const imageGenerationClear = document.querySelector("#image-generation-clear");
-const imageGenerationProgress = document.querySelector("#image-generation-progress");
-const imageGenerationMessage = document.querySelector("#image-generation-message");
-const imageGenerationModel = document.querySelector("#image-generation-model");
-const imageGenerationResultsGrid = document.querySelector("#image-generation-results-grid");
-const imageGenerationReview = document.querySelector("#image-generation-review");
-const imageGenerationReviewImage = document.querySelector("#image-generation-review-image");
-const imageGenerationReviewZoom = window.ZetReviewImageZoom?.attach(imageGenerationReview, () => [imageGenerationReviewImage]);
-const imageGenerationReviewCount = document.querySelector("#image-generation-review-count");
-const imageGenerationReviewPrompt = document.querySelector("#image-generation-review-prompt");
-const imageGenerationReviewNegative = document.querySelector("#image-generation-review-negative");
-const imageGenerationReviewPrevious = document.querySelector("#image-generation-review-previous");
-const imageGenerationReviewNext = document.querySelector("#image-generation-review-next");
-const imageGenerationReviewClose = document.querySelector("#image-generation-review-close");
-const imageGenerationReviewSelect = document.querySelector("#image-generation-review-select");
-const imageGenerationReviewRetry = document.querySelector("#image-generation-review-retry");
-const imageGenerationReviewClear = document.querySelector("#image-generation-review-clear");
-const imageGenerationReviewImport = document.querySelector("#image-generation-review-import");
-const imageGenerationReviewUpdate = document.querySelector("#image-generation-review-update");
-const imageGenerationSource = document.querySelector("#image-generation-source");
-let imageGenerationMode = "txt2img";
-let imageGenerationRenderConfig = null;
-let imageGenerationContentVersion = 0;
-let imageGenerationStagePending = false;
-let imageGenerationDefaultModel = "";
-let imageGenerationReviewIndex = -1;
 let entityLibraryImportGeneration = null;
-let imageGenerationOptionsLoaded = false;
+const characterSelect = document.querySelector("#character-select");
 const phaseSelect = document.querySelector("#phase-select");
 const deletePhaseButton = document.querySelector("#delete-phase");
 const headerStorySelect = document.querySelector("#header-story-select");
@@ -1249,616 +1172,59 @@ function showMessageElement(container, message, kind = "info") {
   container.setAttribute("aria-atomic", "true");
 }
 
-function setImageGenerationMode(mode) {
-  if (imageGenerationMode !== mode) clearImageGenerationRenderConfig();
-  imageGenerationMode = mode;
-  const editing = mode === "img2img";
-  imageGenerationTxt2img.setAttribute("aria-pressed", String(!editing));
-  imageGenerationImg2img.setAttribute("aria-pressed", String(editing));
-  imageGenerationTxt2img.classList.toggle("primary-action", !editing);
-  imageGenerationImg2img.classList.toggle("primary-action", editing);
-  imageGenerationReferenceSlotsElement.hidden = !editing;
-}
-
-function clearImageGenerationRenderConfig() {
-  imageGenerationRenderConfig = null;
-  imageGenerationModel.textContent = imageGenerationDefaultModel;
-}
-
-function renderImageGenerationReferenceSlots() {
-  imageGenerationReferenceList.replaceChildren();
-  for (let index = 0; index < IMAGE_GENERATION_REFERENCE_COUNT; index += 1) {
-    const reference = imageGenerationReferenceSlots[index] || {label: "", data: ""};
-    const slot = document.createElement("div");
-    slot.className = "image-generation-reference-slot";
-    if (index === 0) slot.id = "image-generation-reference-field";
-    const label = document.createElement("label");
-    label.textContent = `Prompt label · Image ${index + 1}`;
-    const labelInput = document.createElement("input");
-    labelInput.type = "text";
-    labelInput.maxLength = 120;
-    labelInput.placeholder = index === 0 ? "e.g. the character's face" : "e.g. the blue embroidered coat";
-    labelInput.value = reference.label || "";
-    labelInput.setAttribute("aria-label", `Prompt label for reference image ${index + 1}`);
-    labelInput.addEventListener("input", () => {
-      imageGenerationReferenceSlots[index].label = labelInput.value;
-      saveImageGenerationState();
-    });
-    label.append(labelInput);
-    const controls = document.createElement("div");
-    controls.className = "image-generation-reference-controls";
-    const fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = "image/png,image/jpeg,image/webp";
-    if (index === 0) fileInput.id = "image-generation-reference";
-    fileInput.setAttribute("aria-label", `Choose reference image ${index + 1}`);
-    fileInput.addEventListener("change", async () => {
-      const file = fileInput.files[0];
-      if (!file || !file.type.startsWith("image/")) return;
-      const contentVersion = imageGenerationContentVersion, universe = state.universeId;
-      try {
-        const data = await readImageGenerationReference(file);
-        if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
-        imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
-        imageGenerationReferenceSlots[index].data = data;
-        imageGenerationReferenceSlots[index].metadata = {};
-        renderImageGenerationReferenceSlots();
-        await saveImageGenerationReferences();
-        saveImageGenerationState();
-      } catch (error) {
-        showMessageElement(imageGenerationMessage, error.message || "Unable to save the reference image.", "error");
-      }
-    });
-    controls.append(fileInput);
-    if (reference.data) {
-      const preview = document.createElement("img");
-      preview.src = reference.data;
-      preview.alt = `Reference image ${index + 1}: ${reference.label || "unlabeled"}`;
-      preview.className = "image-generation-reference-thumb";
-      controls.append(preview);
-      const clear = document.createElement("button");
-      clear.type = "button";
-      clear.textContent = "Remove";
-      clear.addEventListener("click", async () => {
-        imageGenerationReferenceSlots[index].data = "";
-        imageGenerationReferenceSlots[index].metadata = {};
-        renderImageGenerationReferenceSlots();
-        await saveImageGenerationReferences();
-        saveImageGenerationState();
-      });
-      controls.append(clear);
-    } else {
-      const paste = document.createElement("div");
-      paste.className = "paste-zone image-generation-reference-paste";
-      paste.tabIndex = 0;
-      paste.setAttribute("role", "button");
-      paste.setAttribute("aria-label", `Paste reference image ${index + 1}`);
-      paste.textContent = "Click to select, then press Ctrl+V to paste";
-      paste.addEventListener("click", () => paste.focus());
-      paste.addEventListener("paste", async (event) => {
-        const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
-        const file = imageItem?.getAsFile();
-        if (!file) return;
-        event.preventDefault();
-        const contentVersion = imageGenerationContentVersion, universe = state.universeId;
-        try {
-          const data = await readImageGenerationReference(file);
-          if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
-          imageGenerationReferenceSlots[index].label ||= `image ${index + 1}`;
-          imageGenerationReferenceSlots[index].data = data;
-          imageGenerationReferenceSlots[index].metadata = {};
-          renderImageGenerationReferenceSlots();
-          await saveImageGenerationReferences();
-          saveImageGenerationState();
-        } catch (error) {
-          showMessageElement(imageGenerationMessage, error.message || "Unable to save the reference image.", "error");
-        }
-      });
-      controls.append(paste);
-      window.ZetImageInput.attach(paste, fileInput);
-    }
-    slot.append(label, controls);
-    imageGenerationReferenceList.append(slot);
-  }
-}
-
-function saveImageGenerationState() {
-  try {
-    window.localStorage.setItem(`${IMAGE_GENERATION_STORAGE_KEY}:${state.universeId}`, JSON.stringify({
-      mode: imageGenerationMode,
-      universeStyleVariant: imageGenerationStyleVariant.value,
-      universeStyleSnapshot: imageGenerationUniverseStyle,
-      prompt: imageGenerationPrompt.value,
-      negativePrompt: imageGenerationNegative.value,
-      renderMode: imageGenerationRenderMode.value,
-      aspectRatio: imageGenerationAspectRatio.value,
-      referenceLabels: imageGenerationReferenceSlots.map((reference) => reference.label),
-      referenceMetadata: imageGenerationReferenceSlots.map((reference) => reference.metadata || {}),
-      renderConfig: imageGenerationRenderConfig,
-      sourceAssetId: imageGenerationSource.dataset.assetId || "",
-      sourceChecksum: imageGenerationSource.dataset.checksum || "",
-      managedStyle: imageGenerationPrompt.dataset.managedStyle || "",
-      reconstruction: imageGenerationReconstruction,
-    }));
-  } catch (error) {
-    showMessageElement(imageGenerationMessage, "Unable to save Image Generation state in this browser.", "warning");
-  }
-}
-
-function openImageGenerationDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = window.indexedDB.open("zet-image-generation", 1);
-    request.addEventListener("upgradeneeded", () => request.result.createObjectStore("state"), { once: true });
-    request.addEventListener("success", () => resolve(request.result), { once: true });
-    request.addEventListener("error", () => reject(request.error), { once: true });
-  });
-}
-
-async function saveImageGenerationReferences() {
-  const universe = state.universeId;
-  const references = imageGenerationReferenceSlots.map(reference => reference.data);
-  const database = await openImageGenerationDatabase();
-  await new Promise((resolve, reject) => {
-    const transaction = database.transaction("state", "readwrite");
-    const store = transaction.objectStore("state");
-    references.forEach((data, index) => {
-      const key = `${universe}:reference-${index}`;
-      if (data) store.put(data, key);
-      else store.delete(key);
-    });
-    store.delete(`${universe}:reference`);
-
-    transaction.addEventListener("complete", resolve, { once: true });
-    transaction.addEventListener("error", () => reject(transaction.error), { once: true });
-  });
-  database.close();
-}
-
-async function restoreImageGenerationInputs() {
-  const contentVersion = ++imageGenerationContentVersion, universe = state.universeId;
-  clearImageGenerationRenderConfig();
-  imageGenerationSlots = Array(8).fill(null);
-  imageGenerationSelectedSlot = -1; imageGenerationJobIds = []; imageGenerationJobs.clear();
-  imageGenerationPrompt.value = ""; imageGenerationNegative.value = "";
-  imageGenerationPrompt.dataset.managedStyle = "";
-  imageGenerationReconstruction = null;
-  imageGenerationSource.dataset.assetId = ""; imageGenerationSource.dataset.checksum = ""; imageGenerationSource.hidden = true;
-  imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
-  let saved = null;
-  try {
-    saved = JSON.parse(window.localStorage.getItem(`${IMAGE_GENERATION_STORAGE_KEY}:${state.universeId}`) || window.localStorage.getItem(IMAGE_GENERATION_STORAGE_KEY) || "null");
-  } catch {
-    window.localStorage.removeItem(`${IMAGE_GENERATION_STORAGE_KEY}:${state.universeId}`);
-    return;
-  }
-  if (saved && typeof saved === "object") {
-    imageGenerationPrompt.value = saved.prompt || "";
-    imageGenerationPrompt.dataset.managedStyle = saved.managedStyle || "";
-    imageGenerationStyleVariant.value = saved.universeStyleVariant || "canonical";
-    imageGenerationUniverseStyle = saved.universeStyleSnapshot || null;
-    imageGenerationReconstruction = saved.reconstruction || null;
-    imageGenerationNegative.value = saved.negativePrompt || "";
-    imageGenerationRenderMode.value = saved.renderMode === "final" ? "final" : "draft";
-    imageGenerationAspectRatio.value = saved.aspectRatio || (saved.width && saved.height ? `${saved.width}:${saved.height}` : "1:1");
-    if (Array.isArray(saved.referenceLabels)) {
-      imageGenerationReferenceSlots.forEach((reference, index) => {
-        reference.label = saved.referenceLabels[index] || "";
-        reference.metadata = saved.referenceMetadata?.[index] || {};
-      });
-    } else if (saved.referenceName) {
-      imageGenerationReferenceSlots[0].label = saved.referenceName;
-    }
-    if (Array.isArray(saved.slots) && saved.slots.length === IMAGE_GENERATION_SLOT_COUNT) {
-      imageGenerationSlots = saved.slots;
-      imageGenerationSelectedSlot = Number.isInteger(saved.selectedSlot) ? saved.selectedSlot : -1;
-      imageGenerationJobIds = Array.isArray(saved.jobIds) ? saved.jobIds : [];
-    } else if (saved.requestId) {
-      imageGenerationSlots = Array.from({length: IMAGE_GENERATION_SLOT_COUNT}, (_, index) =>
-        index < 4 ? {requestId: saved.requestId, index} : null);
-      imageGenerationJobIds = [saved.requestId];
-    }
-    imageGenerationSource.dataset.assetId = saved.sourceAssetId || "";
-    imageGenerationSource.dataset.checksum = saved.sourceChecksum || "";
-    imageGenerationSource.hidden = !saved.sourceAssetId;
-    if (saved.sourceAssetId) imageGenerationSource.textContent = "Updating an image from the Image Inventory";
-    setImageGenerationMode(saved.mode === "img2img" ? "img2img" : "txt2img");
-    imageGenerationRenderConfig = saved.renderConfig || null;
-    if (imageGenerationRenderConfig) imageGenerationModel.textContent = `Qwen Image 2.1 · ${imageGenerationRenderConfig.checkpoint}`;
-  }
-  try {
-    const database = await openImageGenerationDatabase();
-    if (contentVersion !== imageGenerationContentVersion || state.universeId !== universe) { database.close(); return; }
-    const store = database.transaction("state", "readonly").objectStore("state");
-    const references = await Promise.all(imageGenerationReferenceSlots.map((reference, index) => new Promise((resolve, reject) => {
-      const request = store.get(`${universe}:reference-${index}`);
-      request.addEventListener("success", () => resolve({...reference, data: request.result || ""}), { once: true });
-      request.addEventListener("error", () => reject(request.error), { once: true });
-    })));
-    if (!references.some((reference) => reference.data)) {
-      const legacy = await new Promise((resolve, reject) => {
-        const request = store.get(`${universe}:reference`);
-        request.addEventListener("success", () => resolve(request.result || ""), { once: true });
-        request.addEventListener("error", () => reject(request.error), { once: true });
-      });
-      if (legacy) references[0].data = legacy;
-    }
-    database.close();
-    if (contentVersion !== imageGenerationContentVersion || state.universeId !== universe) return;
-    imageGenerationReferenceSlots = references;
-    renderImageGenerationReferenceSlots();
-  } catch {
-    showMessageElement(imageGenerationMessage, "Unable to restore the saved reference image in this browser.", "warning");
-  }
-}
-
-let imageGenerationWorkspaceTimer = null;
-let imageGenerationWorkspacePolling = false;
-let imageGenerationWorkspaceUniverse = "";
-let imageGenerationWorkspaceSignature = "";
-let imageGenerationWorkspaceBusy = false;
-
-function applyImageGenerationWorkspace(board) {
-  imageGenerationActiveBoardMode = board.render_mode || "draft";
-  imageGenerationSlots = board.slots;
-  imageGenerationSelectedSlot = board.selected_slot ?? -1;
-  imageGenerationJobIds = [...new Set(board.slots.filter(Boolean).map(item => item.requestId))];
-  imageGenerationJobs.clear();
-  (board.jobs || []).forEach(job => imageGenerationJobs.set(job.request_id, {...job, images: (job.images || []).map(image => ({...image, url: `${image.url}${image.url.includes("?") ? "&" : "?"}universe_id=${encodeURIComponent(state.universeId)}`}))}));
-  imageGenerationWorkspaceBusy = board.busy;
-  const signature = JSON.stringify(board);
-  if (signature !== imageGenerationWorkspaceSignature) {
-    imageGenerationWorkspaceSignature = signature;
-    renderImageGenerationStatus();
-  }
-}
-
-async function restoreImageGenerationJob() {
-  const universe = state.universeId;
-  if (imageGenerationWorkspaceUniverse !== universe) {
-    imageGenerationWorkspaceSignature = "";
-    let legacy = null;
-    try { legacy = JSON.parse(window.localStorage.getItem(IMAGE_GENERATION_STORAGE_KEY) || "null"); } catch { /* Ignore invalid historical browser state. */ }
-    const board = await fetchJson("/api/image-generation/workspace/import", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({slots: legacy?.slots || imageGenerationSlots, selected_slot: legacy?.selectedSlot ?? -1})});
-    if (universe !== state.universeId) return;
-    applyImageGenerationWorkspace(imageGenerationRenderMode.value === "draft" ? board : await fetchJson(`/api/image-generation/workspace?render_mode=${imageGenerationRenderMode.value}`));
-    imageGenerationWorkspaceUniverse = universe;
-  } else await pollImageGenerationWorkspace();
-  if (universe !== state.universeId) return;
-  clearInterval(imageGenerationWorkspaceTimer);
-  imageGenerationWorkspaceTimer = setInterval(() => void pollImageGenerationWorkspace(), 5000);
-}
-
-async function pollImageGenerationWorkspace() {
-  if (imageGenerationWorkspacePolling || imageGenerationPending || !document.querySelector("#image-generation-page").classList.contains("active")) return;
-  imageGenerationWorkspacePolling = true;
-  const contentVersion = imageGenerationContentVersion, universe = state.universeId, mode = imageGenerationRenderMode.value;
-  try {
-    const board = await fetchJson(`/api/image-generation/workspace?render_mode=${mode}`);
-    if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId || mode !== imageGenerationRenderMode.value) return;
-    applyImageGenerationWorkspace(board); await pollImageReconstruction();
-  }
-  catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, `Unable to check renders: ${error.message}. Retrying automatically.`, "error"); }
-  finally { imageGenerationWorkspacePolling = false; }
-  await pollImageTrueUp();
-}
-
-async function imageGenerationSlotAction(operation, slot, inputs) {
-  if (imageGenerationPending) return;
-  imageGenerationPending = true;
-  const mode = imageGenerationRenderMode.value;
-  renderImageGenerationStatus();
-  try {
-    const count = Number(document.querySelector("#image-generation-count").value);
-    const board = await fetchJson(`/api/image-generation/workspace/${operation}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({render_mode: mode, ...(slot === undefined ? {} : {slot: slot + 1, expected_assignment: imageGenerationSlots[slot]}), count, ...(inputs ? {inputs} : {})})});
-    if (imageGenerationRenderMode.value === mode) applyImageGenerationWorkspace(board);
-    showMessageElement(imageGenerationMessage, "", "info");
-  } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
-  finally { imageGenerationPending = false; renderImageGenerationStatus(); }
-}
-
-function readImageGenerationReference(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result || "")), { once: true });
-    reader.addEventListener("error", () => reject(new Error("Unable to read the reference image.")), { once: true });
-    reader.readAsDataURL(file);
-  });
-}
-
-function imageGenerationDimensionFromSource(value) {
-  const dimension = Number(value);
-  if (!Number.isFinite(dimension) || dimension <= 0) return null;
-  return Math.min(4096, Math.max(256, Math.round(dimension / 32) * 32));
-}
-
-async function loadImageReconstructionOptions() {
-  const universe = state.universeId;
-  const options = await fetchJson("/api/image-generation/reconstructions/options");
-  if (state.universeId !== universe) return;
-  if (imageReconstructionUniverse !== universe) {
-    imageReconstructionSourceVersion += 1;
-    imageReconstructionSource = null;
-    imageReconstructionJob = null;
-    imageGenerationReconstruction = null;
-    imageReconstructionUniverse = universe;
-    reconstructionField("source").textContent = "No source selected.";
-    reconstructionField("preview").hidden = true;
-    for (const name of ["description", "prompt", "notes", "preserve", "changes"]) reconstructionField(name).value = "";
-    reconstructionField("uncertainties").textContent = "";
-    reconstructionField("status").textContent = "";
-  }
-  const model = reconstructionField("model");
-  const previous = window.localStorage.getItem(`zet:reconstruction-model:${universe}`) || options.default_model;
-  model.replaceChildren(...options.models.map(value => new Option(value, value)));
-  if (options.models.includes(previous)) model.value = previous;
-  reconstructionField("style").textContent = `Destination style: ${options.style.text || 'No universe style set.'}`;
-  const saved = window.localStorage.getItem(`zet:reconstruction-job:${universe}`);
-  if (saved && !imageReconstructionJob) imageReconstructionJob = {id: saved, fieldBaseline: reconstructionBaseline()};
-  await pollImageReconstruction();
-}
-
-function reconstructionBaseline() {
-  return Object.fromEntries(["description", "prompt", "preserve", "changes"].map(name => [name, reconstructionField(name).value]));
-}
-
-function setImageReconstructionSource(source, preview) {
-  imageReconstructionSourceVersion += 1;
-  imageReconstructionSource = {...source, universe: state.universeId};
-  imageReconstructionJob = null;
-  reconstructionField("source").textContent = source.label || "Source image";
-  reconstructionField("preview").src = preview;
-  reconstructionField("preview").hidden = false;
-  reconstructionField("status").textContent = "Ready. The source is used for analysis only.";
-  window.localStorage.removeItem(`zet:reconstruction-job:${state.universeId}`);
-}
-
-async function pollImageReconstruction() {
-  if (!imageReconstructionJob || imageReconstructionPolling) return;
-  const universe = state.universeId;
-  const id = imageReconstructionJob.id;
-  if (["SUBMITTED", "FAILED"].includes(imageReconstructionJob.status)) return;
-  imageReconstructionPolling = true;
-  try {
-    const job = await fetchJson(`/api/image-generation/reconstructions/${encodeURIComponent(id)}`);
-    if (state.universeId !== universe || imageReconstructionJob?.id !== id) return;
-    const fieldBaseline = imageReconstructionJob.fieldBaseline || reconstructionBaseline();
-    imageReconstructionJob = {...job, fieldBaseline};
-    reconstructionField("status").textContent = job.status === "FAILED" ? job.error
-      : job.status === "SUBMITTED" ? "Analysis complete. Rendering in the existing result slots."
-      : "Analyzing source; the batch will render automatically…";
-    if (["SUBMITTED", "FAILED"].includes(job.status)) {
-      if (reconstructionField("description").value === fieldBaseline.description) reconstructionField("description").value = job.content_prompt || "";
-      if (reconstructionField("prompt").value === fieldBaseline.prompt) reconstructionField("prompt").value = job.prompt || "";
-      reconstructionField("uncertainties").textContent = (job.uncertainties || []).join(" · ");
-      for (const name of ["preserve", "changes"]) {
-        if (job.target && reconstructionField(name).value === fieldBaseline[name]) {
-          reconstructionField(name).value = job.target[name === "changes" ? "change_text" : name];
-        }
-      }
-    }
-  } catch (error) {
-    if (state.universeId === universe && imageReconstructionJob?.id === id) reconstructionField("status").textContent = error.message;
-  } finally { imageReconstructionPolling = false; }
-}
-
-async function startImageReconstruction() {
-  const source = imageReconstructionSource;
-  const universe = state.universeId;
-  if (!source || source.universe !== universe) {
-    reconstructionField("status").textContent = "Choose an analysis source first.";
-    return;
-  }
-  const button = reconstructionField("generate");
-  if (button.disabled) return;
-  button.disabled = true;
-  const fieldBaseline = reconstructionBaseline();
-  reconstructionField("status").textContent = "Starting reconstruction…";
-  try {
-    const model = reconstructionField("model").value;
-    window.localStorage.setItem(`zet:reconstruction-model:${universe}`, model);
-    const job = await fetchJson("/api/image-generation/reconstructions", {method: "POST",
-      headers: {"Content-Type": "application/json"}, body: JSON.stringify({...source, model,
-        count: Number(document.querySelector("#image-generation-count").value),
-        render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value,
-        notes: reconstructionField("notes").value, preserve: reconstructionField("preserve").value,
-        changes: reconstructionField("changes").value,
-        universe_style_variant: imageGenerationStyleVariant.value})});
-    if (state.universeId !== universe) return;
-    // The job continues independently; selecting another source must not replace that form.
-    window.localStorage.setItem(`zet:reconstruction-job:${universe}`, job.id);
-    if (imageReconstructionSource !== source) return;
-    imageReconstructionJob = {...job, fieldBaseline};
-    clearImageGenerationRenderConfig();
-    setImageGenerationMode("txt2img");
-    imageGenerationSource.hidden = true;
-    delete imageGenerationSource.dataset.assetId;
-    delete imageGenerationSource.dataset.checksum;
-    saveImageGenerationState();
-    reconstructionField("status").textContent = "Analyzing source; the batch will render automatically…";
-    applyImageGenerationWorkspace(await fetchJson(`/api/image-generation/workspace?render_mode=${imageGenerationRenderMode.value}`));
-  } catch (error) {
-    if (state.universeId === universe && imageReconstructionSource === source) reconstructionField("status").textContent = error.message;
-  } finally { button.disabled = false; }
-}
-
-reconstructionField("generate").addEventListener("click", () => void startImageReconstruction());
-reconstructionField("model").addEventListener("change", () => {
-  window.localStorage.setItem(`zet:reconstruction-model:${state.universeId}`, reconstructionField("model").value);
-  if (imageReconstructionJob && imageReconstructionJob.model !== reconstructionField("model").value) {
-    imageReconstructionJob = null;
-    window.localStorage.removeItem(`zet:reconstruction-job:${state.universeId}`);
-    reconstructionField("status").textContent = "Analysis model changed. Existing batches continue in their result slots.";
-  }
-});
-reconstructionField("library").addEventListener("click", () => {
-  const universe = state.universeId;
-  const version = ++imageReconstructionSourceVersion;
-  void window.zetQuickCharacterWizard.openLibraryPicker(async item => {
-    const payload = await fetchJson(`/api/entity-library/assets/${encodeURIComponent(item.asset_id)}`);
-    if (state.universeId !== universe || version !== imageReconstructionSourceVersion) return;
-    const asset = payload.asset;
-    setImageReconstructionSource({asset_id: asset.asset_id, label: asset.label || asset.file_name}, fileUrl(asset.image_path, asset.checksum));
-  });
-});
-reconstructionField("file").addEventListener("change", async event => {
-  const file = event.target.files[0];
-  const universe = state.universeId;
-  if (!file) return;
-  const version = ++imageReconstructionSourceVersion;
-  const data = await readImageGenerationReference(file);
-  if (state.universeId === universe && version === imageReconstructionSourceVersion) setImageReconstructionSource({image: data, label: file.name}, data);
-});
-window.ZetImageInput.attach(reconstructionField("paste"), reconstructionField("file"));
-reconstructionField("paste").addEventListener("click", () => reconstructionField("paste").focus());
-reconstructionField("paste").addEventListener("paste", async event => {
-  const blob = imageBlobFromPasteEvent(event);
-  if (!blob) return;
-  event.preventDefault();
-  const universe = state.universeId;
-  const version = ++imageReconstructionSourceVersion;
-  const data = await readImageGenerationReference(blob);
-  if (state.universeId === universe && version === imageReconstructionSourceVersion) setImageReconstructionSource({image: data, label: "Pasted source"}, data);
-});
-reconstructionField("remove").addEventListener("click", () => {
-  imageReconstructionSourceVersion += 1;
-  imageReconstructionSource = null;
-  imageReconstructionJob = null;
-  reconstructionField("source").textContent = "No source selected.";
-  reconstructionField("preview").hidden = true;
-  reconstructionField("file").value = "";
-  window.localStorage.removeItem(`zet:reconstruction-job:${state.universeId}`);
-});
-reconstructionField("use-text").addEventListener("click", () => {
-  if (!imageReconstructionJob?.content_prompt || !reconstructionField("prompt").value.trim()) return;
-  clearImageGenerationRenderConfig();
-  imageGenerationPrompt.value = reconstructionField("prompt").value;
-  imageGenerationPrompt.dataset.managedStyle = `Art style:\n${imageReconstructionJob.style.text}\n\n`;
-  imageGenerationReconstruction = Object.fromEntries(["id", "version", "model", "source", "style", "instruction_version", "content_prompt", "uncertainties", "notes", "prompt", "target", "target_hash"].map(key => [key, imageReconstructionJob[key]]));
-  imageGenerationReconstruction.edited_content_prompt = reconstructionField("description").value;
-  setImageGenerationMode("txt2img");
-  imageGenerationSource.hidden = true;
-  delete imageGenerationSource.dataset.assetId;
-  delete imageGenerationSource.dataset.checksum;
-  imageGenerationPrompt.dispatchEvent(new Event("input", {bubbles: true}));
-});
-reconstructionField("description").addEventListener("input", () => {
-  if (!imageReconstructionJob?.style) return;
-  reconstructionField("prompt").value = [`Art style:\n${imageReconstructionJob.style.text}`,
-    reconstructionField("description").value,
-    imageReconstructionJob.notes ? `Additional artistic direction:\n${imageReconstructionJob.notes}` : ""].filter(Boolean).join("\n\n");
-});
-
 async function modifyEntityLibraryImageWithGenerator() {
   const asset = entityLibrarySelectedAsset;
   if (!asset || asset.origin === "pipeline" || asset.status === "archived") return;
   try {
+    const {createAsset, readImage} = await import("/static/image_generation.js?v=1");
     const response = await fetch(fileUrl(asset.image_path, asset.checksum));
-    if (!response.ok) throw new Error("Unable to read the selected inventory image.");
-    const blob = await response.blob();
-    const data = await readImageGenerationReference(new File([blob], asset.file_name, { type: asset.mime_type }));
+    if (!response.ok) throw new Error("Unable to read the Inventory image.");
+    const image = await readImage(await response.blob());
     await runGuardedTransition(async () => {
-      await loadImageGenerationOptions();
-      clearImageGenerationRenderConfig();
-      imageGenerationReview.close();
-      imageGenerationSource.textContent = "Updating " + (asset.label || asset.file_name);
-      imageGenerationSource.hidden = false;
-      imageGenerationSource.dataset.assetId = asset.asset_id;
-      imageGenerationSource.dataset.checksum = asset.checksum;
-      imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, () => ({label: "", data: ""}));
-      imageGenerationReferenceSlots[0] = {label: "source image", data};
-      renderImageGenerationReferenceSlots();
-      imageGenerationPrompt.value = asset.prompt || "";
-      imageGenerationReconstruction = null;
-      imageGenerationPrompt.dataset.managedStyle = "";
-      imageGenerationNegative.value = asset.negative_prompt || "";
-      const sourceWidth = imageGenerationDimensionFromSource(asset.width);
-      const sourceHeight = imageGenerationDimensionFromSource(asset.height);
-      if (sourceWidth && sourceHeight) imageGenerationAspectRatio.value = `${sourceWidth}:${sourceHeight}`;
-      await updateImageGenerationSizing();
-      setImageGenerationMode("img2img");
-      saveImageGenerationState();
-      await saveImageGenerationReferences();
-      await activatePage("image-generation", { skipAutosave: true });
+      const created = await createAsset(fetchJson, `Modify ${asset.label || asset.file_name}`.slice(0, 160), {
+        mode:"img2img", prompt:asset.prompt || "", negative_prompt:asset.negative_prompt || "",
+        aspect_ratio:asset.width && asset.height ? `${asset.width}:${asset.height}` : "1:1",
+        source_asset_id:asset.asset_id, source_checksum:asset.checksum,
+        reference_images:[{label:"source image", image}],
+      });
+      await activatePage("image-generation", {generationAsset:created.asset_id, skipAutosave:true});
     });
-  } catch (error) {
-    entityLibraryModifyStatus.textContent = error.message;
-  }
+  } catch (error) { entityLibraryModifyStatus.textContent = error.message; }
 }
 
-function imageGenerationResult(slotIndex) {
-  const assignment = imageGenerationSlots[slotIndex];
-  const job = assignment && imageGenerationJobs.get(assignment.requestId);
-  const image = job?.images?.find((item) => item.index === assignment.index);
-  return image ? {assignment, job, image} : null;
-}
+window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent, rotation, noCostumeRef, renderMode, settings = {}) => {
+  await runGuardedTransition(async () => {
+    if (!isCurrent()) return false;
+    const staged = await fetchJson(url, {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({...settings, recompile, rotation, no_costume_ref:noCostumeRef, render_mode:renderMode || "draft"})});
+    if (!isCurrent()) return false;
+    await activatePage("image-generation", {generationAsset:staged.asset_id, skipAutosave:true});
+  });
+};
 
-function imageGenerationReviewableSlots() {
-  return imageGenerationSlots.map((_, index) => index).filter((index) => imageGenerationResult(index));
-}
-
-function imageGenerationSizeLabel(job) {
-  const mode = (job?.render_sizing?.render_mode || imageGenerationActiveBoardMode) === "final" ? "Final" : "Draft";
-  const width = job?.width, height = job?.height;
-  return width && height ? `${mode} · ${width} × ${height} requested` : mode;
-}
-
-function renderImageGenerationReview() {
-  if (!imageGenerationReview.open) return;
-  const slots = imageGenerationReviewableSlots();
-  if (!slots.includes(imageGenerationReviewIndex)) { imageGenerationReview.close(); return; }
-  const {job, image} = imageGenerationResult(imageGenerationReviewIndex);
-  const position = slots.indexOf(imageGenerationReviewIndex);
-  const promptDetails = imageGenerationReview.querySelector("details");
-  if (imageGenerationReview.dataset.slot !== String(imageGenerationReviewIndex)) promptDetails.open = false;
-  imageGenerationReview.dataset.slot = String(imageGenerationReviewIndex);
-  imageGenerationReviewImage.src = image.url;
-  imageGenerationReviewZoom?.sync(`${imageGenerationReviewIndex}:${image.url}`);
-  imageGenerationReviewImage.alt = `Generated image in slot ${imageGenerationReviewIndex + 1}`;
-  imageGenerationReviewCount.textContent = `Slot ${imageGenerationReviewIndex + 1} · ${position + 1} of ${slots.length} · ${imageGenerationSizeLabel(job)}`;
-  imageGenerationReviewPrompt.textContent = job.prompt || "";
-  imageGenerationReviewNegative.textContent = job.negative_prompt || "";
-  imageGenerationReviewPrevious.disabled = position === 0;
-  imageGenerationReviewNext.disabled = position === slots.length - 1;
-  imageGenerationReviewSelect.textContent = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect" : "Select";
-  imageGenerationReviewSelect.classList.toggle("primary-action", imageGenerationSelectedSlot !== imageGenerationReviewIndex);
-  imageGenerationReviewRetry.disabled = imageGenerationPending || imageGenerationSelectedSlot === imageGenerationReviewIndex;
-  imageGenerationReviewClear.disabled = imageGenerationReviewRetry.disabled;
-  document.querySelector("#image-generation-review-reason").textContent = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect before regenerating or clearing this slot." : "";
-  imageGenerationReviewRetry.title = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect this image before regenerating it." : "";
-  imageGenerationReviewClear.title = imageGenerationSelectedSlot === imageGenerationReviewIndex ? "Unselect this image before clearing it." : "";
-  const add = document.querySelector("#image-generation-review-add");
-  if (!add.contains(document.activeElement)) add.replaceChildren(window.ZetRenderSlots.countControl(imageGenerationSlots.filter(item => !item).length, count => {
-    document.querySelector("#image-generation-count").value = count;
-    void submitImageGenerationForSlots();
-  }, {disabled: imageGenerationPending}));
-}
-
-function openImageGenerationReview(slotIndex) {
-  if (!imageGenerationReview.open || imageGenerationReviewIndex !== slotIndex) imageGenerationReview.querySelector("details").open = false;
-  imageGenerationReviewIndex = slotIndex;
-  if (!imageGenerationReview.open) imageGenerationReview.showModal();
-  renderImageGenerationReview();
-}
-
-async function openImageGenerationImportDialog() {
-  const result = imageGenerationResult(imageGenerationSelectedSlot);
-  if (!result) return;
-  const {assignment, job, image} = result;
-  entityLibraryImportGeneration = { requestId: assignment.requestId, index: assignment.index };
+function openGeneratedInventory(candidate, endpoint) {
+  const {assignment, job, image} = candidate;
+  entityLibraryImportGeneration = {endpoint};
   state.entityLibraryImportBlob = null;
   entityLibraryFile.value = "";
   entityLibraryNewLabel.value = (job.prompt || "").trim().slice(0, 80) || "Generated image";
-  entityLibraryGeneratedProvenance.value = "Image Generation job " + assignment.requestId + ", result " + (assignment.index + 1);
+  entityLibraryGeneratedProvenance.value = `Image Generation job ${assignment.requestId}, result ${assignment.index + 1}`;
   entityLibraryGenerationPrompts.hidden = false;
   entityLibraryImportPrompt.textContent = job.prompt || "";
   entityLibraryImportNegativePrompt.textContent = job.negative_prompt || "";
-  entityLibraryPaste.textContent = "Using selected Image Generation result";
+  entityLibraryPaste.textContent = "Using this Image Generation candidate";
   entityLibraryImportStatus.textContent = "";
-  entityLibraryImport.disabled = !entityLibraryNewLabel.value.trim();
+  entityLibraryImport.disabled = false;
   entityLibraryImportPreview.src = image.url;
   entityLibraryImportPreview.hidden = false;
-  await activatePage("auxiliary-resources", { skipAutosave: true });
+  setSelectOptionsWithLabels(entityLibraryGeneratedEntity, [{value:"", label:"General image import"}]);
   entityLibraryImportDialog.showModal();
+  const opened = entityLibraryImportGeneration;
+  void fetchJson("/api/entity-library/entities").then(({entities}) => {
+    if (entityLibraryImportGeneration === opened) populateGeneratedInventoryEntities(entities || []);
+  }).catch(error => {
+    if (entityLibraryImportGeneration === opened) entityLibraryImportStatus.textContent = error.message;
+  });
 }
 
 async function generateEntityImagePrompt() {
@@ -1935,374 +1301,6 @@ async function generateEntityIdentity() {
       entityLibraryGenerateIdentity.disabled = asset.status === "archived";
     }
   }
-}
-
-const imageGenerationTerminalStatuses = new Set(["COMPLETE", "PARTIAL", "FAILED", "ERROR"]);
-
-let imageTrueUpReport = null;
-let imageTrueUpSelection = "";
-let imageTrueUpBusy = false;
-let imageTrueUpPolling = false;
-const imageTrueUpItems = new Set();
-
-function currentTrueUpSelection() {
-  return JSON.stringify([state.universeId, imageGenerationSlots[imageGenerationSelectedSlot] || null]);
-}
-
-function syncImageTrueUpSelection() {
-  const signature = currentTrueUpSelection();
-  if (signature === imageTrueUpSelection) return;
-  imageTrueUpSelection = signature;
-  imageTrueUpReport = null; imageTrueUpItems.clear();
-  document.querySelector("#image-true-up-panel").hidden = true;
-  document.querySelector("#image-true-up-instructions").value = "";
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(`zet:true-up:${state.universeId}`) || "null");
-    if (saved?.selection === signature) {
-      imageTrueUpReport = {id: saved.id, task_id: saved.task_id, status: "RUNNING", items: []};
-    }
-  } catch { /* A malformed local draft must not affect the server-owned selection. */ }
-}
-
-function renderImageTrueUp() {
-  const panel = document.querySelector("#image-true-up-panel");
-  const report = imageTrueUpReport;
-  panel.hidden = !report;
-  if (!report) return;
-  document.querySelector("#image-true-up-status").textContent = report.error || report.summary || "Comparing the selected image…";
-  const pair = document.querySelector("#image-true-up-pair"); pair.replaceChildren();
-  const selected = imageGenerationResult(imageGenerationSelectedSlot);
-  if (selected) {
-    for (const [url, label] of [[`/api/image-generation/reconstructions/${encodeURIComponent(report.task_id)}/sources/0?universe_id=${encodeURIComponent(state.universeId)}`, "Original identity evidence"], [selected.image.url, "Selected candidate"]]) {
-      const figure = document.createElement("figure"); const image = document.createElement("img");
-      image.src = url; image.alt = label;
-      const link = document.createElement("a"); link.href = url; link.target = "_blank"; link.rel = "noopener"; link.textContent = `${label} · inspect full size`;
-      figure.append(image, link); pair.append(figure);
-    }
-  }
-  const findings = document.querySelector("#image-true-up-findings"); findings.replaceChildren();
-  for (const item of report.items || []) {
-    const finding = document.createElement("div"); finding.className = "qc-finding";
-    const heading = document.createElement("strong"); heading.textContent = `${item.feature} · ${item.category.replaceAll("_", " ")}`;
-    finding.append(heading);
-    for (const line of [`Expected: ${item.expected}`, `Observed: ${item.observed}`, item.evidence]) {
-      const p = document.createElement("p"); p.textContent = line; finding.append(p);
-    }
-    if (item.correction) {
-      const label = document.createElement("label"); const input = document.createElement("input"); input.type = "checkbox";
-      input.checked = imageTrueUpItems.has(item.id);
-      input.addEventListener("change", () => input.checked ? imageTrueUpItems.add(item.id) : imageTrueUpItems.delete(item.id));
-      label.append(input, document.createTextNode(item.correction)); finding.append(label);
-    }
-    findings.append(finding);
-  }
-  const apply = document.querySelector("#image-true-up-apply");
-  apply.disabled = !canApplyImageTrueUp();
-  apply.title = imageGenerationSlots.some(slot => !slot) ? "Creates a new result; keeps the selected input." : "Clear an unselected slot to make space for a correction.";
-}
-
-function canApplyImageTrueUp() {
-  const custom = document.querySelector("#image-true-up-instructions").value.trim();
-  return !imageTrueUpBusy && Boolean(imageTrueUpReport) && imageGenerationSlots.some(slot => !slot) &&
-    (imageTrueUpReport.status === "COMPLETE" || (Boolean(custom) && imageTrueUpItems.size === 0));
-}
-
-document.querySelector("#image-true-up-instructions").addEventListener("input", () => {
-  document.querySelector("#image-true-up-apply").disabled = !canApplyImageTrueUp();
-});
-
-async function pollImageTrueUp() {
-  if (!imageTrueUpReport || imageTrueUpReport.status !== "RUNNING" || imageTrueUpPolling) return;
-  imageTrueUpPolling = true;
-  const signature = imageTrueUpSelection, report = imageTrueUpReport;
-  try {
-    const next = await fetchJson(`/api/image-generation/reconstructions/${encodeURIComponent(report.task_id)}/reports/${encodeURIComponent(report.id)}`);
-    if (currentTrueUpSelection() !== signature || imageTrueUpReport?.id !== report.id) return;
-    imageTrueUpReport = next; renderImageTrueUp();
-  } catch (error) {
-    if (currentTrueUpSelection() === signature && !isRequestCancellation(error)) {
-      document.querySelector("#image-true-up-status").textContent = `${error.message}. Use Compare again to retry.`;
-    }
-  } finally { imageTrueUpPolling = false; }
-}
-
-document.querySelector("#image-reconstruction-selected").addEventListener("click", () => {
-  const selected = imageGenerationResult(imageGenerationSelectedSlot);
-  if (!selected) return;
-  const expected = imageGenerationSlots[imageGenerationSelectedSlot];
-  setImageReconstructionSource({selected_result: {...expected}, label: `Selected result · slot ${imageGenerationSelectedSlot + 1}`}, selected.image.url);
-  reconstructionField("preserve").value = selected.job.reconstruction?.target?.preserve || "Preserve stable identity and visible design except requested changes.";
-  reconstructionField("changes").value = selected.job.reconstruction?.target?.change_text || "";
-  document.querySelector("#image-reconstruction-panel").open = true;
-  reconstructionField("changes").focus();
-});
-
-document.querySelector("#image-true-up-compare").addEventListener("click", async () => {
-  if (imageTrueUpBusy) return;
-  imageTrueUpBusy = true;
-  const signature = currentTrueUpSelection();
-  try {
-    const report = await fetchJson("/api/image-generation/comparisons", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({selected_result: imageGenerationSlots[imageGenerationSelectedSlot]})});
-    if (currentTrueUpSelection() !== signature) return;
-    imageTrueUpReport = report; imageTrueUpItems.clear(); renderImageTrueUp();
-    window.localStorage.setItem(`zet:true-up:${state.universeId}`, JSON.stringify({selection: signature, id: report.id, task_id: report.task_id}));
-  } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
-  finally { imageTrueUpBusy = false; renderImageGenerationStatus(); }
-});
-
-document.querySelector("#image-true-up-apply").addEventListener("click", async () => {
-  if (!canApplyImageTrueUp()) return;
-  imageTrueUpBusy = true; renderImageTrueUp();
-  const contentVersion = imageGenerationContentVersion, universe = state.universeId;
-  try {
-    const job = await fetchJson("/api/image-generation/corrections", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({selected_result: imageGenerationSlots[imageGenerationSelectedSlot], task_id: imageTrueUpReport.task_id,
-        report_id: imageTrueUpReport.id, item_ids: [...imageTrueUpItems], instructions: document.querySelector("#image-true-up-instructions").value,
-        render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value})});
-    if (contentVersion !== imageGenerationContentVersion || universe !== state.universeId) return;
-    imageReconstructionJob = {...job, fieldBaseline: reconstructionBaseline()};
-    window.localStorage.setItem(`zet:reconstruction-job:${state.universeId}`, job.id);
-    applyImageGenerationWorkspace(await fetchJson(`/api/image-generation/workspace?render_mode=${imageGenerationRenderMode.value}`));
-    document.querySelector("#image-true-up-status").textContent = "Preparing a correction in a new slot. The selected input is retained.";
-  } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
-  finally { imageTrueUpBusy = false; renderImageGenerationStatus(); }
-});
-
-function renderImageGenerationStatus() {
-  document.querySelector("#image-generation-page").dataset.renderMode = imageGenerationRenderMode.value;
-  const busy = imageGenerationPending;
-  imageGenerationRenderMode.disabled = busy;
-  const emptyCount = imageGenerationSlots.filter(item => !item).length;
-  imageGenerationSubmit.disabled = busy || !emptyCount;
-  imageGenerationFill.disabled = busy || !emptyCount;
-  imageGenerationClear.disabled = busy || imageGenerationSelectedSlot >= 0 || !imageGenerationSlots.some(Boolean);
-  imageGenerationClear.title = imageGenerationSelectedSlot >= 0 ? "Unselect the image before clearing all slots." : "";
-  const completed = imageGenerationReviewableSlots().length;
-  imageGenerationProgress.textContent = `${completed} of ${IMAGE_GENERATION_SLOT_COUNT} slots filled`;
-  const selected = imageGenerationResult(imageGenerationSelectedSlot);
-  syncImageTrueUpSelection();
-  document.querySelector("#image-reconstruction-selected").disabled = busy || !selected;
-  document.querySelector("#image-true-up-compare").disabled = imageTrueUpBusy || !selected?.job.reconstruction?.target_hash;
-  renderImageTrueUp();
-  imageGenerationReviewImport.disabled = !selected;
-  imageGenerationReviewUpdate.hidden = !imageGenerationSource.dataset.assetId;
-  imageGenerationReviewUpdate.disabled = !selected || !selected.job.source_asset_id;
-  const nextGrid = document.createElement("div");
-  for (let index = 0; index < IMAGE_GENERATION_SLOT_COUNT; index += 1) {
-    const result = imageGenerationResult(index);
-    const assignment = imageGenerationSlots[index];
-    const job = assignment && imageGenerationJobs.get(assignment.requestId);
-    const card = document.createElement("figure");
-    card.className = `image-generation-result${index === imageGenerationSelectedSlot ? " is-selected" : ""}`;
-    card.dataset.state = index === imageGenerationSelectedSlot ? "selected" : "available";
-    const title = document.createElement("figcaption");
-    title.className = "render-mode-heading";
-    title.textContent = `Slot ${index + 1}${index === imageGenerationSelectedSlot ? " · Selected" : ""}${job ? ` · ${imageGenerationSizeLabel(job)}` : ""}`;
-    card.append(title);
-    if (result) {
-      const preview = document.createElement("button");
-      preview.type = "button";
-      preview.className = "image-generation-result-preview";
-      preview.setAttribute("aria-label", `Review slot ${index + 1}`);
-      preview.addEventListener("click", () => openImageGenerationReview(index));
-      const image = document.createElement("img");
-      image.src = result.image.url;
-      image.alt = `Generated image in slot ${index + 1}`;
-      image.loading = "lazy";
-      preview.append(image);
-      card.append(preview);
-      const controls = document.createElement("div");
-      controls.className = "button-row compact";
-      const review = document.createElement("button");
-      review.type = "button";
-      review.textContent = "Review";
-      review.addEventListener("click", () => openImageGenerationReview(index));
-      const download = document.createElement("a");
-      download.href = `${result.image.url}${result.image.url.includes("?") ? "&" : "?"}download=true`;
-      download.download = `zet-image-slot-${index + 1}`;
-      download.textContent = "Download";
-      const select = document.createElement("button"); select.type = "button"; select.textContent = index === imageGenerationSelectedSlot ? "Unselect" : "Select";
-      select.addEventListener("click", () => void imageGenerationSlotAction(index === imageGenerationSelectedSlot ? "unselect" : "select", index));
-      const regenerate = document.createElement("button"); regenerate.type = "button"; regenerate.textContent = "Regenerate";
-      regenerate.disabled = busy || index === imageGenerationSelectedSlot;
-      regenerate.addEventListener("click", () => void imageGenerationSlotAction("regenerate", index, currentImageGenerationInputs()));
-      const clear = document.createElement("button"); clear.type = "button"; clear.textContent = "Clear slot"; clear.className = "danger-text-action";
-      clear.disabled = regenerate.disabled;
-      clear.addEventListener("click", () => void imageGenerationSlotAction("clear", index));
-      select.classList.toggle("primary-action", index !== imageGenerationSelectedSlot);
-      if (index === imageGenerationSelectedSlot) { const reason = document.createElement("p"); reason.className = "slot-action-reason muted"; reason.textContent = "Unselect before regenerating or clearing this slot."; card.append(reason); }
-      download.className = "button-link";
-      controls.append(review, select, regenerate, download, clear);
-      card.append(controls);
-    } else {
-      const status = document.createElement("p");
-      status.className = "image-card-state";
-      const child = assignment && job?.results?.find(item => item.index === assignment.index);
-      card.dataset.state = child?.status === "FAILED" || job?.status === "ERROR" ? "failed" : assignment ? "pending" : "empty";
-      status.textContent = assignment ? child?.status || (job && imageGenerationTerminalStatuses.has(job.status) ? "FAILED" : job?.status || "Loading") : "Empty";
-      card.append(status);
-      if (child?.error || job?.error) { const error = document.createElement("p"); error.className = "error"; error.textContent = child?.error || job.error; card.append(error); }
-      const retry = assignment && (child?.status === "FAILED" || imageGenerationTerminalStatuses.has(job?.status));
-      const action = document.createElement("button"); action.type = "button"; action.textContent = assignment ? (retry ? "Retry" : "Regenerate") : "Generate"; action.disabled = busy;
-      action.addEventListener("click", () => assignment ? void imageGenerationSlotAction(retry ? "retry" : "regenerate", index, retry ? undefined : currentImageGenerationInputs()) : void submitImageGenerationForSlots([index]));
-      if (!assignment) action.className = "primary-action";
-      card.append(action);
-      if (index === imageGenerationSelectedSlot) { const unselect = document.createElement("button"); unselect.type = "button"; unselect.textContent = "Unselect"; unselect.addEventListener("click", () => void imageGenerationSlotAction("unselect", index)); card.append(unselect); }
-      if (assignment) { const clear = document.createElement("button"); clear.type = "button"; clear.textContent = "Clear slot"; clear.className = "danger-text-action"; clear.disabled = busy || index === imageGenerationSelectedSlot; clear.addEventListener("click", () => void imageGenerationSlotAction("clear", index)); card.append(clear); }
-    }
-    nextGrid.append(card);
-  }
-  window.ZetImageCardUI.scan(nextGrid);
-  [...nextGrid.children].forEach((card, index) => {
-    const previous = imageGenerationResultsGrid.children[index];
-    if (!previous) imageGenerationResultsGrid.append(card);
-    else if (previous.outerHTML !== card.outerHTML) {
-      const focused = document.activeElement;
-      const action = previous.contains(focused) ? focused.dataset.imageAction || (focused.classList.contains("image-generation-result-preview") ? "preview" : null) : null;
-      previous.replaceWith(card);
-      window.ZetImageCardUI.scan(card.parentElement);
-      const control = action === "preview" ? card.querySelector(".image-generation-result-preview")
-        : [...card.querySelectorAll("button,a")].find(button => button.dataset.imageAction === action);
-      if (action) control?.focus({ preventScroll: true });
-    }
-  });
-  renderImageGenerationReview();
-}
-
-async function submitImageGenerationForSlots(slotIndexes) {
-  if (imageGenerationPending) return;
-  if (!imageGenerationAspectRatio.reportValidity()) return;
-  const references = imageGenerationMode === "img2img"
-    ? imageGenerationReferenceSlots.map((reference, index) => ({...reference, index})).filter((reference) => reference.data)
-    : [];
-  if (imageGenerationMode === "img2img") {
-    if (!references.length) {
-      showMessageElement(imageGenerationMessage, "Choose at least one reference image for img2img.", "error");
-      return;
-    }
-    const unlabeled = references.find((reference) => !reference.label.trim());
-    if (unlabeled) {
-      showMessageElement(imageGenerationMessage, `Enter a prompt label for reference image ${unlabeled.index + 1}.`, "error");
-      return;
-    }
-  }
-  await imageGenerationSlotAction("generate", slotIndexes?.length === 1 ? slotIndexes[0] : undefined, currentImageGenerationInputs());
-}
-
-function currentImageGenerationInputs() {
-  const references = imageGenerationMode === "img2img" ? imageGenerationReferenceSlots.filter(reference => reference.data) : [];
-  return {
-    universe_style_variant: imageGenerationStyleVariant.value,
-    ...(imageGenerationUniverseStyle ? {universe_style: imageGenerationUniverseStyle} : {}),
-    mode: imageGenerationMode, prompt: imageGenerationPrompt.value, negative_prompt: imageGenerationNegative.value,
-    render_mode: imageGenerationRenderMode.value, aspect_ratio: imageGenerationAspectRatio.value,
-    reference_images: references.map(({label, data, metadata}) => ({label: label.trim(), image: data, ...(metadata ? {metadata} : {})})),
-    source_asset_id: imageGenerationSource.dataset.assetId || "", source_checksum: imageGenerationSource.dataset.checksum || "",
-    ...(imageGenerationReconstruction ? {reconstruction: imageGenerationReconstruction} : {}),
-    ...(imageGenerationRenderConfig ? {render_config: imageGenerationRenderConfig} : {}),
-  };
-}
-
-function submitImageGeneration(event) {
-  event.preventDefault();
-  void submitImageGenerationForSlots();
-}
-
-async function clearImageGenerationResults() {
-  await imageGenerationSlotAction("clear_all");
-}
-
-window.zetStageCharacterViewInImageGenerator = async (url, recompile, isCurrent, rotation = false, noCostumeRef = false, renderMode = null) => {
-  if (imageGenerationStagePending || imageGenerationPending) throw new Error("Wait for the current Image Generator action to finish.");
-  imageGenerationStagePending = true;
-  const universe = state.universeId, navigation = state.navigationRequest;
-  const current = () => state.universeId === universe && state.navigationRequest === navigation && isCurrent();
-  try {
-    await runGuardedTransition(async () => {
-      if (!current()) return false;
-      await loadImageGenerationOptions();
-      if (!current()) return false;
-      if (!imageGenerationOptionsLoaded || imageGenerationWorkspaceUniverse !== universe) {
-        throw new Error("Unable to initialize Image Generator. Try again.");
-      }
-      const staged = await fetchJson(url, {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({recompile, rotation, no_costume_ref: noCostumeRef, render_mode: renderMode || imageGenerationRenderMode.value})});
-      if (!current()) return false;
-      ++imageGenerationContentVersion;
-      imageGenerationReview.close();
-      imageGenerationReviewIndex = -1;
-      imageGenerationReviewImage.removeAttribute("src");
-      imageGenerationReviewPrompt.textContent = "";
-      imageGenerationReviewNegative.textContent = "";
-      delete imageGenerationReview.dataset.slot;
-      entityLibraryImportGeneration = null;
-      imageGenerationSource.hidden = true;
-      imageGenerationSource.textContent = "";
-      delete imageGenerationSource.dataset.assetId;
-      delete imageGenerationSource.dataset.checksum;
-      imageGenerationReconstruction = null;
-      imageGenerationPrompt.dataset.managedStyle = "";
-      ++imageReconstructionSourceVersion;
-      imageReconstructionSource = null;
-      imageReconstructionJob = null;
-      reconstructionField("source").textContent = "No source selected.";
-      reconstructionField("preview").hidden = true;
-      reconstructionField("preview").removeAttribute("src");
-      for (const name of ["file", "description", "prompt", "notes", "preserve", "changes"]) reconstructionField(name).value = "";
-      for (const name of ["uncertainties", "status"]) reconstructionField(name).textContent = "";
-      document.querySelector("#image-reconstruction-panel").open = false;
-      imageTrueUpReport = null; imageTrueUpItems.clear(); imageTrueUpSelection = "";
-      document.querySelector("#image-true-up-instructions").value = "";
-      for (const name of ["status", "pair", "findings"]) document.querySelector(`#image-true-up-${name}`).replaceChildren();
-      window.localStorage.removeItem(`zet:reconstruction-job:${universe}`);
-      window.localStorage.removeItem(`zet:true-up:${universe}`);
-      const inputs = staged.inputs;
-      imageGenerationRenderMode.value = inputs.render_mode || "draft";
-      imageGenerationStyleVariant.value = inputs.universe_style_variant || "canonical";
-      imageGenerationUniverseStyle = inputs.universe_style || null;
-      imageGenerationPrompt.value = inputs.prompt;
-      imageGenerationNegative.value = inputs.negative_prompt;
-      imageGenerationAspectRatio.value = inputs.aspect_ratio || `${inputs.width}:${inputs.height}`;
-      await updateImageGenerationSizing();
-      imageGenerationReferenceSlots = Array.from({length: IMAGE_GENERATION_REFERENCE_COUNT}, (_, index) => {
-        const reference = inputs.reference_images[index];
-        return reference ? {label: reference.label, data: reference.image, metadata: reference.metadata} : {label: "", data: ""};
-      });
-      setImageGenerationMode(inputs.mode);
-      imageGenerationRenderConfig = inputs.render_config;
-      imageGenerationModel.textContent = `Qwen Image 2.1 · ${inputs.render_config.checkpoint}`;
-      renderImageGenerationReferenceSlots();
-      applyImageGenerationWorkspace(staged.workspace);
-      saveImageGenerationState();
-      await saveImageGenerationReferences();
-      if (!current()) return false;
-      await activatePage("image-generation", {skipAutosave: true});
-      showMessageElement(imageGenerationMessage, noCostumeRef ? "Costume view staged without a prior costume reference. Ready to generate."
-        : rotation ? "Costume rotation staged. Ready to generate." : "Character view staged. Ready to generate.", "info");
-    });
-  } finally { imageGenerationStagePending = false; }
-};
-
-async function loadImageGenerationOptions() {
-  const universe = state.universeId;
-  if (!imageGenerationOptionsLoaded || imageGenerationWorkspaceUniverse !== state.universeId) {
-    try {
-      const payload = await fetchJson("/api/image-generation/options", { bindToPage: false });
-      if (universe !== state.universeId) return;
-      imageGenerationDefaultModel = `${payload.model} · ${payload.checkpoint}`;
-      imageGenerationModel.textContent = imageGenerationDefaultModel;
-      imageGenerationOptionsLoaded = true;
-      await restoreImageGenerationInputs();
-      await updateImageGenerationSizing();
-      if (universe !== state.universeId) return;
-      await loadImageReconstructionOptions();
-    } catch (error) {
-      showMessageElement(imageGenerationMessage, `Unable to load generation settings: ${error.message}`, "error");
-    }
-  }
-  if (universe !== state.universeId) return;
-  await restoreImageGenerationJob();
 }
 
 function showActionMessage(message, kind = "info") {
@@ -3834,6 +2832,10 @@ function browserRouteUrl() {
     return '/?'+current;
   }
   if (page) params.set("page", page);
+  if (page === "image-generation") {
+    const id = new URLSearchParams(location.search).get("generation_asset");
+    if (id) params.set("generation_asset", id);
+  }
   if (page === "minor-characters") {
     const current = new URLSearchParams(location.search);
     const id = current.get("minor_character");
@@ -4530,6 +3532,12 @@ async function openTemplateManual(manualId) {
 }
 
 async function activatePage(page, options = {}) {
+  const generationAsset = Object.hasOwn(options, "generationAsset")
+    ? options.generationAsset : new URLSearchParams(location.search).get("generation_asset");
+  if (activePageName() === "image-generation" && window.ZetImageGeneration) {
+    if (!await window.ZetImageGeneration.flush()) return false;
+    if (page !== "image-generation") window.ZetImageGeneration.leave();
+  }
   if (activePageName() === "minor-characters" && page !== "minor-characters") {
     await window.zetMinorCharacters?.flush();
     window.zetMinorCharacters?.leave();
@@ -4612,7 +3620,7 @@ async function activatePage(page, options = {}) {
   document.querySelector("#zine-page").classList.toggle("active", page === "zine");
   document.querySelector("#ai-controls-page").classList.toggle("active", page === "ai-controls");
   document.querySelector("#image-generation-page").classList.toggle("active", page === "image-generation");
-  if (page !== "image-generation") clearInterval(imageGenerationWorkspaceTimer);
+
   document.querySelector("#local-image-config-page").classList.toggle("active", page === "local-image-config");
   document.querySelector("#pipeline-controls-page").classList.toggle("active", page === "pipeline-controls");
   document.querySelector("#pipeline-inspection-page").classList.toggle("active", page === "pipeline-inspection");
@@ -4667,8 +3675,15 @@ async function activatePage(page, options = {}) {
     await loadAiControls();
   } else window.ZetAIQueue?.stop();
   if (page === "image-generation") {
-    setImageGenerationMode(imageGenerationMode);
-    await loadImageGenerationOptions();
+    const controller = await import("/static/image_generation.js?v=1");
+    window.ZetImageGeneration ||= controller.setup({
+      fetchJson, universe:() => state.universeId,
+      style:variant => state.universes.find(item => (item.id || item.universe_id) === state.universeId)?.[
+        variant === "environmental" ? "environmental_art_style" : "canonical_art_style"],
+      confirmProtectedEffects, openGeneratedInventory, fileUrl,
+      pickImage:callback => window.zetQuickCharacterWizard.openLibraryPicker(callback),
+    });
+    await window.ZetImageGeneration.enter(generationAsset);
   }
   if (page === "prompt-review") {
     await loadPromptReviewTasks(options.preferredAskId || null);
@@ -4798,7 +3813,7 @@ function setupTabs() {
     menu.addEventListener("change", async () => {
       const page = menu.value;
       if (!page) return;
-      const changed = await runGuardedTransition(() => activatePage(page, { skipAutosave: true }));
+      const changed = await runGuardedTransition(() => activatePage(page, {skipAutosave:true, ...(page === "image-generation" ? {generationAsset:null} : {})}));
       if (!changed) menu.value = PRODUCTION_PAGES.has(activePageName()) ? activePageName() : "";
     });
   }
@@ -4817,6 +3832,7 @@ function setupTabs() {
           skipAutosave: true,
           universeId: button.dataset.universeId || "",
           containerPipeline: button.dataset.containerPipeline,
+          ...(button.dataset.page === "image-generation" ? {generationAsset:null} : {}),
         }));
         if (changed && (LOCAL_ASSET_PAGES.has(button.dataset.page) || button.dataset.page === "character-asset-container" || button.dataset.page === "onboarding")) {
           localAssetsMenu.hidden = true;
@@ -8019,6 +7035,13 @@ async function loadEntityLibraryInventory() {
   }
 }
 
+function populateGeneratedInventoryEntities(entities) {
+  setSelectOptionsWithLabels(entityLibraryGeneratedEntity, [
+    {value:"", label:"General image import"},
+    ...entities.map(item => ({value:item.entity_id, label:`${item.name} · ${item.entity_type}`})),
+  ]);
+}
+
 async function loadEntityLibraryInventoryData() {
   const selectedEntityIds = new Set(Array.from(entityLibraryEditEntities.selectedOptions || [], (item) => item.value));
   const selectedSetIds = new Set(Array.from(entityLibraryEditSets.selectedOptions || [], (item) => item.value));
@@ -8036,9 +7059,7 @@ async function loadEntityLibraryInventoryData() {
   const sets = setsPayload.sets || [];
   const facets = facetsPayload.facets || [];
   entityLibraryMetadata = { entities, variants, sets, facets };
-  setSelectOptionsWithLabels(entityLibraryGeneratedEntity, [
-    { value: "", label: "General image import" }, ...entities.map((item) => ({ value: item.entity_id, label: `${item.name} · ${item.entity_type}` })),
-  ]);
+  populateGeneratedInventoryEntities(entities);
   setSelectOptionsWithLabels(entityLibraryFilterEntity, [
     { value: "", label: "All entities" }, ...entities.map((item) => ({ value: item.entity_id, label: item.name })),
   ]);
@@ -12579,6 +11600,7 @@ entityLibraryImportDialog.addEventListener("close", () => {
 });
 document.querySelector("#entity-library-merge-cancel").addEventListener("click", () => entityLibraryMergeDialog.close());
 entityLibraryMergeDialog.addEventListener("click", (event) => { if (event.target === entityLibraryMergeDialog) entityLibraryMergeDialog.close(); });
+document.body.append(entityLibraryImportDialog);
 const importPanel = document.querySelector(".entity-library-sidebar > section");
 if (importPanel) {
   importPanel.classList.add("inventory-import-panel");
@@ -12855,121 +11877,6 @@ imageCatalogBulkApply.addEventListener("click", bulkUpdateImageCatalog);
 entityLibraryModifyGenerated.addEventListener("click", modifyEntityLibraryImageWithGenerator);
 entityLibraryGeneratePrompt.addEventListener("click", generateEntityImagePrompt);
 entityLibraryGenerateIdentity.addEventListener("click", generateEntityIdentity);
-imageGenerationReviewPrevious.addEventListener("click", () => {
-  const slots = imageGenerationReviewableSlots();
-  imageGenerationReviewIndex = slots[Math.max(0, slots.indexOf(imageGenerationReviewIndex) - 1)];
-  renderImageGenerationReview();
-});
-imageGenerationReviewNext.addEventListener("click", () => {
-  const slots = imageGenerationReviewableSlots();
-  imageGenerationReviewIndex = slots[Math.min(slots.length - 1, slots.indexOf(imageGenerationReviewIndex) + 1)];
-  renderImageGenerationReview();
-});
-imageGenerationReviewClose.addEventListener("click", () => imageGenerationReview.close());
-imageGenerationReviewSelect.addEventListener("click", () => void imageGenerationSlotAction(imageGenerationSelectedSlot === imageGenerationReviewIndex ? "unselect" : "select", imageGenerationReviewIndex));
-imageGenerationReviewRetry.addEventListener("click", () => void imageGenerationSlotAction("regenerate", imageGenerationReviewIndex, currentImageGenerationInputs()));
-imageGenerationReviewClear.addEventListener("click", async () => {
-  const slots = imageGenerationReviewableSlots();
-  const position = slots.indexOf(imageGenerationReviewIndex);
-  const next = slots[position + 1] ?? slots[position - 1];
-  await imageGenerationSlotAction("clear", imageGenerationReviewIndex);
-  if (next !== undefined && !imageGenerationReview.open) openImageGenerationReview(next);
-});
-imageGenerationReviewImport.addEventListener("click", openImageGenerationImportDialog);
-imageGenerationReviewUpdate.addEventListener("click", async () => {
-  const selected = imageGenerationResult(imageGenerationSelectedSlot);
-  if (!selected?.job.source_asset_id) return;
-  imageGenerationReviewUpdate.disabled = true;
-  try {
-    const result = await fetchJson("/api/image-generation/jobs/" + encodeURIComponent(selected.assignment.requestId) + "/images/" + selected.assignment.index + "/apply", { method: "POST" });
-    await activatePage("auxiliary-resources", { skipAutosave: true });
-    await selectEntityLibraryAsset(result.asset.asset_id);
-    showAuxResourceMessage("Image updated in the inventory.", "success");
-  } catch (error) {
-    showMessageElement(imageGenerationMessage, error.message, "error");
-  } finally {
-    imageGenerationReviewUpdate.disabled = false;
-  }
-});
-document.addEventListener("keydown", (event) => {
-  if (!imageGenerationReview.open || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || "")) return;
-  if (event.key === "ArrowLeft" && !imageGenerationReviewPrevious.disabled) imageGenerationReviewPrevious.click();
-  if (event.key === "ArrowRight" && !imageGenerationReviewNext.disabled) imageGenerationReviewNext.click();
-});
-imageGenerationTxt2img.addEventListener("click", () => { setImageGenerationMode("txt2img"); saveImageGenerationState(); });
-imageGenerationImg2img.addEventListener("click", () => { setImageGenerationMode("img2img"); saveImageGenerationState(); });
-imageGenerationForm.addEventListener("submit", submitImageGeneration);
-imageGenerationFill.addEventListener("click", () => void submitImageGenerationForSlots());
-imageGenerationClear.addEventListener("click", clearImageGenerationResults);
-document.querySelector("#image-generation-delete-drafts").addEventListener("click", async () => {
-  if (imageGenerationPending || !await confirmAction("Delete Draft images?", "Delete all Draft images in Image Generator, including the selected image? Matching renders will be cancelled. Final images and Inventory copies remain.", "Delete Draft images")) return;
-  imageGenerationPending = true;
-  const universe = state.universeId;
-  try {
-    const board = await fetchJson("/api/image-generation/workspace/delete-draft-images", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
-    if (universe === state.universeId && imageGenerationRenderMode.value === "draft") applyImageGenerationWorkspace(board);
-    showMessageElement(imageGenerationMessage, "Draft images deleted.", "info");
-  } catch (error) { if (!isRequestCancellation(error)) showMessageElement(imageGenerationMessage, error.message, "error"); }
-  finally { imageGenerationPending = false; renderImageGenerationStatus(); }
-});
-imageGenerationAddUniverseArtStyle.addEventListener("click", () => {
-  const universe = state.universes.find((item) => item.universe_id === state.universeId);
-  const artStyle = universe?.[imageGenerationStyleVariant.value === "environmental" ? "environmental_art_style" : "canonical_art_style"]?.trim();
-  if (!artStyle) {
-    showMessageElement(imageGenerationMessage, `The selected universe has no ${imageGenerationStyleVariant.value} style.`, "warning");
-    return;
-  }
-  let content = imageGenerationPrompt.value;
-  const previous = imageGenerationPrompt.dataset.managedStyle;
-  if (previous && content.startsWith(previous)) content = content.slice(previous.length);
-  else if (content.startsWith(`Art style: ${artStyle}\n`)) content = content.slice(`Art style: ${artStyle}\n`.length);
-  const prefix = `Art style: ${artStyle}\n\n`;
-  imageGenerationPrompt.dataset.managedStyle = prefix;
-  imageGenerationPrompt.value = prefix + content.trimStart();
-  imageGenerationPrompt.dispatchEvent(new Event("input", { bubbles: true }));
-  imageGenerationPrompt.focus();
-});
-imageGenerationStyleVariant.addEventListener("change", () => {
-  imageGenerationUniverseStyle = null;
-  const previous = imageGenerationPrompt.dataset.managedStyle || "";
-  if (previous && imageGenerationPrompt.value.startsWith(previous)) {
-    imageGenerationPrompt.value = imageGenerationPrompt.value.slice(previous.length);
-    imageGenerationPrompt.dataset.managedStyle = "";
-    imageGenerationAddUniverseArtStyle.click();
-  }
-  saveImageGenerationState();
-});
-renderImageGenerationReferenceSlots();
-imageGenerationAspectRatio.addEventListener("input", () => { void updateImageGenerationSizing(); saveImageGenerationState(); });
-imageGenerationRenderMode.addEventListener("change", async () => {
-  const mode = imageGenerationRenderMode.value;
-  ++imageGenerationContentVersion;
-  imageGenerationReview.close();
-  saveImageGenerationState();
-  imageGenerationPending = true;
-  renderImageGenerationStatus();
-  try {
-    await updateImageGenerationSizing();
-    const board = await fetchJson(`/api/image-generation/workspace?render_mode=${mode}`);
-    if (imageGenerationRenderMode.value === mode) applyImageGenerationWorkspace(board);
-  } catch (error) {
-    imageGenerationRenderMode.value = imageGenerationActiveBoardMode;
-    await updateImageGenerationSizing();
-    showMessageElement(imageGenerationMessage, error.message, "error");
-  }
-  finally { imageGenerationPending = false; renderImageGenerationStatus(); }
-});
-for (const input of [imageGenerationPrompt, imageGenerationNegative]) {
-  input.addEventListener("input", saveImageGenerationState);
-  input.addEventListener("change", saveImageGenerationState);
-}
-imageGenerationStyleVariant.addEventListener("change", saveImageGenerationState);
-
-
-
-
-
-
 sourceEditorText.addEventListener("input", updateDirtyIndicators);
 for (const control of [zineName, ...Object.values(zineSlotInputs), zineSpread1, zineSpread3, zineSpread5]) {
   control.addEventListener("input", updateDirtyIndicators);
@@ -13251,6 +12158,13 @@ async function saveUniverseSettings() {
 }
 
 async function selectUniverse(universeId) {
+  if (activePageName() === "image-generation" && window.ZetImageGeneration) {
+    if (!await window.ZetImageGeneration.flush()) return false;
+    window.ZetImageGeneration.leave();
+    const route = new URL(location.href);
+    route.searchParams.delete("generation_asset");
+    history.replaceState({}, "", route);
+  }
   await window.zetMinorCharacters?.flush();
   const response = await fetch("/api/universes/select", {
     method: "POST",
@@ -13283,7 +12197,7 @@ universeSettingsForm.addEventListener("submit", async (event) => {
 // Main-dashboard context is an allowlist, never a copy of application state.
 
 
-document.querySelector("#image-generation-review-task").addEventListener("click",()=>void window.ZetTaskCapture.open());
+
 
 sceneCandidateSource.addEventListener("change", async () => {
   state.selectedSceneCandidateSource = sceneCandidateSource.value;
@@ -13537,10 +12451,10 @@ entityLibraryImport.addEventListener("click", async () => {
   entityLibraryImportStatus.textContent = "Adding image…";
   try {
     if (entityLibraryImportGeneration) {
-      const { requestId, index } = entityLibraryImportGeneration;
-      const payload = await fetchJson("/api/image-generation/jobs/" + encodeURIComponent(requestId) + "/images/" + index + "/import", {
+      const { endpoint } = entityLibraryImportGeneration;
+      const payload = await fetchJson(endpoint.url, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, entity_id: entityLibraryGeneratedEntity.value,
+        body: JSON.stringify({ ...endpoint.payload, label, entity_id: entityLibraryGeneratedEntity.value,
           reference_role: entityLibraryGeneratedRole.value, provenance: entityLibraryGeneratedProvenance.value.trim() }),
       });
       entityLibraryImportGeneration = null;
@@ -13552,9 +12466,7 @@ entityLibraryImport.addEventListener("click", async () => {
       entityLibraryGeneratedProvenance.value = "";
       entityLibraryGenerationPrompts.hidden = true;
       entityLibraryImportStatus.textContent = payload.duplicate ? "This generated image is already in the library." : "Image added.";
-      await activatePage("auxiliary-resources", { skipAutosave: true });
-      await loadEntityLibraryInventory();
-      if (payload.asset?.asset_id) await selectEntityLibraryAsset(payload.asset.asset_id);
+      window.ZetImageGeneration?.inventoryAdded(payload);
       return;
     }
     const generated = Boolean(entityLibraryGeneratedEntity.value);
@@ -13897,13 +12809,9 @@ window.ZetTaskCapture.registerProvider(() => {
     }
   }
   if (page === "image-generation") {
-    const slotIndex = imageGenerationReview.open ? imageGenerationReviewIndex : imageGenerationSelectedSlot;
-    const result = imageGenerationResult(slotIndex);
-    if (result) {
-      const requestId = result.assignment.requestId;
-      selections.run = {state:"selected",id:requestId,label:requestId};
-      selections.candidate = {state:"selected",id:`${requestId}:${result.assignment.index}`,label:`Result ${result.assignment.index + 1} · slot ${slotIndex + 1}`};
-    }
+    Object.assign(selections, window.ZetImageGeneration?.taskContext());
+    const id = window.ZetImageGeneration?.assetId();
+    if (id) source.searchParams.set("generation_asset", id);
   }
   return { page_id: page,
     page_name: LOCAL_ASSET_PAGES.has(page) ? document.querySelector("#local-pipeline-title").textContent.trim()

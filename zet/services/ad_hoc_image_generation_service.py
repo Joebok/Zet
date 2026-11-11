@@ -146,7 +146,7 @@ class AdHocImageGenerationService:
         if mode not in {"txt2img", "img2img"}:
             raise AdHocImageGenerationError("Choose txt2img or img2img.")
         user_prompt = str(payload.get("prompt") or "")
-        if payload.get("render_config") is None:
+        if payload.get("render_config") is None and not (payload.get("ai_owner") or {}).get("image_generation_asset_id"):
             user_prompt = user_prompt.strip()
         if not user_prompt.strip():
             raise AdHocImageGenerationError("Enter a prompt before generating.")
@@ -398,7 +398,7 @@ class AdHocImageGenerationService:
         }
 
     def _preset(self, name: str) -> dict[str, Any]:
-        return LocalRenderBackendService(self.presets_path, config=self.app.config).preset(name)
+        return LocalRenderBackendService(self.presets_path, config=self.zet_app.config).preset(name)
 
     @staticmethod
     def _dimension(value: Any, label: str) -> int:
@@ -430,36 +430,72 @@ class AdHocImageGenerationService:
                 raise KeyError("Image generation request not found.")
             self._refresh(job)
             self._save_job(job)
-            return {
-                "request_id": request_id,
-                "mode": job["mode"],
-                "status": job["status"],
-                "requested": job["count"],
-                "completed": sum(image is not None for image in job["images"]),
-                "failed": job["failures"],
-                "error": job["error"],
-                "prompt": job.get("prompt", ""),
-                "negative_prompt": job.get("negative_prompt", ""),
-                "render_sizing": job.get("render_sizing"),
-                "width": job.get("width"), "height": job.get("height"),
-                "source_asset_id": job.get("source_asset_id", ""),
-                "source_checksum": job.get("source_checksum", ""),
-                "reconstruction": job.get("reconstruction", {}),
-                "results": [{"index": index, "status": "COMPLETE" if index < len(job["images"]) and job["images"][index] is not None else next((child.get("status", "QUEUED") for child in job["children"] if child["index"] == index), "FAILED"),
-                             "error": next((child.get("error", "") for child in job["children"] if child["index"] == index), job.get("error", ""))}
-                            for index in range(job["count"])],
-                "images": [
-                    {"index": index, "url": f"/api/image-generation/jobs/{request_id}/images/{index}"}
-                    for index, image in enumerate(job["images"]) if image is not None
-                ],
-            }
+            return self._job_summary(job)
+
+    @staticmethod
+    def _job_summary(job):
+        request_id = job["request_id"]
+        return {
+            "request_id": request_id,
+            "retryable": bool(job.get("render_payload")),
+            "reference_labels": [ref.get("label", "") for ref in (job.get("render_payload") or {}).get("reference_images", [])],
+            "mode": job["mode"],
+            "status": job["status"],
+            "requested": job["count"],
+            "completed": sum(image is not None for image in job["images"]),
+            "failed": job["failures"],
+            "error": job["error"],
+            "prompt": job.get("prompt", ""),
+            "negative_prompt": job.get("negative_prompt", ""),
+            "render_sizing": job.get("render_sizing"),
+            "width": job.get("width"), "height": job.get("height"),
+            "source_asset_id": job.get("source_asset_id", ""),
+            "source_checksum": job.get("source_checksum", ""),
+            "reconstruction": job.get("reconstruction", {}),
+            "results": [{"index": index, "status": "COMPLETE" if index < len(job["images"]) and job["images"][index] is not None else next((child.get("status", "QUEUED") for child in job["children"] if child["index"] == index), "FAILED"),
+                         "error": next((child.get("error", "") for child in job["children"] if child["index"] == index), job.get("error", ""))}
+                        for index in range(job["count"])],
+            "images": [
+                {"index": index, "url": f"/api/image-generation/jobs/{request_id}/images/{index}"}
+                for index, image in enumerate(job["images"]) if image is not None
+            ],
+        }
+
+    def workspace_status(self, request_id):
+        """Read completed job metadata without loading candidate image bytes."""
+        self.proxy_paths.jobs.validate_id(request_id)
+        record = self._read_job_metadata(request_id)
+        if record is None:
+            raise KeyError("Image generation request not found.")
+        if record["status"] in {"QUEUED", "RUNNING", "DISPATCHING"}:
+            return self.status(request_id)
+        return self._job_summary(record)
+
+    def captured_reference(self, request_id, index):
+        from io import BytesIO
+        from PIL import Image
+
+        self.proxy_paths.jobs.validate_id(request_id)
+        record = self._read_job_metadata(request_id)
+        refs = ((record or {}).get("render_payload") or {}).get("reference_images") or []
+        if not 0 <= index < len(refs):
+            raise KeyError("Captured reference not found.")
+        encoded = refs[index]["image"]
+        contents = base64.b64decode(encoded.split(",", 1)[-1])
+        with Image.open(BytesIO(contents)) as image:
+            return contents, Image.MIME[image.format]
 
     def image(self, request_id: str, index: int) -> tuple[bytes, str]:
-        with self._lock:
-            job = self._jobs.get(request_id)
-            if job is None or index < 0 or index >= len(job["images"]) or job["images"][index] is None:
-                raise KeyError("Image not found.")
-            return job["images"][index]
+        self.proxy_paths.jobs.validate_id(request_id)
+        record = self._read_job_metadata(request_id)
+        images = (record or {}).get("images", [])
+        if not 0 <= index < len(images) or not images[index]:
+            raise KeyError("Image not found.")
+        item = images[index]
+        try:
+            return (self.results_root / request_id / item["filename"]).read_bytes(), item["content_type"]
+        except FileNotFoundError as exc:
+            raise KeyError("Image not found.") from exc
 
     def library_result(self, request_id: str, index: int):
         with self._lock:
@@ -716,14 +752,19 @@ class AdHocImageGenerationService:
             except (OSError, ValueError, KeyError, TypeError):
                 continue
 
-    def _read_saved_job(self, request_id):
+    def _read_job_metadata(self, request_id):
         directory = self.results_root / request_id
         path = directory / "job.json"
         try:
-            record = read_library_json(path, self.zet_app.config.base_library_path)
+            return read_library_json(path, self.zet_app.config.base_library_path)
         except FileNotFoundError:
             # A temporarily unavailable volume is not proof that a request is orphaned.
             self.results_root.stat()
+            return None
+    def _read_saved_job(self, request_id):
+        directory = self.results_root / request_id
+        record = self._read_job_metadata(request_id)
+        if record is None:
             return None
         images = [((directory / item["filename"]).read_bytes(), str(item["content_type"])) if item else None
                   for item in record.get("images", [])]

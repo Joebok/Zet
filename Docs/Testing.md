@@ -1121,3 +1121,7 @@ terminated and restarted the isolated HTTP server using the same library and
 queue, recovered the ask, and harvested the prepared result after restart. The
 generated harness/config and isolated output root were removed. No live renderer
 was used.
+
+## Image Generation asset container (2026-11-11)
+
+All four approved fast scenarios passed (39.9s). Disposable browser and service fixtures covered shared Draft/Final slots, migration with two legacy selections, stale revisions and publication, second-client reload without Image Generation browser storage, 390px gallery management, Inventory actions on cards and in review, analysis-only reconstruction with edited-prompt dispatch, Draft cancellation and late-result fencing, Character Assembly staging, and Inventory Modify. The fixtures used prepared images and analysis. Physical multi-host storage and live AI were outside this validation.
